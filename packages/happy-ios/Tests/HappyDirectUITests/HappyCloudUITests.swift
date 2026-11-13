@@ -609,11 +609,14 @@ final class HappyCloudUITests: XCTestCase {
     }
 
     /// Signs in to the accounts service as the test account, the way the
-    /// app does, and deletes its servers with these names.
+    /// app does, and deletes its servers with these names: each server's
+    /// owner DELETE (`/v0/server`, confirmed by its name) with that
+    /// server's token. A delete that doesn't answer 204, or a server still
+    /// listed after, fails the test.
     private nonisolated static func deleteServers(named names: Set<String>, login: String, password: String) async {
         let accounts = "https://auth.happy.engineering"
-        func send(_ method: String, _ path: String, token: String? = nil, body: [String: String]? = nil) async -> (Int, Data) {
-            var request = URLRequest(url: URL(string: accounts + path)!)
+        func send(_ method: String, _ url: String, token: String? = nil, body: [String: String]? = nil) async -> (Int, Data) {
+            var request = URLRequest(url: URL(string: url)!)
             request.httpMethod = method
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
@@ -625,14 +628,25 @@ final class HappyCloudUITests: XCTestCase {
             return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
         }
         struct Pass: Decodable { let access_token: String }
-        struct Servers: Decodable { struct Server: Decodable { let id: String; let name: String }; let servers: [Server] }
-        let (_, passData) = await send("POST", "/v1/auth/password", body: ["login": login, "password": password])
-        guard let token = (try? JSONDecoder().decode(Pass.self, from: passData))?.access_token else { return print("cleanup: no pass") }
-        let (_, list) = await send("GET", "/v1/servers", token: token)
+        struct ServerToken: Decodable { let access_token: String?; let token: String? }
+        struct Servers: Decodable { struct Server: Decodable { let id: String; let name: String; let url: String }; let servers: [Server] }
+        let (_, passData) = await send("POST", accounts + "/v1/auth/password", body: ["login": login, "password": password])
+        guard let pass = (try? JSONDecoder().decode(Pass.self, from: passData))?.access_token else { return XCTFail("cleanup: no pass") }
+        let (_, list) = await send("GET", accounts + "/v1/servers", token: pass)
         for server in (try? JSONDecoder().decode(Servers.self, from: list))?.servers ?? [] where names.contains(server.name) {
-            let (status, _) = await send("DELETE", "/v1/servers/\(server.id)", token: token)
+            let (_, tokenData) = await send("POST", accounts + "/v1/servers/\(server.id)/token", token: pass, body: [:])
+            let issued = try? JSONDecoder().decode(ServerToken.self, from: tokenData)
+            guard let token = issued?.access_token ?? issued?.token else {
+                XCTFail("cleanup: no token for @\(server.name)")
+                continue
+            }
+            let (status, _) = await send("DELETE", URL(string: server.url)!.appending(path: "v0/server").absoluteString, token: token, body: ["confirm": server.name])
             print("cleanup: deleted @\(server.name): \(status)")
+            if status != 204 { XCTFail("cleanup: deleting @\(server.name) answered \(status)") }
         }
+        let (_, after) = await send("GET", accounts + "/v1/servers", token: pass)
+        let left = (try? JSONDecoder().decode(Servers.self, from: after))?.servers.filter { names.contains($0.name) }.map(\.name) ?? []
+        if !left.isEmpty { XCTFail("cleanup: still listed: \(left)") }
     }
 
     private func first(_ candidates: [XCUIElement], timeout: TimeInterval) -> XCUIElement? {
@@ -893,6 +907,282 @@ final class HappyCloudUITests: XCTestCase {
         capture("12-relaunch")
     }
 
+    /// A fresh server's onboarding on a real deployment, gate by gate, as
+    /// the server plans it: `TEST_RUNNER_LIVE_SERVER` is created (or, made
+    /// before, joined) by the test account. The profile is named, the
+    /// admin bot keeps its name, the provider chooser is shown and closed,
+    /// a plugin's page opened, nobody is invited, notifications are turned
+    /// on through the system's prompt, and the finish opens the admin bot.
+    /// Pictures of every step. The server is deleted only with
+    /// `TEST_RUNNER_LIVE_DELETE=1`.
+    func testHAFreshServersOnboardingOnARealDeployment() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["LIVE_SERVER"] else { throw XCTSkip("no live onboarding run") }
+        if env["LIVE_DELETE"] == "1" {
+            addTeardownBlock { await Self.deleteServers(named: [server], login: login, password: password) }
+        }
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let create = element("cloud-create")
+        let name = element("cloud-create-name")
+        let join = element("cloud-server-\(server)")
+        require(first([create, name, join], timeout: 30) != nil, "no servers after the test account's sign-in")
+        Thread.sleep(forTimeInterval: 2)
+        capture("05-servers")
+        if join.exists {
+            open(server: server, login: login)
+        } else {
+            if !name.exists { create.tap() }
+            require(name.waitForExistence(timeout: 10), "no name field")
+            name.tap()
+            name.typeText(server)
+            // Bootstrap waits for the name's check.
+            let save = element("cloud-create-save")
+            let available = NSPredicate(format: "isEnabled == true")
+            require(XCTWaiter.wait(for: [expectation(for: available, evaluatedWith: save)], timeout: 20) == .completed, "@\(server) was never available")
+            capture("06-name")
+            save.tap()
+        }
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let switcher = element("account-switcher")
+        let primary = element("onboarding-primary")
+        let secondary = element("onboarding-secondary")
+        var seen: [String] = []
+        var finished = false
+        for step in 0..<30 where !finished {
+            Thread.sleep(forTimeInterval: 3)
+            let screens = ["cloud-profile", "onboarding-photo", "onboarding-admin-bot", "onboarding-inference", "onboarding-plugins",
+                           "onboarding-teammates", "onboarding-notifications", "onboarding-notice"]
+            guard let screen = screens.first(where: { element($0).exists }) else {
+                if switcher.exists, !seen.isEmpty { finished = true; break }
+                capture(String(format: "1%02d-waiting", step))
+                continue
+            }
+            seen.append(screen)
+            let shot = String(format: "1%02d-%@", step, screen)
+            capture(shot)
+            tree(shot, app)
+            switch screen {
+            case "cloud-profile":
+                let field = element("cloud-profile-name")
+                if let value = field.value as? String, value.isEmpty || value == field.placeholderValue {
+                    field.tap()
+                    field.typeText("QA iOS")
+                }
+                element("cloud-profile-continue").tap()
+            case "onboarding-photo", "onboarding-teammates":
+                // No picture, and nobody is mailed an invite.
+                require(secondary.exists, "\(screen) has no Skip")
+                secondary.tap()
+            case "onboarding-admin-bot":
+                primary.tap()
+            case "onboarding-inference":
+                primary.tap()
+                let chatGPT = app.buttons["settings:provider-family-chatgpt"]
+                require(chatGPT.waitForExistence(timeout: 15), "no provider chooser")
+                Thread.sleep(forTimeInterval: 1)
+                capture(shot + "-chooser")
+                chatGPT.tap()
+                Thread.sleep(forTimeInterval: 1.5)
+                capture(shot + "-chatgpt")
+                // The sheet's own bars: the flow's Not Now is under them.
+                app.navigationBars["ChatGPT"].buttons.firstMatch.tap()
+                Thread.sleep(forTimeInterval: 1)
+                app.navigationBars["Add a provider"].buttons.firstMatch.tap()
+                Thread.sleep(forTimeInterval: 1.5)
+                require(secondary.exists, "the inference step is required here: no provider was connected")
+                secondary.tap()
+            case "onboarding-plugins":
+                let github = element("onboarding-plugin-github")
+                if github.exists, seen.filter({ $0 == screen }).count == 1 {
+                    github.tap()
+                    Thread.sleep(forTimeInterval: 3)
+                    capture(shot + "-github")
+                    app.navigationBars.buttons.element(boundBy: 0).tap()
+                    continue
+                }
+                if secondary.exists { secondary.tap() } else { primary.tap() }
+            case "onboarding-notifications":
+                primary.tap()
+                let allow = springboard.alerts.buttons["Allow"]
+                if allow.waitForExistence(timeout: 10) {
+                    capture(shot + "-prompt")
+                    allow.tap()
+                }
+                Thread.sleep(forTimeInterval: 4)
+                capture(shot + "-after")
+                if element("onboarding-notifications").exists, secondary.exists { secondary.tap() }
+            default:
+                // The finish, or a notice: its one action.
+                primary.tap()
+                Thread.sleep(forTimeInterval: 5)
+                capture(shot + "-after")
+                tree(shot + "-after", app)
+                if !app.staticTexts["Finish on your computer"].exists { finished = seen.filter({ $0 == screen }).count > 0 }
+            }
+        }
+        capture("199-end")
+        tree("199-end", app)
+        print("LIVE_ONBOARDING screens: \(seen.joined(separator: ","))")
+        require(finished, "onboarding didn't end: \(seen)")
+    }
+
+    /// T03's Gen UI secret form on a real deployment: on
+    /// `TEST_RUNNER_LIVE_SERVER`, already onboarded, the Chief of Staff is
+    /// asked to request a Stripe key; its card's button opens the cluster's
+    /// form, a made-up value is saved, the form says so, and the button
+    /// opens on the secret it made. Pictures of every step.
+    func testHBGenUISecretFormOnARealDeployment() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["LIVE_SERVER"] else { throw XCTSkip("no live Gen UI run") }
+        app.launch()
+        let switcher = element("account-switcher")
+        if !switcher.waitForExistence(timeout: 20) {
+            signInWithTestAccount(login: login, password: password)
+            open(server: server, login: login)
+        }
+        require(switcher.waitForExistence(timeout: 60), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 3)
+        capture("20-home")
+        let chief = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Chief of Staff'")).firstMatch
+        require(chief.waitForExistence(timeout: 20), "no Chief of Staff on home")
+        chief.tap()
+        let composer = app.textViews["composer"]
+        require(composer.waitForExistence(timeout: 20), "no composer")
+        // The card's button, once the Chief of Staff has asked: asked once per server.
+        let card = app.buttons.matching(NSPredicate(format: "label == 'Add secret' OR label == 'Change secret'")).firstMatch
+        Thread.sleep(forTimeInterval: 4)
+        if !card.exists {
+            composer.tap()
+            composer.typeText("Use request_secret to ask me for a Stripe API key: an endpoint secret for api.stripe.com, sent as Authorization: Bearer <key>.")
+            capture("21-asked")
+            app.buttons["Send"].tap()
+            Thread.sleep(forTimeInterval: 5)
+            capture("21b-after-send")
+            var waited = 0
+            while !card.exists, waited < 240 {
+                Thread.sleep(forTimeInterval: 10)
+                waited += 10
+                if waited % 60 == 0 { capture("22-waiting-\(waited)") }
+            }
+        }
+        capture("23-card")
+        tree("23-card", app)
+        require(card.exists, "no Add secret button in the Chief of Staff's answer")
+        for _ in 0..<6 where !card.isHittable { app.swipeUp() }
+        let label = card.label
+        card.tap()
+        require(app.navigationBars["New Secret"].waitForExistence(timeout: 15), "the button opened no New Secret form")
+        Thread.sleep(forTimeInterval: 1)
+        capture("24-form")
+        tree("24-form", app)
+        let value = app.secureTextFields.matching(NSPredicate(format: "identifier BEGINSWITH 'genui-secret-header-' AND identifier ENDSWITH '-value'")).firstMatch
+        require(value.waitForExistence(timeout: 5), "no header value field")
+        value.tap()
+        value.typeText("sk_test_t13_not_a_real_key")
+        element("genui-secret-save").tap()
+        require(app.navigationBars["Secret Added"].waitForExistence(timeout: 20), "not saved")
+        Thread.sleep(forTimeInterval: 1)
+        capture("25-added")
+        tree("25-added", app)
+        app.buttons["Done"].tap()
+        Thread.sleep(forTimeInterval: 3)
+        capture("26-after")
+        let reopen = card
+        require(reopen.waitForExistence(timeout: 10), "the button went")
+        print("LIVE_GENUI after save: \(reopen.label)")
+        reopen.tap()
+        require(app.navigationBars["Change Secret"].waitForExistence(timeout: 15), "not opened on the saved secret")
+        Thread.sleep(forTimeInterval: 1)
+        capture("27-change")
+        tree("27-change", app)
+        element("genui-secret-cancel").tap()
+        Thread.sleep(forTimeInterval: 8)
+        capture("28-conversation")
+        tree("28-conversation", app)
+        print("LIVE_GENUI button: \(label)")
+    }
+
+    /// Notifications on a real deployment whose tenant asks for the
+    /// mobile app (`onboarding.gates.mobileApp` optional), on an install
+    /// already signed in and past the rest: the step shows, Allow answers
+    /// iOS's prompt, and the registration completes the step.
+    func testHDNotificationsStepOnARealDeployment() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["LIVE_SERVER"] else { throw XCTSkip("no live run") }
+        app.launch()
+        let switcher = element("account-switcher")
+        let step = element("onboarding-notifications")
+        if first([switcher, step], timeout: 20) == nil {
+            signInWithTestAccount(login: login, password: password)
+            open(server: server, login: login)
+        }
+        Thread.sleep(forTimeInterval: 5)
+        capture("40-launch")
+        tree("40-launch", app)
+        require(step.waitForExistence(timeout: 30), "no notifications step")
+        capture("41-step")
+        tree("41-step", app)
+        element("onboarding-primary").tap()
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.buttons["Allow"]
+        let prompted = allow.waitForExistence(timeout: 10)
+        if prompted {
+            capture("42-prompt")
+            allow.tap()
+        }
+        Thread.sleep(forTimeInterval: 8)
+        capture("43-after")
+        tree("43-after", app)
+        let texts = step.exists ? step.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " | ") : "-"
+        print("LIVE_PUSH prompted=\(prompted) step-still-shown=\(step.exists) home=\(switcher.exists) texts=\(texts)")
+    }
+
+    /// The request_secret artifact as a full page on a real deployment,
+    /// after `testHBGenUISecretFormOnARealDeployment`: from its row in the
+    /// Chief of Staff's chat, then from the server's Artifacts list.
+    func testHCGenUIArtifactFullPageOnARealDeployment() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["LIVE_SERVER"] else { throw XCTSkip("no live Gen UI run") }
+        app.launch()
+        let switcher = element("account-switcher")
+        if !switcher.waitForExistence(timeout: 20) {
+            signInWithTestAccount(login: login, password: password)
+            open(server: server, login: login)
+        }
+        require(switcher.waitForExistence(timeout: 60), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 3)
+        let chief = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Chief of Staff'")).firstMatch
+        require(chief.waitForExistence(timeout: 20), "no Chief of Staff on home")
+        chief.tap()
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Open Add your Stripe API key'")).firstMatch
+        require(row.waitForExistence(timeout: 20), "no artifact row in the chat")
+        for _ in 0..<6 where !row.isHittable { app.swipeDown() }
+        row.tap()
+        let page = element("artifact")
+        require(page.waitForExistence(timeout: 15), "the row opened no artifact page")
+        Thread.sleep(forTimeInterval: 6)
+        capture("30-from-chat")
+        tree("30-from-chat", app)
+        print("LIVE_ARTIFACT from chat: genui=\(element("artifact-gen-ui").exists) message=\(element("artifact-message").exists ? element("artifact-message").label : "-")")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        Thread.sleep(forTimeInterval: 2)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        Thread.sleep(forTimeInterval: 2)
+
+        let artifacts = element("row:space:Artifacts")
+        require(artifacts.waitForExistence(timeout: 15), "no Artifacts on home")
+        artifacts.tap()
+        require(element("artifacts-list").waitForExistence(timeout: 15), "no artifacts list")
+        Thread.sleep(forTimeInterval: 3)
+        capture("31-list")
+        tree("31-list", app)
+        let item = element("artifacts-list").descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Stripe'")).firstMatch
+        require(item.waitForExistence(timeout: 15), "the artifact isn't listed")
+        item.tap()
+        require(page.waitForExistence(timeout: 15), "the list opened no artifact page")
+        Thread.sleep(forTimeInterval: 6)
+        capture("32-from-list")
+        tree("32-from-list", app)
+        print("LIVE_ARTIFACT from list: genui=\(element("artifact-gen-ui").exists) message=\(element("artifact-message").exists ? element("artifact-message").label : "-")")
+    }
+
     /// The whole flow with a test account, no person needed: ten taps on
     /// the logo, its login and password, a new server, its home, a task
     /// and a message (with no provider set up, the answer is a card
@@ -914,8 +1204,7 @@ final class HappyCloudUITests: XCTestCase {
         require(name.waitForExistence(timeout: 10), "no name field")
         name.tap()
         let server = "qa-ios-\(Int(Date().timeIntervalSince1970) % 1_000_000)"
-        // Whatever happens, the servers this run made go (owner DELETE; the
-        // accounts service keeps them seven days before purging).
+        // Whatever happens, the servers this run made go (owner DELETE).
         addTeardownBlock { await Self.deleteServers(named: [server, server + "-b"], login: login, password: password) }
         name.typeText(server)
         Thread.sleep(forTimeInterval: 1.5)
