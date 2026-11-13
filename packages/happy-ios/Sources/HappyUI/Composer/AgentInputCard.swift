@@ -533,6 +533,15 @@ public final class AgentInputCardView: UIView {
         textScale.map { TextStyles.composerInput.scaled($0) } ?? TextStyles.composerInput
     }
 
+    /// How far apart the text's lines are drawn: TextKit 2 sets them the
+    /// style's `baselineOffset` closer than its fixed line height (21.27
+    /// for 22), so five lines take a little less than 5 × 22.
+    private var drawnLineHeight: CGFloat {
+        let style = inputStyle
+        guard let lineHeight = style.lineHeight else { return inputLineHeight }
+        return lineHeight - (lineHeight - style.font.lineHeight) / 4
+    }
+
     private var chipStyle: TextStyle {
         textScale.map { TextStyles.composerChip.scaled($0) } ?? TextStyles.composerChip
     }
@@ -1315,7 +1324,16 @@ public final class AgentInputCardView: UIView {
             textView.textContainerInset.top = layout.textPaddingTop
             textView.textContainerInset.bottom = layout.textPaddingBottom
         }
-        textView.setLayoutFrame(layout.text)
+        var textFrame = layout.text
+        if isCompact, layout.textScrolls {
+            // Its lines as drawn, from the top: scrolled to its end, the top
+            // line is whole and nothing of the one above it shows.
+            let drawn = CGFloat(max(1, configuration.compactLines)) * drawnLineHeight
+            let trim = max(0, textFrame.height - drawn)
+            textFrame.origin.y += trim
+            textFrame.size.height -= trim
+        }
+        textView.setLayoutFrame(textFrame)
         if textView.isScrollEnabled != layout.textScrolls {
             textView.isScrollEnabled = layout.textScrolls
         }

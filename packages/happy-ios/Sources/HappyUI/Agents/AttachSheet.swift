@@ -110,17 +110,13 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         effect.isInteractive = true
         return effect
     }
-    private static func countEffect() -> UIGlassEffect {
-        let effect = UIGlassEffect(style: .regular)
-        effect.tintColor = UIColor(Palette.attachMenuAccent)
-        return effect
-    }
     private let closeGlass = UIVisualEffectView(effect: AttachSheetViewController.closeEffect())
     private let closeButton = UIButton(type: .custom)
-    private let countGlass = UIVisualEffectView(effect: AttachSheetViewController.countEffect())
+    /// Close's twin at the other side: its glass, its ink, its weight.
+    private let countGlass = UIVisualEffectView(effect: AttachSheetViewController.closeEffect())
     /// The count's touch: the picks go to the composer.
     private let countButton = UIButton(type: .custom)
-    private let countIcon = UIImageView(image: UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)))
+    private let countIcon = UIImageView(image: UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)))
     private let countLabel = UILabel()
     private let titleLabel = UILabel()
     private var titleDark = false
@@ -249,20 +245,16 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         closeGlass.cornerConfiguration = .capsule()
         closeGlass.contentView.addSubview(closeButton)
         countGlass.cornerConfiguration = .capsule()
-        countIcon.tintColor = UIColor(Palette.attachMenuOnAccent)
+        countIcon.tintColor = UIColor(Palette.attachMenuControl)
         countIcon.contentMode = .center
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
-        countLabel.textColor = UIColor(Palette.attachMenuOnAccent)
+        countLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
+        countLabel.textColor = UIColor(Palette.attachMenuControl)
         countGlass.contentView.addSubview(countIcon)
         countGlass.contentView.addSubview(countLabel)
         countButton.isAccessibilityElement = true
         countButton.accessibilityIdentifier = "attach-count"
         countButton.accessibilityHint = Strings.AttachMenu.confirmHint
         countButton.addAction(UIAction { [weak self] _ in self?.stagePicked() }, for: .touchUpInside)
-        countButton.addAction(UIAction { [weak self] _ in self?.countGlass.contentView.alpha = 0.6 }, for: [.touchDown, .touchDragEnter])
-        countButton.addAction(UIAction { [weak self] _ in
-            UIView.animate(withDuration: 0.2) { self?.countGlass.contentView.alpha = 1 }
-        }, for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
         countGlass.contentView.addSubview(countButton)
         countGlass.alpha = 0
         countGlass.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
@@ -862,7 +854,7 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     private func setContent(shown: Bool) {
         pageFade.alpha = shown ? 1 : 0
         titleLabel.alpha = shown ? 1 : 0
-        for (glass, effect) in [(closeGlass, Self.closeEffect()), (countGlass, Self.countEffect())] {
+        for (glass, effect) in [(closeGlass, Self.closeEffect()), (countGlass, Self.closeEffect())] {
             glass.effect = shown ? effect : nil
             glass.contentView.alpha = shown ? 1 : 0
         }

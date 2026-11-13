@@ -17,11 +17,10 @@ extension Palette {
     /// A cell before its picture: `list.mediaPlaceholderColor` (night:
     /// white mixed 90% into #1C1C1D).
     public static let attachMenuCellPlaceholder = ColorToken("#EFEFF4", "#333334")
-    /// The accent: a picked circle's fill, ✓N, a button's fill. The chat
+    /// The accent: a picked circle's fill, a button's fill. The chat
     /// composer's send (AgentInputPrimaryButton, `.send`).
     public static let attachMenuAccent = surfaceHighest
-    /// On the accent: the number, ✓N's glyph and count, a button's title;
-    /// send's arrow.
+    /// On the accent: the number, a button's title; send's arrow.
     public static let attachMenuOnAccent = text
     /// The circle over a picture (`CheckNode`, overlay): a white ring with
     /// a black shadow at 22%.
@@ -39,7 +38,8 @@ extension Palette {
     public static let attachMenuTitle = ColorToken("#000000", "#FFFFFF")
     /// The fade at the top of a scrolled grid, under the glass buttons.
     public static let attachMenuTopEdge = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.45), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.45))
-    /// A glyph on glass (`inputPanel.panelControlColor`).
+    /// A glyph on glass (`inputPanel.panelControlColor`): close, and ✓N
+    /// and its count beside it.
     public static let attachMenuControl = ColorToken("#000000", "#FFFFFF")
     /// The caption's text and placeholder (`inputPanel`).
     public static let attachMenuCaption = ColorToken("#000000", "#FFFFFF")

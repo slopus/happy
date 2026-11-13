@@ -332,6 +332,20 @@ final class HostedAttachMenuTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(text.minY, 0, "the text left the glass's top")
         XCTAssertLessThanOrEqual(text.maxY, sheet.panel.bounds.height + 0.5, "the text left the glass's foot")
         XCTAssertTrue(caption.isScrollEnabled, "a caption past its tallest doesn't scroll")
+        // Scrolled to its end, the top line shows whole and nothing of the
+        // line above it peeks in over it.
+        caption.setContentOffset(CGPoint(x: 0, y: caption.contentSize.height - caption.bounds.height), animated: false)
+        let top = caption.contentOffset.y
+        let layoutManager = try XCTUnwrap(caption.textLayoutManager)
+        var lines: [CGRect] = []
+        layoutManager.enumerateTextLayoutFragments(from: layoutManager.documentRange.location, options: [.ensuresLayout]) { fragment in
+            for line in fragment.textLineFragments {
+                lines.append(line.typographicBounds.offsetBy(dx: fragment.layoutFragmentFrame.minX, dy: fragment.layoutFragmentFrame.minY))
+            }
+            return true
+        }
+        let cut = try XCTUnwrap(lines.first { $0.minY <= top && top < $0.maxY })
+        XCTAssertLessThan(top - cut.minY, 1, "part of the line above the top one shows")
         // One row: send beside the text at its foot, no row of controls under it.
         let send = sheet.panel.card.primaryControl.convert(sheet.panel.card.primaryControl.bounds, to: sheet.panel)
         XCTAssertGreaterThanOrEqual(send.minX, text.maxX, "send isn't beside the text")
