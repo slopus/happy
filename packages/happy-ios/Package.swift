@@ -48,7 +48,7 @@ let package = Package(
         // Native Home and chat's optional renderer. Pin the pre-1.0 API used by
         // NodeRow and the custom keyframe scroller.
         .package(url: "https://github.com/slopus/ultraview.git", revision: "f8ddf59370296aa764100049073eecdd67909ab5"),
-        .package(url: "https://github.com/slopus/tailcat-swift.git", revision: "e9e1696c6d8fdecc812784b61a3d010b48f93cd7"),
+        .package(url: "https://github.com/slopus/tailcat-swift.git", revision: "14cf4270fd7cb7b87cbf7185d80f05252042d5cf"),
         // The state pictures (`StateSceneView`), desktop's Lottie scenes.
         // lottie-spm is Lottie's prebuilt xcframework, so it adds no source
         // build; scenes play on its Core Animation engine, off the main
