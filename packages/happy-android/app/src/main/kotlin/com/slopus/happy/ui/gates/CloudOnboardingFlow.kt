@@ -73,8 +73,20 @@ import com.slopus.happy.ui.plugins.PluginRoute
 import com.slopus.happy.ui.page
 import com.slopus.happy.ui.start.StartSpec
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.onboarding.TeamInvites
+import com.slopus.happy.push.PushServices
+import com.slopus.happy.push.rememberNotificationPermission
+import com.slopus.happy.push.requestOrOpenSettings
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 
 /** A Happy Cloud server's onboarding over its home, for connection [connectionId]. */
@@ -120,8 +132,10 @@ private fun CloudOnboardingPage(graph: AppGraph, nav: NavHostController, connect
     val photoBytes by session.profile.photo.collectAsStateWithLifecycle()
     val profile by session.profile.state.collectAsStateWithLifecycle()
     var finishing by remember { mutableStateOf(false) }
+    // A step kept on screen after its gate is done (more invites to send), until it lets the flow go on.
+    var held by remember { mutableStateOf<OnboardingGate?>(null) }
     val plan = OnboardingPlan.of(onboarding)
-    val step = plan.step(showing = true)
+    val step = held?.let { gate -> OnboardingPlan.Step.Gate(onboarding.gates.firstOrNull { it.id == gate.id } ?: gate) } ?: plan.step(showing = true)
     // Nothing left and no finish to show (a server without gates): the flow goes.
     LaunchedEffect(step == null) { if (step == null && !finishing) nav.popBackStack() }
     step ?: return
@@ -131,6 +145,12 @@ private fun CloudOnboardingPage(graph: AppGraph, nav: NavHostController, connect
     // A gate that blocks keeps the person here: Back leaves the app instead, as from home.
     BackHandler { if (blocks) activity?.moveTaskToBack(true) else notNow() }
     val client = session.client
+    val context = LocalContext.current
+    val shownGate = (step as? OnboardingPlan.Step.Gate)?.gate
+    // Back from the notification settings, the foreground's registration completes the gate.
+    if (shownGate?.kind is OnboardingGate.Kind.MobileApp) {
+        LaunchedEffect(connectionId) { graph.cloudPush.registered.filter { it == connectionId }.collect { runCatching { source.check() } } }
+    }
     val meets = permissions.allows(Permission.CONTENT_WRITE) && permissions.allows(Permission.BOTS_MANAGE)
     CloudOnboardingFlow(
         onboarding = onboarding,
@@ -180,6 +200,37 @@ private fun CloudOnboardingPage(graph: AppGraph, nav: NavHostController, connect
                 }
                 PluginsHost(plugins.state, open = { key -> nav.navigate(PluginRoute(connectionId, key)) }, refresh = plugins::refresh)
             },
+            teammates = shownGate?.takeIf { it.kind is OnboardingGate.Kind.Teammates }?.let { gate ->
+                TeammatesHost(
+                    invite = { email -> TeamInvites.invite(client, email) },
+                    share = { link -> shareLink(context, link) },
+                    hold = { keep -> held = if (keep) gate else null },
+                )
+            },
+            notifications = (shownGate?.kind as? OnboardingGate.Kind.MobileApp)?.let { app ->
+                val permission = rememberNotificationPermission()
+                val services = remember(context) { PushServices.get(context) }
+                NotificationsHost(
+                    turnOn = {
+                        when {
+                            !withContext(Dispatchers.IO) { services.fcm.supported } -> PushOutcome.Unsupported
+                            !permission.requestOrOpenSettings().granted -> PushOutcome.Denied
+                            else -> coroutineScope {
+                                // Listening before asking, so a quick registration isn't missed.
+                                val taken = async(start = CoroutineStart.UNDISPATCHED) { graph.cloudPush.registered.first { it == connectionId } }
+                                graph.cloudPush.refresh()
+                                withTimeoutOrNull(REGISTRATION_WAIT) { taken.await() } ?: run {
+                                    taken.cancel()
+                                    throw IllegalStateException("push registration not taken")
+                                }
+                                PushOutcome.Registered
+                            }
+                        }
+                    },
+                    openSettings = permission::openSettings,
+                    store = { openUrl(context, app.playStoreUrl ?: PLAY_STORE) },
+                )
+            },
         ),
     )
 }
@@ -192,7 +243,7 @@ class OnboardingActions(
     val savePhoto: suspend (ByteArray) -> Unit,
     /** Completes onboarding and leaves; throws when it couldn't. */
     val finish: suspend () -> Unit,
-    /** The server in the web app, where payments and what the phone can't do yet are done. */
+    /** The server in the web app, for what this server takes only there (invites, where it has no route for them). */
     val web: String?,
     /** Not Now; null while a gate blocks. */
     val onNotNow: (() -> Unit)?,
@@ -202,7 +253,14 @@ class OnboardingActions(
     val inference: InferenceHost? = null,
     /** The plugins gate's catalog; null while it isn't shown. */
     val plugins: PluginsHost? = null,
+    /** The teammates gate's invites; null while it isn't shown. */
+    val teammates: TeammatesHost? = null,
+    /** The mobileApp gate's push; null while it isn't shown. */
+    val notifications: NotificationsHost? = null,
 )
+
+/** How long Turn on notifications waits for the server to take this phone's registration. */
+private const val REGISTRATION_WAIT = 20_000L
 
 /** Google Play's page for Happy, where the server names none. */
 internal const val PLAY_STORE = "https://play.google.com/store/apps/details?id=com.ex3ndr.happy"
@@ -346,18 +404,17 @@ private fun GateScreen(gate: OnboardingGate, handle: String, seed: String, name:
         is OnboardingGate.Kind.AdminBot -> AdminBotStep(gate, gate.kind, actions)
         is OnboardingGate.Kind.Inference -> InferenceStep(gate, gate.kind, actions)
         is OnboardingGate.Kind.Plugins -> PluginsStep(gate, gate.kind, actions)
-        // Done on desktop or the web: payments always, the others until their screens come.
-        else -> {
-            val context = LocalContext.current
-            Notice(
-                R.raw.state_tv,
-                stringResource(R.string.cloud_onboarding_elsewhere_title),
-                stringResource(R.string.cloud_onboarding_elsewhere_body, stepName(gate)),
-                primary = actions.web?.let { url -> stringResource(R.string.cloud_onboarding_open_web) to suspend { openUrl(context, url) } },
-                secondary = skipFor(gate, actions),
-                onNotNow = actions.onNotNow,
-            )
-        }
+        is OnboardingGate.Kind.Teammates -> TeammatesStep(gate, handle, actions)
+        is OnboardingGate.Kind.MobileApp -> NotificationsStep(gate, actions)
+        // A payment method and paying, done in Happy on a computer: the app links to no payment, and Check again reads the gate.
+        else -> Notice(
+            R.raw.state_tv,
+            stringResource(R.string.cloud_onboarding_elsewhere_title),
+            stringResource(R.string.cloud_onboarding_elsewhere_body, stepName(gate)),
+            primary = stringResource(R.string.cloud_onboarding_check_again) to actions.check,
+            secondary = skipFor(gate, actions),
+            onNotNow = actions.onNotNow,
+        )
     }
 }
 
@@ -502,9 +559,18 @@ internal fun stepName(gate: OnboardingGate): String = stringResource(
     },
 )
 
-private fun openUrl(context: android.content.Context, url: String) {
+internal fun openUrl(context: android.content.Context, url: String) {
     try {
         context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: android.content.ActivityNotFoundException) {
+    }
+}
+
+/** The share sheet with an invite's link. */
+private fun shareLink(context: android.content.Context, link: String) {
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, link)
+    try {
+        context.startActivity(android.content.Intent.createChooser(send, null).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: android.content.ActivityNotFoundException) {
     }
 }

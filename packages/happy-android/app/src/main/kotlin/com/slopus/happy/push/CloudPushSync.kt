@@ -27,6 +27,8 @@ class CloudPushSync(
     private val appId: String,
     private val locale: () -> String,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Each registration the server took: onboarding's mobileApp gate is done by it. */
+    private val registered: (CloudPushAccount) -> Unit = {},
 ) {
     private data class Trigger(val sequence: Long, val native: Boolean = false)
     private val revision = MutableStateFlow(Trigger(0))
@@ -77,7 +79,7 @@ class CloudPushSync(
                             return@collectLatest
                         }
                         for (account in current) client(account)?.let { client ->
-                            attempt { registrations.register(account, client, token, appId, locale()) }
+                            attempt { if (registrations.register(account, client, token, appId, locale())) registered(account) }
                         }
                     }
             }

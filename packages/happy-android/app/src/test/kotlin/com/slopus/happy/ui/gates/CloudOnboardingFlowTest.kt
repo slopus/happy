@@ -1,6 +1,8 @@
 package com.slopus.happy.ui.gates
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -49,19 +51,23 @@ class CloudOnboardingFlowTest {
     }
 
     @Test
-    fun aPaymentGateSendsThemToTheWebAndSkipsOnlyWhileOptional() {
+    fun aPaymentGateSendsThemToTheirComputerAndSkipsOnlyWhileOptional() {
         show(CloudOnboarding(false, gates = listOf(OnboardingGate("paymentMethod", Scope.Server, Requirement.Optional, Status.Open, kind = Kind.PaymentMethod))))
-        rule.onNodeWithText("Finish on the web").assertIsDisplayed()
-        rule.onNodeWithText("Adding a payment method is done in Happy on your computer or on the web. Come back here when it's done.").assertIsDisplayed()
+        rule.onNodeWithText("Finish on your computer").assertIsDisplayed()
+        rule.onNodeWithText("Adding a payment method is done in Happy on your computer. Come back here when it's done.").assertIsDisplayed()
+        // The app links to no payment: Check again reads the gate.
+        assertEquals(0, rule.onAllNodesWithText("Open on the web").fetchSemanticsNodes().size)
+        rule.onNodeWithText("Check again").performClick()
+        rule.waitForIdle()
         rule.onNodeWithText("Skip for now").performClick()
         rule.waitForIdle()
-        assertEquals(listOf("skip paymentMethod"), asked)
+        assertEquals(listOf("check", "skip paymentMethod"), asked)
     }
 
     @Test
     fun aRequiredPaymentGateHasNoSkipAndNoWayBack() {
         show(CloudOnboarding(false, gates = listOf(OnboardingGate("payment", Scope.Server, Requirement.Required, Status.Open, kind = Kind.Payment))), actions(notNow = false))
-        rule.onNodeWithText("Open on the web").assertIsDisplayed()
+        rule.onNodeWithText("Check again").assertIsDisplayed()
         assertEquals(0, rule.onAllNodesWithText("Skip for now").fetchSemanticsNodes().size)
         assertEquals(0, rule.onAllNodesWithTag(com.slopus.happy.ui.components.HeaderTags.LEFT).fetchSemanticsNodes().size)
     }
@@ -160,5 +166,98 @@ class CloudOnboardingFlowTest {
         assertEquals(listOf(true, false), rows.map { it.required })
         // Before the catalog answers: the gate's own word.
         assertEquals(listOf(PluginRow("github", "github", "GitHub", required = true, active = false)), pluginRows(gate, com.slopus.happy.plugins.PluginsState.Loading))
+    }
+
+    private fun teammates(invite: suspend (String?) -> com.slopus.happy.onboarding.TeamInvite, shared: MutableList<String>, holds: MutableList<Boolean>) = OnboardingActions(
+        skip = { asked += "skip $it" }, check = { asked += "check" }, saveName = {}, savePhoto = {}, finish = {}, web = null, onNotNow = null,
+        teammates = TeammatesHost(invite, share = { shared += it }, hold = { holds += it }),
+    )
+
+    private val teammatesGate = CloudOnboarding(false, gates = listOf(OnboardingGate("teammates", Scope.Server, Requirement.Optional, Status.Open, kind = Kind.Teammates(false, 1))))
+
+    @Test
+    fun anInviteGoesByEmailAndTheStepStaysForMoreUntilContinue() {
+        val invited = mutableListOf<String?>()
+        val holds = mutableListOf<Boolean>()
+        show(teammatesGate, teammates({ email -> invited += email; com.slopus.happy.onboarding.TeamInvite("i1", "https://acme.example/join/x", if (email == "bo@acme.com") "failed" else "sent") }, mutableListOf(), holds))
+        rule.onNodeWithText("Invite your team").assertIsDisplayed()
+        rule.onNodeWithTag(CloudTags.PRIMARY).assertIsNotEnabled()
+        rule.onNodeWithTag(OnboardingStepTags.INVITE_EMAIL).performTextInput("olga@acme")
+        rule.onNodeWithTag(CloudTags.PRIMARY).assertIsNotEnabled()
+        rule.onNodeWithTag(OnboardingStepTags.INVITE_EMAIL).performTextInput(".com")
+        rule.onNodeWithText("Send invite").performClick()
+        rule.waitForIdle()
+        assertEquals(listOf<String?>("olga@acme.com"), invited)
+        rule.onNodeWithText("olga@acme.com").assertIsDisplayed()
+        rule.onNodeWithText("Invite sent").assertIsDisplayed()
+        // Sent: no skipping now, and the flow waits for Continue.
+        assertEquals(0, rule.onAllNodesWithText("Skip for now").fetchSemanticsNodes().size)
+        assertEquals(listOf(true), holds)
+        assertEquals(listOf("check"), asked)
+        rule.onNodeWithTag(OnboardingStepTags.INVITE_EMAIL).performTextInput("bo@acme.com")
+        rule.onNodeWithText("Send invite").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Email not sent").assertIsDisplayed()
+        rule.onNodeWithText("Share").assertIsDisplayed()
+        rule.onNodeWithText("Continue").performClick()
+        assertEquals(listOf(true, true, false), holds)
+    }
+
+    @Test
+    fun aServerThatCantSendEmailSharesALinkInstead() {
+        val shared = mutableListOf<String>()
+        val holds = mutableListOf<Boolean>()
+        show(teammatesGate, teammates({ email ->
+            if (email != null) throw com.slopus.happy.onboarding.TeamInviteRefusal.EmailNotConfigured
+            com.slopus.happy.onboarding.TeamInvite("i2", "https://acme.example/join/y")
+        }, shared, holds))
+        rule.onNodeWithTag(OnboardingStepTags.INVITE_EMAIL).performTextInput("olga@acme.com")
+        rule.onNodeWithText("Send invite").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("This server can't send email yet. Share an invite link instead.").assertIsDisplayed()
+        // Nothing was sent, so the flow isn't held.
+        assertEquals(listOf(true, false), holds)
+        rule.onNodeWithText("Share invite link").performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("https://acme.example/join/y"), shared)
+        rule.onNodeWithText("Invite link").assertIsDisplayed()
+        rule.onNodeWithText("Continue").assertIsDisplayed()
+    }
+
+    private fun notifications(outcome: PushOutcome, opened: MutableList<String>) = OnboardingActions(
+        skip = { asked += "skip $it" }, check = { asked += "check" }, saveName = {}, savePhoto = {}, finish = {}, web = null, onNotNow = null,
+        notifications = NotificationsHost(turnOn = { outcome }, openSettings = { opened += "settings" }, store = { opened += "store" }),
+    )
+
+    private val mobileAppGate = CloudOnboarding(false, gates = listOf(OnboardingGate("mobileApp", Scope.Member, Requirement.Optional, Status.Open, kind = Kind.MobileApp(false, null, null))))
+
+    @Test
+    fun notificationsTurnedOnRegisterAndTheServerIsReadAgain() {
+        show(mobileAppGate, notifications(PushOutcome.Registered, mutableListOf()))
+        rule.onNodeWithTag(CloudTags.PRIMARY).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("check"), asked)
+    }
+
+    @Test
+    fun notificationsTurnedOffOpenTheSettingsAndABuildWithoutPushGooglePlay() {
+        val opened = mutableListOf<String>()
+        show(mobileAppGate, notifications(PushOutcome.Denied, opened))
+        rule.onNodeWithTag(CloudTags.PRIMARY).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Notifications are off for Happy. Turn them on in Settings, then come back.").assertIsDisplayed()
+        rule.onNodeWithText("Open settings").performClick()
+        assertEquals(listOf("settings"), opened)
+        assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test
+    fun aBuildWithoutPushOffersGooglePlay() {
+        val opened = mutableListOf<String>()
+        show(mobileAppGate, notifications(PushOutcome.Unsupported, opened))
+        rule.onNodeWithTag(CloudTags.PRIMARY).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Open Google Play").performClick()
+        assertEquals(listOf("store"), opened)
     }
 }

@@ -16,8 +16,8 @@
     <string name="cloud_onboarding_waiting_body">需要由管理此服务器的人先完成设置：%1$s。</string>
     <string name="cloud_onboarding_not_ready_title">即将就绪</string>
     <string name="cloud_onboarding_not_ready_body">此服务器尚未就绪，请稍后再检查。</string>
-    <string name="cloud_onboarding_elsewhere_title">在网页上完成</string>
-    <string name="cloud_onboarding_elsewhere_body">%1$s需要在电脑或网页上的 Happy 中完成。完成后回到这里。</string>
+    <string name="cloud_onboarding_elsewhere_title">在电脑上完成</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s需要在电脑上的 Happy 中完成。完成后回到这里。</string>
     <string name="cloud_onboarding_open_web">在网页上打开</string>
     <string name="cloud_onboarding_done_title">一切就绪</string>
     <string name="cloud_onboarding_done_body">%1$s 已为你准备就绪。</string>
@@ -52,4 +52,25 @@
     <string name="cloud_onboarding_required">必需</string>
     <string name="cloud_onboarding_plugins_failed">无法读取插件。</string>
     <string name="cloud_onboarding_try_again">重试</string>
+    <string name="cloud_onboarding_teammates_title">邀请你的团队</string>
+    <string name="cloud_onboarding_teammates_body">Happy 一起用效果最好。通过邮件邀请他人，他们会收到加入 %1$s 的链接。</string>
+    <string name="cloud_onboarding_email_placeholder">name@company.com</string>
+    <string name="cloud_onboarding_send_invite">发送邀请</string>
+    <string name="cloud_onboarding_invite_sent">邀请已发送</string>
+    <string name="cloud_onboarding_sent">已发送</string>
+    <string name="cloud_onboarding_email_failed">邮件未发送</string>
+    <string name="cloud_onboarding_share">分享</string>
+    <string name="cloud_onboarding_invite_link">邀请链接</string>
+    <string name="cloud_onboarding_invite_link_note">任何拥有链接的人都可加入</string>
+    <string name="cloud_onboarding_share_invite_link">分享邀请链接</string>
+    <string name="cloud_onboarding_no_email">此服务器暂时无法发送邮件，请分享邀请链接。</string>
+    <string name="cloud_onboarding_invites_on_web">此服务器的邀请需在电脑或网页上的 Happy 中发送。</string>
+    <string name="cloud_onboarding_invite_failed">无法发送邀请，请重试。</string>
+    <string name="cloud_onboarding_notifications_title">开启通知</string>
+    <string name="cloud_onboarding_notifications_body">无论身在何处，都能及时知道智能体完成任务、需要回复，或有队友提到你。</string>
+    <string name="cloud_onboarding_turn_on_notifications">开启通知</string>
+    <string name="cloud_onboarding_notifications_off">Happy 的通知已关闭。请在设置中开启后返回。</string>
+    <string name="cloud_onboarding_open_settings">打开设置</string>
+    <string name="cloud_onboarding_notifications_unsupported">此版本的 Happy 无法接收此服务器的通知。请从 Google Play 获取 Happy。</string>
+    <string name="cloud_onboarding_notifications_failed">无法开启通知，请重试。</string>
 </resources>

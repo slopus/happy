@@ -38,6 +38,7 @@ class CloudPushSyncTest {
         var native: String? = "native-one"
         var tokenReads = 0
         val exchanges = mutableListOf<String>()
+        val registered = mutableListOf<String>()
         var exchanging: suspend () -> Unit = {}
         val servers = mapOf(first to Server(), second to Server())
         private var disk: String? = null
@@ -50,6 +51,7 @@ class CloudPushSyncTest {
             exchange = { exchanges += it; exchanging(); HappyPushToken.parse("HappyPushToken[0123456789ABCDEFGHIJKL]")!! },
             notificationsAllowed = { allowed }, appId = "com.slopus.happy.dev", locale = { "en-US" },
             dispatcher = StandardTestDispatcher(scope.testScheduler),
+            registered = { registered += it.connectionId },
         )
         init { sync.start(scope.backgroundScope) }
     }
@@ -170,5 +172,18 @@ class CloudPushSyncTest {
         runCurrent()
         assertTrue(cancelled)
         assertTrue(f.servers.getValue(first).asked.isEmpty())
+    }
+
+    @Test fun eachRegistrationTheServerTookIsToldAndAFailedOneIsnt() = runTest {
+        val f = Fixture(this)
+        f.accounts.value = listOf(first, second)
+        f.servers.getValue(second).fail = true
+        f.foreground.value = true
+        runCurrent()
+        assertEquals(listOf("one"), f.registered)
+        f.servers.getValue(second).fail = false
+        f.sync.refresh()
+        runCurrent()
+        assertEquals(listOf("one", "one", "two"), f.registered)
     }
 }

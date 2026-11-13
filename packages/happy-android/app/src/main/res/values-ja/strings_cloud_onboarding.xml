@@ -16,8 +16,8 @@
     <string name="cloud_onboarding_waiting_body">このサーバーの管理者が先に設定を完了する必要があります: %1$s。</string>
     <string name="cloud_onboarding_not_ready_title">もうすぐです</string>
     <string name="cloud_onboarding_not_ready_body">このサーバーはまだ準備ができていません。しばらくしてからもう一度確認してください。</string>
-    <string name="cloud_onboarding_elsewhere_title">ウェブで完了してください</string>
-    <string name="cloud_onboarding_elsewhere_body">%1$s はコンピューターまたはウェブの Happy で行います。完了したらここに戻ってください。</string>
+    <string name="cloud_onboarding_elsewhere_title">コンピューターで完了してください</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s はコンピューターの Happy で行います。完了したらここに戻ってください。</string>
     <string name="cloud_onboarding_open_web">ウェブで開く</string>
     <string name="cloud_onboarding_done_title">準備完了です</string>
     <string name="cloud_onboarding_done_body">%1$s の準備ができました。</string>
@@ -52,4 +52,25 @@
     <string name="cloud_onboarding_required">必須</string>
     <string name="cloud_onboarding_plugins_failed">プラグインを読み込めませんでした。</string>
     <string name="cloud_onboarding_try_again">再試行</string>
+    <string name="cloud_onboarding_teammates_title">チームを招待</string>
+    <string name="cloud_onboarding_teammates_body">Happy はみんなで使うと便利です。メールで招待すると、%1$s に参加するリンクが届きます。</string>
+    <string name="cloud_onboarding_email_placeholder">name@company.com</string>
+    <string name="cloud_onboarding_send_invite">招待を送信</string>
+    <string name="cloud_onboarding_invite_sent">招待を送信しました</string>
+    <string name="cloud_onboarding_sent">送信済み</string>
+    <string name="cloud_onboarding_email_failed">メールは送信されませんでした</string>
+    <string name="cloud_onboarding_share">共有</string>
+    <string name="cloud_onboarding_invite_link">招待リンク</string>
+    <string name="cloud_onboarding_invite_link_note">リンクを知っている人は誰でも参加できます</string>
+    <string name="cloud_onboarding_share_invite_link">招待リンクを共有</string>
+    <string name="cloud_onboarding_no_email">このサーバーはまだメールを送信できません。招待リンクを共有してください。</string>
+    <string name="cloud_onboarding_invites_on_web">このサーバーの招待はコンピューターまたはウェブの Happy で行います。</string>
+    <string name="cloud_onboarding_invite_failed">招待を送信できませんでした。もう一度お試しください。</string>
+    <string name="cloud_onboarding_notifications_title">通知をオンにする</string>
+    <string name="cloud_onboarding_notifications_body">エージェントの完了、返答が必要なとき、チームメイトからのメンションを、どこにいても受け取れます。</string>
+    <string name="cloud_onboarding_turn_on_notifications">通知をオンにする</string>
+    <string name="cloud_onboarding_notifications_off">Happy の通知はオフです。設定でオンにしてから戻ってください。</string>
+    <string name="cloud_onboarding_open_settings">設定を開く</string>
+    <string name="cloud_onboarding_notifications_unsupported">このビルドの Happy ではこのサーバーの通知を受け取れません。Google Play から Happy を入手してください。</string>
+    <string name="cloud_onboarding_notifications_failed">通知をオンにできませんでした。もう一度お試しください。</string>
 </resources>

@@ -9,11 +9,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -21,7 +24,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -29,15 +34,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.R
 import com.slopus.happy.agent.CloudCapabilities
+import com.slopus.happy.onboarding.EmailAddress
 import com.slopus.happy.onboarding.OnboardingGate
+import com.slopus.happy.onboarding.TeamInvite
+import com.slopus.happy.onboarding.TeamInviteRefusal
 import com.slopus.happy.plugins.InstallationStatus
 import com.slopus.happy.plugins.PluginsState
+import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.connection.CloudAction
@@ -56,7 +66,9 @@ import kotlinx.coroutines.launch
 
 object OnboardingStepTags {
     const val BOT_NAME = "cloudOnboarding.botName"
+    const val INVITE_EMAIL = "cloudOnboarding.inviteEmail"
     fun plugin(id: String) = "cloudOnboarding.plugin.$id"
+    fun sent(index: Int) = "cloudOnboarding.sent.$index"
 }
 
 /** The inference gate's way to a provider: what the server offers, and opening one of its flows. */
@@ -286,5 +298,245 @@ private fun PluginGateRow(row: PluginRow, onOpen: () -> Unit) {
         } else {
             Text(stringResource(R.string.cloud_onboarding_set_up), style = happyTextStyle(fontSize = 15, lineHeight = 20, weight = FontWeight.SemiBold), color = colors.textLink)
         }
+    }
+}
+
+/** The teammates gate's invites, made on the server; a link goes out from the share sheet. */
+class TeammatesHost(
+    val invite: suspend (email: String?) -> TeamInvite,
+    val share: (link: String) -> Unit,
+    /** True keeps the step on screen after its gate is done, for more invites; false lets the flow move on. */
+    val hold: (Boolean) -> Unit,
+)
+
+/** An invite sent from the teammates step: to [email], or a link when null. */
+internal data class SentInvite(val email: String?, val invite: TeamInvite)
+
+/**
+ * The teammates gate: inviting people by email (`POST /v0/invites`), one
+ * address after another, each a row under the field once sent: Sent, or
+ * Share where its email didn't go out. A server that can't send email
+ * makes a link instead, shared from the share sheet; one without the
+ * route sends the person to the web. The first invite completes the
+ * gate, but the step stays for more until Continue. Skip for now while
+ * optional and nothing is sent.
+ */
+@Composable
+internal fun TeammatesStep(gate: OnboardingGate, handle: String, actions: OnboardingActions) {
+    val host = actions.teammates
+    var email by rememberSaveable { mutableStateOf("") }
+    val sent = remember { mutableStateListOf<SentInvite>() }
+    var linksOnly by rememberSaveable { mutableStateOf(false) }
+    var unsupported by rememberSaveable { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    val runner = rememberRunner()
+    val context = LocalContext.current
+    val failed = stringResource(R.string.cloud_onboarding_invite_failed)
+    val noEmail = stringResource(R.string.cloud_onboarding_no_email)
+    val onWeb = stringResource(R.string.cloud_onboarding_invites_on_web)
+    val skipFailed = stringResource(R.string.cloud_onboarding_couldnt_skip)
+    val address = email.trim()
+
+    fun release() {
+        host?.hold?.invoke(false)
+    }
+
+    fun send(to: String?) {
+        if (host == null) return
+        note = null
+        runner.run(0, failed) {
+            // The invite completes the gate; the step stays for more until Continue.
+            host.hold(true)
+            try {
+                val invite = host.invite(to)
+                sent += SentInvite(to, invite)
+                if (to == null) invite.link?.let(host.share) else email = ""
+                runCatching { actions.check() }
+            } catch (e: TeamInviteRefusal.EmailNotConfigured) {
+                linksOnly = true
+                note = noEmail
+            } catch (e: TeamInviteRefusal.Unsupported) {
+                unsupported = true
+                note = onWeb
+            } catch (e: TeamInviteRefusal.Refused) {
+                runner.problem = e.message ?: failed
+            } finally {
+                if (sent.isEmpty()) host.hold(false)
+            }
+        }
+    }
+
+    val primary = when {
+        unsupported -> actions.web?.let { url -> CloudAction(stringResource(R.string.cloud_onboarding_open_web), { openUrl(context, url) }) }
+        linksOnly && sent.isEmpty() -> CloudAction(stringResource(R.string.cloud_onboarding_share_invite_link), { send(null) }, enabled = runner.running == null, loading = runner.running == 0)
+        linksOnly || (address.isEmpty() && sent.isNotEmpty()) -> CloudAction(stringResource(R.string.common_continue), ::release, enabled = runner.running == null)
+        else -> CloudAction(
+            stringResource(R.string.cloud_onboarding_send_invite),
+            { send(address) },
+            enabled = EmailAddress.looksValid(address) && runner.running == null,
+            loading = runner.running == 0,
+        )
+    }
+    CloudFrame(
+        title = stringResource(R.string.cloud_onboarding_teammates_title),
+        onBack = actions.onNotNow,
+        body = stringResource(R.string.cloud_onboarding_teammates_body, handle),
+        art = R.raw.state_open_hands,
+        primary = primary,
+        secondary = if (gate.requirement == OnboardingGate.Requirement.Optional && sent.isEmpty()) {
+            CloudAction(stringResource(R.string.cloud_onboarding_skip), { runner.run(1, skipFailed) { actions.skip(gate.id) } }, enabled = runner.running == null)
+        } else null,
+    ) {
+        if (!linksOnly && !unsupported) {
+            CloudField(
+                value = email,
+                onChange = {
+                    email = it.take(254)
+                    runner.problem = null
+                },
+                placeholder = stringResource(R.string.cloud_onboarding_email_placeholder),
+                tag = OnboardingStepTags.INVITE_EMAIL,
+                enabled = runner.running == null,
+                keyboard = KeyboardType.Email,
+                ime = ImeAction.Send,
+                autofill = ContentType.EmailAddress,
+                onIme = { if (EmailAddress.looksValid(address)) send(address) },
+            )
+        }
+        if (sent.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(CloudSpec.rowGap)) {
+                sent.forEachIndexed { index, item -> SentInviteRow(index, item, onShare = { link -> host?.share?.invoke(link) }) }
+            }
+        }
+        note?.let { NotePill(it, null) }
+        Problem(runner.problem)
+    }
+}
+
+@Composable
+private fun SentInviteRow(index: Int, item: SentInvite, onShare: (String) -> Unit) {
+    val colors = HappyTheme.colors
+    val link = item.invite.link
+    // A link to share by hand: one made as a link, or an email that didn't go out.
+    val shares = link != null && (item.email == null || item.invite.emailFailed)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(CloudSpec.rowRadius))
+            .background(colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))
+            .padding(horizontal = CloudSpec.rowPadding, vertical = 10.dp)
+            .testTag(OnboardingStepTags.sent(index)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (item.email != null) {
+            Avatar(item.email, 36.dp, animated = false)
+        } else {
+            Box(Modifier.size(36.dp).clip(CircleShape).background(colors.surfaceHigh), contentAlignment = Alignment.Center) {
+                Icon(Ionicon.LinkOutline, 20.dp, colors.text)
+            }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                item.email ?: stringResource(R.string.cloud_onboarding_invite_link),
+                style = happyTextStyle(fontSize = 17, lineHeight = 22, weight = FontWeight.SemiBold),
+                color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val subtitle = when {
+                item.email == null -> R.string.cloud_onboarding_invite_link_note
+                item.invite.emailFailed -> R.string.cloud_onboarding_email_failed
+                else -> R.string.cloud_onboarding_invite_sent
+            }
+            Text(stringResource(subtitle), style = happyTextStyle(fontSize = 13, lineHeight = 18), color = colors.textSecondary)
+        }
+        if (shares) {
+            Text(
+                stringResource(R.string.cloud_onboarding_share),
+                style = happyTextStyle(fontSize = 15, lineHeight = 20, weight = FontWeight.SemiBold),
+                color = colors.textLink,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable(role = Role.Button) { onShare(link!!) }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(Ionicon.CheckmarkCircle, 18.dp, colors.textSecondary)
+                Text(stringResource(R.string.cloud_onboarding_sent), style = happyTextStyle(fontSize = 15, lineHeight = 20), color = colors.textSecondary)
+            }
+        }
+    }
+}
+
+/** What came of Turn on notifications. */
+enum class PushOutcome { Registered, Denied, Unsupported }
+
+/** The mobileApp gate's push: asking Android, then registering this phone on the server. */
+class NotificationsHost(
+    /** Asks for notifications where they can still be asked for, then registers; throws where the server didn't take it. */
+    val turnOn: suspend () -> PushOutcome,
+    /** The app's notification settings. */
+    val openSettings: () -> Unit,
+    /** Happy on Google Play, for a build that can't get notifications. */
+    val store: () -> Unit,
+)
+
+/**
+ * The mobileApp gate, on the phone: the app is here already, so what the
+ * server waits for is this phone's push registration. Turn on
+ * notifications asks Android, then registers, and the server says the
+ * gate is done. Turned off for Happy, it opens the settings, and coming
+ * back registers quietly; a build without push offers Google Play's.
+ * Skip for now while optional.
+ */
+@Composable
+internal fun NotificationsStep(gate: OnboardingGate, actions: OnboardingActions) {
+    val host = actions.notifications
+    var next by rememberSaveable { mutableStateOf(PushOutcome.Registered) }
+    var note by remember { mutableStateOf<String?>(null) }
+    val runner = rememberRunner()
+    val failed = stringResource(R.string.cloud_onboarding_notifications_failed)
+    val off = stringResource(R.string.cloud_onboarding_notifications_off)
+    val unsupported = stringResource(R.string.cloud_onboarding_notifications_unsupported)
+    val skipFailed = stringResource(R.string.cloud_onboarding_couldnt_skip)
+    val primary = when (next) {
+        PushOutcome.Registered -> CloudAction(
+            stringResource(R.string.cloud_onboarding_turn_on_notifications),
+            {
+                if (host == null) {
+                    next = PushOutcome.Unsupported
+                    note = unsupported
+                } else {
+                    note = null
+                    runner.run(0, failed) {
+                        when (host.turnOn()) {
+                            PushOutcome.Registered -> actions.check()
+                            PushOutcome.Denied -> { next = PushOutcome.Denied; note = off }
+                            PushOutcome.Unsupported -> { next = PushOutcome.Unsupported; note = unsupported }
+                        }
+                    }
+                }
+            },
+            enabled = runner.running == null,
+            loading = runner.running == 0,
+        )
+        PushOutcome.Denied -> CloudAction(stringResource(R.string.cloud_onboarding_open_settings), { host?.openSettings?.invoke() })
+        PushOutcome.Unsupported -> CloudAction(stringResource(R.string.cloud_onboarding_update_action), { host?.store?.invoke() })
+    }
+    CloudFrame(
+        title = stringResource(R.string.cloud_onboarding_notifications_title),
+        onBack = actions.onNotNow,
+        body = stringResource(R.string.cloud_onboarding_notifications_body),
+        art = R.raw.state_owl,
+        primary = primary,
+        secondary = if (gate.requirement == OnboardingGate.Requirement.Optional) {
+            CloudAction(stringResource(R.string.cloud_onboarding_skip), { runner.run(1, skipFailed) { actions.skip(gate.id) } }, enabled = runner.running == null)
+        } else null,
+    ) {
+        note?.let { NotePill(it, null) }
+        Problem(runner.problem)
     }
 }

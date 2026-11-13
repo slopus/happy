@@ -16,8 +16,8 @@
     <string name="cloud_onboarding_waiting_body">Alguém que gerencia este servidor precisa concluir a configuração primeiro: %1$s.</string>
     <string name="cloud_onboarding_not_ready_title">Quase pronto</string>
     <string name="cloud_onboarding_not_ready_body">Este servidor ainda não está pronto. Verifique de novo daqui a pouco.</string>
-    <string name="cloud_onboarding_elsewhere_title">Conclua na web</string>
-    <string name="cloud_onboarding_elsewhere_body">%1$s é feito no Happy no computador ou na web. Volte aqui quando terminar.</string>
+    <string name="cloud_onboarding_elsewhere_title">Conclua no computador</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s é feito no Happy no computador. Volte aqui quando terminar.</string>
     <string name="cloud_onboarding_open_web">Abrir na web</string>
     <string name="cloud_onboarding_done_title">Tudo pronto</string>
     <string name="cloud_onboarding_done_body">%1$s está pronto para você.</string>
@@ -52,4 +52,25 @@
     <string name="cloud_onboarding_required">Obrigatório</string>
     <string name="cloud_onboarding_plugins_failed">Não foi possível ler os plugins.</string>
     <string name="cloud_onboarding_try_again">Tentar de novo</string>
+    <string name="cloud_onboarding_teammates_title">Convide sua equipe</string>
+    <string name="cloud_onboarding_teammates_body">O Happy funciona melhor em equipe. Convide pessoas por e-mail e elas receberão um link para entrar em %1$s.</string>
+    <string name="cloud_onboarding_email_placeholder">nome@empresa.com</string>
+    <string name="cloud_onboarding_send_invite">Enviar convite</string>
+    <string name="cloud_onboarding_invite_sent">Convite enviado</string>
+    <string name="cloud_onboarding_sent">Enviado</string>
+    <string name="cloud_onboarding_email_failed">E-mail não enviado</string>
+    <string name="cloud_onboarding_share">Compartilhar</string>
+    <string name="cloud_onboarding_invite_link">Link de convite</string>
+    <string name="cloud_onboarding_invite_link_note">Qualquer pessoa com ele pode entrar</string>
+    <string name="cloud_onboarding_share_invite_link">Compartilhar link de convite</string>
+    <string name="cloud_onboarding_no_email">Este servidor ainda não pode enviar e-mails. Compartilhe um link de convite.</string>
+    <string name="cloud_onboarding_invites_on_web">Este servidor aceita convites no Happy no computador ou na web.</string>
+    <string name="cloud_onboarding_invite_failed">Não foi possível enviar o convite. Tente de novo.</string>
+    <string name="cloud_onboarding_notifications_title">Ative as notificações</string>
+    <string name="cloud_onboarding_notifications_body">Saiba quando um agente terminar, precisar de uma resposta ou alguém da equipe mencionar você, onde estiver.</string>
+    <string name="cloud_onboarding_turn_on_notifications">Ativar notificações</string>
+    <string name="cloud_onboarding_notifications_off">As notificações do Happy estão desativadas. Ative-as nas Configurações e volte.</string>
+    <string name="cloud_onboarding_open_settings">Abrir configurações</string>
+    <string name="cloud_onboarding_notifications_unsupported">Esta versão do Happy não recebe as notificações deste servidor. Baixe o Happy no Google Play.</string>
+    <string name="cloud_onboarding_notifications_failed">Não foi possível ativar as notificações. Tente de novo.</string>
 </resources>

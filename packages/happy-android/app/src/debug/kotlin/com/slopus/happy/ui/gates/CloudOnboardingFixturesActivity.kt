@@ -23,7 +23,10 @@ import kotlinx.coroutines.delay
  * in-memory server, walked by the real plan. `--es gates <set>`:
  * `walk` (profile, photo, the admin bot, a payment method; the default),
  * `waiting` (a payment only an owner adds), `unavailable`, `update` (a gate
- * this app doesn't know), `finish`. Start it with
+ * this app doesn't know), `finish`, `bot` (the admin bot, inference,
+ * plugins), `team` (teammates, notifications, a payment method; with
+ * `--es invites ok|nomail|none` and `--es push ok|denied|unsupported`).
+ * Start it with
  * `adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.gates.CloudOnboardingFixturesActivity`.
  */
 class CloudOnboardingFixturesActivity : ComponentActivity() {
@@ -31,15 +34,18 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val set = intent.getStringExtra("gates") ?: "walk"
+        val invites = intent.getStringExtra("invites") ?: "ok"
+        val push = intent.getStringExtra("push") ?: "ok"
         setContent {
             HappyTheme {
                 var onboarding by remember { mutableStateOf(start(set)) }
+                var held by remember { mutableStateOf<OnboardingGate?>(null) }
                 fun change(id: String, status: Status) {
                     val gates = onboarding.gates.map { if (it.id == id) it.copy(status = status, blocking = false) else it }
                     onboarding = onboarding.copy(gates = gates, finished = gates.none { it.pending })
                 }
                 val plan = OnboardingPlan.of(onboarding)
-                val step = plan.step(showing = true) ?: return@HappyTheme
+                val step = held?.let { OnboardingPlan.Step.Gate(it) } ?: plan.step(showing = true) ?: return@HappyTheme
                 CloudOnboardingFlow(
                     onboarding = onboarding,
                     step = step,
@@ -65,6 +71,31 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
                             open = { change("inference", Status.Done) },
                         ),
                         plugins = PluginsHost(plugins, open = { key -> connect(key) }, refresh = {}),
+                        teammates = TeammatesHost(
+                            invite = { email ->
+                                delay(600)
+                                when {
+                                    invites == "none" -> throw com.slopus.happy.onboarding.TeamInviteRefusal.Unsupported
+                                    invites == "nomail" && email != null -> throw com.slopus.happy.onboarding.TeamInviteRefusal.EmailNotConfigured
+                                }
+                                com.slopus.happy.onboarding.TeamInvite("inv-${email.hashCode()}", "https://acme.happy.engineering/join/7Hk2", if (email == null) null else if ("bounce" in email) "failed" else "sent")
+                                    .also { change("teammates", Status.Done) }
+                            },
+                            share = {},
+                            hold = { keep -> held = if (keep) onboarding.gates.first { it.id == "teammates" } else null },
+                        ),
+                        notifications = NotificationsHost(
+                            turnOn = {
+                                delay(600)
+                                when (push) {
+                                    "denied" -> PushOutcome.Denied
+                                    "unsupported" -> PushOutcome.Unsupported
+                                    else -> PushOutcome.Registered.also { change("mobileApp", Status.Done) }
+                                }
+                            },
+                            openSettings = {},
+                            store = {},
+                        ),
                     ),
                 )
             }
@@ -107,6 +138,12 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
                 )),
                 OnboardingGate("inference", Scope.Server, Requirement.Optional, Status.Open, kind = Kind.Inference(emptyList(), freeModel = true)),
                 OnboardingGate("plugins", Scope.Server, Requirement.Required, Status.Open, kind = Kind.Plugins(listOf("github"), listOf(Kind.Plugins.Plugin("github", "GitHub", required = true, active = false)))),
+            ))
+            "team" -> CloudOnboarding(false, gates = listOf(
+                OnboardingGate("profile", Scope.Member, Requirement.Required, Status.Done, kind = Kind.Profile),
+                OnboardingGate("teammates", Scope.Server, Requirement.Optional, Status.Open, kind = Kind.Teammates(invited = false, members = 1)),
+                OnboardingGate("mobileApp", Scope.Member, Requirement.Optional, Status.Open, kind = Kind.MobileApp(false, null, null)),
+                OnboardingGate("paymentMethod", Scope.Server, Requirement.Optional, Status.Open, kind = Kind.PaymentMethod),
             ))
             "finish" -> CloudOnboarding(true, gates = listOf(OnboardingGate("adminBot", Scope.Server, Requirement.Optional, Status.Done, kind = bot)))
             else -> CloudOnboarding(false, gates = listOf(

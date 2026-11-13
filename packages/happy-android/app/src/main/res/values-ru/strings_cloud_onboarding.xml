@@ -16,8 +16,8 @@
     <string name="cloud_onboarding_waiting_body">Сначала тот, кто управляет сервером, должен завершить настройку: %1$s.</string>
     <string name="cloud_onboarding_not_ready_title">Почти готово</string>
     <string name="cloud_onboarding_not_ready_body">Сервер пока не готов. Проверьте чуть позже.</string>
-    <string name="cloud_onboarding_elsewhere_title">Завершите в веб-версии</string>
-    <string name="cloud_onboarding_elsewhere_body">%1$s — это делается в Happy на компьютере или в веб-версии. Вернитесь сюда, когда закончите.</string>
+    <string name="cloud_onboarding_elsewhere_title">Завершите на компьютере</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s — это делается в Happy на компьютере. Вернитесь сюда, когда закончите.</string>
     <string name="cloud_onboarding_open_web">Открыть в браузере</string>
     <string name="cloud_onboarding_done_title">Всё готово</string>
     <string name="cloud_onboarding_done_body">%1$s готов к работе.</string>
@@ -52,4 +52,25 @@
     <string name="cloud_onboarding_required">Обязательно</string>
     <string name="cloud_onboarding_plugins_failed">Не удалось загрузить плагины.</string>
     <string name="cloud_onboarding_try_again">Повторить</string>
+    <string name="cloud_onboarding_teammates_title">Пригласите команду</string>
+    <string name="cloud_onboarding_teammates_body">Happy лучше работает вместе. Пригласите людей по почте — они получат ссылку, чтобы присоединиться к %1$s.</string>
+    <string name="cloud_onboarding_email_placeholder">name@company.com</string>
+    <string name="cloud_onboarding_send_invite">Отправить приглашение</string>
+    <string name="cloud_onboarding_invite_sent">Приглашение отправлено</string>
+    <string name="cloud_onboarding_sent">Отправлено</string>
+    <string name="cloud_onboarding_email_failed">Письмо не отправлено</string>
+    <string name="cloud_onboarding_share">Поделиться</string>
+    <string name="cloud_onboarding_invite_link">Ссылка-приглашение</string>
+    <string name="cloud_onboarding_invite_link_note">Присоединиться может любой, у кого она есть</string>
+    <string name="cloud_onboarding_share_invite_link">Поделиться ссылкой</string>
+    <string name="cloud_onboarding_no_email">Этот сервер пока не умеет отправлять письма. Поделитесь ссылкой-приглашением.</string>
+    <string name="cloud_onboarding_invites_on_web">Этот сервер принимает приглашения в Happy на компьютере или в веб-версии.</string>
+    <string name="cloud_onboarding_invite_failed">Не удалось отправить приглашение. Попробуйте ещё раз.</string>
+    <string name="cloud_onboarding_notifications_title">Включите уведомления</string>
+    <string name="cloud_onboarding_notifications_body">Узнавайте, когда агент закончил, ждёт ответа или вас упомянул коллега, где бы вы ни были.</string>
+    <string name="cloud_onboarding_turn_on_notifications">Включить уведомления</string>
+    <string name="cloud_onboarding_notifications_off">Уведомления Happy выключены. Включите их в настройках и вернитесь.</string>
+    <string name="cloud_onboarding_open_settings">Открыть настройки</string>
+    <string name="cloud_onboarding_notifications_unsupported">Эта сборка Happy не может получать уведомления этого сервера. Установите Happy из Google Play.</string>
+    <string name="cloud_onboarding_notifications_failed">Не удалось включить уведомления. Попробуйте ещё раз.</string>
 </resources>

@@ -11,6 +11,8 @@ import com.slopus.happy.connection.networkPath
 import com.slopus.happy.connection.returns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -42,11 +44,16 @@ class CloudPushRuntime(
         connections.accounts.value.any { account(it) == candidate }
     })
     private val relay = HappyPushRelay(OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(30, TimeUnit.SECONDS).build())
+    private val registeredOn = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+    /** The connections this phone was just registered on for push, as each server takes it. */
+    val registered: SharedFlow<String> = registeredOn
     private val sync = CloudPushSync(
         accounts, foreground, context.networkPath().returns(), registrations, ::api, FcmTokenSource(context),
         exchange = { native -> relay.exchange(native, installation.getOrCreate(), context.packageName, locale()) },
         notificationsAllowed = { NotificationManagerCompat.from(context).areNotificationsEnabled() },
         appId = context.packageName, locale = ::locale,
+        registered = { registeredOn.tryEmit(it.connectionId) },
     )
 
     private fun api(account: CloudPushAccount): CloudPushApi? =

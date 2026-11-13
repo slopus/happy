@@ -16,8 +16,8 @@
     <string name="cloud_onboarding_waiting_body">Algú que gestiona aquest servidor ha d’acabar de configurar-lo primer: %1$s.</string>
     <string name="cloud_onboarding_not_ready_title">Gairebé a punt</string>
     <string name="cloud_onboarding_not_ready_body">Aquest servidor encara no està a punt. Torna-ho a comprovar d’aquí a una estona.</string>
-    <string name="cloud_onboarding_elsewhere_title">Acaba al web</string>
-    <string name="cloud_onboarding_elsewhere_body">%1$s es fa a Happy a l’ordinador o al web. Torna aquí quan hagis acabat.</string>
+    <string name="cloud_onboarding_elsewhere_title">Acaba a l’ordinador</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s es fa a Happy a l’ordinador. Torna aquí quan hagis acabat.</string>
     <string name="cloud_onboarding_open_web">Obre al web</string>
     <string name="cloud_onboarding_done_title">Tot a punt</string>
     <string name="cloud_onboarding_done_body">%1$s ja està a punt.</string>
@@ -52,4 +52,25 @@
     <string name="cloud_onboarding_required">Obligatori</string>
     <string name="cloud_onboarding_plugins_failed">No s’han pogut llegir els connectors.</string>
     <string name="cloud_onboarding_try_again">Torna-ho a provar</string>
+    <string name="cloud_onboarding_teammates_title">Convida el teu equip</string>
+    <string name="cloud_onboarding_teammates_body">Happy funciona millor en equip. Convida persones per correu i rebran un enllaç per unir-se a %1$s.</string>
+    <string name="cloud_onboarding_email_placeholder">nom@empresa.cat</string>
+    <string name="cloud_onboarding_send_invite">Envia la invitació</string>
+    <string name="cloud_onboarding_invite_sent">Invitació enviada</string>
+    <string name="cloud_onboarding_sent">Enviada</string>
+    <string name="cloud_onboarding_email_failed">Correu no enviat</string>
+    <string name="cloud_onboarding_share">Comparteix</string>
+    <string name="cloud_onboarding_invite_link">Enllaç d’invitació</string>
+    <string name="cloud_onboarding_invite_link_note">Qualsevol que el tingui s’hi pot unir</string>
+    <string name="cloud_onboarding_share_invite_link">Comparteix l’enllaç d’invitació</string>
+    <string name="cloud_onboarding_no_email">Aquest servidor encara no pot enviar correus. Comparteix un enllaç d’invitació.</string>
+    <string name="cloud_onboarding_invites_on_web">Aquest servidor accepta invitacions a Happy a l’ordinador o al web.</string>
+    <string name="cloud_onboarding_invite_failed">No s’ha pogut enviar la invitació. Torna-ho a provar.</string>
+    <string name="cloud_onboarding_notifications_title">Activa les notificacions</string>
+    <string name="cloud_onboarding_notifications_body">Assabenta’t quan un agent acabi, necessiti una resposta o algú de l’equip et mencioni, siguis on siguis.</string>
+    <string name="cloud_onboarding_turn_on_notifications">Activa les notificacions</string>
+    <string name="cloud_onboarding_notifications_off">Les notificacions de Happy estan desactivades. Activa-les a Configuració i torna.</string>
+    <string name="cloud_onboarding_open_settings">Obre la configuració</string>
+    <string name="cloud_onboarding_notifications_unsupported">Aquesta versió de Happy no pot rebre les notificacions d’aquest servidor. Baixa Happy de Google Play.</string>
+    <string name="cloud_onboarding_notifications_failed">No s’han pogut activar les notificacions. Torna-ho a provar.</string>
 </resources>
