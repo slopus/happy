@@ -5,12 +5,7 @@ import { tmpdir } from 'node:os';
 import { configuration } from '@/configuration';
 import { retainCodexAccountHistory, rememberCodexAccountSession } from '@/codex/codexAccountHistory';
 
-const { codexAttachCandidateMethods, codexClientMethods } = vi.hoisted(() => ({
-    codexAttachCandidateMethods: {
-        dismiss: vi.fn(),
-        list: vi.fn(),
-        markAttached: vi.fn(),
-    },
+const { codexClientMethods } = vi.hoisted(() => ({
     codexClientMethods: {
         connect: vi.fn(),
         disconnect: vi.fn(),
@@ -24,11 +19,6 @@ const { codexAttachCandidateMethods, codexClientMethods } = vi.hoisted(() => ({
 
 vi.mock('@/codex/codexAppServerClient', () => ({
     CodexAppServerClient: vi.fn().mockImplementation(() => codexClientMethods),
-}));
-
-vi.mock('@/codex/codexAttachCandidates', () => ({
-    createCodexAttachCandidateService: vi.fn(() => codexAttachCandidateMethods),
-    listCodexThreadsFromStateDb: vi.fn(),
 }));
 
 import { ApiMachineClient } from './apiMachine';
@@ -58,149 +48,10 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         for (const method of Object.values(codexClientMethods)) {
             method.mockReset();
         }
-        for (const method of Object.values(codexAttachCandidateMethods)) {
-            method.mockReset();
-        }
         codexClientMethods.connect.mockResolvedValue(undefined);
         codexClientMethods.disconnect.mockResolvedValue(undefined);
     });
     afterEach(async () => { (configuration as { happyHomeDir: string }).happyHomeDir = savedHappyHome; await rm(root, { recursive: true, force: true }); });
-
-    it('takes over a Codex Desktop candidate through a private fork so the source can keep its active writer', async () => {
-        codexAttachCandidateMethods.list.mockResolvedValue([{
-            threadId: 'thread-desktop',
-            title: 'Existing desktop conversation',
-            directory: '/tmp/project',
-            createdAt: 1,
-            updatedAt: 2,
-        }]);
-        codexClientMethods.forkThread.mockResolvedValue({
-            threadId: 'thread-takeover-fork',
-            thread: {
-                id: 'thread-takeover-fork',
-                turns: [{ id: 'turn-complete', status: 'completed', items: [] }],
-            },
-        });
-        codexClientMethods.readThread.mockResolvedValue({
-            thread: {
-                id: 'thread-desktop',
-                turns: [{ id: 'turn-complete', status: 'completed', items: [] }],
-            },
-        });
-        const spawnSession = vi.fn().mockResolvedValue({
-            type: 'success',
-            sessionId: 'happy-attached',
-        });
-
-        const client = new ApiMachineClient('token', machineClient());
-        client.setRPCHandlers({
-            spawnSession,
-            stopSession: vi.fn(),
-            requestShutdown: vi.fn(),
-        });
-
-        const result = await handlersFrom(client).get('machine-1:codex-attach-candidate')?.({
-            threadId: 'thread-desktop',
-            sourceSessionId: 'source-session',
-        });
-
-        expect(result).toEqual({ type: 'success', sessionId: 'happy-attached' });
-        expect(codexClientMethods.connect).toHaveBeenCalledOnce();
-        expect(codexClientMethods.forkThread).toHaveBeenCalledWith({
-            threadId: 'thread-desktop',
-            cwd: '/tmp/project',
-            lastTurnId: 'turn-complete',
-            deferGoalContinuation: true,
-        });
-        expect(codexClientMethods.disconnect).toHaveBeenCalledOnce();
-        expect(spawnSession).toHaveBeenCalledWith({
-            directory: '/tmp/project',
-            agent: 'codex',
-            resumeCodexThreadId: 'thread-takeover-fork',
-            parentSessionId: 'source-session',
-            codexSessionGrant: undefined,
-            environmentVariables: {
-                HAPPY_IMPORTED_SESSION_TITLE: 'Existing desktop conversation',
-            },
-        });
-        expect(codexAttachCandidateMethods.markAttached).toHaveBeenCalledWith('thread-desktop');
-    });
-
-    it('refuses to snapshot a candidate while its latest Codex turn is still running', async () => {
-        codexAttachCandidateMethods.list.mockResolvedValue([{
-            threadId: 'thread-desktop',
-            title: 'Busy desktop conversation',
-            directory: '/tmp/project',
-            createdAt: 1,
-            updatedAt: 2,
-        }]);
-        codexClientMethods.readThread.mockResolvedValue({
-            thread: {
-                id: 'thread-desktop',
-                turns: [{ id: 'turn-active', status: 'inProgress', items: [] }],
-            },
-        });
-        const spawnSession = vi.fn();
-
-        const client = new ApiMachineClient('token', machineClient());
-        client.setRPCHandlers({
-            spawnSession,
-            stopSession: vi.fn(),
-            requestShutdown: vi.fn(),
-        });
-
-        await expect(handlersFrom(client).get('machine-1:codex-attach-candidate')?.({
-            threadId: 'thread-desktop',
-            sourceSessionId: 'source-session',
-        })).rejects.toThrow('Codex Desktop thread is still running');
-
-        expect(codexClientMethods.forkThread).not.toHaveBeenCalled();
-        expect(spawnSession).not.toHaveBeenCalled();
-        expect(codexAttachCandidateMethods.markAttached).not.toHaveBeenCalled();
-        expect(codexClientMethods.disconnect).toHaveBeenCalledOnce();
-    });
-
-    it('deletes the fork and leaves the source candidate retryable when session startup fails', async () => {
-        codexAttachCandidateMethods.list.mockResolvedValue([{
-            threadId: 'thread-desktop',
-            title: 'Existing desktop conversation',
-            directory: '/tmp/project',
-            createdAt: 1,
-            updatedAt: 2,
-        }]);
-        codexClientMethods.readThread.mockResolvedValue({
-            thread: {
-                id: 'thread-desktop',
-                turns: [{ id: 'turn-complete', status: 'completed', items: [] }],
-            },
-        });
-        codexClientMethods.forkThread.mockResolvedValue({
-            threadId: 'thread-takeover-fork',
-            thread: { id: 'thread-takeover-fork', turns: [] },
-        });
-        codexClientMethods.deleteThread.mockResolvedValue({});
-        const spawnSession = vi.fn().mockResolvedValue({
-            type: 'error',
-            errorMessage: 'Session webhook timeout',
-        });
-
-        const client = new ApiMachineClient('token', machineClient());
-        client.setRPCHandlers({
-            spawnSession,
-            stopSession: vi.fn(),
-            requestShutdown: vi.fn(),
-        });
-
-        await expect(handlersFrom(client).get('machine-1:codex-attach-candidate')?.({
-            threadId: 'thread-desktop',
-            sourceSessionId: 'source-session',
-        })).rejects.toThrow('Session webhook timeout');
-
-        expect(codexClientMethods.deleteThread).toHaveBeenCalledWith({
-            threadId: 'thread-takeover-fork',
-        });
-        expect(codexAttachCandidateMethods.markAttached).not.toHaveBeenCalled();
-    });
 
     it('registers a full Codex thread fork RPC', async () => {
         codexClientMethods.forkThread.mockResolvedValue({

@@ -346,7 +346,7 @@ export async function machineStartGoalAuthor(machineId: string, input: { scopePa
 /** Every final process launch goes through here; grants never enter persisted App state. */
 async function machineStartSession(
     machineId: string,
-    method: 'spawn-happy-session' | 'resume-happy-session' | 'codex-attach-candidate' | 'goalTaskLaunch' | 'previewGoalTaskLaunch' | 'goalProjectAuthor',
+    method: 'spawn-happy-session' | 'resume-happy-session' | 'goalTaskLaunch' | 'previewGoalTaskLaunch' | 'goalProjectAuthor',
     isCodex: boolean,
     parameters: Record<string, unknown>,
 ): Promise<SpawnSessionResult> {
@@ -572,16 +572,6 @@ export async function machineResumeSession(
 ): Promise<SpawnSessionResult> {
     const { machineId, sessionId, agent, model, permissionMode, effort, expectedFailedTurn, expectedWorkerPid } = options;
     return machineStartSession(machineId, 'resume-happy-session', agent === 'codex', { sessionId, model, permissionMode, effort, ...(expectedFailedTurn ? { expectedFailedTurn } : {}), ...(expectedWorkerPid ? { expectedWorkerPid } : {}) });
-}
-
-export async function machineAttachCodexCandidate(options: {
-    machineId: string; threadId: string; sourceSessionId?: string;
-}): Promise<SpawnSessionResult> {
-    const { machineId, threadId, sourceSessionId } = options;
-    if (!sourceSessionId?.trim()) {
-        return { type: 'error', errorMessage: 'Codex source history is unavailable. Only sessions with a Paws account history audit can be attached.' };
-    }
-    return machineStartSession(machineId, 'codex-attach-candidate', true, { threadId, sourceSessionId });
 }
 
 /**

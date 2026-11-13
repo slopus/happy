@@ -1,13 +1,12 @@
 import { useDesktopWorkspacePathname } from '@/hooks/useDesktopWorkspacePathname';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { isApplicationSession } from '@slopus/happy-wire';
 import { Text, View, Pressable, ScrollView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
-import { useRealtimeStatus, useSession, useProfile, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
+import { useRealtimeStatus, useProfile, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { getDisplayName } from '@/sync/profile';
@@ -20,7 +19,6 @@ import { SidebarAccountMenu } from './SidebarAccountMenu';
 import { SidebarHelpMenu } from './SidebarHelpMenu';
 import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
-import { AppConversationsSidebar } from './AppConversationsSidebar';
 import { DesktopSidebarHeader, DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
 import { PluginMarketplaceModal } from './plugins/PluginMarketplaceModal';
 import { PluginLeftSidebarSlot } from './plugins/PluginLeftSidebarSlot';
@@ -409,11 +407,6 @@ export const SidebarView = React.memo(({
     const mobileNavigation = !desktopDensity;
     const { leftVisible, leftPinned, toggleLeftSidebar } = useDesktopWorkspaceLayout();
     const railNavigation = desktopPrimaryNavigation || mobileNavigation;
-    const routeSessionId = pathname.match(/^\/session\/([^/]+)/)?.[1];
-    const routeSession = useSession(routeSessionId ? decodeURIComponent(routeSessionId) : '');
-    const applicationRoute = pathname.startsWith('/apps/conversations') || isApplicationSession(routeSession?.metadata);
-    const [appConversationsActive, setAppConversationsActive] = React.useState(applicationRoute);
-    React.useEffect(() => { setAppConversationsActive(applicationRoute); }, [pathname, applicationRoute]);
     const [mobilePanel, setMobilePanel] = React.useState<'sessions' | 'advisor'>(pathname === '/relationship-advisor' ? 'advisor' : 'sessions');
     React.useEffect(() => {
         setMobilePanel(pathname === '/relationship-advisor' ? 'advisor' : 'sessions');
@@ -456,13 +449,11 @@ export const SidebarView = React.memo(({
     // that would otherwise stay open on top of the pushed screen; on desktop the
     // drawer is permanent, so SidebarNavigator disables the close action.
     const go = React.useCallback((path: string) => {
-        setAppConversationsActive(path.startsWith('/apps/conversations'));
         closeDrawer();
         router.navigate(path as any);
     }, [closeDrawer, router]);
 
     const openDesktopSessionLists = () => {
-        setAppConversationsActive(false);
         const targetMode = desktopPrimaryNavigation ? 'projects' : desktopSidebarListMode;
         setDesktopSidebarMode(targetMode);
         if (desktopPrimaryNavigation) setDesktopSidebarListMode('projects');
@@ -472,12 +463,11 @@ export const SidebarView = React.memo(({
         }
         if (desktopPrimaryNavigation && !leftPinned) toggleLeftSidebar();
         if (mobileNavigation) setMobilePanel('sessions');
-        else if (pathname === '/projects' || advisorSidebarActive || pathname.startsWith('/apps/conversations')) go('/');
+        else if (pathname === '/projects' || advisorSidebarActive) go('/');
     };
 
 
     const openMobileArchive = () => {
-        setAppConversationsActive(false);
         setDesktopSidebarMode('archive');
         setMobilePanel('sessions');
     };
@@ -601,7 +591,7 @@ export const SidebarView = React.memo(({
                 icon="home-outline"
                 label={t('common.home')}
                 onPress={openDesktopSessionLists}
-                selected={pathname !== '/projects' && !appConversationsActive && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
+                selected={pathname !== '/projects' && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
                 testID="sidebar-session-list-button"
             />}
             {!desktopPrimaryNavigation && <DesktopRailItem
@@ -640,9 +630,8 @@ export const SidebarView = React.memo(({
                 onPress={openPluginMarketplace}
                 testID="sidebar-plugins-button"
             />
-            <DesktopPluginRailItems selectedPath={appConversationsActive ? null : mobileNavigation ? (advisorSidebarActive ? '/relationship-advisor' : null) : undefined} onNavigate={(path) => {
+            <DesktopPluginRailItems selectedPath={mobileNavigation ? (advisorSidebarActive ? '/relationship-advisor' : null) : undefined} onNavigate={(path) => {
                 if (mobileNavigation && path === '/relationship-advisor') {
-                    setAppConversationsActive(false);
                     setMobilePanel('advisor');
                     return;
                 }
@@ -652,23 +641,16 @@ export const SidebarView = React.memo(({
                 icon="albums-outline"
                 label={t('sidebar.listsTab')}
                 onPress={openDesktopSessionLists}
-                selected={(pathname !== '/projects' || leftVisible) && !appConversationsActive && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
+                selected={(pathname !== '/projects' || leftVisible) && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
                 testID="sidebar-session-list-button"
             />}
             {mobileNavigation && <DesktopRailItem
                 icon="file-tray-stacked-outline"
                 label={t('sessionHistory.archiveTitle')}
                 onPress={openMobileArchive}
-                selected={!appConversationsActive && !advisorSidebarActive && desktopSidebarMode === 'archive'}
+                selected={!advisorSidebarActive && desktopSidebarMode === 'archive'}
                 testID="sidebar-archive-button"
             />}
-            <DesktopRailItem
-                icon="browsers-outline"
-                label={t('appConversations.title')}
-                onPress={() => mobileNavigation ? setAppConversationsActive(true) : go('/apps/conversations')}
-                selected={appConversationsActive}
-                testID="sidebar-app-conversations-button"
-            />
         </View>
     );
 
@@ -800,13 +782,13 @@ export const SidebarView = React.memo(({
                         {mobileNavigation ? (
                             <>
                                 <View style={styles.mobileHeader}>
-                                    {advisorSidebarActive || appConversationsActive ? (
-                                        <Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={() => { setAppConversationsActive(false); setMobilePanel('sessions'); }} style={styles.mobileHeaderButton} testID="mobile-sidebar-back-to-sessions">
+                                    {advisorSidebarActive ? (
+                                        <Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={() => setMobilePanel('sessions')} style={styles.mobileHeaderButton} testID="mobile-sidebar-back-to-sessions">
                                             <Ionicons name="chevron-back" size={20} color={styles.mobileHeaderTitle.color} />
                                         </Pressable>
                                     ) : null}
                                     <Text style={styles.mobileHeaderTitle} numberOfLines={1}>
-                                        {appConversationsActive ? t('appConversations.title') : advisorSidebarActive
+                                        {advisorSidebarActive
                                             ? t('relationshipAdvisor.title')
                                             : desktopSidebarMode === 'archive'
                                                 ? t('sessionHistory.archiveTitle')
@@ -816,17 +798,15 @@ export const SidebarView = React.memo(({
                                         <Ionicons name="close" size={20} color={styles.mobileHeaderTitle.color} />
                                     </Pressable>
                                 </View>
-                                <View style={[styles.mobileContent, (advisorSidebarActive || appConversationsActive) && styles.hiddenContent]} accessibilityElementsHidden={advisorSidebarActive || appConversationsActive} importantForAccessibility={advisorSidebarActive || appConversationsActive ? 'no-hide-descendants' : 'auto'}>
+                                <View style={[styles.mobileContent, advisorSidebarActive && styles.hiddenContent]} accessibilityElementsHidden={advisorSidebarActive} importantForAccessibility={advisorSidebarActive ? 'no-hide-descendants' : 'auto'}>
                                     <DesktopSidebarSessionsNavigation />
                                 </View>
-                                {appConversationsActive ? <AppConversationsSidebar showTitle={false} onNavigate={go} /> : advisorSidebarActive ? <PluginLeftSidebarSlot desktopDensity fillAvailableSpace onNavigate={go} /> : null}
+                                {advisorSidebarActive ? <PluginLeftSidebarSlot desktopDensity fillAvailableSpace onNavigate={go} /> : null}
                             </>
-                        ) : appConversationsActive || advisorSidebarActive ? (
+                        ) : advisorSidebarActive ? (
                             <>
-                                {desktopPrimaryNavigation && <DesktopSidebarHeader mode="archive" onModeChange={value => { setDesktopSidebarListMode(value); setDesktopSidebarMode(value); }} onNewSession={() => go('/new')} onSearch={openSessionSearch} onSelectView={() => { setAppConversationsActive(false); go('/'); }} />}
-                                {appConversationsActive
-                                    ? <AppConversationsSidebar visible={desktopSecondaryVisible} onNavigate={go} />
-                                    : <PluginLeftSidebarSlot desktopDensity={desktopDensity} fillAvailableSpace onNavigate={go} />}
+                                {desktopPrimaryNavigation && <DesktopSidebarHeader mode="archive" onModeChange={value => { setDesktopSidebarListMode(value); setDesktopSidebarMode(value); }} onNewSession={() => go('/new')} onSearch={openSessionSearch} onSelectView={() => go('/')} />}
+                                <PluginLeftSidebarSlot desktopDensity={desktopDensity} fillAvailableSpace onNavigate={go} />
                             </>
                         ) : (
                             <DesktopSidebarSessionsNavigation transparentSidebar={dreamskin} desktopHeader={desktopPrimaryNavigation} onNewSession={() => go('/new')} onSearch={openSessionSearch} />

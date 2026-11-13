@@ -39,14 +39,11 @@ import {
     ForkTruncateUuidNotFoundError,
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
-import { CodexAppServerClient, resolveCodexAppServerConnection } from '@/codex/codexAppServerClient';
-import { createCodexAttachCandidateService, listCodexThreadsFromStateDb } from '@/codex/codexAttachCandidates';
 import {
     CodexForkRewindPointNotFoundError,
     forkCodexThread,
     listCodexRewindPoints,
 } from '@/codex/codexThreadFork';
-import { isTerminalCodexTurn } from '@/codex/utils/sessionProtocolMapper';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STARTUP_TRACE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -132,29 +129,6 @@ function requireNonEmptyString(value: unknown, name: string): string {
     return value;
 }
 
-async function withSharedCodexAppServerClient<T>(handler: (client: CodexAppServerClient) => Promise<T>): Promise<T> {
-    const connection = resolveCodexAppServerConnection({
-        ...process.env,
-        HAPPY_CODEX_APP_SERVER_MODE: 'shared',
-        HAPPY_CODEX_APPROVAL_AUTHORITY: 'desktop',
-    });
-    const client = new CodexAppServerClient(undefined, connection);
-    await client.connect();
-    try {
-        return await handler(client);
-    } finally {
-        await client.disconnect();
-    }
-}
-
-async function deleteFailedCodexTakeoverFork(threadId: string, sourceSessionId: string): Promise<void> {
-    try {
-        await withCodexAccountThread({ sourceSessionId, codexThreadId: threadId }, (client) => client.deleteThread({ threadId }));
-    } catch (error) {
-        logger.debug('[API MACHINE] Failed to delete unused Codex takeover fork', error);
-    }
-}
-
 export class ApiMachineClient {
     private nativeSessionHooks?: NativeSessionHooks;
     setNativeSessionHooks(hooks: NativeSessionHooks): void { this.nativeSessionHooks = hooks; }
@@ -169,11 +143,6 @@ export class ApiMachineClient {
     private projectGoals: { dispose(): void } | undefined;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
-    private readonly codexAttachCandidates = createCodexAttachCandidateService({
-        statePath: join(configuration.happyHomeDir, 'codex-attach-candidates.json'),
-        listThreads: async () => listCodexThreadsFromStateDb(),
-    });
-
     constructor(
         private token: string,
         private machine: Machine,
@@ -334,82 +303,6 @@ export class ApiMachineClient {
                 return refreshCodexAccountQuota(grant);
             });
         }
-
-        this.rpcHandlerManager.registerHandler('codex-list-attach-candidates', async (params: any) => {
-            const rawExistingThreadIds = params?.existingThreadIds;
-            if (!Array.isArray(rawExistingThreadIds) || rawExistingThreadIds.length > 5000) {
-                throw new Error('existingThreadIds must be an array with at most 5000 entries');
-            }
-            const existingThreadIds = rawExistingThreadIds.filter(
-                (value: unknown): value is string => typeof value === 'string' && value.length > 0,
-            );
-            return {
-                candidates: await this.codexAttachCandidates.list({ existingThreadIds }),
-            };
-        });
-
-        this.rpcHandlerManager.registerHandler('codex-dismiss-attach-candidate', async (params: any) => {
-            const threadId = requireNonEmptyString(params?.threadId, 'threadId');
-            await this.codexAttachCandidates.dismiss(threadId);
-            return { type: 'success' };
-        });
-
-        this.rpcHandlerManager.registerHandler('codex-attach-candidate', async (params: any) => {
-            const sourceSessionId = requireNonEmptyString(params?.sourceSessionId, 'sourceSessionId (Codex source history unavailable)');
-            const threadId = requireNonEmptyString(params?.threadId, 'threadId');
-            const candidates = await this.codexAttachCandidates.list({ existingThreadIds: [] });
-            const candidate = candidates.find((item) => item.threadId === threadId);
-            if (!candidate) {
-                throw new Error('Codex Desktop thread is no longer available for attachment');
-            }
-
-            const forked = await withCodexAccountThread({ sourceSessionId, codexThreadId: candidate.threadId }, async (client) => {
-                const { thread } = await client.readThread({
-                    threadId: candidate.threadId,
-                    includeTurns: true,
-                });
-                const latestTurn = (thread.turns ?? []).at(-1);
-                if (latestTurn && !isTerminalCodexTurn(latestTurn)) {
-                    throw new Error('Codex Desktop thread is still running; wait for the current response to finish and try again');
-                }
-                return forkCodexThread(client, {
-                    threadId: candidate.threadId,
-                    cwd: candidate.directory,
-                    ...(latestTurn ? { lastTurnId: latestTurn.id } : {}),
-                    deferGoalContinuation: true,
-                });
-            });
-
-            let result: SpawnSessionResult;
-            try {
-                result = await spawnSession({
-                    directory: candidate.directory,
-                    agent: 'codex',
-                    codexSessionGrant: params?.codexSessionGrant,
-                    parentSessionId: sourceSessionId,
-                    resumeCodexThreadId: forked.newCodexThreadId,
-                    environmentVariables: {
-                        // Resume the fork through the normal private app-server.
-                        // The Desktop-owned source can keep its active writer while
-                        // Paws exclusively owns and continues the copied history.
-                        HAPPY_IMPORTED_SESSION_TITLE: candidate.title.slice(0, 200),
-                    },
-                });
-            } catch (error) {
-                await deleteFailedCodexTakeoverFork(forked.newCodexThreadId, sourceSessionId);
-                throw error;
-            }
-
-            if (result.type === 'success') {
-                await this.codexAttachCandidates.markAttached(threadId);
-                return result;
-            }
-                await deleteFailedCodexTakeoverFork(forked.newCodexThreadId, sourceSessionId);
-            if (result.type === 'requestToApproveDirectoryCreation') {
-                throw new Error('Codex Desktop thread directory is no longer available');
-            }
-            throw new Error(result.errorMessage);
-        });
 
         // Register Claude session fork handlers (used by app-side fork /
         // duplicate flows). These take the source session's working

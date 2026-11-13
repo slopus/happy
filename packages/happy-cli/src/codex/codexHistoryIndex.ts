@@ -8,7 +8,7 @@ import { planHistorySchemaMerge, quoteHistoryIdentifier as quote, type HistoryDa
 const filename = 'thread_history_1.sqlite';
 const tables = new Set(['_sqlx_migrations', 'thread_turns', 'thread_items', 'thread_history_projection_state', 'thread_realtime_items']);
 function database(path: string, readOnly: boolean, timeout = 5_000): Database {
-  // Like Codex attach discovery, the managed Node runtime supplies node:sqlite.
+  // The managed Node runtime supplies node:sqlite.
   const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
   return new DatabaseSync(path, { readOnly, timeout });
 }

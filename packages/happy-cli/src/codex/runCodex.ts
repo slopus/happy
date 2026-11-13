@@ -440,8 +440,6 @@ export async function runCodex(opts: {
             delete process.env[key];
         }
     }
-    const importedSessionTitle = process.env.HAPPY_IMPORTED_SESSION_TITLE?.trim();
-    delete process.env.HAPPY_IMPORTED_SESSION_TITLE;
     const hydratedMetadata = mergeReconnectMetadata(localMetadata, reconnectServerMetadata);
     let codexPawsOriginToken = hydratedMetadata.codexPawsOriginToken ?? randomUUID();
     const metadata = {
@@ -451,9 +449,6 @@ export async function runCodex(opts: {
         capabilities: { ...hydratedMetadata.capabilities, artifactLeases: artifactLeaseSupported ? ARTIFACT_PROTOCOL : undefined, codexSteer: true, codexAsyncQuestions: !applicationPolicy, composerPrediction: !applicationPolicy, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
             && basename(process.env.CODEX_HOME).startsWith('happy-codex-home-')) },
         codexPawsOriginToken,
-        ...(!hydratedMetadata.summary?.text?.trim() && importedSessionTitle
-            ? { summary: { text: importedSessionTitle, updatedAt: Date.now() } }
-            : {}),
     };
 
     let response: ApiSession | null;

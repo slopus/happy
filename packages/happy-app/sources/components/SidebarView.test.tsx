@@ -59,7 +59,6 @@ const mocks = vi.hoisted(() => ({
     } as any,
 }));
 
-vi.mock('./AppConversationsSidebar', () => ({ AppConversationsSidebar: (props: any) => React.createElement('AppConversationsSidebar', props) }));
 
 vi.mock('react-native', () => ({
     Platform: { OS: 'web', select: (values: any) => values.web ?? values.default },
@@ -756,36 +755,3 @@ describe('SidebarView Agent space exit', () => {
 
 
 });
-
-
-it('opens application conversations inside Paws and keeps the sidebar for selecting history', () => {
-    let renderer: any;
-    act(() => { renderer = TestRenderer.create(<SidebarView closeDrawerOnNavigate={false} desktopDensity desktopPrimaryNavigation desktopSecondaryVisible />); });
-    const root = renderer.root;
-    mocks.navigate.mockClear();
-    act(() => root.findAllByProps({ testID: 'sidebar-app-conversations-button' }).find((node: any) => node.type === 'Pressable').props.onPress());
-    expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(1);
-    expect(mocks.navigate).toHaveBeenCalledWith('/apps/conversations');
-    act(() => root.findByType('AppConversationsSidebar').props.onNavigate('/apps/conversations/selected'));
-    expect(mocks.navigate).toHaveBeenLastCalledWith('/apps/conversations/selected');
-    expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(1);
-    act(() => root.findAllByProps({ testID: 'sidebar-session-list-button' }).find((node: any) => node.type === 'Pressable').props.onPress());
-    expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(0);
-    act(() => renderer.unmount());
-});
-
-for (const desktop of [true, false]) {
-    it(`keeps native application session selected on ${desktop ? 'desktop' : 'mobile'}`, () => {
-        mocks.pathname = '/session/app-native';
-        mocks.session = { metadata: { application: { appId: 'advisor', bindingId: 'binding' } } };
-        let renderer: any;
-        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity={desktop} desktopPrimaryNavigation={desktop} />); });
-        const rail = renderer.root.findAllByProps({ testID: 'sidebar-app-conversations-button' }).find((node: any) => node.type === 'Pressable');
-        expect(rail.props.accessibilityState.selected).toBe(true);
-        expect(renderer.root.findAllByType('AppConversationsSidebar')).toHaveLength(1);
-        act(() => { mocks.pathname = '/session/ordinary'; mocks.session = { metadata: { path: 'advisor' } }; renderer.update(<SidebarView desktopDensity={desktop} desktopPrimaryNavigation={desktop} desktopSecondaryWidth={300} />); });
-        expect(renderer.root.findAllByType('AppConversationsSidebar')).toHaveLength(0);
-        act(() => renderer.unmount());
-        mocks.session = null; mocks.pathname = '/';
-    });
-}

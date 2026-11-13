@@ -8,10 +8,6 @@ import TestRenderer from 'react-test-renderer';
 
 vi.mock('@/hooks/useUpdates', () => ({ useUpdates: () => ({ updateAvailable: false }) }));
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasUnread: true }) }));
-vi.mock('@/hooks/useCodexAttachCandidateInbox', () => ({
-    useCodexAttachCandidateInbox: () => ({ candidates: [] }),
-}));
-
 import { useInboxHasContent } from './useInboxHasContent';
 
 describe('useInboxHasContent', () => {

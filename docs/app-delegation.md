@@ -89,14 +89,12 @@ Existing grants keep their original lifetime; permanent access requires a new
 authorization. The advisor still stores its credential in the current tab's
 sessionStorage; permanent authority does not change that storage policy.
 
-The new Applications sidebar entry changes only the middle list, preserving the
-current right-hand route. Conversations are grouped by application. Its menu
-opens the registered application, revokes a connection, or explicitly deletes
-that connection and its history. The owner directory exposes only identifiers,
-device association, dates and status, with 50-item cursor pages; it does not
-return ciphertext, tokens or envelopes, and it adds no conversation reader.
-Titles use creation dates because original content remains encrypted. Polling
-stops when the sidebar is hidden or the app enters the background.
+The Applications conversations sidebar and its standalone reader have been
+removed. Settings → 已授权应用 continues to manage application connections and
+permissions. Shared AI service execution, encrypted history, and application
+session metadata remain in use by connected applications.
+
+The validation sections below describe historical releases and their evidence.
 
 ## Initial delegation release validation
 

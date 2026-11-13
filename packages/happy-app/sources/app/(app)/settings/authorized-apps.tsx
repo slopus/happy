@@ -63,7 +63,7 @@ export default function AuthorizedApps() {
     const manageDevices = () => router.push('/settings/device-environment' as never);
     return <AppAuthorizationLayout><Stack.Screen options={{ title: t('appAuthorization.listTitle') }} />
         <Text style={styles.body}>{t('connectedApps.connectionHint')}</Text>
-        {error ? <><AuthorizationNotice title={t('appAuthorization.loadFailed')} message={error} error /><RoundButton title={t('appConversations.refresh')} onPress={refresh} /></> : null}
+        {error ? <><AuthorizationNotice title={t('appAuthorization.loadFailed')} message={error} error /><RoundButton title={t('appAuthorization.refresh')} onPress={refresh} /></> : null}
         {!data && !error ? <AuthorizationNotice title={t('connectedApps.loading')} /> : null}
         {data && chosen && api ? <>
             <Text style={styles.body}>{t('connectedApps.sharedDefaultsHint')}</Text>
@@ -82,7 +82,7 @@ export default function AuthorizedApps() {
                     <Text style={styles.body}>{t(grant.revokedAt !== null ? 'appAuthorization.revoked' : expired ? 'appAuthorization.expired' : service?.service.enabled === false ? 'connectedApps.disabled' : 'appAuthorization.active')}</Text>
                     {grant.scope.targets.map((target, index) => <Text key={index} style={styles.body}>{targetDescription(target, machines, data.accounts)}</Text>)}
                     <Text style={styles.small}>{grant.scope.permissions.map(p => t(p === 'images' ? 'connectedApps.images' : p === 'tools' ? 'connectedApps.tools' : 'connectedApps.chat')).join(' · ')}</Text>
-                    <Text style={styles.small}>{grant.scope.expiresAt === null ? t('appConversations.permanent') : t('appAuthorization.expiresAt', { date: new Date(grant.scope.expiresAt).toLocaleString() })}</Text>
+                    <Text style={styles.small}>{grant.scope.expiresAt === null ? t('appAuthorization.permanent') : t('appAuthorization.expiresAt', { date: new Date(grant.scope.expiresAt).toLocaleString() })}</Text>
                     {service ? <>
                         <Text style={styles.small}>{t('connectedApps.defaultModel')}：{service.revision.config.modelId ?? t('connectedApps.nativeDefault')}</Text>
                         <Text style={styles.small}>{t('connectedApps.reasoning')}：{service.revision.config.reasoning.mode === 'default' ? t('connectedApps.nativeDefault') : service.revision.config.reasoning.value}</Text>
