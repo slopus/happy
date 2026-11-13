@@ -12,6 +12,7 @@ import { MessageComposer } from '@/components/MessageComposer';
 import { AnnotationComposer, useMessageAnnotations, prepareAnnotatedMessage, restoreAnnotatedMessage } from '@/components/annotations/MessageAnnotations';
 import { MessageStagingQueueView } from '@/components/MessageStagingQueueView';
 import { messageStagingQueue, stageSessionMessage } from '@/sync/messageStagingQueueRuntime';
+import { availableStagedAttachments, expiredStagedAttachments, StagedAttachmentSaveError } from '@/sync/messageStagingQueue';
 import type { SessionComposerDirectorySelectorConfig } from '@/components/SessionComposerDirectorySelector';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
@@ -1832,8 +1833,8 @@ function SessionViewLoaded({
                         if (fileMessage.fileReference || annotated.annotations.length) await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery, { draftText: liveMessage, ...(annotated.annotations.length ? { displayText: annotated.displayText, annotations: annotated.annotations } : {}), fileReference: fileMessage.fileReference });
                         else await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery);
                         if (fileMessage.fileReference) fileWorkspace?.setReference(current => current === submittedReference ? null : current);
-                    } catch {
-                        Modal.alert(t('common.error'), t('common.retry'));
+                    } catch (error) {
+                        Modal.alert(t('common.error'), error instanceof StagedAttachmentSaveError ? t('messageQueue.attachmentsSaveFailed') : t('common.retry'));
                         return;
                     }
                     let cleanupFailed = false;
@@ -2100,7 +2101,7 @@ function SessionViewLoaded({
                         const composer = composerHandleRef.current;
                         if (!composer) return;
                         if (message.attachmentsExpired) {
-                            const names = message.attachments?.filter(attachment => attachment.uri.startsWith('blob:')).map(attachment => attachment.name).join('、') ?? '';
+                            const names = expiredStagedAttachments(message).map(attachment => attachment.name).join('、');
                             const warning = [message.deliveryUncertain ? t('messageQueue.failed') : '', t('messageQueue.attachmentsExpired'), names].filter(Boolean).join('\n');
                             if (!await Modal.confirm(t('messageQueue.title'), warning)) return;
                             // The user may have typed while the confirmation was open.
@@ -2116,9 +2117,7 @@ function SessionViewLoaded({
                         if (!recovered) return;
                         composer.setMessage(recovered.draftText ?? recovered.text);
                         if (recovered.fileReference) fileWorkspace?.setReference(recovered.fileReference);
-                        const valid = recovered.attachmentsExpired
-                            ? recovered.attachments?.filter(attachment => !attachment.uri.startsWith('blob:'))
-                            : recovered.attachments;
+                        const valid = availableStagedAttachments(recovered);
                         if (valid?.length) addImages(valid);
                     })(); }}
                 />

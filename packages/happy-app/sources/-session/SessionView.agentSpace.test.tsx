@@ -13,6 +13,8 @@ import {
 import { SessionView } from './SessionView';
 import { FileWorkspaceContext } from '@/components/fileWorkspace/context';
 import { MessageStagingQueueView } from '@/components/MessageStagingQueueView';
+import { StagedAttachmentSaveError } from '@/sync/messageStagingQueue';
+import { Modal } from '@/modal';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
 // @ts-expect-error The test only needs the small create/unmount surface typed below.
@@ -71,6 +73,8 @@ const mocks = vi.hoisted(() => ({
     sessionAbort: vi.fn(),
     sendMessage: vi.fn(),
     stageSessionMessage: vi.fn(),
+    selectedImages: [] as any[],
+    removeImage: vi.fn(),
     steerStagedMessage: vi.fn(),
     stagingSnapshot: { messages: [], barriers: {} },
     resumeSession: vi.fn(),
@@ -323,9 +327,9 @@ vi.mock('@/hooks/useSessionManagementPreferences', () => ({
 }));
 vi.mock('@/hooks/useImagePicker', () => ({
     useImagePicker: () => ({
-        selectedImages: [],
+        selectedImages: mocks.selectedImages,
         pickImages: vi.fn(),
-        removeImage: vi.fn(),
+        removeImage: mocks.removeImage,
         clearImages: vi.fn(),
         addImages: vi.fn(),
     }),
@@ -508,6 +512,7 @@ describe('SessionView Agent-space boundary', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.selectedImages = [];
         mocks.pendingCloseCallback = null;
         mocks.isDataReady = false;
         mocks.zenMode = false;
@@ -600,6 +605,28 @@ describe('SessionView Agent-space boundary', () => {
             }
         }
         expect(mocks.stageSessionMessage).toHaveBeenCalledTimes(3);
+        act(() => renderer.unmount());
+    });
+
+    it('retains composer text and attachments and explains a durable attachment save failure', async () => {
+        mocks.isDataReady = true;
+        mocks.platformOS = 'web';
+        mocks.selectedImages = [{ id: 'image', uri: 'blob:original', name: 'image.png', mimeType: 'image/png', width: 1, height: 1, size: 1 }];
+        mocks.stageSessionMessage.mockRejectedValueOnce(new StagedAttachmentSaveError('Storage unavailable'));
+        let draft = 'Keep this text and image';
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />, {
+                createNodeMock: (element: any) => element.type === 'MessageComposer' ? {
+                    getText: () => draft,
+                    setTextAndSelection: (value: string) => { draft = value; },
+                } : null,
+            });
+        });
+        await act(async () => renderer.root.findByType('MessageComposer').props.onSend());
+        expect(draft).toBe('Keep this text and image');
+        expect(mocks.removeImage).not.toHaveBeenCalled();
+        expect(Modal.alert).toHaveBeenCalledWith('common.error', 'messageQueue.attachmentsSaveFailed');
         act(() => renderer.unmount());
     });
 

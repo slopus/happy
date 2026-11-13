@@ -14,6 +14,7 @@ vi.mock('@/utils/sessionUtils', () => ({ resolveSessionState: (session: any) => 
 vi.mock('./messageStagingQueuePersistence', () => ({
     messageStagingPersistence: { load: () => ({ messages: [], barriers: {} }), save: () => {} },
     initializeMessageStagingPersistence: async () => {}, clearMessageStagingStorage: () => {},
+    getMessageStagingNamespace: () => 'account-a-tab',
 }));
 vi.mock('./storage', () => ({ storage: { getState: () => mocks.state } }));
 vi.mock('./sync', () => ({ sync: { getCredentials: () => mocks.credentials, sendMessage: mocks.send } }));

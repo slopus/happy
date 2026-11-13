@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { SubmittedAttachmentPreview } from './SubmittedAttachmentPreview';
-import { canSendStagedMessageNow, type StagedMessage, type StagingSnapshot, type StagingSession } from '@/sync/messageStagingQueue';
+import { availableStagedAttachments, expiredStagedAttachments, canSendStagedMessageNow, type StagedMessage, type StagingSnapshot, type StagingSession } from '@/sync/messageStagingQueue';
 
 export function MessageStagingQueueView(props: {
     messages: StagingSnapshot['messages'];
@@ -25,9 +25,9 @@ export function MessageStagingQueueView(props: {
             {props.messages.map(message => <View key={message.id} style={styles.row} testID={`queued-message-${message.id}`}>
                 <View style={styles.content}>
                     <Text numberOfLines={2} style={styles.text}>{(message.displayText ?? message.draftText ?? message.text) || t('messageQueue.attachments')}</Text>
-                    {!!message.attachments?.length && !message.attachmentsExpired && <SubmittedAttachmentPreview images={message.attachments} testID={`queued-attachments-${message.id}`} />}
+                    {!!availableStagedAttachments(message).length && <SubmittedAttachmentPreview images={availableStagedAttachments(message)} testID={`queued-attachments-${message.id}`} />}
                     {message.status === 'failed' && (!message.attachmentsExpired || message.deliveryUncertain) && <Text style={styles.secondary}>{t('messageQueue.failed')}</Text>}
-                    {message.attachmentsExpired && <Text style={styles.secondary}>{t('messageQueue.attachmentsExpired')}{'\n'}{message.attachments?.filter(attachment => attachment.uri.startsWith('blob:')).map(attachment => attachment.name).join('、')}</Text>}
+                    {message.attachmentsExpired && <Text style={styles.secondary}>{t('messageQueue.attachmentsExpired')}{'\n'}{expiredStagedAttachments(message).map(attachment => attachment.name).join('、')}</Text>}
                 </View>
                 {message.status === 'sending' ? <ActivityIndicator accessibilityLabel={t('messageQueue.sending')} color={theme.colors.textSecondary} /> : <>
                     <Pressable accessibilityRole="button" accessibilityLabel={sendNowLabel} accessibilityHint={unavailableHint}

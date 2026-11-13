@@ -2,8 +2,9 @@ import { v4 as uuid } from 'uuid';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
 import { resolveSessionState } from '@/utils/sessionUtils';
 import { isArchivedLifecycleState } from '@/utils/sessionLifecycle';
-import { createMessageStagingQueue } from './messageStagingQueue';
-import { clearMessageStagingStorage, initializeMessageStagingPersistence, messageStagingPersistence } from './messageStagingQueuePersistence';
+import { createMessageStagingQueue, StagedAttachmentSaveError } from './messageStagingQueue';
+import { clearMessageStagingStorage, getMessageStagingNamespace, initializeMessageStagingPersistence, messageStagingPersistence } from './messageStagingQueuePersistence';
+import { deleteStagedAttachments, persistStagedAttachments, restoreStagedAttachments } from './stagedAttachmentStorage';
 import { storage } from './storage';
 import { sync } from './sync';
 import { sessionSteer } from './ops';
@@ -66,18 +67,22 @@ messageStagingQueue.subscribe(() => {
 });
 
 let ready: Promise<void> | undefined;
+let stagingGeneration = 0;
+const stagingPreparations = new Map<string, Promise<void>>();
 export function initializeMessageStagingQueue() {
-    ready ??= initializeMessageStagingPersistence().then(() => {
-        messageStagingQueue.restore(messageStagingPersistence.load());
+    ready ??= initializeMessageStagingPersistence().then(async () => {
+        const restored = await restoreStagedAttachments(getMessageStagingNamespace(), messageStagingPersistence.load());
+        messageStagingQueue.restore(restored.snapshot, restored.availableBlobUris);
         messageStagingQueue.refresh();
     });
     return ready;
 }
 
 export async function clearMessageStagingQueue() {
+    stagingGeneration++;
     await initializeMessageStagingQueue();
     messageStagingQueue.clear();
-    clearMessageStagingStorage();
+    await clearMessageStagingStorage();
 }
 
 export async function stageSessionMessage(sessionId: string, text: string, attachments?: AttachmentPreview[], delivery: 'queue' | 'steer' = 'queue', context?: Pick<StagedMessage, 'draftText' | 'displayText' | 'annotations' | 'fileReference'>) {
@@ -86,13 +91,36 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
     if (!session || !accountRuntimeCurrent()) throw new Error('Session unavailable');
     const modeMeta = resolveMessageModeMeta(session, state.settings);
     const selected = attachments?.map(a => ({ ...a }));
-    await initializeMessageStagingQueue();
-    if (!storage.getState().sessions[sessionId] || !accountRuntimeCurrent()) throw new Error('Session unavailable');
-    const id = uuid();
-    messageStagingQueue.enqueue({
-        id, sessionId, text, draftText: context?.draftText, displayText: context?.displayText, annotations: context?.annotations, fileReference: context?.fileReference,
-        attachments: selected,
-        modeMeta,
-    });
-    if (delivery === 'steer') await messageStagingQueue.steer(id);
+    const generation = stagingGeneration;
+    // Persisting a large file must not let a later submission to the same
+    // session overtake it. Controls and selections above remain call-time values.
+    const previous = stagingPreparations.get(sessionId);
+    const submission = (async () => {
+        await previous;
+        await initializeMessageStagingQueue();
+        if (generation !== stagingGeneration || !storage.getState().sessions[sessionId] || !accountRuntimeCurrent()) throw new Error('Session unavailable');
+        const namespace = getMessageStagingNamespace();
+        let persisted = selected;
+        if (selected?.length) {
+            try { persisted = await persistStagedAttachments(namespace, selected); }
+            catch { throw new StagedAttachmentSaveError('Attachment storage is unavailable'); }
+        }
+        const id = uuid();
+        try {
+            if (generation !== stagingGeneration || !accountRuntimeCurrent() || !storage.getState().sessions[sessionId]) throw new Error('Session unavailable');
+            messageStagingQueue.enqueue({
+                id, sessionId, text, draftText: context?.draftText, displayText: context?.displayText, annotations: context?.annotations, fileReference: context?.fileReference,
+                attachments: persisted,
+                modeMeta,
+            });
+        } catch (error) {
+            await deleteStagedAttachments(namespace, persisted ?? []).catch(() => {});
+            throw error;
+        }
+        if (delivery === 'steer') await messageStagingQueue.steer(id);
+    })();
+    const tail = submission.catch(() => {});
+    stagingPreparations.set(sessionId, tail);
+    try { await submission; }
+    finally { if (stagingPreparations.get(sessionId) === tail) stagingPreparations.delete(sessionId); }
 }

@@ -2,6 +2,10 @@ import type { MessageAnnotation } from '@/components/annotations/annotationDraft
 import type { AttachmentPreview } from './attachmentTypes';
 import type { MessageModeMeta } from './messageMeta';
 
+export class StagedAttachmentSaveError extends Error {
+    name = 'StagedAttachmentSaveError';
+}
+
 export type StagedMessage = {
     id: string;
     sessionId: string;
@@ -14,6 +18,7 @@ export type StagedMessage = {
     modeMeta: MessageModeMeta;
     status: 'queued' | 'sending' | 'failed';
     attachmentsExpired?: boolean;
+    expiredAttachmentIds?: string[];
     deliveryUncertain?: boolean;
 };
 
@@ -42,11 +47,30 @@ export type StagingSnapshot = {
  * A successful submission is not a completed turn: retain a barrier until the
  * runner has started and finished that turn (or reports a new completed ID).
  */
-function recoveredMessage(message: StagedMessage): StagedMessage {
-    const attachmentsExpired = message.attachmentsExpired || message.attachments?.some(attachment => attachment.uri.startsWith('blob:'));
-    return message.status === 'sending' || attachmentsExpired
-        ? { ...message, status: 'failed', ...(attachmentsExpired ? { attachmentsExpired: true } : {}), ...(message.status === 'sending' ? { deliveryUncertain: true } : {}) }
-        : message;
+function recoveredMessage(message: StagedMessage, availableBlobUris: ReadonlySet<string> = new Set()): StagedMessage {
+    const expiredAttachmentIds = message.attachments?.filter(attachment => attachment.uri.startsWith('blob:') && !availableBlobUris.has(attachment.uri)).map(attachment => attachment.id) ?? [];
+    const previouslyExpired = expiredStagedAttachments(message);
+    const unresolvedPreviousFlag = message.attachmentsExpired && (!previouslyExpired.length || previouslyExpired.some(attachment => !availableBlobUris.has(attachment.uri)));
+    const attachmentsExpired = expiredAttachmentIds.length > 0 || unresolvedPreviousFlag;
+    return {
+        ...message,
+        attachmentsExpired: attachmentsExpired || undefined,
+        expiredAttachmentIds: attachmentsExpired ? expiredAttachmentIds : undefined,
+        status: message.status === 'sending' || attachmentsExpired ? 'failed' : message.status,
+        ...(message.status === 'sending' ? { deliveryUncertain: true } : {}),
+    };
+}
+
+export function expiredStagedAttachments(message: StagedMessage): AttachmentPreview[] {
+    if (!message.attachmentsExpired) return [];
+    return message.attachments?.filter(attachment => message.expiredAttachmentIds
+        ? message.expiredAttachmentIds.includes(attachment.id)
+        : attachment.uri.startsWith('blob:')) ?? [];
+}
+
+export function availableStagedAttachments(message: StagedMessage): AttachmentPreview[] {
+    const expired = new Set(expiredStagedAttachments(message).map(attachment => attachment.id));
+    return message.attachments?.filter(attachment => !expired.has(attachment.id)) ?? [];
 }
 
 export function createMessageStagingQueue(deps: {
@@ -61,7 +85,7 @@ export function createMessageStagingQueue(deps: {
         ...restored,
         // A process may have died after acceptance. Never silently resend an
         // ambiguous submission; let the user inspect history and retry it.
-        messages: restored.messages.map(recoveredMessage),
+        messages: restored.messages.map(message => recoveredMessage(message)),
     };
     const listeners = new Set<() => void>();
     const locks = new Set<string>();
@@ -146,9 +170,9 @@ export function createMessageStagingQueue(deps: {
         getSnapshot: () => snapshot,
         subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
         refresh,
-        restore(value: StagingSnapshot) {
+        restore(value: StagingSnapshot, availableBlobUris?: ReadonlySet<string>) {
             generation++;
-            snapshot = { ...value, messages: value.messages.map(recoveredMessage) };
+            snapshot = { ...value, messages: value.messages.map(message => recoveredMessage(message, availableBlobUris)) };
             for (const listener of listeners) listener();
         },
         enqueue(message: Omit<StagedMessage, 'status'>) {

@@ -47,7 +47,7 @@ describe('staged message persistence ownership', () => {
         const reloaded = await import('./messageStagingQueuePersistence');
         await reloaded.initializeMessageStagingPersistence();
         expect(reloaded.messageStagingPersistence.load().messages[0].text).toBe('hello');
-        reloaded.clearMessageStagingStorage();
+        await reloaded.clearMessageStagingStorage();
         expect(original.messageStagingPersistence.load().messages).toEqual([]);
     });
 

@@ -33,6 +33,8 @@ export type AttachmentPreview = {
     thumbhash?: string;
     /** Absent → 'image' (back-compat with the existing image-only pipeline). */
     kind?: AttachmentKind;
+    /** Device-local copy owned by the staged message's storage namespace. */
+    stagingKey?: string;
 };
 
 /** Result of a successful attachment upload — ready to build a file event. */

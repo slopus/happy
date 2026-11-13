@@ -50,3 +50,17 @@ it('shows annotation display text instead of an empty draft or private model con
     expect(text).not.toContain('private-baseline');
     act(() => renderer.unmount());
 });
+
+it('preserves healthy recovered image previews while identifying a different missing attachment', () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const healthy = { id: 'good', uri: 'blob:restored', name: 'good.png', size: 1, width: 1, height: 1, mimeType: 'image/png' };
+    const missing = { ...healthy, id: 'missing', uri: 'blob:gone', name: 'missing.png' };
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<MessageStagingQueueView messages={[{ id: 'm', sessionId: 's', text: 'both images', attachments: [healthy, missing], attachmentsExpired: true, expiredAttachmentIds: ['missing'], modeMeta: {}, status: 'failed' }]} session={{ connected: true, state: 'idle' }} onEdit={vi.fn()} onSteer={vi.fn()} onRemove={vi.fn()} />); });
+    expect(renderer.root.findByType('SubmittedAttachmentPreview').props.images).toEqual([healthy]);
+    const warnings = renderer.root.findAllByType('Text').map((n: any) => JSON.stringify(n.props.children)).join('\n');
+    expect(warnings).toContain('missing.png');
+    expect(warnings).not.toContain('good.png');
+    expect(renderer.root.findAllByType('Pressable')[0].props.disabled).toBe(true);
+    act(() => renderer.unmount());
+});

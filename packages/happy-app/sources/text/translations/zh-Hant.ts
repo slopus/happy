@@ -419,7 +419,7 @@ export const zhHant: TranslationStructure = {
         emptyTitle: "尚未授權任何應用程式",
         emptyHint: "從狗頭軍師的「連接我的 Paws」開始。",
     },
-    messageQueue: { title: '待傳送', hint: '目前任務結束後逐條傳送；請保持本機 Paws 開啟。', waitingForConnection: '連線尚未就緒，待傳送訊息已保留；會話恢復後繼續傳送。', enqueue: '加入待傳送佇列（Tab）', enqueueHint: '目前任務結束後傳送', steerDuringTurn: '立即插話', enqueueSend: '加入待傳送佇列', steer: '現在傳送', steerUnavailable: '目前會話不支援執行中插話。請更新 Paws CLI 並建立新會話；排隊訊息仍可在目前任務結束後傳送。', steerHint: '插入目前 Codex 任務，不中斷；使用目前任務的模型與權限設定', sending: '傳送中…', failed: '傳送失敗或結果待確認，請先檢查聊天記錄再重試。', attachmentsExpired: '頁面重新整理後附件已失效，請取回訊息並重新選擇檔案。', attachments: '附件', edit: '取回編輯', occupied: '請先傳送或清空輸入框中的草稿，再取回排隊訊息。' },
+    messageQueue: { title: '待傳送', hint: '目前任務結束後逐條傳送；請保持本機 Paws 開啟。', waitingForConnection: '連線尚未就緒，待傳送訊息已保留；會話恢復後繼續傳送。', enqueue: '加入待傳送佇列（Tab）', enqueueHint: '目前任務結束後傳送', steerDuringTurn: '立即插話', enqueueSend: '加入待傳送佇列', steer: '現在傳送', steerUnavailable: '目前會話不支援執行中插話。請更新 Paws CLI 並建立新會話；排隊訊息仍可在目前任務結束後傳送。', steerHint: '插入目前 Codex 任務，不中斷；使用目前任務的模型與權限設定', sending: '傳送中…', failed: '傳送失敗或結果待確認，請先檢查聊天記錄再重試。', attachmentsExpired: '頁面重新整理後附件已失效，請取回訊息並重新選擇檔案。', attachmentsSaveFailed: '無法在本機儲存附件，訊息未加入佇列。正文和附件已保留在輸入框中，請檢查瀏覽器儲存空間後重試。', attachments: '附件', edit: '取回編輯', occupied: '請先傳送或清空輸入框中的草稿，再取回排隊訊息。' },
     accounts: {
         attachmentWarning: "切換帳號會重新載入。文字草稿將保留，但尚未傳送的附件需要重新選取。是否繼續？",
         title: "Paws 帳號",
