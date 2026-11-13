@@ -43,6 +43,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -55,28 +56,41 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.min
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachTabKind
 import com.slopus.happy.attachments.GalleryItem
 import com.slopus.happy.attachments.RecentFile
+import com.slopus.happy.ui.components.GlassColors
+import com.slopus.happy.ui.components.GlassSource
 import com.slopus.happy.ui.components.MaterialSymbols
+import com.slopus.happy.ui.components.glass
+import com.slopus.happy.ui.components.rememberGlassBlur
 import com.slopus.happy.ui.components.rememberGlassSource
 import com.slopus.happy.ui.components.glassSource
 import com.slopus.happy.ui.components.rememberReduceMotion
+import com.slopus.happy.ui.conversation.ConversationComposerSpec
 import com.slopus.happy.ui.layout.ContentTokens
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -348,10 +362,12 @@ internal fun AttachSheetLayout(
             if (reduceMotion) snap() else tween(AttachMotion.HEADER_MS, easing = AttachMotion.decelerate),
             label = "header",
         )
+        // The tab bar's glass becomes the caption's pill, and back when the last is unpicked.
         val captionProgress = remember { Animatable(if (picked) 1f else 0f) }
         LaunchedEffect(picked) {
-            captionProgress.animateTo(if (picked) 1f else 0f, if (reduceMotion) snap() else tween(AttachMotion.CAPTION_MS, easing = AttachMotion.decelerate))
+            captionProgress.animateTo(if (picked) 1f else 0f, if (reduceMotion) snap() else tween(AttachMotion.BAR_MORPH_MS, easing = AttachMotion.barMorph))
         }
+        var captionHeight by remember { mutableIntStateOf(0) }
 
         // Tabs: the old page goes down 78 and out, the new one comes in and springs home.
         var current by remember { mutableStateOf(tab) }
@@ -633,7 +649,21 @@ internal fun AttachSheetLayout(
                     // The live camera tile stops at the bar's top, never over the caption.
                     .onGloballyPositioned { bar -> camera?.footTop = root?.takeIf { it.isAttached }?.localPositionOf(bar, Offset.Zero)?.y },
             ) {
-                if (captionProgress.value < 1f) {
+                val morph = captionProgress.value
+                val morphing = morph > 0f && morph < 1f
+                if (morphing) {
+                    BarMorph(
+                        tabs = tabs.size,
+                        morph = morph,
+                        captionHeight = captionHeight,
+                        captionCorner = if (caption.isEmpty()) ConversationComposerSpec.restCorner else ConversationComposerSpec.openCorner,
+                        backdrop = source,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
+                val captionCorner = if (caption.isEmpty()) ConversationComposerSpec.restCorner else ConversationComposerSpec.openCorner
+                val clip = Modifier.clipToBarMorph(tabs.size, { captionProgress.value }, { captionHeight }, { captionCorner })
+                if (morph < 1f) {
                     AttachTabBar(
                         tabs,
                         current,
@@ -641,24 +671,26 @@ internal fun AttachSheetLayout(
                         openElapsed = { motion.clock.value },
                         backdrop = source,
                         colors = colors,
-                        modifier = Modifier.graphicsLayer {
-                            val p = captionProgress.value
-                            translationY = AttachSpec.captionShift.toPx() * p
-                            alpha = 1 - p
-                        },
+                        modifier = Modifier.align(Alignment.BottomCenter).then(clip),
+                        glass = !morphing,
+                        shown = { AttachMotion.tabsShown(captionProgress.value) },
                     )
                 }
-                if (captionProgress.value > 0f) {
+                if (morph > 0f) {
                     AttachCaptionBar(
                         caption,
                         onCaptionChange,
                         selection.count,
                         onSend,
                         sending = sending,
-                        shown = { captionProgress.value },
+                        shown = { AttachMotion.captionShown(captionProgress.value) },
                         backdrop = source,
                         colors = colors,
-                        modifier = Modifier.align(Alignment.BottomCenter),
+                        glass = !morphing,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .onSizeChanged { captionHeight = it.height }
+                            .then(clip),
                     )
                 }
             }
@@ -689,4 +721,52 @@ private fun pluralSelected(count: Int): String =
 internal fun tabTitle(kind: AttachTabKind): Int = when (kind) {
     AttachTabKind.Gallery -> R.string.attach_tab_gallery
     AttachTabKind.Files -> R.string.attach_tab_files
+}
+
+/**
+ * The one glass between the tab bar and the caption bar while one becomes
+ * the other: the tab bar's 56 pill (7 in from its 70 bar, Telegram's width
+ * for [tabs]) at [morph] 0, the caption's pill (the composer's margins, its
+ * [captionHeight] in px with them, [captionCorner]) at 1, its frame and
+ * corners between. Each bar's content is clipped to it ([clipToBarMorph]).
+ */
+@Composable
+private fun BarMorph(tabs: Int, morph: Float, captionHeight: Int, captionCorner: Dp, backdrop: GlassSource?, modifier: Modifier = Modifier) {
+    val theme = HappyTheme.colors
+    val blurs = rememberGlassBlur()
+    val shape = RoundedCornerShape(lerp(AttachSpec.tabBarCorner, captionCorner, morph))
+    Box(
+        modifier
+            .layout { measurable, constraints ->
+                val full = constraints.maxWidth
+                val frame = barMorphFrame(full.toFloat(), 0f, tabs, morph, captionHeight)
+                val placeable = measurable.measure(Constraints.fixed(frame.width.roundToInt(), frame.height.roundToInt()))
+                layout(full, (-frame.top).roundToInt()) { placeable.place(frame.left.roundToInt(), 0) }
+            }
+            .glass(backdrop, shape, GlassColors.of(theme.dark), blurs),
+    )
+}
+
+/** While the bars morph, what a bar draws stays inside the glass between them; its foot is the bars' foot. */
+private fun Modifier.clipToBarMorph(tabs: Int, morph: () -> Float, captionHeight: () -> Int, captionCorner: () -> Dp): Modifier = drawWithContent {
+    val p = morph()
+    if (p <= 0f || p >= 1f) {
+        drawContent()
+        return@drawWithContent
+    }
+    val frame = barMorphFrame(size.width, size.height, tabs, p, captionHeight())
+    val corner = lerp(AttachSpec.tabBarCorner, captionCorner(), p).toPx()
+    val path = Path().apply { addRoundRect(RoundRect(frame, CornerRadius(corner))) }
+    clipPath(path) { this@drawWithContent.drawContent() }
+}
+
+/** The morphing glass's frame over a foot at [foot] in a [full]-wide bar. */
+private fun Density.barMorphFrame(full: Float, foot: Float, tabs: Int, morph: Float, captionHeight: Int): Rect {
+    val gap = 8.dp
+    val pill = if (captionHeight > 0) captionHeight - (gap * 2).toPx() else ConversationComposerSpec.rest.toPx()
+    val tabWidth = (AttachSpec.tabBarWidth(tabs, full.toDp()) - AttachSpec.tabBarInset * 2).toPx()
+    val width = lerp(tabWidth, full - (ConversationComposerSpec.margin.calculateLeftPadding(LayoutDirection.Ltr) * 2).toPx(), morph)
+    val height = lerp((AttachSpec.tabBar - AttachSpec.tabBarInset * 2).toPx(), pill, morph)
+    val bottom = foot - lerp(AttachSpec.tabBarInset.toPx(), gap.toPx(), morph)
+    return Rect((full - width) / 2, bottom - height, (full + width) / 2, bottom)
 }

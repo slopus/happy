@@ -75,7 +75,8 @@ import com.slopus.happy.ui.theme.happyTextStyle
  * tabs 48 tall inside 11. With few tabs Telegram narrows it to 80 a tab and
  * 36 more, centred. The selected tab sits on a stadium of its colour at 9%
  * that grows from 0.6 in 320 ms; each tab pops in on the open's clock
- * ([openElapsed], ms) as Telegram's `ATTACH_ALERT_PROGRESS` does.
+ * ([openElapsed], ms) as Telegram's `ATTACH_ALERT_PROGRESS` does. While its
+ * glass morphs into the caption's ([glass] off), the tabs fade by [shown].
  */
 @Composable
 internal fun AttachTabBar(
@@ -86,6 +87,8 @@ internal fun AttachTabBar(
     backdrop: GlassSource?,
     colors: AttachColors,
     modifier: Modifier = Modifier,
+    glass: Boolean = true,
+    shown: () -> Float = { 1f },
 ) {
     val theme = HappyTheme.colors
     val blurs = rememberGlassBlur()
@@ -93,13 +96,13 @@ internal fun AttachTabBar(
         val width = AttachSpec.tabBarWidth(tabs.size, maxWidth)
         val shape = RoundedCornerShape(AttachSpec.tabBarCorner)
         Box(Modifier.width(width).fillMaxHeight()) {
-            Box(
+            if (glass) Box(
                 Modifier
                     .fillMaxSize()
                     .padding(AttachSpec.tabBarInset)
                     .glass(backdrop, shape, GlassColors.of(theme.dark), blurs),
             )
-            Row(Modifier.fillMaxSize().padding(AttachSpec.tabPadding)) {
+            Row(Modifier.fillMaxSize().padding(AttachSpec.tabPadding).graphicsLayer { alpha = shown() }) {
                 tabs.forEachIndexed { index, tab ->
                     AttachTab(
                         tab,
@@ -193,8 +196,8 @@ private val AttachTabKind.selectedIcon
  * line and 28 in use, the field in the body type with 16 in and 12 above and
  * below, "Type a message ...", and send's 36 circle in the text colour, 6 in
  * from the end at the foot. The words grow to five lines, then scroll.
- * [shown] is the 180 ms decelerated progress the bar comes in on: the pill
- * fades, send grows from 0.2.
+ * While the tab bar's glass morphs into it ([glass] off, the sheet draws
+ * that shape), [shown] brings in the words and send grows from 0.2 inside it.
  */
 @Composable
 internal fun AttachCaptionBar(
@@ -207,6 +210,7 @@ internal fun AttachCaptionBar(
     backdrop: GlassSource?,
     colors: AttachColors,
     modifier: Modifier = Modifier,
+    glass: Boolean = true,
 ) {
     val theme = HappyTheme.colors
     val blurs = rememberGlassBlur()
@@ -228,9 +232,10 @@ internal fun AttachCaptionBar(
         modifier
             .fillMaxWidth()
             .padding(ConversationComposerSpec.margin)
-            .graphicsLayer { alpha = shown() }
-            .glass(backdrop, shape, GlassColors.of(theme.dark), blurs)
+            .then(if (glass) Modifier.glass(backdrop, shape, GlassColors.of(theme.dark), blurs) else Modifier)
             .clip(shape)
+            // The words and send only: the pill is the sheet's morphing glass until it lands.
+            .graphicsLayer { alpha = shown() }
             .heightIn(min = ConversationComposerSpec.rest)
             .testTag(AttachTags.CAPTION_BAR),
         verticalAlignment = Alignment.Bottom,

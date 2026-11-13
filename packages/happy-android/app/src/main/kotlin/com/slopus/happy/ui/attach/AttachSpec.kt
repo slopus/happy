@@ -115,7 +115,6 @@ object AttachSpec {
     fun tabBarWidth(tabs: Int, available: Dp): Dp = min(available.value, (tabs * 80 + 36).toFloat()).dp
 
     // The caption bar: drawn as the chat's composer (ConversationComposerSpec)
-    val captionShift = 36.dp
     /** The caption grows to this many lines, then scrolls inside the field. */
     const val CAPTION_LINES = 5
     const val SEND_FROM = 0.2f
@@ -251,7 +250,19 @@ object AttachMotion {
 
     const val CHECK_MS = 200
     const val PICK_SCALE_MS = 200
-    const val CAPTION_MS = 180
+    /**
+     * The tab bar's glass becoming the caption's pill and back, as iOS's
+     * attach menu morphs it: 400 ms on its curve both ways. The tabs are
+     * gone by [BAR_SWAP] of it; the caption's words and send come in after.
+     */
+    const val BAR_MORPH_MS = 400
+    val barMorph = CubicBezierEasing(0.38f, 0.7f, 0.125f, 1f)
+    const val BAR_SWAP = 0.4f
+
+    fun tabsShown(morph: Float): Float = 1 - (morph / BAR_SWAP).coerceIn(0f, 1f)
+
+    fun captionShown(morph: Float): Float = ((morph - BAR_SWAP) / (1 - BAR_SWAP)).coerceIn(0f, 1f)
+
     const val COUNTER_MS = 180
     const val COUNTER_FROM = 0.9f
     val counter = overshoot(2f)
