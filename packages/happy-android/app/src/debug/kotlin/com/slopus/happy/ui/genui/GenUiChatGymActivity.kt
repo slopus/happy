@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -40,11 +43,12 @@ import com.slopus.happy.ui.theme.ThemePreference
  * frame timing on a device; `message` and `open` are only logged (tag
  * `GenUiChatGym`).
  * ```
- * adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.genui.GenUiChatGymActivity [-e genui.theme dark] [--ez genui.plain true]
+ * adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.genui.GenUiChatGymActivity [-e genui.theme dark] [--ez genui.plain true] [--ef genui.window 1]
  * ```
  * `genui.plain` draws the same rows with each artifact as its card alone and
  * its document's fallback as the answer's words: the control for timing.
  */
+@OptIn(ExperimentalFoundationApi::class)
 class GenUiChatGymActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -71,6 +75,7 @@ class GenUiChatGymActivity : ComponentActivity() {
         }
         val client = AgentClient(computer, "gym")
         val plain = intent.getBooleanExtra("genui.plain", false)
+        val window = intent.getFloatExtra("genui.window", 0f)
         val fallbacks = fixtures.associateWith { name -> GenUi.parse(assets.open("genui/fixtures/$name.json").bufferedReader().use { it.readText() }).fallback.orEmpty() }
         val rows = (0 until ROWS).flatMap { i ->
             val fixture = fixtures[i % fixtures.size]
@@ -93,8 +98,11 @@ class GenUiChatGymActivity : ComponentActivity() {
                     )
                 }
                 val bubble = userMessageBubblePalette(null, dark)
+                // `genui.window`: rows composed ahead of the viewport (and kept behind it), as fractions of it.
+                val state = if (window > 0f) rememberLazyListState(LazyLayoutCacheWindow(aheadFraction = window, behindFraction = window / 2)) else rememberLazyListState()
                 LazyColumn(
-                    Modifier.fillMaxSize().background(HappyTheme.colors.surface).windowInsetsPadding(WindowInsets.safeDrawing).testTag("genui.chat"),
+                    state = state,
+                    modifier = Modifier.fillMaxSize().background(HappyTheme.colors.surface).windowInsetsPadding(WindowInsets.safeDrawing).testTag("genui.chat"),
                 ) {
                     items(rows, key = { it.key }) { row -> ConversationRowView(row, bubble, actions) }
                 }

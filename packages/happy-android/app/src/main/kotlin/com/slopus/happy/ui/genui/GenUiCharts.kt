@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -32,6 +34,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
@@ -89,37 +92,44 @@ private fun Plot(e: Element.Plot, modifier: Modifier) {
     val ring = colors.surface
     val seriesColors = e.series.map { shared.plot(it.color) }
     val span = (axis.max - axis.min).takeIf { it > 0 } ?: 1.0
-    Canvas(modifier) {
-        if (n == 0) return@Canvas
-        val tickLabels = axis.ticks.map { measurer.measure(it.label, style) }
-        val xLabels = e.x.map { measurer.measure(it, style) }
-        val gutter = (tickLabels.maxOfOrNull { it.size.width } ?: 0) + 8.dp.toPx()
-        val labelHeight = (xLabels.maxOfOrNull { it.size.height } ?: 0) + 6.dp.toPx()
-        val top = (tickLabels.firstOrNull()?.size?.height ?: 0) / 2f
-        val plot = Rect(gutter, top, size.width, size.height - labelHeight)
-        fun y(value: Double) = plot.bottom - ((value - axis.min) / span).toFloat().coerceIn(-0.05f, 1.05f) * plot.height
+    // Drawn once into a layer per size (labels measured there too), so a scrolling list only replays it.
+    Spacer(
+        modifier.drawWithCache {
+            val layer = obtainGraphicsLayer()
+            layer.record {
+                if (n == 0) return@record
+                val tickLabels = axis.ticks.map { measurer.measure(it.label, style) }
+                val xLabels = e.x.map { measurer.measure(it, style) }
+                val gutter = (tickLabels.maxOfOrNull { it.size.width } ?: 0) + 8.dp.toPx()
+                val labelHeight = (xLabels.maxOfOrNull { it.size.height } ?: 0) + 6.dp.toPx()
+                val top = (tickLabels.firstOrNull()?.size?.height ?: 0) / 2f
+                val plot = Rect(gutter, top, size.width, size.height - labelHeight)
+                fun y(value: Double) = plot.bottom - ((value - axis.min) / span).toFloat().coerceIn(-0.05f, 1.05f) * plot.height
 
-        axis.ticks.forEachIndexed { i, tick ->
-            val ty = y(tick.value)
-            drawLine(grid, Offset(plot.left, ty), Offset(plot.right, ty), 1f)
-            val label = tickLabels[i]
-            drawText(label, topLeft = Offset(gutter - 8.dp.toPx() - label.size.width, ty - label.size.height / 2f))
-        }
+                axis.ticks.forEachIndexed { i, tick ->
+                    val ty = y(tick.value)
+                    drawLine(grid, Offset(plot.left, ty), Offset(plot.right, ty), 1f)
+                    val label = tickLabels[i]
+                    drawText(label, topLeft = Offset(gutter - 8.dp.toPx() - label.size.width, ty - label.size.height / 2f))
+                }
 
-        val bar = e.kind == PlotKind.Bar
-        val slot = plot.width / n
-        val inset = if (bar) 0f else 6.dp.toPx()
-        fun x(i: Int) = if (bar) plot.left + slot * (i + 0.5f) else plot.left + inset + if (n == 1) 0f else (plot.width - inset * 2) * i / (n - 1)
-        xLabels.forEachIndexed { i, label ->
-            if (i >= n) return@forEachIndexed
-            val lx = (x(i) - label.size.width / 2f).coerceIn(plot.left, size.width - label.size.width)
-            drawText(label, topLeft = Offset(lx, plot.bottom + 6.dp.toPx()))
-        }
+                val bar = e.kind == PlotKind.Bar
+                val slot = plot.width / n
+                val inset = if (bar) 0f else 6.dp.toPx()
+                fun x(i: Int) = if (bar) plot.left + slot * (i + 0.5f) else plot.left + inset + if (n == 1) 0f else (plot.width - inset * 2) * i / (n - 1)
+                xLabels.forEachIndexed { i, label ->
+                    if (i >= n) return@forEachIndexed
+                    val lx = (x(i) - label.size.width / 2f).coerceIn(plot.left, size.width - label.size.width)
+                    drawText(label, topLeft = Offset(lx, plot.bottom + 6.dp.toPx()))
+                }
 
-        val zero = y(0.0.coerceIn(axis.min, axis.max))
-        if (bar) drawBars(e, seriesColors, n, slot, ::x, ::y)
-        else drawLines(e, seriesColors, n, ::x, ::y, zero, ring)
-    }
+                val zero = y(0.0.coerceIn(axis.min, axis.max))
+                if (bar) drawBars(e, seriesColors, n, slot, ::x, ::y)
+                else drawLines(e, seriesColors, n, ::x, ::y, zero, ring)
+            }
+            onDrawBehind { drawLayer(layer) }
+        },
+    )
 }
 
 private fun DrawScope.drawBars(e: Element.Plot, seriesColors: List<Color>, n: Int, slot: Float, x: (Int) -> Float, y: (Double) -> Float) {
@@ -295,18 +305,30 @@ private fun Donut(e: Element.Plot) {
 internal fun SparkView(e: Element.Spark, modifier: Modifier) {
     val color = LocalGenUiColors.current.ink(e.tone)
     val values = e.values
-    Canvas(modifier.fillMaxWidth().height(24.dp)) {
-        val lo = values.min()
+    Spacer(
+        modifier.fillMaxWidth().height(24.dp).drawWithCache {
+            val line = Path()
+            val fill = Path()
+            val lo = values.min()
         val hi = values.max()
         val span = (hi - lo).takeIf { it > 0 } ?: 1.0
         val pad = 3.dp.toPx()
         val points = values.mapIndexed { i, v ->
             Offset((size.width - pad) * i / (values.size - 1), pad + (size.height - pad * 2) * (1 - ((v - lo) / span).toFloat()))
         }
-        val line = Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }
-        val fill = Path().apply { addPath(line); lineTo(points.last().x, size.height); lineTo(points[0].x, size.height); close() }
-        drawPath(fill, color.copy(alpha = 0.1f))
-        drawPath(line, color, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-        drawCircle(color, 2.5.dp.toPx(), points.last())
-    }
+            line.moveTo(points[0].x, points[0].y)
+            points.drop(1).forEach { line.lineTo(it.x, it.y) }
+            fill.addPath(line)
+            fill.lineTo(points.last().x, size.height)
+            fill.lineTo(points[0].x, size.height)
+            fill.close()
+            val stroke = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            // The paths are built once per size; a scroll only draws them.
+            onDrawBehind {
+                drawPath(fill, color.copy(alpha = 0.1f))
+                drawPath(line, color, style = stroke)
+                drawCircle(color, 2.5.dp.toPx(), points.last())
+            }
+        },
+    )
 }

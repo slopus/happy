@@ -2039,6 +2039,16 @@ sheet's memory. `plugin` opens `NavHostController.openPlugin` where the
 session's `pluginsAvailable` is true. `cluster_secret` (Happy Cloud
 connections) stays disabled until its form exists.
 
+Cost: `bench/GenUiBenchmark` (androidTest, a `-Phappy.debuggable=false`
+chatbench build as research/telegram-chat.md runs it) flings the chat gym
+against plain rows in ABBA rounds (`genui_scroll`; `-e window F` compares a
+lazy cache window instead) and splits each fixture's composing frame into
+animation (composition), layout and draw with main-thread CPU
+(`genui_first_frame`; `-e strip icons|text` attributes it). A block's first
+frame is per-element Compose work (composition and text measure), not text
+length or glyphs. Charts record into a layer per size and glyphs are decoded
+once per density, so neither is redone as rows enter or a list scrolls.
+
 ### Mermaid
 
 `ui/components/MermaidView.kt` renders ```` ```mermaid ```` blocks the way

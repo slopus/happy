@@ -19,9 +19,14 @@ class FrameRecorder(private val window: Window) : Window.OnFrameMetricsAvailable
     /**
      * [waitNs] is from the vsync to the main thread starting the frame (a
      * busy main thread or a late wake), [renderNs] the RenderThread's sync,
-     * commands and swap, [gpuNs] the GPU's (API 31+).
+     * commands and swap, [gpuNs] the GPU's (API 31+). The main thread's
+     * part split: [animationNs] (where Compose recomposes), [layoutNs]
+     * (measure and layout) and [drawNs] (recording the draw).
      */
-    class Frame(val totalNs: Long, val uiNs: Long, val deadlineNs: Long, val first: Boolean, val waitNs: Long = 0, val renderNs: Long = 0, val gpuNs: Long = 0, val vsyncNs: Long = 0)
+    class Frame(
+        val totalNs: Long, val uiNs: Long, val deadlineNs: Long, val first: Boolean, val waitNs: Long = 0, val renderNs: Long = 0, val gpuNs: Long = 0, val vsyncNs: Long = 0,
+        val animationNs: Long = 0, val layoutNs: Long = 0, val drawNs: Long = 0,
+    )
 
     private val thread = HandlerThread("frame-metrics").apply { start() }
     private val frames = Collections.synchronizedList(ArrayList<Frame>())
@@ -48,6 +53,7 @@ class FrameRecorder(private val window: Window) : Window.OnFrameMetricsAvailable
         frames += Frame(
             metrics.getMetric(FrameMetrics.TOTAL_DURATION), ui, deadline, metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L,
             metrics.getMetric(FrameMetrics.UNKNOWN_DELAY_DURATION), render, gpu, metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP),
+            metrics.getMetric(FrameMetrics.ANIMATION_DURATION), metrics.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION), metrics.getMetric(FrameMetrics.DRAW_DURATION),
         )
     }
 }

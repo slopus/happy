@@ -2,6 +2,7 @@ package com.slopus.happy.ui.genui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import android.content.res.Resources
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,12 +55,15 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
@@ -643,10 +647,23 @@ internal val IconName.drawable: Int
         IconName.Copy -> R.drawable.genui_ic_copy
     }
 
+/**
+ * The shared glyphs, each decoded once per screen density: painterResource
+ * decodes a bitmap resource again at every call site, which a list of rows
+ * pays as each one enters.
+ */
+private object GenUiGlyphs {
+    private val decoded = HashMap<Long, BitmapPainter>()
+
+    fun painter(resources: Resources, id: Int): BitmapPainter = synchronized(decoded) {
+        decoded.getOrPut(id.toLong() shl 32 or resources.configuration.densityDpi.toLong()) { BitmapPainter(ImageBitmap.imageResource(resources, id)) }
+    }
+}
+
 /** A shared glyph at [size], its alpha painted in [tint]. */
 @Composable
 internal fun GenUiIcon(name: IconName, size: Dp, tint: Color, modifier: Modifier = Modifier, contentDescription: String? = null) {
-    Image(painterResource(name.drawable), contentDescription, modifier.size(size), colorFilter = ColorFilter.tint(tint))
+    Image(GenUiGlyphs.painter(LocalResources.current, name.drawable), contentDescription, modifier.size(size), colorFilter = ColorFilter.tint(tint))
 }
 
 @Composable
