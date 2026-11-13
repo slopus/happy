@@ -307,6 +307,7 @@ class ChatListBenchmark {
         val gfx = shell("dumpsys gfxinfo ${app.packageName}")
         val keep = listOf("Total frames rendered", "Janky frames", "50th percentile", "90th percentile", "99th percentile")
         report("  prose laid out on the main thread: ${ProseThread.mainBuilds.get() - builds}")
+        memory()
         report("  gfxinfo: " + gfx.lines().map { it.trim() }.filter { l -> keep.any { l.startsWith(it) } }.distinct().take(5).joinToString("; "))
         return frames
     }
@@ -338,6 +339,15 @@ class ChatListBenchmark {
         report(FrameSummary(first).line("$name open/first"))
         report(FrameSummary(all).line("$name open/all"))
         report("  open main cpu ms: ${cpu.map { String.format(java.util.Locale.US, "%.0f", it) }} median ${String.format(java.util.Locale.US, "%.0f", cpu.sorted()[cpu.size / 2])}")
+        memory()
+    }
+
+    /** What the process holds once a case has run: what a cache window of composed rows would add to. */
+    private fun memory() {
+        val info = Debug.MemoryInfo()
+        Debug.getMemoryInfo(info)
+        fun mb(stat: String) = (info.getMemoryStat(stat)?.toDoubleOrNull() ?: 0.0) / 1024
+        report(String.format(java.util.Locale.US, "  memory: pss %.1f MB, java heap %.1f MB, native heap %.1f MB, graphics %.1f MB", info.totalPss / 1024.0, mb("summary.java-heap"), mb("summary.native-heap"), mb("summary.graphics")))
     }
 
     /** A hard fling (UiAutomator's 6 steps, about 30 ms over 55% of the screen); [settle] for it to run out. */
