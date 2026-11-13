@@ -90,7 +90,7 @@ class GenUiInline(
     val onOpenPlugin: (String) -> Unit = {},
 ) {
     /** One version as read, with what was done to it. */
-    class Block(val ui: ArtifactUi.GenUi, val media: ArtifactMedia, val state: GenUiState = GenUiState())
+    class Block(val ui: ArtifactUi.GenUi, val media: ArtifactMedia, val state: GenUiState)
 
     private val files = ArtifactClient(client)
 
@@ -118,7 +118,7 @@ class GenUiInline(
             val manifest = files.version(artifactId, version)
             val render = manifest.genUiRender
             val media = ArtifactMedia(files, artifactId, version, library) { BrowserFetcher(client, { client.browserNetwork(artifactId = artifactId) }) }
-            val block = Block(readGenUi(files, manifest, render, media, label), media)
+            val block = Block(readGenUi(files, manifest, render, media, label), media, GenUiState.of(client, artifactId, version))
             blocks[key] = block
             recent.put(key, block)
         } catch (e: CancellationException) {

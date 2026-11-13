@@ -222,7 +222,8 @@ fun ArtifactScreen(
                     }
                     is ArtifactUi.Openable -> ArtifactOpenable(ui.file, actions)
                     is ArtifactUi.GenUi -> if (media != null) {
-                        val state = remember(ui) { GenUiState() }
+                        // The chat's card of this version shares it: a secret saved here is marked there.
+                        val state = remember(ui) { GenUiState.of(actions.genUiSecrets?.computer, media.artifactId, ui.version) }
                         val secrets = rememberGenUiSecretForm(actions.genUiSecrets, media.artifactId, ui.version, state)
                         val host = rememberGenUiArtifactHost(ui, media, actions.onOpenWeb, onView = { items, index -> viewing = items to index }, secrets = secrets, onPlugin = actions.onOpenPlugin)
                         GenUiArtifactView(ui, host, state)

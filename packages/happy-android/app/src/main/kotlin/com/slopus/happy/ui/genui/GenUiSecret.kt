@@ -79,6 +79,9 @@ class GenUiSecretApi(private val client: AgentClient) {
      */
     val served: Boolean get() = capable == true && !answered404
 
+    /** The computer's client, which a version's shared [GenUiState] is kept by. */
+    internal val computer: Any get() = client
+
     /** Which host this computer is: a Happy Cloud server serves `cluster_secret`, a Happy Agent `secret`. */
     val host: GenUiHostKind get() = if (client.cloud) GenUiHostKind.Cluster else GenUiHostKind.HappyAgent
 

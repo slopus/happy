@@ -100,6 +100,21 @@ class GenUiInlineTest {
         assertEquals("nothing read again", reads, asked.size)
     }
 
+    /** A version's state is one wherever it shows: a secret saved on the artifact screen marks the chat's card too. */
+    @Test fun theChatsCardSharesItsVersionsStateWithTheArtifactScreen() {
+        val client = computer("a1")
+        val inline = GenUiInline(client, null, "a1", onMessage = {}, onOpenWeb = {})
+        rule.setHappyContent { GenUiInlineBlock("g1", 2, inline, label = { it }) }
+        rule.waitUntil(5_000) { inline.block("g1", 2) != null }
+        val screen = GenUiState.of(GenUiSecretApi(client).computer, "g1", 2)
+        assertTrue(inline.block("g1", 2)!!.state === screen)
+        screen.save("add-key", "s1")
+        assertEquals("s1", inline.block("g1", 2)!!.state.saved("add-key"))
+        assertTrue("another version, another state", GenUiState.of(client, "g1", 3) !== screen)
+        assertTrue("another computer, another state", GenUiState.of(computer("a1"), "g1", 2) !== screen)
+        assertTrue("no computer, a state of its own", GenUiState.of(null, "g1", 2) !== GenUiState.of(null, "g1", 2))
+    }
+
     /** A Happy Cloud server leaves `.genui/render.json` out of the manifest and serves it all the same. */
     @Test fun aRenderDocumentTheManifestDoesntListIsReadByItsPath() {
         val inline = GenUiInline(computer("a1", listed = false), null, "a1", onMessage = {}, onOpenWeb = {})

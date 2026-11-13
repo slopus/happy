@@ -242,6 +242,26 @@ class GenUiState {
     fun save(key: String, id: String) {
         saved[key] = id
     }
+
+    companion object {
+        /** Each version's state, by computer (for as long as its client lives) and then by version, the latest 64. */
+        private val shared = java.util.WeakHashMap<Any, android.util.LruCache<String, GenUiState>>()
+
+        /**
+         * [artifactId]'s [version] on [computer] (its client): the same state
+         * in the chat's card and on the artifact screen, so a secret saved or
+         * a choice made in one shows in the other. A version never changes,
+         * so its state is kept for the process.
+         */
+        fun of(computer: Any?, artifactId: String, version: Int): GenUiState {
+            computer ?: return GenUiState()
+            val key = "$artifactId/$version"
+            return synchronized(shared) {
+                val versions = shared.getOrPut(computer) { android.util.LruCache(64) }
+                versions.get(key) ?: GenUiState().also { versions.put(key, it) }
+            }
+        }
+    }
 }
 
 object GenUiTags {
