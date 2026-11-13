@@ -2022,8 +2022,14 @@ subcomposition, so intrinsics work), a `scroll` measures every card and only
 moves them when scrolled, a chosen button never gains a glyph. Choices live
 in a `GenUiState` the host keeps per version. `GenUiMeasuringTest` runs the
 spec's `measuring.json`; `GenUiLazyListTest` checks first-frame height and
-that scrolling 100 blocks measures each once. Debug builds have "Gen UI
-fixtures", `GenUiGymActivity` (shots, `tools/genui/shoot.sh`) and
+that scrolling 100 blocks measures each once. `GenUiPlannedLayoutTest`
+holds every fixture's height at six widths and two text sizes against
+`test/resources/genui/planned.txt` (delete it to record a deliberate
+change). As iOS: a row with `fixed` text is a `KeyRow` (Row's own measure,
+then it stacks its children at the start, 2 apart, when the fixed text
+would leave a sibling under its widest piece), and an identifier breaks
+after its `_`s only in a column narrower than it (`IdentifierText`).
+Debug builds have "Gen UI fixtures", `GenUiGymActivity` (shots, `tools/genui/shoot.sh`) and
 `GenUiArtifactGymActivity` (a fixture through the real artifact screen).
 
 Actions (SPEC.md rule 7): `genui/GenUiActions.enabled` is the pure rule per

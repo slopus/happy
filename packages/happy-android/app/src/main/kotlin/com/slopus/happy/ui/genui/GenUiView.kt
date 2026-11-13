@@ -443,6 +443,10 @@ private fun BoxBody(box: Element.Box, modifier: Modifier, scope: GenUiScope) {
 /** Children on one line, as [box] says to justify and align them. */
 @Composable
 private fun LineRow(box: Element.Box, children: List<String>, gap: Dp, elements: Map<String, Element>, modifier: Modifier) {
+    if (keyRow(children, elements)) {
+        KeyRow(box, children, gap, elements, modifier)
+        return
+    }
     val rail = children.any { elements[it] is Element.Marker }
     Row(
         modifier.then(if (rail) Modifier.height(IntrinsicSize.Min) else Modifier),
@@ -561,12 +565,23 @@ private fun TextView(key: String, e: Element.Text, modifier: Modifier) {
     val scope = LocalGenUi.current
     val role = roleStyle(e.role, LocalSurface.current)
     val color = e.tone?.let { LocalGenUiColors.current.text(it) } ?: if (role.secondary) colors.textSecondary else colors.text
-    val text = rememberSpans(e.spans) { url -> scope?.host?.onAction(key, Action.Open(url)) }
+    val onLink: (String) -> Unit = { url -> scope?.host?.onAction(key, Action.Open(url)) }
+    val text = rememberSpans(e.spans, onLink)
+    // An identifier (STRIPE_SECRET_KEY) may break after its `_`s, drawn so only where its column is too narrow for it.
+    val words = remember(e.spans) { identifiers(e.spans) }
+    val pieces = remember(e.spans) { if (words.isEmpty()) emptyList() else pieces(e.spans) }
+    val breakable = if (words.isEmpty()) null else rememberSpans(remember(e.spans) { e.spans.map { it.copy(text = breakable(it.text)) } }, onLink)
     val end = LocalCellEnd.current ?: (e.align == TextAlign.End)
+    if (breakable == null) TextLeaf(text, modifier, e, role.style, color, end)
+    else IdentifierText(text, breakable, words, pieces, role.style, modifier) { shown -> TextLeaf(shown, Modifier, e, role.style, color, end) }
+}
+
+@Composable
+private fun TextLeaf(text: AnnotatedString, modifier: Modifier, e: Element.Text, style: TextStyle, color: Color, end: Boolean) {
     Text(
         text,
         modifier,
-        style = role.style,
+        style = style,
         color = color,
         textAlign = if (end) androidx.compose.ui.text.style.TextAlign.End else androidx.compose.ui.text.style.TextAlign.Start,
         maxLines = when (e.overflow) {
