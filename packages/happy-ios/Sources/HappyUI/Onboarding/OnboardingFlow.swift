@@ -132,14 +132,14 @@ final class OnboardingFlow {
 
     private func screen(for step: OnboardingPlan.Step, onboarding: Onboarding) -> UIViewController {
         switch step {
-        case .gate(let gate): screen(for: gate)
+        case .gate(let gate): screen(for: gate, onboarding: onboarding)
         case .update: notice(Self.update) { _ in UIApplication.shared.open(Self.appStore(onboarding)) }
         case .waiting(let gates): notice(Self.waiting(gates)) { [weak self] notice in await self?.checkAgain(notice) }
         case .finish: finishScreen(onboarding)
         }
     }
 
-    private func screen(for gate: OnboardingGate) -> UIViewController {
+    private func screen(for gate: OnboardingGate, onboarding: Onboarding) -> UIViewController {
         switch gate.kind {
         case .profile:
             return profileScreen()
@@ -157,6 +157,10 @@ final class OnboardingFlow {
             let screen = OnboardingPluginsViewController(context: context, session: session, plugins: plugins, optional: gate.requirement == .optional)
             skips(gate, on: screen)
             return screen
+        case .mobileApp:
+            let screen = OnboardingNotificationsViewController(context: context, session: session, appStore: Self.appStore(onboarding), optional: gate.requirement == .optional)
+            skips(gate, on: screen)
+            return screen
         case .teammates:
             let screen = OnboardingTeammatesViewController(context: context, session: session, handle: HappyCloud.handle(server: session.server) ?? session.computerName,
                                                            optional: gate.requirement == .optional, web: web)
@@ -164,8 +168,7 @@ final class OnboardingFlow {
             skips(gate, on: screen)
             return screen
         default:
-            // Done on desktop or the web for now; a gate's own screen
-            // takes this one's place as it comes.
+            // A payment method and paying, done on desktop or the web.
             let step = Strings.CloudOnboarding.step(gate)
             let notice = notice(.init(scene: .tv, title: Strings.CloudOnboarding.elsewhereTitle, body: Strings.CloudOnboarding.elsewhereBody(step),
                                       primary: Strings.CloudOnboarding.openWeb, secondary: gate.requirement == .optional ? Strings.CloudOnboarding.skip : nil)) { [weak self] _ in

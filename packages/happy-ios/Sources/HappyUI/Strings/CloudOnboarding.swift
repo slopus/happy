@@ -57,6 +57,14 @@ extension Strings {
         static let invitesOnWeb = "This server takes invites in Happy on your computer or on the web."
         static let inviteFailed = "Couldn’t send the invite. Try again."
 
+        static let notificationsTitle = "Turn on notifications"
+        static let notificationsBody = "Know when an agent finishes, needs an answer, or a teammate mentions you, wherever you are."
+        static let turnOnNotifications = "Turn On Notifications"
+        static let notificationsOff = "Notifications are off for Happy. Turn them on in Settings, then come back."
+        static let openSettings = "Open Settings"
+        static let notificationsUnsupported = "This build of Happy can’t get this server’s notifications. Get Happy from the App Store."
+        static let notificationsFailed = "Couldn’t turn on notifications. Try again."
+
         static let updateTitle = "Update Happy to continue"
         static let updateBody = "This server asks for a step this version of Happy doesn’t know yet."
         static let updateAction = "Open the App Store"

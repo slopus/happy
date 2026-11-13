@@ -9,6 +9,25 @@ private struct ClusterOffline: HTTPTransport {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse { throw URLError(.notConnectedToInternet) }
 }
 
+/// Happy's push relay, answering every registration with one token.
+private struct ClusterRelay: HTTPTransport {
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        HTTPResponse(status: 200, body: Data(#"{"token":"HappyPushToken[3MTQ1KZhQAh5CdD4rY7xRX]"}"#.utf8))
+    }
+}
+
+/// The notification permission as `-push granted|denied` has it; asked
+/// while undetermined (the default), it is granted.
+private actor ClusterPermission {
+    var system: PushPermission.SystemStatus
+    init(_ system: PushPermission.SystemStatus) { self.system = system }
+    func current() -> PushPermission { PushPermission(system: system) }
+    func request() -> PushPermission {
+        if system == .notDetermined { system = .authorized }
+        return current()
+    }
+}
+
 private struct ClusterNoSocket: WebSocketConnector {
     func connect(to url: URL) async throws -> WebSocketConnection { throw URLError(.notConnectedToInternet) }
 }
@@ -250,6 +269,10 @@ actor ClusterServer: AgentTransport {
             mark("teammates")
             let delivery = email.map { #","deliveryStatus":"\#($0.hasPrefix("fail") ? "failed" : "sent")""# } ?? ""
             return ok(#"{"invite":{"id":"inv\#(next)","link":"https://acme.happy.engineering/join#inv\#(next)","expiresAt":"2026-11-20T00:00:00Z","role":"member"\#(delivery)}}"#, status: 201)
+        case ("PUT", let path) where path.hasPrefix("/v0/cloud/push/registrations/"):
+            guard sent?["token"]?.stringValue?.hasPrefix("HappyPushToken[") == true, sent?["platform"]?.stringValue == "ios" else { return refuse(400, "invalid", "Invalid push registration.") }
+            mark("mobileApp")
+            return ok(#"{"registration":{"id":"\#(path.dropFirst("/v0/cloud/push/registrations/".count))","version":"7c1d8a5e-2f43-4c1b-9d0e-1f2a3b4c5d6e","expiresAt":1900000000000}}"#)
         case ("GET", "/v0/plugins"): return ok(Self.catalog)
         case ("GET", "/v0/plugins/installations"):
             // Every member reads them; as deployed before, only managers.
@@ -329,7 +352,8 @@ actor ClusterServer: AgentTransport {
 /// a server that doesn't serve plugins (`-noplugins`); an existing tenant
 /// whose Policy vault is still flagged (`-policyvault`), or as deployed
 /// before the documents moved to settings (`-production`);
-/// `-open instructions|security|settings`.
+/// `-open instructions|security|settings`; notifications `-push granted|denied`
+/// (asked while unset), from a build the relay refuses (`-otherbuild`).
 @MainActor
 final class ClusterHarness {
     private var account: AccountController?
@@ -350,6 +374,13 @@ final class ClusterHarness {
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: ClusterOffline(), connector: ClusterNoSocket()
         )
         self.account = account
+        let permission = ClusterPermission(["granted": .authorized, "denied": .denied][value("-push", in: arguments) ?? ""] ?? .notDetermined)
+        SettingsHooks.cloudPush = CloudPush(source: .init(
+            device: CloudPushDevice(appId: arguments.contains("-otherbuild") ? "com.slopus.happy.chat-harness" : "com.slopus.happy.dev", development: true),
+            ids: CloudPushIDs(store: InMemoryKeyValueStore()), transport: ClusterRelay(),
+            permission: { await permission.current() }, requestPermission: { await permission.request() },
+            apnsToken: { Data([0xab, 0xcd, 0xef]) }
+        ))
         do {
             let origin = HappyCloud.server(named: "acme")
             let connection = try await account.agentConnections.addServer(AgentOrigin(origin),

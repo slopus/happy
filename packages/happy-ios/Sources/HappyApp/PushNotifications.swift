@@ -57,7 +57,24 @@ final class PushNotifications: NSObject {
     /// the launching tap only to a delegate set before launch finishes.
     func install() {
         UNUserNotificationCenter.current().delegate = self
+        SettingsHooks.cloudPush = cloudPush
     }
+
+    /// Happy Cloud servers' push (`CloudPush`): the relay's token for this
+    /// install's APNs token, registered on each server.
+    private lazy var cloudPush: CloudPush = {
+        let profile = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision").flatMap { try? Data(contentsOf: $0) }
+        let apns = self.apns
+        return CloudPush(source: .init(
+            device: CloudPushDevice(appId: Bundle.main.bundleIdentifier ?? "", development: ProvisioningProfile.usesDevelopmentAPNs(profile),
+                                    locale: Locale.preferredLanguages.first),
+            ids: CloudPushIDs(store: UserDefaultsStore(suiteName: "happy-ios.cloud-push")),
+            transport: URLSessionTransport(),
+            permission: { await Self.permission() },
+            requestPermission: { await Self.requestPermission() },
+            apnsToken: { try await apns.token() }
+        ))
+    }()
 
     /// From the scene, once its coordinator has started.
     func attach(context: AppContext, coordinator: AppCoordinator) {

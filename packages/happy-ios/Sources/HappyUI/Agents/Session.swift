@@ -283,6 +283,21 @@ final class Session {
         // Back in the foreground, too: a sign-in on another phone moves
         // onboarding (`mobileApp`) without an event.
         read([.onboarding, .permissions, .vaults])
+        renewPush()
+    }
+
+    /// This phone's push registration on the server, renewed quietly
+    /// where notifications are allowed (`CloudPush`); a new one completes
+    /// onboarding's `mobileApp` gate, which is read again for it.
+    private func renewPush() {
+        guard let push = SettingsHooks.cloudPush else { return }
+        let client = client
+        let connection = accountID
+        Task { [weak self] in
+            guard (try? await push.register(connection: connection, client: client, ask: false)) == .registered,
+                  let self, onboarding?.gate("mobileApp")?.isPending == true else { return }
+            read([.onboarding])
+        }
     }
 
     private func read(_ parts: Set<CloudPart>) {

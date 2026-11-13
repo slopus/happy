@@ -11,5 +11,9 @@ public enum SettingsHooks {
     /// push rows. HappyApp's `PushNotifications` replaces it on every
     /// account change; nil while signed out.
     public static var pushRegistration: (any PushRegistration)?
+    /// Registers this phone for push on Happy Cloud servers: onboarding's
+    /// Turn On Notifications, and each server's quiet renewal. HappyApp's
+    /// `PushNotifications` sets it at launch; nil in a build without push.
+    public static var cloudPush: CloudPush?
 }
 #endif
