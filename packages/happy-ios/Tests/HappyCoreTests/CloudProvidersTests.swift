@@ -190,6 +190,8 @@ final class CloudProvidersTests: XCTestCase {
 actor ProvidersServer: AgentTransport {
     private var answers: [String: [(Int, String)]] = [:]
     private(set) var rawBodies: [JSONValue] = []
+    /// Every request, `METHOD /path`, in order.
+    private(set) var routes: [String] = []
     var bodies: [[String: String]] {
         rawBodies.map { ($0.objectValue ?? [:]).compactMapValues(\.stringValue) }
     }
@@ -201,6 +203,7 @@ actor ProvidersServer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
         if let body { rawBodies.append(try JSONValue.decode(body)) }
         let route = "\(method) \(path)"
+        routes.append(route)
         guard var queue = answers[route], let first = queue.first else { return .init(status: 404, body: Data(#"{"error":"Not found.","code":"not_found"}"#.utf8)) }
         if queue.count > 1 { queue.removeFirst(); answers[route] = queue }
         return .init(status: first.0, body: Data(first.1.utf8))

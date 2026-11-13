@@ -228,7 +228,38 @@ final class OnboardingTests: XCTestCase {
         guard case .adminBot(let bot)? = v6.gate("adminBot")?.kind else { return XCTFail("adminBot unread") }
         XCTAssertEqual(bot.points, ["Changes settings", "Connects tools"])
         XCTAssertEqual(bot.note, "Only owners talk to it.")
+        XCTAssertNil(bot.canTalk, "before v7 the app's own reading decides")
+        let v7 = try Self.read(#"{"finished":false,"blocking":[],"gates":[{"id":"adminBot","scope":"server","requirement":"optional","status":"open","blocking":false,"canComplete":true,"data":{"botId":"b1","name":"Chief","canTalk":false}}]}"#)
+        guard case .adminBot(let reader)? = v7.gate("adminBot")?.kind else { return XCTFail("adminBot unread") }
+        XCTAssertEqual(reader.canTalk, false)
         XCTAssertTrue(try Self.read(#"{"completed":true,"blocking":[],"gates":[]}"#).finished, "before v6, completed meant finished")
+    }
+
+    func testTheFinishReadsOnboardingAgainBeforeOpeningTheAdminBot() async throws {
+        let server = ProvidersServer()
+        await server.answer("POST /v0/onboarding/complete", 200, #"{"completed":true}"#)
+        func bot(_ canTalk: String) -> String {
+            #"{"finished":true,"blocking":[],"gates":[{"id":"adminBot","scope":"server","requirement":"optional","status":"done","blocking":false,"canComplete":true,"data":{"botId":"b1","name":"Chief"\#(canTalk)}}]}"#
+        }
+        let client = AgentClient(transport: server, token: "t")
+        await server.answer("GET /v0/onboarding", 200, bot(#","canTalk":false"#))
+        let read = try await client.finishOnboarding(legacy: false)
+        let routes = await server.routes
+        XCTAssertEqual(routes, ["POST /v0/onboarding/complete", "GET /v0/onboarding"], "complete first, then the read the decision comes from")
+        XCTAssertFalse(OnboardingFinish.opensAdminBot(read, fallback: true), "canTalk false goes home, whatever the role looked like")
+        await server.answer("GET /v0/onboarding", 200, bot(#","canTalk":true"#))
+        let talks = try await client.finishOnboarding(legacy: false)
+        XCTAssertTrue(OnboardingFinish.opensAdminBot(talks, fallback: false))
+        await server.answer("GET /v0/onboarding", 200, bot(""))
+        let silent = try await client.finishOnboarding(legacy: false)
+        XCTAssertTrue(OnboardingFinish.opensAdminBot(silent, fallback: true), "before v7, the role decides")
+        XCTAssertFalse(OnboardingFinish.opensAdminBot(nil, fallback: false), "a failed read leaves it to the role")
+
+        let legacy = ProvidersServer()
+        await legacy.answer("GET /v0/onboarding", 200, #"{"completed":true,"steps":{}}"#)
+        _ = try await AgentClient(transport: legacy, token: "t").finishOnboarding(legacy: true)
+        let legacyRoutes = await legacy.routes
+        XCTAssertEqual(legacyRoutes, ["GET /v0/onboarding"], "a server without gates is never completed")
     }
 
     func testThePluginsStepListsWhatIsNeededFirstThenEverythingOffered() async throws {

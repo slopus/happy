@@ -272,8 +272,9 @@ final class OnboardingFlow {
     /// conversation for those who may talk to it, else home.
     private func finishScreen(_ onboarding: Onboarding) -> UIViewController {
         let row = session.snapshot.allRows.first(where: \.isHappy) ?? session.home.allRows.first(where: \.isHappy)
-        let name: String? = if case .adminBot(let bot)? = onboarding.gate("adminBot")?.kind { bot.name } else { row?.label }
-        let meets = session.gate.allowsSending(toChiefOfStaff: true)
+        let bot: OnboardingGate.AdminBot? = if case .adminBot(let bot)? = onboarding.gate("adminBot")?.kind { bot } else { nil }
+        let name = bot?.name ?? row?.label
+        let meets = bot?.canTalk ?? session.gate.allowsSending(toChiefOfStaff: true)
         let handle = HappyCloud.handle(server: session.server) ?? session.computerName
         let action = meets ? Strings.CloudOnboarding.meet(name ?? Strings.Start.logo) : Strings.CloudOnboarding.getStarted
         return notice(.init(scene: .sparkles, title: Strings.CloudOnboarding.doneTitle, body: Strings.CloudOnboarding.doneBody(handle), primary: action)) { [weak self] notice in
@@ -283,12 +284,14 @@ final class OnboardingFlow {
 
     private func finish(on notice: OnboardingNoticeViewController, meets: Bool, legacy: Bool) async {
         notice.say(nil)
-        if !legacy {
-            do { try await session.client.completeOnboarding() }
-            catch is OnboardingIncomplete { _ = try? await session.readOnboarding(); return }
-            catch { notice.say(Strings.CloudOnboarding.couldntFinish); return }
-        }
+        // Held over what the read after the finish says (`OnboardingFinish`).
         finishing = true
+        let read: Onboarding?
+        do { read = try await session.client.finishOnboarding(legacy: legacy) }
+        catch is OnboardingIncomplete { finishing = false; _ = try? await session.readOnboarding(); return }
+        catch { finishing = false; notice.say(Strings.CloudOnboarding.couldntFinish); return }
+        if let read { session.took(read) }
+        let meets = OnboardingFinish.opensAdminBot(read, fallback: meets)
         let session = session
         close { [weak self] in
             self?.finishing = false

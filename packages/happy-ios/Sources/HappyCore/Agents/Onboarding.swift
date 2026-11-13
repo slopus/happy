@@ -109,6 +109,10 @@ public struct OnboardingGate: Decodable, Equatable, Sendable {
         /// Short lines on what it can do, and a closing note.
         public var points: [String]?
         public var note: String?
+        /// Whether the person may talk to it, so the finish opens it (true)
+        /// or home (false); nil from a server before v7, where the app's
+        /// own reading of the person's role decides.
+        public var canTalk: Bool?
 
         public struct Avatar: Decodable, Equatable, Sendable {
             public var digest: String
@@ -269,5 +273,25 @@ extension AgentClient {
             throw OnboardingIncomplete(blocking: body["blocking"]?.arrayValue?.compactMap(\.stringValue) ?? [])
         }
         _ = try Self.checked(response)
+    }
+
+    /// The finish: completes onboarding (not on a server without gates),
+    /// then reads it again, as the server settles whether the person may
+    /// talk to the admin bot only once their profile and the finish are in
+    /// (contract v8). Nil when that read fails.
+    public func finishOnboarding(legacy: Bool) async throws -> Onboarding? {
+        if !legacy { try await completeOnboarding() }
+        return try? await onboarding()
+    }
+}
+
+/// Where the finish goes: the admin bot's conversation where the server
+/// says the person may talk to it (`canTalk`, read after the finish), home
+/// where it says not; a server from before v7 says nothing, and `fallback`
+/// (the app's reading of the person's role) decides.
+public enum OnboardingFinish {
+    public static func opensAdminBot(_ read: Onboarding?, fallback: Bool) -> Bool {
+        guard case .adminBot(let bot)? = read?.gate("adminBot")?.kind, let canTalk = bot.canTalk else { return fallback }
+        return canTalk
     }
 }
