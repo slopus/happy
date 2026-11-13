@@ -73,7 +73,7 @@ public final class AgentClient: Sendable {
         return try Self.checked(response)
     }
 
-    private static func checked(_ response: HTTP1Response) throws -> HTTP1Response {
+    static func checked(_ response: HTTP1Response) throws -> HTTP1Response {
         guard (200..<300).contains(response.status) || response.status == 304 || response.status == 206 else {
             // Flat (`{error, code}`) or nested (`{error: {code, message}}`).
             let failure = try? JSONValue.decode(response.body)
