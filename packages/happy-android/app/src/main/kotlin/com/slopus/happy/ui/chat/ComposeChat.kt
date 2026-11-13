@@ -394,7 +394,8 @@ fun ComposeChat.Dialogs() {
  *   refusal said inside the field) and what a bot is; a task asks nothing
  *   more, and keeps that room empty, so Bot | Task moves nothing.
  *
- * Fixed while the start runs; it fades once the session has started.
+ * Fixed while the start runs; it fades once the session has started. Its
+ * menus leave the keyboard up for the composer.
  */
 @Composable
 fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
@@ -436,7 +437,7 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
             status = machineStatus,
             modifier = Modifier.testTag(NewWorkTags.MACHINE).semantics { contentDescription = listOfNotNull(machineTitle, machineStatus?.text).joinToString(", ") },
         ) {
-            HappyDropdownMenu(expanded = open == NewSessionPage.Machine, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.MACHINE_MENU)) {
+            HappyDropdownMenu(expanded = open == NewSessionPage.Machine, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.MACHINE_MENU), keepsKeyboard = true) {
                 MachineMenu(compose, current, kind, awaits) { open = null }
             }
         }
@@ -453,7 +454,7 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
                         modifier = Modifier.testTag(NewWorkTags.FOLDER).semantics { contentDescription = folder },
                     ) {
                         if (current != null) {
-                            HappyDropdownMenu(expanded = open == NewSessionPage.Project, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.FOLDER_MENU)) {
+                            HappyDropdownMenu(expanded = open == NewSessionPage.Project, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.FOLDER_MENU), keepsKeyboard = true) {
                                 FolderMenu(compose, current) { open = null }
                             }
                         }
@@ -666,7 +667,7 @@ private fun HarnessRow(
         modifier = Modifier.testTag(NewWorkTags.HARNESS).semantics { contentDescription = description },
     ) {
         if (options != null && !help) {
-            HappyDropdownMenu(expanded = expanded, onDismissRequest = onClose, modifier = Modifier.testTag(ComposeChatTags.HARNESS_MENU)) {
+            HappyDropdownMenu(expanded = expanded, onDismissRequest = onClose, modifier = Modifier.testTag(ComposeChatTags.HARNESS_MENU), keepsKeyboard = true) {
                 HappyMenuSection(pageTitle(NewSessionPage.Agent, options.picksWorkspaces))
                 for (option in options.agents) {
                     MenuOption(NewSessionPage.Agent, option, option.key == options.agent.key) { page, key ->

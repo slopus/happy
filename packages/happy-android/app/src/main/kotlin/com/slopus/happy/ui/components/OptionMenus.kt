@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.components
 
+import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import com.slopus.happy.ui.theme.HappyColors
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -67,7 +69,10 @@ object MenuSpec {
 
 /**
  * A drop-down from its anchor in [MenuSpec]'s look. Material's own motion:
- * it scales and fades out of the anchor's corner and back into it.
+ * it scales and fades out of the anchor's corner and back into it. With
+ * [keepsKeyboard] the field being typed in keeps the keyboard while it is
+ * open, as the composer's popups do (an ALT_FOCUSABLE_IM window): it still
+ * takes Back and taps outside, but never becomes the keyboard's target.
  */
 @Composable
 fun HappyDropdownMenu(
@@ -75,6 +80,7 @@ fun HappyDropdownMenu(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     offset: DpOffset = MenuSpec.offset,
+    keepsKeyboard: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = HappyTheme.colors
@@ -85,6 +91,8 @@ fun HappyDropdownMenu(
         onDismissRequest = onDismissRequest,
         modifier = modifier.widthIn(min = MenuSpec.minWidth, max = MenuSpec.maxWidth),
         offset = offset,
+        // Material's own properties otherwise.
+        properties = if (keepsKeyboard) KeepsKeyboardMenu else PopupProperties(focusable = true),
         shape = MenuSpec.shape,
         containerColor = MenuSpec.container(colors),
         tonalElevation = 0.dp,
@@ -93,6 +101,12 @@ fun HappyDropdownMenu(
         content = content,
     )
 }
+
+private val KeepsKeyboardMenu = PopupProperties(
+    flags = WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+    inheritSecurePolicy = true,
+    excludeFromSystemGesture = false,
+)
 
 /**
  * One row of a [HappyDropdownMenu]: [label] with an optional [supporting]

@@ -3,6 +3,7 @@ package com.slopus.happy.ui.conversation
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.content.res.Configuration
 import android.os.Build
 import android.view.View
 import android.view.WindowInsets
@@ -68,6 +69,16 @@ class KeyboardLift internal constructor(private val motion: KeyboardMotion) {
     val lift: Int get() = motion.lift
 
     /**
+     * The tallest the keyboard has come to rest at in this orientation since
+     * the app started, in pixels over the navigation bar: what [reservingKeyboard]
+     * keeps clear whether the keyboard is up or not. Read where it lays out.
+     */
+    val reserve: Int get() = motion.reserve
+
+    /** The keyboard's height over the navigation bar this frame, in pixels. Read only where things draw. */
+    val now: Int get() = motion.now
+
+    /**
      * What is placed [aboveKeyboard] travels with it: up by the keyboard's
      * height over the navigation bar this frame, between where its animation
      * started and where it ends. The glass over the transcript blurs the band
@@ -95,8 +106,10 @@ internal class KeyboardMotion private constructor(private val host: View?) : Gla
     private var nowState by mutableIntStateOf(0)
     private var fromState by mutableIntStateOf(0)
     private var toState by mutableIntStateOf(0)
+    private var reserveState by mutableIntStateOf(0)
 
     val rest: Int get() = restState
+    val reserve: Int get() = reserveState
     override val now: Int get() = nowState
     override val from: Int get() = fromState
     override val to: Int get() = toState
@@ -126,6 +139,8 @@ internal class KeyboardMotion private constructor(private val host: View?) : Gla
         applied = current(host)
         settle(applied)
         host.setOnApplyWindowInsetsListener { view, insets ->
+            // A turn of the phone comes with new insets: the other orientation's keyboard is reserved.
+            reserveState = tallest[orientation()]
             applied(above(WindowInsetsCompat.toWindowInsetsCompat(insets, view)))
             view.onApplyWindowInsets(insets)
         }
@@ -202,12 +217,17 @@ internal class KeyboardMotion private constructor(private val host: View?) : Gla
     private fun settle(height: Int, send: Boolean = true) {
         fallback = null
         animating = false
+        val orientation = orientation()
+        tallest[orientation] = maxOf(tallest[orientation], height)
+        reserveState = tallest[orientation]
         restState = height
         nowState = height
         fromState = height
         toState = height
         if (send) send()
     }
+
+    private fun orientation(): Int = if (host?.resources?.configuration?.orientation == Configuration.ORIENTATION_LANDSCAPE) 1 else 0
 
     /** Observers learn of the writes now, so this frame's layout and draw see them, as Compose's own insets do. */
     private fun send() = Snapshot.sendApplyNotifications()
@@ -229,6 +249,9 @@ internal class KeyboardMotion private constructor(private val host: View?) : Gla
     }
 
     companion object {
+        /** The tallest resting keyboard seen, upright and on its side, for the whole process: a new window starts with it. */
+        private val tallest = IntArray(2)
+
         /**
          * The motion of [view]'s window, kept on its parent (the Compose view's own insets callbacks
          * are Compose's) as a tag, so it goes with the window.
@@ -300,6 +323,31 @@ fun Modifier.riding(keyboard: KeyboardLift, share: Float = 1f): Modifier =
  */
 fun Modifier.aboveKeyboard(keyboard: KeyboardLift): Modifier =
     offset { IntOffset(0, -keyboard.rest) }.riding(keyboard)
+
+/**
+ * Where the keyboard at its tallest ([KeyboardLift.reserve]) would leave
+ * this, up or not: in a column laid out above the keyboard
+ * ([keyboardPadding]) and drawn with it ([riding]), the room this fills
+ * ends that far over the keyboard's foot at every frame, so what is centred
+ * in it never moves as the keyboard comes and goes. Only a keyboard taller
+ * than any before moves it, on by half what it adds, frame by frame, as
+ * [riding] at half moves what is centred; it then holds there.
+ */
+fun Modifier.reservingKeyboard(keyboard: KeyboardLift): Modifier =
+    layout { measurable, constraints ->
+        // The column ends [rest] over the keyboard's foot; the room ends at the reserve.
+        val room = (keyboard.reserve - keyboard.rest).coerceAtLeast(0)
+        val placeable = measurable.measure(constraints.offset(vertical = -room))
+        layout(placeable.width, constraints.constrainHeight(placeable.height + room)) { placeable.place(0, 0) }
+    }
+        .graphicsLayer()
+        .drawWithContent {
+            // The column is drawn [lift] higher; undone, less half of what the keyboard goes past the reserve.
+            val reserve = keyboard.reserve
+            val past = (maxOf(reserve, keyboard.now) - maxOf(reserve, keyboard.rest)) / 2
+            translate(0f, (keyboard.lift - past).toFloat()) { this@drawWithContent.drawContent() }
+        }
+        .graphicsLayer()
 
 /**
  * [bottom] and the keyboard's [KeyboardLift.rest] of room kept under this,

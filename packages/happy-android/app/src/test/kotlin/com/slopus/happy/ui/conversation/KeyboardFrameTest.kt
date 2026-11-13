@@ -5,7 +5,14 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsAnimation
 import android.view.animation.LinearInterpolator
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,7 +29,9 @@ import com.slopus.happy.conversation.Message
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.chat.ChatPendingSlot
 import com.slopus.happy.ui.chat.ChatScreen
+import com.slopus.happy.ui.chat.ChatScreenSlots
 import com.slopus.happy.ui.chat.ChatScreenActions
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.components.RecomposeProbe
@@ -176,5 +185,32 @@ class KeyboardFrameTest {
         rule.mainClock.autoAdvance = true
         rule.waitForIdle()
         assertEquals(resting, rule.node(ComposerTags.COMPOSER).bounds)
+    }
+
+    @Test fun `a chat being started holds its block where the keyboard leaves it, up or down`() {
+        val session = ChatSessionInfo.from(
+            SessionRecord("s", 0, 0, 1, true, 0, """{"path":"/home/me/app","host":"devbox","homeDir":"/home/me","os":"linux"}""", 1, null, 1, "", null),
+        )
+        val pending = ChatPendingSlot(session, headerShown = false) {
+            Box(Modifier.fillMaxSize()) { Box(Modifier.align(Alignment.Center).size(120.dp).testTag("block")) }
+        }
+        show { ChatScreen(ChatState(ChatSnapshot(loaded = true), null, sessionLoaded = true, online = true), draft = "", bubbleColor = "gray", actions = ChatScreenActions(), slots = ChatScreenSlots(pending = pending)) }
+        val down = rule.node(ComposerTags.COMPOSER).bounds
+        rule.mainClock.autoAdvance = false
+        for ((from, to) in listOf(0 to keyboardPx, keyboardPx to 0, 0 to keyboardPx)) {
+            animate(from, to) { frame -> assertFalse("frame $frame of $from → $to lays out nothing", pendingLayout()) }
+            rule.mainClock.advanceTimeByFrame()
+        }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        val up = rule.node("block").bounds
+        assertTrue("clear of the composer over the keyboard", up.bottom <= rule.node(ComposerTags.COMPOSER).bounds.top)
+        assertTrue("the composer is above the keyboard", rule.node(ComposerTags.COMPOSER).bounds.top < down.top)
+        rule.mainClock.autoAdvance = false
+        animate(keyboardPx, 0) { frame -> assertFalse("frame $frame of the hide lays out nothing", pendingLayout()) }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        assertEquals("the keyboard going leaves the block where it was", up, rule.node("block").bounds)
+        assertEquals(down, rule.node(ComposerTags.COMPOSER).bounds)
     }
 }

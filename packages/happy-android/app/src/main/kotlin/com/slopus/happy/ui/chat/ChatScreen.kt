@@ -59,6 +59,7 @@ import com.slopus.happy.ui.conversation.SendFlight
 import com.slopus.happy.ui.conversation.SendFlightOverlay
 import com.slopus.happy.ui.conversation.keyboardPadding
 import com.slopus.happy.ui.conversation.rememberKeyboardLift
+import com.slopus.happy.ui.conversation.reservingKeyboard
 import com.slopus.happy.ui.conversation.riding
 import com.slopus.happy.ui.components.Header
 import com.slopus.happy.ui.components.HeaderBackButton
@@ -362,7 +363,10 @@ fun ChatScreen(
                     ) {
                         // The list runs under the bar and the floating dock; anything else keeps to the room between them.
                         // The chat blurs behind a held message; the composer stays sharp ([liftClear]).
-                        Box(Modifier.fillMaxSize().liftBackdrop(lift, blur).padding(top = if (showsList) 0.dp else top - GlassSpec.feather, bottom = if (showsList) 0.dp else dockInset)) {
+                        // A chat being started holds still where the keyboard would leave it, up or not, so the
+                        // keyboard coming or going never moves what it asks.
+                        val holdsStill = session == null && pending != null
+                        Box(Modifier.fillMaxSize().then(if (holdsStill) Modifier.reservingKeyboard(keyboard) else Modifier).liftBackdrop(lift, blur).padding(top = if (showsList) 0.dp else top - GlassSpec.feather, bottom = if (showsList) 0.dp else dockInset)) {
                             when {
                                 session == null && pending != null -> pending.placeholder()
                                 !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
