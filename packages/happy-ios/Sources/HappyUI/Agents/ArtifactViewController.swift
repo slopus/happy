@@ -54,6 +54,8 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     /// planned at.
     private var genUI: (block: GenUIBlockView, document: GenUIRenderDocument, files: GenUIArtifactFiles, runs: GenUIRuns)?
     private var genUIPlanned: (width: CGFloat, text: TextEnvironment?)?
+    private var servedRead: Task<Void, Never>?
+    private var isFirstAppearance = true
     private var documentTap: UITapGestureRecognizer?
     private var browser: BrowserViewController?
     /// An app's version and file, and the button that opens it again.
@@ -136,11 +138,17 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         if app != nil, openButton == nil { presentApp() }
+        // Back from another screen: what the server runs may have changed.
+        if genUI != nil, !isFirstAppearance { readServed() }
+        isFirstAppearance = false
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true { loading?.cancel() }
+        if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true {
+            loading?.cancel()
+            servedRead?.cancel()
+        }
     }
 
     private func load() async {
@@ -412,6 +420,26 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         let host = GenUIHost(server: session.isCloud ? .cluster : .happyAgent, origin: version.origin != nil, served: session.snapshot.references.genUIServed)
         genUI = (block, document, GenUIArtifactFiles(media: media, files: version.files), GenUIRuns(host: host, sends: false, forms: vault == nil))
         view.setNeedsLayout()
+        readServed()
+    }
+
+    /// What the server runs, read again each time the Gen UI shows: an
+    /// update may have started or stopped serving its secret actions or
+    /// plugins since the store last heard. Its buttons follow the answer,
+    /// and so does every other screen of this server.
+    private func readServed() {
+        servedRead?.cancel()
+        servedRead = Task { [weak self, session] in
+            guard let health = try? await session.client.health(), !Task.isCancelled else { return }
+            await session.store.externalCapabilities(health.capabilities)
+            guard let self, var genUI = self.genUI else { return }
+            let host = GenUIHost(server: genUI.runs.host.server, origin: genUI.runs.host.origin, served: GenUIServed(health.capabilities))
+            guard host != genUI.runs.host else { return }
+            genUI.runs.host = host
+            self.genUI = genUI
+            self.genUIPlanned = nil
+            self.view.setNeedsLayout()
+        }
     }
 
     /// A document's viewer group, the pictures the version holds, at `index`.

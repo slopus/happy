@@ -68,6 +68,45 @@ final class GenUIActionsUITests: XCTestCase {
         XCTAssertTrue(add.isHittable, "still on the conversation")
     }
 
+    /// A store that never heard the server serves secret actions draws
+    /// them disabled; the artifact's page reads health as it shows and
+    /// enables them.
+    func testTheArtifactPageReadsWhatTheServerRunsAgain() {
+        app.terminate()
+        app.launchArguments += ["-genuiUntold"]
+        app.launch()
+        let card = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Open", "actions")).firstMatch
+        reach(card)
+        // Untold, the conversation's secret button takes no tap.
+        let add = button("Add Stripe keys")
+        reach(add)
+        add.tap()
+        sleep(1)
+        XCTAssertFalse(app.navigationBars["New Secret"].exists, "enabled before health was read")
+        reach(card)
+        card.tap()
+        XCTAssertTrue(app.otherElements["artifact"].waitForExistence(timeout: 10), "no artifact page")
+        let pageAdd = button("Add Stripe keys")
+        XCTAssertTrue(pageAdd.waitForExistence(timeout: 20), "the page never drew its Gen UI")
+        sleep(2)
+        shoot("page-served")
+        pageAdd.tap()
+        XCTAssertTrue(app.navigationBars["New Secret"].waitForExistence(timeout: 10), "the page never enabled its secret action")
+        app.buttons["genui-secret-cancel"].tap()
+    }
+
+    /// For the eye: a secret card at the largest text size, where its
+    /// variable names are wider than their column and break at `_`.
+    func testVariableNamesBreakAtUnderscoresWhenNarrow() {
+        app.terminate()
+        app.launchArguments = ["-screen", "genuiChat", "-genuiCount", "1", "-genuiExamples", "13-secret",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        let name = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "STRIPE_WEBHOOK_SECRET")).firstMatch
+        reach(name)
+        shoot("underscore-breaks")
+    }
+
     /// The secret form: prefilled, a value typed, saved, said so; tapped
     /// again it opens on the secret it made, to change it.
     func testASecretIsAddedThenChanged() {

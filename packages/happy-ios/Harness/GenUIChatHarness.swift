@@ -140,8 +140,8 @@ private struct GenUIChatComputer: AgentTransport {
         }
     }
 
-    private func file(_ path: String, _ mimeType: String) -> JSONValue {
-        let size = (try? FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent(path).path)[.size] as? Int) ?? 0
+    private func file(_ path: String, _ mimeType: String, size known: Int? = nil) -> JSONValue {
+        let size = known ?? (try? FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent(path).path)[.size] as? Int) ?? 0
         return .object(["path": .string(path), "mimeType": .string(mimeType), "size": .number(Double(size)), "sha256": .string("0")])
     }
 
@@ -216,7 +216,7 @@ private struct GenUIChatComputer: AgentTransport {
             return try Self.json(.object(["version": .object([
                 "artifactId": .string(id), "number": .number(1), "title": .string(name), "entry": file("index.genui.json", "application/json"),
                 "createdBy": .object(["kind": .string("agent"), "agentId": .string("harness"), "botId": .null]),
-                "files": .array([file(GenUIRenderDocument.path, "application/json")] + assets.map { file("assets/\($0)", "image/jpeg") }),
+                "files": .array([file(GenUIRenderDocument.path, "application/json", size: document(name)?.count)] + assets.map { file("assets/\($0)", "image/jpeg") }),
             ])]))
         }
         if parts.count > 6, parts[3] == "versions", parts[5] == "files" {
@@ -298,7 +298,9 @@ final class GenUIChatHarness {
             guard let session = Session.session(for: connection.id, context: context) else { return }
             // Its stream never opens, so no read of home tells the store what
             // health says (`SyncEngine.reconcile`): told here, the same way.
-            if let health = try? await session.client.health() { await session.store.externalCapabilities(health.capabilities) }
+            // `-genuiUntold` leaves it untold, as a store that read health
+            // before the server served what it does now.
+            if !arguments.contains("-genuiUntold"), let health = try? await session.client.health() { await session.store.externalCapabilities(health.capabilities) }
             let home = AgentHomeViewController(context: context, id: connection.id)
             let navigation = UINavigationController(rootViewController: home)
             AppCoordinator.applyAppearance(to: navigation.navigationBar)

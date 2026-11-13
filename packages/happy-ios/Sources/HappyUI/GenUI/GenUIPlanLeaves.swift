@@ -17,6 +17,12 @@ final class GenUITextElement: GenUIElement {
     private let base: [NSAttributedString.Key: Any]
     private let string: NSAttributedString
     private let links: [(range: NSRange, url: String)]
+    /// The text breakable after an identifier's `_`, and its links; nil
+    /// without such an identifier.
+    private let breakable: (NSAttributedString, [(range: NSRange, url: String)])?
+    /// The widest word with such a `_`, and the widest piece between them.
+    private let unbroken: CGFloat
+    private let widestPiece: CGFloat
     private let maxLines: Int
     private var layouts: [CGFloat: ChatTextLayout] = [:]
 
@@ -38,10 +44,9 @@ final class GenUITextElement: GenUIElement {
             // short. A truncating paragraph would never wrap in TextKit.
             color: UIColor(ink), font: font, alignment: place.columnEnd ?? (text.align == .end) ? .right : .natural, in: context.environment
         )
-        let result = NSMutableAttributedString()
-        var links: [(NSRange, String)] = []
         let size = context.environment.map { style.scaled($0.scale).size } ?? style.size
-        for span in text.spans {
+        let base = self.base
+        let spans = text.spans.map { span in
             var attributes = base
             if span.code {
                 attributes[.font] = Fonts.mono(bold: span.strong, size: size - 1.5)
@@ -51,15 +56,50 @@ final class GenUITextElement: GenUIElement {
                 let face: ChatFace = span.emphasis ? .figtreeOblique(weight) : .figtree(weight)
                 attributes[.font] = ChatTextStyle(face, size: style.size, lineHeight: style.lineHeight).font(in: context.environment)
             }
-            if let link = span.link {
-                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
-                links.append((NSRange(location: result.length, length: (span.text as NSString).length), link))
-            }
-            result.append(NSAttributedString(string: style.uppercase ? span.text.uppercased() : span.text, attributes: attributes))
+            if span.link != nil { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+            return (text: style.uppercase ? span.text.uppercased() : span.text, attributes: attributes, link: span.link)
         }
-        string = result
-        self.links = links
+        func join(_ shown: (String) -> String) -> (NSAttributedString, [(range: NSRange, url: String)]) {
+            let result = NSMutableAttributedString()
+            var links: [(range: NSRange, url: String)] = []
+            for span in spans {
+                let text = shown(span.text)
+                if let link = span.link { links.append((NSRange(location: result.length, length: (text as NSString).length), link)) }
+                result.append(NSAttributedString(string: text, attributes: span.attributes))
+            }
+            return (result, links)
+        }
+        let joined = join { $0 }
+        string = joined.0
+        links = joined.1
+        // A word an identifier's `_` may break, widest first: only a column
+        // narrower than it draws the breakable string.
+        let words = text.plain.split(whereSeparator: \.isWhitespace).map(String.init)
+        func width(_ word: Substring) -> CGFloat { ceil(NSAttributedString(string: String(word), attributes: base).size().width) }
+        unbroken = words.filter { Self.breakable($0) != $0 }.map { width(Substring($0)) }.max() ?? 0
+        breakable = unbroken > 0 ? join(Self.breakable) : nil
+        widestPiece = words.flatMap { Self.breakable($0).split(separator: Self.breakAfterUnderscore) }.map(width).max() ?? 0
         super.init(key: key)
+    }
+
+    /// A break the layout may take after an identifier's `_`
+    /// (`STRIPE_SECRET_KEY`) when its column is too narrow for it.
+    static let breakAfterUnderscore: Character = "\u{200B}"
+
+    /// `text` with a break allowed after each `_` between two letters or
+    /// digits. Only for drawing: what is read and copied stays as written.
+    static func breakable(_ text: String) -> String {
+        guard text.contains("_") else { return text }
+        let characters = Array(text)
+        var result = ""
+        for (index, character) in characters.enumerated() {
+            result.append(character)
+            guard character == "_", index > 0, index + 1 < characters.count,
+                  characters[index - 1].isLetter || characters[index - 1].isNumber,
+                  characters[index + 1].isLetter || characters[index + 1].isNumber else { continue }
+            result.append(breakAfterUnderscore)
+        }
+        return result
     }
 
     /// Font, colour and figures per role.
@@ -84,9 +124,15 @@ final class GenUITextElement: GenUIElement {
         }
     }
 
+    /// The string a column of `width` draws, and its links.
+    private func shown(_ width: CGFloat) -> (NSAttributedString, [(range: NSRange, url: String)]) {
+        if let breakable, width < unbroken { return breakable }
+        return (string, links)
+    }
+
     func layout(_ width: CGFloat) -> ChatTextLayout {
         if let layout = layouts[width] { return layout }
-        let layout = ChatTextLayout(string, width: width, maxLines: maxLines)
+        let layout = ChatTextLayout(shown(width).0, width: width, maxLines: maxLines)
         layouts[width] = layout
         return layout
     }
@@ -104,7 +150,7 @@ final class GenUITextElement: GenUIElement {
 
     private lazy var widestWord: CGFloat = {
         if text.overflow == .truncate { return min(48, measure(.greatestFiniteMagnitude).width) }
-        return text.plain.split(whereSeparator: \.isWhitespace).map { NSAttributedString(string: String($0), attributes: base).size().width }.max().map(ceil) ?? 0
+        return widestPiece
     }()
 
     override var minWidth: CGFloat { text.fixed ? measure(.greatestFiniteMagnitude).width : widestWord }
@@ -113,7 +159,7 @@ final class GenUITextElement: GenUIElement {
     override var fixed: Bool { text.fixed }
 
     override func place(_ frame: CGRect, below: CGFloat) -> GenUIPlaced {
-        GenUIPlaced(key: key, frame: frame, mark: .text(GenUITextMark(layout: layout(frame.width), links: links, plain: text.plain)))
+        GenUIPlaced(key: key, frame: frame, mark: .text(GenUITextMark(layout: layout(frame.width), links: shown(frame.width).1, plain: text.plain)))
     }
 }
 

@@ -91,6 +91,25 @@ final class GenUIPlanTests: XCTestCase {
         return GenUIPlanner(document: try XCTUnwrap(GenUIRenderDocument.parse(Data(json.utf8))), traits: Self.traits)
     }
 
+    /// An identifier wider than its column breaks after its `_`s rather
+    /// than inside a name; a column it fits draws it as written.
+    func testAnIdentifierBreaksAtItsUnderscoresOnlyWhenItsColumnIsTooNarrow() throws {
+        XCTAssertEqual(GenUITextElement.breakable("STRIPE_SECRET_KEY"), "STRIPE_\u{200B}SECRET_\u{200B}KEY")
+        XCTAssertEqual(GenUITextElement.breakable("_private a__b c_ 1_2"), "_private a__b c_ 1_\u{200B}2")
+        let planner = try inline("text", #"{"spans":[{"text":"Set "},{"text":"STRIPE_SECRET_KEY_FOR_THE_TESTS","code":true}],"role":"body"}"#)
+        func text(_ width: CGFloat) throws -> (GenUITextMark, CGRect) {
+            try XCTUnwrap(planner.plan(width: width).root.flattened().lazy.compactMap { placed, frame -> (GenUITextMark, CGRect)? in
+                if case .text(let text) = placed.mark { (text, frame) } else { nil }
+            }.first)
+        }
+        let (narrow, frame) = try text(120)
+        XCTAssertTrue(narrow.layout.string.string.contains("\u{200B}"))
+        XCTAssertLessThanOrEqual(narrow.layout.size.width, 120)
+        XCTAssertGreaterThanOrEqual(frame.height + 0.5, narrow.layout.size.height)
+        XCTAssertEqual(narrow.plain, "Set STRIPE_SECRET_KEY_FOR_THE_TESTS", "read as written")
+        XCTAssertFalse(try text(700).0.layout.string.string.contains("\u{200B}"))
+    }
+
     private func code(lines: Int) throws -> GenUIPlanner {
         let text = (1...lines).map { "let line\($0) = \($0) // a line long enough to run past a phone's column" }.joined(separator: "\\n")
         return try inline("code", #"{"text":"\#(text)\n","language":"swift"}"#)
