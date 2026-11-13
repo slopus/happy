@@ -1627,11 +1627,13 @@ gained lines is all additions too, and git calls it modified.
   files, Paste, and the files sent from here before, `RecentFiles`). A
   cell's picture opens the preview; its check picks, through the cell's
   48 dp top-right corner (Telegram's `checkFrame` is the 42 corner). The
-  caption bar's far end is the confirm pill (a check and the count): it
-  sends nothing. The picks are copied into the cache (`AttachmentStaging`:
-  photos normalized as below, the rest as they are, three at a time), put
-  in the composer with the draft, and the sheet goes and the composer takes
-  the keyboard (iOS does the same). The caption grows to five lines, then
+  caption bar's Send sends the picks with the caption at once (gallery
+  photos as their thumbnails, read after). The header's far end holds the
+  confirm pill (a check and the count): it sends nothing. The picks are
+  copied into the cache (`AttachmentStaging`: photos normalized as below,
+  the rest as they are, three at a time), put in the composer with the
+  draft, and the sheet goes and the composer takes the keyboard (iOS does
+  the same). The caption grows to five lines, then
   scrolls; the in-sheet camera's tile stops at the foot bar's top, so it
   never covers the caption over the keyboard. The camera keeps one zoom
   request in flight (`PhotoZoomRequests`, a pinch's latest queued) and

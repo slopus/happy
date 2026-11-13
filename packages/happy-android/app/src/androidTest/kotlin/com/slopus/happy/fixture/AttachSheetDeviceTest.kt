@@ -185,31 +185,55 @@ class AttachSheetDeviceTest {
         assertTrue("the caption stays within five lines: ${field.height / dp}", field.height / dp < 5 * 24 + 30)
         assertTrue("the bar stays at the foot: ${bar.top / dp}", bar.top > all(AttachTags.CELL)[0].fetchSemanticsNode().boundsInRoot.top)
         capture("05b-long-caption")
-        node(AttachTags.CONFIRM).performClick()
-        waitGone(AttachTags.SHEET)
-        // Nothing went: the picks wait in the composer with the words, the keyboard up.
-        waitFor(ConversationComposerTags.PICTURES)
-        assertTrue("nothing sent from the sheet", transport.bodies.none { it.first.endsWith("/send") })
-        rule.waitUntil(5_000) { node(ConversationComposerTags.INPUT).fetchSemanticsNode().config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) { false } }
-        SystemClock.sleep(600)
-        capture("06-staged")
-        node(ConversationComposerTags.INPUT).performTextReplacement("Here they are")
-        node(ConversationComposerTags.PRIMARY).performClick()
+        node(AttachTags.CAPTION).performTextReplacement("Here they are")
+        // The caption bar's Send sends the picks with the caption at once.
+        node(AttachTags.SEND).performClick()
         rule.waitUntil(30_000) { transport.bodies.any { it.first.endsWith("/send") } }
-        capture("07-sent")
+        waitGone(AttachTags.SHEET)
+        capture("06-sent")
 
         val puts = transport.bodies.filter { it.first.endsWith("/file") }
         val send = transport.bodies.single { it.first.endsWith("/send") }.second as JsonObject
         val id = (send["id"] as JsonPrimitive).content
-        // The clip, picked second, went into the workspace; the two pictures inline.
+        // The clip went into the workspace; the two pictures inline. The pictures go as thumbnails, read
+        // after (7b595ff0c), so the clip is the first file read and staged.
         assertEquals(listOf("PUT /v0/workspaces/fx-workspace/file"), puts.map { it.first })
-        assertEquals(".happy-uploads/$id/1-attach_fixture_clip.mp4", ((puts.single().second as JsonObject)["path"] as JsonPrimitive).content)
+        assertEquals(".happy-uploads/$id/0-attach_fixture_clip.mp4", ((puts.single().second as JsonObject)["path"] as JsonPrimitive).content)
         assertEquals(
-            "Here they are\n\nAttached file:\n- ./.happy-uploads/$id/1-attach_fixture_clip.mp4",
+            "Here they are\n\nAttached file:\n- ./.happy-uploads/$id/0-attach_fixture_clip.mp4",
             (send["text"] as JsonPrimitive).content,
         )
         assertEquals(2, (send["content"] as JsonArray).size)
         assertTrue("file before send", transport.requests.indexOfFirst { it.endsWith("/file") } < transport.requests.indexOfFirst { it.endsWith("/send") })
+    }
+
+    @Test fun the_header_check_puts_the_picks_in_the_composer_unsent() {
+        show()
+        node(ConversationComposerTags.INPUT).performTextInput("For later")
+        open()
+        val checks = all(AttachTags.CHECK)
+        checks[1].performClick()
+        checks[2].performClick()
+        waitFor(AttachTags.CONFIRM)
+        SystemClock.sleep(400)
+        // Top right of the sheet, on the "N selected" line, clear of the caption bar.
+        val confirm = node(AttachTags.CONFIRM).fetchSemanticsNode().boundsInRoot
+        val header = node(AttachTags.HEADER).fetchSemanticsNode().boundsInRoot
+        val bar = node(AttachTags.CAPTION_BAR).fetchSemanticsNode().boundsInRoot
+        assertTrue("on the header's line: $confirm / $header", confirm.top < header.bottom && confirm.bottom > header.top)
+        assertTrue("at the far right: $confirm", confirm.right > rule.activity.window.decorView.width - 20 * app.resources.displayMetrics.density)
+        assertTrue("above the caption bar", confirm.bottom < bar.top)
+        capture("10-header-check")
+        node(AttachTags.CONFIRM).performClick()
+        waitGone(AttachTags.SHEET)
+        waitFor(ConversationComposerTags.PICTURES)
+        assertTrue("nothing sent from the sheet", transport.bodies.none { it.first.endsWith("/send") })
+        rule.waitUntil(5_000) { node(ConversationComposerTags.INPUT).fetchSemanticsNode().config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) { false } }
+        assertEquals("For later", node(ConversationComposerTags.INPUT).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text)
+        capture("11-staged")
+        node(ConversationComposerTags.PRIMARY).performClick()
+        rule.waitUntil(30_000) { transport.bodies.any { it.first.endsWith("/send") } }
+        capture("12-sent-from-composer")
     }
 
     @Test fun a_pull_down_and_back_close_it_and_leave_the_draft() {

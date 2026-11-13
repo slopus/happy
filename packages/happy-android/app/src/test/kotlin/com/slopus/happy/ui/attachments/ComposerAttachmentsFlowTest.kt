@@ -140,15 +140,10 @@ class ComposerAttachmentsFlowTest {
         open("claude")
         copyImageToClipboard()
         pasteInSheet()
-        rule.waitUntilAtLeastOneExists(hasTestTag(AttachTags.CONFIRM), 10_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(AttachTags.SEND), 10_000)
         // The caption is the draft.
         rule.node(AttachTags.CAPTION).performTextInput("what is this?")
-        // The check puts the picture in the composer and sends nothing; the composer's Send does.
-        rule.node(AttachTags.CONFIRM).performClick()
-        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(AttachTags.SHEET), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
-        rule.waitUntilAtLeastOneExists(hasTestTag(AttachmentStripTags.THUMB), 5_000)
-        assertTrue(sent.isEmpty())
-        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.node(AttachTags.SEND).performClick()
         rule.waitUntil(10_000) { sent.isNotEmpty() }
 
         val message = sent.single()
@@ -172,12 +167,28 @@ class ComposerAttachmentsFlowTest {
         open("claude")
         copyImageToClipboard()
         pasteInSheet()
-        rule.waitUntilAtLeastOneExists(hasTestTag(AttachTags.CONFIRM), 10_000)
-        rule.node(AttachTags.CONFIRM).performClick()
-        rule.waitUntilAtLeastOneExists(hasTestTag(AttachmentStripTags.THUMB), 10_000)
-        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.waitUntilAtLeastOneExists(hasTestTag(AttachTags.SEND), 10_000)
+        rule.node(AttachTags.SEND).performClick()
         rule.waitUntil(10_000) { sent.isNotEmpty() }
         assertEquals("", sent.single().text)
+        assertEquals(1, sent.single().attachments.size)
+    }
+
+    /** The header's check puts the picture in the composer and sends nothing; the composer's Send does. */
+    @Test
+    fun theCheckStagesTheImageInTheComposer() {
+        open("claude")
+        copyImageToClipboard()
+        pasteInSheet()
+        rule.waitUntilAtLeastOneExists(hasTestTag(AttachTags.CONFIRM), 10_000)
+        rule.node(AttachTags.CAPTION).performTextInput("what is this?")
+        rule.node(AttachTags.CONFIRM).performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(AttachTags.SHEET), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        rule.waitUntilAtLeastOneExists(hasTestTag(AttachmentStripTags.THUMB), 5_000)
+        assertTrue(sent.isEmpty())
+        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.waitUntil(10_000) { sent.isNotEmpty() }
+        assertEquals("what is this?", sent.single().text)
         assertEquals(1, sent.single().attachments.size)
     }
 

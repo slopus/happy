@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.attachments.PendingPicture
 import com.slopus.happy.conversation.AccountUsage
 import com.slopus.happy.conversation.ContextGauge
 import com.slopus.happy.conversation.ConversationState
@@ -167,9 +168,10 @@ private object Slot {
  * scrolls), and under them [+], the model and effort chips
  * ([ConversationModelChips], each opening its own list) and send, which becomes Stop while the agent
  * works and nothing is typed. [+] opens the attachment sheet ([AttachSheet]):
- * the gallery's recent photos and videos and the File tab; its confirm puts
- * the picks here with the draft, to go on send, pictures inline and the rest
- * through the agent's workspace ([com.slopus.happy.conversation.WorkspaceUploads]).
+ * the gallery's recent photos and videos and the File tab; its Send sends the
+ * picks with the draft as their caption, pictures inline and the rest through
+ * the agent's workspace ([com.slopus.happy.conversation.WorkspaceUploads]), and
+ * its confirm pill puts them here instead, to go on send.
  * The model menu floats above the composer and keyboard, keeping the draft
  * and caret in place. The pill is glass over [backdrop] (the transcript under
  * it), its tint alone where nothing blurs. With Reduce Motion it changes shape
@@ -191,6 +193,8 @@ internal fun ConversationComposer(
     onStop: () -> Unit,
     onModeChange: (Mode) -> Unit,
     modifier: Modifier = Modifier,
+    /** [onSend] with gallery photos still being read; null reads them before they go. */
+    onSendPending: ((String, List<AttachmentPreview>, List<PendingPicture>) -> Boolean)? = null,
     backdrop: GlassSource? = null,
     pictures: ImagePicker? = rememberComposerImages(enabled = true),
     /** "+"'s sheet is up as the composer first shows. */
@@ -291,15 +295,20 @@ internal fun ConversationComposer(
     }
 
     // The draft and what waits go together; new work keeps them until it is made.
-    fun submit() {
+    fun submit(extra: List<AttachmentPreview> = emptyList(), pending: List<PendingPicture> = emptyList()) {
         val sent = text
-        if (onSend(text, attached)) {
-            if (attached.isEmpty() && !reduceMotion) fly(sent)
+        val alone = attached.isEmpty() && extra.isEmpty() && pending.isEmpty()
+        val went = if (pending.isEmpty() || onSendPending == null) onSend(text, attached + extra) else onSendPending(text, attached + extra, pending)
+        if (went) {
+            if (alone && !reduceMotion) fly(sent)
             pictures?.clear()
             onSent()
+        } else if (extra.isNotEmpty()) {
+            pictures?.state?.images?.addAll(extra)
         }
     }
-    // The sheet's picks wait here with the words, the keyboard up once it has gone.
+
+    // The sheet's confirmed picks wait here with the words, the keyboard up once it has gone.
     var attachedFocus by remember { mutableStateOf(false) }
 
     val open = focused || text.isNotEmpty() || attached.isNotEmpty()
@@ -462,6 +471,8 @@ internal fun ConversationComposer(
             accepts = AttachAccepts.Agent,
             caption = text,
             onCaptionChange = onTextChange,
+            onSend = { staged -> submit(staged) },
+            onSendPending = onSendPending?.let { { staged, pending -> submit(staged, pending) } },
             onAttach = { staged ->
                 pictures?.state?.let { waiting -> waiting.images.addAll(staged.take(waiting.remaining.coerceAtLeast(0))) }
                 attachedFocus = true

@@ -127,6 +127,7 @@ object AttachTags {
     const val TAB_BAR = "attach.tabs"
     const val CAPTION_BAR = "attach.captionBar"
     const val CAPTION = "attach.caption"
+    const val SEND = "attach.send"
     const val CONFIRM = "attach.confirm"
     const val COUNTER = "attach.counter"
 
@@ -276,7 +277,9 @@ class AttachSheetMotion(settled: Boolean = false) {
  * raises the sheet's top until it meets the top bar, where the corners go
  * square. A pull down at the list's top moves the sheet, and it goes once
  * pulled 0.8 cm. The tab bar floats at its foot on glass, and gives way to
- * the caption bar once something is picked.
+ * the caption bar once something is picked, whose Send sends the picks
+ * with the caption. The header's far end then holds the confirm pill (a
+ * check and the count), which puts them in the composer instead.
  */
 @Composable
 internal fun AttachSheetLayout(
@@ -291,6 +294,7 @@ internal fun AttachSheetLayout(
     onCaptionChange: (String) -> Unit,
     motion: AttachSheetMotion,
     onClose: () -> Unit,
+    onSend: () -> Unit,
     onConfirm: () -> Unit,
     onToggleGallery: (GalleryItem) -> Unit,
     onOpenGallery: (GalleryItem) -> Unit,
@@ -302,6 +306,7 @@ internal fun AttachSheetLayout(
     onPaste: () -> Unit,
     modifier: Modifier = Modifier,
     onWorkspace: () -> Unit = {},
+    sending: Boolean = false,
     busy: Boolean = false,
     galleryState: LazyGridState = rememberLazyGridState(),
     filesState: LazyListState = rememberLazyListState(),
@@ -586,6 +591,30 @@ internal fun AttachSheetLayout(
                 }
             }
 
+            // The header's far end, over the top bar once it is in: the picks into the composer, unsent.
+            if (selection.count > 0 || headerProgress > 0f) {
+                ConfirmPill(
+                    selection.count.coerceAtLeast(1),
+                    busy = busy,
+                    enabled = !sending,
+                    colors = colors,
+                    onConfirm = onConfirm,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset {
+                            val resting = sheetTop() + AttachSpec.confirmTop.toPx()
+                            val barred = statusBar + (AttachSpec.topBar - AttachSpec.confirmHeight).toPx() / 2
+                            IntOffset(-AttachSpec.confirmEnd.roundToPx(), (resting + (barred - resting) * topBar).roundToInt())
+                        }
+                        .graphicsLayer {
+                            val scale = AttachSpec.CONFIRM_FROM + (1 - AttachSpec.CONFIRM_FROM) * headerProgress
+                            scaleX = scale
+                            scaleY = scale
+                            alpha = headerProgress
+                        },
+                )
+            }
+
             // The foot: the list fades under the bars.
             Box(
                 Modifier
@@ -622,10 +651,11 @@ internal fun AttachSheetLayout(
                         caption,
                         onCaptionChange,
                         selection.count,
-                        onConfirm,
-                        busy = busy,
+                        onSend,
+                        sending = sending,
                         shown = { captionProgress.value },
                         backdrop = source,
+                        sheet = sheetColor,
                         colors = colors,
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )

@@ -38,7 +38,7 @@ class AttachOverlaysTest {
         rule.setHappyContent {
             scope = rememberCoroutineScope()
             CompositionLocalProvider(LocalOverlays provides overlays) {
-                AttachSheet(open, AttachAccepts(photos = true, videos = false, files = false, maxFileBytes = 10_000_000), "", {}, {},
+                AttachSheet(open, AttachAccepts(photos = true, videos = false, files = false, maxFileBytes = 10_000_000), "", {}, {}, {},
                     onClosed = { open = false }, onPhoto = { photos++ })
             }
         }

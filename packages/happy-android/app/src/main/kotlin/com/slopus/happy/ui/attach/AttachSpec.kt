@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 
 /**
@@ -119,17 +120,29 @@ object AttachSpec {
     val captionInset = 7.dp
     val captionPadding = 5.dp
     val captionBar = captionField + captionPadding * 2
-    /** The caption grows to this many lines, then scrolls inside the field. */
-    const val CAPTION_LINES = 5
+    val sendWidth = 52.dp
+    val sendHeight = 38.dp
+    val sendEnd = 11.dp
+    const val SEND_FROM = 0.2f
+
+    /** The counter on the send pill: at least 18, 9 more than its text; a 2 ring of the sheet round it. */
+    val counterMin = 18.dp
+    val counterRing = 2.dp
+    val counterText = 12.sp
+    /** The counter's centre, this far left of the pill's right edge. */
+    val counterCentre = 50.dp
+
+    fun counterWidth(text: Dp): Dp = max(counterMin.value, 9 + text.value).dp
+
     /**
-     * The confirm pill at the bar's far end, as far in as the field is from the start
-     * (iOS `SelectedButtonNode`'s shape): 38 tall, a 22 check 8 in, the count 4 after it
-     * and 12 from the end, never narrower than 52.
+     * The confirm pill at the header's far end (iOS `SelectedButtonNode`'s shape): 38 tall,
+     * [confirmEnd] from the sheet's edge, its middle on the "N selected" line; a 22 check 8 in,
+     * the count 4 after it and 12 from the end, never narrower than 52.
      */
     val confirmHeight = 38.dp
     val confirmMinWidth = 52.dp
-    val confirmEnd = captionInset
-    val confirmGap = 7.dp
+    val confirmEnd = 12.dp
+    val confirmTop = 6.dp
     val confirmIcon = 22.dp
     val confirmStart = 8.dp
     val confirmSpacing = 4.dp
@@ -153,7 +166,7 @@ object AttachSpec {
 /** Telegram's attachment colours: its brand blue where it uses it, our theme elsewhere. */
 @Immutable
 data class AttachColors(
-    /** `chat_attachCheckBoxBackground` and the confirm pill. */
+    /** `chat_attachCheckBoxBackground`, the send and confirm pills and the counter. */
     val accent: Color,
     val onAccent: Color,
     /** `glass_tabUnselected`. */

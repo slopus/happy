@@ -87,6 +87,7 @@ internal fun SheetUnderTest(
         onCaptionChange = { caption = it },
         motion = motion,
         onClose = onClose,
+        onSend = {},
         onConfirm = {},
         onToggleGallery = { selection.toggle(it.picked()) },
         onOpenGallery = onOpen,
@@ -215,16 +216,20 @@ class AttachSheetLayoutTest {
         rule.onNodeWithText("2 selected").assertIsDisplayed()
         // The sheet grew 26 at its top for the header; the grabber went with it.
         assertDp("header", restingGrabber - 26.dp, rule.node(AttachTags.GRABBER).bounds.top)
-        // The confirm pill, its check and count inside, alone at the bar's far end.
+        // The send pill, its count on its top left corner.
+        val send = rule.node(AttachTags.SEND).bounds
+        assertDp("send", 52, send.width)
+        assertDp("send", 38, send.height)
+        val counter = rule.node(AttachTags.COUNTER).bounds
+        assertDp("counter centre 50 left of the pill's right", send.right - 50.dp, (counter.left + counter.right) / 2)
+        // The confirm pill at the header's far end, its middle on the "N selected" line.
         val confirm = rule.node(AttachTags.CONFIRM).bounds
-        val bar = rule.node(AttachTags.CAPTION_BAR).bounds
-        val field = rule.node(AttachTags.CAPTION).bounds
+        val header = rule.node(AttachTags.HEADER).bounds
         assertTrue("at least 52 wide", confirm.width >= 52.dp - 0.5.dp)
         assertDp("confirm", 38, confirm.height)
-        assertDp("as far from the end as the field from the start", field.left - bar.left, bar.right - confirm.right)
-        assertDp("7 after the field", 7, confirm.left - field.right)
-        val counter = rule.node(AttachTags.COUNTER).bounds
-        assertTrue("count inside the pill", counter.left >= confirm.left && counter.right <= confirm.right)
+        assertDp("12 from the sheet's end", 411 - 12, confirm.right)
+        assertTrue("on the header's line: $confirm / $header", confirm.top < header.bottom && confirm.bottom > header.top)
+        assertTrue("above the first row", confirm.bottom <= cells()[0].bounds.top)
         // Unpicking the first renumbers the second.
         checks()[2].performClick()
         rule.waitForIdle()

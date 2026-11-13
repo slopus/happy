@@ -48,6 +48,7 @@ import com.slopus.happy.attachments.GalleryAccess
 import com.slopus.happy.attachments.GalleryItem
 import com.slopus.happy.attachments.MediaGallery
 import com.slopus.happy.attachments.PickedKind
+import com.slopus.happy.attachments.PendingPicture
 import com.slopus.happy.attachments.PickedMedia
 import com.slopus.happy.attachments.RecentFile
 import com.slopus.happy.attachments.RecentFiles
@@ -83,15 +84,19 @@ import java.nio.ByteBuffer
 /**
  * The attachment sheet over the whole window while [open]: Telegram's
  * gallery of recent photos and videos (asking for access the first time)
- * and its File tab, as [accepts] allows. The [caption] is the composer's
- * words, edited here too. The confirm pill (a check and the count) sends
- * nothing: each pick is copied into the app's cache ([AttachmentStaging]),
- * [onAttach] puts them in the composer, and the sheet goes. Room is
- * [room] picks. [onClosed] runs once the sheet has gone, after its own
- * close. On a phone held upright it grows out of [button] and goes back
- * into it ([AttachMorph]). With a [workspace] the File tab can name one of
- * its files instead: the picked path goes into the caption as `./path`
- * and nothing is uploaded.
+ * and its File tab, as [accepts] allows. What is picked goes with the
+ * [caption] (the composer's words, edited here too) once Send is pressed:
+ * each pick is copied into the app's cache first ([AttachmentStaging]),
+ * then [onSend] has them. The header's confirm pill (a check and the
+ * count) sends nothing: the picks are copied the same way, [onAttach] puts
+ * them in the composer, and the sheet goes. Room is [room] picks.
+ * [onClosed] runs once the sheet has gone, after its own close. On a phone
+ * held upright it grows out of [button] and goes back into it
+ * ([AttachMorph]). With a [workspace] the File tab can name one of its
+ * files instead: the picked path goes into the caption as `./path` and
+ * nothing is uploaded. With [onSendPending], gallery photos don't wait to
+ * be read on Send: the sheet goes at once and each goes as its thumbnail,
+ * read after ([PendingPicture]).
  */
 @Composable
 fun AttachSheet(
@@ -99,11 +104,13 @@ fun AttachSheet(
     accepts: AttachAccepts,
     caption: String,
     onCaptionChange: (String) -> Unit,
+    onSend: (List<AttachmentPreview>) -> Unit,
     onAttach: (List<AttachmentPreview>) -> Unit,
     onClosed: () -> Unit,
     room: Int = accepts.maxItems,
     button: AttachButton? = null,
     workspace: WorkspaceSource? = null,
+    onSendPending: ((List<AttachmentPreview>, List<PendingPicture>) -> Unit)? = null,
     onPhoto: ((AttachmentPreview) -> Unit)? = null,
 ) {
     if (!open) return
@@ -121,9 +128,12 @@ fun AttachSheet(
     val camera = remember { AttachCameraState() }.takeIf { accepts.photos && onPhoto != null }
     val selection = remember { AttachSelection(room.coerceAtLeast(0)) }
     val closed by rememberUpdatedState(onClosed)
+    val send by rememberUpdatedState(onSend)
+    val sendPending by rememberUpdatedState(onSendPending)
     val attach by rememberUpdatedState(onAttach)
     var tab by remember { mutableStateOf(tabs.first()) }
     var alert by remember { mutableStateOf<Alert?>(null) }
+    var sending by remember { mutableStateOf(false) }
     var staging by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<Int?>(null) }
     var naming by remember { mutableStateOf(false) }
@@ -238,8 +248,49 @@ fun AttachSheet(
         }
     }
 
+    fun sendPicks() {
+        if (sending || staging || selection.count == 0) return
+        sending = true
+        val picks = selection.items.toList()
+        val later = sendPending
+        val app = context.applicationContext
+        val staging = AttachmentStaging(attachmentCacheDir(app)) { pick ->
+            app.contentResolver.openInputStream(Uri.parse(pick.uri)) ?: throw IOException("Cannot open ${pick.name}")
+        }
+        scope.launch {
+            try {
+                // A gallery photo goes as its thumbnail, read once the sheet has gone (iOS b03dd48cc).
+                val photos = if (later == null) emptyList() else picks.filter { it.kind == PickedKind.Photo }
+                val thumbnails = withContext(Dispatchers.IO) { photos.map { async { galleryThumbnail(app.contentResolver, it.uri) } }.awaitAll() }
+                val pending = photos.zip(thumbnails).mapNotNull { (pick, thumbnail) ->
+                    thumbnail?.let {
+                        pick to PendingPicture(it) {
+                            withContext(Dispatchers.IO) { staging.stage(listOf(pick), accepts) }.attachments.singleOrNull() ?: throw IOException("Cannot read ${pick.name}")
+                        }
+                    }
+                }
+                val now = picks.filter { pick -> pending.none { it.first == pick } }
+                val staged = if (now.isEmpty()) Staged(emptyList(), emptyList()) else withContext(Dispatchers.IO) { staging.stage(now, accepts) }
+                staged.problems.firstOrNull()?.let { problem ->
+                    when (problem) {
+                        is StagingProblem.TooLarge -> say(R.string.image_upload_file_too_large_title, resources.getString(R.string.image_upload_file_too_large_message, problem.name, problem.maxMb))
+                        is StagingProblem.Unreadable -> say(R.string.image_upload_upload_failed_title, resources.getString(R.string.attach_unreadable_message, problem.name))
+                    }
+                }
+                if (staged.attachments.isEmpty() && pending.isEmpty()) return@launch
+                val files = picks.filter { it.kind == PickedKind.File && it.uri.startsWith("content:") }
+                if (files.isNotEmpty() && accepts.files) withContext(Dispatchers.IO) { RecentFiles(context).remember(files) }
+                if (later != null && pending.isNotEmpty()) later(staged.attachments, pending.map { it.second }) else send(staged.attachments)
+                if (staged.problems.isEmpty()) close()
+                else selection.clear()
+            } finally {
+                sending = false
+            }
+        }
+    }
+
     fun confirm() {
-        if (staging || selection.count == 0) return
+        if (staging || sending || selection.count == 0) return
         staging = true
         val picks = selection.items.toList()
         val app = context.applicationContext
@@ -305,6 +356,7 @@ fun AttachSheet(
             onCaptionChange = onCaptionChange,
             motion = motion,
             onClose = ::close,
+            onSend = ::sendPicks,
             onConfirm = ::confirm,
             onToggleGallery = { toggle(it.picked()) },
             onOpenGallery = { item -> viewing = items.indexOf(item).takeIf { it >= 0 } },
@@ -318,6 +370,7 @@ fun AttachSheet(
             },
             onPaste = ::paste,
             onWorkspace = { naming = true },
+            sending = sending,
             busy = staging,
             camera = camera,
         )

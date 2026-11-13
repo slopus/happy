@@ -90,15 +90,18 @@ fun ComposerAttachmentStrip() {
 
 /**
  * The add button: the attachment sheet ([AttachSheet]) with what this
- * session takes ([accepts]), the draft as its caption. Its confirm puts the
- * picks with the images waiting, and once the sheet has gone [onAttached]
- * takes the keyboard back into the input; nothing is sent until Send.
+ * session takes ([accepts]), the draft as its caption. Its Send puts the
+ * picks with the images waiting and sends the draft ([onSend]), the way the
+ * send button does. Its confirm pill only puts them with the images
+ * waiting, and once the sheet has gone [onAttached] takes the keyboard back
+ * into the input.
  */
 @Composable
-fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionChange: (String) -> Unit, onAttached: () -> Unit) {
+fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionChange: (String) -> Unit, onSend: () -> Unit, onAttached: () -> Unit = {}) {
     val picker = LocalComposerImages.current ?: return
     var open by rememberSaveable { mutableStateOf(false) }
     var attachedPicks by remember { mutableStateOf(false) }
+    val send by rememberUpdatedState(onSend)
     val attachedNow by rememberUpdatedState(onAttached)
     val attached = picker.images.isNotEmpty()
     val plus = rememberAttachButton { AddImageGlyph(attached) }
@@ -108,6 +111,10 @@ fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionCha
         accepts = accepts,
         caption = caption,
         onCaptionChange = onCaptionChange,
+        onSend = { staged ->
+            picker.state.images.addAll(staged.take(picker.state.remaining.coerceAtLeast(0)))
+            send()
+        },
         onAttach = { staged ->
             picker.state.images.addAll(staged.take(picker.state.remaining.coerceAtLeast(0)))
             attachedPicks = true

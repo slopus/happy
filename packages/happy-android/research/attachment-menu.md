@@ -150,8 +150,9 @@ The same numbers, in Compose:
   (`PictureViewer`: zoom for photos, playback for videos, open and close in
   220 ms ease-out, the grid's thumbnail drawn until the photo is read); the
   check picks, through a 48 corner (Telegram's 42).
-- **Confirm, not send.** Where Telegram's send pill is, a check and the count
-  (iOS's `SelectedButtonNode` shape): the picks go into the composer with the
+- **Confirm as well as send.** Telegram's send pill stays in the caption bar
+  and sends at once. The header's far end adds a check and the count (iOS's
+  `SelectedButtonNode` shape): the picks go into the composer with the
   caption as its draft, and are sent from there.
 - **Not ported:** the camera cell and in-sheet camera, albums drop-down, the in-sheet photo
   editor, spoilers, captions above media, scheduled and silent sends, the Lottie tab icons
