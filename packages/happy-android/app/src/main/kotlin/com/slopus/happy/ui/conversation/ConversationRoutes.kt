@@ -495,7 +495,6 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onDetails = { nav.navigate(ConversationDetailsRoute(route.connectionId, conversation.agentId)) },
                     onDraftChange = conversation::setDraft,
                     onSend = { words, attachments -> conversation.send(words, attachments) },
-                    onSendPending = { words, attachments, pending -> conversation.send(words, attachments, pending) },
                     onModeChange = conversation::setMode,
                     onStop = conversation::stop,
                     onRetrySend = conversation::retrySend,

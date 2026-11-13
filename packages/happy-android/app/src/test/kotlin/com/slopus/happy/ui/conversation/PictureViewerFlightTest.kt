@@ -81,6 +81,8 @@ class PictureViewerFlightTest {
         rule.waitForIdle()
     }
 
+    private val LANDING_WAIT = 4
+
     private fun picture(): DpRect = rule.node(PictureViewerTags.IMAGE).getBoundsInRoot()
 
     private fun shot(name: String) {
@@ -131,6 +133,27 @@ class PictureViewerFlightTest {
         rule.waitForIdle()
         assertTrue("closed", !open)
         assertNull("the thumbnail is back", ViewerOrigins.Shared.hidden)
+    }
+
+    @Test fun `it lands in Telegram's 220 ms both ways`() {
+        assertEquals(220, PictureViewerSpec.MOTION_MS)
+        show()
+        rule.mainClock.autoAdvance = false
+        rule.node(ConversationMediaTags.TILE).performTouchInput { click(center) }
+        rule.waitForIdle()
+        repeat(3) { rule.mainClock.advanceTimeByFrame(); rule.waitForIdle() }
+        rule.mainClock.advanceTimeBy(150)
+        assertTrue("still flying at 150 ms: ${picture().width}", picture().width.value < PHONE_WIDTH_DP - 3)
+        rule.mainClock.advanceTimeBy(100)
+        near("landed by 250 ms", PHONE_WIDTH_DP, picture().width.value)
+        rule.node(PictureViewerTags.CLOSE).performTouchInput { click(center) }
+        repeat(2) { rule.mainClock.advanceTimeByFrame() }
+        rule.mainClock.advanceTimeBy(240)
+        // Landed in its tile: only the frames that wait for the tile to draw again are left.
+        repeat(LANDING_WAIT) { rule.mainClock.advanceTimeByFrame() }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        assertTrue("closed", !open)
     }
 
     @Test fun `a recording has no flight, it fades and its tile stays`() {

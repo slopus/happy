@@ -18,20 +18,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
+import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executor
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 internal data class PhotoFocus(val point: Offset, val afLocked: Boolean, val aeLocked: Boolean, val generation: Int)
 
 /** Photo's controls own CameraControl requests; QR keeps its independent focus/zoom policy. */
 @Stable
 @androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
-internal class PhotoControl(private val main: Executor, private val scope: CoroutineScope? = null) {
+internal class PhotoControl(private val main: Executor) {
     var front by mutableStateOf(false)
     var actualFront by mutableStateOf(false)
         private set
@@ -55,12 +50,12 @@ internal class PhotoControl(private val main: Executor, private val scope: Corou
     private var aeLockAvailable = false
     private var ranges: List<Range<Int>> = emptyList()
     private var generation = 0
-    private var ramp: Job? = null
+    private val zooms = PhotoZoomRequests(main)
 
     fun bind(value: Camera?) {
-        ramp?.cancel()
         generation++
         camera = value
+        zooms.bind(value?.cameraControl?.let { control -> { ratio: Float -> control.setZoomRatio(ratio) } })
         focus = null
         exposure = 0f
         dark = null
@@ -81,23 +76,15 @@ internal class PhotoControl(private val main: Executor, private val scope: Corou
 
     fun updateZoom(min: Float, max: Float, current: Float) {
         zoomBounds = PhotoZoom(min, max)
-        zoom = current
+        // While a ratio is on its way the camera still reports the last one: keep showing the target.
+        if (!zooms.pending) zoom = current
     }
 
-    fun zoomTo(ratio: Float, animated: Boolean = false) {
-        ramp?.cancel()
-        if (animated && scope != null) {
-            val target = zoomBounds.clamp(ratio)
-            ramp = scope.launch {
-                Animatable(zoom).animateTo(target, tween((abs(target - zoom) / 16 * 1000).toInt().coerceAtLeast(1))) { applyZoom(value) }
-            }
-        } else applyZoom(ratio)
-    }
-
-    private fun applyZoom(ratio: Float) {
-        val camera = camera ?: return
+    /** One ratio to the camera at a time, within what it reports now; a pinch's later ratios replace the queued one. */
+    fun zoomTo(ratio: Float) {
+        if (camera == null) return
         zoom = zoomBounds.clamp(ratio)
-        camera.cameraControl.setZoomRatio(zoom)
+        zooms.request(zoom)
     }
 
     /** The caller maps with CameraXViewfinder's transformer: no guessed rotation or mirroring. */
@@ -166,5 +153,46 @@ internal class PhotoControl(private val main: Executor, private val scope: Corou
             expose(0f)
             zoomTo(1f)
         }
+    }
+}
+/**
+ * CameraX zoom requests, one in flight: each call to setZoomRatio becomes a
+ * new repeating request, and a stream of them (a per-frame ramp, a pinch)
+ * piles up while a logical multi-camera switches lenses. A request made
+ * meanwhile only replaces the queued ratio, sent once the camera has
+ * answered the one before. A camera bound anew drops whatever was queued.
+ */
+internal class PhotoZoomRequests(private val main: Executor) {
+    private var send: ((Float) -> ListenableFuture<Void>)? = null
+    private var inFlight: ListenableFuture<Void>? = null
+    private var queued: Float? = null
+
+    val pending: Boolean get() = inFlight != null || queued != null
+
+    fun bind(value: ((Float) -> ListenableFuture<Void>)?) {
+        send = value
+        inFlight = null
+        queued = null
+    }
+
+    fun request(ratio: Float) {
+        if (send == null) return
+        queued = ratio
+        if (inFlight == null) next()
+    }
+
+    private fun next() {
+        val ratio = queued ?: return
+        val to = send ?: return
+        queued = null
+        val future = to(ratio)
+        inFlight = future
+        // Done, failed or cancelled alike: the camera is free for the next ratio.
+        future.addListener({
+            if (inFlight === future && send === to) {
+                inFlight = null
+                next()
+            }
+        }, main)
     }
 }

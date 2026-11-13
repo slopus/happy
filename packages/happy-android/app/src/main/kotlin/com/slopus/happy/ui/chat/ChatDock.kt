@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -140,12 +140,11 @@ private fun ChatComposerFor(
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
-    val latestDraft by rememberUpdatedState(draft)
-    val latestSend by rememberUpdatedState(actions.onSend)
     val showAbort = showsAbort(sessionState)
     var aborting by remember { mutableStateOf(false) }
     // A local acknowledgement: the status update can trail the abort RPC.
     var stopRequested by remember { mutableStateOf(false) }
+    var focusAsks by remember { mutableIntStateOf(0) }
     LaunchedEffect(showAbort) { if (!showAbort) stopRequested = false }
     val canAbort = sessionState != SessionState.Disconnected && metadata.rigCanAbort() && !stopRequested
     val blocked = session.isRig && state.thinking && metadata?.capabilities?.steering != true
@@ -195,6 +194,7 @@ private fun ChatComposerFor(
         status = if (state.session != null) rememberComposerStatus(sessionState, state.activeAt, now) else null,
         autoFocus = autoFocus,
         placeholder = placeholder,
+        focusAsks = focusAsks,
         primary = primary,
         aborting = aborting,
         onPrimary = {
@@ -223,7 +223,7 @@ private fun ChatComposerFor(
                     accepts = if (state.session == null) AttachAccepts.RelayPictures else AttachAccepts.relay(metadata, canUseAttachments(metadata)),
                     caption = draft,
                     onCaptionChange = actions.onDraftChange,
-                    onSend = { latestSend(latestDraft) },
+                    onAttached = { focusAsks++ },
                 )
                 ComposerModeChips(modes, metadata, actions.onModeChange, Modifier.weight(1f))
             }

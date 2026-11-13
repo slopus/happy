@@ -168,9 +168,6 @@ class ConversationScreenActions(
     val onDraftChange: (String) -> Unit = {},
     /** The words and the attached pictures' files; true when the message was taken (the composer then clears). */
     val onSend: (String, List<com.slopus.happy.attachments.AttachmentPreview>) -> Boolean = { _, _ -> false },
-    /** [onSend] with gallery photos still being read: drawn from their thumbnails, they go once read. */
-    val onSendPending: (String, List<com.slopus.happy.attachments.AttachmentPreview>, List<com.slopus.happy.attachments.PendingPicture>) -> Boolean =
-        { words, attachments, _ -> onSend(words, attachments) },
     /** The composer picked another model, effort or permission mode. */
     val onModeChange: (Mode) -> Unit = {},
     val onStop: () -> Unit = {},
@@ -616,10 +613,6 @@ fun ConversationScreen(
                                     // The words went as the answer: the draft they were goes with them, as a send's does.
                                     if (answered) actions.onDraftChange("")
                                     answered || actions.onSend(words, attachments)
-                                },
-                                onSendPending = { words, attachments, pending ->
-                                    flight.grounded = false
-                                    actions.onSendPending(words, attachments, pending)
                                 },
                                 onSent = { text = "" },
                                 onStop = actions.onStop,

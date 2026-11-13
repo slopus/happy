@@ -1,6 +1,9 @@
 package com.slopus.happy.camera
 
+import android.os.Build
 import android.util.Range
+import androidx.camera.core.ExperimentalZeroShutterLag
+import androidx.camera.core.ImageCapture
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -41,6 +44,17 @@ internal data class PhotoZoom(val min: Float = 1f, val max: Float = 1f) {
         }
     }
 }
+
+/**
+ * Zero shutter lag, except on Samsung. There a ZSL session's preview freezes
+ * once a zoom moves the logical camera onto another lens (an S22 froze at 2x).
+ * CameraX's own ZslDisablerQuirk lists only the US models (SM-S901U, SM-S908U…),
+ * so the S22s sold elsewhere (SM-S901B, …) keep ZSL unless we drop it.
+ */
+@androidx.annotation.OptIn(ExperimentalZeroShutterLag::class)
+internal fun photoCaptureMode(manufacturer: String = Build.MANUFACTURER): Int =
+    if (manufacturer.equals("samsung", ignoreCase = true)) ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
+    else ImageCapture.CAPTURE_MODE_ZERO_SHUTTER_LAG
 
 /** CameraExposure.swift's ±2EV and dim-room threshold, restricted by the actual device. */
 internal fun exposureIndex(slider: Float, step: Float, range: Range<Int>): Int {

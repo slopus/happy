@@ -5,7 +5,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -20,7 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
@@ -39,14 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -55,10 +49,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slopus.happy.R
@@ -190,29 +182,30 @@ private val AttachTabKind.selectedIcon
 
 /**
  * The caption bar that takes the tab bar's place once something is picked:
- * a glass field of 22 corners, 7 in, and the send pill (52 × 38, Telegram's
- * blue) 11 from the end with the count on its top left corner, which
- * bounces 0.9 → 1 in 180 ms at each change. [shown] is the 180 ms
- * decelerated progress the bar comes in on: the field fades, the send box
- * grows from 0.2.
+ * a glass field of 22 corners, 7 in, at most five lines and then it
+ * scrolls, and at the far end the confirm pill (a check and the count, in
+ * Telegram's blue), whose count bounces 0.9 → 1 in 180 ms at each change.
+ * The pill puts the picks in the composer ([onConfirm]); nothing is sent
+ * from here. [shown] is the 180 ms decelerated progress the bar comes in
+ * on: the field fades, the pill grows from 0.2.
  */
 @Composable
 internal fun AttachCaptionBar(
     caption: String,
     onCaptionChange: (String) -> Unit,
     count: Int,
-    onSend: () -> Unit,
-    sending: Boolean,
+    onConfirm: () -> Unit,
+    busy: Boolean,
     shown: () -> Float,
     backdrop: GlassSource?,
-    sheet: Color,
     colors: AttachColors,
     modifier: Modifier = Modifier,
 ) {
     val theme = HappyTheme.colors
     val blurs = rememberGlassBlur()
     val shape = RoundedCornerShape(AttachSpec.captionCorner)
-    val sendLabel = stringResource(R.string.attach_send)
+    val label = stringResource(R.string.attach_title)
+    val picked = pluralStringResource(R.plurals.attach_selected, count, count)
     // Its own selection, as the composer keeps one; words set from outside put the caret at their end.
     var field by remember { mutableStateOf(TextFieldValue(caption, TextRange(caption.length))) }
     if (field.text != caption) field = TextFieldValue(caption, TextRange(caption.length))
@@ -220,7 +213,7 @@ internal fun AttachCaptionBar(
         modifier
             .fillMaxWidth()
             .heightIn(min = AttachSpec.captionBar)
-            .padding(start = AttachSpec.captionInset, top = AttachSpec.captionPadding, bottom = AttachSpec.captionPadding)
+            .padding(start = AttachSpec.captionInset, end = AttachSpec.confirmEnd, top = AttachSpec.captionPadding, bottom = AttachSpec.captionPadding)
             .testTag(AttachTags.CAPTION_BAR),
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -232,7 +225,7 @@ internal fun AttachCaptionBar(
             },
             textStyle = happyTextStyle(16).copy(color = theme.text),
             cursorBrush = SolidColor(colors.accent),
-            maxLines = 5,
+            maxLines = AttachSpec.CAPTION_LINES,
             decorationBox = { inner ->
                 Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
                     if (caption.isEmpty()) {
@@ -250,40 +243,38 @@ internal fun AttachCaptionBar(
         )
         Box(
             Modifier
-                .size(AttachSpec.sendWidth + AttachSpec.sendEnd + 8.dp, AttachSpec.captionField)
+                .padding(start = AttachSpec.confirmGap)
+                .height(AttachSpec.captionField)
                 .graphicsLayer {
                     val p = shown()
-                    val scale = AttachSpec.SEND_FROM + (1 - AttachSpec.SEND_FROM) * p
+                    val scale = AttachSpec.CONFIRM_FROM + (1 - AttachSpec.CONFIRM_FROM) * p
                     scaleX = scale
                     scaleY = scale
                     alpha = p
                 },
-            contentAlignment = Alignment.CenterEnd,
+            contentAlignment = Alignment.Center,
         ) {
-            SendPill(
+            ConfirmPill(
                 count,
-                sending,
-                sheet,
+                busy,
                 colors,
                 Modifier
-                    .padding(end = AttachSpec.sendEnd)
-                    .size(AttachSpec.sendWidth, AttachSpec.sendHeight),
-                pill = Modifier
-                    .clip(RoundedCornerShape(AttachSpec.sendHeight / 2))
-                    .clickable(onClick = onSend)
+                    .clip(RoundedCornerShape(AttachSpec.confirmHeight / 2))
+                    .clickable(enabled = !busy, onClick = onConfirm)
                     .semantics {
-                        contentDescription = sendLabel
+                        contentDescription = label
+                        stateDescription = picked
                         role = Role.Button
                     }
-                    .testTag(AttachTags.SEND),
+                    .testTag(AttachTags.CONFIRM),
             )
         }
     }
 }
 
-/** The pill and its count: the count a circle of max(18, 9 + text), its centre 50 left of the pill's right edge, a 2 clear ring round it. */
+/** The pill: a check and the count, or a spinner while the picks are read into the composer. */
 @Composable
-private fun SendPill(count: Int, sending: Boolean, sheet: Color, colors: AttachColors, modifier: Modifier, pill: Modifier) {
+private fun ConfirmPill(count: Int, busy: Boolean, colors: AttachColors, modifier: Modifier) {
     val reduceMotion = rememberReduceMotion()
     val bounce = remember { Animatable(1f) }
     var seen by remember { mutableIntStateOf(count) }
@@ -294,52 +285,36 @@ private fun SendPill(count: Int, sending: Boolean, sheet: Color, colors: AttachC
         bounce.snapTo(AttachMotion.COUNTER_FROM)
         bounce.animateTo(1f, tween(AttachMotion.COUNTER_MS, easing = AttachMotion.counter))
     }
-    val measurer = rememberTextMeasurer()
-    val plane = rememberVectorPainter(MaterialSymbols.Send)
-    val density = LocalDensity.current
-    Box(modifier) {
-        Canvas(Modifier.fillMaxSize().then(pill)) {
-            drawRoundRect(colors.accent, cornerRadius = CornerRadius(size.height / 2))
-            if (sending) return@Canvas
-            val glyph = 22.dp.toPx()
-            translateTo(Offset((size.width - glyph) / 2, (size.height - glyph) / 2)) {
-                with(plane) { draw(Size(glyph, glyph), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(colors.onAccent)) }
-            }
-        }
-        if (sending) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center).size(18.dp), color = colors.onAccent, strokeWidth = 2.dp)
-        }
-        if (count > 0) {
-            val text = count.toString()
-            val layout = remember(text) { measurer.measure(text, TextStyle(color = colors.onAccent, fontSize = AttachSpec.counterText, fontWeight = FontWeight.Bold)) }
-            val textWidth = with(density) { layout.size.width.toDp() }
-            val diameter = AttachSpec.counterWidth(textWidth)
-            Canvas(
-                Modifier
-                    .size(diameter + AttachSpec.counterRing * 2)
-                    .offset(
-                        x = AttachSpec.sendWidth - AttachSpec.counterCentre - diameter / 2 - AttachSpec.counterRing,
-                        y = -AttachSpec.counterRing - 0.66.dp,
-                    )
+    Box(
+        modifier
+            .height(AttachSpec.confirmHeight)
+            .widthIn(min = AttachSpec.confirmMinWidth)
+            .background(colors.accent),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier
+                .padding(start = AttachSpec.confirmStart, end = AttachSpec.confirmTrailing)
+                .graphicsLayer { alpha = if (busy) 0f else 1f },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(MaterialSymbols.Check, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(AttachSpec.confirmIcon))
+            Text(
+                count.toString(),
+                style = happyTextStyle(16, weight = FontWeight.SemiBold).copy(fontSize = AttachSpec.confirmText),
+                color = colors.onAccent,
+                maxLines = 1,
+                modifier = Modifier
+                    .padding(start = AttachSpec.confirmSpacing)
                     .graphicsLayer {
                         scaleX = bounce.value
                         scaleY = bounce.value
                     }
                     .testTag(AttachTags.COUNTER),
-            ) {
-                val centre = Offset(size.width / 2, size.height / 2)
-                drawCircle(sheet, size.minDimension / 2, centre)
-                drawCircle(colors.accent, size.minDimension / 2 - AttachSpec.counterRing.toPx(), centre)
-                drawText(layout, topLeft = Offset(centre.x - layout.size.width / 2f, centre.y - layout.size.height / 2f))
-            }
+            )
         }
+        if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = colors.onAccent, strokeWidth = 2.dp)
     }
-}
-
-private inline fun androidx.compose.ui.graphics.drawscope.DrawScope.translateTo(offset: Offset, block: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit) {
-    drawContext.transform.translate(offset.x, offset.y)
-    block()
-    drawContext.transform.translate(-offset.x, -offset.y)
 }
 
 /** "N selected", where the grabber was. */

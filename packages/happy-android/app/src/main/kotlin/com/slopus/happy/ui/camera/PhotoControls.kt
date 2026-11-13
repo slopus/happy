@@ -124,7 +124,7 @@ internal fun PhotoZoomBar(control: PhotoControl, rotation: Float, enabled: Boole
             val description = stringResource(R.string.camera_zoom, PhotoZoom.label(value, true))
             Box(Modifier.size(48.dp).testTag("camera.zoom.$index")
                 .semantics { contentDescription = description; stateDescription = label }
-                .clickable(enabled = enabled, role = Role.Button) { control.zoomTo(value, animated = true) }, contentAlignment = Alignment.Center) {
+                .clickable(enabled = enabled, role = Role.Button) { control.zoomTo(value) }, contentAlignment = Alignment.Center) {
                 Box(Modifier.size(37.dp).graphicsLayer { scaleX = if (chosen) 1f else 0.7f; scaleY = scaleX }
                     .background(Color.Black.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
                     Text(label, color = if (chosen) Active else Color.White, style = happyTextStyle(13, weight = FontWeight.SemiBold), modifier = Modifier.graphicsLayer { rotationZ = rotation })

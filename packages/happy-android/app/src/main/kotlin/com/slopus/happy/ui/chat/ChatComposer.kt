@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.KeyEvent
@@ -194,9 +195,17 @@ fun ChatComposer(
     flight: SendFlight? = null,
     /** What the empty input asks for; null for "Type a message…". */
     placeholder: String? = null,
+    /** Raised to take focus and the keyboard into the input (picks put here from the attach sheet). */
+    focusAsks: Int = 0,
 ) {
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(focus) { runCatching { focus.requestFocus() } }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(focusAsks) {
+        if (focusAsks == 0) return@LaunchedEffect
+        runCatching { focus.requestFocus() }
+        keyboard?.show()
+    }
     val colors = HappyTheme.colors
     // A suggestion put in places the cursor after it ([ComposerCursor.placement]); typing lets that go.
     val (field, typed) = rememberHoistedTextFieldState(

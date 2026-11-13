@@ -147,7 +147,12 @@ The same numbers, in Compose:
 - **The tab bar** narrows to `80 × tabs + 36` and centres, Telegram's rule for a bar of
   few tabs (its poll attach), since we have two.
 - **Preview.** A tap on a cell's picture opens it in the app's own viewer
-  (`PictureViewer`: zoom for photos, playback for videos); the check picks.
+  (`PictureViewer`: zoom for photos, playback for videos, open and close in
+  220 ms ease-out, the grid's thumbnail drawn until the photo is read); the
+  check picks, through a 48 corner (Telegram's 42).
+- **Confirm, not send.** Where Telegram's send pill is, a check and the count
+  (iOS's `SelectedButtonNode` shape): the picks go into the composer with the
+  caption as its draft, and are sent from there.
 - **Not ported:** the camera cell and in-sheet camera, albums drop-down, the in-sheet photo
   editor, spoilers, captions above media, scheduled and silent sends, the Lottie tab icons
   (outlined → filled vector swap on the same 320 ms).

@@ -18,6 +18,13 @@ class PhotoSettingsTest {
         assertEquals("1.4×", PhotoZoom.label(1.4f, true))
     }
 
+    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalZeroShutterLag::class)
+    @Test fun samsungCapturesWithoutZeroShutterLag() {
+        assertEquals(androidx.camera.core.ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY, photoCaptureMode("samsung"))
+        assertEquals(androidx.camera.core.ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY, photoCaptureMode("SAMSUNG"))
+        assertEquals(androidx.camera.core.ImageCapture.CAPTURE_MODE_ZERO_SHUTTER_LAG, photoCaptureMode("Google"))
+    }
+
     @Test fun exposureHonoursBothTwoStopsAndTheHardwareStepAndBounds() {
         assertEquals(3, exposureIndex(1f, 1f / 3, Range(-3, 3)))
         assertEquals(-6, exposureIndex(-1f, 1f / 3, Range(-12, 12)))

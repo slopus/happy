@@ -18,6 +18,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -163,18 +165,38 @@ class AttachSheetDeviceTest {
         val checks = all(AttachTags.CHECK)
         checks[1].performClick()
         checks[0].performClick()
-        checks[2].performClick()
+        // The check's corner takes a tap off the circle too, 46 in from the cell's corner.
+        val dp = app.resources.displayMetrics.density
+        all(AttachTags.CELL)[2].performTouchInput { click(androidx.compose.ui.geometry.Offset(width - 46 * dp, 46 * dp)) }
         waitFor(AttachTags.CAPTION_BAR)
+        rule.waitForIdle()
+        assertTrue("no preview from the check's corner", all(PictureViewerTags.VIEWER).fetchSemanticsNodes().isEmpty())
         capture("04-picked")
         node(AttachTags.CAPTION).performTextInput("Here they are")
         assertEquals("Here they are", node(AttachTags.CAPTION).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text)
         // The caption bar rides above the keyboard.
         SystemClock.sleep(1_500)
         capture("05-caption")
-        node(AttachTags.SEND).performClick()
-        rule.waitUntil(30_000) { transport.bodies.any { it.first.endsWith("/send") } }
+        // A long caption grows to five lines and scrolls inside, the bar under the sheet's top.
+        node(AttachTags.CAPTION).performTextInput("\nline two\nline three\nline four\nline five\nline six\nline seven\nline eight")
+        SystemClock.sleep(600)
+        val bar = node(AttachTags.CAPTION_BAR).fetchSemanticsNode().boundsInRoot
+        val field = node(AttachTags.CAPTION).fetchSemanticsNode().boundsInRoot
+        assertTrue("the caption stays within five lines: ${field.height / dp}", field.height / dp < 5 * 24 + 30)
+        assertTrue("the bar stays at the foot: ${bar.top / dp}", bar.top > all(AttachTags.CELL)[0].fetchSemanticsNode().boundsInRoot.top)
+        capture("05b-long-caption")
+        node(AttachTags.CONFIRM).performClick()
         waitGone(AttachTags.SHEET)
-        capture("06-sent")
+        // Nothing went: the picks wait in the composer with the words, the keyboard up.
+        waitFor(ConversationComposerTags.PICTURES)
+        assertTrue("nothing sent from the sheet", transport.bodies.none { it.first.endsWith("/send") })
+        rule.waitUntil(5_000) { node(ConversationComposerTags.INPUT).fetchSemanticsNode().config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Focused) { false } }
+        SystemClock.sleep(600)
+        capture("06-staged")
+        node(ConversationComposerTags.INPUT).performTextReplacement("Here they are")
+        node(ConversationComposerTags.PRIMARY).performClick()
+        rule.waitUntil(30_000) { transport.bodies.any { it.first.endsWith("/send") } }
+        capture("07-sent")
 
         val puts = transport.bodies.filter { it.first.endsWith("/file") }
         val send = transport.bodies.single { it.first.endsWith("/send") }.second as JsonObject

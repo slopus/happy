@@ -83,6 +83,7 @@ import com.slopus.happy.camera.PhotoShape
 import com.slopus.happy.camera.PhotoFlash
 import com.slopus.happy.camera.PhotoScreenFlash
 import com.slopus.happy.camera.capturePhoto
+import com.slopus.happy.camera.photoCaptureMode
 import com.slopus.happy.camera.cameraPresent
 import com.slopus.happy.ui.camera.PhotoCameraLayout
 import com.slopus.happy.ui.camera.PhotoMotion
@@ -110,6 +111,11 @@ internal class AttachCameraState {
     var frozen: Rect? = null
     var frozenClip: Rect? = null
     var viewportTop: () -> Float = { 0f }
+    /**
+     * The top of the sheet's foot bar (tabs, or the caption riding the keyboard and growing), in the
+     * camera's space: state, so the tile's clip follows the bar as it moves.
+     */
+    var footTop by mutableStateOf<Float?>(null)
     var back: () -> Unit = {}
     var open: () -> Unit = {}
 
@@ -148,7 +154,7 @@ internal fun AttachCamera(
     val firstFrame = remember { Animatable(0f) }
     val blink = remember { Animatable(0f) }
     val files = remember { PhotoFiles(File(context.cacheDir, "attachments/camera")) }
-    val control = remember { PhotoControl(ContextCompat.getMainExecutor(context), scope) }
+    val control = remember { PhotoControl(ContextCompat.getMainExecutor(context)) }
     val screenFlash = remember(window, scope) { PhotoScreenFlash(window, scope) }
     val coordinates = remember { MutableCoordinateTransformer() }
     val flip = remember { Animatable(0f) }
@@ -174,7 +180,7 @@ internal fun AttachCamera(
     val resolution = remember { ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy(AspectRatio.RATIO_4_3, AspectRatioStrategy.FALLBACK_RULE_AUTO)).build() }
     val square = PhotoPreferences.shape == PhotoShape.Square
     val capture = remember(square) {
-        ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_ZERO_SHUTTER_LAG)
+        ImageCapture.Builder().setCaptureMode(photoCaptureMode())
             .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
                 .setResolutionStrategy(ResolutionStrategy(if (square) Size(4096, 3072) else Size(3072, 2304),
                     if (square) ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER else ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)).build())
@@ -250,16 +256,18 @@ internal fun AttachCamera(
         if (locked) activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         onDispose { if (locked && old != null) activity?.requestedOrientation = old }
     }
+    // Where the gallery shows between the top bar and the foot bar; the caption bar rides the keyboard and grows.
+    fun foot(): Float? = state.footTop ?: state.root?.size?.height?.let { it - bottom }
     fun visibleTile(): Rect? {
         if (!visible) return null
         state.tilePosition ?: return null
         val rect = state.bounds() ?: return null
-        val height = state.root?.size?.height?.toFloat() ?: return null
+        val foot = foot() ?: return null
         // A tile under the caption/tab bar is not a camera surface. Keep the full rect for
         // aspect fill, while its visible portion is clipped by the gallery below.
-        return rect.takeIf { it.bottom > state.viewportTop() && it.top < height - bottom }
+        return rect.takeIf { it.bottom > state.viewportTop() && it.top < foot }
     }
-    fun clip(rect: Rect): Rect = rect.copy(top = rect.top.coerceAtLeast(state.viewportTop()), bottom = rect.bottom.coerceAtMost((state.root?.size?.height ?: 0) - bottom))
+    fun clip(rect: Rect): Rect = rect.copy(top = rect.top.coerceAtLeast(state.viewportTop()), bottom = rect.bottom.coerceAtMost(foot() ?: rect.bottom))
     fun close() {
         if (!state.full || motion.closing) return
         capturing?.cancel()

@@ -11,7 +11,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.min
 
 /**
@@ -68,11 +67,14 @@ object AttachSpec {
     val badgePadding = 5.dp
     val badgeText = 12.sp
 
-    /** `CheckBox2` of 24 in a 26 box, 5 from the cell's top and end; its touch is the 42 corner. */
+    /**
+     * `CheckBox2` of 24 in a 26 box, 5 from the cell's top and end. Telegram's touch is the
+     * 42 corner (`checkFrame`); ours is the 48 corner, Android's least target, Telegram's within it.
+     */
     val check = 24.dp
     val checkBox = 26.dp
     val checkInset = 5.dp
-    val checkTouch = 42.dp
+    val checkTouch = 48.dp
     val checkFill = 11.5.dp
     val checkRing = 10.5.dp
     val checkRingShade = 11.dp
@@ -117,19 +119,23 @@ object AttachSpec {
     val captionInset = 7.dp
     val captionPadding = 5.dp
     val captionBar = captionField + captionPadding * 2
-    val sendWidth = 52.dp
-    val sendHeight = 38.dp
-    val sendEnd = 11.dp
-    const val SEND_FROM = 0.2f
-
-    /** The counter on the send pill: at least 18, 9 more than its text; a 2 ring of the sheet round it. */
-    val counterMin = 18.dp
-    val counterRing = 2.dp
-    val counterText = 12.sp
-    /** The counter's centre, this far left of the pill's right edge. */
-    val counterCentre = 50.dp
-
-    fun counterWidth(text: Dp): Dp = max(counterMin.value, 9 + text.value).dp
+    /** The caption grows to this many lines, then scrolls inside the field. */
+    const val CAPTION_LINES = 5
+    /**
+     * The confirm pill at the bar's far end, as far in as the field is from the start
+     * (iOS `SelectedButtonNode`'s shape): 38 tall, a 22 check 8 in, the count 4 after it
+     * and 12 from the end, never narrower than 52.
+     */
+    val confirmHeight = 38.dp
+    val confirmMinWidth = 52.dp
+    val confirmEnd = captionInset
+    val confirmGap = 7.dp
+    val confirmIcon = 22.dp
+    val confirmStart = 8.dp
+    val confirmSpacing = 4.dp
+    val confirmTrailing = 12.dp
+    val confirmText = 16.sp
+    const val CONFIRM_FROM = 0.2f
 
     // The File tab
     val fileRow = 64.dp
@@ -147,7 +153,7 @@ object AttachSpec {
 /** Telegram's attachment colours: its brand blue where it uses it, our theme elsewhere. */
 @Immutable
 data class AttachColors(
-    /** `chat_attachCheckBoxBackground`, the send pill and the counter. */
+    /** `chat_attachCheckBoxBackground` and the confirm pill. */
     val accent: Color,
     val onAccent: Color,
     /** `glass_tabUnselected`. */

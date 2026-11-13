@@ -96,6 +96,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.unit.round
@@ -126,7 +127,7 @@ object AttachTags {
     const val TAB_BAR = "attach.tabs"
     const val CAPTION_BAR = "attach.captionBar"
     const val CAPTION = "attach.caption"
-    const val SEND = "attach.send"
+    const val CONFIRM = "attach.confirm"
     const val COUNTER = "attach.counter"
 
     fun tab(kind: AttachTabKind) = "attach.tab." + kind.name.lowercase()
@@ -290,7 +291,7 @@ internal fun AttachSheetLayout(
     onCaptionChange: (String) -> Unit,
     motion: AttachSheetMotion,
     onClose: () -> Unit,
-    onSend: () -> Unit,
+    onConfirm: () -> Unit,
     onToggleGallery: (GalleryItem) -> Unit,
     onOpenGallery: (GalleryItem) -> Unit,
     onToggleFile: (RecentFile) -> Unit,
@@ -301,7 +302,7 @@ internal fun AttachSheetLayout(
     onPaste: () -> Unit,
     modifier: Modifier = Modifier,
     onWorkspace: () -> Unit = {},
-    sending: Boolean = false,
+    busy: Boolean = false,
     galleryState: LazyGridState = rememberLazyGridState(),
     filesState: LazyListState = rememberLazyListState(),
     camera: AttachCameraState? = null,
@@ -593,7 +594,14 @@ internal fun AttachSheetLayout(
                     .height(AttachSpec.bottomFade + bottom)
                     .background(Brush.verticalGradient(0f to sheetColor.copy(alpha = 0f), 0.6f to sheetColor.copy(alpha = 0.85f), 1f to sheetColor)),
             )
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = bottom)) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = bottom)
+                    // The live camera tile stops at the bar's top, never over the caption.
+                    .onGloballyPositioned { bar -> camera?.footTop = root?.takeIf { it.isAttached }?.localPositionOf(bar, Offset.Zero)?.y },
+            ) {
                 if (captionProgress.value < 1f) {
                     AttachTabBar(
                         tabs,
@@ -614,11 +622,10 @@ internal fun AttachSheetLayout(
                         caption,
                         onCaptionChange,
                         selection.count,
-                        onSend,
-                        sending = sending,
+                        onConfirm,
+                        busy = busy,
                         shown = { captionProgress.value },
                         backdrop = source,
-                        sheet = sheetColor,
                         colors = colors,
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )

@@ -15,6 +15,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
@@ -69,6 +71,7 @@ internal fun SheetUnderTest(
     onClose: () -> Unit = {},
     motion: AttachSheetMotion = remember { AttachSheetMotion(settled = true) },
     camera: AttachCameraState? = null,
+    onOpen: (GalleryItem) -> Unit = {},
 ) {
     var tab by remember { mutableStateOf(startTab) }
     var caption by remember { mutableStateOf("") }
@@ -84,9 +87,9 @@ internal fun SheetUnderTest(
         onCaptionChange = { caption = it },
         motion = motion,
         onClose = onClose,
-        onSend = {},
+        onConfirm = {},
         onToggleGallery = { selection.toggle(it.picked()) },
-        onOpenGallery = {},
+        onOpenGallery = onOpen,
         onToggleFile = { selection.toggle(it.picked()) },
         onAllow = {},
         onManage = {},
@@ -171,9 +174,9 @@ class AttachSheetLayoutTest {
         assertDp("square", side.dp, first.height)
         assertDp("gap", 2, second.left - first.right)
         assertDp("row gap", 2, fourth.top - first.bottom)
-        // The check's 42 corner, top right of its cell.
+        // The check's 48 corner (Telegram's 42, grown to Android's target), top right of its cell.
         val check = checks()[0].bounds
-        assertDp("check touch", 42, check.width)
+        assertDp("check touch", 48, check.width)
         assertDp("check right", first.right, check.right)
         assertDp("check top", first.top, check.top)
         // The grabber 10 under the sheet's top, 24 over the first row.
@@ -212,16 +215,39 @@ class AttachSheetLayoutTest {
         rule.onNodeWithText("2 selected").assertIsDisplayed()
         // The sheet grew 26 at its top for the header; the grabber went with it.
         assertDp("header", restingGrabber - 26.dp, rule.node(AttachTags.GRABBER).bounds.top)
-        // The send pill, its count on its top left corner.
-        val send = rule.node(AttachTags.SEND).bounds
-        assertDp("send", 52, send.width)
-        assertDp("send", 38, send.height)
+        // The confirm pill, its check and count inside, alone at the bar's far end.
+        val confirm = rule.node(AttachTags.CONFIRM).bounds
+        val bar = rule.node(AttachTags.CAPTION_BAR).bounds
+        val field = rule.node(AttachTags.CAPTION).bounds
+        assertTrue("at least 52 wide", confirm.width >= 52.dp - 0.5.dp)
+        assertDp("confirm", 38, confirm.height)
+        assertDp("as far from the end as the field from the start", field.left - bar.left, bar.right - confirm.right)
+        assertDp("7 after the field", 7, confirm.left - field.right)
         val counter = rule.node(AttachTags.COUNTER).bounds
-        assertDp("counter centre 50 left of the pill's right", send.right - 50.dp, (counter.left + counter.right) / 2)
+        assertTrue("count inside the pill", counter.left >= confirm.left && counter.right <= confirm.right)
         // Unpicking the first renumbers the second.
         checks()[2].performClick()
         rule.waitForIdle()
         assertEquals(1, selection.number(fakeGallery()[0].uri))
+    }
+
+    @Test fun `the check's corner picks, the rest of the picture opens it`() {
+        lateinit var selection: AttachSelection
+        val opened = ArrayList<String>()
+        rule.setHappyContent {
+            selection = remember { AttachSelection(20) }
+            SheetUnderTest(selection = selection, onOpen = { opened += it.uri })
+        }
+        rule.waitForIdle()
+        // 46 in from the corner: past Telegram's 42, inside the 48.
+        cells()[1].performTouchInput { click(Offset(width - 46.dp.toPx(), 46.dp.toPx())) }
+        rule.waitForIdle()
+        assertEquals(1, selection.number(fakeGallery()[1].uri))
+        assertTrue(opened.isEmpty())
+        cells()[1].performTouchInput { click(Offset(width - 52.dp.toPx(), 52.dp.toPx())) }
+        rule.waitForIdle()
+        assertEquals(listOf(fakeGallery()[1].uri), opened)
+        assertEquals(1, selection.count)
     }
 
     @Test fun `a pull of eight millimetres at the top closes it, a short one springs back`() {

@@ -48,7 +48,6 @@ import com.slopus.happy.attachments.GalleryAccess
 import com.slopus.happy.attachments.GalleryItem
 import com.slopus.happy.attachments.MediaGallery
 import com.slopus.happy.attachments.PickedKind
-import com.slopus.happy.attachments.PendingPicture
 import com.slopus.happy.attachments.PickedMedia
 import com.slopus.happy.attachments.RecentFile
 import com.slopus.happy.attachments.RecentFiles
@@ -60,6 +59,10 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.rememberReduceMotion
+import com.slopus.happy.ui.components.rememberImageLoader
+import coil3.ImageLoader
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.conversation.PictureViewer
 import com.slopus.happy.ui.conversation.ViewerSource
@@ -80,16 +83,15 @@ import java.nio.ByteBuffer
 /**
  * The attachment sheet over the whole window while [open]: Telegram's
  * gallery of recent photos and videos (asking for access the first time)
- * and its File tab, as [accepts] allows. What is picked goes with the
- * [caption] (the composer's words, edited here too) once Send is pressed:
- * each pick is copied into the app's cache first ([AttachmentStaging]),
- * then [onSend] has them. Room is [room] picks. [onClosed] runs once the
- * sheet has gone, after its own close. On a phone held upright it grows
- * out of [button] and goes back into it ([AttachMorph]). With a [workspace]
- * the File tab can name one of its files instead: the picked path goes
- * into the caption as `./path` and nothing is uploaded. With
- * [onSendPending], gallery photos don't wait to be read: the sheet goes at
- * once and each goes as its thumbnail, read after ([PendingPicture]).
+ * and its File tab, as [accepts] allows. The [caption] is the composer's
+ * words, edited here too. The confirm pill (a check and the count) sends
+ * nothing: each pick is copied into the app's cache ([AttachmentStaging]),
+ * [onAttach] puts them in the composer, and the sheet goes. Room is
+ * [room] picks. [onClosed] runs once the sheet has gone, after its own
+ * close. On a phone held upright it grows out of [button] and goes back
+ * into it ([AttachMorph]). With a [workspace] the File tab can name one of
+ * its files instead: the picked path goes into the caption as `./path`
+ * and nothing is uploaded.
  */
 @Composable
 fun AttachSheet(
@@ -97,12 +99,11 @@ fun AttachSheet(
     accepts: AttachAccepts,
     caption: String,
     onCaptionChange: (String) -> Unit,
-    onSend: (List<AttachmentPreview>) -> Unit,
+    onAttach: (List<AttachmentPreview>) -> Unit,
     onClosed: () -> Unit,
     room: Int = accepts.maxItems,
     button: AttachButton? = null,
     workspace: WorkspaceSource? = null,
-    onSendPending: ((List<AttachmentPreview>, List<PendingPicture>) -> Unit)? = null,
     onPhoto: ((AttachmentPreview) -> Unit)? = null,
 ) {
     if (!open) return
@@ -120,11 +121,10 @@ fun AttachSheet(
     val camera = remember { AttachCameraState() }.takeIf { accepts.photos && onPhoto != null }
     val selection = remember { AttachSelection(room.coerceAtLeast(0)) }
     val closed by rememberUpdatedState(onClosed)
-    val send by rememberUpdatedState(onSend)
-    val sendPending by rememberUpdatedState(onSendPending)
+    val attach by rememberUpdatedState(onAttach)
     var tab by remember { mutableStateOf(tabs.first()) }
     var alert by remember { mutableStateOf<Alert?>(null) }
-    var sending by remember { mutableStateOf(false) }
+    var staging by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<Int?>(null) }
     var naming by remember { mutableStateOf(false) }
     val closeExtra = with(LocalDensity.current) { AttachSpec.closeExtra.toPx() }
@@ -238,43 +238,34 @@ fun AttachSheet(
         }
     }
 
-    fun sendPicks() {
-        if (sending || selection.count == 0) return
-        sending = true
+    fun confirm() {
+        if (staging || selection.count == 0) return
+        staging = true
         val picks = selection.items.toList()
-        val later = sendPending
         val app = context.applicationContext
-        val staging = AttachmentStaging(attachmentCacheDir(app)) { pick ->
+        val stager = AttachmentStaging(attachmentCacheDir(app)) { pick ->
             app.contentResolver.openInputStream(Uri.parse(pick.uri)) ?: throw IOException("Cannot open ${pick.name}")
         }
         scope.launch {
             try {
-                // A gallery photo goes as its thumbnail, read once the sheet has gone (iOS b03dd48cc).
-                val photos = if (later == null) emptyList() else picks.filter { it.kind == PickedKind.Photo }
-                val thumbnails = withContext(Dispatchers.IO) { photos.map { async { galleryThumbnail(app.contentResolver, it.uri) } }.awaitAll() }
-                val pending = photos.zip(thumbnails).mapNotNull { (pick, thumbnail) ->
-                    thumbnail?.let {
-                        pick to PendingPicture(it) {
-                            withContext(Dispatchers.IO) { staging.stage(listOf(pick), accepts) }.attachments.singleOrNull() ?: throw IOException("Cannot read ${pick.name}")
-                        }
-                    }
-                }
-                val now = picks.filter { pick -> pending.none { it.first == pick } }
-                val staged = if (now.isEmpty()) Staged(emptyList(), emptyList()) else withContext(Dispatchers.IO) { staging.stage(now, accepts) }
+                // Each pick read on its own, a few at a time, and put back in the order picked.
+                val staged = withContext(Dispatchers.IO) {
+                    picks.map { pick -> async(StagingDispatcher) { stager.stage(listOf(pick), accepts) } }.awaitAll()
+                }.let { parts -> Staged(parts.flatMap { it.attachments }, parts.flatMap { it.problems }) }
                 staged.problems.firstOrNull()?.let { problem ->
                     when (problem) {
                         is StagingProblem.TooLarge -> say(R.string.image_upload_file_too_large_title, resources.getString(R.string.image_upload_file_too_large_message, problem.name, problem.maxMb))
                         is StagingProblem.Unreadable -> say(R.string.image_upload_upload_failed_title, resources.getString(R.string.attach_unreadable_message, problem.name))
                     }
                 }
-                if (staged.attachments.isEmpty() && pending.isEmpty()) return@launch
+                if (staged.attachments.isEmpty()) return@launch
                 val files = picks.filter { it.kind == PickedKind.File && it.uri.startsWith("content:") }
                 if (files.isNotEmpty() && accepts.files) withContext(Dispatchers.IO) { RecentFiles(context).remember(files) }
-                if (later != null && pending.isNotEmpty()) later(staged.attachments, pending.map { it.second }) else send(staged.attachments)
+                attach(staged.attachments)
                 if (staged.problems.isEmpty()) close()
                 else selection.clear()
             } finally {
-                sending = false
+                staging = false
             }
         }
     }
@@ -314,7 +305,7 @@ fun AttachSheet(
             onCaptionChange = onCaptionChange,
             motion = motion,
             onClose = ::close,
-            onSend = ::sendPicks,
+            onConfirm = ::confirm,
             onToggleGallery = { toggle(it.picked()) },
             onOpenGallery = { item -> viewing = items.indexOf(item).takeIf { it >= 0 } },
             onToggleFile = { toggle(it.picked()) },
@@ -327,7 +318,7 @@ fun AttachSheet(
             },
             onPaste = ::paste,
             onWorkspace = { naming = true },
-            sending = sending,
+            busy = staging,
             camera = camera,
         )
         if (camera != null && onPhoto != null) AttachCamera(
@@ -344,7 +335,8 @@ fun AttachSheet(
         )
         viewing?.let { index ->
             val shown = remember(items) { items.map { ViewerItem(it.uri, it.name, it.isVideo, it.width.toFloat().takeIf { w -> w > 0 }, it.height.toFloat().takeIf { h -> h > 0 }) } }
-            PictureViewer(shown, index, remember(context) { GallerySource(context) }, onClose = { viewing = null })
+            val loader = rememberImageLoader()
+            PictureViewer(shown, index, remember(context, loader) { GallerySource(context, loader) }, onClose = { viewing = null })
         }
         if (naming && workspace != null) {
             WorkspaceFilePicker(
@@ -362,8 +354,13 @@ fun AttachSheet(
     }
 }
 
-/** The preview's pictures and recordings: read straight from the gallery. */
-private class GallerySource(private val context: Context) : ViewerSource {
+/** Picks read into the cache at once: a photo's decode is big, so a few at a time. */
+private val StagingDispatcher = Dispatchers.IO.limitedParallelism(3)
+
+/** The preview's pictures and recordings: read straight from the gallery, the grid's thumbnail first. */
+private class GallerySource(private val context: Context, private val loader: ImageLoader) : ViewerSource {
+    override fun thumbnail(key: String): ImageBitmap? = galleryThumbBitmap(loader, key)?.asImageBitmap()
+
     override suspend fun bytes(key: String): ByteArray? = withContext(Dispatchers.IO) {
         context.contentResolver.openInputStream(Uri.parse(key))?.use { it.readBytes() }
     }

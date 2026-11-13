@@ -6,8 +6,8 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.media.MediaDataSource
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
@@ -73,6 +73,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -110,7 +111,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -126,18 +126,22 @@ object PictureViewerTags {
     const val PLAY = "conversation.picture.viewer.play"
 }
 
-/** The viewer's motion, iOS's PictureViewController. */
+/** The viewer's motion, iOS's PictureViewController at Telegram's PhotoViewer pace. */
 object PictureViewerSpec {
-    /** The cross-dissolve it comes and goes with. */
-    const val FADE_MS = 250
+    /**
+     * Out of its thumbnail and back, faded or flung away alike: Telegram's
+     * PhotoViewer opens and closes in about 200 ms on a decelerating curve.
+     */
+    const val MOTION_MS = 220
+    /** UIKit's `.curveEaseOut`, both ways. */
+    val easing: Easing = CubicBezierEasing(0f, 0f, 0.58f, 1f)
+    /** A double tap's zoom in or out. */
+    const val ZOOM_MS = 250
     /** The longest it waits for its window to show before it begins anyway. */
     const val SHOW_WAIT_MS = 1_500L
     /** Let go short of closing, it springs back (UIKit's 0.35 s, damping 0.85). */
     const val SPRING_DAMPING = 0.85f
     const val SPRING_STIFFNESS = 322f
-    /** Flung away, it carries on off the screen in 0.15 to 0.3 s. */
-    const val LEAVE_MIN_MS = 150
-    const val LEAVE_MAX_MS = 300
     const val MAX_ZOOM = 5f
     /** A double tap zooms a whole picture to this. */
     const val DOUBLE_TAP_ZOOM = 2.5f
@@ -151,6 +155,9 @@ object PictureViewerSpec {
 interface ViewerSource {
     /** The bytes already at hand, shown from the first frame. */
     fun cached(key: String): ByteArray? = null
+
+    /** A small picture already decoded (a gallery's thumbnail), drawn while the bytes are read. */
+    fun thumbnail(key: String): ImageBitmap? = null
 
     /** A picture's bytes; null when they can't be had. */
     suspend fun bytes(key: String): ByteArray?
@@ -177,7 +184,7 @@ interface ViewerSource {
  * ([PictureDismissal]); let go past 100 dp or flung, it carries on off the
  * screen and the viewer goes, otherwise it springs back. A recording plays
  * in its page while it is the one in view ([VideoPage]). It comes and goes
- * with a 250 ms fade; Back, a tap on a picture or the close button (44, 8
+ * in 220 ms on one ease-out curve, flung away too; Back, a tap on a picture or the close button (44, 8
  * in from the safe area's top right) leaves. A source that shares adds a
  * Share button at the top left. The position ("2 of 5") is the page's
  * state for TalkBack, as iOS gives it to VoiceOver.
@@ -220,9 +227,9 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
                 scope.launch {
                     coroutineScope {
                         if (target != null && motion.drag != Offset.Zero) launch {
-                            animate(Offset.VectorConverter, motion.drag, Offset.Zero, animationSpec = tween(PictureViewerSpec.FADE_MS, easing = FastOutSlowInEasing)) { value, _ -> motion.drag = value }
+                            animate(Offset.VectorConverter, motion.drag, Offset.Zero, animationSpec = tween(PictureViewerSpec.MOTION_MS, easing = PictureViewerSpec.easing)) { value, _ -> motion.drag = value }
                         }
-                        shown.animateTo(0f, tween(PictureViewerSpec.FADE_MS, easing = FastOutSlowInEasing))
+                        shown.animateTo(0f, tween(PictureViewerSpec.MOTION_MS, easing = PictureViewerSpec.easing))
                     }
                     // Under the picture where it landed, the thumbnail is back, and drawn, before the viewer goes.
                     origins.hidden?.let { key ->
@@ -250,7 +257,7 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
         // Its window takes a few frames to come: the thumbnail stays until the picture is there over it, then goes.
         snapshotFlow { flight.screen != null && flight.visible }.first { it }
         if (flight.origin != null && !motion.leaving) origins.hidden = items[pager.currentPage].key
-        shown.animateTo(1f, tween(PictureViewerSpec.FADE_MS, easing = LinearOutSlowInEasing))
+        shown.animateTo(1f, tween(PictureViewerSpec.MOTION_MS, easing = PictureViewerSpec.easing))
     }
     // Paged to another, its thumbnail is the one hidden.
     LaunchedEffect(pager.currentPage) {
@@ -415,10 +422,7 @@ internal class ViewerMotion(private val scope: CoroutineScope, private val onClo
                 leaving = true
                 val down = if (velocityY == 0f) drag.y >= 0 else velocityY > 0
                 val distance = height.toFloat()
-                val remaining = max(1f, distance - abs(drag.y))
-                val ms = (remaining / max(abs(velocityY), 1f) * 1000).toInt()
-                    .coerceIn(PictureViewerSpec.LEAVE_MIN_MS, PictureViewerSpec.LEAVE_MAX_MS)
-                animate(Offset.VectorConverter, drag, Offset(drag.x, if (down) distance else -distance), animationSpec = tween(ms, easing = LinearOutSlowInEasing)) { value, _ ->
+                animate(Offset.VectorConverter, drag, Offset(drag.x, if (down) distance else -distance), animationSpec = tween(PictureViewerSpec.MOTION_MS, easing = PictureViewerSpec.easing)) { value, _ ->
                     drag = value
                 }
                 onClose()
@@ -492,7 +496,7 @@ internal class PageZoom {
         val to = if (from > 1f) 1f else PictureViewerSpec.DOUBLE_TAP_ZOOM
         val start = offset
         val end = if (to == 1f) Offset.Zero else clamp((middle - point) * (to - 1), to)
-        animate(0f, 1f, animationSpec = tween(PictureViewerSpec.FADE_MS)) { t, _ ->
+        animate(0f, 1f, animationSpec = tween(PictureViewerSpec.ZOOM_MS)) { t, _ ->
             scale = from + (to - from) * t
             offset = start + (end - start) * t
         }
@@ -584,7 +588,7 @@ private fun PicturePage(
         }
     }
     // The thumbnail it flies out of, as the chat drew it, until its own bytes are read; else its thumbhash.
-    val placeholder = rememberMemoryImage(item.key) ?: rememberThumbHash(item.thumbhash)
+    val placeholder = rememberMemoryImage(item.key) ?: remember(item.key) { source.thumbnail(item.key) } ?: rememberThumbHash(item.thumbhash)
     val read = remember(bytes) { bytes?.let(::pictureSize)?.let { image -> image.width?.let { w -> image.height?.let { h -> w to h } } } }
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current

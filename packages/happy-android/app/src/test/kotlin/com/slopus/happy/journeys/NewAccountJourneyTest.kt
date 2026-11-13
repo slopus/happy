@@ -95,14 +95,16 @@ class NewAccountJourneyTest {
         rule.node(HomeTags.COMPOSE).performClick()
         rule.waitFor(ComposeChatTags.TARGET)
         rule.waitFor(ComposerTags.INPUT)
-        // The attachment sheet: its File tab pastes, the caption is the draft, its Send sends both.
+        // The attachment sheet: its File tab pastes, the caption is the draft, its check puts the image in the composer.
         copyImageToClipboard()
         rule.node(AttachmentStripTags.ADD).performClick()
         rule.node(AttachTags.tab(AttachTabKind.Files)).performClick()
         rule.node(AttachTags.PASTE).performClick()
-        rule.waitFor(AttachTags.SEND)
+        rule.waitFor(AttachTags.CONFIRM)
         rule.node(AttachTags.CAPTION).performTextInput("Explain this screenshot")
-        rule.node(AttachTags.SEND).performClick()
+        rule.node(AttachTags.CONFIRM).performClick()
+        rule.waitFor(AttachmentStripTags.THUMB)
+        rule.node(ComposerTags.PRIMARY).performClick()
 
         // The same screen becomes the new session's chat, with the message delivered.
         rule.waitFor(MessageTags.USER, 15_000)
