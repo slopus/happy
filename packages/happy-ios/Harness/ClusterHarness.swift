@@ -82,6 +82,15 @@ actor ClusterServer: AgentTransport {
     let nameless: Bool
     /// Health says it serves plugins; off (`-noplugins`), as deployed before them.
     let servesPlugins: Bool
+    /// The instructions and security policy in a Policy vault, as deployed
+    /// before they moved to the settings (`-policyvault`).
+    let policyVault: Bool
+    private var instructions = "# Acme\n\nWe build developer tools. Write tests with every change, and keep pull requests small.\n\n## Style\n\n- Swift: UIKit, no storyboards.\n- Prefer plain words in docs.\n"
+    private var security = "Never send secrets to a model. Ask before running anything that touches production.\n"
+
+    static func document(_ key: String, _ text: String) -> String {
+        String(data: try! JSONEncoder().encode([key: text]), encoding: .utf8)!
+    }
 
     /// Onboarding's gates (`-gates`), in order; nil: the route answers
     /// completed with none.
@@ -112,9 +121,10 @@ actor ClusterServer: AgentTransport {
         var scope: String { ["profile", "avatar", "mobileApp"].contains(id) ? "member" : "server" }
     }
 
-    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil, servesPlugins: Bool = true) {
+    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil, servesPlugins: Bool = true, policyVault: Bool = false) {
         self.manager = manager
         self.servesPlugins = servesPlugins
+        self.policyVault = policyVault
         self.nameless = nameless
         if !installed { installations = [] }
         self.gates = gates?.split(separator: ",").map(Gate.init)
@@ -182,7 +192,19 @@ actor ClusterServer: AgentTransport {
             mark("avatar")
             return ok(profile)
         case ("GET", "/v0/permissions"):
-            return ok(manager ? #"{"granted":["content.write","bots.manage","mcp.manage","config.manage","providers.manage","providers.own"]}"# : #"{"granted":["content.write","providers.own"]}"#)
+            return ok(manager ? #"{"granted":["content.write","bots.manage","mcp.manage","config.manage","providers.manage","providers.own","policy.edit"]}"# : #"{"granted":["content.write","providers.own"]}"#)
+        case ("GET", "/v0/surfaces"):
+            // A Files vault; on a server from before (`-policyvault`), the Policy vault too.
+            let policy = policyVault ? #",{"id":"policy","type":"vault","name":"Policy","access":"read","policyVault":true}"# : ""
+            return ok(#"{"surfaces":[{"id":"files","type":"vault","name":"Files","access":"write","defaultVault":true}\#(policy)]}"#)
+        case ("GET", "/v0/config/instructions") where !policyVault: return ok(Self.document("instructions", instructions))
+        case ("GET", "/v0/config/security") where !policyVault: return ok(Self.document("policy", security))
+        case ("PUT", "/v0/config/instructions") where !policyVault, ("PUT", "/v0/config/security") where !policyVault:
+            guard manager else { return refuse(403, "forbidden", "This needs the policy.edit permission.") }
+            let key = path.hasSuffix("instructions") ? "instructions" : "policy"
+            let text = sent?[key]?.stringValue ?? ""
+            if key == "instructions" { instructions = text } else { security = text }
+            return ok(Self.document(key, text))
         case ("GET", "/v0/cloud/providers"):
             let own = custom.map { #",{"id":"\#($0)","name":"\#($0)","scope":"team","source":"tenant","vendors":["openai_compatible"],"models":[],"credentialCount":1}"# } ?? ""
             return ok(#"{"providers":[{"id":"operator:openai","name":"Happy (free)","scope":"team","source":"operator","vendors":["openai"],"models":[],"credentialCount":0}\#(own)],"capabilities":{"apiKeys":true,"claudeSetupToken":true,"codexSignIn":true,"claudeSignIn":false}}"#)
@@ -265,7 +287,8 @@ actor ClusterServer: AgentTransport {
 /// (`-member`) or with nothing installed (`-fresh`), in dark (`-dark`);
 /// a member yet to give their name on a server without gates (`-nameless`);
 /// onboarding's gates as `-gates profile:required,avatar,…` (`ClusterServer.Gate`);
-/// a server that doesn't serve plugins (`-noplugins`).
+/// a server that doesn't serve plugins (`-noplugins`); its documents in a
+/// Policy vault as before (`-policyvault`); `-open instructions|security|settings`.
 @MainActor
 final class ClusterHarness {
     private var account: AccountController?
@@ -277,7 +300,7 @@ final class ClusterHarness {
     private func open(window: HarnessWindow, arguments: [String]) async {
         let server = ClusterServer(manager: !arguments.contains("-member"), installed: !arguments.contains("-fresh"), nameless: arguments.contains("-nameless"),
                                    gates: arguments.firstIndex(of: "-gates").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil },
-                                   servesPlugins: !arguments.contains("-noplugins"))
+                                   servesPlugins: !arguments.contains("-noplugins"), policyVault: arguments.contains("-policyvault"))
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/cluster",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -304,6 +327,22 @@ final class ClusterHarness {
             switch open {
             case "plugins":
                 navigation.pushViewController(PluginsViewController(session: session), animated: false)
+            case "instructions", "security":
+                let page = PolicyDocumentViewController(document: open == "security" ? .security : .instructions, session: session)
+                navigation.pushViewController(page, animated: false)
+                if let text = value("-append", in: arguments) {
+                    try? await Task.sleep(for: .seconds(1))
+                    page.textView.becomeFirstResponder()
+                    page.textView.text += text
+                    page.textViewDidChange(page.textView)
+                    if arguments.contains("-save") { await page.save() }
+                }
+            case "settings":
+                navigation.pushViewController(SettingsViewController(context: context, computer: connection.id), animated: false)
+                try? await Task.sleep(for: .seconds(1.5))
+                if let scroll = navigation.topViewController?.view.subviews.compactMap({ $0 as? UIScrollView }).first {
+                    scroll.setContentOffset(CGPoint(x: 0, y: max(0, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom) * 0.55), animated: false)
+                }
             case "providers":
                 let providers = ProvidersViewController(session: session)
                 navigation.pushViewController(providers, animated: false)

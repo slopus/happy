@@ -40,6 +40,8 @@ public struct Permissions: Decodable, Equatable, Sendable {
         case computeUse = "compute.use"
         /// Adding a machine in any mode, freeing a held one, and its host facts.
         case poolsManage = "pools.manage"
+        /// The server's instructions and security policy (`PolicyDocument`).
+        case policyEdit = "policy.edit"
     }
 
     public static let refreshEvents = ["role.", "member.updated", "member.removed"]
@@ -85,7 +87,8 @@ extension AgentClientError {
 }
 
 /// What the person may do in one vault on a Happy Cloud server, as its
-/// Surface says (`access`, `policyVault`). A server that doesn't say, an
+/// Surface says (`access`, and `policyVault` on a server from before the
+/// documents moved to its settings: `PolicyDocument.served`). A server that doesn't say, an
 /// older one or a computer, leaves it writable. The access rules
 /// themselves (`accessPolicy`) are not read: the phone doesn't edit them.
 public struct VaultAccess: Equatable, Sendable {

@@ -797,12 +797,21 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     }
 
     /// A Happy Cloud server's AI providers: the connections its chats run on.
+    /// Then its instructions and security policy, where its settings serve
+    /// them (`Session.policyDocuments`).
     private func providersRows(_ id: String) -> [SettingsRow] {
         guard let session = Session.session(for: id, context: context), session.isCloud else { return [] }
-        return [SettingsRow(SettingsIndex.providers, action: { [weak self] in
+        let providers = SettingsRow(SettingsIndex.providers, action: { [weak self] in
             guard let self else { return }
             ProvidersViewController.open(.providers, session: session, from: self)
-        })]
+        })
+        guard session.policyDocuments == true else { return [providers] }
+        let documents = [(SettingsIndex.instructions, PolicyDocument.instructions), (SettingsIndex.securityPolicy, PolicyDocument.security)].map { entry, document in
+            SettingsRow(entry, action: { [weak self] in
+                self?.navigationController?.pushViewController(PolicyDocumentViewController(document: document, session: session), animated: true)
+            })
+        }
+        return [providers] + documents
     }
 
     /// The relay app's words, about keys kept on this phone, aren't true

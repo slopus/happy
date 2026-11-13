@@ -28,6 +28,9 @@ enum SettingsIndex {
     static var voice: Entry { Entry(id: "voice", title: Strings.Voice.title, glyph: "mic-outline", tile: .orange) }
     static var agents: Entry { Entry(id: "agents", title: Strings.Settings.agents, glyph: "options-outline", tile: .teal) }
     static var providers: Entry { Entry(id: "providers", title: Strings.Providers.title, glyph: "key-outline", tile: .indigo) }
+    /// A Happy Cloud server's two documents every agent follows.
+    static var instructions: Entry { Entry(id: "instructions", title: Strings.PolicyDocuments.title(.instructions), glyph: "document-text-outline", tile: .gray) }
+    static var securityPolicy: Entry { Entry(id: "security-policy", title: Strings.PolicyDocuments.title(.security), glyph: "shield-checkmark-outline", tile: .green) }
     /// What each provider account has spent: a year of daily tokens, plans and models.
     static var usage: Entry { Entry(id: "usage", title: Strings.Usage.title, glyph: "flash-outline", tile: .teal) }
     /// On Agents, this phone's own: whether home's microphone opens the task it starts.
