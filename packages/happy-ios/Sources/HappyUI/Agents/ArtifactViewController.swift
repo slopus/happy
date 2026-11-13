@@ -398,15 +398,20 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         block.accessibilityIdentifier = "artifact-gen-ui"
         block.onHeight = { [weak self] _ in self?.view.setNeedsLayout() }
         block.interaction.onViewer = { [weak self] _, group, index in self?.openGenUIViewer(group, index: index) }
-        block.interaction.onAction = { [weak self] _, action in
-            guard let self else { return }
-            GenUIActionRunner.run(action, session: self.session, from: self)
+        let artifactId = artifact.id
+        let fromVault = vault != nil
+        block.interaction.onAction = { [weak self, weak block] key, action in
+            guard let self, let block else { return }
+            if GenUIActionRunner.run(action, session: self.session, from: self) { return }
+            if case .secret(let prefill) = action, !fromVault {
+                GenUIActionRunner.openSecret(prefill, key: key, artifactId: artifactId, version: version.number, in: block, client: self.session.client, from: self)
+            }
         }
         scrollView.addSubview(block)
         // No conversation to send a `message` into here; a vault's version
         // names no agent.
         let host = GenUIHost(server: session.isCloud ? .cluster : .happyAgent, origin: version.origin != nil, served: session.snapshot.references.genUIServed)
-        genUI = (block, document, GenUIArtifactFiles(media: media, files: version.files), GenUIRuns(host: host, sends: false))
+        genUI = (block, document, GenUIArtifactFiles(media: media, files: version.files), GenUIRuns(host: host, sends: false, forms: host.server == .happyAgent && vault == nil))
         view.setNeedsLayout()
     }
 

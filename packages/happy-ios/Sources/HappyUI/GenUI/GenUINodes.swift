@@ -16,6 +16,8 @@ struct GenUIBuilt: @unchecked Sendable {
     let drawn: [(node: UltraNode, make: @Sendable (_ dark: Bool) -> any Drawing)]
     /// The elements of single-choice groups, by key.
     let choices: [String: GenUIChoiceNodes]
+    /// The elements that open a secret form, by key: marked once it saved.
+    let secrets: [String: GenUIChoiceNodes]
     /// Carousels that settle one card at a time.
     let snaps: [(node: UltraScrollNode, stops: [CGFloat])]
     /// Pictures still to load, over their ThumbHash.
@@ -103,29 +105,51 @@ struct GenUIRuns: Equatable, Sendable {
     }
 }
 
+/// What VoiceOver says of controls beyond their labels, read on the main
+/// thread for a build off it.
+struct GenUIWords: Equatable, Sendable {
+    var copy = "Copy"
+    var unavailable = "Unavailable here"
+
+    @MainActor static var current: GenUIWords { GenUIWords(copy: Strings.Chat.copy, unavailable: Strings.GenUI.unavailable) }
+}
+
+extension GenUIAction {
+    /// A secret action: its element is marked once its form saved.
+    var opensSecretForm: Bool {
+        switch self {
+        case .secret, .clusterSecret: true
+        default: false
+        }
+    }
+}
+
 /// Builds a plan's nodes. Used on one thread at a time.
 final class GenUINodeBuilder {
     private let interaction: GenUIInteraction
     private let dark: Bool
     private let runs: GenUIRuns
+    private let words: GenUIWords
     private var drawn: [(node: UltraNode, make: @Sendable (Bool) -> any Drawing)] = []
     private var choices: [String: GenUIChoiceNodes] = [:]
+    private var secrets: [String: GenUIChoiceNodes] = [:]
     private var snaps: [(node: UltraScrollNode, stops: [CGFloat])] = []
     private var images: [(node: UltraNode, file: String, side: CGFloat)] = []
 
-    private init(interaction: GenUIInteraction, dark: Bool, runs: GenUIRuns) {
+    private init(interaction: GenUIInteraction, dark: Bool, runs: GenUIRuns, words: GenUIWords) {
         self.interaction = interaction
         self.dark = dark
         self.runs = runs
+        self.words = words
     }
 
     /// `interaction` hears the nodes' taps; `dark` is the appearance they
     /// are first drawn in; `runs` says which actions are enabled. Neither
     /// moves anything: the plan is the same for every host.
-    static func build(_ plan: GenUIPlan, interaction: GenUIInteraction, dark: Bool, runs: GenUIRuns) -> GenUIBuilt {
-        let builder = GenUINodeBuilder(interaction: interaction, dark: dark, runs: runs)
+    static func build(_ plan: GenUIPlan, interaction: GenUIInteraction, dark: Bool, runs: GenUIRuns, words: GenUIWords = GenUIWords()) -> GenUIBuilt {
+        let builder = GenUINodeBuilder(interaction: interaction, dark: dark, runs: runs, words: words)
         let root = builder.node(plan.root, absolute: false)
-        return GenUIBuilt(plan: plan, root: root, dark: dark, drawn: builder.drawn, choices: builder.choices, snaps: builder.snaps, images: builder.images)
+        return GenUIBuilt(plan: plan, root: root, dark: dark, drawn: builder.drawn, choices: builder.choices, secrets: builder.secrets, snaps: builder.snaps, images: builder.images)
     }
 
     /// The longer side, in points, of `image` scaled to cover `box`; the
@@ -320,6 +344,7 @@ final class GenUINodeBuilder {
             node.onPressOut = { ground.updateStyle { $0.backgroundColor = nil } }
         }
         if let group { choices[key] = GenUIChoiceNodes(group: group, node: node, look: .press(ground: ground)) }
+        if action.opensSecretForm { secrets[key] = GenUIChoiceNodes(group: group ?? "", node: node, look: .press(ground: ground)) }
         return node
     }
 
@@ -346,7 +371,7 @@ final class GenUINodeBuilder {
         }
         node.accessibility = Accessibility(label: button.label, role: .button)
         guard enabled else {
-            node.accessibility.hint = "Unavailable here"
+            node.accessibility.hint = words.unavailable
             return node
         }
         let key = placed.key
@@ -355,6 +380,7 @@ final class GenUINodeBuilder {
         node.onPress = { [weak interaction = self.interaction] in interaction?.activate(key, action, group: group) }
         node.pressedOpacity = 0.6
         if let group { choices[key] = GenUIChoiceNodes(group: group, node: node, look: .button) }
+        if action.opensSecretForm { secrets[key] = GenUIChoiceNodes(group: group ?? "", node: node, look: .button) }
         return node
     }
 
@@ -366,7 +392,7 @@ final class GenUINodeBuilder {
         }
         node.drawing = factory(dark)
         drawn.append((node, factory))
-        node.accessibility = Accessibility(label: "Copy", role: .button)
+        node.accessibility = Accessibility(label: words.copy, role: .button)
         let dark = dark
         node.onPress = { [weak node] in
             UIPasteboard.general.string = text

@@ -58,13 +58,46 @@ final class GenUIActionsUITests: XCTestCase {
     }
 
     func testWhatCannotRunTakesNoTap() {
-        let add = button("Add Stripe keys")
+        // A cluster's secret on a Happy Agent computer.
+        let add = button("Add Stripe key")
         reach(add)
         add.tap()
         sleep(1)
         XCTAssertFalse(app.navigationBars["Plugins"].exists)
         XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Summarise")).count, 0)
         XCTAssertTrue(add.isHittable, "still on the conversation")
+    }
+
+    /// The secret form: prefilled, a value typed, saved, said so; tapped
+    /// again it opens on the secret it made, to change it.
+    func testASecretIsAddedThenChanged() {
+        let add = button("Add Stripe keys")
+        reach(add)
+        add.tap()
+        XCTAssertTrue(app.navigationBars["New Secret"].waitForExistence(timeout: 10), "no secret form")
+        let name = app.textFields["genui-secret-name"]
+        XCTAssertEqual(name.value as? String, "stripe")
+        XCTAssertEqual(app.textFields["genui-secret-variable-0"].value as? String, "STRIPE_SECRET_KEY")
+        let value = app.secureTextFields["genui-secret-value-0"]
+        XCTAssertTrue(value.waitForExistence(timeout: 5))
+        value.tap()
+        value.typeText("sk_test_123")
+        shoot("secret-form")
+        app.buttons["genui-secret-save"].tap()
+        XCTAssertTrue(app.staticTexts["Added stripe"].waitForExistence(timeout: 10), "not saved")
+        shoot("secret-added")
+        app.buttons["genui-secret-done"].tap()
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        sleep(1)
+        shoot("secret-marked")
+
+        add.tap()
+        XCTAssertTrue(app.navigationBars["Change Secret"].waitForExistence(timeout: 10), "not opened on the saved secret")
+        XCTAssertEqual(app.secureTextFields["genui-secret-value-0"].placeholderValue, "Keep the stored value")
+        shoot("secret-change")
+        app.buttons["genui-secret-save"].tap()
+        XCTAssertTrue(app.staticTexts["Updated stripe"].waitForExistence(timeout: 10), "not changed")
+        app.buttons["genui-secret-done"].tap()
     }
 }
 

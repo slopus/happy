@@ -102,16 +102,18 @@ final class GenUIChatEmbedTests: XCTestCase {
             try XCTUnwrap(embeds(plan(Artifact(id: id, version: 1, type: "gen_ui", title: "Keys", followsLatest: true), key)).first?.0.runs)
         }
         // A computer that says nothing of them runs neither secrets nor plugins.
-        XCTAssertEqual(try runs("acts1"), GenUIRuns(host: GenUIHost(server: .happyAgent, origin: true, secretActions: false, plugins: false), sends: true))
+        XCTAssertEqual(try runs("acts1"), GenUIRuns(host: GenUIHost(server: .happyAgent, origin: true, secretActions: false, plugins: false), sends: true, forms: true))
         key.references.genUIServed = GenUIServed(secretActions: true, plugins: true)
         XCTAssertEqual(try runs("acts1").host, GenUIHost(server: .happyAgent, origin: true, secretActions: true, plugins: true))
+        XCTAssertTrue(try runs("acts1")(.secret(GenUISecretPrefill(variables: [.init(name: "KEY")]))))
         // Another agent's version sends nothing here; a person's names no agent.
         XCTAssertEqual(try runs("acts2").sends, false)
         XCTAssertEqual(try runs("acts2").host.origin, true)
         XCTAssertEqual(try runs("acts3").host.origin, false)
         key.server = HappyCloud.server(named: "acme")
         XCTAssertEqual(try runs("acts1").host.server, .cluster)
-        // The secret form isn't here yet: its button stays disabled.
+        // Happy Cloud's own form isn't here yet: its button stays disabled.
+        XCTAssertFalse(try runs("acts1")(.clusterSecret(GenUIClusterSecretPrefill(kind: .environment, name: "Keys"))))
         XCTAssertFalse(try runs("acts1")(.secret(GenUISecretPrefill(variables: [.init(name: "KEY")]))))
     }
 }

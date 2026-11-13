@@ -13,6 +13,36 @@ private struct GenUIChatSockets: WebSocketConnector {
     func connect(to url: URL) async throws -> WebSocketConnection { throw URLError(.notConnectedToInternet) }
 }
 
+/// The secrets the harness's computer keeps: names and versions, never
+/// values, which it drops as it reads them.
+private final class GenUIChatSecrets: @unchecked Sendable {
+    private let lock = NSLock()
+    private var secrets: [String: JSONValue] = [:]
+
+    func secret(_ id: String) -> JSONValue? { lock.withLock { secrets[id] } }
+
+    /// The actions route: a whole bundle makes the secret, a patch with the
+    /// stored version changes it.
+    func save(_ body: JSONValue) -> (status: Int, answer: JSONValue) {
+        lock.withLock {
+            guard let form = body["secret"], let id = form["id"]?.stringValue, let environment = form["environment"]?.objectValue else {
+                return (400, .object(["error": .string("Bad form"), "code": .string("invalid_request")]))
+            }
+            let stored = secrets[id]
+            if let stored, stored["version"] != body["ifMatch"] { return (409, .object(["error": .string("Changed"), "code": .string("conflict")])) }
+            var names = Set(stored?["environmentVariables"]?.arrayValue?.compactMap(\.stringValue) ?? [])
+            for (name, value) in environment { if value == .null { names.remove(name) } else { names.insert(name) } }
+            let number = Int(stored?["version"]?.stringValue?.dropFirst() ?? "0") ?? 0
+            let secret: JSONValue = .object([
+                "id": .string(id), "description": form["description"] ?? .string(""), "environmentVariables": .array(names.sorted().map(JSONValue.string)),
+                "managed": .bool(false), "availableToAgents": .bool(true), "version": .string("v\(number + 1)"),
+            ])
+            secrets[id] = secret
+            return (200, .object(["secret": secret, "outcome": .string(stored == nil ? "created" : "updated")]))
+        }
+    }
+}
+
 /// One agent, `harness`, whose every turn shows a `gen_ui` artifact: the
 /// compiled examples in turn, each its own artifact, served with their
 /// pictures as a daemon serves a version's files.
@@ -20,6 +50,7 @@ private struct GenUIChatComputer: AgentTransport {
     let count: Int
     let folder: URL
     let examples: [String]
+    let secrets = GenUIChatSecrets()
 
     static let examples = [
         "01-stats", "02-chart-line", "03-chart-bar", "04-chart-donut", "05-gallery-grid", "06-gallery-carousel",
@@ -68,6 +99,15 @@ private struct GenUIChatComputer: AgentTransport {
     }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        if path.hasPrefix("/v0/secrets/") {
+            let id = String(path.dropFirst("/v0/secrets/".count))
+            guard let secret = secrets.secret(id) else { return HTTP1Response(status: 404, body: Data(#"{"error":"Not found","code":"not_found"}"#.utf8)) }
+            return try Self.json(.object(["secret": secret]))
+        }
+        if method == "POST", path.hasSuffix("/actions"), let body {
+            let (status, answer) = secrets.save(try JSONDecoder().decode(JSONValue.self, from: body))
+            return HTTP1Response(status: status, body: try JSONEncoder().encode(answer))
+        }
         if path == "/v0/health" {
             return try Self.json(.object(["ready": .bool(true), "capabilities": .object(["plugins": .bool(true), "artifactSecretActions": .bool(true)])]))
         }

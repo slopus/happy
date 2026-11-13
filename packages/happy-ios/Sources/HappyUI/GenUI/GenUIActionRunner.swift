@@ -6,7 +6,7 @@ import UIKit
 /// found up the responder chain by a conversation's block.
 @MainActor
 protocol GenUIActing: AnyObject {
-    func genUI(run action: GenUIAction, key: String, artifactId: String, version: Int)
+    func genUI(run action: GenUIAction, key: String, artifactId: String, version: Int, in block: GenUIBlockView)
 }
 
 /// What every screen showing a Gen UI runs the same way: `open` an https
@@ -32,6 +32,19 @@ enum GenUIActionRunner {
             return false
         }
         return true
+    }
+
+    /// Opens a `secret` element's form, on the secret it saved before if it
+    /// did; saved, the element is marked, if `block` still shows its document.
+    static func openSecret(_ prefill: GenUISecretPrefill, key: String, artifactId: String, version: Int, in block: GenUIBlockView,
+                           client: AgentClient, from controller: UIViewController) {
+        let identity = block.identity
+        let form = GenUISecretFormViewController(client: client, artifactId: artifactId, version: version, element: key, prefill: prefill,
+                                                 name: block.interaction.saved[key]) { [weak block] saved in
+            guard let block, block.identity == identity else { return }
+            block.interaction.save(key, secret: saved.secret.id)
+        }
+        GenUISecretFormViewController.present(form, from: controller)
     }
 }
 #endif

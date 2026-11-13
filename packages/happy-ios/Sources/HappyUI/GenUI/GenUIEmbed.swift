@@ -60,7 +60,8 @@ enum GenUIPlanners {
         let traits = GenUITraits(text: environment, displayScale: environment?.displayScale ?? 2)
         let planner = planner(artifact.id, version: read.version, document: read.document, traits: traits)
         let host = GenUIHost(server: HappyCloud.isCloud(server) ? .cluster : .happyAgent, origin: read.origin != nil, served: references.genUIServed)
-        let runs = GenUIRuns(host: host, sends: read.origin != nil && read.origin == agentId)
+        // Happy Cloud's own secret form isn't in this build yet.
+        let runs = GenUIRuns(host: host, sends: read.origin != nil && read.origin == agentId, forms: host.server == .happyAgent)
         return GenUIEmbed(artifactId: artifact.id, version: read.version, title: artifact.title, document: read.document, planner: planner, width: width, runs: runs)
     }
 }
@@ -74,7 +75,7 @@ extension GenUIBlockView {
         let files = GenUIChatFiles(view: self, artifactId: embed.artifactId, version: embed.version)
         interaction.onAction = { [weak self] key, action in
             guard let self, let host = GenUIChatFiles.host(self) as? GenUIActing else { return }
-            host.genUI(run: action, key: key, artifactId: embed.artifactId, version: embed.version)
+            host.genUI(run: action, key: key, artifactId: embed.artifactId, version: embed.version, in: self)
         }
         interaction.onViewer = { [weak self] _, group, index in
             Task { @MainActor in

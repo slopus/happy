@@ -127,4 +127,21 @@ final class GenUIActionsTests: XCTestCase {
         XCTAssertEqual(try served(#"{"artifactSecretActions":true,"plugins":true}"#), GenUIServed(secretActions: true, plugins: true))
         XCTAssertEqual(GenUIServed(nil), GenUIServed())
     }
+
+    /// What VoiceOver says of the controls, in every language, in its own words.
+    func testEveryLanguageSaysTheControlsWords() async {
+        for language in AppLanguage.supported.map(\.code) { _ = await TranslationCatalog.load(language) }
+        let english = TranslationCatalog.genUISources["en"] ?? [:]
+        XCTAssertEqual(Set(TranslationCatalog.genUISources.keys), Set(AppLanguage.supported.map(\.code)))
+        XCTAssertEqual(english.count, 3)
+        for language in AppLanguage.supported.map(\.code) {
+            let words = TranslationCatalog.genUISources[language] ?? [:]
+            let catalog = TranslationCatalog.catalog(for: language)
+            XCTAssertEqual(Set(words.keys), Set(english.keys), language)
+            for (key, text) in words {
+                XCTAssertEqual(catalog(key), text, "\(language) \(key)")
+                if language != "en" { XCTAssertNotEqual(text, english[key], "\(language) \(key) is English") }
+            }
+        }
+    }
 }

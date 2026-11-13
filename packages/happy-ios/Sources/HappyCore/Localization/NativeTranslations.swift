@@ -7,7 +7,7 @@ extension TranslationCatalog {
     ///
     /// The two kinds of account are named by their products, Happy Agent
     /// and Happy CLI, which no language translates.
-    static let nativeSources: [String: [String: String]] = [feedSources, desktopMigrationSources, lowPowerShimmerSources].reduce(accountAndCommandSources) { all, area in
+    static let nativeSources: [String: [String: String]] = [feedSources, desktopMigrationSources, lowPowerShimmerSources, genUISources].reduce(accountAndCommandSources) { all, area in
         all.merging(area) { kept, added in kept.merging(added) { first, _ in first } }
     }
 

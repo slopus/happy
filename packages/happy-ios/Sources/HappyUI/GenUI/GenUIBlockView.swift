@@ -42,6 +42,10 @@ final class GenUIInteraction {
     /// Each group's chosen element.
     private(set) var chosen: [String: String] = [:]
     private var choices: [String: GenUIChoiceNodes] = [:]
+    /// The secret each secret element's form saved, by the element's key:
+    /// the name its form opens on when tapped again.
+    private(set) var saved: [String: String] = [:]
+    private var secrets: [String: GenUIChoiceNodes] = [:]
 
     nonisolated init() {}
 
@@ -49,12 +53,41 @@ final class GenUIInteraction {
     func reset() {
         chosen = [:]
         choices = [:]
+        saved = [:]
+        secrets = [:]
     }
 
-    /// The shown nodes' choices; a group already answered shows its answer.
-    func adopt(_ choices: [String: GenUIChoiceNodes]) {
+    /// The shown nodes' choices and secret elements; a group already
+    /// answered shows its answer, a form that saved its mark.
+    func adopt(_ choices: [String: GenUIChoiceNodes], secrets: [String: GenUIChoiceNodes] = [:]) {
         self.choices = choices
+        self.secrets = secrets
         for (group, key) in chosen { show(group, chosen: key) }
+        for key in saved.keys { showSaved(key) }
+    }
+
+    /// `key`'s form saved the secret `id`: the element is marked, and still
+    /// opens the form, on that secret.
+    func save(_ key: String, secret id: String) {
+        saved[key] = id
+        showSaved(key)
+    }
+
+    private func showSaved(_ key: String) {
+        guard let mark = secrets[key] else { return }
+        let fill = Color(GenUITone.accent.fill)
+        switch mark.look {
+        case .press(let ground):
+            ground.updateStyle { $0.backgroundColor = fill }
+            mark.node.onPressOut = { ground.updateStyle { $0.backgroundColor = fill } }
+        case .button:
+            let ring = Color(GenUITone.accent.ink)
+            mark.node.updateStyle { style in
+                style.backgroundColor = fill
+                style.borderColor = ring
+            }
+        }
+        mark.node.accessibility.hint = Strings.GenUI.saved
     }
 
     /// An element was activated: report it, and if it's in a group, mark it
@@ -91,7 +124,7 @@ final class GenUIInteraction {
                 }
             }
             node.accessibility.role = isChosen ? .button : .none
-            node.accessibility.hint = isChosen ? "Selected" : nil
+            node.accessibility.hint = isChosen ? Strings.GenUI.selected : nil
         }
     }
 }
@@ -114,6 +147,8 @@ final class GenUIBlockView: UIView {
     /// The planner and width shown, or on their way, whose document it is,
     /// and what its elements may run.
     private var shown: (planner: GenUIPlanner, width: CGFloat, identity: String?, runs: GenUIRuns)?
+    /// Whose document it shows, as `show` was told.
+    var identity: String? { shown?.identity }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -147,9 +182,10 @@ final class GenUIBlockView: UIView {
         loading?.cancel()
         let interaction = interaction
         let dark = dark
+        let words = GenUIWords.current
         loading = Task { [weak self] in
             let built = await Task.detached(priority: .userInitiated) {
-                GenUINodeBuilder.build(planner.plan(width: width), interaction: interaction, dark: dark, runs: runs)
+                GenUINodeBuilder.build(planner.plan(width: width), interaction: interaction, dark: dark, runs: runs, words: words)
             }.value
             guard !Task.isCancelled else { return }
             self?.apply(built, files: files)
@@ -168,7 +204,7 @@ final class GenUIBlockView: UIView {
         addSubview(host)
         self.host = host
         snapping = []
-        interaction.adopt(built.choices)
+        interaction.adopt(built.choices, secrets: built.secrets)
         // Built for the appearance of its time; catch up with this one.
         if built.dark != dark { redraw() }
         let scale = traitCollection.displayScale

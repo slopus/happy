@@ -2285,8 +2285,11 @@ extension ChatViewController: PageHosting {
 extension ChatViewController: GenUIActing {
     /// A `message` goes as the person's next message here, the origin
     /// agent's own conversation (the only place it is enabled).
-    func genUI(run action: GenUIAction, key: String, artifactId: String, version: Int) {
+    func genUI(run action: GenUIAction, key: String, artifactId: String, version: Int, in block: GenUIBlockView) {
         if GenUIActionRunner.run(action, session: session, from: self, agentId: media.agentId) { return }
+        if case .secret(let prefill) = action {
+            return GenUIActionRunner.openSecret(prefill, key: key, artifactId: artifactId, version: version, in: block, client: session.client, from: self)
+        }
         guard case .message(let text) = action, !previewing else { return }
         Haptics.play(.send)
         followsNewest = true
