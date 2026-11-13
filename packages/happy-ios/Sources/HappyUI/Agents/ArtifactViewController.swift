@@ -9,7 +9,9 @@ import UIKit
 /// conversation renderer, its pictures and recordings resolved against the
 /// version's files (`ArtifactMarkdown`) and read through the file route,
 /// linked ones through the computer's network. Images, image series and
-/// videos show natively (`ArtifactGalleryView`), opening in the viewer.
+/// videos show natively (`ArtifactGalleryView`), opening in the viewer. A
+/// `gen_ui` version draws the document its daemon compiled
+/// (`GenUIRenderDocument.path`) natively, against its own pictures.
 /// Other entries use the shared browser with an artifact-scoped file/API
 /// origin over the agent connection, but for an app (`ArtifactPageMode`),
 /// which is presented full screen (`AppPageViewController`) in its place.
@@ -48,6 +50,11 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     private var plannedWidth: CGFloat?
     private var plannedSizes = 0
     private var gallery: ArtifactGalleryView?
+    /// A `gen_ui` version's document, and the width and text it was last
+    /// planned at.
+    private var genUI: (block: GenUIBlockView, document: GenUIRenderDocument, files: GenUIArtifactFiles)?
+    private var genUIPlanned: (width: CGFloat, text: TextEnvironment?)?
+    private var documentTap: UITapGestureRecognizer?
     private var browser: BrowserViewController?
     /// An app's version and file, and the button that opens it again.
     private var app: (version: Int, entry: String, close: ArtifactAppClose)?
@@ -114,7 +121,9 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         spinner.hidesWhenStopped = true
         view.addSubview(spinner)
         spinner.startAnimating()
-        scrollView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
+        let documentTap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+        scrollView.addGestureRecognizer(documentTap)
+        self.documentTap = documentTap
         // The artifact, at the version it was pinned to; a file a link
         // opened inside it has no link of its own.
         if opened == nil, vault == nil {
@@ -158,7 +167,9 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             let media = vault.map { ArtifactMedia(client: client, files: $0.files, library: session.media, workspace: { throw BrowserError.unavailable }) }
                 ?? ArtifactMedia(client: client, artifactId: artifact.id, version: version.number, library: session.media)
             self.media = media
-            if Self.isMarkdown(file) {
+            if file == entry, let render = version.files.first(where: { $0.path == GenUIRenderDocument.path }) {
+                try await showGenUI(render, version: version, media: media)
+            } else if Self.isMarkdown(file) {
                 try await showDocument(file, version: version, media: media)
             } else if ArtifactMedia.isVisual(file) {
                 // An image series is all of its pictures, in path order.
@@ -369,6 +380,59 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         present(PictureViewController(source: media, pictures: pictures, index: index), animated: true)
     }
 
+    // MARK: Gen UI
+
+    /// The version's render document, planned at the column's width once
+    /// layout knows it; never per frame, again only when the width or the
+    /// text size changes.
+    private func showGenUI(_ render: AgentWire.ArtifactVersion.File, version: AgentWire.ArtifactVersion, media: ArtifactMedia) async throws {
+        _ = media.media(render)
+        guard let body = await media.data(ArtifactMedia.key(render.path)) else { throw AgentClientError.invalidResponse }
+        try Task.checkCancellation()
+        let document = await Task.detached(priority: .userInitiated) { GenUIRenderDocument.parse(body) }.value
+        guard let document else { return show(message: Strings.artifactUnavailable) }
+        spinner.stopAnimating()
+        // Its own presses take its taps.
+        documentTap?.isEnabled = false
+        let block = GenUIBlockView()
+        block.accessibilityIdentifier = "artifact-gen-ui"
+        block.onHeight = { [weak self] _ in self?.view.setNeedsLayout() }
+        block.interaction.onViewer = { [weak self] _, group, index in self?.openGenUIViewer(group, index: index) }
+        scrollView.addSubview(block)
+        genUI = (block, document, GenUIArtifactFiles(media: media, files: version.files))
+        view.setNeedsLayout()
+    }
+
+    /// A document's viewer group, the pictures the version holds, at `index`.
+    private func openGenUIViewer(_ group: String, index: Int) {
+        guard let genUI, let media else { return }
+        let items = genUI.document.viewers[group] ?? []
+        var pictures: [Picture] = []
+        var start = 0
+        for (position, item) in items.enumerated() {
+            guard let shown = genUI.files.picture(item.file) else { continue }
+            if position == index { start = pictures.count }
+            let size = item.width > 0 && item.height > 0 ? CGSize(width: item.width, height: item.height) : media.knownSize(shown.key)
+            pictures.append(Picture(key: shown.key, thumbhash: item.thumbhash.isEmpty ? nil : item.thumbhash, label: item.alt.isEmpty ? shown.label : item.alt, size: size))
+        }
+        openViewer(pictures, index: start)
+    }
+
+    private func layoutGenUI(width: CGFloat) {
+        guard let genUI else { return }
+        let margin = MessageLayout.Metrics.marginH
+        let column = GenUIPageLayout.column(width: width, maxWidth: ContentWidth.maxWidth, margin: margin)
+        let text = traitCollection.textEnvironment
+        if column > 0, genUIPlanned?.width != column || genUIPlanned?.text != text {
+            genUIPlanned = (column, text)
+            genUI.block.load(genUI.document, width: column, traits: GenUITraits(text: text, displayScale: traitCollection.displayScale), files: genUI.files)
+        }
+        let height = genUI.block.sizeThatFits(CGSize(width: column, height: .greatestFiniteMagnitude)).height
+        let layout = GenUIPageLayout(width: width, maxWidth: ContentWidth.maxWidth, margin: margin, height: height)
+        genUI.block.frame = layout.block
+        scrollView.contentSize = CGSize(width: width, height: layout.contentHeight)
+    }
+
     // MARK: Pictures and recordings
 
     /// The files in a grid, or one large; drawn once their sizes are in
@@ -508,6 +572,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         message.isHidden = !showsMessage
         message.frame = showsMessage ? layout.body : .zero
         scrollView.contentSize = CGSize(width: width, height: layout.contentHeight)
+        if !showsMessage { layoutGenUI(width: width) }
     }
 }
 #endif

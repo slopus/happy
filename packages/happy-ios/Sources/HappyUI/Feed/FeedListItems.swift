@@ -66,6 +66,7 @@ enum FeedListItems {
             case "image": return (.ionicons("image-outline"), Palette.tileOrange, Palette.tileOrangeFill)
             case "image_series": return (.ionicons("albums-outline"), Palette.tileOrange, Palette.tileOrangeFill)
             case "video": return (.ionicons("film-outline"), Palette.tileRed, Palette.tileRedFill)
+            case "gen_ui": return (.ionicons("apps-outline"), Palette.tileGreen, Palette.tileGreenFill)
             default: return (.ionicons("document-outline"), Palette.tileIndigo, Palette.tileIndigoFill)
             }
         }

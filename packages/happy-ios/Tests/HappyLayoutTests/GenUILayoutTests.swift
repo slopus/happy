@@ -11,6 +11,17 @@ final class GenUILayoutTests: XCTestCase {
         Child(measure: { width in CGSize(width: min(width, natural), height: line * ceil(natural / max(1, width))) }, baseline: { _ in 15 }, minWidth: 40, grow: grow)
     }
 
+    func testAPageHoldsItsDocumentInTheReadingColumn() {
+        // A phone: the chat's margins either side.
+        let phone = GenUIPageLayout(width: 390, maxWidth: .greatestFiniteMagnitude, margin: 16, height: 500)
+        XCTAssertEqual(phone.block, CGRect(x: 16, y: 16, width: 358, height: 500))
+        XCTAssertEqual(phone.contentHeight, 532)
+        // A tablet: the readable column, centred.
+        let pad = GenUIPageLayout(width: 1024, maxWidth: 800, margin: 16, height: 300)
+        XCTAssertEqual(pad.block, CGRect(x: 128, y: 16, width: 768, height: 300))
+        XCTAssertEqual(GenUIPageLayout.column(width: 1024, maxWidth: 800, margin: 16), 768)
+    }
+
     func testAFigureTakesItsPixelRatioUpToTheCap() {
         // 1600×1067 in a phone's column: its own ratio, the column's width.
         XCTAssertEqual(GenUIMetrics.figure(width: 358, pixels: CGSize(width: 1600, height: 1067), shape: "landscape"), CGSize(width: 358, height: 239))

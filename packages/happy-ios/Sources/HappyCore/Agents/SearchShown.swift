@@ -73,6 +73,7 @@ extension Search {
         case "image_series": "Image series"
         case "video": "Video"
         case "document": "Document"
+        case "gen_ui": "Gen UI"
         default: "Artifact"
         }
     }
@@ -82,6 +83,7 @@ extension Search {
         switch type {
         case "html": "globe-outline"
         case "image", "image_series": "image-outline"
+        case "gen_ui": "apps-outline"
         default: "doc"
         }
     }

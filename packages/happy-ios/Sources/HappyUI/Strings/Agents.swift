@@ -208,6 +208,7 @@ extension Strings {
         case "image_series": "Image series"
         case "video": "Video"
         case "document": "Document"
+        case "gen_ui": "Gen UI"
         default: "Artifact"
         }
     }

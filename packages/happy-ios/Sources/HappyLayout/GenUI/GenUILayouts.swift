@@ -612,3 +612,22 @@ public struct GenUICarouselLayout: Equatable, Sendable {
         return stops[min(stops.count - 1, max(0, index))]
     }
 }
+
+/// A `gen_ui` artifact's page: its document in the reading column, centred,
+/// a chat margin around it, the page scrolling when it is taller.
+public struct GenUIPageLayout: Equatable, Sendable {
+    public var block: CGRect
+    public var contentHeight: CGFloat
+
+    /// The column's width in a page `width` wide: what the document is planned at.
+    public static func column(width: CGFloat, maxWidth: CGFloat, margin: CGFloat) -> CGFloat {
+        max(0, min(width, maxWidth) - 2 * margin)
+    }
+
+    /// `height` is the document's planned at `column(width:maxWidth:margin:)`.
+    public init(width: CGFloat, maxWidth: CGFloat, margin: CGFloat, height: CGFloat) {
+        let column = Self.column(width: width, maxWidth: maxWidth, margin: margin)
+        block = CGRect(x: ((width - column) / 2).rounded(), y: margin, width: column, height: height)
+        contentHeight = height + 2 * margin
+    }
+}

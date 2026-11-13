@@ -6,21 +6,28 @@ import UltraView
 
 /// Where a document's pictures come from: the files stored beside it.
 protocol GenUIFiles: Sendable {
-    /// The picture at `path`, relative to the document, decoded for display;
-    /// nil when it can't be read.
-    func image(_ path: String) async -> UIImage?
+    /// The picture at `path`, relative to the document, decoded for display
+    /// at no more than `pixels` on its longer side; nil when it can't be read.
+    func image(_ path: String, pixels: Int) async -> UIImage?
+}
+
+extension GenUIFiles {
+    /// Whether `path` can name one of the document's own files: never a URL,
+    /// never out of its folder.
+    static func isOwn(_ path: String) -> Bool {
+        !path.isEmpty && URL(string: path)?.scheme == nil && !path.hasPrefix("/") && !path.split(separator: "/").contains("..")
+    }
 }
 
 /// A document's files in a folder on this phone, such as the bundled fixtures.
 struct GenUIFolderFiles: GenUIFiles {
     let folder: URL
 
-    func image(_ path: String) async -> UIImage? {
-        // A path of the document's own files only: never a URL, never out of the folder.
-        guard !path.isEmpty, URL(string: path)?.scheme == nil, !path.split(separator: "/").contains("..") else { return nil }
+    func image(_ path: String, pixels: Int) async -> UIImage? {
+        guard Self.isOwn(path) else { return nil }
         let url = folder.appendingPathComponent(path)
         return await Task.detached(priority: .userInitiated) {
-            (try? Data(contentsOf: url)).flatMap { UIImage(data: $0)?.preparingForDisplay() }
+            (try? Data(contentsOf: url)).flatMap { Images.decode($0, maxPixels: pixels) }
         }.value
     }
 }
@@ -143,9 +150,11 @@ final class GenUIBlockView: UIView {
         interaction.adopt(built.choices)
         // Built for the appearance of its time; catch up with this one.
         if built.dark != dark { redraw() }
-        pictures = built.images.map { node, file in
-            Task.detached(priority: .utility) {
-                guard let image = await files?.image(file), !Task.isCancelled else { return }
+        let scale = traitCollection.displayScale
+        pictures = built.images.map { node, file, side in
+            let pixels = Int((side * scale).rounded(.up))
+            return Task.detached(priority: .utility) {
+                guard let image = await files?.image(file, pixels: pixels), !Task.isCancelled else { return }
                 node.drawing = GenUIPictureDrawing(image: image)
             }
         }

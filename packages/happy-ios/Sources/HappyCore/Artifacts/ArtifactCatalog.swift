@@ -114,7 +114,7 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
     }
 
     public var id: String
-    /// `markdown`, `html`, `image`, `image_series`, `video` or `document`;
+    /// `markdown`, `html`, `image`, `image_series`, `video`, `document` or `gen_ui`;
     /// a newer daemon's type is kept as it came.
     public var type: String
     public var title: String

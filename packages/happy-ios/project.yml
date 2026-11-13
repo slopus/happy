@@ -211,6 +211,10 @@ targets:
       - path: Tests/HappyUIKitHostedTests
       # The time scale both UIKit bundles read.
       - path: Tests/HappyUIKitTests/TestTime.swift
+      # Gen UI's compiled examples, served as gen_ui artifacts.
+      - path: Tests/HappyCoreTests/Fixtures/GenUI
+        type: folder
+        buildPhase: resources
     dependencies:
       - target: HappyUIKitTestHost
       - package: HappyIOS

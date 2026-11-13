@@ -144,6 +144,7 @@ enum ChatMediaPlan {
         case "image_series": .ionicons("images")
         case "video": .ionicons("videocam")
         case "document": .ionicons("document-outline")
+        case "gen_ui": .ionicons("apps-outline")
         default: .ionicons("cube-outline")
         }
     }

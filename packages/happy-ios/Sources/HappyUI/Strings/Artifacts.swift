@@ -28,6 +28,7 @@ extension Strings {
             case "image_series": return "Images"
             case "video": return "Video"
             case "document": return "File"
+            case "gen_ui": return "Gen UI"
             default: return type.isEmpty ? "Artifact" : type.replacingOccurrences(of: "_", with: " ").capitalized
             }
         }

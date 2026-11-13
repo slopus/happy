@@ -44,6 +44,12 @@ final class GenUIRenderDocumentTests: XCTestCase {
         element("text", ["spans": .array([.object(["text": .string(value)])])])
     }
 
+    func testAGenUIArtifactIsNamedAsDesktopNamesIt() {
+        XCTAssertEqual(GenUIRenderDocument.path, ".genui/render.json")
+        XCTAssertEqual(Search.artifactTypeLabel("gen_ui"), "Gen UI")
+        XCTAssertEqual(Search.artifactGlyph("gen_ui"), "apps-outline")
+    }
+
     func testEveryExampleKeepsEveryElement() throws {
         for name in Self.examples {
             let document = try example(name)

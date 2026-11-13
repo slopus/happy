@@ -12,6 +12,9 @@ import HappyWire
 /// draw has no tree, so the client shows `fallback` as text.
 public struct GenUIRenderDocument: Equatable, Sendable {
     public static let maxElements = 4000
+    /// Where a `gen_ui` artifact version keeps the document its daemon
+    /// compiled (`GEN_UI_RENDER_PATH`), beside the files it names.
+    public static let path = ".genui/render.json"
 
     public var version: Int?
     public var compiler: String?

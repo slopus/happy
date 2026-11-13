@@ -19,7 +19,9 @@ struct GenUIBuilt: @unchecked Sendable {
     /// Carousels that settle one card at a time.
     let snaps: [(node: UltraScrollNode, stops: [CGFloat])]
     /// Pictures still to load, over their ThumbHash.
-    let images: [(node: UltraNode, file: String)]
+    /// Each picture's node and file, and how long its longer side is drawn
+    /// in points once it covers its box.
+    let images: [(node: UltraNode, file: String, side: CGFloat)]
 }
 
 /// A choice's nodes: what its group's answer changes.
@@ -79,7 +81,7 @@ final class GenUINodeBuilder {
     private var drawn: [(node: UltraNode, make: @Sendable (Bool) -> any Drawing)] = []
     private var choices: [String: GenUIChoiceNodes] = [:]
     private var snaps: [(node: UltraScrollNode, stops: [CGFloat])] = []
-    private var images: [(node: UltraNode, file: String)] = []
+    private var images: [(node: UltraNode, file: String, side: CGFloat)] = []
 
     private init(interaction: GenUIInteraction, dark: Bool) {
         self.interaction = interaction
@@ -92,6 +94,14 @@ final class GenUINodeBuilder {
         let builder = GenUINodeBuilder(interaction: interaction, dark: dark)
         let root = builder.node(plan.root, absolute: false)
         return GenUIBuilt(plan: plan, root: root, dark: dark, drawn: builder.drawn, choices: builder.choices, snaps: builder.snaps, images: builder.images)
+    }
+
+    /// The longer side, in points, of `image` scaled to cover `box`; the
+    /// box's longer side when its stored pixels make no ratio.
+    static func coveringSide(_ image: GenUIImage, in box: CGSize) -> CGFloat {
+        guard image.width > 0, image.height > 0 else { return max(box.width, box.height) }
+        let scale = max(box.width / image.width, box.height / image.height)
+        return max(image.width, image.height) * scale
     }
 
     private func style(_ frame: CGRect, absolute: Bool = true) -> Style {
@@ -231,7 +241,7 @@ final class GenUINodeBuilder {
         // An overlay's shade and words are planned over the picture.
         let node = holding(UltraNode(style: style), placed.children)
         if let placeholder = ThumbHashImages.image(image.thumbhash) { node.drawing = GenUIPictureDrawing(image: placeholder) }
-        images.append((node, image.file))
+        images.append((node, image.file, GenUINodeBuilder.coveringSide(image, in: placed.frame.size)))
         node.accessibility = Accessibility(label: image.alt, role: .image)
         if let viewer = image.viewer {
             let key = placed.key
