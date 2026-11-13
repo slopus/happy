@@ -515,7 +515,7 @@ export const zhHans: TranslationStructure = {
         emptyTitle: "尚未授权任何应用",
         emptyHint: "从狗头军师的“连接我的 Paws”开始。",
     },
-    messageQueue: { title: '待发送', hint: '当前任务结束后逐条发送；请保持本机 Paws 打开。', enqueue: '加入待发送队列（Tab）', enqueueHint: '当前任务结束后发送', steerDuringTurn: '立即插话', enqueueSend: '加入待发送队列', steer: '现在发送', steerUnavailable: '当前会话不支持执行中插话。请更新 Paws CLI 并新建会话；待发送消息仍可在当前任务结束后发送。', steerHint: '插入当前 Codex 任务，不中断；使用当前任务的模型与权限设置', sending: '发送中…', failed: '发送失败或结果待确认，请先检查聊天记录再重试。', attachmentsExpired: '页面刷新后附件已失效，请取回消息并重新选择文件。', attachments: '附件', edit: '取回编辑', occupied: '请先发送或清空输入框中的草稿，再取回排队消息。' },
+    messageQueue: { title: '待发送', hint: '当前任务结束后逐条发送；请保持本机 Paws 打开。', waitingForConnection: '连接尚未就绪，待发送消息已保留；会话恢复后继续发送。', enqueue: '加入待发送队列（Tab）', enqueueHint: '当前任务结束后发送', steerDuringTurn: '立即插话', enqueueSend: '加入待发送队列', steer: '现在发送', steerUnavailable: '当前会话不支持执行中插话。请更新 Paws CLI 并新建会话；待发送消息仍可在当前任务结束后发送。', steerHint: '插入当前 Codex 任务，不中断；使用当前任务的模型与权限设置', sending: '发送中…', failed: '发送失败或结果待确认，请先检查聊天记录再重试。', attachmentsExpired: '页面刷新后附件已失效，请取回消息并重新选择文件。', attachments: '附件', edit: '取回编辑', occupied: '请先发送或清空输入框中的草稿，再取回排队消息。' },
     accounts: {
         attachmentWarning: "切换账号会重新加载。文字草稿将保留，但尚未发送的附件需要重新选择。是否继续？",
         title: "Paws 账号",

@@ -46,7 +46,7 @@ export function MessageStagingQueueView(props: {
             </View>)}
         </ScrollView>
         {busy && !props.session.supportsSteer && <Text style={styles.hint}>{t('messageQueue.steerUnavailable')}</Text>}
-        <Text style={styles.hint}>{t('messageQueue.hint')}</Text>
+        <Text style={styles.hint}>{t(props.session.connected ? 'messageQueue.hint' : 'messageQueue.waitingForConnection')}</Text>
     </View>;
 }
 

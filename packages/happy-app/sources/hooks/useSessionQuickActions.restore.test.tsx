@@ -96,12 +96,12 @@ describe('restoring archived sessions', () => {
     });
     afterEach(() => { act(() => renderer?.unmount()); vi.restoreAllMocks(); });
 
-    it('reconnects the original worker with its modes after restoring list membership', async () => {
+    it('reconnects the original worker before unarchiving can release queued input', async () => {
         mount();
         await restore();
         expect(mocks.resume).toHaveBeenCalledWith({ machineId: 'machine-1', sessionId: 'original-session',
             agent: 'codex', model: 'gpt-6.1-sol', permissionMode: 'yolo', effort: 'xhigh' });
-        expect(mocks.restore.mock.invocationCallOrder[0]).toBeLessThan(mocks.resume.mock.invocationCallOrder[0]);
+        expect(mocks.resume.mock.invocationCallOrder[0]).toBeLessThan(mocks.restore.mock.invocationCallOrder[0]);
         expect(mocks.navigate).toHaveBeenCalledWith('original-session');
         expect(mocks.updateModel).toHaveBeenCalledWith('original-session', 'gpt-6.1-sol');
         expect(mocks.success).toHaveBeenCalledOnce();
@@ -113,6 +113,7 @@ describe('restoring archived sessions', () => {
         mount();
         await restore();
         expect(actions.restoringSession).toBe(true);
+        expect(mocks.restore).not.toHaveBeenCalled();
         expect(mocks.success).not.toHaveBeenCalled();
         await act(async () => { finish({ type: 'success', sessionId: session.id }); });
         expect(actions.restoringSession).toBe(false);
@@ -142,23 +143,45 @@ describe('restoring archived sessions', () => {
         },
     );
 
-    it('does not start a worker when restoring metadata failed', async () => {
+    it('reports a metadata conflict after reconnection without reporting restore success', async () => {
         mocks.restore.mockRejectedValue(new Error('Version conflict'));
         mount();
         await restore();
-        expect(mocks.resume).not.toHaveBeenCalled();
+        expect(mocks.resume).toHaveBeenCalledOnce();
         expect(mocks.success).not.toHaveBeenCalled();
         expect(mocks.alert).toHaveBeenCalled();
     });
 
     it('preserves a worker that reconnected while the restore was refreshing', async () => {
         mocks.refresh.mockImplementationOnce(async () => {
-            mocks.latestSession = { ...session, presence: 'online', thinking: true };
+            mocks.latestSession = { ...session, presence: 'online', thinking: true,
+                metadata: { ...session.metadata!, lifecycleState: 'running' } };
         });
         mount();
         await restore();
         expect(mocks.resume).not.toHaveBeenCalled();
         expect(mocks.success).toHaveBeenCalledOnce();
+    });
+
+    it('resumes an explicitly archived worker even when the old presence still says online', async () => {
+        const target = { ...session, presence: 'online' as const };
+        mocks.latestSession = target;
+        mount(target);
+        await restore();
+        expect(mocks.resume).toHaveBeenCalledOnce();
+        expect(mocks.resume.mock.invocationCallOrder[0]).toBeLessThan(mocks.restore.mock.invocationCallOrder[0]);
+    });
+
+    it('restores from the refreshed worker metadata after reconnecting', async () => {
+        mocks.resume.mockImplementationOnce(async () => {
+            mocks.latestSession = { ...session, metadataVersion: 9, presence: 'online',
+                metadata: { ...session.metadata!, hostPid: 321, lifecycleState: 'running' } };
+            return { type: 'success', sessionId: session.id };
+        });
+        mount();
+        await restore();
+        expect(mocks.restore).toHaveBeenCalledWith(expect.objectContaining({ metadataVersion: 9,
+            metadata: expect.objectContaining({ hostPid: 321 }) }));
     });
 
     it('does not resume if the machine went offline during the metadata restore', async () => {

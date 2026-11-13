@@ -45,7 +45,7 @@ import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { imageViewer } from '@/sync/imageViewer';
 import { Modal } from '@/modal';
-import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useMachine, useSessionMessages, useSessionUsage, useSetting, useSettingUpdater } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useMachine, useSessionMessages, useSessionUsage, useSetting, useSettingUpdater, useSocketStatus } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import {
@@ -1775,6 +1775,7 @@ function SessionViewLoaded({
     const experiments = useSetting('experiments');
     const { canResume, resumeSession, resumeSessionSubtitle, resumingSession, canContinue, continueSession, continuingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
+    const { status: socketStatus } = useSocketStatus();
     const isRecoverableFailure = sessionStatus.state === 'failed';
     const resumeCommandBlock = getResumeCommandBlock(session);
     const permissionSelector = useSessionTaskPermission(session, !isDisconnected);
@@ -2160,7 +2161,7 @@ function SessionViewLoaded({
             <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
                 <MessageStagingQueueView
                     messages={stagedSnapshot.messages.filter(m => m.sessionId === sessionId)}
-                    session={{ connected: !isDisconnected, state: sessionStatus.state,
+                    session={{ connected: !isDisconnected && socketStatus === 'connected', state: sessionStatus.state,
                         supportsSteer: session.metadata?.capabilities?.codexSteer === true,
                         turnId: session.agentState?.turnStatus?.turnId }}
                     onSteer={id => { void messageStagingQueue.steer(id); }}

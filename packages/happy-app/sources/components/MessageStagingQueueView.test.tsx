@@ -10,6 +10,17 @@ vi.mock('react-native-unistyles', () => ({ StyleSheet: { create: (f: any) => f({
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('./SubmittedAttachmentPreview', () => ({ SubmittedAttachmentPreview: 'SubmittedAttachmentPreview' }));
 
+it('explains that a disconnected queue is retained and keeps Send now disabled', () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<MessageStagingQueueView messages={[{ id: 'm', sessionId: 's', text: 'queued', modeMeta: {}, status: 'queued' }]} session={{ connected: false, state: 'completed' }} onEdit={vi.fn()} onSteer={vi.fn()} onRemove={vi.fn()} />); });
+    const text = renderer.root.findAllByType('Text').map((node: any) => node.props.children);
+    expect(text).toContain('messageQueue.waitingForConnection');
+    expect(text).not.toContain('messageQueue.hint');
+    expect(renderer.root.findAllByType('Pressable')[0].props.disabled).toBe(true);
+    act(() => renderer.unmount());
+});
+
 it('shows sending text together with its attachment previews while the transfer is pending', () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const images: any[] = [{ id: 'one', name: 'photo.png', uri: 'file:///photo.png', width: 100, height: 100, size: 10, mimeType: 'image/png' }];

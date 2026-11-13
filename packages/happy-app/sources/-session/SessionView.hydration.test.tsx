@@ -101,6 +101,7 @@ vi.mock('@react-navigation/native', async () => {
 vi.mock('@/sync/storage', () => ({
     storage: { getState: () => ({ sessions: mocks.session ? { [mocks.session.id]: mocks.session } : {}, currentViewingSessionId: mocks.currentViewingSessionId, setCurrentViewingSession: mocks.setCurrentViewingSession }) },
     useIsDataReady: () => true,
+    useSocketStatus: () => ({ status: 'connected' }),
     useLocalSetting: (key: string) => key === 'sidebarOrganization' ? { lists: [], tags: [], sessions: {} } : false,
     useLocalSettingMutable: () => [false, vi.fn()],
     useMachine: () => null,

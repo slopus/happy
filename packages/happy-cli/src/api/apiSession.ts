@@ -145,7 +145,7 @@ export class ApiSessionClient extends EventEmitter {
     private encryptionVariant: 'legacy' | 'dataKey';
     private reconnectInterval: NodeJS.Timeout | null = null;
     private ignoreArchiveSignal = false;
-    private skipInitialMessages = false;
+    private readonly initialMessageSeq: number;
     private hasObservedRootTurnLifecycle = false;
     private artifactRunId?: string;
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
@@ -172,6 +172,7 @@ export class ApiSessionClient extends EventEmitter {
         this.startupLifecycle = startupLifecycle;
         this.token = token;
         this.sessionId = session.id;
+        this.initialMessageSeq = session.seq;
         this.metadata = session.metadata;
         this.metadataVersion = session.metadataVersion;
         this.agentState = session.agentState;
@@ -590,13 +591,6 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private async fetchMessages() {
-        // On reconnect, skip processing existing messages — just advance lastSeq
-        const skipRouting = this.skipInitialMessages;
-        if (skipRouting) {
-            this.skipInitialMessages = false;
-            logger.debug('[API] Reconnect mode: skipping existing messages, advancing lastSeq');
-        }
-
         let afterSeq = this.lastSeq;
         while (true) {
             const response = await axios.get<V3GetSessionMessagesResponse>(
@@ -619,7 +613,9 @@ export class ApiSessionClient extends EventEmitter {
                     maxSeq = message.seq;
                 }
 
-                if (skipRouting) continue;
+                // A live Socket.IO event can arrive while this HTTP request
+                // is in flight. Its already-routed input must not run twice.
+                if (message.seq <= this.lastSeq) continue;
 
                 if (message.content?.t !== 'encrypted') {
                     continue;
@@ -1038,7 +1034,10 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     skipExistingMessages() {
-        this.skipInitialMessages = true;
+        // The daemon captured this snapshot before starting the replacement
+        // worker. Skip only that history, not new input arriving during startup
+        // or a failed first fetch. Both HTTP and live events use this cursor.
+        this.lastSeq = Math.max(this.lastSeq, this.initialMessageSeq);
     }
 
     updateMetadata(handler: (metadata: Metadata) => Metadata) {

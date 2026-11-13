@@ -13,6 +13,7 @@ import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
 import { useSessionStatus } from '@/utils/sessionUtils';
+import { isArchivedLifecycleState } from '@/utils/sessionLifecycle';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionForkSource } from '@/utils/sessionFork';
 import { useRouter } from 'expo-router';
@@ -204,7 +205,7 @@ export function useSessionQuickActions(
         if (!currentSession) {
             throw new HappyError(t('errors.sessionDeleted'), false);
         }
-        if (currentSession.presence === 'online') return;
+        if (currentSession.presence === 'online' && !isArchivedLifecycleState(currentSession.metadata?.lifecycleState)) return;
         const currentMachineId = currentSession.metadata?.machineId ?? '';
         const availability = getResumeAvailability(currentSession, currentState.machines[currentMachineId], false);
         if (!availability.canResume) {
@@ -294,15 +295,19 @@ export function useSessionQuickActions(
     }, [performArchive]);
 
     const [restoringSession, performRestore] = useHappyAction(async () => {
-        await sessionRestoreMetadata(session);
+        // Keep the lifecycle gate closed while the daemon captures its resume
+        // cursor. Clearing it first lets another open page submit queued input
+        // before the replacement worker has established its history boundary.
         await sync.refreshSessions();
-        // Archiving stops the worker. Restoring list membership alone leaves
-        // a disconnected chat whose messages have no execution recipient.
-        // Warm application sessions and unavailable machines keep the existing
-        // metadata-only restore; the inactive hint exposes their next action.
         if (resumeAvailability.canResume) {
             await resumeOriginalSession();
         }
+        // Resume refreshes the worker metadata. Do not write the object from
+        // the archived render back over its new PID, capabilities or cursor.
+        const currentSession = storage.getState().sessions[session.id];
+        if (!currentSession) throw new HappyError(t('errors.sessionDeleted'), false);
+        await sessionRestoreMetadata(currentSession);
+        await sync.refreshSessions();
         hapticsSuccess();
     });
 

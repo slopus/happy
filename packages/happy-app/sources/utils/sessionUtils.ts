@@ -2,6 +2,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
+import { isArchivedLifecycleState } from './sessionLifecycle';
 
 export type SessionState = 'idle' | 'running' | 'permission_required' | 'failed' | 'completed';
 
@@ -30,8 +31,8 @@ export function getSessionStateLabel(state: SessionState): string {
     }[state];
 }
 
-export function resolveSessionState(session: Pick<Session, 'agentState' | 'presence' | 'thinking'>): ResolvedSessionState {
-    const isOnline = session.presence === "online";
+export function resolveSessionState(session: Pick<Session, 'agentState' | 'presence' | 'thinking'> & Partial<Pick<Session, 'metadata'>>): ResolvedSessionState {
+    const isOnline = session.presence === "online" && !isArchivedLifecycleState(session.metadata?.lifecycleState);
     const hasPermissions = !!(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
     if (hasPermissions) {
         return { state: 'permission_required', isConnected: isOnline };

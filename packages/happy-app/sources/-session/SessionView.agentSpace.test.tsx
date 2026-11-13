@@ -74,6 +74,7 @@ const mocks = vi.hoisted(() => ({
     canResume: false,
     statusState: 'connected',
     statusConnected: true,
+    socketStatus: 'connected',
     isAtLatest: true,
     hasMoreNewer: false,
     historyLoaded: true,
@@ -388,6 +389,7 @@ vi.mock('@/sync/storage', () => ({
         }),
     },
     useIsDataReady: () => mocks.isDataReady,
+    useSocketStatus: () => ({ status: mocks.socketStatus }),
     useLocalSetting: (key: string) => {
         if (key === 'acknowledgedCliVersions') return {};
         if (key === 'zenMode') return mocks.zenMode;
@@ -529,6 +531,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.canResume = false;
         mocks.statusState = 'connected';
         mocks.statusConnected = true;
+        mocks.socketStatus = 'connected';
         mocks.isAtLatest = true;
         mocks.hasMoreNewer = false;
         mocks.historyLoaded = true;
@@ -549,6 +552,16 @@ describe('SessionView Agent-space boundary', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it.each(['connecting', 'disconnected', 'error', 'connected'])(
+        'matches the visible queue gate to the realtime transport: %s', async socketStatus => {
+        mocks.isDataReady = true;
+        mocks.socketStatus = socketStatus;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        expect(renderer.root.findByType(MessageStagingQueueView).props.session.connected).toBe(socketStatus === 'connected');
+        act(() => renderer.unmount());
+    });
 
     it('keeps composer submissions queued after Send now and across later native turns', async () => {
         mocks.isDataReady = true;

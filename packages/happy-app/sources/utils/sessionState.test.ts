@@ -12,6 +12,13 @@ vi.mock('@/text', () => ({
 }));
 
 describe('resolveSessionState', () => {
+    it.each(['archiveRequested', 'archived'])('does not treat stale presence as a connected %s worker', lifecycleState => {
+        expect(resolveSessionState({
+            metadata: { lifecycleState } as any,
+            presence: 'online', thinking: false,
+            agentState: { turnStatus: { status: 'completed', updatedAt: 1 } },
+        })).toEqual({ state: 'completed', isConnected: false });
+    });
     it.each([
         {
             name: 'old schema without outcome',
