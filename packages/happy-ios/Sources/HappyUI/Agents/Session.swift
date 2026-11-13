@@ -243,7 +243,7 @@ final class Session {
     /// permissions (`role.*`), and the vaults' access (`surface.*`,
     /// `vault.settings.updated`); everything on a resync. A role changed at
     /// the accounts service lands with the next token, so a reconnect
-    /// reads the permissions again too (`reconnected`).
+    /// reads the permissions and onboarding again too (`reconnected`).
     private func followCloud() {
         let store = store
         cloudFollowing = Task { [weak self] in
@@ -277,7 +277,9 @@ final class Session {
 
     private func reconnected() {
         guard isCloud else { return }
-        read([.permissions, .vaults])
+        // Back in the foreground, too: a sign-in on another phone moves
+        // onboarding (`mobileApp`) without an event.
+        read([.onboarding, .permissions, .vaults])
     }
 
     private func read(_ parts: Set<CloudPart>) {

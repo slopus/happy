@@ -3,7 +3,7 @@ import UIKit
 
 /// "What's your name?" for a server that doesn't know it yet: a team
 /// server's first sign-in, and a Happy Cloud server whose member has no
-/// name (`Onboarding.needsName`). Nil when the person cancels or leaves
+/// name (its `profile` onboarding gate is pending). Nil when the person cancels or leaves
 /// it blank.
 @MainActor
 enum NamePrompt {

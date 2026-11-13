@@ -213,16 +213,15 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         navigation.setViewControllers(stack, animated: false)
     }
 
-    /// A Happy Cloud member whose profile onboarding says isn't saved
-    /// (`Onboarding.needsName`) gets Create your profile over home, the name
-    /// Apple gave this sign-in offered, else the server's suggestion; saved
+    /// A Happy Cloud member whose `profile` onboarding gate is pending gets
+    /// Create your profile over home, the name Apple gave this sign-in offered, else the server's suggestion; saved
     /// as the profile's name (`PATCH /v0/profile`, with the suggested
     /// email), then any picture. Not Now leaves it unsaved, and this home
     /// doesn't ask again.
     private func askNameIfNeeded() {
         guard !askedName, let session = Session.session(for: id, context: context), session.isCloud,
               let onboarding = session.onboarding, view.window != nil, presentedViewController == nil else { return }
-        guard onboarding.needsName == true else { return }
+        guard onboarding.gate("profile")?.isPending == true else { return }
         askedName = true
         let client = session.client
         Task { [weak self] in
