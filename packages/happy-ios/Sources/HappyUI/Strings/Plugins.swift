@@ -14,7 +14,9 @@ extension Strings {
         static let nothingInstalled = "Nothing installed yet"
         static let nothingInstalledHint = "Install a plugin below to give agents its tools."
         static let noneOffered = "This server offers no plugins yet."
-        static let membersCantInstall = "Only people who manage plugins can install them and see what is installed."
+        static let membersCantInstall = "Only people who manage plugins can install them."
+        /// A server from before installations were open to every member.
+        static let membersCantSeeInstalled = "Only people who manage plugins can install them and see what is installed."
         static let membersCantSetUp = "Only people who manage plugins can install and set them up."
         static let notOffered = "This server doesn’t offer this plugin."
         static let noLongerOffered = "This server no longer offers this plugin."

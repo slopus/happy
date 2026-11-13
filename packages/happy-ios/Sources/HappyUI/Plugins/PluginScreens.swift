@@ -99,7 +99,7 @@ final class PluginsViewController: SettingsPageViewController {
     private func cards(_ catalog: PluginCatalog) -> [[SettingsRow]] {
         typealias Text = Strings.Plugins
         var cards: [[SettingsRow]] = []
-        if let installations = catalog.installations, catalog.canManage || !installations.isEmpty {
+        if let installations = catalog.installations {
             var card = installations.map { installation in
                 var row = SettingsRow(id: "installation-\(installation.id)", title: installation.title, action: { [weak self] in self?.open(installation.pluginId) })
                 row.subtitle = Text.status(installation)
@@ -109,7 +109,7 @@ final class PluginsViewController: SettingsPageViewController {
             }
             if card.isEmpty {
                 card = [SettingsRow(id: "plugins-installed-empty", title: Text.nothingInstalled, accessory: .none, dimmed: true)]
-                card[0].footer = Text.nothingInstalledHint
+                card[0].footer = catalog.canManage ? Text.nothingInstalledHint : nil
             }
             card[0].header = Text.installed
             cards.append(card)
@@ -125,7 +125,9 @@ final class PluginsViewController: SettingsPageViewController {
         }
         if available.isEmpty { available = [SettingsRow(id: "plugins-none", title: Text.noneOffered, accessory: .none, dimmed: true)] }
         available[0].header = Text.available
-        if !catalog.canManage { available[available.count - 1].footer = Text.membersCantInstall }
+        if !catalog.canManage {
+            available[available.count - 1].footer = catalog.installations == nil ? Text.membersCantSeeInstalled : Text.membersCantInstall
+        }
         cards.append(available)
         return cards
     }

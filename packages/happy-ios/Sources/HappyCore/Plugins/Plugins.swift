@@ -229,9 +229,10 @@ public struct PluginFieldsRefusal: Error, Equatable, Sendable {
 }
 
 extension AgentClient {
-    /// The catalog and, where the person may read them, the installations.
-    /// A server that refuses the installations (`403`, before they were
-    /// open to every member) leaves them nil and the person unable to manage.
+    /// The catalog and the installations, which every member reads, with
+    /// whether the person may change them (`canManage`). A server from
+    /// before installations were open to every member refuses a member
+    /// them (`403`): nil, and unable to manage.
     public func pluginCatalog() async throws -> PluginCatalog {
         struct Catalog: Decodable { var plugins: [Lossy<Plugin>] }
         struct Installed: Decodable { var installations: [Lossy<PluginInstallation>]; var canManage: Bool? }

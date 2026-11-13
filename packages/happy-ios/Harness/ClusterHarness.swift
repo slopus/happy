@@ -223,8 +223,9 @@ actor ClusterServer: AgentTransport {
             return ok(#"{"providerId":"\#(custom ?? "")","credentials":"available"}"#)
         case ("GET", "/v0/plugins"): return ok(Self.catalog)
         case ("GET", "/v0/plugins/installations"):
-            guard manager else { return refuse(403, "forbidden", "This needs the mcp.manage permission.") }
-            return ok(#"{"installations":[\#(installations.map(\.json).joined(separator: ","))]}"#)
+            // Every member reads them; as deployed before, only managers.
+            guard manager || !production else { return refuse(403, "forbidden", "This needs the mcp.manage permission.") }
+            return ok(#"{"installations":[\#(installations.map(\.json).joined(separator: ","))],"canManage":\#(manager)}"#)
         case ("POST", "/v0/plugins/installations"):
             guard manager else { return refuse(403, "forbidden", "This needs the mcp.manage permission.") }
             let plugin = sent?["plugin"]?.stringValue ?? ""
