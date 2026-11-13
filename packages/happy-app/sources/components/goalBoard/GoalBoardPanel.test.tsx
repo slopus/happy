@@ -18,6 +18,7 @@ vi.mock('@/text', () => ({ t: (key: string, params?: Record<string, unknown>) =>
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}), mono: () => ({}) } }));
 vi.mock('react-native-unistyles', () => {
     const colors = { surface: 'surface', surfacePressed: 'pressed', surfaceSelected: 'selected',
+        imageOverlay: { surface: 'image', surfacePressed: 'image-pressed', surfaceSelected: 'image-selected', text: 'image-text' },
         text: 'text', textSecondary: 'secondary', textLink: 'link', divider: 'divider', textDestructive: 'destructive' };
     return { StyleSheet: { hairlineWidth: 1, create: (factory: any) => factory({ colors }) }, useUnistyles: () => ({ theme: { colors } }) };
 });

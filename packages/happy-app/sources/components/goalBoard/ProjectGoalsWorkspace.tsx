@@ -290,10 +290,10 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const selectedMachine = machines.find(machine => machine.id === machineId);
     return <ProjectWorkspaceWidthProvider><ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
         {mobile && <View style={[styles.mobileHeader, { backgroundColor: surface }]}>
-            <Button touchTarget variant="primary" label={t('common.back')} onPress={() => navigation.back(project)} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
+            <Button variant="icon" label={t('common.back')} onPress={() => navigation.back(project)} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
             <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={styles.mobileTitle}>{task?.title || feature?.title || project?.title || t('projectGoals.allProjects')}</Text>
                 {!!(task || feature) && <Text numberOfLines={1} style={styles.meta}>{[project?.title, task ? feature?.title : undefined].filter(Boolean).join(' / ')}</Text>}</View>
-            <Button touchTarget variant="primary" label={t('sessionSearch.actions.more')} onPress={() => setMoreOpen(true)} testID="project-mobile-more"><Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.text} /></Button>
+            <Button variant="icon" label={t('sessionSearch.actions.more')} onPress={() => setMoreOpen(true)} testID="project-mobile-more"><Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.text} /></Button>
         </View>}
         <View style={[styles.header, { backgroundColor: surface }, mobile && { display: 'none' }]}>
 
@@ -329,7 +329,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         {mobile && moreOpen && <RNModal transparent visible animationType={Platform.OS === 'web' ? 'none' : 'slide'} onRequestClose={() => setMoreOpen(false)}>
             <View style={styles.mobileSheetBackdrop}><Pressable style={StyleSheet.absoluteFill} accessibilityLabel={t('common.cancel')} accessibilityRole="button" onPress={() => setMoreOpen(false)} />
                 <View style={[styles.mobileSheet, { paddingBottom: Math.max(12, safeArea.bottom) }]}>
-                    <View style={styles.line}><Text style={[styles.mobileTitle, { flex: 1 }]}>{t('projectGoals.allProjects')}</Text><Button label={t('sidebarLists.close')} onPress={() => setMoreOpen(false)}><Ionicons name="close" size={20} color={theme.colors.text} /></Button></View>
+                    <View style={styles.line}><Text style={[styles.mobileTitle, { flex: 1 }]}>{t('projectGoals.allProjects')}</Text><Button variant="icon" label={t('sidebarLists.close')} onPress={() => setMoreOpen(false)}><Ionicons name="close" size={22} color={theme.colors.text} /></Button></View>
                     <ScrollView style={{ flexGrow: 0 }}>
                         <Button variant="row" label={t('projectGoals.backProjects')} onPress={() => { setMoreOpen(false); go({ project: undefined, feature: undefined, task: undefined }); }}><Text style={styles.body}>{t('projectGoals.allProjects')}</Text></Button>
                         <Button variant="row" label={t('projectGoals.refresh')} disabled={data.loading || ((!machineId || data.offline) && !data.canRetryMachine)} onPress={() => { void data.refresh(); }}><Text style={styles.body}>{t(data.loading ? 'projectGoals.refreshing' : 'projectGoals.refresh')}</Text></Button>

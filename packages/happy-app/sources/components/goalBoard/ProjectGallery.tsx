@@ -65,7 +65,7 @@ export function ProjectGallery({ projects, onSelect, preferences = {}, onFavorit
                 <View style={styles.cover}>
                     <Image source={coverFor(project)} contentFit="cover" style={StyleSheet.absoluteFillObject} accessibilityLabel={project.title} />
                     <View style={styles.coverTop}><Text style={styles.coverNumber}>GOAL FIRST / {String(index + 1).padStart(2, '0')}</Text></View>
-                    <View style={styles.coverFooter}><Text style={styles.coverLabel}>{project.features.length ? `${project.features.length} ${t('projectGoals.subprojects')}` : t('projectGoals.directTasks')}</Text><Ionicons name="arrow-forward" size={16} color={theme.colors.text} /></View>
+                    <View style={styles.coverFooter}><Text style={styles.coverLabel}>{project.features.length ? `${project.features.length} ${t('projectGoals.subprojects')}` : t('projectGoals.directTasks')}</Text><Ionicons name="arrow-forward" size={16} color={theme.colors.imageOverlay.text} /></View>
                 </View>
                 <View style={styles.caption}>
                     <Text numberOfLines={1} style={styles.title}>{project.title}</Text>
@@ -73,7 +73,7 @@ export function ProjectGallery({ projects, onSelect, preferences = {}, onFavorit
                 </View>
             </GoalBoardButton>
             <View style={styles.actions}>
-                {onFavorite && preferences[project.projectPath]?.state !== 'deleted' && <GoalBoardButton label={t(preferences[project.projectPath]?.favorite ? 'projectGoals.unfavoriteProject' : 'projectGoals.favoriteProject')} selected={preferences[project.projectPath]?.favorite} onPress={() => onFavorite(project)} testID={`project-favorite-${index}`}><Ionicons name={preferences[project.projectPath]?.favorite ? 'star' : 'star-outline'} size={17} color={preferences[project.projectPath]?.favorite ? theme.colors.textLink : theme.colors.text} /></GoalBoardButton>}
+                {onFavorite && preferences[project.projectPath]?.state !== 'deleted' && <GoalBoardButton variant="overlay" label={t(preferences[project.projectPath]?.favorite ? 'projectGoals.unfavoriteProject' : 'projectGoals.favoriteProject')} selected={preferences[project.projectPath]?.favorite} onPress={() => onFavorite(project)} testID={`project-favorite-${index}`}><Ionicons name={preferences[project.projectPath]?.favorite ? 'star' : 'star-outline'} size={20} color={theme.colors.imageOverlay.text} /></GoalBoardButton>}
                 {onArchive && onDelete && onRestore && <ProjectCardMenu project={project} state={preferences[project.projectPath]?.state ?? 'active'} onArchive={() => onArchive(project)} onDelete={() => onDelete(project)} onRestore={() => onRestore(project)} index={index} />}
             </View>
         </View>)}
@@ -102,7 +102,7 @@ export function ProjectFeatureGallery({ entries, projectPath, onSelect, library 
                         <View style={styles.featureMeta}><Ionicons name="folder-open-outline" size={14} color={theme.colors.textSecondary} /><Text style={styles.metaText}>{t('projectGoals.showTasks')}</Text><Ionicons name="arrow-forward" size={15} color={theme.colors.textSecondary} /></View>
                     </View>
                 </GoalBoardButton>
-                {library && <View style={styles.actions}><LibraryItemActions library={library} target={{ kind: 'feature', projectPath: entry.featurePath, parentProjectPath: projectPath, title }} /></View>}
+                {library && <View style={styles.actions}><LibraryItemActions variant="overlay" library={library} target={{ kind: 'feature', projectPath: entry.featurePath, parentProjectPath: projectPath, title }} /></View>}
             </GoalBoardCard>;
         })}
     </View>;
@@ -125,7 +125,7 @@ function ProjectCardMenu({ project, state, onArchive, onDelete, onRestore, index
     }, [anchor, close]);
     const menuWidth = Math.min(240, width - 24);
     return <>
-        <GoalBoardButton ref={trigger} label={t('projectGoals.projectActions', { title: project.title })} expanded={!!anchor} testID={`project-more-${index}`} onPress={() => trigger.current?.measureInWindow((x, y, w, h) => setAnchor({ x: x + w, y: y + h }))}><Ionicons name="ellipsis-horizontal" size={17} color={theme.colors.text} /></GoalBoardButton>
+        <GoalBoardButton variant="overlay" ref={trigger} label={t('projectGoals.projectActions', { title: project.title })} expanded={!!anchor} testID={`project-more-${index}`} onPress={() => trigger.current?.measureInWindow((x, y, w, h) => setAnchor({ x: x + w, y: y + h }))}><Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.imageOverlay.text} /></GoalBoardButton>
         {anchor && <Modal transparent visible animationType="none" onRequestClose={close} onShow={() => first.current?.focus()}>
             <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel={t('common.cancel')} onPress={close} />
             <View style={[styles.menu, { width: menuWidth, left: Math.max(12, Math.min(anchor.x - menuWidth, width - menuWidth - 12)), top: Math.max(12, Math.min(anchor.y + 6, height - 190)) }]} testID="project-card-menu">
@@ -142,10 +142,10 @@ const styles = StyleSheet.create(theme => ({
     skeleton: { backgroundColor: theme.colors.surfaceSelected },
     skeletonLine: { height: 12, borderRadius: 6, backgroundColor: theme.colors.surfaceSelected },
     cover: { width: '100%', aspectRatio: 16 / 9, backgroundColor: theme.colors.surfaceHigh, borderRadius: 13, overflow: 'hidden', justifyContent: 'space-between', padding: 12 },
-    coverTop: { alignSelf: 'flex-start', backgroundColor: theme.colors.surface, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 6 },
-    coverNumber: { color: theme.colors.textSecondary, fontSize: 8, letterSpacing: 1, ...Typography.default('semiBold') },
-    coverFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'flex-start', gap: 20, backgroundColor: theme.colors.surface, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 7 },
-    coverLabel: { color: theme.colors.text, fontSize: 11, ...Typography.default() },
+    coverTop: { alignSelf: 'flex-start', backgroundColor: theme.colors.imageOverlay.surface, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 6 },
+    coverNumber: { color: theme.colors.imageOverlay.text, fontSize: 8, letterSpacing: 1, ...Typography.default('semiBold') },
+    coverFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'flex-start', gap: 20, backgroundColor: theme.colors.imageOverlay.surface, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 7 },
+    coverLabel: { color: theme.colors.imageOverlay.text, fontSize: 11, ...Typography.default() },
     caption: { paddingHorizontal: 4, paddingTop: 11, paddingBottom: 12, gap: 5 },
     title: { fontSize: 14, lineHeight: 21, color: theme.colors.text, ...Typography.default('semiBold') },
     description: { minHeight: 36, fontSize: 12, lineHeight: 18, color: theme.colors.textSecondary, ...Typography.default() },

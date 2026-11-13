@@ -53,6 +53,13 @@ export const lightTheme = {
         surfacePressedOverlay: Platform.select({ ios: '#D1D1D6', default: 'transparent' }),
         surfaceHigh: '#F8F3EA',
         surfaceHighest: '#F0E8D9',
+        imageOverlay: {
+            surface: 'rgba(30, 35, 40, 0.76)',
+            surfacePressed: 'rgba(30, 35, 40, 0.90)',
+            surfaceSelected: 'rgba(30, 35, 40, 0.94)',
+            text: '#F5F5F2',
+            destructive: '#FFB4AB',
+        },
         divider: Platform.select({ ios: '#EBE3D6', default: '#EBE3D6' }),
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),
@@ -292,6 +299,13 @@ export const darkTheme = {
         // Warm dark surfaces (栗壳) — elevated items lighter than the base bg
         surfaceHigh: Platform.select({ ios: '#2B221B', default: '#1F1813' }),
         surfaceHighest: Platform.select({ ios: '#352A20', default: '#2B221B' }),
+        imageOverlay: {
+            surface: 'rgba(30, 35, 40, 0.76)',
+            surfacePressed: 'rgba(30, 35, 40, 0.90)',
+            surfaceSelected: 'rgba(30, 35, 40, 0.94)',
+            text: '#F5F5F2',
+            destructive: '#FFB4AB',
+        },
         divider: Platform.select({ ios: '#352A20', default: '#2B221B' }),
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),

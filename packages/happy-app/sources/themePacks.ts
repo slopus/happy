@@ -1,6 +1,7 @@
 import { lightTheme, darkTheme } from './theme';
 import { ACCENTS, THEME_PACK_IDS, type AccentMode, type ThemePackId } from './themePacksData';
 import { PHOTO_DESKTOP_SKINS, isPhotoSkinActive, type DesktopSkinId } from './desktopSkin';
+import { multiplyColorOpacity } from './utils/colorOpacity';
 
 export { ACCENTS, THEME_PACK_IDS, type ThemePackId } from './themePacksData';
 
@@ -38,6 +39,15 @@ function applyAccent(base: typeof lightTheme, a: AccentMode): typeof lightTheme 
             surfaceSelected: a.surfaceHighest,
             surfaceHigh: a.surfaceHigh,
             surfaceHighest: a.surfaceHighest,
+            // Image controls need a dark scrim in both appearances. Keep its
+            // neutral tint and contrasting content tied to the active pack.
+            imageOverlay: {
+                ...base.colors.imageOverlay,
+                surface: multiplyColorOpacity(base.dark ? a.surface : a.text, 0.76),
+                surfacePressed: multiplyColorOpacity(base.dark ? a.surface : a.text, 0.90),
+                surfaceSelected: multiplyColorOpacity(base.dark ? a.surface : a.text, 0.94),
+                text: base.dark ? a.text : a.surface,
+            },
             groupped: { ...base.colors.groupped, background: a.bg },
             header: { ...base.colors.header, background: a.surface },
             fab: { ...base.colors.fab, background: a.primary, backgroundPressed: a.primaryPressed, icon: a.onPrimary },

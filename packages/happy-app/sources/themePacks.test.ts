@@ -9,6 +9,7 @@ vi.mock('react-native', () => ({
 
 import { appThemes, resolveDesktopThemeName, resolveThemeName, THEME_PACK_IDS } from './themePacks';
 import { desktopNavigationBackground, desktopSkinBackgroundPosition } from './desktopSkin';
+import { multiplyColorOpacity } from './utils/colorOpacity';
 
 function relativeLuminance(color: string): number {
     const [red, green, blue] = color
@@ -67,6 +68,30 @@ describe('theme pack interactive surfaces', () => {
 
         expect(theme.colors.surfacePressed).toBe('#1F2A38');
         expect(theme.colors.surfaceSelected).toBe('#283544');
+    });
+
+    it('uses the active gingham palette for image controls in both appearances', () => {
+        for (const theme of [appThemes.ginghamLight, appThemes.ginghamDark]) {
+            const { colors, dark } = theme;
+            const neutral = dark ? colors.surface : colors.text;
+            expect(colors.imageOverlay.surface).toBe(multiplyColorOpacity(neutral, 0.76));
+            expect(colors.imageOverlay.surfacePressed).toBe(multiplyColorOpacity(neutral, 0.90));
+            expect(colors.imageOverlay.surfaceSelected).toBe(multiplyColorOpacity(neutral, 0.94));
+            expect(colors.imageOverlay.text).toBe(dark ? colors.text : colors.surface);
+        }
+    });
+
+    it('keeps image labels and actions readable over bright and dark artwork in every theme', () => {
+        for (const theme of Object.values(appThemes)) {
+            const overlay = theme.colors.imageOverlay;
+            for (const state of [overlay.surface, overlay.surfacePressed, overlay.surfaceSelected]) {
+                for (const artwork of ['#FFFFFF', '#000000'] as const) {
+                    const rendered = blendReadingSurface(state.replace(/\s/g, ''), artwork);
+                    expect(contrastRatio(overlay.text, rendered)).toBeGreaterThanOrEqual(4.5);
+                    expect(contrastRatio(overlay.destructive, rendered)).toBeGreaterThanOrEqual(3);
+                }
+            }
+        }
     });
 
     it.each(['ginghamDark', 'dreamskinDark', 'caramelLight'] as const)(
