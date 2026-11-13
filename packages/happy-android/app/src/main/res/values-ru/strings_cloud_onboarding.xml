@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_onboarding_not_now">Не сейчас</string>
+    <string name="cloud_onboarding_skip">Пропустить</string>
+    <string name="cloud_onboarding_check_again">Проверить снова</string>
+    <string name="cloud_onboarding_couldnt_skip">Не удалось пропустить шаг. Попробуйте ещё раз.</string>
+    <string name="cloud_onboarding_couldnt_check">Не удалось связаться с сервером. Попробуйте ещё раз.</string>
+    <string name="cloud_onboarding_photo_title">Добавьте фото</string>
+    <string name="cloud_onboarding_photo_body">Ваша команда и агенты увидят его рядом с вашим именем.</string>
+    <string name="cloud_onboarding_choose_photo">Выбрать фото</string>
+    <string name="cloud_onboarding_photo_failed">Фото не загрузилось. Попробуйте ещё раз.</string>
+    <string name="cloud_onboarding_update_title">Обновите Happy, чтобы продолжить</string>
+    <string name="cloud_onboarding_update_body">Сервер просит шаг, который эта версия Happy ещё не знает.</string>
+    <string name="cloud_onboarding_update_action">Открыть Google Play</string>
+    <string name="cloud_onboarding_waiting_title">Ждём администратора</string>
+    <string name="cloud_onboarding_waiting_body">Сначала тот, кто управляет сервером, должен завершить настройку: %1$s.</string>
+    <string name="cloud_onboarding_not_ready_title">Почти готово</string>
+    <string name="cloud_onboarding_not_ready_body">Сервер пока не готов. Проверьте чуть позже.</string>
+    <string name="cloud_onboarding_elsewhere_title">Завершите в веб-версии</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s — это делается в Happy на компьютере или в веб-версии. Вернитесь сюда, когда закончите.</string>
+    <string name="cloud_onboarding_open_web">Открыть в браузере</string>
+    <string name="cloud_onboarding_done_title">Всё готово</string>
+    <string name="cloud_onboarding_done_body">%1$s готов к работе.</string>
+    <string name="cloud_onboarding_meet">Познакомьтесь: %1$s</string>
+    <string name="cloud_onboarding_get_started">Начать</string>
+    <string name="cloud_onboarding_couldnt_finish">Не удалось завершить настройку. Попробуйте ещё раз.</string>
+    <string name="cloud_onboarding_progress">Ход настройки</string>
+    <string name="cloud_onboarding_step_profile">Ваше имя</string>
+    <string name="cloud_onboarding_step_avatar">Ваше фото</string>
+    <string name="cloud_onboarding_step_admin_bot">Имя админ-бота</string>
+    <string name="cloud_onboarding_step_inference">Подключение провайдера моделей</string>
+    <string name="cloud_onboarding_step_plugins">Подключение плагинов</string>
+    <string name="cloud_onboarding_step_teammates">Приглашение коллег</string>
+    <string name="cloud_onboarding_step_mobile_app">Установка мобильного приложения</string>
+    <string name="cloud_onboarding_step_payment_method">Добавление способа оплаты</string>
+    <string name="cloud_onboarding_step_payment">Оплата сервера</string>
+    <string name="cloud_onboarding_step_unknown">Новый шаг</string>
+</resources>

@@ -201,6 +201,10 @@ class AgentSession internal constructor(
     )
     val pluginsAvailable: StateFlow<Boolean> get() = pluginsAvailability.available
 
+    /** A Happy Cloud server's onboarding gates for this person, which its flow over home follows; null on any other server. */
+    val onboarding: com.slopus.happy.onboarding.OnboardingSource? =
+        if (client.cloud) com.slopus.happy.onboarding.OnboardingSource({ com.slopus.happy.onboarding.OnboardingApi.read(client) }, events, active, scope) else null
+
     /** What Feed entries name that the catalog doesn't hold: artifacts, and the todos they made. */
     val feedLookups: FeedLookups by lazy {
         FeedLookups.of(scope, client) { ArtifactClient(client).artifact(it) }.also { lookups ->

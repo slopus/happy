@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.ui.gates.cloudOnboardingRoutes
 import com.slopus.happy.ui.vaults.vaultRoutes
 import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
@@ -58,6 +59,7 @@ fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostControlle
     cloudRoutes(graph, nav)
     artifactRoutes(graph, nav)
     pluginRoutes(graph, nav)
+    cloudOnboardingRoutes(graph, nav)
     feedRoutes(graph, nav)
     surfaceRoutes(graph, nav)
     vaultRoutes(graph, nav)

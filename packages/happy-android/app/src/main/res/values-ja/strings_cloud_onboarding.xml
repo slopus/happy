@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_onboarding_not_now">今はしない</string>
+    <string name="cloud_onboarding_skip">今はスキップ</string>
+    <string name="cloud_onboarding_check_again">もう一度確認</string>
+    <string name="cloud_onboarding_couldnt_skip">このステップをスキップできませんでした。もう一度お試しください。</string>
+    <string name="cloud_onboarding_couldnt_check">サーバーに接続できませんでした。もう一度お試しください。</string>
+    <string name="cloud_onboarding_photo_title">写真を追加</string>
+    <string name="cloud_onboarding_photo_body">チームとエージェントにあなたの名前と一緒に表示されます。</string>
+    <string name="cloud_onboarding_choose_photo">写真を選ぶ</string>
+    <string name="cloud_onboarding_photo_failed">写真をアップロードできませんでした。もう一度お試しください。</string>
+    <string name="cloud_onboarding_update_title">続けるには Happy をアップデートしてください</string>
+    <string name="cloud_onboarding_update_body">このサーバーは、このバージョンの Happy がまだ対応していないステップを求めています。</string>
+    <string name="cloud_onboarding_update_action">Google Play を開く</string>
+    <string name="cloud_onboarding_waiting_title">管理者を待っています</string>
+    <string name="cloud_onboarding_waiting_body">このサーバーの管理者が先に設定を完了する必要があります: %1$s。</string>
+    <string name="cloud_onboarding_not_ready_title">もうすぐです</string>
+    <string name="cloud_onboarding_not_ready_body">このサーバーはまだ準備ができていません。しばらくしてからもう一度確認してください。</string>
+    <string name="cloud_onboarding_elsewhere_title">ウェブで完了してください</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s はコンピューターまたはウェブの Happy で行います。完了したらここに戻ってください。</string>
+    <string name="cloud_onboarding_open_web">ウェブで開く</string>
+    <string name="cloud_onboarding_done_title">準備完了です</string>
+    <string name="cloud_onboarding_done_body">%1$s の準備ができました。</string>
+    <string name="cloud_onboarding_meet">%1$s に会う</string>
+    <string name="cloud_onboarding_get_started">始める</string>
+    <string name="cloud_onboarding_couldnt_finish">設定を完了できませんでした。もう一度お試しください。</string>
+    <string name="cloud_onboarding_progress">設定の進行状況</string>
+    <string name="cloud_onboarding_step_profile">あなたの名前</string>
+    <string name="cloud_onboarding_step_avatar">あなたの写真</string>
+    <string name="cloud_onboarding_step_admin_bot">管理ボットの名前付け</string>
+    <string name="cloud_onboarding_step_inference">モデルプロバイダーの接続</string>
+    <string name="cloud_onboarding_step_plugins">プラグインの接続</string>
+    <string name="cloud_onboarding_step_teammates">チームメイトの招待</string>
+    <string name="cloud_onboarding_step_mobile_app">モバイルアプリのインストール</string>
+    <string name="cloud_onboarding_step_payment_method">支払い方法の追加</string>
+    <string name="cloud_onboarding_step_payment">このサーバーの支払い</string>
+    <string name="cloud_onboarding_step_unknown">新しいステップ</string>
+</resources>

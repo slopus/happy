@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A Happy Cloud server's onboarding over its home (ui/gates/): one screen per gate the server asks for,
+  waiting for an admin, updating the app, finishing on the web, and the finish. Words follow iOS's
+  CloudOnboarding strings.
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="cloud_onboarding_not_now">Not now</string>
+    <string name="cloud_onboarding_skip">Skip for now</string>
+    <string name="cloud_onboarding_check_again">Check again</string>
+    <string name="cloud_onboarding_couldnt_skip">Couldn\'t skip this step. Try again.</string>
+    <string name="cloud_onboarding_couldnt_check">Couldn\'t reach the server. Try again.</string>
+    <string name="cloud_onboarding_photo_title">Add a photo</string>
+    <string name="cloud_onboarding_photo_body">Your team and agents see it next to your name.</string>
+    <string name="cloud_onboarding_choose_photo">Choose photo</string>
+    <string name="cloud_onboarding_photo_failed">Your photo didn\'t upload. Try again.</string>
+    <string name="cloud_onboarding_update_title">Update Happy to continue</string>
+    <string name="cloud_onboarding_update_body">This server asks for a step this version of Happy doesn\'t know yet.</string>
+    <string name="cloud_onboarding_update_action">Open Google Play</string>
+    <string name="cloud_onboarding_waiting_title">Waiting for your admin</string>
+    <string name="cloud_onboarding_waiting_body">Someone who manages this server has to finish setting it up first: %1$s.</string>
+    <string name="cloud_onboarding_not_ready_title">Almost ready</string>
+    <string name="cloud_onboarding_not_ready_body">This server isn\'t ready for you yet. Check again in a little while.</string>
+    <string name="cloud_onboarding_elsewhere_title">Finish on the web</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s is done in Happy on your computer or on the web. Come back here when it\'s done.</string>
+    <string name="cloud_onboarding_open_web">Open on the web</string>
+    <string name="cloud_onboarding_done_title">You\'re all set</string>
+    <string name="cloud_onboarding_done_body">%1$s is ready for you.</string>
+    <string name="cloud_onboarding_meet">Meet %1$s</string>
+    <string name="cloud_onboarding_get_started">Get started</string>
+    <string name="cloud_onboarding_couldnt_finish">Couldn\'t finish setting up. Try again.</string>
+    <string name="cloud_onboarding_progress">Setup progress</string>
+    <string name="cloud_onboarding_step_profile">Your name</string>
+    <string name="cloud_onboarding_step_avatar">Your photo</string>
+    <string name="cloud_onboarding_step_admin_bot">Naming the admin bot</string>
+    <string name="cloud_onboarding_step_inference">Connecting a model provider</string>
+    <string name="cloud_onboarding_step_plugins">Connecting plugins</string>
+    <string name="cloud_onboarding_step_teammates">Inviting teammates</string>
+    <string name="cloud_onboarding_step_mobile_app">Installing the mobile app</string>
+    <string name="cloud_onboarding_step_payment_method">Adding a payment method</string>
+    <string name="cloud_onboarding_step_payment">Paying for this server</string>
+    <string name="cloud_onboarding_step_unknown">A new step</string>
+</resources>

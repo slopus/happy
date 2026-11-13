@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_onboarding_not_now">Ara no</string>
+    <string name="cloud_onboarding_skip">Omet de moment</string>
+    <string name="cloud_onboarding_check_again">Torna a comprovar</string>
+    <string name="cloud_onboarding_couldnt_skip">No s’ha pogut ometre aquest pas. Torna-ho a provar.</string>
+    <string name="cloud_onboarding_couldnt_check">No s’ha pogut contactar amb el servidor. Torna-ho a provar.</string>
+    <string name="cloud_onboarding_photo_title">Afegeix una foto</string>
+    <string name="cloud_onboarding_photo_body">El teu equip i els agents la veuran al costat del teu nom.</string>
+    <string name="cloud_onboarding_choose_photo">Tria una foto</string>
+    <string name="cloud_onboarding_photo_failed">La foto no s’ha pujat. Torna-ho a provar.</string>
+    <string name="cloud_onboarding_update_title">Actualitza Happy per continuar</string>
+    <string name="cloud_onboarding_update_body">Aquest servidor demana un pas que aquesta versió de Happy encara no coneix.</string>
+    <string name="cloud_onboarding_update_action">Obre Google Play</string>
+    <string name="cloud_onboarding_waiting_title">Esperant el teu administrador</string>
+    <string name="cloud_onboarding_waiting_body">Algú que gestiona aquest servidor ha d’acabar de configurar-lo primer: %1$s.</string>
+    <string name="cloud_onboarding_not_ready_title">Gairebé a punt</string>
+    <string name="cloud_onboarding_not_ready_body">Aquest servidor encara no està a punt. Torna-ho a comprovar d’aquí a una estona.</string>
+    <string name="cloud_onboarding_elsewhere_title">Acaba al web</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s es fa a Happy a l’ordinador o al web. Torna aquí quan hagis acabat.</string>
+    <string name="cloud_onboarding_open_web">Obre al web</string>
+    <string name="cloud_onboarding_done_title">Tot a punt</string>
+    <string name="cloud_onboarding_done_body">%1$s ja està a punt.</string>
+    <string name="cloud_onboarding_meet">Coneix %1$s</string>
+    <string name="cloud_onboarding_get_started">Comença</string>
+    <string name="cloud_onboarding_couldnt_finish">No s’ha pogut acabar la configuració. Torna-ho a provar.</string>
+    <string name="cloud_onboarding_progress">Progrés de la configuració</string>
+    <string name="cloud_onboarding_step_profile">El teu nom</string>
+    <string name="cloud_onboarding_step_avatar">La teva foto</string>
+    <string name="cloud_onboarding_step_admin_bot">Posar nom al bot administrador</string>
+    <string name="cloud_onboarding_step_inference">Connectar un proveïdor de models</string>
+    <string name="cloud_onboarding_step_plugins">Connectar connectors</string>
+    <string name="cloud_onboarding_step_teammates">Convidar companys</string>
+    <string name="cloud_onboarding_step_mobile_app">Instal·lar l’app mòbil</string>
+    <string name="cloud_onboarding_step_payment_method">Afegir un mètode de pagament</string>
+    <string name="cloud_onboarding_step_payment">Pagar aquest servidor</string>
+    <string name="cloud_onboarding_step_unknown">Un pas nou</string>
+</resources>

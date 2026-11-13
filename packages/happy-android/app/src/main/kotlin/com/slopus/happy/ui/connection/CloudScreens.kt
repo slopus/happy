@@ -202,9 +202,10 @@ object CloudSpec {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CloudFrame(
+internal fun CloudFrame(
     title: String,
-    onBack: () -> Unit,
+    /** Null: no back (a step the person may not leave), and no bar. */
+    onBack: (() -> Unit)?,
     body: String? = null,
     @RawRes art: Int? = null,
     /** Every press on [art], with its time: the welcome counts them. */
@@ -316,7 +317,7 @@ private fun CloudFrame(
             }
         }
         // Clear: the gradient shows through the bar, as on the first screen's next one.
-        Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))) {
+        if (onBack != null) Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))) {
             CompositionLocalProvider(LocalBarOnGlass provides true) {
                 StackHeader(title = "", onBack = onBack, fullWidth = true) {
                     if (menu.isNotEmpty()) {
@@ -344,7 +345,7 @@ private fun CloudFrame(
 }
 
 /** One of a screen's actions: the primary at the bottom, or the quiet one under it. */
-private class CloudAction(val title: String, val onClick: () -> Unit, val enabled: Boolean = true, val loading: Boolean = false)
+internal class CloudAction(val title: String, val onClick: () -> Unit, val enabled: Boolean = true, val loading: Boolean = false)
 
 @Composable
 private fun Spinner() {
@@ -1149,7 +1150,7 @@ fun CloudProfileScreen(
     failed: Boolean,
     onChoosePhoto: () -> Unit,
     onSubmit: (String) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
 ) {
     // The cursor after a suggested name, as iOS: ready to add to it or take it.
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(suggested.orEmpty().let { TextFieldValue(it, TextRange(it.length)) }) }
@@ -1192,7 +1193,7 @@ object CloudProfileSpec {
 
 /** The picture, round, with its camera badge bottom-right, and the text button under it: both open the picker. */
 @Composable
-private fun ProfilePicturePicker(photo: ImageBitmap?, seed: String, enabled: Boolean, onChoose: () -> Unit) {
+internal fun ProfilePicturePicker(photo: ImageBitmap?, seed: String, enabled: Boolean, onChoose: () -> Unit) {
     val colors = HappyTheme.colors
     val text = if (colors.dark) StartSpec.darkText else StartSpec.lightText
     val label = stringResource(if (photo == null) R.string.cloud_profile_add_photo else R.string.cloud_profile_change_photo)
@@ -1287,7 +1288,7 @@ private fun CloudNameField(value: TextFieldValue, onChange: (TextFieldValue) -> 
 
 /** A note that reads on any part of the gradient: on the fields' surface, in [color] or the secondary text. */
 @Composable
-private fun NotePill(text: String, color: Color?) {
+internal fun NotePill(text: String, color: Color?) {
     val colors = HappyTheme.colors
     Box(Modifier.clip(RoundedCornerShape(50)).background(colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA)).padding(horizontal = 14.dp, vertical = 8.dp)) {
         Text(text, style = happyTextStyle(fontSize = 14, lineHeight = 18, weight = FontWeight.Medium), color = color ?: colors.textSecondary, textAlign = TextAlign.Center)

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_onboarding_not_now">Nie teraz</string>
+    <string name="cloud_onboarding_skip">Pomiń na razie</string>
+    <string name="cloud_onboarding_check_again">Sprawdź ponownie</string>
+    <string name="cloud_onboarding_couldnt_skip">Nie udało się pominąć tego kroku. Spróbuj ponownie.</string>
+    <string name="cloud_onboarding_couldnt_check">Nie udało się połączyć z serwerem. Spróbuj ponownie.</string>
+    <string name="cloud_onboarding_photo_title">Dodaj zdjęcie</string>
+    <string name="cloud_onboarding_photo_body">Twój zespół i agenci zobaczą je obok Twojego imienia.</string>
+    <string name="cloud_onboarding_choose_photo">Wybierz zdjęcie</string>
+    <string name="cloud_onboarding_photo_failed">Nie udało się przesłać zdjęcia. Spróbuj ponownie.</string>
+    <string name="cloud_onboarding_update_title">Zaktualizuj Happy, aby kontynuować</string>
+    <string name="cloud_onboarding_update_body">Ten serwer wymaga kroku, którego ta wersja Happy jeszcze nie zna.</string>
+    <string name="cloud_onboarding_update_action">Otwórz Google Play</string>
+    <string name="cloud_onboarding_waiting_title">Czekamy na administratora</string>
+    <string name="cloud_onboarding_waiting_body">Najpierw osoba zarządzająca tym serwerem musi dokończyć konfigurację: %1$s.</string>
+    <string name="cloud_onboarding_not_ready_title">Prawie gotowe</string>
+    <string name="cloud_onboarding_not_ready_body">Ten serwer nie jest jeszcze gotowy. Sprawdź ponownie za chwilę.</string>
+    <string name="cloud_onboarding_elsewhere_title">Dokończ w przeglądarce</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s odbywa się w Happy na komputerze lub w przeglądarce. Wróć tutaj, gdy skończysz.</string>
+    <string name="cloud_onboarding_open_web">Otwórz w przeglądarce</string>
+    <string name="cloud_onboarding_done_title">Wszystko gotowe</string>
+    <string name="cloud_onboarding_done_body">%1$s jest gotowy.</string>
+    <string name="cloud_onboarding_meet">Poznaj: %1$s</string>
+    <string name="cloud_onboarding_get_started">Zaczynamy</string>
+    <string name="cloud_onboarding_couldnt_finish">Nie udało się dokończyć konfiguracji. Spróbuj ponownie.</string>
+    <string name="cloud_onboarding_progress">Postęp konfiguracji</string>
+    <string name="cloud_onboarding_step_profile">Twoje imię</string>
+    <string name="cloud_onboarding_step_avatar">Twoje zdjęcie</string>
+    <string name="cloud_onboarding_step_admin_bot">Nazwanie bota administratora</string>
+    <string name="cloud_onboarding_step_inference">Połączenie dostawcy modeli</string>
+    <string name="cloud_onboarding_step_plugins">Połączenie wtyczek</string>
+    <string name="cloud_onboarding_step_teammates">Zapraszanie współpracowników</string>
+    <string name="cloud_onboarding_step_mobile_app">Instalacja aplikacji mobilnej</string>
+    <string name="cloud_onboarding_step_payment_method">Dodanie metody płatności</string>
+    <string name="cloud_onboarding_step_payment">Opłacenie serwera</string>
+    <string name="cloud_onboarding_step_unknown">Nowy krok</string>
+</resources>

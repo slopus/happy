@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_onboarding_not_now">以后再说</string>
+    <string name="cloud_onboarding_skip">暂时跳过</string>
+    <string name="cloud_onboarding_check_again">再次检查</string>
+    <string name="cloud_onboarding_couldnt_skip">无法跳过此步骤，请重试。</string>
+    <string name="cloud_onboarding_couldnt_check">无法连接服务器，请重试。</string>
+    <string name="cloud_onboarding_photo_title">添加照片</string>
+    <string name="cloud_onboarding_photo_body">你的团队和智能体会在你的名字旁看到它。</string>
+    <string name="cloud_onboarding_choose_photo">选择照片</string>
+    <string name="cloud_onboarding_photo_failed">照片未上传，请重试。</string>
+    <string name="cloud_onboarding_update_title">更新 Happy 以继续</string>
+    <string name="cloud_onboarding_update_body">此服务器要求的步骤，此版本的 Happy 尚不支持。</string>
+    <string name="cloud_onboarding_update_action">打开 Google Play</string>
+    <string name="cloud_onboarding_waiting_title">正在等待管理员</string>
+    <string name="cloud_onboarding_waiting_body">需要由管理此服务器的人先完成设置：%1$s。</string>
+    <string name="cloud_onboarding_not_ready_title">即将就绪</string>
+    <string name="cloud_onboarding_not_ready_body">此服务器尚未就绪，请稍后再检查。</string>
+    <string name="cloud_onboarding_elsewhere_title">在网页上完成</string>
+    <string name="cloud_onboarding_elsewhere_body">%1$s需要在电脑或网页上的 Happy 中完成。完成后回到这里。</string>
+    <string name="cloud_onboarding_open_web">在网页上打开</string>
+    <string name="cloud_onboarding_done_title">一切就绪</string>
+    <string name="cloud_onboarding_done_body">%1$s 已为你准备就绪。</string>
+    <string name="cloud_onboarding_meet">认识 %1$s</string>
+    <string name="cloud_onboarding_get_started">开始使用</string>
+    <string name="cloud_onboarding_couldnt_finish">无法完成设置，请重试。</string>
+    <string name="cloud_onboarding_progress">设置进度</string>
+    <string name="cloud_onboarding_step_profile">你的名字</string>
+    <string name="cloud_onboarding_step_avatar">你的照片</string>
+    <string name="cloud_onboarding_step_admin_bot">为管理机器人命名</string>
+    <string name="cloud_onboarding_step_inference">连接模型提供方</string>
+    <string name="cloud_onboarding_step_plugins">连接插件</string>
+    <string name="cloud_onboarding_step_teammates">邀请队友</string>
+    <string name="cloud_onboarding_step_mobile_app">安装移动应用</string>
+    <string name="cloud_onboarding_step_payment_method">添加付款方式</string>
+    <string name="cloud_onboarding_step_payment">为此服务器付款</string>
+    <string name="cloud_onboarding_step_unknown">新步骤</string>
+</resources>

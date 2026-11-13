@@ -36,6 +36,10 @@ object HappyCloud {
     fun webSettings(server: String?, page: String, base: String? = this.base, web: String = this.web): String? =
         handle(server, base)?.let { "https://${it.removePrefix("@")}.$web/#/settings/$page" }
 
+    /** [server] in the web app; null for a server that isn't Happy Cloud's. */
+    fun webApp(server: String?, base: String? = this.base, web: String = this.web): String? =
+        handle(server, base)?.let { "https://${it.removePrefix("@")}.$web/" }
+
     /** Only the dev (`debug`) and `preview` builds offer Happy Cloud. */
     internal fun offeredIn(buildType: String): Boolean = buildType == "debug" || buildType == "preview"
 
