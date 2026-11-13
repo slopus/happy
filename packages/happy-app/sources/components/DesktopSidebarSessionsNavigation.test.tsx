@@ -262,6 +262,13 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-header-search' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-header-new-session' }).props.onPress());
         expect(onSearch).toHaveBeenCalledOnce();
+        const newSession = () => renderer.root.findByProps({ testID: 'desktop-sidebar-header-new-session' });
+        const background = () => Object.assign({}, ...newSession().props.style({ pressed: false }).filter(Boolean)).backgroundColor;
+        const resting = background();
+        act(() => newSession().props.onHoverIn());
+        expect(background()).not.toBe(resting);
+        act(() => newSession().props.onHoverOut());
+        expect(background()).toBe(resting);
         expect(onNewSession).toHaveBeenCalledOnce();
         act(() => renderer.unmount());
     });
@@ -687,16 +694,15 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.unmount());
     });
 
-    it('shows pinned conversations in their own Lists section without duplicating them', () => {
+    it('keeps pinned conversations in their owning List without a Pinned category', () => {
         mocks.pinnedOrder = ['session-1'];
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
         act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
 
-        expect(renderer.root.findByProps({ testID: 'sidebar-pinned-section' })).toBeDefined();
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-pinned-section' })).toHaveLength(0);
         expect(renderer.root.findAllByType('CompactSessionRow')).toHaveLength(1);
-        expect(renderer.root.findByType('CompactSessionRow').props.session.id).toBe('session-1');
-        expect(renderer.root.findAllByProps({ testID: 'organized-session-session-1' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'organized-session-session-1' })).toBeDefined();
         act(() => renderer.unmount());
     });
 

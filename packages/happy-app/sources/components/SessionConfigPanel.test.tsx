@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     modelTriggerFocus: vi.fn(),
     pickerCloseFocus: vi.fn(),
     setEffortLevel: vi.fn(),
+    setFastMode: vi.fn(),
     setModelMode: vi.fn(),
     setPermissionMode: vi.fn(),
     setPath: vi.fn(),
@@ -128,6 +129,8 @@ vi.mock('@/hooks/useNewSessionDraft', async () => {
         permissionMode: 'yolo',
         modelMode: 'gpt-5.6-sol',
         effortLevel: 'high',
+        fastMode: false,
+        setFastMode: (_enabled: boolean): void => undefined,
         sessionType: 'simple',
         worktreeKey: null,
         setMachineId: vi.fn(),
@@ -141,9 +144,10 @@ vi.mock('@/hooks/useNewSessionDraft', async () => {
     };
     return {
         useNewSessionDraft: (selector: (value: typeof state) => unknown) => {
+            const [fastMode, updateFastMode] = ReactModule.useState(false);
             const selected = ReactModule.useRef<{ initialized: boolean; value: unknown }>({ initialized: false, value: undefined });
-            if (!selected.current.initialized) {
-                selected.current = { initialized: true, value: selector(state) };
+            if (!selected.current.initialized || (selected.current.value as any)?.fastMode !== undefined && (selected.current.value as any).fastMode !== fastMode) {
+                selected.current = { initialized: true, value: selector({ ...state, fastMode, setFastMode: (enabled: boolean) => { mocks.setFastMode(enabled); updateFastMode(enabled); } }) };
             }
             return selected.current.value;
         },
@@ -250,9 +254,12 @@ describe('SessionConfigPanel composer layout', () => {
         act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'session-composer-model-codex::gpt-5.6-terra' }).props.onPress());
         expect(mocks.setModelMode).toHaveBeenCalledWith('gpt-5.6-terra');
+        expect(mocks.setEffortLevel).not.toHaveBeenCalledWith(null);
+        expect(ref.current.getSelection().effortKey).toBe('high');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-terra');
         act(() => renderer.root.findByProps({ testID: 'session-composer-fast-toggle' }).props.onPress());
         expect(ref.current.getSelection().fastMode).toBe(true);
+        expect(mocks.setFastMode).toHaveBeenCalledWith(true);
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
         await act(async () => renderer.root.findByProps({ testID: 'session-composer-permission-option-automatic' }).props.onPress());

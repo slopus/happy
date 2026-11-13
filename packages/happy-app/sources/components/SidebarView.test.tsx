@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
     helpTriggerFocus: vi.fn(),
     navigate: vi.fn(),
     pathname: '/',
+    rootState: undefined as any,
     session: null as any,
     openCommandPalette: vi.fn(),
     openSettings: vi.fn(),
@@ -76,6 +77,7 @@ vi.mock('expo-router', () => ({
     useRouter: () => ({ navigate: mocks.navigate }),
     useGlobalSearchParams: () => ({}),
     usePathname: () => mocks.pathname,
+    useRootNavigationState: () => mocks.rootState,
 }));
 vi.mock('@react-navigation/native', () => ({
     DrawerActions: { closeDrawer: () => ({ type: 'CLOSE_DRAWER' }) },
@@ -208,6 +210,7 @@ describe('SidebarView Agent space exit', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.pathname = '/';
+        mocks.rootState = undefined;
         mocks.leftVisible = false;
         mocks.leftPinned = false;
         mocks.theme = appThemes.ginghamLight;
@@ -257,6 +260,23 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
+    it('preserves the opaque project sidebar and project selection under Activity Center', () => {
+        mocks.spaceAgent = null;
+        mocks.pathname = '/inbox';
+        mocks.rootState = { index: 1, desktopModalBaseKey: 'project', routes: [
+            { key: 'project', name: 'projects' }, { key: 'activity', name: 'inbox/index' },
+        ] };
+        mocks.desktopSkin = 'dreamskin';
+        mocks.theme = appThemes.ginghamDark;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible />); });
+        const column = renderer.root.findByProps({ testID: 'desktop-secondary-navigation-column' });
+        expect(Object.assign({}, ...column.props.style.flat().filter(Boolean)).backgroundColor).toBe(appThemes.ginghamDark.colors.desktopSkin.reducedSidebar);
+        const project = renderer.root.findByProps({ testID: 'sidebar-project-goals-button' });
+        expect(project.props.selected).toBe(true);
+        act(() => renderer.unmount());
+    });
+
     it('returns from another page to the remembered project and task path', () => {
         mocks.spaceAgent = null; mocks.pathname = '/session/another';
         mocks.desktopProjectLocation = '/projects?machine=mac&project=%2Fgoals%2Fcreative-web&feature=%2Fgoals%2Fcreative-web%2Ffeatures%2Fdesign-ops&task=task-4&conversation=chat-4';
@@ -296,21 +316,15 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
-    it.each([
-        { visible: false, currentMode: 'projects', toggles: 1 },
-        { visible: true, currentMode: 'projects', toggles: 1 },
-        { visible: true, currentMode: 'timeline', toggles: 0 },
-        { visible: true, currentMode: 'lists', toggles: 0 },
-    ])('opens project session lists in place from $currentMode (visible: $visible)', ({ visible, currentMode, toggles }) => {
+    it.each([false, true])('returns from All projects to Home with sidebar visible: %s', visible => {
         mocks.pathname = '/projects'; mocks.spaceAgent = null;
-        mocks.leftVisible = visible; mocks.desktopSidebarMode = currentMode;
+        mocks.leftVisible = visible;
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible={visible} />); });
         act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
-        expect(mocks.navigate).not.toHaveBeenCalled();
-        expect(mocks.toggleLeftSidebar).toHaveBeenCalledTimes(toggles);
+        expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/');
+        expect(mocks.toggleLeftSidebar).not.toHaveBeenCalled();
         expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('projects');
-        expect(mocks.setDesktopSidebarListMode).toHaveBeenCalledWith('projects');
         act(() => renderer.unmount());
     });
 

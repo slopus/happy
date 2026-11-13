@@ -1,3 +1,4 @@
+import { getSnapshotConversationTime } from './sessionConversationTime';
 import type { ApiSessionSnapshot } from './apiTypes';
 import type { Encryption } from './encryption/encryption';
 import type { Session } from './storageTypes';
@@ -61,12 +62,14 @@ export async function hydrateSessionSnapshots(
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${snapshot.id}`);
         }
-        const [metadata, agentState] = await Promise.all([
+        const [metadata, agentState, tail] = await Promise.all([
             sessionEncryption.decryptMetadata(snapshot.metadataVersion, snapshot.metadata),
             sessionEncryption.decryptAgentState(snapshot.agentStateVersion, snapshot.agentState),
+            snapshot.lastMessage ? sessionEncryption.decryptMessage(snapshot.lastMessage).catch(() => null) : null,
         ]);
         return {
             ...snapshot,
+            lastMessageAt: getSnapshotConversationTime(snapshot, agentState, tail),
             lastMessage: snapshot.lastMessage ?? null,
             metadata,
             agentState,
@@ -99,15 +102,17 @@ export async function hydrateSessionSnapshotForRoute(
 
     const prepared = await encryption.prepareSessionEncryption(snapshot.id, key);
     guard.assertCurrent();
-    const [metadata, agentState] = await Promise.all([
+    const [metadata, agentState, tail] = await Promise.all([
         prepared.sessionEncryption.decryptMetadata(snapshot.metadataVersion, snapshot.metadata),
         prepared.sessionEncryption.decryptAgentState(snapshot.agentStateVersion, snapshot.agentState),
+        snapshot.lastMessage ? prepared.sessionEncryption.decryptMessage(snapshot.lastMessage).catch(() => null) : null,
     ]);
     guard.assertCurrent();
 
     return {
         session: {
             ...snapshot,
+            lastMessageAt: getSnapshotConversationTime(snapshot, agentState, tail),
             metadata,
             agentState,
             thinking: false,

@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
-import { usePathname, useRootNavigationState } from 'expo-router';
-import { getDesktopModalBackgroundPath } from '@/navigation/desktopModalRouter';
+import { useDesktopWorkspacePathname } from './useDesktopWorkspacePathname';
 import { useLocalSettingMutable } from '@/sync/storage';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import {
@@ -91,9 +90,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
     children: React.ReactNode;
     enabled: boolean;
 }) {
-    const currentPathname = usePathname();
-    const rootState = useRootNavigationState();
-    const pathname = getDesktopModalBackgroundPath(rootState) ?? currentPathname;
+    const pathname = useDesktopWorkspacePathname();
     const projectWorkspace = pathname === '/projects';
     const [projectSidebarOpen, setProjectSidebarOpen] = React.useState(false);
     React.useEffect(() => { setProjectSidebarOpen(false); }, [projectWorkspace]);

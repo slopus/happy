@@ -448,6 +448,7 @@ describe('real session writer composition', () => {
             localId: receipt.localIds[0], createdAt: 2, updatedAt: 2 }] }) });
         await subject.flushOutbox('writer-session');
         expect(subject.pendingOutbox.has('writer-session')).toBe(false);
+        expect(storage.getState().sessions['writer-session'].lastMessageAt).toBe(2);
         expect(storage.getState().sessionMessages['writer-session'].messages).toBe(historicalRows);
         expect(subject.historyWindows.get('writer-session').newestSeq).toBe(1);
         const accepted = (await history.readWindow('writer-session', { anchorSeq: 2 }))?.messages.find(row => row.id === 'accepted-wire');
@@ -865,6 +866,15 @@ describe('real session writer composition', () => {
             id: 'domain-message', seq: 4, localId: null, createdAt: 40, updatedAt: 40, content: { t: 'encrypted', c: 'AA==' },
         } }, 9001, 40));
         expect(storage.getState().sessions['writer-session'].seq).toBe(4);
+        expect(storage.getState().sessions['writer-session'].lastMessageAt).toBe(40);
+        mocks.fetchActive.mockResolvedValue([snapshot({ updatedAt: 50, activeAt: 50, lastMessageAt: 10 })]);
+        await subject.fetchActiveSessions();
+        expect(storage.getState().sessions['writer-session'].lastMessageAt).toBe(40);
+        // A semantic clock from a stale field-version snapshot must still merge.
+        const currentSession = storage.getState().sessions['writer-session'];
+        subject.applySessions([{ ...currentSession, updatedAt: 1, metadataVersion: 0, agentStateVersion: 0, lastMessageAt: 60 }]);
+        expect(storage.getState().sessions['writer-session'].lastMessageAt).toBe(60);
+
     });
 
     it('lets an event already decrypting satisfy an ACK without a duplicate GET', async () => {

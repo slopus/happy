@@ -60,19 +60,19 @@ describe('session navigation groups', () => {
     it('sorts the time layout by latest activity and groups local calendar days', () => {
         const now = new Date(2026, 7, 6, 12).getTime();
         const groups = buildSessionNavigationTimeGroups([
-            session({ id: 'yesterday', activeAt: new Date(2026, 7, 5, 18).getTime(), createdAt: 1 }),
+            session({ id: 'yesterday', activityAt: new Date(2026, 7, 5, 18).getTime(), createdAt: 1 }),
             session({ id: 'today-created', createdAt: new Date(2026, 7, 6, 8).getTime() }),
-            session({ id: 'today-active', activeAt: new Date(2026, 7, 6, 10).getTime(), createdAt: 1 }),
+            session({ id: 'today-active', activityAt: new Date(2026, 7, 6, 10).getTime(), createdAt: 1 }),
             session({ id: 'older', createdAt: new Date(2026, 7, 3, 20).getTime() }),
         ], now);
 
         expect(groups.map((group) => group.dayOffset)).toEqual([0, 1, 3]);
-        expect(groups[0].sessions.map((item) => item.id)).toEqual(['today-created', 'today-active']);
+        expect(groups[0].sessions.map((item) => item.id)).toEqual(['today-active', 'today-created']);
         expect(groups[1].sessions.map((item) => item.id)).toEqual(['yesterday']);
         expect(groups[2].sessions.map((item) => item.id)).toEqual(['older']);
     });
 
-    it('keeps a stable creation order inside a day instead of chasing exact activity timestamps', () => {
+    it('orders the same day by actual message recency, including continued older conversations', () => {
         const now = new Date(2026, 7, 6, 12).getTime();
         const groups = buildSessionNavigationTimeGroups([
             session({
@@ -88,8 +88,8 @@ describe('session navigation groups', () => {
         ], now);
 
         expect(groups[0].sessions.map((item) => item.id)).toEqual([
-            'newer-session',
             'older-session-with-latest-ping',
+            'newer-session',
         ]);
     });
 
@@ -98,6 +98,7 @@ describe('session navigation groups', () => {
         const groups = buildSessionNavigationTimeGroups([
             session({
                 id: 'continued-today',
+                activityAt: new Date(2026, 7, 6, 10).getTime(),
                 createdAt: new Date(2026, 7, 5, 18).getTime(),
                 updatedAt: new Date(2026, 7, 6, 10).getTime(),
             }),
@@ -109,7 +110,7 @@ describe('session navigation groups', () => {
         }]);
     });
 
-    it('uses a newer live activity timestamp over an older persisted update', () => {
+    it('ignores live heartbeats and metadata when an older conversation has no messages', () => {
         const now = new Date(2026, 7, 6, 12).getTime();
         const groups = buildSessionNavigationTimeGroups([
             session({
@@ -121,7 +122,7 @@ describe('session navigation groups', () => {
         ], now);
 
         expect(groups[0]).toMatchObject({
-            dayOffset: 0,
+            dayOffset: 1,
             sessions: [{ id: 'live-today' }],
         });
     });

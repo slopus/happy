@@ -797,6 +797,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             setModelMode: s.setModelMode,
             effortLevel: s.effortLevel,
             setEffortLevel: s.setEffortLevel,
+            fastMode: s.fastMode,
+            setFastMode: s.setFastMode,
             sessionType: s.sessionType,
             setSessionType: s.setSessionType,
             worktreeKey: s.worktreeKey,
@@ -822,7 +824,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const [permissionIndex, setPermissionIndex] = React.useState(0);
         const [modelIndex, setModelIndex] = React.useState(0);
         const [effortIndex, setEffortIndex] = React.useState(0);
-        const [fastMode, setFastMode] = React.useState(false);
+        const { fastMode, setFastMode } = draft;
         const [hoveredComposerControl, setHoveredComposerControl] = React.useState<'machine' | 'path' | 'permission' | null>(null);
         const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
         const activePickerRef = React.useRef<PickerType | null>(null);
@@ -1049,11 +1051,6 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const supportsFast = selectedAgent === 'codex' && supportsCodexFast(modelMetadata, currentModelKey);
         const showPermission = configExperience.showPermission && permissionModes.length > 1;
 
-        React.useEffect(() => {
-            if (!supportsFast && fastMode) {
-                setFastMode(false);
-            }
-        }, [fastMode, supportsFast]);
 
         React.useEffect(() => {
             if (!configExperience.isAskMode) {
@@ -1075,8 +1072,10 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             if (!supportsWorktree) setWorktreeKey('__none__');
         }, [permissionModes, modelModes, supportsWorktree, resolvedModeSelection.permissionMode, resolvedModeSelection.modelMode]);
 
-        // Reset effort when model changes
+        // Wait for the model index to follow the draft before validating its effort.
+        // Otherwise an intermediate model/agent render can overwrite a valid choice.
         React.useEffect(() => {
+            if (currentModelKey !== resolvedModeSelection.modelMode) return;
             const defaultEffort = resolvedModeSelection.effortLevel;
             if (defaultEffort && effortLevels.length > 0) {
                 const idx = effortLevels.findIndex(e => e.key === defaultEffort);
@@ -1086,7 +1085,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 setEffortIndex(0);
                 draft.setEffortLevel(effortLevels[0]?.key ?? null);
             }
-        }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, currentModelKey, effortLevels]);
+        }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, resolvedModeSelection.modelMode, currentModelKey, effortLevels]);
 
         // Auto collapse config once when user starts typing (mobile only, collapsible).
         // On desktop (web / Mac Catalyst) the panel stays expanded. Also skip on
@@ -1285,6 +1284,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                     break;
                 case 'agent':
                     if (availableAgents.some((candidate) => candidate.key === key)) {
+                        if (key !== selectedAgent) setFastMode(false);
                         setSelectedAgent(key as NewSessionAgentType);
                     }
                     break;
@@ -1293,6 +1293,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                     if (next >= 0) {
                         setModelIndex(next);
                         draft.setModelMode(modelModes[next]?.key ?? 'default');
+                        if (!supportsCodexFast(modelMetadata, key)) setFastMode(false);
                     }
                     break;
                 }
@@ -1320,6 +1321,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             dismissPicker,
             draft.setEffortLevel,
             draft.setModelMode,
+            modelMetadata,
+            selectedAgent,
+            setFastMode,
             draft.setPermissionMode,
             effortLevels,
             modelModes,
@@ -1337,10 +1341,10 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 modelKey: currentModelKey === 'default' ? undefined : currentModelKey,
                 effortKey: draft.effortLevel ?? resolvedModeSelection.effortLevel ?? null,
                 worktreeKey,
-                fastMode,
+                fastMode: supportsFast && fastMode,
             }),
             closePickers: dismissPicker,
-        }), [currentPermission?.key, currentModelKey, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, dismissPicker]);
+        }), [currentPermission?.key, currentModelKey, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, supportsFast, dismissPicker]);
 
         // Android uses a bottom sheet so options do not expand inside the
         // composer. iOS and desktop sidebars retain their existing inline layout.
@@ -1591,7 +1595,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                             draft.setAgentType(nextAgent);
                                         }
                                         draft.setModelMode(nextModel);
-                                        draft.setEffortLevel(null);
+                                        const nextMetadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: nextAgent });
+                                        if (nextAgent !== 'codex' || !supportsCodexFast(nextMetadata, nextModel)) setFastMode(false);
                                     }}
                                     onEffortChange={(key) => {
                                         const next = effortLevels.findIndex((level) => level.key === key);
@@ -1758,7 +1763,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                                         accessibilityLabel="Fast"
                                                         accessibilityState={{ checked: fastMode }}
                                                         testID="session-config-fast-toggle"
-                                                        onPress={() => setFastMode((enabled) => !enabled)}
+                                                        onPress={() => setFastMode(!fastMode)}
                                                         style={(p: { pressed: boolean; hovered?: boolean }) => [styles.configFastToggle, (p.pressed || p.hovered) && styles.configRowPressed]}
                                                     >
                                                         <Ionicons name="flash-outline" size={14} color={fastMode ? theme.colors.accent : theme.colors.textSecondary} />

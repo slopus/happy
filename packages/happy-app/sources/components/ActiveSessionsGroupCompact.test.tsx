@@ -190,11 +190,11 @@ describe('ActiveSessionsGroupCompact project expansion persistence', () => {
         act(() => renderer.unmount());
     });
 
-    it('shows all three desktop sections even with no sessions and remembers collapse', () => {
+    it('shows Projects and Recent without a Pinned category and remembers collapse', () => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<SessionsList desktopSections />); });
         const list = () => renderer.root.findByType('FlatList');
-        expect(list().props.data.filter((item: any) => item.key?.startsWith('section-')).map((item: any) => item.key)).toEqual(['section-pinned', 'section-projects', 'section-recent']);
+        expect(list().props.data.filter((item: any) => item.key?.startsWith('section-')).map((item: any) => item.key)).toEqual(['section-projects', 'section-recent']);
         const recent = list().props.data.find((item: any) => item.key === 'section-recent');
         expect(recent.element.props.accessibilityState.expanded).toBe(true);
         act(() => recent.element.props.onPress());
@@ -202,7 +202,7 @@ describe('ActiveSessionsGroupCompact project expansion persistence', () => {
         act(() => renderer.unmount());
     });
 
-    it('retains a pinned-only project and keeps its rows distinct from the pinned section', () => {
+    it('retains pinned conversations in their project and recent lists without a Pinned category', () => {
         mocks.sessions = [{ ...session, id: 'pinned' }];
         mocks.pinnedOrder = ['pinned'];
         let renderer: any;
@@ -212,7 +212,7 @@ describe('ActiveSessionsGroupCompact project expansion persistence', () => {
         expect(projects.element.props.accessibilityState.expanded).toBe(false);
         act(() => projects.element.props.onPress());
         expect(list().props.data.some((item: any) => item.key.startsWith('project-mac--'))).toBe(true);
-        expect(list().props.data.filter((item: any) => item.type === 'compact-session').map((item: any) => item.key)).toEqual(['session-pinned', 'project-session-pinned']);
+        expect(list().props.data.filter((item: any) => item.type === 'compact-session').map((item: any) => item.key)).toEqual(['project-session-pinned', 'recent-pinned']);
         act(() => renderer.unmount());
     });
 

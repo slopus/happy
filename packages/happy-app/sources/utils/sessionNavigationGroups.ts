@@ -2,6 +2,7 @@ import type { SessionRowData } from '@/sync/storage';
 import type { Machine } from '@/sync/storageTypes';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { sortSessionsForList } from '@/utils/sessionPinning';
+import { getSessionActivityTime, compareSessionActivity } from '@/utils/sessionActivity';
 
 export interface SessionNavigationProjectGroup {
     displayPath: string;
@@ -29,10 +30,6 @@ export function getLocalDayIndex(timestamp: number): number {
     return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
 }
 
-function getSessionRecency(session: SessionRowData): number {
-    return session.activityAt ?? (Math.max(session.updatedAt ?? 0, session.activeAt ?? 0) || session.createdAt || 0);
-}
-
 export function buildSessionNavigationTimeGroups(
     sessions: SessionRowData[],
     now: number = Date.now(),
@@ -40,16 +37,8 @@ export function buildSessionNavigationTimeGroups(
     const currentDay = getLocalDayIndex(now);
     const grouped = new Map<number, SessionRowData[]>();
 
-    for (const session of [...sessions].sort((a, b) => {
-        const dayDifference = getLocalDayIndex(getSessionRecency(b)) - getLocalDayIndex(getSessionRecency(a));
-        if (dayDifference !== 0) return dayDifference;
-
-        // Activity signals can update many times during a running turn. Once a
-        // session has reached today's bucket, keep its position deterministic
-        // so concurrent sessions do not continually trade places in the UI.
-        return (b.createdAt ?? 0) - (a.createdAt ?? 0) || a.id.localeCompare(b.id);
-    })) {
-        const day = getLocalDayIndex(getSessionRecency(session));
+    for (const session of [...sessions].sort(compareSessionActivity)) {
+        const day = getLocalDayIndex(getSessionActivityTime(session));
         const group = grouped.get(day) ?? [];
         group.push(session);
         grouped.set(day, group);

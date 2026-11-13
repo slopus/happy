@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => ({
     resizePanelBy: vi.fn(),
 }));
 
+vi.mock('@react-navigation/native', async () => ({ StackRouter: (await import('@react-navigation/routers')).StackRouter }));
+
 vi.mock('@/auth/AuthContext', () => ({
     useAuth: () => ({ isAuthenticated: true }),
 }));
@@ -48,6 +50,7 @@ vi.mock('expo-router', () => ({
         canGoBack: () => false,
     }),
     usePathname: () => mocks.pathname,
+    useRootNavigationState: () => undefined,
 }));
 vi.mock('react-native', async () => {
     return {

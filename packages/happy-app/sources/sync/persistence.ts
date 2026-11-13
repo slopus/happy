@@ -34,6 +34,7 @@ export interface NewSessionDraft {
     permissionMode: PermissionModeKey;
     modelMode: string;
     effortLevel: string | null;
+    fastMode?: boolean;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
     updatedAt: number;
@@ -332,6 +333,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             permissionMode,
             modelMode,
             effortLevel,
+            fastMode: parsed.fastMode === true,
             sessionType,
             worktreeKey,
             updatedAt,

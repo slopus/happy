@@ -3,6 +3,7 @@ import { accountStorageId } from '@/auth/accountRuntime';
 import { z } from 'zod';
 import { ApiMessageSchema, ApiSessionSnapshotSchema, type ApiMessage, type ApiSessionSnapshot } from './apiTypes';
 import { sessionHistoryPageCache } from './sessionHistoryPageCache';
+import { mergeLastMessageAt } from '@/utils/sessionActivity';
 
 const cacheStorage = new MMKV({ id: accountStorageId('session-warm-cache')! });
 const CACHE_KEY = 'encrypted-wire-v1';
@@ -78,12 +79,36 @@ export function saveSessionWarmSnapshots(accountId: string, snapshots: ApiSessio
         const existing = byId.get(snapshot.id);
         if (!existing || snapshot.seq > existing.seq
             || (snapshot.seq === existing.seq && snapshot.updatedAt >= existing.updatedAt)) {
-            byId.set(snapshot.id, snapshot);
+            byId.set(snapshot.id, { ...snapshot, lastMessageAt: mergeLastMessageAt(existing?.lastMessageAt, snapshot.lastMessageAt),
+                lastMessage: (existing?.lastMessage?.seq ?? -1) > (snapshot.lastMessage?.seq ?? -1) ? existing?.lastMessage : snapshot.lastMessage });
+        } else {
+            byId.set(snapshot.id, { ...existing, lastMessageAt: mergeLastMessageAt(existing.lastMessageAt, snapshot.lastMessageAt) });
         }
     }
     cache.snapshots = [...byId.values()]
         .sort((a, b) => b.activeAt - a.activeAt)
         .slice(0, MAX_SNAPSHOTS);
+    write(cache);
+}
+
+function advanceSnapshotMessageTime(cache: WarmCache, sessionId: string, messages: readonly ApiMessage[]): void {
+    const snapshot = cache.snapshots.find(item => item.id === sessionId);
+    if (!snapshot) return;
+    for (const message of messages) {
+        if (message.seq > (snapshot.lastMessage?.seq ?? -1)) {
+            snapshot.lastMessage = message;
+            snapshot.seq = Math.max(snapshot.seq, message.seq);
+        }
+    }
+}
+
+export function saveSessionWarmMessageTime(accountId: string, sessionId: string, timestamp: number): void {
+    const cache = read(accountId);
+    const snapshot = cache.snapshots.find(item => item.id === sessionId);
+    if (!snapshot) return;
+    const latest = mergeLastMessageAt(snapshot.lastMessageAt, timestamp);
+    if (latest === snapshot.lastMessageAt) return;
+    snapshot.lastMessageAt = latest;
     write(cache);
 }
 
@@ -93,6 +118,7 @@ export function saveSessionWarmLatestPage(
     page: LatestPage,
 ): void {
     const cache = read(accountId);
+    advanceSnapshotMessageTime(cache, sessionId, page.messages);
     cache.latestPages[sessionId] = {
         messages: [...page.messages].sort((a, b) => a.seq - b.seq).slice(-100),
         hasMore: page.hasMore || page.messages.length > 100,
@@ -108,8 +134,9 @@ export function saveSessionWarmLatestPage(
 
 export function appendSessionWarmMessages(accountId: string, sessionId: string, messages: ApiMessage[]): void {
     const cache = read(accountId);
+    advanceSnapshotMessageTime(cache, sessionId, messages);
     const existing = cache.latestPages[sessionId];
-    if (!existing) return;
+    if (!existing) { write(cache); return; }
     const bySeq = new Map(existing.messages.map((message) => [message.seq, message]));
     for (const message of messages) bySeq.set(message.seq, message);
     cache.latestPages[sessionId] = {

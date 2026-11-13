@@ -52,6 +52,7 @@ function session(id: string, createdAt: number, updatedAt: number, activeAt = up
         seq: 1,
         createdAt,
         updatedAt,
+        lastMessageAt: updatedAt,
         active: false,
         activeAt,
         metadata: null,
@@ -87,41 +88,37 @@ describe('storage session ordering', () => {
         expect(sessionIds).toEqual(['continued-today', 'created-today']);
     });
 
-    it('normalizes live activity to its calendar day for stable time grouping', () => {
-        const updatedAt = new Date(2026, 7, 5, 20).getTime();
-        const activeAt = new Date(2026, 7, 6, 10).getTime();
-        const laterActiveAt = new Date(2026, 7, 6, 11).getTime();
-        const activityDay = new Date(2026, 7, 6).getTime();
-        storage.getState().applySessions([
-            {
-                ...session('live-today', updatedAt - 100, updatedAt, activeAt),
-                active: true,
-                presence: 'online',
-            },
-        ], { replace: true });
-
-        const firstActiveSessions = storage.getState().sessionListViewData
-            ?.find((item) => item.type === 'active-sessions');
-
-        expect(firstActiveSessions).toMatchObject({
-            type: 'active-sessions',
-            sessions: [{ id: 'live-today', activityAt: activityDay }],
-        });
-
-        storage.getState().applySessions([
-            {
-                ...session('live-today', updatedAt - 100, updatedAt, laterActiveAt),
-                active: true,
-                presence: 'online',
-            },
-        ], { replace: true });
-
-        const laterActiveSessions = storage.getState().sessionListViewData
-            ?.find((item) => item.type === 'active-sessions');
-
-        expect(laterActiveSessions).toMatchObject({
-            type: 'active-sessions',
-            sessions: [{ id: 'live-today', activityAt: activityDay }],
-        });
+    it('keeps a warm yesterday conversation in yesterday despite today heartbeats and metadata', () => {
+        const yesterday = new Date(2026, 7, 5, 20).getTime();
+        const today = new Date(2026, 7, 6, 10).getTime();
+        const warm = { ...session('warm', yesterday - 100, today, today), lastMessageAt: yesterday, active: true };
+        storage.getState().applySessions([warm], { replace: true });
+        const row = () => storage.getState().sessionListViewData?.find(item => item.type === 'active-sessions');
+        expect(row()).toMatchObject({ sessions: [{ activityAt: yesterday }] });
+        storage.getState().applySessions([{ ...warm, activeAt: today + 1000, updatedAt: today + 1000 }]);
+        expect(row()).toMatchObject({ sessions: [{ activityAt: yesterday }] });
+        storage.getState().applySessions([{ ...warm, active: false }]);
+        expect(row()).toMatchObject({ sessions: [{ activityAt: yesterday }] });
     });
+
+    it('promotes a continued conversation once and ignores older snapshots and later heartbeats', () => {
+        const old = session('continued', 10, 20);
+        const recent = session('recent', 25, 30);
+        storage.getState().applySessions([old, recent]);
+        const order = () => storage.getState().sessionListViewData?.find(item => item.type === 'active-sessions');
+        expect(order()).toMatchObject({ sessions: [{ id: 'recent' }, { id: 'continued' }] });
+        storage.getState().applySessions([{ ...old, lastMessageAt: 40 }]);
+        expect(order()).toMatchObject({ sessions: [{ id: 'continued' }, { id: 'recent' }] });
+        storage.getState().applySessions([{ ...old, activeAt: 1000, updatedAt: 1000 }]);
+        expect(order()).toMatchObject({ sessions: [{ id: 'continued', activityAt: 40 }, { id: 'recent' }] });
+        expect(storage.getState().sessions.continued.lastMessageAt).toBe(40);
+    });
+    it('replaces an empty new shell fallback with the older imported conversation clock', () => {
+        const shell = { ...session('imported', 1000, 1000), lastMessageAt: null };
+        storage.getState().applySessions([shell]);
+        storage.getState().applySessions([{ ...shell, lastMessageAt: 20 }]);
+        expect(storage.getState().sessions.imported.lastMessageAt).toBe(20);
+        expect(storage.getState().sessionListViewData).toMatchObject([{ sessions: [{ activityAt: 20 }] }]);
+    });
+
 });

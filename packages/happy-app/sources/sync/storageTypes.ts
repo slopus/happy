@@ -151,6 +151,7 @@ export interface Session {
     seq: number,
     createdAt: number,
     updatedAt: number,
+    lastMessageAt?: number | null, // Latest durable message; presence/metadata never advance it.
     active: boolean,
     activeAt: number,
     metadata: Metadata | null,

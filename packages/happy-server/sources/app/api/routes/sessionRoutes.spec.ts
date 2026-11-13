@@ -58,6 +58,7 @@ function ownedSessionRow() {
     return {
         id: 'session-1',
         accountId: 'user-1',
+        messages: [{ id: 'message-3', seq: 3, localId: null, content: { t: 'encrypted', c: 'ciphertext' }, createdAt: new Date('2026-09-04T12:00:00.500Z'), updatedAt: new Date('2026-09-04T12:00:00.500Z') }],
         seq: 3,
         metadata: 'encrypted-metadata',
         metadataVersion: 4,
@@ -109,8 +110,17 @@ describe('sessionRoutes — GET /v2/sessions/:sessionId', () => {
                 activeAt: 1_788_523_201_000,
                 createdAt: 1_788_523_200_000,
                 updatedAt: 1_788_523_201_000,
+                lastMessage: { id: 'message-3', seq: 3, localId: null, content: { t: 'encrypted', c: 'ciphertext' }, createdAt: 1_788_523_200_500, updatedAt: 1_788_523_200_500 },
             },
         });
+    });
+
+    it('uses null for an empty conversation despite fresh presence or metadata timestamps', async () => {
+        setSessionRow({ ...ownedSessionRow(), messages: [] });
+        app = await createApp();
+        const response = await app.inject({ method: 'GET', url: '/v2/sessions/session-1', headers: { authorization: 'Bearer user-1' } });
+        expect(response.statusCode).toBe(200);
+        expect(response.json().session.lastMessage).toBeNull();
     });
 
     it('returns the same 404 for missing and foreign sessions', async () => {
@@ -134,7 +144,7 @@ describe('sessionRoutes — GET /v2/sessions/:sessionId', () => {
         expect(foreign.json()).toEqual({ error: 'Session not found' });
     });
 
-    it('preserves lastMessage presence across legacy and V2 list responses', async () => {
+    it('includes exactly one encrypted tail across legacy and V2 lists', async () => {
         setSessionRows([ownedSessionRow()]);
         app = await createApp();
 
@@ -155,10 +165,16 @@ describe('sessionRoutes — GET /v2/sessions/:sessionId', () => {
         });
 
         expect(legacy.statusCode).toBe(200);
-        expect(legacy.json().sessions[0]).toHaveProperty('lastMessage', null);
+        expect(legacy.json().sessions[0].lastMessage.id).toBe('message-3');
         expect(active.statusCode).toBe(200);
-        expect(active.json().sessions[0]).not.toHaveProperty('lastMessage');
+        expect(active.json().sessions[0].lastMessage.id).toBe('message-3');
         expect(page.statusCode).toBe(200);
-        expect(page.json().sessions[0]).not.toHaveProperty('lastMessage');
+        expect(page.json().sessions[0].lastMessage.id).toBe('message-3');
+        for (const result of [legacy, active, page]) {
+            expect(result.json().sessions[0].lastMessage.createdAt).toBe(1_788_523_200_500);
+        }
+        expect(dbMock.session.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            select: expect.objectContaining({ messages: expect.objectContaining({ orderBy: { seq: 'desc' }, take: 1, select: expect.objectContaining({ content: true, createdAt: true }) }) }),
+        }));
     });
 });

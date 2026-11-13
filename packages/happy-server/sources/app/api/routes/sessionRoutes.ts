@@ -20,13 +20,14 @@ const sessionSnapshotSelect = {
     dataEncryptionKey: true,
     active: true,
     lastActiveAt: true,
+    // One encrypted tail lets clients recover the original thread time without loading history.
+    messages: { orderBy: { seq: 'desc' }, take: 1, select: { id: true, seq: true, localId: true, content: true, createdAt: true, updatedAt: true } },
 } satisfies Prisma.SessionSelect;
 
 type SessionSnapshotRow = Prisma.SessionGetPayload<{ select: typeof sessionSnapshotSelect }>;
 
 function serializeSessionSnapshot(
     session: SessionSnapshotRow,
-    options: { includeLastMessage?: boolean } = {},
 ) {
     return {
         id: session.id,
@@ -40,7 +41,11 @@ function serializeSessionSnapshot(
         activeAt: session.lastActiveAt.getTime(),
         createdAt: session.createdAt.getTime(),
         updatedAt: session.updatedAt.getTime(),
-        ...(options.includeLastMessage ? { lastMessage: null } : {}),
+        lastMessage: session.messages[0] ? {
+            ...session.messages[0],
+            createdAt: session.messages[0].createdAt.getTime(),
+            updatedAt: session.messages[0].updatedAt.getTime(),
+        } : null,
     };
 }
 
@@ -60,7 +65,7 @@ export function sessionRoutes(app: Fastify) {
         });
 
         return reply.send({
-            sessions: sessions.map((session) => serializeSessionSnapshot(session, { includeLastMessage: true }))
+            sessions: sessions.map((session) => serializeSessionSnapshot(session))
         });
     });
 
@@ -203,11 +208,12 @@ export function sessionRoutes(app: Fastify) {
             where: {
                 accountId: userId,
                 tag: tag
-            }
+            },
+            select: sessionSnapshotSelect,
         });
         if (session) {
             log({ module: 'session-create', sessionId: session.id, userId, tag }, `Found existing session: ${session.id} for tag ${tag}`);
-            return reply.send({ session: serializeSessionSnapshot(session, { includeLastMessage: true }) });
+            return reply.send({ session: serializeSessionSnapshot(session) });
         } else {
 
             // Resolve seq
@@ -221,7 +227,8 @@ export function sessionRoutes(app: Fastify) {
                     tag: tag,
                     metadata: metadata,
                     dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
-                }
+                },
+                select: sessionSnapshotSelect,
             });
             log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
 
@@ -240,7 +247,7 @@ export function sessionRoutes(app: Fastify) {
                 recipientFilter: { type: 'user-scoped-only' }
             });
 
-            return reply.send({ session: serializeSessionSnapshot(session, { includeLastMessage: true }) });
+            return reply.send({ session: serializeSessionSnapshot(session) });
         }
     });
 

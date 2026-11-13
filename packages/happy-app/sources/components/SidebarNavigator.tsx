@@ -7,7 +7,8 @@ import { SidebarView } from './SidebarView';
 import { useWindowDimensions, View, Pressable, Platform, BackHandler, Text } from 'react-native';
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { usePathname, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useDesktopWorkspacePathname } from '@/hooks/useDesktopWorkspacePathname';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -55,7 +56,7 @@ export const SidebarNavigator = React.memo(() => {
 const SidebarNavigatorContent = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
-    const projectWorkspace = usePathname() === '/projects';
+    const projectWorkspace = useDesktopWorkspacePathname() === '/projects';
     const { theme } = useUnistyles();
     const desktopSkinId = useLocalSetting('desktopSkinId');
     const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId !== 'default';
@@ -245,7 +246,7 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const router = useRouter();
-    const projectWorkspace = usePathname() === '/projects';
+    const projectWorkspace = useDesktopWorkspacePathname() === '/projects';
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const {
         leftPinned: sidebarPinned,

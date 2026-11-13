@@ -8,6 +8,7 @@ import {
     removeSessionFromWarmCache,
     saveSessionWarmLatestPage,
     saveSessionWarmSnapshots,
+    saveSessionWarmMessageTime,
     touchSessionWarmLatestPage,
 } from './sessionWarmCache';
 
@@ -87,6 +88,16 @@ describe('session warm cache', () => {
         expect(loadSessionWarmCache('account-a').snapshots[0]).toMatchObject({
             id: 'one', seq: 20, metadata: 'cipher-one',
         });
+    });
+
+    it('retains verified message time and latest ciphertext across delayed snapshots and reloads', () => {
+        saveSessionWarmSnapshots('a', [snapshot('one', 1)]);
+        appendSessionWarmMessages('a', 'one', [message(10)]);
+        saveSessionWarmMessageTime('a', 'one', 50);
+        saveSessionWarmSnapshots('a', [{ ...snapshot('one', 20), lastMessageAt: 20, lastMessage: message(2) }]);
+        const restored = loadSessionWarmCache('a').snapshots[0];
+        expect(restored.lastMessageAt).toBe(50);
+        expect(restored.lastMessage?.seq).toBe(10);
     });
 
     it('advances the encrypted latest window without persisting decrypted content', () => {

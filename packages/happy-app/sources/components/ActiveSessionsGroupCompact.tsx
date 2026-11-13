@@ -24,7 +24,7 @@ import { buildSessionNavigationGroups, buildSessionNavigationTimeGroups } from '
 import { sync } from '@/sync/sync';
 import { loadPendingPermissionMessageId } from '@/utils/pendingPermission';
 import { ProjectSectionHeader } from './ProjectSectionHeader';
-import { partitionSessionsByPinnedOrder } from '@/utils/sessionPinning';
+import { partitionSessionsByPinnedOrder, sortSessionsForList } from '@/utils/sessionPinning';
 import { isSidebarGroupExpanded, setSidebarGroupExpanded } from '@/utils/sidebarGroupExpansion';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean }> = {
@@ -90,10 +90,10 @@ export function useActiveSessionListItems({
     // collapsible units users scan to find recent sessions.
     const machineGroups = React.useMemo(() => buildSessionNavigationGroups({
         machines,
-        pinnedOrder: [],
+        pinnedOrder: desktopSections ? sessionManagement.preferences.pinnedOrder : [],
         sessions: desktopSections ? sessions : partitionedSessions.regular,
         unknownLabel: t('status.unknown'),
-    }), [desktopSections, machines, partitionedSessions.regular, sessions]);
+    }), [desktopSections, machines, partitionedSessions.regular, sessions, sessionManagement.preferences.pinnedOrder]);
     const hasMultipleMachines = machineGroups.length > 1;
     const prioritySessions = React.useMemo(
         () => desktopSections && layoutMode === 'time'
@@ -182,9 +182,7 @@ export function useActiveSessionListItems({
         ) });
         return expanded;
     };
-    if (desktopSections && layoutMode === 'projects') {
-        if (addSection('pinned', t('sessionSearch.sections.pinned'))) appendSessions(partitionedSessions.pinned, true, 10);
-    } else if (!desktopSections && partitionedSessions.pinned.length > 0) {
+    if (!desktopSections && partitionedSessions.pinned.length > 0) {
         items.push({
             type: 'compact-header', key: 'pinned-header',
             element: <Text style={styles.timeGroupLabel} testID="session-pinned-group">{t('sessionSearch.sections.pinned')}</Text>,
@@ -236,7 +234,7 @@ export function useActiveSessionListItems({
             });
         });
         if (desktopSections && addSection('recent', t('sessionSearch.sections.recent'))) {
-            appendSessions(partitionedSessions.regular, true, 10, 'recent');
+            appendSessions(sortSessionsForList(sessions, sessionManagement.preferences.pinnedOrder), true, 10, 'recent');
         }
     } else {
         if (desktopSections && prioritySessions.length > 0) {

@@ -34,6 +34,7 @@ import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import { selectAgentSpaceSessions } from '@/utils/agentSpaceIdentity';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
+import { getSessionActivityTime, mergeLastMessageAt, compareSessionActivity } from '@/utils/sessionActivity';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -54,20 +55,6 @@ function resolveSessionOnlineState(session: { active: boolean; activeAt: number 
 function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
     // Use the active flag directly, no timeout checks
     return session.active;
-}
-
-function getSessionActivityTime(session: Pick<Session, 'activeAt' | 'createdAt' | 'updatedAt'>): number {
-    return Math.max(session.activeAt, session.updatedAt) || session.createdAt;
-}
-
-function getSessionListActivityTime(session: Session): number {
-    if (!session.active) {
-        return getSessionActivityTime(session);
-    }
-
-    const activityDay = new Date(session.activeAt);
-    activityDay.setHours(0, 0, 0, 0);
-    return Math.max(session.updatedAt, activityDay.getTime());
 }
 
 // Known entitlement IDs
@@ -112,11 +99,9 @@ export interface SessionRowData {
     flavor: string | null;
     state: SessionState;
     isConnected: boolean;
-    // Used for ordering and calendar grouping. It is also the latest signal for
-    // a live session whose persisted updatedAt has not changed during a turn.
+    // Presence only; never used for conversation ordering.
     activeAt?: number;
-    // Stable ordering timestamp. Live activity is normalized to its local
-    // calendar day so heartbeats do not continually re-sort visible rows.
+    // Last message time (or creation for empty conversations).
     activityAt?: number;
     createdAt?: number;
     updatedAt?: number;
@@ -145,7 +130,7 @@ export function buildSessionRowData(session: Session, unreadSessionIds?: Set<str
         isConnected: resolved.isConnected,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
-        activityAt: getSessionListActivityTime(session),
+        activityAt: getSessionActivityTime(session),
         ...(!resolved.isConnected && { activeAt: session.activeAt }),
         hasDraft: !!session.draft,
         active: session.active,
@@ -283,11 +268,9 @@ function buildSessionListViewData(
         }
     });
 
-    // Sort by most recent activity (newest first). A session can remain active
-    // long after its persisted state was last updated, so include live activity
-    // as well as the persisted update timestamp.
-    regularSessions.sort((a, b) => getSessionListActivityTime(b) - getSessionListActivityTime(a));
-    archivedSessions.sort((a, b) => getSessionListActivityTime(b) - getSessionListActivityTime(a));
+    // Presence and metadata writes do not change conversation recency.
+    regularSessions.sort(compareSessionActivity);
+    archivedSessions.sort(compareSessionActivity);
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
@@ -306,7 +289,7 @@ function buildSessionListViewData(
     let currentDateString: string | null = null;
 
     for (const session of archivedSessions) {
-        const sessionDate = new Date(getSessionListActivityTime(session));
+        const sessionDate = new Date(getSessionActivityTime(session));
         const dateString = sessionDate.toDateString();
 
         if (currentDateString !== dateString) {
@@ -489,6 +472,7 @@ export const storage = create<StorageState>()((set, get) => {
 
                 mergedSessions[session.id] = {
                     ...session,
+                    lastMessageAt: mergeLastMessageAt(existingSession?.lastMessageAt, session.lastMessageAt),
                     presence,
                     draft: existingSession ? existingDraft ?? null : savedDraft ?? session.draft ?? null,
                     hasPendingLocalMessages: state.pendingMessageSessionIds.has(session.id),
@@ -521,8 +505,8 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             // Keep legacy consumers aligned with the primary list's activity ordering.
-            activeSessions.sort((a, b) => getSessionActivityTime(b) - getSessionActivityTime(a));
-            inactiveSessions.sort((a, b) => getSessionActivityTime(b) - getSessionActivityTime(a));
+            activeSessions.sort(compareSessionActivity);
+            inactiveSessions.sort(compareSessionActivity);
 
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];

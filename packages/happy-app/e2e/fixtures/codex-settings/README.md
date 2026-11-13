@@ -31,3 +31,12 @@ Acceptance cases:
 Use only Ego for browser execution. Record one numeric task space, exact target, clean expected URL, and a session-bound Happy capture context. Set and assert the viewport in the same Ego round as each screenshot. Separate reviewers should create a separate fixture session; different task spaces still share same-origin local preferences.
 
 The original browser execution recipe and media from the 2026-11-11 run are local evidence, not portable task-space IDs; see `docs/validation/codex-unified-settings.md`.
+
+Recency regression: while this isolated fixture is running, start
+`pnpm exec tsx --tsconfig packages/happy-cli/tsconfig.json packages/happy-app/e2e/fixtures/codex-settings/seed-recency.mjs`
+from the repository root. It imports two synthetic threads with original timestamps
+one and two days ago, then writes startup-ready records today. Its separate
+loopback controller exposes `/sessions`, POST `/presence` (heartbeat + metadata),
+POST `/continue` (one new user message to the older thread), and POST `/shutdown`.
+Verify Yesterday / 2 days ago survive presence, metadata and reload; only explicit
+continuation moves the older thread into Today. No daemon or external model runs.

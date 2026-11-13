@@ -1,3 +1,6 @@
+import { saveSessionWarmMessageTime } from './sessionWarmCache';
+import { getConversationMessageTime } from './sessionConversationTime';
+import { mergeLastMessageAt } from '@/utils/sessionActivity';
 import { removeProjectSessionFromCache } from './projectWorkspaceCache';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
 import type { HistoryViewportReader, HistoryViewportRange } from './historyWindowPolicy';
@@ -402,13 +405,16 @@ function mergeHydratedSessions(sessions: HydratedSession[]): HydratedSession {
         const agentStateWinner = candidate.agentStateVersion >= merged.agentStateVersion
             ? candidate
             : merged;
+        const lastMessageAt = mergeLastMessageAt(candidate.lastMessageAt, merged.lastMessageAt);
         if (base === merged
             && metadataWinner === merged
-            && agentStateWinner === merged) {
+            && agentStateWinner === merged
+            && lastMessageAt === merged.lastMessageAt) {
             continue;
         }
         merged = {
             ...base,
+            lastMessageAt,
             seq: Math.max(candidate.seq, merged.seq),
             metadata: metadataWinner.metadata,
             metadataVersion: metadataWinner.metadataVersion,
@@ -3881,6 +3887,17 @@ class Sync {
         }
     }
 
+    /** Only durable wire rows/ACKs advance recency; local projections and heartbeats do not. */
+    private observeSessionMessageTime = (sessionId: string, messages: readonly { createdAt: number }[]) => {
+        const session = storage.getState().sessions[sessionId];
+        if (!session) return;
+        const lastMessageAt = messages.reduce((latest, message) => mergeLastMessageAt(latest, message.createdAt), session.lastMessageAt);
+        if (lastMessageAt !== session.lastMessageAt) this.applySessions([{ ...session, lastMessageAt }]);
+        if (typeof lastMessageAt === 'number' && this.sessionWarmCacheAccountKey) {
+            saveSessionWarmMessageTime(this.sessionWarmCacheAccountKey, sessionId, lastMessageAt);
+        }
+    };
+
     private flushOutbox = async (sessionId: string) => {
         const pending = this.pendingOutbox.get(sessionId);
         if (!pending || pending.length === 0) {
@@ -3929,6 +3946,16 @@ class Sync {
                     return content ? [{ ...message, content: { t: 'encrypted' as const, c: content } }] : [];
                 }));
                 if (!owner.isCurrent() || this.pendingOutbox.get(sessionId) !== pending) return;
+            }
+            if (Array.isArray(data.messages)) {
+                this.observeSessionMessageTime(sessionId, data.messages);
+                if (this.sessionWarmCacheAccountKey) {
+                    const contents = new Map(batch.map(message => [message.localId, message.content]));
+                    appendSessionWarmMessages(this.sessionWarmCacheAccountKey, sessionId, data.messages.flatMap(message => {
+                        const content = message.localId ? contents.get(message.localId) : undefined;
+                        return content ? [{ ...message, content: { t: 'encrypted' as const, c: content } }] : [];
+                    }));
+                }
             }
             const delivery = this.continuationDeliveries.get(sessionId);
             if (delivery?.owner === this.encryption && batch.some(message => message.localId === delivery.localId)) {
@@ -4117,6 +4144,7 @@ class Sync {
                 normalizedWireIds.set(normalized, decrypted.id);
             }
         }
+        this.observeSessionMessageTime(sessionId, decryptedMessages.map(message => ({ createdAt: getConversationMessageTime(message) ?? 0 })).filter(message => message.createdAt > 0));
         this.retireObservedLocalMessages(sessionId, normalizedMessages);
         // Warm snapshots may contain disconnected realtime islands. Display
         // them immediately, but only a network page certifies latest progress.
@@ -4297,6 +4325,7 @@ class Sync {
                 normalizedMessages.push(normalized);
             }
         }
+        this.observeSessionMessageTime(sessionId, decryptedMessages.map(message => ({ createdAt: getConversationMessageTime(message) ?? 0 })).filter(message => message.createdAt > 0));
         this.retireObservedLocalMessages(sessionId, normalizedMessages);
         // Older pages may belong to a disconnected island below an ACK. Only
         // forward catch-up from the applied cursor certifies latest progress.
@@ -4608,11 +4637,14 @@ class Sync {
                         console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
                     }
                     // Update session
+                    const conversationAt = getConversationMessageTime(decrypted);
+                    if (conversationAt !== null) this.observeSessionMessageTime(updateData.body.sid, [{ createdAt: conversationAt }]);
                     const session = storage.getState().sessions[updateData.body.sid];
                     if (session) {
                         this.applySessions([{
                             ...session,
                             updatedAt: updateData.createdAt,
+                            lastMessageAt: mergeLastMessageAt(session.lastMessageAt, getConversationMessageTime(decrypted) ?? undefined),
                             seq: Math.max(session.seq, updateData.body.message.seq),
                             // Update thinking state based on task lifecycle events
                             ...(!isSubagentEvent && lifecycleAt >= session.thinkingAt && (isTaskComplete || isTaskStarted)
@@ -5251,6 +5283,7 @@ class Sync {
             const merged = mergeHydratedSessions(existing ? [existing, ...incoming] : incoming);
             if (!options?.replace && existing && (merged === existing || (
                 merged.seq === existing.seq && merged.updatedAt === existing.updatedAt
+                && merged.lastMessageAt === existing.lastMessageAt
                 && merged.active === existing.active && merged.activeAt === existing.activeAt
                 && merged.thinking === existing.thinking && merged.thinkingAt === existing.thinkingAt
                 && (merged.presence === undefined || merged.presence === existing.presence)

@@ -68,7 +68,6 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
-import { partitionSessionsByPinnedOrder } from '@/utils/sessionPinning';
 import { SessionHistoryList } from './SessionHistoryList';
 import { SessionListRecovery } from './SessionListRecovery';
 import { isSidebarGroupExpanded, setSidebarGroupExpanded } from '@/utils/sidebarGroupExpansion';
@@ -374,6 +373,7 @@ export const DesktopSidebarHeader = React.memo(function DesktopSidebarHeader({ o
     const mode = controlledMode ?? storedMode;
     const [, setListMode] = useLocalSettingMutable('desktopSidebarListMode');
     const [tooltip, setTooltip] = React.useState<'lists' | 'timeline' | 'search' | null>(null);
+    const [newSessionHovered, setNewSessionHovered] = React.useState(false);
     const styles = stylesheet;
 
     const selectView = (value: 'lists' | 'timeline') => {
@@ -414,7 +414,7 @@ export const DesktopSidebarHeader = React.memo(function DesktopSidebarHeader({ o
                 </View>
             </View>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('sidebar.newSession')} onPress={onNewSession} testID="desktop-sidebar-header-new-session" style={({ pressed }) => [styles.desktopNewSession, pressed && styles.desktopHeaderPressed]}><Feather name="edit" size={17} color={styles.tabTextSelected.color} /><Text style={styles.desktopNewSessionText}>{t('sidebar.newSession')}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('sidebar.newSession')} onHoverIn={() => setNewSessionHovered(true)} onHoverOut={() => setNewSessionHovered(false)} onPress={onNewSession} testID="desktop-sidebar-header-new-session" style={({ pressed }) => [styles.desktopNewSession, (pressed || newSessionHovered) && styles.desktopHeaderPressed]}><Feather name="edit" size={17} color={styles.tabTextSelected.color} /><Text style={styles.desktopNewSessionText}>{t('sidebar.newSession')}</Text></Pressable>
     </>;
 });
 
@@ -478,8 +478,7 @@ function SidebarSessionsNavigationContent({ transparentSidebar, desktopHeader, o
 }
 
 type SidebarVirtualRow =
-    | { key: string; type: 'section'; section: 'lists' | 'pinned' | 'tags' }
-    | { key: string; type: 'pinned-session'; session: SessionRowData }
+    | { key: string; type: 'section'; section: 'lists' | 'tags' }
     | { key: string; type: 'list'; list: SidebarList }
     | { key: string; type: 'unassigned' }
     | { key: string; type: 'new-session'; list: SidebarList }
@@ -584,14 +583,9 @@ function SidebarListsView() {
         });
         return Array.from(byId.values());
     }, [tagData]);
-    const sessionManagement = useSessionManagementPreferences(sessions.map((session) => session.id), { prune: false });
-    const partitionedSessions = React.useMemo(() => partitionSessionsByPinnedOrder(
-        sessions,
-        sessionManagement.preferences.pinnedOrder,
-    ), [sessionManagement.preferences.pinnedOrder, sessions]);
     const sessionIndex = React.useMemo(
-        () => buildSidebarSessionIndex(partitionedSessions.regular, organization.sessions),
-        [organization.sessions, partitionedSessions.regular],
+        () => buildSidebarSessionIndex(sessions, organization.sessions),
+        [organization.sessions, sessions],
     );
     const tagAssociationCounts = React.useMemo(() => {
         const counts = new Map<string, number>();
@@ -743,14 +737,6 @@ function SidebarListsView() {
 
     const rows = React.useMemo<SidebarVirtualRow[]>(() => {
         const next: SidebarVirtualRow[] = [];
-        if (partitionedSessions.pinned.length > 0) {
-            next.push({ key: 'pinned-section', type: 'section', section: 'pinned' });
-            partitionedSessions.pinned.forEach((session) => next.push({
-                key: `pinned-${session.id}`,
-                type: 'pinned-session',
-                session,
-            }));
-        }
         next.push({ key: 'lists-section', type: 'section', section: 'lists' });
         for (const list of organization.lists) {
             next.push({ key: `list-${list.id}`, type: 'list', list });
@@ -770,42 +756,29 @@ function SidebarListsView() {
         next.push({ key: 'tags-section', type: 'section', section: 'tags' });
         next.push({ key: 'tags', type: 'tags' });
         return next;
-    }, [organization.lists, partitionedSessions.pinned, sessionIndex, sidebarGroupExpansion]);
+    }, [organization.lists, sessionIndex, sidebarGroupExpansion]);
 
     const renderRow = React.useCallback(({ item }: { item: SidebarVirtualRow }) => {
         if (item.type === 'section') {
             const isLists = item.section === 'lists';
-            const isPinned = item.section === 'pinned';
             return (
                 <View
-                    style={[styles.sectionHeader, !isLists && !isPinned && styles.tagSection]}
-                    testID={isPinned ? 'sidebar-pinned-section' : undefined}
+                    style={[styles.sectionHeader, !isLists && styles.tagSection]}
                 >
                     <Text style={styles.sectionTitle}>
-                        {isPinned ? t('sessionSearch.sections.pinned') : isLists ? t('sidebarLists.lists') : t('sidebarLists.tags')}
+                        {isLists ? t('sidebarLists.lists') : t('sidebarLists.tags')}
                     </Text>
-                    {!isPinned ? (
-                        <Pressable
-                            accessibilityLabel={isLists ? t('sidebarLists.newList') : t('sidebarLists.newTag')}
-                            accessibilityState={{ disabled: isLists ? organization.lists.length >= SIDEBAR_LIST_MAX_COUNT : organization.tags.length >= SIDEBAR_TAG_MAX_COUNT }}
-                            disabled={isLists ? organization.lists.length >= SIDEBAR_LIST_MAX_COUNT : organization.tags.length >= SIDEBAR_TAG_MAX_COUNT}
-                            onPress={isLists ? openCreate : addTag}
-                            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-                            testID={isLists ? 'sidebar-create-list-button' : 'sidebar-create-tag-button'}
-                        >
-                            <Feather color={theme.colors.textSecondary} name="plus" size={17} />
-                        </Pressable>
-                    ) : null}
+                    <Pressable
+                        accessibilityLabel={isLists ? t('sidebarLists.newList') : t('sidebarLists.newTag')}
+                        accessibilityState={{ disabled: isLists ? organization.lists.length >= SIDEBAR_LIST_MAX_COUNT : organization.tags.length >= SIDEBAR_TAG_MAX_COUNT }}
+                        disabled={isLists ? organization.lists.length >= SIDEBAR_LIST_MAX_COUNT : organization.tags.length >= SIDEBAR_TAG_MAX_COUNT}
+                        onPress={isLists ? openCreate : addTag}
+                        style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                        testID={isLists ? 'sidebar-create-list-button' : 'sidebar-create-tag-button'}
+                    >
+                        <Feather color={theme.colors.textSecondary} name="plus" size={17} />
+                    </Pressable>
                 </View>
-            );
-        }
-        if (item.type === 'pinned-session') {
-            return (
-                <CompactSessionRow
-                    session={item.session}
-                    selected={selectedSessionId === item.session.id}
-                    showLocation
-                />
             );
         }
         if (item.type === 'list') {
