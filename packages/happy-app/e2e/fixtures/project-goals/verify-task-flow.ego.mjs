@@ -126,6 +126,14 @@ await record('TF7-cached-directory', { cachedFilesSurvivedRefreshFailure: true }
 
 const beforeGlobal = await metrics();
 await page.click(`${card(runtime.taskA.id)} button[aria-label="${runtime.taskA.title}"]`);
+await page.waitForFunction(() => !new URL(location.href).searchParams.has('task') && !new URL(location.href).searchParams.has('conversation') && !!document.querySelector('[data-testid="project-scope-panel"] [data-testid="workspace-directory-tree"]'), undefined, { timeout: 30000 });
+assert.equal(await page.evaluate(() => !!document.querySelector('[data-testid="project-scope-chat"]')), false);
+assert.equal((await metrics()).spawned.length, beforeGlobal.spawned.length);
+await record('TF8-deselect-chat-closed', { globalFiles: true, chatOpened: false, newConversations: 0 });
+
+await page.click(`${card(runtime.taskA.id)} button[aria-label="Open conversation"]`);
+await page.waitForSelector('[data-testid="project-task-chat"] textarea[data-testid="session-message-input"]', { state: 'visible', timeout: 30000 });
+await page.click(`${card(runtime.taskA.id)} button[aria-label="${runtime.taskA.title}"]`);
 await page.waitForFunction(() => !new URL(location.href).searchParams.has('task') && !!document.querySelector('[data-testid="project-scope-chat"] textarea[data-testid="session-message-input"]'), undefined, { timeout: 30000 });
 const globalConversation = new URL(await page.url()).searchParams.get('conversation');
 assert(globalConversation);
@@ -138,7 +146,7 @@ await page.waitForFunction(id => new URL(location.href).searchParams.get('task')
 await page.click('button[aria-label="Forward"]');
 await page.waitForFunction(id => !new URL(location.href).searchParams.has('task') && new URL(location.href).searchParams.get('conversation') === id, globalConversation, { timeout: 15000 });
 assert.equal((await metrics()).spawned.length, afterGlobal.spawned.length);
-await record('TF8-deselect-global', { globalFiles: true, globalRoot: runtime.featurePath, backReturnsTask: true, forwardReusesGlobal: true, submitted: 0 });
+await record('TF8-deselect-chat-open', { globalFiles: true, globalRoot: runtime.featurePath, backReturnsTask: true, forwardReusesGlobal: true, submitted: 0 });
 
 await page.click('[data-testid="sidebar-session-list-button"]');
 await page.waitForURL(runtime.webUrl + '/', { timeout: 15000 });

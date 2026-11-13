@@ -24,6 +24,7 @@ import { useProjectConversation } from './useProjectConversation';
 import { ProjectConversationEmptyState } from './ProjectConversationEmptyState';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { projectPanelGap, getProjectCatalogWidth } from './projectWorkspaceLayout';
+import { useProjectWorkspaceWidth } from './ProjectWorkspaceWidth';
 
 export type ProjectOverviewProps = {
     machineId: string; scopePath: string; title: string; conversationId?: string; initialTab?: 'files' | 'details';
@@ -58,7 +59,7 @@ function OverviewContent(props: ProjectOverviewProps) {
     const [tab, setTab] = React.useState<string>(props.initialTab ?? 'details');
     const [center, setCenter] = React.useState('tasks');
     const { width } = useWindowDimensions();
-    const [rowWidth, setRowWidth] = React.useState(0);
+    const { width: rowWidth, measure: setRowWidth } = useProjectWorkspaceWidth();
     const wide = width >= 1100;
     const rightWidth = Math.min(340, Math.max(280, rowWidth * 0.3));
     const fileOpen = workspace.enabled && workspace.snapshot.open;

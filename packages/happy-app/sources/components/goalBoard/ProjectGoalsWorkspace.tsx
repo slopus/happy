@@ -28,6 +28,7 @@ import { FileWorkspace } from '@/components/fileWorkspace/FileWorkspace';
 import { useFileWorkspace } from '@/components/fileWorkspace/context';
 import { ProjectArchiveTree } from './ProjectArchiveTree';
 import { getProjectCatalogWidth, projectPanelGap } from './projectWorkspaceLayout';
+import { ProjectWorkspaceWidthProvider, useProjectWorkspaceWidth } from './ProjectWorkspaceWidth';
 import { ProjectOverviewWorkspace } from './ProjectOverviewWorkspace';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel';
 import { ProjectConversationHeader } from './ProjectConversationHeader';
@@ -287,7 +288,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         onOpened: (task, conversation) => go({ task, conversation, view: 'chat' }) });
     const tasks = feature?.tasks ?? [];
     const selectedMachine = machines.find(machine => machine.id === machineId);
-    return <ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
+    return <ProjectWorkspaceWidthProvider><ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
         {mobile && <View style={[styles.mobileHeader, { backgroundColor: surface }]}>
             <Button touchTarget variant="primary" label={t('common.back')} onPress={() => navigation.back(project)} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
             <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={styles.mobileTitle}>{task?.title || feature?.title || project?.title || t('projectGoals.allProjects')}</Text>
@@ -347,7 +348,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         {!machineId && data.status === 'offline' ? <Empty text={t('projectGoals.noMachine')} /> : !scopeDesktop && params.author ? <View style={[styles.author, { backgroundColor: photo && !reduced ? 'transparent' : surface }]}><Text style={[styles.meta, { padding: 12 }]}>{t('projectGoals.authoringHint')}</Text><SessionView key={params.author} id={params.author} embedded fullWidth /></View>
             : task && feature ? <TaskWorkspace key={JSON.stringify([machineId, feature.featurePath, task.id])} machineId={machineId} featurePath={feature.featurePath} task={task}
                 editDelivery={setDeliveryTasks} openCardConversation={openCardConversation} featureTitle={feature.title} catalogScrollPosition={scrollPosition} onCatalogScroll={offset => { scrollPosition.current = offset; catalogStates.set(scope, { query, status: statusFilter, scroll: offset }); }} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter}
-                openGlobalConversation={() => { void openGlobalConversation(); }} globalBusy={busy} allTasks={tasks} conversationId={params.conversation} agent={agent} offline={data.offline}
+                deselectTask={() => go({ task: undefined, view: 'files' })} openGlobalConversation={() => { void openGlobalConversation(); }} globalBusy={busy} allTasks={tasks} conversationId={params.conversation} agent={agent} offline={data.offline}
                 mobileView={params.view} readerPath={params.file} changeView={view => navigate({ view })} openReader={file => navigate({ file, view: 'reader' })} closeReader={navigation.back}
                 refresh={data.refresh} selectTask={id => go({ task: id })} selectConversation={id => navigate({ conversation: id, ...(mobile ? { view: id ? 'chat' : 'details' } : {}) })} />
             : <ScopeCatalog enabled={scopeDesktop} initialTab={params.view === 'files' ? 'files' : undefined} scopePath={params.feature ?? project?.projectPath} machineId={machineId} title={feature?.title ?? project?.title ?? ''} connecting={data.status === 'connecting'} conversationId={params.conversation ?? params.author} agent={agent} offline={data.offline} revision={JSON.stringify([feature?.revision, (selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])} surface={surface} selectConversation={id => navigate({ conversation: id, author: undefined })}><ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: scrollPosition.current, animated: false })} onScroll={event => { scrollPosition.current = event.nativeEvent.contentOffset.y; catalogStates.set(scope, { query, status: statusFilter, scroll: scrollPosition.current }); }} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={[styles.catalogContent, mobile && styles.mobileCatalog]}>
@@ -366,7 +367,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         {savedFile && <ProjectSavedFile key={savedFile.projectPath} machineId={machineId} item={savedFile} onClose={() => setSavedFile(null)} />}
         {feature && !!deliveryTasks?.length && <ProjectDeliveryEditor key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} tasks={deliveryTasks} onClose={() => setDeliveryTasks(null)} onSaved={data.refresh} onDiscuss={target => { setDeliveryTasks(null); if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} />}
         {feature && featureFilesOpen && <ProjectFeatureFiles key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} title={feature.title} onClose={() => setFeatureFilesOpen(false)} />}
-    </View></ProjectSurfaces.Provider>;
+    </View></ProjectSurfaces.Provider></ProjectWorkspaceWidthProvider>;
 }
 
 function ScopeCatalog({ scopePath, children, enabled, ...props }: Omit<React.ComponentProps<typeof ProjectOverviewWorkspace>, 'scopePath'> & { scopePath?: string; enabled: boolean }) {
@@ -417,7 +418,7 @@ export function TaskCards({ onDelivery, tasks, query, status, setStatus, selecte
     </View>;
 }
 
-type TaskWorkspaceProps = { openGlobalConversation: () => void; globalBusy: boolean; catalogScrollPosition: React.MutableRefObject<number>; onCatalogScroll: (offset: number) => void; editDelivery: (tasks: GoalTask[]) => void; openCardConversation: (task: GoalTask) => Promise<void>; mobileView?: string; readerPath?: string; changeView: (view: string) => void; openReader: (file: string) => void; closeReader: () => void; featureTitle: string; query: string; setQuery: (value: string) => void; statusFilter: TaskStatusFilter; setStatusFilter: (value: TaskStatusFilter) => void; machineId: string; featurePath: string; task: GoalTask; allTasks: GoalTask[]; conversationId?: string; agent: 'codex' | 'claude'; offline: boolean; refresh: () => Promise<void>; selectTask: (id: string) => void; selectConversation: (id?: string) => void; };
+type TaskWorkspaceProps = { deselectTask: () => void; openGlobalConversation: () => void; globalBusy: boolean; catalogScrollPosition: React.MutableRefObject<number>; onCatalogScroll: (offset: number) => void; editDelivery: (tasks: GoalTask[]) => void; openCardConversation: (task: GoalTask) => Promise<void>; mobileView?: string; readerPath?: string; changeView: (view: string) => void; openReader: (file: string) => void; closeReader: () => void; featureTitle: string; query: string; setQuery: (value: string) => void; statusFilter: TaskStatusFilter; setStatusFilter: (value: TaskStatusFilter) => void; machineId: string; featurePath: string; task: GoalTask; allTasks: GoalTask[]; conversationId?: string; agent: 'codex' | 'claude'; offline: boolean; refresh: () => Promise<void>; selectTask: (id: string) => void; selectConversation: (id?: string) => void; };
 function TaskWorkspace(props: TaskWorkspaceProps) {
     const { machineId, featurePath, task } = props;
     const binding = React.useMemo(() => projectTaskFiles(machineId, featurePath, task), [machineId, featurePath, task.id, task.indexPath]);
@@ -445,7 +446,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
         fileRequest.current = workspace.openRequestId;
         if (mobile && focused.current && props.mobileView !== 'reader' && workspace.snapshot.active) props.openReader(workspace.snapshot.active);
     }, [workspace.openRequestId, workspace.snapshot.active, mobile, props.mobileView]);
-    const [rowWidth, setRowWidth] = React.useState(0);
+    const { width: rowWidth, measure: setRowWidth } = useProjectWorkspaceWidth();
     const [tab, setTab] = React.useState('details');
     const [busy, setBusy] = React.useState(false);
     const [executionAttempted, setExecutionAttempted] = React.useState(() => projectTaskExecutionAttempted(machineId, task));
@@ -551,7 +552,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const catalog = <ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: props.catalogScrollPosition.current, animated: false })} onScroll={event => props.onCatalogScroll(event.nativeEvent.contentOffset.y)} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface, borderRadius: 13 }]} contentContainerStyle={styles.taskCatalogContent}>
         <CatalogHeading title={props.featureTitle} subtitle={`${allTasks.length} ${t('projectGoals.tasks')}`} query={props.query} setQuery={props.setQuery} />
         <Button variant="toolbar" label={t('projectGoals.batchDelivery')} disabled={readOnly || offline} onPress={() => props.editDelivery(allTasks)}><Text style={styles.link}>{t('projectGoals.batchDelivery')}</Text></Button>
-        <TaskCards onDelivery={target => props.editDelivery([target])} tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={id => { if (id === task.id) props.openGlobalConversation(); else selectTask(id); }} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
+        <TaskCards onDelivery={target => props.editDelivery([target])} tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={id => { if (id !== task.id) selectTask(id); else if (showChat) props.openGlobalConversation(); else props.deselectTask(); }} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
     </ScrollView>;
     if (mobile && props.mobileView === 'reader' && props.readerPath) {
         const artifact = task.artifacts.find(value => value.path === props.readerPath && value.relation === 'output');
