@@ -44,8 +44,14 @@ final class PhotoEditorButton: UIControl {
         addSubview(self.glass)
         switch content {
         case let .symbol(name):
-            glyph.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .medium))
-            glyph.contentMode = .center
+            let artwork = ["crop.rotate": "Crop", "pencil.tip.crop.circle": "Pencil", "rotate.left": "Rotate", "arrow.left.and.right.righttriangle.left.righttriangle.right": "Mirror", "aspectratio": "AspectRatio", "chevron.left": "Back", "xmark": "Close", "checkmark": "Done", "arrow.uturn.backward": "Undo", "arrow.uturn.forward": "Redo", "eyedropper": "Eyedropper"]
+            if let asset = artwork[name] {
+                glyph.image = UIImage(named: "PhotoEditor" + asset, in: .module, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
+                glyph.contentMode = .scaleAspectFit
+            } else {
+                glyph.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .medium))
+                glyph.contentMode = .center
+            }
             self.glass.contentView.addSubview(glyph)
             accessibilityLabel = label
         case let .title(text):
@@ -93,7 +99,7 @@ final class PhotoEditorButton: UIControl {
         super.layoutSubviews()
         glass.frame = bounds
         glass.cornerConfiguration = .capsule()
-        glyph.frame = glass.contentView.bounds
+        glyph.frame = glyph.contentMode == .scaleAspectFit ? glass.contentView.bounds.insetBy(dx: 8, dy: 8) : glass.contentView.bounds
         title.sizeToFit()
         title.center = CGPoint(x: bounds.midX, y: bounds.midY)
     }

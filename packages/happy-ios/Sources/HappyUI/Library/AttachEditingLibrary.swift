@@ -149,7 +149,18 @@ final class AttachEditingLibrary: AttachLibrary {
 
     func thumbnail(at index: Int, pixels size: CGSize, _ deliver: @escaping @MainActor (UIImage) -> Void) -> Int? {
         guard let id = item(at: index)?.id else { return nil }
-        let show: @MainActor (UIImage) -> Void = { [weak self] image in deliver(self?.edited(image, id) ?? image) }
+        let show: @MainActor (UIImage) -> Void = { [weak self] image in
+            guard let self, let edit = edits[id] else { return deliver(image) }
+            Task { [weak self] in
+                let rendered = await Task.detached(priority: .userInitiated) {
+                    PhotoEditRenderer.render(image, edit, maxPixels: max(size.width, size.height))
+                }.value
+                // A newer edit has requested its own thumbnail. A late
+                // render must not replace it with the previous revision.
+                guard self?.edits[id] == edit else { return }
+                deliver(rendered)
+            }
+        }
         if let shot = shot(id) {
             show(shot.image)
             return nil

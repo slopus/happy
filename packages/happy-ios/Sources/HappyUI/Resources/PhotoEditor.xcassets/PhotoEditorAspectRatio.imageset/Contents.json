@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "ic_editor_frame.pdf",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

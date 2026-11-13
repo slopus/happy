@@ -117,6 +117,134 @@ final class HostedPhotoEditorTests: XCTestCase {
         }
     }
 
+    func testPhotoTapTogglesSelectionAndKeepsTheControlsVisible() async throws {
+        let sheet = try await menu()
+        let preview = try await preview(sheet, at: 0)
+        let page = try XCTUnwrap(preview.currentPage)
+        let back = try control("attach-preview-back", in: preview.view)
+        let crop = try control("attach-preview-crop", in: preview.view)
+        XCTAssertEqual(back.frame.midY, crop.convert(crop.bounds, to: preview.view).midY, accuracy: 1 / preview.traitCollection.displayScale)
+        XCTAssertGreaterThan(back.frame.minY, preview.view.bounds.midY)
+        page.onTap?()
+        XCTAssertEqual(preview.shownNumber, 1)
+        XCTAssertEqual(preview.chromeAlpha, 1)
+        page.onTap?()
+        XCTAssertNil(preview.shownNumber)
+        XCTAssertEqual(preview.chromeAlpha, 1)
+        let caption = try XCTUnwrap(views(preview.view).compactMap { $0 as? UITextView }.first)
+        let picture = page.pictureFrame(in: preview.view, natural: nil)
+        XCTAssertLessThan(picture.maxY, caption.convert(caption.bounds, to: preview.view).minY)
+    }
+
+    func testDismissingThePresenterRemovesViewerAndItsKeyboard() async throws {
+        let sheet = try await menu()
+        let preview = try await preview(sheet, at: 0)
+        let caption = try XCTUnwrap(views(preview.view).compactMap { $0 as? UITextView }.first)
+        caption.becomeFirstResponder()
+        try await wait { caption.isFirstResponder }
+        window?.rootViewController?.dismiss(animated: false)
+        try await wait { preview.view.window == nil }
+        XCTAssertTrue(preview.view.isHidden)
+        XCTAssertFalse(caption.isFirstResponder)
+        XCTAssertFalse(preview.shown)
+        XCTAssertTrue(caption.isDescendant(of: preview.view), "the caption never moves into a keyboard/window overlay")
+    }
+
+    func testCaptionKeepsThePhotoVisibleAndHidesToolsAboveTheKeyboard() async throws {
+        let sheet = try await menu()
+        let preview = try await preview(sheet, at: 0)
+        let caption = try XCTUnwrap(views(preview.view).compactMap { $0 as? UITextView }.first)
+        caption.becomeFirstResponder()
+        try await Task.sleep(for: .milliseconds(700))
+        let page = try XCTUnwrap(preview.currentPage)
+        let tool = try control("attach-preview-crop", in: preview.view)
+        XCTAssertTrue(caption.isFirstResponder)
+        XCTAssertGreaterThan(page.pictureFrame(in: preview.view, natural: nil).width, 1)
+        XCTAssertEqual(tool.superview?.alpha, 0)
+    }
+
+    private func cameraMenu() async throws -> (AttachSheetViewController, CameraViewController) {
+        AttachMenuEnvironment.cameraEngine = { FixtureCamera() }
+        defer { AttachMenuEnvironment.cameraEngine = { CameraEnvironment.engine() } }
+        let root = UIViewController()
+        window = hostedKeyWindow(in: try await hostedActiveScene(), root: root)
+        let sheet = AttachSheetViewController(limit: 10, library: FixtureAttachLibrary(access: .authorized, count: 6), camera: true)
+        root.present(sheet, animated: false)
+        try await wait { sheet.feed.count == 6 }
+        try control("attach-camera", in: sheet.view).sendActions(for: .touchUpInside)
+        try await wait { (sheet.presentedViewController as? CameraViewController)?.canOpenShotPreview == true }
+        return (sheet, try XCTUnwrap(sheet.presentedViewController as? CameraViewController))
+    }
+
+    func testCameraCloseTakesItsPresentedViewerWithIt() async throws {
+        let (sheet, camera) = try await cameraMenu()
+        camera.onShot?(CameraPhoto(data: solid(CGSize(width: 200, height: 200), .blue).jpegData(compressionQuality: 0.8)!, ratio: 1))
+        try await wait { (camera.presentedViewController as? AttachPreviewViewController)?.shown == true }
+        let preview = try XCTUnwrap(camera.presentedViewController as? AttachPreviewViewController)
+        let caption = try XCTUnwrap(views(preview.view).compactMap { $0 as? UITextView }.first)
+        caption.becomeFirstResponder()
+        camera.close()
+        XCTAssertFalse(camera.canOpenShotPreview)
+        try await wait { sheet.presentedViewController == nil }
+        XCTAssertNil(preview.view.window)
+        XCTAssertTrue(preview.view.isHidden)
+        XCTAssertFalse(caption.isFirstResponder)
+    }
+
+    func testFirstShotPreparingDuringCloseCannotOpenAViewer() async throws {
+        let (sheet, camera) = try await cameraMenu()
+        camera.onShot?(CameraPhoto(data: solid(CGSize(width: 800, height: 800), .blue).jpegData(compressionQuality: 0.8)!, ratio: 1))
+        camera.close()
+        try await wait { !sheet.edits.shotsTaken.isEmpty }
+        XCTAssertNil(camera.presentedViewController)
+        try await wait { sheet.presentedViewController == nil }
+        XCTAssertEqual(sheet.picked.count, 1, "the prepared photo remains available in the picker")
+    }
+
+    func testIncrementalFlattenMatchesReplayForEveryBrushAndUndo() async throws {
+        let canvas = CGSize(width: 200, height: 200)
+        let image = solid(canvas, .blue)
+        let draw = PhotoDrawViewController(picture: image, edit: PhotoEdit(canvas: canvas))
+        let root = UIViewController()
+        window = hostedKeyWindow(in: try await hostedActiveScene(), root: root)
+        root.present(draw, animated: false)
+        draw.view.layoutIfNeeded()
+        try await wait { !draw.isPreparing }
+        for tool in PhotoTools.order {
+            draw.select(tool)
+            draw.draw(CGPoint(x: 30, y: 50), phase: .began)
+            draw.draw(CGPoint(x: 100, y: 100), phase: .changed)
+            draw.draw(CGPoint(x: 170, y: 150), phase: .ended)
+        }
+        let count = draw.strokes.count
+        try control("photo-draw-undo", in: draw.view).sendActions(for: .touchUpInside)
+        XCTAssertEqual(draw.strokes.count, count - 1)
+        try control("photo-draw-redo", in: draw.view).sendActions(for: .touchUpInside)
+        XCTAssertEqual(draw.strokes.count, count)
+        // Branching after undo invalidates bitmap states from the old redo
+        // history, even when the new branch reaches the same stroke count.
+        for _ in 0..<2 { try control("photo-draw-undo", in: draw.view).sendActions(for: .touchUpInside) }
+        draw.select(.pen)
+        draw.draw(CGPoint(x: 40, y: 160), phase: .began)
+        draw.draw(CGPoint(x: 160, y: 40), phase: .ended)
+        try control("photo-draw-undo", in: draw.view).sendActions(for: .touchUpInside)
+        try control("photo-draw-redo", in: draw.view).sendActions(for: .touchUpInside)
+        // Check the actual committed layer, including clear/blur, against
+        // export at its exact pixel size after undo/redo.
+        let board = try XCTUnwrap(views(draw.view).first { $0.accessibilityIdentifier == "photo-draw-board" })
+        let ink = try XCTUnwrap(board.subviews.compactMap { $0 as? UIImageView }.last?.image)
+        let replay = PhotoEditRenderer.drawing(draw.strokes, canvas: canvas, crop: .whole(canvas), size: ink.size, picture: image, blurred: nil)
+        let points = (0..<10).flatMap { y in
+            (0..<10).map { x in CGPoint(x: ink.size.width * (CGFloat(x) + 0.5) / 10, y: ink.size.height * (CGFloat(y) + 0.5) / 10) }
+        }
+        for point in points {
+            let a = pixel(ink, point), b = pixel(replay, point)
+            XCTAssertEqual(a.red, b.red, accuracy: 0.02)
+            XCTAssertEqual(a.green, b.green, accuracy: 0.02)
+            XCTAssertEqual(a.alpha, b.alpha, accuracy: 0.02)
+        }
+    }
+
     // MARK: The renderer
 
     private func solid(_ size: CGSize, _ color: UIColor) -> UIImage {

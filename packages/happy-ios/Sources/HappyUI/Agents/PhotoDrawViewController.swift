@@ -32,11 +32,16 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
     private let board = UIView()
     private let base = UIImageView()
     private let ink = UIImageView()
+    private let live = PhotoLiveStrokeView()
     private var committed: UIImage?
     private var blurred: UIImage?
     private var active: PhotoStroke?
     private var link: CADisplayLink?
     private var dirty = false
+    private var checkpoints: [(count: Int, image: UIImage)] = []
+    private var preparation: Task<Void, Never>?
+    private var blurPreparation: Task<Void, Never>?
+    private(set) var isPreparing = false
 
     private let topShade = PhotoEditorShade(top: true)
     private let bottomShade = PhotoEditorShade(top: false)
@@ -98,6 +103,7 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
         ink.contentMode = .scaleToFill
         board.addSubview(base)
         board.addSubview(ink)
+        board.addSubview(live)
         drawRecognizer.addTarget(self, action: #selector(drew(_:)))
         drawRecognizer.delegate = self
         board.addGestureRecognizer(drawRecognizer)
@@ -140,9 +146,14 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
         controls = [history, clear, zoomOut, wedge, tools, colorButton, close, done, topShade, bottomShade] + swatches
         for control in controls where control !== topShade && control !== bottomShade { view.addSubview(control) }
 
-        blurred = edit.strokes.contains { $0.tool == .blur } ? PhotoEditRenderer.blurred(picture) : nil
         showTool(animated: false)
         updateHistory()
+        let picture = picture
+        blurPreparation = Task { [weak self] in
+            let image = await Task.detached(priority: .userInitiated) { PhotoEditRenderer.blurred(picture) }.value
+            guard !Task.isCancelled else { return }
+            self?.blurred = image
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -177,16 +188,38 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
         board.frame = CGRect(origin: .zero, size: fitted.size)
         base.frame = board.bounds
         ink.frame = board.bounds
+        live.frame = board.bounds
         scroll.contentSize = fitted.size
         centerBoard()
         let scale = view.window?.screen.scale ?? traitCollection.displayScale
         let pixels = CGSize(width: (fitted.width * scale).rounded(), height: (fitted.height * scale).rounded())
         let fit = min(1, 2048 / max(pixels.width, pixels.height, 1))
         inkSize = CGSize(width: max(1, (pixels.width * fit).rounded()), height: max(1, (pixels.height * fit).rounded()))
-        var plain = edit
-        plain.strokes = []
-        base.image = PhotoEditRenderer.render(picture, plain, maxPixels: max(inkSize.width, inkSize.height))
-        recommit()
+        let plain = PhotoEdit(canvas: edit.canvas, crop: edit.crop)
+        checkpoints = []
+        preparation?.cancel()
+        isPreparing = true
+        drawRecognizer.isEnabled = false
+        done.isEnabled = false
+        clear.isEnabled = false
+        let picture = picture, edit = edit, inkSize = inkSize
+        preparation = Task { [weak self] in
+            let prepared = await Task.detached(priority: .userInitiated) {
+                let base = PhotoEditRenderer.render(picture, plain, maxPixels: max(inkSize.width, inkSize.height))
+                let blurred = edit.strokes.contains { $0.tool == .blur } ? PhotoEditRenderer.blurred(picture) : nil
+                let ink = edit.strokes.isEmpty ? nil : PhotoEditRenderer.drawing(edit.strokes, canvas: edit.canvas, crop: edit.crop, size: inkSize, picture: picture, blurred: blurred)
+                return (base, blurred, ink)
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            base.image = prepared.0
+            blurred = prepared.1 ?? blurred
+            committed = prepared.2
+            ink.image = committed
+            isPreparing = false
+            drawRecognizer.isEnabled = true
+            done.isEnabled = true
+            updateHistory()
+        }
     }
 
     private var inkSize: CGSize = .zero
@@ -223,7 +256,14 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
 
     @objc private func drew(_ recognizer: PhotoDrawRecognizer) {
         let point = canvasPoint(recognizer.location(in: board))
-        switch recognizer.state {
+        draw(point, phase: recognizer.state)
+    }
+
+    /// Input in the photo's coordinates, shared by touch delivery and the
+    /// hosted latency probe. Raster work is coalesced by the display link.
+    func draw(_ point: CGPoint, phase: UIGestureRecognizer.State) {
+        guard !isPreparing else { return }
+        switch phase {
         case .began:
             dismissLoupe()
             if tool == .blur, blurred == nil { blurred = PhotoEditRenderer.blurred(picture) }
@@ -242,14 +282,25 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
             guard var stroke = active else { return }
             if let last = stroke.points.last, last != point { stroke.points.append(point) }
             active = nil
+            link?.invalidate()
+            link = nil
             edit.strokes.append(stroke)
             undone = []
-            recommit()
+            checkpoints.removeAll { $0.count >= edit.strokes.count }
+            // Flatten only the new stroke. Replaying the entire history
+            // here made releasing a brush pause for over 150 ms.
+            remember()
+            committed = PhotoEditRenderer.drawing([stroke], canvas: edit.canvas, crop: edit.crop, size: inkSize, picture: picture, blurred: blurred, base: committed)
+            ink.image = committed
+            live.isHidden = true
             setControls(hidden: false)
             updateHistory()
         default:
             active = nil
+            link?.invalidate()
+            link = nil
             ink.image = committed
+            live.isHidden = true
             setControls(hidden: false)
         }
     }
@@ -265,13 +316,18 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
 
     @objc private func frame() {
         guard dirty else {
+            guard active == nil else { return }
             link?.invalidate()
             link = nil
             return
         }
         dirty = false
         guard let active else { return }
-        ink.image = PhotoEditRenderer.drawing([], canvas: edit.canvas, crop: edit.crop, size: inkSize, picture: picture, blurred: blurred, active: active, base: committed)
+        if active.tool == .eraser {
+            ink.image = PhotoEditRenderer.drawing([], canvas: edit.canvas, crop: edit.crop, size: inkSize, picture: picture, blurred: blurred, active: active, base: committed)
+        } else {
+            live.show(active, canvas: edit.canvas, crop: edit.crop, blurred: blurred)
+        }
     }
 
     /// What is drawn, in one picture the live stroke goes over.
@@ -280,6 +336,19 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
         if edit.strokes.contains(where: { $0.tool == .blur }), blurred == nil { blurred = PhotoEditRenderer.blurred(picture) }
         committed = edit.strokes.isEmpty ? nil : PhotoEditRenderer.drawing(edit.strokes, canvas: edit.canvas, crop: edit.crop, size: inkSize, picture: picture, blurred: blurred)
         ink.image = committed
+        live.isHidden = true
+    }
+
+    /// Recent undo states, capped by pixel bytes rather than stroke count.
+    /// Older history is still exact and can be replayed when needed.
+    private func remember(count: Int? = nil) {
+        guard let committed else { return }
+        let count = count ?? (edit.strokes.count - 1)
+        checkpoints.removeAll { $0.count == count }
+        checkpoints.append((count, committed))
+        let bytes = max(1, Int(inkSize.width * inkSize.height) * 4)
+        let capacity = max(1, min(4, 16 * 1024 * 1024 / bytes))
+        if checkpoints.count > capacity { checkpoints.removeFirst(checkpoints.count - capacity) }
     }
 
     /// Everything but the picture fades while a stroke is drawn.
@@ -297,33 +366,51 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
     // MARK: History
 
     private func updateHistory() {
-        undo.isEnabled = edit.strokes.count > floor
+        undo.isEnabled = !isPreparing && edit.strokes.count > floor
         redo.isHidden = undone.isEmpty
         let width: CGFloat = undone.isEmpty ? 44 : 88
         history.frame.size.width = width
         history.place([CGRect(x: 0, y: 0, width: 44, height: 44), CGRect(x: 44, y: 0, width: 44, height: 44)])
-        clear.isEnabled = !edit.strokes.isEmpty
+        clear.isEnabled = !isPreparing && !edit.strokes.isEmpty
     }
 
     @objc private func undoTapped() {
+        let count = edit.strokes.count
         guard edit.strokes.count > floor, let last = edit.strokes.popLast() else { return }
         undone.append(last)
-        recommit()
+        remember(count: count)
+        if edit.strokes.isEmpty {
+            committed = nil
+            ink.image = nil
+        } else if let cached = checkpoints.first(where: { $0.count == edit.strokes.count }) {
+            committed = cached.image
+            ink.image = committed
+        } else {
+            recommit()
+        }
         updateHistory()
     }
 
     @objc private func redoTapped() {
         guard let stroke = undone.popLast() else { return }
+        remember(count: edit.strokes.count)
         edit.strokes.append(stroke)
-        recommit()
+        if let cached = checkpoints.first(where: { $0.count == edit.strokes.count }) {
+            committed = cached.image
+        } else {
+            committed = PhotoEditRenderer.drawing([stroke], canvas: edit.canvas, crop: edit.crop, size: inkSize, picture: picture, blurred: blurred, base: committed)
+        }
+        ink.image = committed
         updateHistory()
     }
 
     /// Telegram's Clear All: everything, and no undoing it.
     private func clearAll() {
+        guard !isPreparing else { return }
         edit.strokes = []
         undone = []
         floor = 0
+        checkpoints = []
         let fading = UIImageView(image: committed)
         fading.frame = ink.frame
         board.addSubview(fading)
@@ -436,8 +523,19 @@ final class PhotoDrawViewController: UIViewController, UIScrollViewDelegate, UIG
     }
 
     @objc private func doneTapped() {
+        guard !isPreparing else { return }
         dismissLoupe()
         onDone?(edit.strokes)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        guard isBeingDismissed || presentingViewController?.isBeingDismissed == true else { return }
+        preparation?.cancel()
+        blurPreparation?.cancel()
+        link?.invalidate()
+        link = nil
+        active = nil
     }
 }
 
@@ -682,84 +780,19 @@ final class PhotoToolView: UIView {
         guard let cg = UIGraphicsGetCurrentContext() else { return }
         let w = bounds.width, h = bounds.height
         let tint = UIColor(color).withAlphaComponent(1)
-        let body = UIBezierPath(roundedRect: CGRect(x: 1.5, y: 30, width: w - 3, height: h - 30 + 8), cornerRadius: 3)
-        let bodyColors = [UIColor(white: 0.96, alpha: 1).cgColor, UIColor(white: 0.82, alpha: 1).cgColor]
-        func fillBody(_ path: UIBezierPath) {
-            cg.saveGState()
-            path.addClip()
-            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: bodyColors as CFArray, locations: [0, 1]) {
-                cg.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: w, y: 0), options: [])
-            }
-            cg.restoreGState()
+        let name = "PhotoEditorTool" + tool.rawValue.prefix(1).uppercased() + tool.rawValue.dropFirst()
+        let body = UIImage(named: name, in: .module, compatibleWith: nil)
+        let tip = UIImage(named: name + "Tip", in: .module, compatibleWith: nil)
+        let shadow = UIImage(named: name + "Shadow", in: .module, compatibleWith: nil)
+        let box = CGRect(x: 0, y: 0, width: w, height: h)
+        shadow?.draw(in: box.insetBy(dx: -2, dy: 0))
+        func drawTip() {
+            guard let tip else { return }
+            (tool == .blur ? tip : tip.withTintColor(tint, renderingMode: .alwaysOriginal)).draw(in: box)
         }
-        fillBody(body)
-        switch tool {
-        case .pen, .arrow:
-            let cone = UIBezierPath()
-            cone.move(to: CGPoint(x: 3, y: 30))
-            cone.addLine(to: CGPoint(x: w - 3, y: 30))
-            cone.addLine(to: CGPoint(x: w / 2 + 1.2, y: 6))
-            cone.addLine(to: CGPoint(x: w / 2 - 1.2, y: 6))
-            cone.close()
-            UIColor(red: 0.93, green: 0.84, blue: 0.70, alpha: 1).setFill()
-            cone.fill()
-            let point = UIBezierPath()
-            point.move(to: CGPoint(x: w / 2 - 3.2, y: 14))
-            point.addLine(to: CGPoint(x: w / 2 + 3.2, y: 14))
-            point.addLine(to: CGPoint(x: w / 2 + 1.2, y: 6))
-            point.addLine(to: CGPoint(x: w / 2 - 1.2, y: 6))
-            point.close()
-            tint.setFill()
-            point.fill()
-            if tool == .arrow {
-                let head = UIBezierPath()
-                head.move(to: CGPoint(x: w / 2 - 4, y: 6))
-                head.addLine(to: CGPoint(x: w / 2, y: 1))
-                head.addLine(to: CGPoint(x: w / 2 + 4, y: 6))
-                head.lineWidth = 1.6
-                head.lineCapStyle = .round
-                head.lineJoinStyle = .round
-                tint.setStroke()
-                head.stroke()
-            }
-        case .marker, .neon:
-            let neck = UIBezierPath(roundedRect: CGRect(x: 4, y: 20, width: w - 8, height: 12), cornerRadius: 1.5)
-            fillBody(neck)
-            let tip = UIBezierPath()
-            tip.move(to: CGPoint(x: 6, y: 21))
-            tip.addLine(to: CGPoint(x: w - 6, y: 21))
-            tip.addLine(to: CGPoint(x: w - 6, y: 11))
-            tip.addLine(to: CGPoint(x: 6, y: 15))
-            tip.close()
-            if tool == .neon {
-                cg.saveGState()
-                cg.setShadow(offset: .zero, blur: 6, color: tint.cgColor)
-                tint.setFill()
-                tip.fill()
-                cg.restoreGState()
-            } else {
-                tint.setFill()
-                tip.fill()
-            }
-        case .blur:
-            let cone = UIBezierPath()
-            cone.move(to: CGPoint(x: 3, y: 30))
-            cone.addLine(to: CGPoint(x: w - 3, y: 30))
-            cone.addQuadCurve(to: CGPoint(x: 3, y: 30), controlPoint: CGPoint(x: w / 2, y: -2))
-            cg.saveGState()
-            cone.addClip()
-            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [UIColor(white: 0.55, alpha: 1).cgColor, UIColor(white: 0.85, alpha: 1).cgColor] as CFArray, locations: [0, 1]) {
-                cg.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 8), end: CGPoint(x: 0, y: 30), options: [])
-            }
-            cg.restoreGState()
-        case .eraser:
-            let rubber = UIBezierPath(roundedRect: CGRect(x: 2.5, y: 10, width: w - 5, height: 22), byRoundingCorners: [.topLeft, .topRight], cornerRadii: CGSize(width: 5, height: 5))
-            UIColor(red: 0.98, green: 0.62, blue: 0.68, alpha: 1).setFill()
-            rubber.fill()
-            UIColor(white: 0.7, alpha: 1).setFill()
-            UIRectFill(CGRect(x: 1.5, y: 30, width: w - 3, height: 2))
-        }
-        // The band: how big the brush draws.
+        // Marker, neon and blur tips sit behind the shell artwork.
+        if tool == .pen || tool == .arrow { body?.draw(in: box); drawTip() }
+        else { drawTip(); body?.draw(in: box) }
         guard PhotoTools.colored(tool) else { return }
         let band = CGRect(x: 1.5, y: 32, width: w - 3, height: 12 * (0.08 + 0.92 * size))
         let dark = UIColor(red: CGFloat(color.red) * 0.7, green: CGFloat(color.green) * 0.7, blue: CGFloat(color.blue) * 0.7, alpha: 1)
@@ -777,7 +810,7 @@ final class PhotoToolView: UIView {
 /// colour otherwise.
 final class PhotoColorButton: UIControl {
     var color: RGBA? { didSet { update() } }
-    private let rainbow = CAGradientLayer()
+    private let rainbow = CALayer()
     private let ring = CAShapeLayer()
     private let fill = CAShapeLayer()
 
@@ -786,10 +819,7 @@ final class PhotoColorButton: UIControl {
         isAccessibilityElement = true
         accessibilityTraits = .button
         accessibilityLabel = Strings.PhotoEditor.color
-        rainbow.type = .conic
-        rainbow.startPoint = CGPoint(x: 0.5, y: 0.5)
-        rainbow.endPoint = CGPoint(x: 0.5, y: 0)
-        rainbow.colors = stride(from: 0.0, through: 1.0, by: 1.0 / 12).map { UIColor(hue: $0, saturation: 1, brightness: 1, alpha: 1).cgColor }
+        rainbow.contents = UIImage(named: "PhotoEditorRoundSpectrum", in: .module, compatibleWith: nil)?.cgImage
         ring.fillColor = nil
         ring.strokeColor = UIColor.white.cgColor
         rainbow.mask = ring
@@ -838,7 +868,7 @@ final class PhotoSwatch: UIControl {
         dot.fillColor = UIColor(color).cgColor
         ring.fillColor = nil
         ring.strokeColor = UIColor(color).cgColor
-        ring.lineWidth = 2
+        ring.lineWidth = 3
         layer.addSublayer(dot)
         layer.addSublayer(ring)
         update(animated: false)
@@ -857,7 +887,7 @@ final class PhotoSwatch: UIControl {
         CATransaction.setDisableActions(!animated)
         CATransaction.setAnimationDuration(0.2)
         dot.path = UIBezierPath(ovalIn: chosen ? box.insetBy(dx: 5, dy: 5) : box).cgPath
-        ring.path = UIBezierPath(ovalIn: box.insetBy(dx: 1, dy: 1)).cgPath
+        ring.path = UIBezierPath(ovalIn: box.insetBy(dx: 1.5, dy: 1.5)).cgPath
         ring.opacity = chosen ? 1 : 0
         CATransaction.commit()
         accessibilityTraits = chosen ? [.button, .selected] : .button

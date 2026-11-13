@@ -710,24 +710,33 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
             guard let self, fromTile, cameraTile.window != nil else { return nil }
             return cameraTile.convert(cameraTile.bounds, to: nil)
         }
-        camera.onShot = { [weak self] photo in self?.shot(photo) }
+        camera.onShot = { [weak self, weak camera] photo in
+            guard let camera else { return }
+            self?.shot(photo, from: camera)
+        }
         camera.onOpenShot = { [weak self] index in self?.openShots(at: index) }
         camera.onFinish = { [weak self, weak camera] _ in
-            guard let self else { return }
-            cameraTile.takeBack()
-            camera?.dismiss(animated: false)
+            guard let self, let camera else { return }
+            // Dismiss from below the camera, taking its result gallery and
+            // any editor with it. Dismissing on the camera targets its child.
+            camera.presentingViewController?.dismiss(animated: false) { [weak self] in
+                self?.cameraTile.takeBack()
+                if self?.camera === camera { self?.camera = nil }
+            }
         }
         self.camera = camera
         present(camera, animated: false)
     }
 
     /// A shot in: picked, and the first one opened.
-    private func shot(_ photo: CameraPhoto) {
-        edits.add(shot: photo) { [weak self] id in
+    private func shot(_ photo: CameraPhoto, from source: CameraViewController) {
+        edits.add(shot: photo) { [weak self, weak source] id in
             guard let self, let id else { return }
             setPicked(id, true)
             showShots()
-            if edits.shotsTaken.count == 1 { openShots(at: 0) }
+            if let source, camera === source, source.canOpenShotPreview, edits.shotsTaken.count == 1 {
+                openShots(at: 0)
+            }
         }
     }
 
@@ -738,7 +747,7 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     /// The camera's shots in the preview, over the camera (Telegram's
     /// result gallery): back goes back to shooting.
     private func openShots(at start: Int) {
-        guard let camera, camera.presentedViewController == nil, !closing else { return }
+        guard let camera, camera.canOpenShotPreview, camera.presentedViewController == nil, !closing else { return }
         let ids = edits.shotsTaken
         guard ids.indices.contains(start) else { return }
         let preview = AttachPreviewViewController(
@@ -807,8 +816,8 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         view.isUserInteractionEnabled = false
         let gone = { [weak self] in
             self?.hiddenButton?.alpha = 1
-            guard let self, presentingViewController != nil else { return completion() }
-            dismiss(animated: false, completion: completion)
+            guard let presenter = self?.presentingViewController else { return completion() }
+            presenter.dismiss(animated: false, completion: completion)
         }
         guard shown, let sheet else { return gone() }
         if sheet.style == .card {

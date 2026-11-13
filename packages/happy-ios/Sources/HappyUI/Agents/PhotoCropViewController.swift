@@ -29,6 +29,8 @@ final class PhotoCropViewController: UIViewController, UIGestureRecognizerDelega
     private var animation: (from: Shown, to: Shown, start: CFTimeInterval, duration: CFTimeInterval, done: (() -> Void)?)?
     private var link: CADisplayLink?
     private var settleTimer: Timer?
+    private var preparation: Task<Void, Never>?
+    private(set) var isPreparing = false
 
     private let stage = UIView()
     private let imageView = UIImageView()
@@ -88,7 +90,18 @@ final class PhotoCropViewController: UIViewController, UIGestureRecognizerDelega
         imageView.image = picture
         if !strokes.isEmpty {
             let fit = min(1, 1536 / max(canvas.width, canvas.height, 1))
-            strokesView.image = PhotoEditRenderer.drawing(strokes, canvas: canvas, crop: .whole(canvas), size: CGSize(width: canvas.width * fit, height: canvas.height * fit), picture: picture, blurred: nil)
+            let canvas = canvas, strokes = strokes, picture = picture
+            isPreparing = true
+            done.isEnabled = false
+            preparation = Task { [weak self] in
+                let image = await Task.detached(priority: .userInitiated) {
+                    PhotoEditRenderer.drawing(strokes, canvas: canvas, crop: .whole(canvas), size: CGSize(width: canvas.width * fit, height: canvas.height * fit), picture: picture, blurred: nil)
+                }.value
+                guard let self, !Task.isCancelled else { return }
+                strokesView.image = image
+                isPreparing = false
+                done.isEnabled = true
+            }
         }
         dim.isUserInteractionEnabled = false
         dim.fill = UIColor(Palette.photoEditorDim)
@@ -653,8 +666,8 @@ final class PhotoCropWheel: UIView {
         dial.add(spin, forKey: "spin")
     }
 
-    private let dial = CAShapeLayer()
-    private let needle = CAShapeLayer()
+    private let dial = CALayer()
+    private let needle = CALayer()
     private var last: CGFloat?
 
     override init(frame: CGRect) {
@@ -662,29 +675,11 @@ final class PhotoCropWheel: UIView {
         clipsToBounds = true
         isAccessibilityElement = true
         accessibilityTraits = .adjustable
-        let white = UIColor(Palette.photoEditorWheel).cgColor
         dial.bounds = CGRect(x: 0, y: 0, width: 400, height: 400)
-        dial.strokeColor = white
-        dial.fillColor = nil
-        dial.lineCap = .round
-        let path = CGMutablePath()
-        for step in 0..<144 {
-            let theta = CGFloat(step) * .pi * 2 / 144
-            let long = step % 6 == 0
-            let outer: CGFloat = 196, inner: CGFloat = long ? 184 : 189
-            path.move(to: CGPoint(x: 200 + sin(theta) * outer, y: 200 + cos(theta) * outer))
-            path.addLine(to: CGPoint(x: 200 + sin(theta) * inner, y: 200 + cos(theta) * inner))
-        }
-        dial.path = path
-        dial.lineWidth = 1.5
+        dial.contents = UIImage(named: "PhotoEditorRotationWheel", in: .module, compatibleWith: nil)?.cgImage
+        dial.opacity = 0.9
         layer.addSublayer(dial)
-        let triangle = CGMutablePath()
-        triangle.move(to: CGPoint(x: 5, y: 0))
-        triangle.addLine(to: CGPoint(x: 10, y: 8))
-        triangle.addLine(to: CGPoint(x: 0, y: 8))
-        triangle.closeSubpath()
-        needle.path = triangle
-        needle.fillColor = UIColor(Palette.photoEditorControl).cgColor
+        needle.contents = UIImage(named: "PhotoEditorRotationNeedle", in: .module, compatibleWith: nil)?.cgImage
         needle.bounds = CGRect(x: 0, y: 0, width: 10, height: 10)
         layer.addSublayer(needle)
     }

@@ -196,3 +196,60 @@ public enum AttachPreviewMotion {
     public static let fadeOut: TimeInterval = 0.15
     public static let chrome: TimeInterval = 0.2
 }
+
+/// Telegram's gallery foot: a separate Back at the left of the glass
+/// tool group, the caption 10 above its 49-point row. Typing hides that
+/// row. Happy fits the whole picture above the caption, as requested,
+/// rather than allowing a tall image to extend underneath the controls.
+public struct AttachPreviewFootLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let bar: CGFloat = 49
+        public static let tool: CGFloat = 44
+        public static let toolGap: CGFloat = 10
+        /// The caption over the bar, and over the keyboard.
+        public static let overBar: CGFloat = 10
+        public static let overKeyboard: CGFloat = 8
+        /// The caption grows to a third of what the keyboard leaves at most.
+        public static let shortest: CGFloat = 44
+        public static let side: CGFloat = 26
+        public static let pictureInset: CGFloat = 12
+    }
+
+    /// The row through the screen's foot (transparent, on viewer black).
+    public var bar: CGRect
+    /// The tools side by side, centred in the bar.
+    public var tools: [CGRect]
+    public var card: CGRect
+    public var back: CGRect
+    public var group: CGRect
+    /// The whole photo fits here, clear of the caption and top check.
+    public var pictures: CGRect
+    /// The keyboard is up for the caption: no tools, the pictures dimmed.
+    public var typing: Bool
+
+    /// The caption's width, for the height it asks at.
+    public static func cardWidth(size: CGSize, safeArea: LayoutInsets, inset: CGFloat) -> CGFloat {
+        max(0, size.width - safeArea.left - safeArea.right - 2 * inset)
+    }
+
+    /// `keyboard` is how much of the screen's foot it covers; `cardHeight`
+    /// what the caption asks at `cardWidth`.
+    public init(size: CGSize, safeArea: LayoutInsets, keyboard: CGFloat, inset: CGFloat, cardHeight: CGFloat, tools count: Int) {
+        typing = keyboard > 0
+        let barTop = size.height - safeArea.bottom - Metrics.bar
+        bar = CGRect(x: 0, y: barTop, width: size.width, height: size.height - barTop)
+        let width = CGFloat(count) * Metrics.tool + CGFloat(max(0, count - 1)) * Metrics.toolGap
+        let left = (size.width - width) / 2
+        let top = barTop + (Metrics.bar - Metrics.tool) / 2
+        back = CGRect(x: safeArea.left + Metrics.side, y: top, width: Metrics.tool, height: Metrics.tool)
+        group = CGRect(x: left, y: top, width: width, height: Metrics.tool)
+        tools = (0..<count).map { CGRect(x: left + CGFloat($0) * (Metrics.tool + Metrics.toolGap), y: top, width: Metrics.tool, height: Metrics.tool) }
+        let height = min(cardHeight, max(Metrics.shortest, (size.height - keyboard) / 3))
+        let bottom = typing ? size.height - keyboard - Metrics.overKeyboard : barTop - Metrics.overBar
+        card = CGRect(x: safeArea.left + inset, y: bottom - height, width: Self.cardWidth(size: size, safeArea: safeArea, inset: inset), height: height)
+        let pictureTop = safeArea.top + Metrics.tool + Metrics.pictureInset
+        pictures = CGRect(x: safeArea.left + Metrics.pictureInset, y: pictureTop,
+                          width: max(0, size.width - safeArea.left - safeArea.right - 2 * Metrics.pictureInset),
+                          height: max(0, card.minY - Metrics.pictureInset - pictureTop))
+    }
+}

@@ -70,6 +70,12 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     }
 
     private(set) var phase: Phase = .opening
+    /// Preparing a shot may finish after Close. Only a visible, live camera
+    /// can host the result gallery.
+    var canOpenShotPreview: Bool {
+        phase == .live && viewIfLoaded?.window != nil && !isBeingDismissed
+            && presentingViewController?.isBeingDismissed != true
+    }
     private var observation: CameraObservation?
     private(set) var state = CameraState()
     private(set) var locked = false
@@ -414,6 +420,8 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         guard phase != .leaving else { return }
         cancelCountdown()
         phase = .leaving
+        view.endEditing(true)
+        presentedViewController?.view.endEditing(true)
         events?.isEnabled = false
         let target = tile?().flatMap { $0.width > 0 ? $0 : nil }
         guard let layout, let target, review.isHidden else {

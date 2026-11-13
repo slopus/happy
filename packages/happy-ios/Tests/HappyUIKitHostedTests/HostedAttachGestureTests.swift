@@ -482,6 +482,11 @@ final class HostedAttachGestureTests: XCTestCase {
     /// takes over 4.2 ms, nor do 99% of the main run loop's passes; the odd
     /// pass the simulator stretches stays inside one 120 Hz frame.
     func testAFlingOverTwoThousandPicturesStaysInBudget() async throws {
+        // This measures the gallery, not a failing simulator capture
+        // session. The real engine continuously reports AVFoundation
+        // errors here and makes the main-thread ceiling nondeterministic.
+        AttachMenuEnvironment.cameraEngine = { FixtureCamera() }
+        defer { AttachMenuEnvironment.cameraEngine = { CameraEnvironment.engine() } }
         let library = FixtureAttachLibrary(access: .authorized, count: 2000)
         let sheet = try await present(library)
         sheet.setExpanded(true)
