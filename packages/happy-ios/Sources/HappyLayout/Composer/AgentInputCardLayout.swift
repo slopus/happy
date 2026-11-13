@@ -22,7 +22,9 @@ import CoreGraphics
 ///     │ 8 [+42] 2 [ text (two lines, then scrolls) ] 2 [opt 42] 8 [42] 8 │ row 44+
 ///
 /// The chips go behind the options button (`options`), which opens them;
-/// the buttons keep to the row's foot as the text grows.
+/// the buttons keep to the row's foot as the text grows. `compactLines`
+/// lets the text grow further before it scrolls (the "+" sheet's caption
+/// shows five, as the full card does).
 ///
 /// Frames are in the card's bounds. `middleContent` is in `middle`'s.
 public struct AgentInputCardLayout: Equatable, Sendable {
@@ -121,6 +123,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         /// One row: the text between add and the options button
         /// (`compactTextCap`), the chips behind that button.
         public var compact: Bool
+        /// The lines the compact row shows before its text scrolls.
+        public var compactLines: Int
         /// Dictation is writing into the text while the recording circle
         /// (`RecordMotion.Metrics.innerDiameter`) stands centred on send:
         /// the text wraps clear of the circle, so the newest words show.
@@ -149,6 +153,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             zenMode: Bool = false,
             offersExpand: Bool = false,
             compact: Bool = false,
+            compactLines: Int = 2,
             recording: Bool = false
         ) {
             self.width = width
@@ -168,6 +173,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             self.zenMode = zenMode
             self.offersExpand = offersExpand
             self.compact = compact
+            self.compactLines = compactLines
             self.recording = recording
         }
     }
@@ -256,7 +262,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             let text = MultiTextInputLayout(
                 contentHeight: input.textContentHeight,
                 hasText: input.hasText,
-                maxHeight: Self.compactTextCap(lineHeight: lineHeight, metrics: metrics),
+                maxHeight: Self.compactTextCap(lineHeight: lineHeight, lines: input.compactLines, metrics: metrics),
                 lineHeight: lineHeight,
                 paddingTop: metrics.inputPaddingTop,
                 paddingBottom: metrics.inputPaddingBottom
@@ -272,10 +278,10 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             )
             textScrolls = text.scrollEnabled
             if textScrolls {
-                // Scrolled, the text shows its two lines and nothing else:
-                // no padding inside to scroll away and bare part of a line
-                // at the top. Following the caret then rests on whole lines.
-                let lines = 2 * lineHeight
+                // Scrolled, the text shows its lines and nothing else: no
+                // padding inside to scroll away and bare part of a line at
+                // the top. Following the caret then rests on whole lines.
+                let lines = CGFloat(max(1, input.compactLines)) * lineHeight
                 textFrame.origin.y += metrics.inputPaddingTop + (textFrame.height - metrics.inputPaddingTop - metrics.inputPaddingBottom - lines) / 2
                 textFrame.size.height = lines
                 textPaddingTop = 0
@@ -463,10 +469,11 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         return content
     }
 
-    /// The compact card's text cap, its padding included: two lines show,
-    /// and the third scrolls, as the full card's 120 shows five (and 2).
-    public static func compactTextCap(lineHeight: CGFloat, metrics: MobileComposerMetrics = .mobile) -> CGFloat {
-        2 * lineHeight + metrics.inputPaddingTop + metrics.inputPaddingBottom + 2
+    /// The compact card's text cap, its padding included: `lines` show
+    /// (two by default), and the next scrolls, as the full card's 120 shows
+    /// five (and 2).
+    public static func compactTextCap(lineHeight: CGFloat, lines: Int = 2, metrics: MobileComposerMetrics = .mobile) -> CGFloat {
+        CGFloat(max(1, lines)) * lineHeight + metrics.inputPaddingTop + metrics.inputPaddingBottom + 2
     }
 
     /// Where the compact card's columns start: add, the text's container

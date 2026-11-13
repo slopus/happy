@@ -265,6 +265,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     /// `compact`). Its owner decides from `restingHeight(fitting:)`. The
     /// flat panel ignores it.
     public var compact: Bool
+    /// The lines the compact card shows before its text scrolls.
+    public var compactLines: Int
 
     public init(
         placeholder: String,
@@ -286,7 +288,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         zenMode: Bool = false,
         desktop: AgentInputDesktopConfiguration? = nil,
         showsExpand: Bool = false,
-        compact: Bool = false
+        compact: Bool = false,
+        compactLines: Int = 2
     ) {
         self.placeholder = placeholder
         self.isEditable = isEditable
@@ -308,6 +311,7 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         self.desktop = desktop
         self.showsExpand = showsExpand
         self.compact = compact
+        self.compactLines = compactLines
     }
 }
 
@@ -1074,7 +1078,7 @@ public final class AgentInputCardView: UIView {
                 lineHeight: inputLineHeight,
                 paddingTop: metrics.inputPaddingTop,
                 paddingBottom: metrics.inputPaddingBottom,
-                maxHeight: compact ? AgentInputCardLayout.compactTextCap(lineHeight: inputLineHeight, metrics: metrics) : metrics.inputMaxHeight
+                maxHeight: compact ? AgentInputCardLayout.compactTextCap(lineHeight: inputLineHeight, lines: configuration.compactLines, metrics: metrics) : metrics.inputMaxHeight
             )
         }
         return ComposerTextHeights.Stamp(key: key, revision: textRevision, generation: textGeneration)
@@ -1272,6 +1276,7 @@ public final class AgentInputCardView: UIView {
             zenMode: config.zenMode,
             offersExpand: config.showsExpand,
             compact: compact,
+            compactLines: config.compactLines,
             recording: isDictating
         )
     }
@@ -1494,6 +1499,7 @@ public final class AgentInputCardView: UIView {
             || previous.effort != config.effort
             || previous.zenMode != config.zenMode
             || previous.compact != config.compact
+            || previous.compactLines != config.compactLines
             || Self.panelShape(previous.desktop) != Self.panelShape(config.desktop) {
             // Chips that come with the session's record, the panel: the
             // card takes its new height at once. What is typed, and a
@@ -1502,7 +1508,7 @@ public final class AgentInputCardView: UIView {
                 && previous.inputMinHeight == config.inputMinHeight && previous.showsAdd == config.showsAdd
                 && previous.permission == config.permission && previous.model == config.model
                 && previous.effort == config.effort && previous.zenMode == config.zenMode
-                && previous.compact == config.compact && Self.panelShape(previous.desktop) == Self.panelShape(config.desktop)
+                && previous.compact == config.compact && previous.compactLines == config.compactLines && Self.panelShape(previous.desktop) == Self.panelShape(config.desktop)
             reportHeightChange(animated: picturesOnly && window != nil)
             setNeedsLayout()
         }

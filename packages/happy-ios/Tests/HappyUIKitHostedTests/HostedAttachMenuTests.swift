@@ -303,8 +303,8 @@ final class HostedAttachMenuTests: XCTestCase {
         }
     }
 
-    /// A long caption grows to its tallest, the chat composer's cap, and
-    /// then scrolls inside its card; the text never leaves
+    /// A long caption grows to its tallest, the chat composer's five lines,
+    /// and then scrolls inside its one row, send at its foot; the text never leaves
     /// the glass, and the grid keeps room to scroll every picture clear of it.
     func testALongCaptionStopsGrowingAndScrollsInside() async throws {
         try await open(FixtureAttachLibrary(access: .authorized, count: 30))
@@ -332,6 +332,11 @@ final class HostedAttachMenuTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(text.minY, 0, "the text left the glass's top")
         XCTAssertLessThanOrEqual(text.maxY, sheet.panel.bounds.height + 0.5, "the text left the glass's foot")
         XCTAssertTrue(caption.isScrollEnabled, "a caption past its tallest doesn't scroll")
+        // One row: send beside the text at its foot, no row of controls under it.
+        let send = sheet.panel.card.primaryControl.convert(sheet.panel.card.primaryControl.bounds, to: sheet.panel)
+        XCTAssertGreaterThanOrEqual(send.minX, text.maxX, "send isn't beside the text")
+        XCTAssertEqual(send.maxY, text.maxY, accuracy: 12, "send isn't at the text's last line")
+        XCTAssertLessThan(sheet.panel.bounds.height - send.maxY, 12, "a row under send")
         let under = sheet.panel.convert(sheet.panel.bounds, to: grid)
         let visibleFoot = grid.bounds.maxY - grid.contentInset.bottom
         XCTAssertLessThanOrEqual(visibleFoot, under.minY + 0.5, "the grid's last row can't scroll clear of the caption")

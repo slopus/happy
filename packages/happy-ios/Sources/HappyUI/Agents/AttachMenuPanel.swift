@@ -43,11 +43,15 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
     private let recognizer = AttachTabRecognizer()
     private var lensDrag: AttachTabLens?
 
-    /// The caption: the chat composer's card without "+" or the chips.
+    /// The caption: the chat composer's card without "+" or the chips, in
+    /// one row (send beside the text, at its last line) that grows to the
+    /// full card's five lines and then scrolls.
     let card = AgentInputCardView(configuration: AgentInputCardConfiguration(
         placeholder: Strings.Composer.inputPlaceholder,
         primaryAction: .send,
-        primaryAccessibilityLabel: Strings.AttachMenu.send
+        primaryAccessibilityLabel: Strings.AttachMenu.send,
+        compact: true,
+        compactLines: 5
     ))
     var field: UITextView { card.textView }
 

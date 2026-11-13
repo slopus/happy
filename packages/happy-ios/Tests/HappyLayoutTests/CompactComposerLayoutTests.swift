@@ -97,6 +97,36 @@ final class CompactComposerLayoutTests: XCTestCase {
         XCTAssertGreaterThan(three.textTrailingInset, 0)
     }
 
+    /// The "+" sheet's caption: the row alone, text and send, growing to
+    /// the full card's five lines before it scrolls, send at the last.
+    func testFiveCompactLinesShowAndTheSixthScrolls() {
+        func caption(_ lines: Int) -> AgentInputCardLayout {
+            AgentInputCardLayout(.init(width: 373, textContentHeight: CGFloat(lines) * 22 + 8, hasText: lines > 0,
+                                       compact: true, compactLines: 5))
+        }
+        let one = caption(1)
+        XCTAssertEqual(one.size.height, 60, "one row, no row of controls under it")
+        XCTAssertNil(one.add)
+        XCTAssertNil(one.options)
+        XCTAssertEqual(one.primary, CGRect(x: 321, y: 9, width: 42, height: 42))
+        XCTAssertEqual(one.inputContainer.maxX, one.primary.minX - 8 - 2)
+
+        let three = caption(3)
+        XCTAssertFalse(three.textScrolls)
+        XCTAssertEqual(three.size.height, 3 * 22 + 8 + 8 + 16)
+        XCTAssertEqual(three.primary.midY, three.inputContainer.maxY - 22, "send stays at the last line")
+
+        let five = caption(5)
+        XCTAssertFalse(five.textScrolls)
+        let six = caption(6)
+        XCTAssertTrue(six.textScrolls)
+        XCTAssertEqual(six.inputContainer.height, AgentInputCardLayout.compactTextCap(lineHeight: 22, lines: 5) + 8)
+        XCTAssertEqual(AgentInputCardLayout.compactTextCap(lineHeight: 22, lines: 5), 120, "the full card's cap")
+        XCTAssertEqual(six.text.height, 5 * 22)
+        XCTAssertEqual(caption(12).size, six.size)
+        XCTAssertEqual(six.primary.midY, six.inputContainer.maxY - 22)
+    }
+
     /// A larger text size keeps its lines: the 44 is a minimum, not a cap.
     func testTheTextSizeGrowsTheRow() {
         let line: CGFloat = 33
