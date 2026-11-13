@@ -211,6 +211,7 @@ final class RowView: UIView {
         case "task": return (Palette.tileOrange, Palette.tileOrangeFill)
         case "artifacts": return (Palette.tilePurple, Palette.tilePurpleFill)
         case "feed": return (Palette.tileRed, Palette.tileRedFill)
+        case "plugins": return (Palette.tileBlue, Palette.tileBlueFill)
         case "todos": return (Palette.tileGreen, Palette.tileGreenFill)
         case "surface":
             switch row.surfaceType {

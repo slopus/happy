@@ -173,7 +173,7 @@ public final class AgentConnections {
         if signedOut(id) { return nil }
         if let engine = engines[id] { return engine }
         guard let client = agentClient(for: id) else { return nil }
-        let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id), streamHold: streamHold)
+        let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id), cloud: HappyCloud.isCloud(server(for: id)), streamHold: streamHold)
         engines[id] = engine
         if foreground && activeID == id {
             Task { await engine.start() }

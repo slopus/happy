@@ -58,6 +58,7 @@ public actor SyncEngine {
     public nonisolated let lookups: FeedLookups
     /// The Feed's row as home lists it: nil while there is no feed.
     private var feedRow: SidebarRows.FeedRow?
+    private let cloud: Bool
     private var feedFollowing: Task<Void, Never>?
     /// Everything a Feed row can name (`FeedDirectory`), as last made, and
     /// what it is made from beside the bootstrap.
@@ -177,9 +178,11 @@ public actor SyncEngine {
     private var gitInterest: Set<String> = []
     private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
 
-    public init(client: AgentClient, directory: URL?, streamHold: @escaping StreamHold = { _ in nil }, streamHoldDuration: Duration = .seconds(25),
+    /// `cloud`: a Happy Cloud server, which lists its plugins under Artifacts.
+    public init(client: AgentClient, directory: URL?, cloud: Bool = false, streamHold: @escaping StreamHold = { _ in nil }, streamHoldDuration: Duration = .seconds(25),
                 resumeWindow: Duration = .seconds(30), rereadInterval: Duration = .seconds(10)) {
         self.client = client
+        self.cloud = cloud
         self.streamHold = streamHold
         // Held only while a resume from the cursor is still taken (`resumeWindow`).
         self.streamHoldDuration = min(.seconds(25), streamHoldDuration, resumeWindow)
@@ -961,7 +964,7 @@ public actor SyncEngine {
     private func derive(publishing: Bool = true) {
         snapshot.loaded = desktop != nil
         if let desktop {
-            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow))
+            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: cloud))
             agentRows = [:]
             for index in snapshot.allRows.indices {
                 snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }

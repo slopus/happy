@@ -719,6 +719,7 @@ final class HomeViewController: UIViewController {
             return rows.first { ($0.kind == .space || $0.kind == .session) && $0.targetKind != "surface" && $0.agentId == chat.shownAgentId }?.id
         }
         if shown is ArtifactsViewController { return rows.first { $0.targetKind == "artifacts" }?.id }
+        if shown is PluginsViewController { return rows.first { $0.targetKind == "plugins" }?.id }
         if shown is TodoListsViewController { return rows.first { $0.targetKind == "todos" }?.id }
         if shown is FeedViewController { return rows.first { $0.targetKind == "feed" }?.id }
         return nil
@@ -749,6 +750,9 @@ final class HomeViewController: UIViewController {
         case .space where row.targetKind == "artifacts":
             sidebar.selectedRowId = row.id
             show(ArtifactsViewController(session: session), for: row, animated: animated)
+        case .space where row.targetKind == "plugins":
+            sidebar.selectedRowId = row.id
+            show(PluginsViewController(session: session), for: row, animated: animated)
         case .space where row.targetKind == "todos":
             sidebar.selectedRowId = row.id
             show(TodoListsViewController(session: session), for: row, animated: animated)

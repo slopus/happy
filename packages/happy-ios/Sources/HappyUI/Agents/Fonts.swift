@@ -100,6 +100,7 @@ enum Glyphs {
         case "home": .ionicons("home-outline")
         // Desktop's `feed`: Activity, as GitHub draws its pulse.
         case "feed": .octicons("pulse")
+        case "plugin": .ionicons("extension-puzzle-outline")
         default: .ionicons(name)
         }
     }

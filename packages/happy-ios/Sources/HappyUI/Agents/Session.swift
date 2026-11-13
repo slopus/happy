@@ -78,6 +78,8 @@ final class Session {
         return source
     }
     private var madeProfile: ProfileSource?
+    /// A Happy Cloud server's plugins, read while a screen watches.
+    private(set) lazy var plugins = PluginsModel(client: client, store: store)
     private(set) var snapshot = Snapshot()
     private var watchers: [UUID: (Snapshot) -> Void] = [:]
     /// Readable, not settable, so a test can say the follow was let go of
