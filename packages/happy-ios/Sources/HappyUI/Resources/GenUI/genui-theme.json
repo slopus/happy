@@ -1,0 +1,373 @@
+{
+  "genuiTheme": 1,
+  "description": "Colours every Gen UI client uses. Values are #RRGGBB or #RRGGBBAA (alpha last). Surfaces, body text and hairlines are not here: they come from the host app theme.",
+  "tones": {
+    "neutral": {
+      "ink": {
+        "light": "#000000",
+        "dark": "#FFFFFF"
+      },
+      "fill": {
+        "light": "#F0F0F2",
+        "dark": "#2C2C2E"
+      },
+      "text": {
+        "light": "#49454F",
+        "dark": "#CAC4D0"
+      }
+    },
+    "accent": {
+      "ink": {
+        "light": "#007AFF",
+        "dark": "#0A84FF"
+      },
+      "fill": {
+        "light": "#007AFF1F",
+        "dark": "#0A84FF29"
+      },
+      "text": {
+        "light": "#0071ED",
+        "dark": "#0F86FF"
+      }
+    },
+    "success": {
+      "ink": {
+        "light": "#34C759",
+        "dark": "#32D74B"
+      },
+      "fill": {
+        "light": "#34C7591F",
+        "dark": "#32D74B29"
+      },
+      "text": {
+        "light": "#23873D",
+        "dark": "#32D74B"
+      }
+    },
+    "warning": {
+      "ink": {
+        "light": "#FF9500",
+        "dark": "#FF9F0A"
+      },
+      "fill": {
+        "light": "#FF95001F",
+        "dark": "#FF9F0A29"
+      },
+      "text": {
+        "light": "#AD6500",
+        "dark": "#FF9F0A"
+      }
+    },
+    "danger": {
+      "ink": {
+        "light": "#F44336",
+        "dark": "#F48FB1"
+      },
+      "fill": {
+        "light": "#F443361F",
+        "dark": "#F48FB129"
+      },
+      "text": {
+        "light": "#D93C30",
+        "dark": "#F48FB1"
+      }
+    },
+    "muted": {
+      "ink": {
+        "light": "#807D84",
+        "dark": "#97939C"
+      },
+      "fill": {
+        "light": "#F0F0F2",
+        "dark": "#2C2C2E"
+      },
+      "text": {
+        "light": "#77747B",
+        "dark": "#97939C"
+      }
+    }
+  },
+  "colors": {
+    "red": {
+      "ink": {
+        "light": "#FF3B30",
+        "dark": "#FF453A"
+      },
+      "fill": {
+        "light": "#FF3B301F",
+        "dark": "#FF453A29"
+      },
+      "text": {
+        "light": "#DE332A",
+        "dark": "#FF453A"
+      }
+    },
+    "orange": {
+      "ink": {
+        "light": "#FF9500",
+        "dark": "#FF9F0A"
+      },
+      "fill": {
+        "light": "#FF95001F",
+        "dark": "#FF9F0A29"
+      },
+      "text": {
+        "light": "#AD6500",
+        "dark": "#FF9F0A"
+      }
+    },
+    "yellow": {
+      "ink": {
+        "light": "#FFCC00",
+        "dark": "#FFD60A"
+      },
+      "fill": {
+        "light": "#FFCC001F",
+        "dark": "#FFD60A29"
+      },
+      "text": {
+        "light": "#8F7200",
+        "dark": "#FFD60A"
+      }
+    },
+    "green": {
+      "ink": {
+        "light": "#34C759",
+        "dark": "#32D74B"
+      },
+      "fill": {
+        "light": "#34C7591F",
+        "dark": "#32D74B29"
+      },
+      "text": {
+        "light": "#23873D",
+        "dark": "#32D74B"
+      }
+    },
+    "teal": {
+      "ink": {
+        "light": "#2BACCC",
+        "dark": "#2BACCC"
+      },
+      "fill": {
+        "light": "#2BACCC1F",
+        "dark": "#2BACCC29"
+      },
+      "text": {
+        "light": "#208199",
+        "dark": "#2BACCC"
+      }
+    },
+    "cyan": {
+      "ink": {
+        "light": "#32ADE6",
+        "dark": "#64D2FF"
+      },
+      "fill": {
+        "light": "#32ADE61F",
+        "dark": "#64D2FF29"
+      },
+      "text": {
+        "light": "#247EA8",
+        "dark": "#64D2FF"
+      }
+    },
+    "blue": {
+      "ink": {
+        "light": "#007AFF",
+        "dark": "#0A84FF"
+      },
+      "fill": {
+        "light": "#007AFF1F",
+        "dark": "#0A84FF29"
+      },
+      "text": {
+        "light": "#0071ED",
+        "dark": "#0F86FF"
+      }
+    },
+    "indigo": {
+      "ink": {
+        "light": "#5856D6",
+        "dark": "#5E5CE6"
+      },
+      "fill": {
+        "light": "#5856D61F",
+        "dark": "#5E5CE629"
+      },
+      "text": {
+        "light": "#5856D6",
+        "dark": "#7D7BEB"
+      }
+    },
+    "purple": {
+      "ink": {
+        "light": "#AF52DE",
+        "dark": "#BF5AF2"
+      },
+      "fill": {
+        "light": "#AF52DE1F",
+        "dark": "#BF5AF229"
+      },
+      "text": {
+        "light": "#A64ED3",
+        "dark": "#BF5AF2"
+      }
+    },
+    "pink": {
+      "ink": {
+        "light": "#FF2D55",
+        "dark": "#FF375F"
+      },
+      "fill": {
+        "light": "#FF2D551F",
+        "dark": "#FF375F29"
+      },
+      "text": {
+        "light": "#E0284B",
+        "dark": "#FF375F"
+      }
+    },
+    "brown": {
+      "ink": {
+        "light": "#A2845E",
+        "dark": "#AC8E68"
+      },
+      "fill": {
+        "light": "#A2845E1F",
+        "dark": "#AC8E6829"
+      },
+      "text": {
+        "light": "#8B7251",
+        "dark": "#AC8E68"
+      }
+    },
+    "gray": {
+      "ink": {
+        "light": "#8E8E93",
+        "dark": "#98989D"
+      },
+      "fill": {
+        "light": "#8E8E931F",
+        "dark": "#98989D29"
+      },
+      "text": {
+        "light": "#76767A",
+        "dark": "#98989D"
+      }
+    }
+  },
+  "markers": {
+    "done": "success",
+    "failed": "danger",
+    "active": "accent",
+    "pending": "muted"
+  },
+  "chart": {
+    "description": "plot series colour N is palette[(N - 1) % palette.length]; \"muted\" is the de-emphasised series; a colour name is colors[name].ink.",
+    "palette": [
+      {
+        "light": "#007AFF",
+        "dark": "#0A84FF"
+      },
+      {
+        "light": "#2BACCC",
+        "dark": "#2BACCC"
+      },
+      {
+        "light": "#FF9500",
+        "dark": "#FF9F0A"
+      },
+      {
+        "light": "#AF52DE",
+        "dark": "#BF5AF2"
+      },
+      {
+        "light": "#34C759",
+        "dark": "#32D74B"
+      },
+      {
+        "light": "#FF2D55",
+        "dark": "#FF375F"
+      },
+      {
+        "light": "#5856D6",
+        "dark": "#5E5CE6"
+      },
+      {
+        "light": "#FFCC00",
+        "dark": "#FFD60A"
+      }
+    ],
+    "paletteNames": [
+      "blue",
+      "teal",
+      "orange",
+      "purple",
+      "green",
+      "pink",
+      "indigo",
+      "yellow"
+    ],
+    "muted": {
+      "light": "#C7C7CC",
+      "dark": "#48484A"
+    },
+    "grid": {
+      "light": "#EAEAEA",
+      "dark": "#292929"
+    },
+    "axisLabel": {
+      "light": "#807D84",
+      "dark": "#97939C"
+    }
+  },
+  "icons": {
+    "source": "lucide-static@0.460.0",
+    "license": "ISC, see icons/LICENSE",
+    "canvas": 24,
+    "files": "icons/{name}.png (24 px), icons/{name}@2x.png (48 px), icons/{name}@3x.png (72 px), icons/{name}.svg",
+    "format": "Black glyph on a transparent background. Use the alpha channel as a mask and paint it with the tone ink colour; never draw the PNG's own black.",
+    "names": [
+      "alert",
+      "arrow-down",
+      "arrow-down-right",
+      "arrow-right",
+      "arrow-up",
+      "arrow-up-right",
+      "bolt",
+      "bug",
+      "calendar",
+      "chart",
+      "check",
+      "chevron-right",
+      "clock",
+      "code",
+      "copy",
+      "dollar",
+      "download",
+      "file",
+      "folder",
+      "git-branch",
+      "git-commit",
+      "git-pull-request",
+      "globe",
+      "heart",
+      "image",
+      "info",
+      "link",
+      "lock",
+      "map-pin",
+      "pause",
+      "play",
+      "search",
+      "sparkles",
+      "star",
+      "terminal",
+      "upload",
+      "user",
+      "users",
+      "x"
+    ]
+  }
+}

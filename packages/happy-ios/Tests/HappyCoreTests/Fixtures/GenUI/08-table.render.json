@@ -1,0 +1,973 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Benchmark results for 4 models.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "table"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.heading"
+      ]
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Benchmark results"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "SWE-task suite, 200 tasks"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "table": {
+      "type": "box",
+      "props": {
+        "gap": "labeled"
+      },
+      "children": [
+        "table.table",
+        "table.caption"
+      ]
+    },
+    "table.table": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "table.compact"
+        ],
+        "regular": [
+          "table.regular"
+        ]
+      }
+    },
+    "table.compact": {
+      "type": "box",
+      "props": {
+        "gap": "items",
+        "divide": "full"
+      },
+      "children": [
+        "table.compact.0",
+        "table.compact.1",
+        "table.compact.2",
+        "table.compact.3"
+      ]
+    },
+    "table.compact.0": {
+      "type": "box",
+      "props": {
+        "role": "record",
+        "gap": "related"
+      },
+      "children": [
+        "table.compact.0.line",
+        "table.compact.0.fields"
+      ]
+    },
+    "table.compact.0.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "justify": "between"
+      },
+      "children": [
+        "table.compact.0.title",
+        "table.compact.0.badge"
+      ]
+    },
+    "table.compact.0.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Fable 5.2"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.compact.0.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Best",
+        "tone": "success"
+      }
+    },
+    "table.compact.0.fields": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "auto"
+          },
+          {
+            "width": "fill",
+            "align": "end"
+          }
+        ],
+        "density": "pairs"
+      },
+      "children": [
+        "table.compact.0.1.label",
+        "table.compact.0.1.value",
+        "table.compact.0.2.label",
+        "table.compact.0.2.value",
+        "table.compact.0.3.label",
+        "table.compact.0.3.value"
+      ]
+    },
+    "table.compact.0.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Pass rate"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.0.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "81.5%"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.0.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Median time"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.0.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "4m 12s"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.0.3.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Cost / task"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.0.3.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1.84"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.1": {
+      "type": "box",
+      "props": {
+        "role": "record",
+        "gap": "related"
+      },
+      "children": [
+        "table.compact.1.line",
+        "table.compact.1.fields"
+      ]
+    },
+    "table.compact.1.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "justify": "between"
+      },
+      "children": [
+        "table.compact.1.title",
+        "table.compact.1.badge"
+      ]
+    },
+    "table.compact.1.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Opus 5.5"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.compact.1.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Good",
+        "tone": "neutral"
+      }
+    },
+    "table.compact.1.fields": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "auto"
+          },
+          {
+            "width": "fill",
+            "align": "end"
+          }
+        ],
+        "density": "pairs"
+      },
+      "children": [
+        "table.compact.1.1.label",
+        "table.compact.1.1.value",
+        "table.compact.1.2.label",
+        "table.compact.1.2.value",
+        "table.compact.1.3.label",
+        "table.compact.1.3.value"
+      ]
+    },
+    "table.compact.1.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Pass rate"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.1.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "77.0%"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.1.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Median time"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.1.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "5m 03s"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.1.3.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Cost / task"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.1.3.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$2.31"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.2": {
+      "type": "box",
+      "props": {
+        "role": "record",
+        "gap": "related"
+      },
+      "children": [
+        "table.compact.2.line",
+        "table.compact.2.fields"
+      ]
+    },
+    "table.compact.2.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "justify": "between"
+      },
+      "children": [
+        "table.compact.2.title",
+        "table.compact.2.badge"
+      ]
+    },
+    "table.compact.2.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "GPT-6.1 Sol"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.compact.2.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Fastest",
+        "tone": "accent"
+      }
+    },
+    "table.compact.2.fields": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "auto"
+          },
+          {
+            "width": "fill",
+            "align": "end"
+          }
+        ],
+        "density": "pairs"
+      },
+      "children": [
+        "table.compact.2.1.label",
+        "table.compact.2.1.value",
+        "table.compact.2.2.label",
+        "table.compact.2.2.value",
+        "table.compact.2.3.label",
+        "table.compact.2.3.value"
+      ]
+    },
+    "table.compact.2.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Pass rate"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.2.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "76.5%"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.2.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Median time"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.2.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "3m 48s"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.2.3.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Cost / task"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.2.3.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1.52"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.3": {
+      "type": "box",
+      "props": {
+        "role": "record",
+        "gap": "related"
+      },
+      "children": [
+        "table.compact.3.line",
+        "table.compact.3.fields"
+      ]
+    },
+    "table.compact.3.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "justify": "between"
+      },
+      "children": [
+        "table.compact.3.title",
+        "table.compact.3.badge"
+      ]
+    },
+    "table.compact.3.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Grok 4.7"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.compact.3.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Cheapest",
+        "tone": "warning"
+      }
+    },
+    "table.compact.3.fields": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "auto"
+          },
+          {
+            "width": "fill",
+            "align": "end"
+          }
+        ],
+        "density": "pairs"
+      },
+      "children": [
+        "table.compact.3.1.label",
+        "table.compact.3.1.value",
+        "table.compact.3.2.label",
+        "table.compact.3.2.value",
+        "table.compact.3.3.label",
+        "table.compact.3.3.value"
+      ]
+    },
+    "table.compact.3.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Pass rate"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.3.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "68.0%"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.3.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Median time"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.3.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "6m 20s"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.3.3.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Cost / task"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.3.3.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1.10"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "fill"
+          },
+          {
+            "width": "auto",
+            "align": "end"
+          },
+          {
+            "width": "auto",
+            "align": "end"
+          },
+          {
+            "width": "auto",
+            "align": "end"
+          },
+          {
+            "width": "auto"
+          }
+        ],
+        "density": "table",
+        "divide": true,
+        "header": true
+      },
+      "children": [
+        "table.regular.head.0",
+        "table.regular.head.1",
+        "table.regular.head.2",
+        "table.regular.head.3",
+        "table.regular.head.4",
+        "table.regular.0.0",
+        "table.regular.0.1",
+        "table.regular.0.2",
+        "table.regular.0.3",
+        "table.regular.0.4",
+        "table.regular.1.0",
+        "table.regular.1.1",
+        "table.regular.1.2",
+        "table.regular.1.3",
+        "table.regular.1.4",
+        "table.regular.2.0",
+        "table.regular.2.1",
+        "table.regular.2.2",
+        "table.regular.2.3",
+        "table.regular.2.4",
+        "table.regular.3.0",
+        "table.regular.3.1",
+        "table.regular.3.2",
+        "table.regular.3.3",
+        "table.regular.3.4"
+      ]
+    },
+    "table.regular.head.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Model"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.head.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Pass rate"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.head.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Median time"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.head.3": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Cost / task"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.head.4": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Verdict"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.0.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Fable 5.2"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.regular.0.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "81.5%"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.0.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "4m 12s"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.0.3": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1.84"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.0.4": {
+      "type": "pill",
+      "props": {
+        "text": "Best",
+        "tone": "success"
+      }
+    },
+    "table.regular.1.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Opus 5.5"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.regular.1.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "77.0%"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.1.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "5m 03s"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.1.3": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$2.31"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.1.4": {
+      "type": "pill",
+      "props": {
+        "text": "Good",
+        "tone": "neutral"
+      }
+    },
+    "table.regular.2.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "GPT-6.1 Sol"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.regular.2.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "76.5%"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.2.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "3m 48s"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.2.3": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1.52"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.2.4": {
+      "type": "pill",
+      "props": {
+        "text": "Fastest",
+        "tone": "accent"
+      }
+    },
+    "table.regular.3.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Grok 4.7"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.regular.3.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "68.0%"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.3.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "6m 20s"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.3.3": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1.10"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.3.4": {
+      "type": "pill",
+      "props": {
+        "text": "Cheapest",
+        "tone": "warning"
+      }
+    },
+    "table.caption": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Run on Nov 11 with default effort."
+          }
+        ],
+        "role": "note"
+      }
+    }
+  }
+}

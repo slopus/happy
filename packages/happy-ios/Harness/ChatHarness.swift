@@ -80,6 +80,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var realVault: RealVaultHarness?
     private var agentTools: AgentToolsHarness?
     private var splitApp: SplitAppHarness?
+    private var genUI: GenUIHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -93,6 +94,18 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if arguments.contains("-chatDark") { window.overrideUserInterfaceStyle = .dark }
         if arguments.contains("-chatLight") { window.overrideUserInterfaceStyle = .light }
         #if DEBUG || HAPPY_FIXTURES
+        if let index = arguments.firstIndex(of: "-genui"), arguments.indices.contains(index + 1) {
+            genUI = GenUIHarness(window: window, fixture: arguments[index + 1])
+            return
+        }
+        if let index = arguments.firstIndex(of: "-genuiFile"), arguments.indices.contains(index + 1) {
+            genUI = GenUIHarness(window: window, file: arguments[index + 1])
+            return
+        }
+        if let index = arguments.firstIndex(of: "-genuiFixtures") {
+            GenUIHarness.fixtures(window: window, open: arguments.indices.contains(index + 1) ? arguments[index + 1] : nil)
+            return
+        }
         if arguments.contains("-homeScrollDiagnostic") {
             homeScrollDiagnostic = HomeScrollDiagnosticHarness(window: window, arguments: arguments)
             return

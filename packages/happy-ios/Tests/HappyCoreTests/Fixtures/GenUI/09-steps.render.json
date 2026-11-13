@@ -1,0 +1,452 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Deploy in progress: build and tests done, migrating database, rollout pending.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "steps",
+        "callout",
+        "card.actions"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading",
+        "card.badge"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "bolt",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Deploy to production"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy-server · v2.41.0"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "card.badge": {
+      "type": "pill",
+      "props": {
+        "text": "In progress",
+        "tone": "accent"
+      }
+    },
+    "steps": {
+      "type": "box",
+      "props": {
+        "gap": "items"
+      },
+      "children": [
+        "steps.0",
+        "steps.1",
+        "steps.2",
+        "steps.3",
+        "steps.4"
+      ]
+    },
+    "steps.0": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.0.marker",
+        "steps.0.texts",
+        "steps.0.time"
+      ]
+    },
+    "steps.0.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.0.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.0.title",
+        "steps.0.detail"
+      ]
+    },
+    "steps.0.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Build image"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.0.detail": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "sha 9f3c2e1, 412 MB"
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "steps.0.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1m 08s"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "steps.1": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.1.marker",
+        "steps.1.texts",
+        "steps.1.time"
+      ]
+    },
+    "steps.1.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.1.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.1.title",
+        "steps.1.detail"
+      ]
+    },
+    "steps.1.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Run tests"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.1.detail": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1,284 passed, 3 skipped"
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "steps.1.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "3m 41s"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "steps.2": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.2.marker",
+        "steps.2.texts",
+        "steps.2.time"
+      ]
+    },
+    "steps.2.marker": {
+      "type": "marker",
+      "props": {
+        "status": "active",
+        "rail": true
+      }
+    },
+    "steps.2.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.2.title",
+        "steps.2.detail"
+      ]
+    },
+    "steps.2.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Migrate database"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.2.detail": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Applying 2 of 3 migrations"
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "steps.2.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "0m 22s"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "steps.3": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.3.marker",
+        "steps.3.texts"
+      ]
+    },
+    "steps.3.marker": {
+      "type": "marker",
+      "props": {
+        "status": "pending",
+        "rail": true
+      }
+    },
+    "steps.3.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.3.title"
+      ]
+    },
+    "steps.3.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Roll out to 10%"
+          }
+        ],
+        "role": "item",
+        "tone": "muted"
+      }
+    },
+    "steps.4": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.4.marker",
+        "steps.4.texts"
+      ]
+    },
+    "steps.4.marker": {
+      "type": "marker",
+      "props": {
+        "status": "pending"
+      }
+    },
+    "steps.4.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.4.title"
+      ]
+    },
+    "steps.4.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Roll out to 100%"
+          }
+        ],
+        "role": "item",
+        "tone": "muted"
+      }
+    },
+    "callout": {
+      "type": "box",
+      "props": {
+        "role": "notice",
+        "tone": "warning",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "callout.icon",
+        "callout.text"
+      ]
+    },
+    "callout.icon": {
+      "type": "icon",
+      "props": {
+        "name": "alert",
+        "tone": "warning",
+        "role": "leading"
+      }
+    },
+    "callout.text": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Long migration",
+            "strong": true
+          },
+          {
+            "text": " "
+          },
+          {
+            "text": "add_index_sessions_updated_at",
+            "code": true
+          },
+          {
+            "text": " locks writes for about 40 seconds."
+          }
+        ],
+        "role": "body"
+      }
+    },
+    "card.actions": {
+      "type": "box",
+      "props": {
+        "role": "actions",
+        "direction": "row",
+        "gap": "inline",
+        "wrap": true
+      },
+      "children": [
+        "button",
+        "button-2"
+      ]
+    },
+    "button": {
+      "type": "button",
+      "props": {
+        "label": "Pause rollout",
+        "action": {
+          "type": "message",
+          "text": "Pause rollout"
+        },
+        "variant": "secondary"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "props": {
+        "label": "Abort",
+        "action": {
+          "type": "message",
+          "text": "Abort"
+        },
+        "variant": "secondary",
+        "tone": "danger"
+      }
+    }
+  }
+}

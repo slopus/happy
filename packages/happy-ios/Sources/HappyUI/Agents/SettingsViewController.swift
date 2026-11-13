@@ -779,7 +779,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func aboutRows() -> [SettingsRow] {
         typealias Row = SettingsRow
         typealias Index = SettingsIndex
-        return [
+        return ([
             Row(Index.whatsNew, action: { [weak self] in self?.show(ChangelogViewController()) }),
             Row(Index.githubRepo, value: Strings.Links.githubDetail, action: { [weak self] in self?.openBrowser(Strings.Links.github) }),
             Row(Index.reportIssue, action: { [weak self] in self?.openBrowser(Strings.Links.issues) }),
@@ -787,7 +787,13 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             Row(Index.terms, action: { [weak self] in self?.openBrowser(Strings.Links.terms) }),
             Row(Index.eula, action: { [weak self] in self?.openBrowser(Strings.Links.eula) }),
             Row(Index.version, value: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
-        ].withFooter(aboutFooter)
+        ] + developerRows()).withFooter(aboutFooter)
+    }
+
+    /// Developer mode's own rows, after Version, in English only.
+    private func developerRows() -> [SettingsRow] {
+        guard context.account.localSettings.devModeEnabled else { return [] }
+        return [SettingsRow(id: "genui-fixtures", title: "Gen UI fixtures", action: { [weak self] in self?.show(GenUIFixturesViewController()) })]
     }
 
     /// A Happy Cloud server's AI providers: the connections its chats run on.
@@ -994,6 +1000,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         let enabled = !context.account.localSettings.devModeEnabled
         context.account.localSettings.devModeEnabled = enabled
         Alerts.show(Strings.Modals.developerMode, enabled ? Strings.Modals.developerModeEnabled : Strings.Modals.developerModeDisabled, on: self)
+        rebuild()
     }
 
     /// A Happy account's page, once that account is the active one.

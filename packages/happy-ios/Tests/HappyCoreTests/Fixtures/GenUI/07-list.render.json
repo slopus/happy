@@ -1,0 +1,1011 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "4 open pull requests need your review.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "list",
+        "card.actions"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Needs your review"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "4 pull requests"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "list": {
+      "type": "box",
+      "props": {
+        "gap": "items",
+        "divide": "inset",
+        "leading": "icon"
+      },
+      "children": [
+        "list.0",
+        "list.1",
+        "list.2",
+        "list.3"
+      ]
+    },
+    "list.0": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "open",
+          "url": "https://github.com/slopus/happy-agent/pull/2314"
+        },
+        "role": "item"
+      },
+      "children": [
+        "list.0.switch"
+      ]
+    },
+    "list.0.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.0.compact"
+        ],
+        "regular": [
+          "list.0.regular"
+        ]
+      }
+    },
+    "list.0.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "list.0.compact.icon",
+        "list.0.compact.texts",
+        "list.0.compact.chevron"
+      ]
+    },
+    "list.0.compact.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "tone": "success",
+        "role": "leading"
+      }
+    },
+    "list.0.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.0.compact.line",
+        "list.0.compact.subline"
+      ]
+    },
+    "list.0.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.0.compact.title",
+        "list.0.compact.trailing"
+      ]
+    },
+    "list.0.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Fix reconnect loop after sleep"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.0.compact.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2h"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.0.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.0.compact.subtitle",
+        "list.0.compact.badge"
+      ]
+    },
+    "list.0.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy-agent · #2314 · kirill"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.0.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Checks pass",
+        "tone": "success"
+      }
+    },
+    "list.0.compact.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.0.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "list.0.regular.icon",
+        "list.0.regular.texts",
+        "list.0.regular.badge",
+        "list.0.regular.trailing",
+        "list.0.regular.chevron"
+      ]
+    },
+    "list.0.regular.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "tone": "success",
+        "role": "leading"
+      }
+    },
+    "list.0.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.0.regular.title",
+        "list.0.regular.subtitle"
+      ]
+    },
+    "list.0.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Fix reconnect loop after sleep"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.0.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy-agent · #2314 · kirill"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.0.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Checks pass",
+        "tone": "success"
+      }
+    },
+    "list.0.regular.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2h"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.0.regular.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.1": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "open",
+          "url": "https://github.com/slopus/happy-agent/pull/2309"
+        },
+        "role": "item"
+      },
+      "children": [
+        "list.1.switch"
+      ]
+    },
+    "list.1.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.1.compact"
+        ],
+        "regular": [
+          "list.1.regular"
+        ]
+      }
+    },
+    "list.1.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "list.1.compact.icon",
+        "list.1.compact.texts",
+        "list.1.compact.chevron"
+      ]
+    },
+    "list.1.compact.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "tone": "warning",
+        "role": "leading"
+      }
+    },
+    "list.1.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.1.compact.line",
+        "list.1.compact.subline"
+      ]
+    },
+    "list.1.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.1.compact.title",
+        "list.1.compact.trailing"
+      ]
+    },
+    "list.1.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Stream tool output in chunks"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.1.compact.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "5h"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.1.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.1.compact.subtitle",
+        "list.1.compact.badge"
+      ]
+    },
+    "list.1.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy-agent · #2309 · steve"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.1.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "2 failing",
+        "tone": "danger"
+      }
+    },
+    "list.1.compact.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.1.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "list.1.regular.icon",
+        "list.1.regular.texts",
+        "list.1.regular.badge",
+        "list.1.regular.trailing",
+        "list.1.regular.chevron"
+      ]
+    },
+    "list.1.regular.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "tone": "warning",
+        "role": "leading"
+      }
+    },
+    "list.1.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.1.regular.title",
+        "list.1.regular.subtitle"
+      ]
+    },
+    "list.1.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Stream tool output in chunks"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.1.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy-agent · #2309 · steve"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.1.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "2 failing",
+        "tone": "danger"
+      }
+    },
+    "list.1.regular.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "5h"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.1.regular.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.2": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "open",
+          "url": "https://github.com/slopus/happy-desktop/pull/988"
+        },
+        "role": "item"
+      },
+      "children": [
+        "list.2.switch"
+      ]
+    },
+    "list.2.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.2.compact"
+        ],
+        "regular": [
+          "list.2.regular"
+        ]
+      }
+    },
+    "list.2.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "list.2.compact.icon",
+        "list.2.compact.texts",
+        "list.2.compact.chevron"
+      ]
+    },
+    "list.2.compact.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "tone": "success",
+        "role": "leading"
+      }
+    },
+    "list.2.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.2.compact.line",
+        "list.2.compact.subline"
+      ]
+    },
+    "list.2.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.2.compact.title",
+        "list.2.compact.trailing"
+      ]
+    },
+    "list.2.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "New artifact cover layout"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.2.compact.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.2.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.2.compact.subtitle",
+        "list.2.compact.badge"
+      ]
+    },
+    "list.2.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy-desktop · #988 · anna"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.2.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Checks pass",
+        "tone": "success"
+      }
+    },
+    "list.2.compact.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.2.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "list.2.regular.icon",
+        "list.2.regular.texts",
+        "list.2.regular.badge",
+        "list.2.regular.trailing",
+        "list.2.regular.chevron"
+      ]
+    },
+    "list.2.regular.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "tone": "success",
+        "role": "leading"
+      }
+    },
+    "list.2.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.2.regular.title",
+        "list.2.regular.subtitle"
+      ]
+    },
+    "list.2.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "New artifact cover layout"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.2.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy-desktop · #988 · anna"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.2.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Checks pass",
+        "tone": "success"
+      }
+    },
+    "list.2.regular.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.2.regular.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.3": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "open",
+          "url": "https://github.com/slopus/happy/pull/4120"
+        },
+        "role": "item"
+      },
+      "children": [
+        "list.3.switch"
+      ]
+    },
+    "list.3.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.3.compact"
+        ],
+        "regular": [
+          "list.3.regular"
+        ]
+      }
+    },
+    "list.3.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "list.3.compact.icon",
+        "list.3.compact.texts",
+        "list.3.compact.chevron"
+      ]
+    },
+    "list.3.compact.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "role": "leading"
+      }
+    },
+    "list.3.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.3.compact.line",
+        "list.3.compact.subline"
+      ]
+    },
+    "list.3.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.3.compact.title",
+        "list.3.compact.trailing"
+      ]
+    },
+    "list.3.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Bump Compose to 1.9"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.3.compact.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "3d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.3.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.3.compact.subtitle",
+        "list.3.compact.badge"
+      ]
+    },
+    "list.3.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy · #4120 · dependabot"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.3.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Draft"
+      }
+    },
+    "list.3.compact.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.3.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "list.3.regular.icon",
+        "list.3.regular.texts",
+        "list.3.regular.badge",
+        "list.3.regular.trailing",
+        "list.3.regular.chevron"
+      ]
+    },
+    "list.3.regular.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-pull-request",
+        "role": "leading"
+      }
+    },
+    "list.3.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.3.regular.title",
+        "list.3.regular.subtitle"
+      ]
+    },
+    "list.3.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Bump Compose to 1.9"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.3.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy · #4120 · dependabot"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.3.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Draft"
+      }
+    },
+    "list.3.regular.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "3d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.3.regular.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "card.actions": {
+      "type": "box",
+      "props": {
+        "role": "actions",
+        "direction": "row",
+        "gap": "inline",
+        "wrap": true
+      },
+      "children": [
+        "button",
+        "button-2"
+      ]
+    },
+    "button": {
+      "type": "button",
+      "props": {
+        "label": "Review the first one",
+        "action": {
+          "type": "message",
+          "text": "Review the first one"
+        },
+        "variant": "primary"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "props": {
+        "label": "Summarize all",
+        "action": {
+          "type": "message",
+          "text": "Summarize all"
+        },
+        "variant": "secondary"
+      }
+    }
+  }
+}

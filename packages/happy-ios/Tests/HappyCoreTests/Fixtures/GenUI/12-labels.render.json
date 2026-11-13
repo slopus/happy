@@ -1,0 +1,722 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "This week's issues by area: 5 in Desktop, 3 in Mobile, 2 in Daemon. Desktop opened the most issues each week.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "list",
+        "chart"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "bug",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Issues by area"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "This week"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "list": {
+      "type": "box",
+      "props": {
+        "gap": "items",
+        "divide": "inset",
+        "leading": "none"
+      },
+      "children": [
+        "list.0.switch",
+        "list.1.switch",
+        "list.2.switch"
+      ]
+    },
+    "list.0.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.0.compact"
+        ],
+        "regular": [
+          "list.0.regular"
+        ]
+      }
+    },
+    "list.0.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "none"
+      },
+      "children": [
+        "list.0.compact.texts"
+      ]
+    },
+    "list.0.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.0.compact.line",
+        "list.0.compact.subline"
+      ]
+    },
+    "list.0.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.0.compact.title",
+        "list.0.compact.trailing"
+      ]
+    },
+    "list.0.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Sidebar loses its scroll position"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.0.compact.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.0.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.0.compact.subtitle",
+        "list.0.compact.badge"
+      ]
+    },
+    "list.0.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "#812 · opened by dana"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.0.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Desktop",
+        "tone": "blue"
+      }
+    },
+    "list.0.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "none"
+      },
+      "children": [
+        "list.0.regular.texts",
+        "list.0.regular.badge",
+        "list.0.regular.trailing"
+      ]
+    },
+    "list.0.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.0.regular.title",
+        "list.0.regular.subtitle"
+      ]
+    },
+    "list.0.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Sidebar loses its scroll position"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.0.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "#812 · opened by dana"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.0.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Desktop",
+        "tone": "blue"
+      }
+    },
+    "list.0.regular.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.1.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.1.compact"
+        ],
+        "regular": [
+          "list.1.regular"
+        ]
+      }
+    },
+    "list.1.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "none"
+      },
+      "children": [
+        "list.1.compact.texts"
+      ]
+    },
+    "list.1.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.1.compact.line",
+        "list.1.compact.subline"
+      ]
+    },
+    "list.1.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.1.compact.title",
+        "list.1.compact.trailing"
+      ]
+    },
+    "list.1.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Push notifications arrive twice"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.1.compact.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.1.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.1.compact.subtitle",
+        "list.1.compact.badge"
+      ]
+    },
+    "list.1.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "#809 · opened by sam"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.1.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Mobile",
+        "tone": "purple"
+      }
+    },
+    "list.1.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "none"
+      },
+      "children": [
+        "list.1.regular.texts",
+        "list.1.regular.badge",
+        "list.1.regular.trailing"
+      ]
+    },
+    "list.1.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.1.regular.title",
+        "list.1.regular.subtitle"
+      ]
+    },
+    "list.1.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Push notifications arrive twice"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.1.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "#809 · opened by sam"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.1.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Mobile",
+        "tone": "purple"
+      }
+    },
+    "list.1.regular.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.2.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.2.compact"
+        ],
+        "regular": [
+          "list.2.regular"
+        ]
+      }
+    },
+    "list.2.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "none"
+      },
+      "children": [
+        "list.2.compact.texts"
+      ]
+    },
+    "list.2.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.2.compact.line",
+        "list.2.compact.subline"
+      ]
+    },
+    "list.2.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.2.compact.title",
+        "list.2.compact.trailing"
+      ]
+    },
+    "list.2.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Slow start with many workspaces"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.2.compact.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "4d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.2.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.2.compact.subtitle",
+        "list.2.compact.badge"
+      ]
+    },
+    "list.2.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "#801 · opened by lee"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.2.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Daemon",
+        "tone": "teal"
+      }
+    },
+    "list.2.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "none"
+      },
+      "children": [
+        "list.2.regular.texts",
+        "list.2.regular.badge",
+        "list.2.regular.trailing"
+      ]
+    },
+    "list.2.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.2.regular.title",
+        "list.2.regular.subtitle"
+      ]
+    },
+    "list.2.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Slow start with many workspaces"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.2.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "#801 · opened by lee"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.2.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Daemon",
+        "tone": "teal"
+      }
+    },
+    "list.2.regular.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "4d"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "chart": {
+      "type": "box",
+      "props": {
+        "gap": "labeled"
+      },
+      "children": [
+        "chart.plot",
+        "chart.caption"
+      ]
+    },
+    "chart.plot": {
+      "type": "plot",
+      "props": {
+        "kind": "bar",
+        "x": [
+          "Week 1",
+          "Week 2",
+          "Week 3"
+        ],
+        "y": {
+          "min": 0,
+          "max": 6,
+          "ticks": [
+            {
+              "value": 0,
+              "label": "0"
+            },
+            {
+              "value": 2,
+              "label": "2"
+            },
+            {
+              "value": 4,
+              "label": "4"
+            },
+            {
+              "value": 6,
+              "label": "6"
+            }
+          ]
+        },
+        "series": [
+          {
+            "name": "Desktop",
+            "values": [
+              4,
+              6,
+              5
+            ],
+            "labels": [
+              "4",
+              "6",
+              "5"
+            ],
+            "color": "blue"
+          },
+          {
+            "name": "Mobile",
+            "values": [
+              2,
+              3,
+              3
+            ],
+            "labels": [
+              "2",
+              "3",
+              "3"
+            ],
+            "color": "purple"
+          },
+          {
+            "name": "Daemon",
+            "values": [
+              1,
+              1,
+              2
+            ],
+            "labels": [
+              "1",
+              "1",
+              "2"
+            ],
+            "color": "teal"
+          }
+        ],
+        "legend": [
+          {
+            "label": "Desktop",
+            "color": "blue"
+          },
+          {
+            "label": "Mobile",
+            "color": "purple"
+          },
+          {
+            "label": "Daemon",
+            "color": "teal"
+          }
+        ],
+        "summary": "Bar chart, Week 1 to Week 3. Desktop: Week 1 4, Week 2 6, Week 3 5. Mobile: Week 1 2, Week 2 3, Week 3 3. Daemon: Week 1 1, Week 2 1, Week 3 2."
+      }
+    },
+    "chart.caption": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "New issues per week, by area"
+          }
+        ],
+        "role": "note"
+      }
+    }
+  }
+}

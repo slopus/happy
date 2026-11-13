@@ -1,0 +1,1194 @@
+{
+ "genuiRender": 1,
+ "compiler": "1.0.0",
+ "fallback": "All 39 icons, the six tones, the twelve raw colours and the eight chart colours.",
+ "root": "card",
+ "viewers": {},
+ "elements": {
+  "card": {
+   "type": "box",
+   "props": {
+    "role": "card",
+    "gap": "blocks"
+   },
+   "children": [
+    "card.header",
+    "icons",
+    "tones",
+    "inks",
+    "colors",
+    "colorInks",
+    "bars",
+    "donut"
+   ]
+  },
+  "card.header": {
+   "type": "box",
+   "props": {
+    "role": "header",
+    "direction": "row",
+    "justify": "between",
+    "align": "center"
+   },
+   "children": [
+    "card.title"
+   ]
+  },
+  "card.title": {
+   "type": "text",
+   "props": {
+    "role": "title",
+    "spans": [
+     {
+      "text": "Icons and colours"
+     }
+    ]
+   }
+  },
+  "icons": {
+   "type": "box",
+   "props": {
+    "direction": "row",
+    "gap": "inline",
+    "wrap": true
+   },
+   "children": [
+    "icons.check",
+    "icons.x",
+    "icons.alert",
+    "icons.info",
+    "icons.clock",
+    "icons.calendar",
+    "icons.user",
+    "icons.users",
+    "icons.file",
+    "icons.folder",
+    "icons.code",
+    "icons.terminal",
+    "icons.git-branch",
+    "icons.git-commit",
+    "icons.git-pull-request",
+    "icons.link",
+    "icons.search",
+    "icons.star",
+    "icons.heart",
+    "icons.download",
+    "icons.upload",
+    "icons.play",
+    "icons.pause",
+    "icons.image",
+    "icons.chart",
+    "icons.globe",
+    "icons.bolt",
+    "icons.bug",
+    "icons.lock",
+    "icons.sparkles",
+    "icons.arrow-right",
+    "icons.arrow-up-right",
+    "icons.arrow-up",
+    "icons.arrow-down",
+    "icons.arrow-down-right",
+    "icons.chevron-right",
+    "icons.dollar",
+    "icons.map-pin",
+    "icons.copy"
+   ]
+  },
+  "icons.check": {
+   "type": "icon",
+   "props": {
+    "name": "check",
+    "role": "leading"
+   }
+  },
+  "icons.x": {
+   "type": "icon",
+   "props": {
+    "name": "x",
+    "role": "leading"
+   }
+  },
+  "icons.alert": {
+   "type": "icon",
+   "props": {
+    "name": "alert",
+    "role": "leading"
+   }
+  },
+  "icons.info": {
+   "type": "icon",
+   "props": {
+    "name": "info",
+    "role": "leading"
+   }
+  },
+  "icons.clock": {
+   "type": "icon",
+   "props": {
+    "name": "clock",
+    "role": "leading"
+   }
+  },
+  "icons.calendar": {
+   "type": "icon",
+   "props": {
+    "name": "calendar",
+    "role": "leading"
+   }
+  },
+  "icons.user": {
+   "type": "icon",
+   "props": {
+    "name": "user",
+    "role": "leading"
+   }
+  },
+  "icons.users": {
+   "type": "icon",
+   "props": {
+    "name": "users",
+    "role": "leading"
+   }
+  },
+  "icons.file": {
+   "type": "icon",
+   "props": {
+    "name": "file",
+    "role": "leading"
+   }
+  },
+  "icons.folder": {
+   "type": "icon",
+   "props": {
+    "name": "folder",
+    "role": "leading"
+   }
+  },
+  "icons.code": {
+   "type": "icon",
+   "props": {
+    "name": "code",
+    "role": "leading"
+   }
+  },
+  "icons.terminal": {
+   "type": "icon",
+   "props": {
+    "name": "terminal",
+    "role": "leading"
+   }
+  },
+  "icons.git-branch": {
+   "type": "icon",
+   "props": {
+    "name": "git-branch",
+    "role": "leading"
+   }
+  },
+  "icons.git-commit": {
+   "type": "icon",
+   "props": {
+    "name": "git-commit",
+    "role": "leading"
+   }
+  },
+  "icons.git-pull-request": {
+   "type": "icon",
+   "props": {
+    "name": "git-pull-request",
+    "role": "leading"
+   }
+  },
+  "icons.link": {
+   "type": "icon",
+   "props": {
+    "name": "link",
+    "role": "leading"
+   }
+  },
+  "icons.search": {
+   "type": "icon",
+   "props": {
+    "name": "search",
+    "role": "leading"
+   }
+  },
+  "icons.star": {
+   "type": "icon",
+   "props": {
+    "name": "star",
+    "role": "leading"
+   }
+  },
+  "icons.heart": {
+   "type": "icon",
+   "props": {
+    "name": "heart",
+    "role": "leading"
+   }
+  },
+  "icons.download": {
+   "type": "icon",
+   "props": {
+    "name": "download",
+    "role": "leading"
+   }
+  },
+  "icons.upload": {
+   "type": "icon",
+   "props": {
+    "name": "upload",
+    "role": "leading"
+   }
+  },
+  "icons.play": {
+   "type": "icon",
+   "props": {
+    "name": "play",
+    "role": "leading"
+   }
+  },
+  "icons.pause": {
+   "type": "icon",
+   "props": {
+    "name": "pause",
+    "role": "leading"
+   }
+  },
+  "icons.image": {
+   "type": "icon",
+   "props": {
+    "name": "image",
+    "role": "leading"
+   }
+  },
+  "icons.chart": {
+   "type": "icon",
+   "props": {
+    "name": "chart",
+    "role": "leading"
+   }
+  },
+  "icons.globe": {
+   "type": "icon",
+   "props": {
+    "name": "globe",
+    "role": "leading"
+   }
+  },
+  "icons.bolt": {
+   "type": "icon",
+   "props": {
+    "name": "bolt",
+    "role": "leading"
+   }
+  },
+  "icons.bug": {
+   "type": "icon",
+   "props": {
+    "name": "bug",
+    "role": "leading"
+   }
+  },
+  "icons.lock": {
+   "type": "icon",
+   "props": {
+    "name": "lock",
+    "role": "leading"
+   }
+  },
+  "icons.sparkles": {
+   "type": "icon",
+   "props": {
+    "name": "sparkles",
+    "role": "leading"
+   }
+  },
+  "icons.arrow-right": {
+   "type": "icon",
+   "props": {
+    "name": "arrow-right",
+    "role": "leading"
+   }
+  },
+  "icons.arrow-up-right": {
+   "type": "icon",
+   "props": {
+    "name": "arrow-up-right",
+    "role": "leading"
+   }
+  },
+  "icons.arrow-up": {
+   "type": "icon",
+   "props": {
+    "name": "arrow-up",
+    "role": "leading"
+   }
+  },
+  "icons.arrow-down": {
+   "type": "icon",
+   "props": {
+    "name": "arrow-down",
+    "role": "leading"
+   }
+  },
+  "icons.arrow-down-right": {
+   "type": "icon",
+   "props": {
+    "name": "arrow-down-right",
+    "role": "leading"
+   }
+  },
+  "icons.chevron-right": {
+   "type": "icon",
+   "props": {
+    "name": "chevron-right",
+    "role": "leading"
+   }
+  },
+  "icons.dollar": {
+   "type": "icon",
+   "props": {
+    "name": "dollar",
+    "role": "leading"
+   }
+  },
+  "icons.map-pin": {
+   "type": "icon",
+   "props": {
+    "name": "map-pin",
+    "role": "leading"
+   }
+  },
+  "tones": {
+   "type": "box",
+   "props": {
+    "direction": "row",
+    "gap": "inline",
+    "wrap": true
+   },
+   "children": [
+    "tones.neutral",
+    "tones.accent",
+    "tones.success",
+    "tones.warning",
+    "tones.danger",
+    "tones.muted"
+   ]
+  },
+  "tones.neutral": {
+   "type": "pill",
+   "props": {
+    "text": "Neutral",
+    "tone": "neutral",
+    "icon": "star"
+   }
+  },
+  "tones.accent": {
+   "type": "pill",
+   "props": {
+    "text": "Accent",
+    "tone": "accent",
+    "icon": "star"
+   }
+  },
+  "tones.success": {
+   "type": "pill",
+   "props": {
+    "text": "Success",
+    "tone": "success",
+    "icon": "star"
+   }
+  },
+  "tones.warning": {
+   "type": "pill",
+   "props": {
+    "text": "Warning",
+    "tone": "warning",
+    "icon": "star"
+   }
+  },
+  "tones.danger": {
+   "type": "pill",
+   "props": {
+    "text": "Danger",
+    "tone": "danger",
+    "icon": "star"
+   }
+  },
+  "tones.muted": {
+   "type": "pill",
+   "props": {
+    "text": "Muted",
+    "tone": "muted",
+    "icon": "star"
+   }
+  },
+  "inks": {
+   "type": "box",
+   "props": {
+    "direction": "row",
+    "gap": "inline",
+    "wrap": true,
+    "align": "center"
+   },
+   "children": [
+    "inks.neutral.icon",
+    "inks.neutral.text",
+    "inks.accent.icon",
+    "inks.accent.text",
+    "inks.success.icon",
+    "inks.success.text",
+    "inks.warning.icon",
+    "inks.warning.text",
+    "inks.danger.icon",
+    "inks.danger.text",
+    "inks.muted.icon",
+    "inks.muted.text"
+   ]
+  },
+  "inks.neutral.icon": {
+   "type": "icon",
+   "props": {
+    "name": "bolt",
+    "tone": "neutral",
+    "role": "inline"
+   }
+  },
+  "inks.neutral.text": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "spans": [
+     {
+      "text": "neutral"
+     }
+    ],
+    "tone": "neutral",
+    "fixed": true
+   }
+  },
+  "inks.accent.icon": {
+   "type": "icon",
+   "props": {
+    "name": "bolt",
+    "tone": "accent",
+    "role": "inline"
+   }
+  },
+  "inks.accent.text": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "spans": [
+     {
+      "text": "accent"
+     }
+    ],
+    "tone": "accent",
+    "fixed": true
+   }
+  },
+  "inks.success.icon": {
+   "type": "icon",
+   "props": {
+    "name": "bolt",
+    "tone": "success",
+    "role": "inline"
+   }
+  },
+  "inks.success.text": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "spans": [
+     {
+      "text": "success"
+     }
+    ],
+    "tone": "success",
+    "fixed": true
+   }
+  },
+  "inks.warning.icon": {
+   "type": "icon",
+   "props": {
+    "name": "bolt",
+    "tone": "warning",
+    "role": "inline"
+   }
+  },
+  "inks.warning.text": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "spans": [
+     {
+      "text": "warning"
+     }
+    ],
+    "tone": "warning",
+    "fixed": true
+   }
+  },
+  "inks.danger.icon": {
+   "type": "icon",
+   "props": {
+    "name": "bolt",
+    "tone": "danger",
+    "role": "inline"
+   }
+  },
+  "inks.danger.text": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "spans": [
+     {
+      "text": "danger"
+     }
+    ],
+    "tone": "danger",
+    "fixed": true
+   }
+  },
+  "inks.muted.icon": {
+   "type": "icon",
+   "props": {
+    "name": "bolt",
+    "tone": "muted",
+    "role": "inline"
+   }
+  },
+  "inks.muted.text": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "spans": [
+     {
+      "text": "muted"
+     }
+    ],
+    "tone": "muted",
+    "fixed": true
+   }
+  },
+  "bars": {
+   "type": "plot",
+   "props": {
+    "kind": "bar",
+    "x": [
+     "A",
+     "B"
+    ],
+    "y": {
+     "min": 0,
+     "max": 10,
+     "ticks": [
+      {
+       "value": 0,
+       "label": "0"
+      },
+      {
+       "value": 5,
+       "label": "5"
+      },
+      {
+       "value": 10,
+       "label": "10"
+      }
+     ]
+    },
+    "series": [
+     {
+      "name": "S1",
+      "values": [
+       2,
+       10
+      ],
+      "labels": [
+       "2",
+       "10"
+      ],
+      "color": 1
+     },
+     {
+      "name": "S2",
+      "values": [
+       3,
+       9
+      ],
+      "labels": [
+       "3",
+       "9"
+      ],
+      "color": 2
+     },
+     {
+      "name": "S3",
+      "values": [
+       4,
+       8
+      ],
+      "labels": [
+       "4",
+       "8"
+      ],
+      "color": 3
+     },
+     {
+      "name": "S4",
+      "values": [
+       5,
+       7
+      ],
+      "labels": [
+       "5",
+       "7"
+      ],
+      "color": 4
+     },
+     {
+      "name": "S5",
+      "values": [
+       6,
+       6
+      ],
+      "labels": [
+       "6",
+       "6"
+      ],
+      "color": 5
+     },
+     {
+      "name": "S6",
+      "values": [
+       7,
+       5
+      ],
+      "labels": [
+       "7",
+       "5"
+      ],
+      "color": 6
+     },
+     {
+      "name": "S7",
+      "values": [
+       8,
+       4
+      ],
+      "labels": [
+       "8",
+       "4"
+      ],
+      "color": 7
+     },
+     {
+      "name": "S8",
+      "values": [
+       9,
+       3
+      ],
+      "labels": [
+       "9",
+       "3"
+      ],
+      "color": 8
+     },
+     {
+      "name": "Muted",
+      "values": [
+       4,
+       4
+      ],
+      "labels": [
+       "4",
+       "4"
+      ],
+      "color": "muted"
+     },
+     {
+      "name": "Brown",
+      "values": [
+       3,
+       6
+      ],
+      "labels": [
+       "3",
+       "6"
+      ],
+      "color": "brown"
+     }
+    ],
+    "legend": [
+     {
+      "label": "S1",
+      "color": 1
+     },
+     {
+      "label": "S2",
+      "color": 2
+     },
+     {
+      "label": "S3",
+      "color": 3
+     },
+     {
+      "label": "S4",
+      "color": 4
+     },
+     {
+      "label": "S5",
+      "color": 5
+     },
+     {
+      "label": "S6",
+      "color": 6
+     },
+     {
+      "label": "S7",
+      "color": 7
+     },
+     {
+      "label": "S8",
+      "color": 8
+     },
+     {
+      "label": "Muted",
+      "color": "muted"
+     },
+     {
+      "label": "Brown",
+      "color": "brown"
+     }
+    ],
+    "summary": "Eight series plus a muted one, in palette order."
+   }
+  },
+  "donut": {
+   "type": "plot",
+   "props": {
+    "kind": "donut",
+    "x": [],
+    "series": [
+     {
+      "name": "Share",
+      "values": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "color": 1
+     }
+    ],
+    "slices": [
+     {
+      "label": "S1",
+      "value": 1,
+      "color": 1
+     },
+     {
+      "label": "S2",
+      "value": 1,
+      "color": 2
+     },
+     {
+      "label": "S3",
+      "value": 1,
+      "color": 3
+     },
+     {
+      "label": "S4",
+      "value": 1,
+      "color": 4
+     },
+     {
+      "label": "S5",
+      "value": 1,
+      "color": 5
+     },
+     {
+      "label": "S6",
+      "value": 1,
+      "color": 6
+     },
+     {
+      "label": "S7",
+      "value": 1,
+      "color": 7
+     },
+     {
+      "label": "S8",
+      "value": 1,
+      "color": 8
+     }
+    ],
+    "legend": [
+     {
+      "label": "S1",
+      "color": 1,
+      "value": "1",
+      "share": "12.5%"
+     },
+     {
+      "label": "S2",
+      "color": 2,
+      "value": "1",
+      "share": "12.5%"
+     },
+     {
+      "label": "S3",
+      "color": 3,
+      "value": "1",
+      "share": "12.5%"
+     },
+     {
+      "label": "S4",
+      "color": 4,
+      "value": "1",
+      "share": "12.5%"
+     },
+     {
+      "label": "S5",
+      "color": 5,
+      "value": "1",
+      "share": "12.5%"
+     },
+     {
+      "label": "S6",
+      "color": 6,
+      "value": "1",
+      "share": "12.5%"
+     },
+     {
+      "label": "S7",
+      "color": 7,
+      "value": "1",
+      "share": "12.5%"
+     },
+     {
+      "label": "S8",
+      "color": 8,
+      "value": "1",
+      "share": "12.5%"
+     }
+    ],
+    "center": {
+     "value": "8",
+     "label": "colours"
+    },
+    "summary": "Eight equal slices in palette order."
+   }
+  },
+  "colors": {
+   "type": "box",
+   "props": {
+    "direction": "row",
+    "gap": "inline",
+    "wrap": true
+   },
+   "children": [
+    "colors.red",
+    "colors.orange",
+    "colors.yellow",
+    "colors.green",
+    "colors.teal",
+    "colors.cyan",
+    "colors.blue",
+    "colors.indigo",
+    "colors.purple",
+    "colors.pink",
+    "colors.brown",
+    "colors.gray"
+   ]
+  },
+  "colors.red": {
+   "type": "pill",
+   "props": {
+    "text": "Red",
+    "tone": "red",
+    "icon": "heart"
+   }
+  },
+  "colors.orange": {
+   "type": "pill",
+   "props": {
+    "text": "Orange",
+    "tone": "orange",
+    "icon": "heart"
+   }
+  },
+  "colors.yellow": {
+   "type": "pill",
+   "props": {
+    "text": "Yellow",
+    "tone": "yellow",
+    "icon": "heart"
+   }
+  },
+  "colors.green": {
+   "type": "pill",
+   "props": {
+    "text": "Green",
+    "tone": "green",
+    "icon": "heart"
+   }
+  },
+  "colors.teal": {
+   "type": "pill",
+   "props": {
+    "text": "Teal",
+    "tone": "teal",
+    "icon": "heart"
+   }
+  },
+  "colors.cyan": {
+   "type": "pill",
+   "props": {
+    "text": "Cyan",
+    "tone": "cyan",
+    "icon": "heart"
+   }
+  },
+  "colors.blue": {
+   "type": "pill",
+   "props": {
+    "text": "Blue",
+    "tone": "blue",
+    "icon": "heart"
+   }
+  },
+  "colors.indigo": {
+   "type": "pill",
+   "props": {
+    "text": "Indigo",
+    "tone": "indigo",
+    "icon": "heart"
+   }
+  },
+  "colors.purple": {
+   "type": "pill",
+   "props": {
+    "text": "Purple",
+    "tone": "purple",
+    "icon": "heart"
+   }
+  },
+  "colors.pink": {
+   "type": "pill",
+   "props": {
+    "text": "Pink",
+    "tone": "pink",
+    "icon": "heart"
+   }
+  },
+  "colors.brown": {
+   "type": "pill",
+   "props": {
+    "text": "Brown",
+    "tone": "brown",
+    "icon": "heart"
+   }
+  },
+  "colors.gray": {
+   "type": "pill",
+   "props": {
+    "text": "Gray",
+    "tone": "gray",
+    "icon": "heart"
+   }
+  },
+  "colorInks": {
+   "type": "box",
+   "props": {
+    "direction": "row",
+    "gap": "inline",
+    "wrap": true,
+    "align": "center"
+   },
+   "children": [
+    "colorInks.red",
+    "colorInks.orange",
+    "colorInks.yellow",
+    "colorInks.green",
+    "colorInks.teal",
+    "colorInks.cyan",
+    "colorInks.blue",
+    "colorInks.indigo",
+    "colorInks.purple",
+    "colorInks.pink",
+    "colorInks.brown",
+    "colorInks.gray"
+   ]
+  },
+  "colorInks.red": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "red",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "red"
+     }
+    ]
+   }
+  },
+  "colorInks.orange": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "orange",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "orange"
+     }
+    ]
+   }
+  },
+  "colorInks.yellow": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "yellow",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "yellow"
+     }
+    ]
+   }
+  },
+  "colorInks.green": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "green",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "green"
+     }
+    ]
+   }
+  },
+  "colorInks.teal": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "teal",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "teal"
+     }
+    ]
+   }
+  },
+  "colorInks.cyan": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "cyan",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "cyan"
+     }
+    ]
+   }
+  },
+  "colorInks.blue": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "blue",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "blue"
+     }
+    ]
+   }
+  },
+  "colorInks.indigo": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "indigo",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "indigo"
+     }
+    ]
+   }
+  },
+  "colorInks.purple": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "purple",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "purple"
+     }
+    ]
+   }
+  },
+  "colorInks.pink": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "pink",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "pink"
+     }
+    ]
+   }
+  },
+  "colorInks.brown": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "brown",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "brown"
+     }
+    ]
+   }
+  },
+  "colorInks.gray": {
+   "type": "text",
+   "props": {
+    "role": "delta",
+    "tone": "gray",
+    "fixed": true,
+    "spans": [
+     {
+      "text": "gray"
+     }
+    ]
+   }
+  },
+  "icons.copy": {
+   "type": "icon",
+   "props": {
+    "name": "copy",
+    "role": "leading"
+   }
+  }
+ }
+}

@@ -1,0 +1,148 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Token spend this week: Fable 46%, Opus 27%, Sonnet 18%, Haiku 9%.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "chart"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.heading"
+      ]
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Token spend"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "This week"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "chart": {
+      "type": "plot",
+      "props": {
+        "kind": "donut",
+        "x": [
+          "Fable",
+          "Opus",
+          "Sonnet",
+          "Haiku"
+        ],
+        "series": [
+          {
+            "name": "Spend",
+            "values": [
+              412,
+              243,
+              161,
+              82
+            ],
+            "labels": [
+              "$412",
+              "$243",
+              "$161",
+              "$82"
+            ],
+            "color": 1
+          }
+        ],
+        "slices": [
+          {
+            "label": "Fable",
+            "value": 412,
+            "color": 1
+          },
+          {
+            "label": "Opus",
+            "value": 243,
+            "color": 2
+          },
+          {
+            "label": "Sonnet",
+            "value": 161,
+            "color": 3
+          },
+          {
+            "label": "Haiku",
+            "value": 82,
+            "color": 4
+          }
+        ],
+        "center": {
+          "value": "$898",
+          "label": "Total"
+        },
+        "legend": [
+          {
+            "label": "Fable",
+            "color": 1,
+            "value": "$412",
+            "share": "46%"
+          },
+          {
+            "label": "Opus",
+            "color": 2,
+            "value": "$243",
+            "share": "27%"
+          },
+          {
+            "label": "Sonnet",
+            "color": 3,
+            "value": "$161",
+            "share": "18%"
+          },
+          {
+            "label": "Haiku",
+            "color": 4,
+            "value": "$82",
+            "share": "9%"
+          }
+        ],
+        "summary": "Donut chart of Spend, total $898: Fable $412 (46%), Opus $243 (27%), Sonnet $161 (18%), Haiku $82 (9%)."
+      }
+    }
+  }
+}

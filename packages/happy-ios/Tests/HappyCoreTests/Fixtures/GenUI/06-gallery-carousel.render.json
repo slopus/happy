@@ -1,0 +1,310 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Three stays near Big Sur: Cliffside Cabin $240, Redwood Loft $185, Dune House $310.",
+  "root": "stack",
+  "elements": {
+    "stack": {
+      "type": "box",
+      "props": {
+        "gap": "blocks"
+      },
+      "children": [
+        "text",
+        "gallery"
+      ]
+    },
+    "text": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Three stays that fit your dates:"
+          }
+        ],
+        "role": "body"
+      }
+    },
+    "gallery": {
+      "type": "scroll",
+      "props": {
+        "shape": "landscape"
+      },
+      "children": [
+        "gallery.0",
+        "gallery.1",
+        "gallery.2",
+        "gallery.3"
+      ]
+    },
+    "gallery.0": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about Cliffside Cabin"
+        },
+        "role": "tile"
+      },
+      "children": [
+        "gallery.0.card"
+      ]
+    },
+    "gallery.0.card": {
+      "type": "box",
+      "props": {
+        "role": "tile",
+        "gap": "related"
+      },
+      "children": [
+        "gallery.0.image",
+        "gallery.0.title",
+        "gallery.0.subtitle",
+        "gallery.0.badge"
+      ]
+    },
+    "gallery.0.image": {
+      "type": "image",
+      "props": {
+        "file": "assets/coast.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Cabin on a cliff",
+        "shape": "landscape",
+        "role": "cover"
+      }
+    },
+    "gallery.0.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Cliffside Cabin"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "gallery.0.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$240 / night · 2 guests"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "gallery.0.badge": {
+      "type": "pill",
+      "props": {
+        "text": "4.9",
+        "tone": "accent",
+        "icon": "star"
+      }
+    },
+    "gallery.1": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about Redwood Loft"
+        },
+        "role": "tile"
+      },
+      "children": [
+        "gallery.1.card"
+      ]
+    },
+    "gallery.1.card": {
+      "type": "box",
+      "props": {
+        "role": "tile",
+        "gap": "related"
+      },
+      "children": [
+        "gallery.1.image",
+        "gallery.1.title",
+        "gallery.1.subtitle",
+        "gallery.1.badge"
+      ]
+    },
+    "gallery.1.image": {
+      "type": "image",
+      "props": {
+        "file": "assets/forest.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Loft among redwoods",
+        "shape": "landscape",
+        "role": "cover"
+      }
+    },
+    "gallery.1.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Redwood Loft"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "gallery.1.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$185 / night · 4 guests"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "gallery.1.badge": {
+      "type": "pill",
+      "props": {
+        "text": "4.7",
+        "icon": "star"
+      }
+    },
+    "gallery.2": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about Dune House"
+        },
+        "role": "tile"
+      },
+      "children": [
+        "gallery.2.card"
+      ]
+    },
+    "gallery.2.card": {
+      "type": "box",
+      "props": {
+        "role": "tile",
+        "gap": "related"
+      },
+      "children": [
+        "gallery.2.image",
+        "gallery.2.title",
+        "gallery.2.subtitle",
+        "gallery.2.badge"
+      ]
+    },
+    "gallery.2.image": {
+      "type": "image",
+      "props": {
+        "file": "assets/dunes.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "House by the dunes",
+        "shape": "landscape",
+        "role": "cover"
+      }
+    },
+    "gallery.2.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Dune House"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "gallery.2.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$310 / night · 6 guests"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "gallery.2.badge": {
+      "type": "pill",
+      "props": {
+        "text": "New",
+        "tone": "success"
+      }
+    },
+    "gallery.3": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about Lakeside A-frame"
+        },
+        "role": "tile"
+      },
+      "children": [
+        "gallery.3.card"
+      ]
+    },
+    "gallery.3.card": {
+      "type": "box",
+      "props": {
+        "role": "tile",
+        "gap": "related"
+      },
+      "children": [
+        "gallery.3.image",
+        "gallery.3.title",
+        "gallery.3.subtitle"
+      ]
+    },
+    "gallery.3.image": {
+      "type": "image",
+      "props": {
+        "file": "assets/lake.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Cabin by a lake",
+        "shape": "landscape",
+        "role": "cover"
+      }
+    },
+    "gallery.3.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Lakeside A-frame"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "gallery.3.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$205 / night · 3 guests"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    }
+  }
+}

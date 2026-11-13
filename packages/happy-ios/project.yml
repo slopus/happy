@@ -43,6 +43,10 @@ targets:
       - path: Sources/HappyApp
       - path: App/Assets.xcassets
       - path: App/PrivacyInfo.xcprivacy
+      # Gen UI's compiled examples, for Settings › Gen UI fixtures (developer mode).
+      - path: Tests/HappyCoreTests/Fixtures/GenUI
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: HappyIOS
         product: HappyKit
@@ -172,6 +176,10 @@ targets:
     platform: iOS
     sources:
       - path: Tests/HappyUIKitTests
+      # Gen UI's compiled examples, laid out in GenUIRenderTests.
+      - path: Tests/HappyCoreTests/Fixtures/GenUI
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: HappyIOS
         product: HappyKit
@@ -222,6 +230,10 @@ targets:
       - path: Harness
         excludes:
           - Info.plist
+      # Gen UI's render documents and their images, as one folder (-genui).
+      - path: Tests/HappyCoreTests/Fixtures/GenUI
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: HappyIOS
         product: HappyKit

@@ -1,0 +1,611 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Checkout service: steps, text, gallery.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "steps",
+        "text",
+        "gallery",
+        "card.actions"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading",
+        "card.badge"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "bolt",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Checkout service"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Last 7 days"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "card.badge": {
+      "type": "pill",
+      "props": {
+        "text": "On track",
+        "tone": "accent"
+      }
+    },
+    "steps": {
+      "type": "box",
+      "props": {
+        "gap": "items"
+      },
+      "children": [
+        "steps.0",
+        "steps.1",
+        "steps.2",
+        "steps.3",
+        "steps.4"
+      ]
+    },
+    "steps.0": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.0.marker",
+        "steps.0.texts",
+        "steps.0.time"
+      ]
+    },
+    "steps.0.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.0.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.0.title"
+      ]
+    },
+    "steps.0.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Reproduce"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.0.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2m 10s"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "steps.1": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.1.marker",
+        "steps.1.texts",
+        "steps.1.time"
+      ]
+    },
+    "steps.1.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.1.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.1.title",
+        "steps.1.detail"
+      ]
+    },
+    "steps.1.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Find root cause"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.1.detail": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Finished without issues"
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "steps.1.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2m 10s"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "steps.2": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.2.marker",
+        "steps.2.texts"
+      ]
+    },
+    "steps.2.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.2.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.2.title"
+      ]
+    },
+    "steps.2.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Write fix"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.3": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.3.marker",
+        "steps.3.texts"
+      ]
+    },
+    "steps.3.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.3.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.3.title"
+      ]
+    },
+    "steps.3.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Review"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.4": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.4.marker",
+        "steps.4.texts",
+        "steps.4.time"
+      ]
+    },
+    "steps.4.marker": {
+      "type": "marker",
+      "props": {
+        "status": "active"
+      }
+    },
+    "steps.4.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.4.title",
+        "steps.4.detail"
+      ]
+    },
+    "steps.4.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Deploy"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.4.detail": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "In progress now"
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "steps.4.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Yesterday"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "text": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Here is where things stand "
+          },
+          {
+            "text": "right now",
+            "strong": true
+          },
+          {
+            "text": "."
+          }
+        ],
+        "role": "body"
+      }
+    },
+    "gallery": {
+      "type": "scroll",
+      "props": {
+        "shape": "portrait"
+      },
+      "children": [
+        "gallery.0",
+        "gallery.1",
+        "gallery.2"
+      ]
+    },
+    "gallery.0": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about: Retry storm on payment webhooks"
+        },
+        "role": "tile"
+      },
+      "children": [
+        "gallery.0.card"
+      ]
+    },
+    "gallery.0.card": {
+      "type": "box",
+      "props": {
+        "role": "tile",
+        "gap": "related"
+      },
+      "children": [
+        "gallery.0.image",
+        "gallery.0.title",
+        "gallery.0.subtitle"
+      ]
+    },
+    "gallery.0.image": {
+      "type": "image",
+      "props": {
+        "file": "assets/city.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "City",
+        "shape": "portrait",
+        "role": "cover"
+      }
+    },
+    "gallery.0.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Retry storm on payment webhooks"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "gallery.0.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "checkout-api · opened by maria"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "gallery.1": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about: Slow query in order history"
+        },
+        "role": "tile"
+      },
+      "children": [
+        "gallery.1.card"
+      ]
+    },
+    "gallery.1.card": {
+      "type": "box",
+      "props": {
+        "role": "tile",
+        "gap": "related"
+      },
+      "children": [
+        "gallery.1.image",
+        "gallery.1.title",
+        "gallery.1.subtitle",
+        "gallery.1.badge"
+      ]
+    },
+    "gallery.1.image": {
+      "type": "image",
+      "props": {
+        "file": "assets/coast.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Coast",
+        "shape": "portrait",
+        "role": "cover"
+      }
+    },
+    "gallery.1.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Slow query in order history"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "gallery.1.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "orders-db · opened by li"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "gallery.1.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Blocked",
+        "tone": "warning",
+        "icon": "star"
+      }
+    },
+    "gallery.2": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about: Cache stampede after deploy"
+        },
+        "role": "tile"
+      },
+      "children": [
+        "gallery.2.card"
+      ]
+    },
+    "gallery.2.card": {
+      "type": "box",
+      "props": {
+        "role": "tile",
+        "gap": "related"
+      },
+      "children": [
+        "gallery.2.image",
+        "gallery.2.title",
+        "gallery.2.subtitle",
+        "gallery.2.badge"
+      ]
+    },
+    "gallery.2.image": {
+      "type": "image",
+      "props": {
+        "file": "assets/lake.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Lake",
+        "shape": "portrait",
+        "role": "cover"
+      }
+    },
+    "gallery.2.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Cache stampede after deploy"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "gallery.2.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "edge · opened by omar"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "gallery.2.badge": {
+      "type": "pill",
+      "props": {
+        "text": "On track",
+        "tone": "warning"
+      }
+    },
+    "card.actions": {
+      "type": "box",
+      "props": {
+        "role": "actions",
+        "direction": "row",
+        "gap": "inline",
+        "wrap": true
+      },
+      "children": [
+        "button"
+      ]
+    },
+    "button": {
+      "type": "button",
+      "props": {
+        "label": "Open an incident",
+        "action": {
+          "type": "message",
+          "text": "Open an incident"
+        },
+        "variant": "primary"
+      }
+    }
+  }
+}

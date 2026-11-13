@@ -1,0 +1,227 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "7 photos from the trip.",
+  "root": "card",
+  "viewers": {
+    "gallery": [
+      {
+        "file": "assets/coast.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Rocky coast at dusk",
+        "caption": "Rocky coast at dusk"
+      },
+      {
+        "file": "assets/forest.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Pine forest in fog",
+        "caption": "Pine forest in fog"
+      },
+      {
+        "file": "assets/dunes.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Sand dunes",
+        "caption": "Sand dunes"
+      },
+      {
+        "file": "assets/lake.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Alpine lake",
+        "caption": "Alpine lake"
+      },
+      {
+        "file": "assets/city.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "City skyline at night",
+        "caption": "City skyline at night"
+      },
+      {
+        "file": "assets/meadow.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Meadow in bloom",
+        "caption": "Meadow in bloom"
+      },
+      {
+        "file": "assets/canyon.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Red canyon",
+        "caption": "Red canyon"
+      }
+    ]
+  },
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "gallery"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "image",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Trip photos"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "7 photos"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "gallery": {
+      "type": "box",
+      "props": {
+        "role": "mosaic"
+      },
+      "children": [
+        "gallery.0",
+        "gallery.1",
+        "gallery.2",
+        "gallery.3",
+        "gallery.4"
+      ]
+    },
+    "gallery.0": {
+      "type": "image",
+      "props": {
+        "file": "assets/coast.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Rocky coast at dusk",
+        "shape": "landscape",
+        "role": "tile",
+        "viewer": {
+          "group": "gallery",
+          "index": 0
+        }
+      }
+    },
+    "gallery.1": {
+      "type": "image",
+      "props": {
+        "file": "assets/forest.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Pine forest in fog",
+        "shape": "landscape",
+        "role": "tile",
+        "viewer": {
+          "group": "gallery",
+          "index": 1
+        }
+      }
+    },
+    "gallery.2": {
+      "type": "image",
+      "props": {
+        "file": "assets/dunes.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Sand dunes",
+        "shape": "landscape",
+        "role": "tile",
+        "viewer": {
+          "group": "gallery",
+          "index": 2
+        }
+      }
+    },
+    "gallery.3": {
+      "type": "image",
+      "props": {
+        "file": "assets/lake.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "Alpine lake",
+        "shape": "landscape",
+        "role": "tile",
+        "viewer": {
+          "group": "gallery",
+          "index": 3
+        }
+      }
+    },
+    "gallery.4": {
+      "type": "image",
+      "props": {
+        "file": "assets/city.jpg",
+        "width": 1600,
+        "height": 1067,
+        "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        "alt": "City skyline at night",
+        "shape": "landscape",
+        "role": "tile",
+        "overlay": "+2",
+        "viewer": {
+          "group": "gallery",
+          "index": 4
+        }
+      }
+    }
+  }
+}
