@@ -2037,7 +2037,13 @@ version) and saves only through `POST
 /v0/artifacts/:id/versions/:n/actions` with a retry id; values stay in the
 sheet's memory. `plugin` opens `NavHostController.openPlugin` where the
 session's `pluginsAvailable` is true. `cluster_secret` (Happy Cloud
-connections) stays disabled until its form exists.
+connections, `AgentClient.cloud`) is `GenUiClusterSecretSheet` over
+`ClusterSecretDraft`: owners from `GET /v0/permissions`, the type's fields,
+prefilled public metadata it doesn't show (ports, methods) sent as it came.
+With `secret.id` it changes that secret: words and values only, its public
+metadata (where values go, their names) read-only, so a blank value is a
+kept `null` and `version` stands for `If-Match`. Same route, `grant: true`;
+a 400 or 403 shows the server's `error`.
 
 Cost: `bench/GenUiBenchmark` (androidTest, a `-Phappy.debuggable=false`
 chatbench build as research/telegram-chat.md runs it) flings the chat gym

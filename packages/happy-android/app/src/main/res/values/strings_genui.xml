@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Gen UI actions (ui/genui): the secret form a Gen UI button opens.
+  Gen UI actions (ui/genui): the secret forms Gen UI buttons open.
   Android-only. Translated in values-*/ (AndroidStringsTranslatedTest).
 -->
 <resources>
@@ -34,4 +34,54 @@
     <string name="genui_secret_updated">Changed %1$s</string>
     <string name="genui_secret_told">The agent that asked can use %1$s and has been told. It never sees the values.</string>
     <string name="genui_secret_done">Done</string>
+    <string name="genui_cluster_new_endpoint">New endpoint secret</string>
+    <string name="genui_cluster_new_ssh_key">New SSH key</string>
+    <string name="genui_cluster_new_git">New git credential</string>
+    <string name="genui_cluster_new_environment">New environment secret</string>
+    <string name="genui_cluster_about">Values go only to Happy Cloud’s secret store. The agent that asked gets access to the secret and is told its name and field names, never the values.</string>
+    <string name="genui_cluster_loading">Loading…</string>
+    <string name="genui_cluster_load_failed">Couldn’t open this form. Close it and try again.</string>
+    <string name="genui_cluster_missing">This secret is gone, or you can’t see it.</string>
+    <string name="genui_cluster_unchangeable">You can’t change this secret.</string>
+    <string name="genui_cluster_owner">Whose</string>
+    <string name="genui_cluster_owner_me">Mine</string>
+    <string name="genui_cluster_owner_team">The team’s</string>
+    <string name="genui_cluster_owner_problem">Your role can’t add secrets.</string>
+    <string name="genui_cluster_name_placeholder">What to call it</string>
+    <string name="genui_cluster_name_problem">A name is 1 to 100 characters.</string>
+    <string name="genui_cluster_description_problem">Use 2,000 characters or fewer.</string>
+    <string name="genui_cluster_targets">Sent only to</string>
+    <string name="genui_cluster_add_target">Add a host</string>
+    <string name="genui_cluster_targets_problem">Each host needs a name, and a path starts with /.</string>
+    <string name="genui_cluster_headers">Headers</string>
+    <string name="genui_cluster_header_placeholder">Header</string>
+    <string name="genui_cluster_prefix_placeholder">Prefix</string>
+    <string name="genui_cluster_add_header">Add a header</string>
+    <string name="genui_cluster_headers_problem">Each header needs its own valid name, and a prefix is at most 32 characters.</string>
+    <string name="genui_cluster_value_problem">A value is 16 to 4,096 printable ASCII characters, without [ or ].</string>
+    <string name="genui_cluster_mcp">MCP servers may use it too</string>
+    <string name="genui_cluster_hosts">Hosts</string>
+    <string name="genui_cluster_hosts_problem">Name at least one host.</string>
+    <string name="genui_cluster_private_key">Private key</string>
+    <string name="genui_cluster_passphrase">Passphrase, if the key has one</string>
+    <string name="genui_cluster_key_problem">Paste the private key.</string>
+    <string name="genui_cluster_server">Server</string>
+    <string name="genui_cluster_server_problem">Name the server.</string>
+    <string name="genui_cluster_method">Signs in with</string>
+    <string name="genui_cluster_method_ssh_key">SSH key</string>
+    <string name="genui_cluster_method_password">Password</string>
+    <string name="genui_cluster_method_token">Token</string>
+    <string name="genui_cluster_username">Username</string>
+    <string name="genui_cluster_username_problem">A password needs a username.</string>
+    <string name="genui_cluster_repos">Repositories, if only some</string>
+    <string name="genui_cluster_operations">It may</string>
+    <string name="genui_cluster_operation_read">Read</string>
+    <string name="genui_cluster_operation_write">Push</string>
+    <string name="genui_cluster_operation_sign">Sign commits</string>
+    <string name="genui_cluster_operations_problem">Choose at least one.</string>
+    <string name="genui_cluster_gone">This card or its secret is gone, or you can’t see it.</string>
+    <string name="genui_cluster_no_origin">Couldn’t save: no agent made this card, or the one that did is archived.</string>
+    <string name="genui_cluster_saved">Saved %1$s</string>
+    <string name="genui_cluster_told">The agent that asked can use it and has been told its name and fields. It never sees the values.</string>
+    <string name="genui_cluster_methods">Only %1$s requests</string>
 </resources>

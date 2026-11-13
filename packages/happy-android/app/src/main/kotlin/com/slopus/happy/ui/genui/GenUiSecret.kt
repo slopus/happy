@@ -132,6 +132,37 @@ class GenUiSecretApi(private val client: AgentClient) {
         return SecretSaved(secret, (answer?.get("outcome") as? JsonPrimitive)?.content == "created")
     }
 
+    /** Whom the person may make a cluster secret for (`GET /v0/permissions`): the team's with `secrets.manage`, their own with `secrets.own`. */
+    suspend fun clusterOwners(): List<ClusterOwner> {
+        val granted = (AgentClient.json.parseToJsonElement(client.send("GET", "/v0/permissions").text).asObject()?.get("granted") as? JsonArray)
+            .orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
+        return listOfNotNull(ClusterOwner.Me.takeIf { "secrets.own" in granted }, ClusterOwner.Team.takeIf { "secrets.manage" in granted })
+    }
+
+    /** The cluster secret [id], or null when the person can't see it. */
+    suspend fun clusterSecret(id: String): ClusterStored? = try {
+        ClusterStored.parse(AgentClient.json.parseToJsonElement(client.send("GET", "/v0/cluster/secrets/${AgentClient.escape(id)}").text).asObject()?.get("secret"))
+    } catch (e: AgentApiException) {
+        if (e.status == 404) null else throw e
+    }
+
+    /**
+     * Saves a cluster [form] for [element] of [artifactId]'s [version] under the
+     * retry key [id] (cluster API.md "Gen UI actions"): stored, granted to the
+     * origin agent and announced to it in one change.
+     */
+    suspend fun saveCluster(artifactId: String, version: Int, element: String, id: String, form: JsonObject): ClusterSaved {
+        val body = buildJsonObject {
+            put("id", id)
+            put("element", element)
+            put("secret", form)
+            put("grant", true)
+        }
+        val answer = AgentClient.json.parseToJsonElement(client.send("POST", "/v0/artifacts/${AgentClient.escape(artifactId)}/versions/$version/actions", body).text).asObject()
+        val secretId = (answer?.get("secretId") as? JsonPrimitive)?.content ?: throw IllegalStateException("no secret in the answer")
+        return ClusterSaved(ClusterStored.parse(answer["secret"]), secretId)
+    }
+
     private fun JsonElement.asObject(): JsonObject? = this as? JsonObject
 
     companion object {
@@ -161,14 +192,20 @@ class GenUiSecretForm internal constructor(
 
     val host: GenUiHostKind get() = api.host
 
+    private var clusterAsking by mutableStateOf<ClusterAsk?>(null)
+
     fun open(key: String, action: Action.Secret) {
         asking = SecretAsk(artifactId, version, key, action.secret, state.saved(key))
     }
 
+    fun open(key: String, action: Action.ClusterSecret) {
+        clusterAsking = ClusterAsk(artifactId, version, key, action.kind, action.secret)
+    }
+
     @Composable
     fun Sheet() {
-        val ask = asking ?: return
-        GenUiSecretSheet(ask, api, onSaved = { state.save(ask.element, it.secret.id) }, onDismiss = { asking = null })
+        asking?.let { ask -> GenUiSecretSheet(ask, api, onSaved = { state.save(ask.element, it.secret.id) }, onDismiss = { asking = null }) }
+        clusterAsking?.let { ask -> GenUiClusterSecretSheet(ask, api, onSaved = { state.save(ask.element, it.secretId) }, onDismiss = { clusterAsking = null }) }
     }
 }
 

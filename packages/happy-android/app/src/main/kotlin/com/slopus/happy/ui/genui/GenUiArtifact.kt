@@ -39,15 +39,14 @@ object GenUiArtifactTags {
  * Runs what a Gen UI version's controls ask for, as if the person had done
  * it (desktop's `genUiInlineHostCreate`): `open` opens an https address,
  * `copy` copies, `message` goes to [onMessage] where there is a
- * conversation to send it to, `secret` opens [secrets]' form. Which of them
- * may run at all is [GenUiActions.enabled] for a Happy Agent client: the
- * secret and message actions need the version's origin agent, `secret`
- * needs a Happy Agent computer that reports `artifactSecretActions` (a
- * Happy Cloud one serves `cluster_secret` instead, whose form this build
- * doesn't have yet), `plugin` opens [onPlugin] where the computer reports
- * `plugins`, and `tool` and anything unknown are drawn disabled. Pictures are the
- * version's own files, read through [media]; a tap on one opens the viewer
- * on its group.
+ * conversation to send it to, `secret` (a Happy Agent computer) and
+ * `cluster_secret` (a Happy Cloud one) open [secrets]' form, `plugin`
+ * opens [onPlugin]. Which may run at all is [GenUiActions.enabled]: message
+ * and the secret actions need the version's origin agent, the secret
+ * actions a computer that reports `artifactSecretActions`, `plugin` one
+ * that reports `plugins`; `tool` and anything unknown are drawn disabled.
+ * Pictures are the version's own files, read through [media]; a tap on
+ * one opens the viewer on its group.
  */
 @Composable
 fun rememberGenUiArtifactHost(
@@ -76,7 +75,8 @@ fun rememberGenUiArtifactHost(
                     is Action.Message -> message?.invoke(action.text)
                     is Action.Secret -> secrets?.open(key, action)
                     is Action.Plugin -> plugin?.invoke(action.id)
-                    is Action.ClusterSecret, is Action.Tool, is Action.Unsupported -> Unit
+                    is Action.ClusterSecret -> secrets?.open(key, action)
+                    is Action.Tool, is Action.Unsupported -> Unit
                 }
             },
             onView = { _, viewer ->
@@ -91,9 +91,7 @@ fun rememberGenUiArtifactHost(
                 GenUiActions.enabled(action, secrets?.host ?: GenUiHostKind.HappyAgent, origin = ui.origin != null, capabilities) && when (action) {
                     is Action.Open -> isHttps(action.url)
                     is Action.Message -> sends
-                    is Action.Secret -> secrets != null
-                    // Happy Cloud's own form isn't in this build yet.
-                    is Action.ClusterSecret -> false
+                    is Action.Secret, is Action.ClusterSecret -> secrets != null
                     else -> true
                 }
             },

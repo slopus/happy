@@ -21,6 +21,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.ThemePreference
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -32,9 +33,14 @@ import kotlinx.serialization.json.jsonPrimitive
  * computer also runs the secret form (health says `artifactSecretActions`): `GET /v0/secrets/:id` from what it
  * holds (`genui.stored`, comma-separated names, to open in change mode), and
  * the actions route, logging the element and variable names, never a value.
+ * With `genui.cloud` it is a Happy Cloud server instead (cluster API.md "Gen
+ * UI actions"): `GET /v0/permissions` grants both owners, and the actions
+ * route logs the element and field names. `genui.change` gives the fixture's
+ * `cluster_secret` action a stored secret's ID, to open the form on it.
  * ```
  * adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.genui.GenUiArtifactGymActivity \
- *     -e genui.fixture 05-gallery-grid [-e genui.theme dark] [-e genui.stored stripe]
+ *     -e genui.fixture 05-gallery-grid [-e genui.theme dark] [-e genui.stored stripe] \
+ *     [--ez genui.cloud true] [--ez genui.change true]
  * ```
  */
 class GenUiArtifactGymActivity : ComponentActivity() {
@@ -53,11 +59,27 @@ class GenUiArtifactGymActivity : ComponentActivity() {
         fun safe(id: String) = held.getValue(id).let { names ->
             """{"id":"$id","description":"Stripe keys, stored","environmentVariables":[${names.sorted().joinToString(",") { "\"$it\"" }}],"managed":false,"availableToAgents":true,"version":"v${names.size}","createdAt":1,"updatedAt":1}"""
         }
+        val cloud = intent.getBooleanExtra("genui.cloud", false)
+        val change = intent.getBooleanExtra("genui.change", false)
+        val clusterId = "c0123456789abcdefghijklm"
+        val clusterSecret = """{"id":"$clusterId","type":"endpoint","name":"Stripe API","description":"Restricted key for billing agents","owner":"team","uses":["egress"],""" +
+            """"access":{"use":true,"manage":true,"attach":true},"version":"v1","public":{"targets":[{"host":"api.stripe.com","pathPrefixes":["/v1"]}],""" +
+            """"algorithm":{"kind":"headers","headers":[{"name":"Authorization","prefix":"Bearer "}]}}}"""
         val computer = object : Transport {
             override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                 val json = mapOf("content-type" to "application/json")
+                if (cloud) {
+                    if (path == "/v0/permissions") return TransportResponse(200, json, """{"granted":["secrets.own","secrets.manage"]}""".toByteArray())
+                    if (path == "/v0/cluster/secrets/$clusterId") return TransportResponse(200, json, """{"secret":$clusterSecret}""".toByteArray())
+                    if (path.endsWith("/actions")) {
+                        val form = Json.parseToJsonElement(String(body ?: ByteArray(0))).jsonObject
+                        val secret = form.getValue("secret").jsonObject
+                        Log.i("GenUiArtifactGym", "save ${form["element"]} type=${secret["type"]} owner=${secret["owner"]} version=${secret["version"]} fields=${(secret["material"] as? JsonObject)?.keys}")
+                        return TransportResponse(201, json, """{"secret":$clusterSecret,"secretId":"$clusterId","granted":true,"messageId":"m1"}""".toByteArray())
+                    }
+                }
                 if (path == "/v0/health") return TransportResponse(200, json, """{"status":"ok","capabilities":{"artifactSecretActions":true}}""".toByteArray())
-                if (path.startsWith("/v0/secrets/")) {
+                if (!cloud && path.startsWith("/v0/secrets/")) {
                     val id = path.removePrefix("/v0/secrets/")
                     return if (id in held) TransportResponse(200, json, """{"secret":${safe(id)}}""".toByteArray())
                     else TransportResponse(404, json, """{"error":"Not found","code":"not_found"}""".toByteArray())
@@ -76,12 +98,15 @@ class GenUiArtifactGymActivity : ComponentActivity() {
                 if ("/files/" !in path) return TransportResponse(200, json, """{"version":$version}""".toByteArray())
                 val file = path.substringAfter("/files/")
                 val asset = if (file == ".genui/render.json") "genui/fixtures/$fixture.json" else "genui/$file"
-                return runCatching { TransportResponse(200, body = assets.open(asset).use { it.readBytes() }) }.getOrElse { TransportResponse(404, body = "{}".toByteArray()) }
+                return runCatching {
+                    val bytes = assets.open(asset).use { it.readBytes() }
+                    TransportResponse(200, body = if (change && file == ".genui/render.json") String(bytes).replace("\"type\": \"endpoint\",", "\"type\": \"endpoint\", \"id\": \"$clusterId\",").toByteArray() else bytes)
+                }.getOrElse { TransportResponse(404, body = "{}".toByteArray()) }
             }
 
             override suspend fun close() {}
         }
-        val client = AgentClient(computer, "gym")
+        val client = AgentClient(computer, "gym", cloud)
         val loader = ArtifactLoader(ArtifactClient(client), null, lifecycleScope, ArtifactRef("gym", 1, "gen_ui", fixture, followsLatest = true))
         loader.load()
         val actions = ArtifactActions(onBack = ::finish, onOpenWeb = { Log.i("GenUiArtifactGym", "open $it") }, genUiSecrets = GenUiSecretApi(client))

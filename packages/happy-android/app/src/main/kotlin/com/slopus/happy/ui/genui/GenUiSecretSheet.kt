@@ -90,7 +90,7 @@ object GenUiSecretTags {
 @Immutable
 data class SecretAsk(val artifactId: String, val version: Int, val element: String, val prefill: SecretPrefill, val name: String?)
 
-private object SecretSheetSpec {
+internal object SecretSheetSpec {
     val title = happyTextStyle(fontSize = 17, lineHeight = 22, weight = FontWeight.SemiBold)
     val label = happyTextStyle(fontSize = 13, lineHeight = 18, weight = FontWeight.SemiBold)
     val body = happyTextStyle(fontSize = 15, lineHeight = 20)
@@ -317,14 +317,7 @@ private val SaveTrouble.words: Int
         SaveTrouble.Failed -> R.string.genui_secret_failed
     }
 
-/**
- * One variable: its name, editable, the agent's hint under it, and its
- * value hidden as typed. A stored one changing says that empty keeps it.
- * The value field is labelled by the name beside it and shares nothing:
- * no autofill, no IME learning, and sensitive to anything but an
- * accessibility tool (as SecretRequestForm's fields).
- */
-@OptIn(ExperimentalComposeUiApi::class)
+/** One variable: its name, editable, the agent's hint under it, and its value hidden as typed. A stored one changing says that empty keeps it. */
 @Composable
 private fun VariableRow(draft: SecretDraft, row: SecretRow, enabled: Boolean, last: Boolean) {
     val colors = HappyTheme.colors
@@ -352,49 +345,90 @@ private fun VariableRow(draft: SecretDraft, row: SecretRow, enabled: Boolean, la
                 keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, capitalization = KeyboardCapitalization.Characters, keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next),
                 modifier = Modifier.weight(1f).testTag(GenUiSecretTags.VARIABLE),
             )
-            Box(
-                Modifier
-                    .testTag(GenUiSecretTags.REMOVE)
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = enabled, role = Role.Button) { draft.remove(row) }
-                    .semantics { contentDescription = remove },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Ionicon.Close, 20.dp, colors.textSecondary)
-            }
+            RemoveButton(remove, enabled) { draft.remove(row) }
         }
         row.hint?.let { Text(it, style = SecretSheetSpec.small, color = colors.textSecondary) }
-        HappyTextField(
-            value = row.value,
-            onValueChange = { row.value = it },
-            placeholder = stringResource(if (draft.changing && row.keeps) R.string.genui_secret_value_keep else R.string.genui_secret_value_placeholder),
-            textStyle = SecretSheetSpec.body,
-            contentPadding = SecretSheetSpec.field,
-            minHeight = 44.dp,
-            cornerRadius = 8.dp,
+        MaskedField(
+            row.value,
+            { row.value = it },
+            stringResource(if (draft.changing && row.keeps) R.string.genui_secret_value_keep else R.string.genui_secret_value_placeholder),
+            label = row.name,
             enabled = enabled,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                imeAction = if (last) ImeAction.Done else ImeAction.Next,
-                autoCorrectEnabled = false,
-            ),
-            singleLine = true,
-            modifier = Modifier
-                .testTag(GenUiSecretTags.VALUE)
-                .semantics {
-                    contentDescription = row.name
-                    contentDataType = ContentDataType.None
-                    isSensitiveData = true
-                },
+            last = last,
         )
     }
 }
 
+/** A remove control, [description] for a screen reader. */
+@Composable
+internal fun RemoveButton(description: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .testTag(GenUiSecretTags.REMOVE)
+            .size(40.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Ionicon.Close, 20.dp, HappyTheme.colors.textSecondary)
+    }
+}
+
+/**
+ * A value hidden as typed, [label] naming it for a screen reader. It
+ * shares nothing: no autofill, no IME learning, and sensitive to anything
+ * but an accessibility tool (as SecretRequestForm's fields). [multiline]
+ * for a private key, which keeps its line breaks.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun MaskedField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    label: String,
+    enabled: Boolean,
+    last: Boolean = false,
+    multiline: Boolean = false,
+) {
+    HappyTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = placeholder,
+        textStyle = if (multiline) SecretSheetSpec.mono else SecretSheetSpec.body,
+        contentPadding = SecretSheetSpec.field,
+        minHeight = if (multiline) 88.dp else 44.dp,
+        cornerRadius = 8.dp,
+        enabled = enabled,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Password,
+            imeAction = if (multiline) ImeAction.Default else if (last) ImeAction.Done else ImeAction.Next,
+            autoCorrectEnabled = false,
+        ),
+        singleLine = !multiline,
+        modifier = Modifier
+            .testTag(GenUiSecretTags.VALUE)
+            .semantics {
+                contentDescription = label
+                contentDataType = ContentDataType.None
+                isSensitiveData = true
+            },
+    )
+}
+
 /** Saved: what the response says was made or changed, and the names the agent may now use. */
 @Composable
-private fun Completion(saved: SecretSaved, onDone: () -> Unit) {
+private fun Completion(saved: SecretSaved, onDone: () -> Unit) = Saved(
+    stringResource(if (saved.created) R.string.genui_secret_added else R.string.genui_secret_updated, saved.secret.id),
+    stringResource(R.string.genui_secret_told, saved.secret.variables.joinToString(", ")),
+    onDone,
+)
+
+/** A save's outcome in the sheet: [title] beside a check, [body] under it, and Done. */
+@Composable
+internal fun Saved(title: String, body: String, onDone: () -> Unit) {
     val colors = HappyTheme.colors
     Column(
         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = SecretSheetSpec.padding).padding(bottom = 12.dp).testTag(GenUiSecretTags.DONE),
@@ -402,17 +436,9 @@ private fun Completion(saved: SecretSaved, onDone: () -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Ionicon.CheckmarkCircle, 24.dp, colors.success)
-            Text(
-                stringResource(if (saved.created) R.string.genui_secret_added else R.string.genui_secret_updated, saved.secret.id),
-                style = SecretSheetSpec.title,
-                color = colors.text,
-            )
+            Text(title, style = SecretSheetSpec.title, color = colors.text)
         }
-        Text(
-            stringResource(R.string.genui_secret_told, saved.secret.variables.joinToString(", ")),
-            style = SecretSheetSpec.body,
-            color = colors.textSecondary,
-        )
+        Text(body, style = SecretSheetSpec.body, color = colors.textSecondary)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             SheetButton(stringResource(R.string.genui_secret_done), GenUiSecretTags.DONE + ".close", enabled = true, background = colors.surfaceHighest, onClick = onDone)
         }
@@ -420,16 +446,16 @@ private fun Completion(saved: SecretSaved, onDone: () -> Unit) {
 }
 
 @Composable
-private fun Label(words: Int) = Text(stringResource(words), style = SecretSheetSpec.label, color = HappyTheme.colors.textSecondary, modifier = Modifier.padding(top = 8.dp))
+internal fun Label(words: Int) = Text(stringResource(words), style = SecretSheetSpec.label, color = HappyTheme.colors.textSecondary, modifier = Modifier.padding(top = 8.dp))
 
 @Composable
-private fun Note(words: String) = Text(words, style = SecretSheetSpec.small, color = HappyTheme.colors.textSecondary)
+internal fun Note(words: String) = Text(words, style = SecretSheetSpec.small, color = HappyTheme.colors.textSecondary)
 
 @Composable
-private fun Problem(words: String) = Text(words, style = SecretSheetSpec.small, color = HappyTheme.colors.textDestructive, modifier = Modifier.testTag(GenUiSecretTags.PROBLEM))
+internal fun Problem(words: String) = Text(words, style = SecretSheetSpec.small, color = HappyTheme.colors.textDestructive, modifier = Modifier.testTag(GenUiSecretTags.PROBLEM))
 
 @Composable
-private fun SheetButton(label: String, tag: String, enabled: Boolean, background: Color, busy: Boolean = false, onClick: () -> Unit) {
+internal fun SheetButton(label: String, tag: String, enabled: Boolean, background: Color, busy: Boolean = false, onClick: () -> Unit) {
     val colors = HappyTheme.colors
     Box(
         modifier = Modifier
