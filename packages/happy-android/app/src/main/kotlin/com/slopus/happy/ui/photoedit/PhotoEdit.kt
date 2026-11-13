@@ -258,8 +258,7 @@ object PhotoPainting {
      * photo blurred, for the blur brush ([blurShader]); the eraser clears what
      * is under it, so the drawing is a layer of its own.
      */
-    fun draw(canvas: Canvas, stroke: PaintStroke, blur: Shader?, longSide: Float) {
-        val path = path(stroke.points)
+    fun draw(canvas: Canvas, stroke: PaintStroke, blur: Shader?, longSide: Float, path: Path = path(stroke.points)) {
         val width = stroke.weight * stroke.tool.scale
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -317,13 +316,26 @@ object PhotoPainting {
         }
     }
 
-    /** The drawing of [strokes] on a clear layer the photo's size. */
-    fun layer(w: Int, h: Int, strokes: List<PaintStroke>, blur: Shader?): Bitmap {
-        val layer = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(layer)
-        val long = max(w, h).toFloat()
-        strokes.forEach { draw(canvas, it, blur, long) }
-        return layer
+    /** A bounded, composited texture for crop gestures. Its coordinate system remains the original photo's. */
+    fun preview(photo: Bitmap, strokes: List<PaintStroke>, maxDimension: Int): Bitmap {
+        val scale = min(1f, maxDimension.toFloat() / max(photo.width, photo.height))
+        val w = max(1, (photo.width * scale).roundToInt())
+        val h = max(1, (photo.height * scale).roundToInt())
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.scale(w / photo.width.toFloat(), h / photo.height.toFloat())
+        canvas.drawBitmap(photo, 0f, 0f, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        if (strokes.isNotEmpty()) {
+            val ink = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val drawing = Canvas(ink)
+            drawing.scale(w / photo.width.toFloat(), h / photo.height.toFloat())
+            val blur = if (strokes.any { it.tool == PaintTool.Blur }) blurShader(photo) else null
+            strokes.forEach { draw(drawing, it, blur, max(photo.width, photo.height).toFloat()) }
+            // Erasing only affects the ink, never the photo.
+            Canvas(out).drawBitmap(ink, 0f, 0f, null)
+            ink.recycle()
+        }
+        return out
     }
 
     /** The photo as edited: drawn on, then cut and turned by its crop. */
@@ -337,8 +349,11 @@ object PhotoPainting {
         canvas.drawBitmap(photo, matrix, paint)
         if (edit.strokes.isNotEmpty()) {
             val shader = blur ?: if (edit.strokes.any { it.tool == PaintTool.Blur }) blurShader(photo) else null
-            val layer = layer(photo.width, photo.height, edit.strokes, shader)
-            canvas.drawBitmap(layer, matrix, paint)
+            val layer = Bitmap.createBitmap(out.width, out.height, Bitmap.Config.ARGB_8888)
+            val drawing = Canvas(layer)
+            drawing.concat(matrix)
+            edit.strokes.forEach { draw(drawing, it, shader, max(photo.width, photo.height).toFloat()) }
+            canvas.drawBitmap(layer, 0f, 0f, paint)
             layer.recycle()
         }
         return out

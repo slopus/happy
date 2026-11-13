@@ -1,6 +1,8 @@
 package com.slopus.happy.ui.photoedit
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -162,6 +164,39 @@ class PhotoEditTest {
         // Turned anticlockwise, the photo's red left side is the result's foot.
         assertEquals(android.graphics.Color.RED, out.getPixel(15, 37))
         assertEquals(android.graphics.Color.BLUE, out.getPixel(15, 2))
+    }
+
+    @Test fun `display ink maps photo coordinates and its eraser keeps the photo`() {
+        val photo = Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.BLUE) }
+        val pen = PaintStroke(PaintTool.Pen, PhotoColors.WHITE, 40f, listOf(Offset(40f, 150f), Offset(360f, 150f)))
+        val eraser = PaintStroke(PaintTool.Eraser, 0, 40f, listOf(Offset(200f, 120f), Offset(200f, 180f)))
+        val preview = PhotoDrawPreview(photo, 200, 150, Rect(0f, 0f, 200f, 150f), Matrix().apply { setScale(0.5f, 0.5f) }, listOf(pen))
+        val ink = PhotoColors.withAlpha(PhotoColors.WHITE, PaintTool.Pen.alpha)
+        assertEquals(ink, preview.ink.getPixel(40, 75))
+        preview.commit(eraser)
+        assertEquals(0, preview.ink.getPixel(100, 75))
+        assertEquals(android.graphics.Color.BLUE, preview.background.getPixel(100, 75))
+        preview.redraw(listOf(pen))
+        assertEquals(ink, preview.ink.getPixel(100, 75))
+        val cropped = PhotoPainting.preview(photo, listOf(pen, eraser), 200)
+        assertEquals(200, cropped.width)
+        assertEquals(150, cropped.height)
+        assertEquals(android.graphics.Color.BLUE, cropped.getPixel(100, 75))
+    }
+
+    @Test fun `incrementally smoothed strokes match their exported paths for every brush`() {
+        val points = listOf(Offset(20f, 40f), Offset(40f, 80f), Offset(80f, 20f), Offset(120f, 90f))
+        for (tool in PaintTool.entries) {
+            val live = LivePaintStroke(tool, PhotoColors.ORANGE, 8f, points.first())
+            points.drop(1).forEach { live.append(it) }
+            val interactive = Bitmap.createBitmap(160, 120, Bitmap.Config.ARGB_8888)
+            val exported = Bitmap.createBitmap(160, 120, Bitmap.Config.ARGB_8888)
+            val source = Bitmap.createBitmap(160, 120, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.BLUE) }
+            val blur = PhotoPainting.blurShader(source)
+            PhotoPainting.draw(Canvas(interactive), live.stroke, blur, 160f, live.path())
+            PhotoPainting.draw(Canvas(exported), live.finish(), blur, 160f)
+            assertTrue("$tool preview and export", interactive.sameAs(exported))
+        }
     }
 
     private fun brightness(color: Int) = ((color shr 16) and 0xff) + ((color shr 8) and 0xff) + (color and 0xff)

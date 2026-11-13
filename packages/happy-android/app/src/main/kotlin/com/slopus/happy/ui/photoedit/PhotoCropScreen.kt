@@ -95,7 +95,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun PhotoCropScreen(
     photo: Bitmap,
-    layer: Bitmap?,
+    preview: Bitmap,
     initial: PhotoCrop,
     onCancel: () -> Unit,
     onDone: (PhotoCrop) -> Unit,
@@ -158,10 +158,11 @@ internal fun PhotoCropScreen(
                 .onSizeChanged {
                     val inset = with(density) { PhotoEditSpec.cropInset.toPx() }
                     area = Rect(inset, inset, it.width - inset, it.height - inset)
-                    if (scale == 0f) {
-                        scale = fitScale(crop)
-                        center = area.center
-                    }
+                    // Insets arrive after a dialog's first layout. Refit when
+                    // they change the viewport, not just on its first size.
+                    settling?.cancel()
+                    scale = fitScale(crop)
+                    center = area.center
                 }
                 .pointerInput(Unit) {
                     val reach = PhotoEditSpec.handleReach.toPx()
@@ -210,13 +211,17 @@ internal fun PhotoCropScreen(
                 drawIntoCanvas { canvas ->
                     val native = canvas.nativeCanvas
                     native.save()
+                    // Native canvas drawing can escape Compose's layout bounds at high zoom.
+                    native.clipRect(0f, 0f, size.width, size.height)
                     native.rotate(spin.value, center.x, center.y)
                     val matrix = crop.matrix().apply {
                         postScale(scale, scale)
                         postTranslate(frame.left, frame.top)
                     }
-                    native.drawBitmap(photo, matrix, paint)
-                    layer?.let { native.drawBitmap(it, matrix, paint) }
+                    native.save()
+                    native.concat(matrix)
+                    native.drawBitmap(preview, null, android.graphics.RectF(0f, 0f, w.toFloat(), h.toFloat()), paint)
+                    native.restore()
                     // Dim round the frame, out past the screen while it turns.
                     val reach = size.maxDimension * 2
                     val around = Path().apply {

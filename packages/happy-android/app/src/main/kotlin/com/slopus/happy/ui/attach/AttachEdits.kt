@@ -1,7 +1,6 @@
 package com.slopus.happy.ui.attach
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateMapOf
@@ -56,13 +55,7 @@ class AttachEdits(private val directory: File) {
         working?.let { (at, bitmap) -> if (at == key) return bitmap }
         return withContext(Dispatchers.IO) {
             try {
-                val scratch = File(directory, "working-${UUID.randomUUID()}").apply { mkdirs() }
-                try {
-                    val normalized = ImageNormalizer.normalize(open, "photo.jpg", scratch)
-                    BitmapFactory.decodeFile(normalized.file.path)
-                } finally {
-                    scratch.deleteRecursively()
-                }
+                ImageNormalizer.decode(open)
             } catch (_: IOException) {
                 null
             } catch (_: SecurityException) {

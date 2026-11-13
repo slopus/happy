@@ -165,10 +165,10 @@ class AttachSheetDeviceTest {
         all(AttachTags.CELL)[1].performClick()
         waitFor(PictureViewerTags.VIEWER)
         capture("03-preview")
-        // The preview's check, top right (close moves to the top left), picks the picture in view as its cell's does.
+        // The preview's check stays top right; Back sits separately at the bottom left beside the edits.
         val check = node(AttachTags.PREVIEW_CHECK).fetchSemanticsNode().boundsInRoot
         val close = node(PictureViewerTags.CLOSE).fetchSemanticsNode().boundsInRoot
-        assertTrue("the check at the top right, close at the left: $check $close", check.left > close.right && check.top == close.top)
+        assertTrue("the check at the top right, back at the bottom left: $check $close", check.left > close.right && check.bottom < close.top)
         node(AttachTags.PREVIEW_CHECK).performClick()
         rule.waitUntil(5_000) { all(AttachTags.CAPTION_BAR).fetchSemanticsNodes().isNotEmpty() }
         SystemClock.sleep(400)
@@ -257,6 +257,46 @@ class AttachSheetDeviceTest {
         val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         assertTrue("landscape: ${bounds.outWidth} × ${bounds.outHeight}", bounds.outWidth > bounds.outHeight)
+    }
+
+    @Test fun viewer_taps_pick_and_its_keyboard_and_chrome_leave_with_it() {
+        show()
+        open()
+        all(AttachTags.CELL)[1].performClick()
+        waitFor(AttachTags.PREVIEW_CROP)
+        capture("40-viewer-rest")
+        val image = node(PictureViewerTags.IMAGE).fetchSemanticsNode().boundsInRoot
+        val caption = node(AttachTags.PREVIEW_CAPTION_BAR).fetchSemanticsNode().boundsInRoot
+        val back = node(PictureViewerTags.CLOSE).fetchSemanticsNode().boundsInRoot
+        val crop = node(AttachTags.PREVIEW_CROP).fetchSemanticsNode().boundsInRoot
+        assertTrue("photo clears caption", image.bottom <= caption.top)
+        assertTrue("back shares tool row", kotlin.math.abs(back.center.y - crop.center.y) < 2f)
+        assertTrue("back is left of tools", back.right < crop.left)
+        fun picked() = node(AttachTags.PREVIEW_CHECK).fetchSemanticsNode().config.getOrElse(SemanticsProperties.Selected) { false }
+        assertTrue("initially unpicked", !picked())
+        node(PictureViewerTags.IMAGE).performTouchInput { click() }
+        rule.waitUntil(5_000) { picked() }
+        node(AttachTags.PREVIEW_CROP).assertExists()
+        capture("41-viewer-tap-picked")
+        node(PictureViewerTags.IMAGE).performTouchInput { click() }
+        rule.waitUntil(5_000) { !picked() }
+        node(AttachTags.PREVIEW_CAPTION).performClick().performTextInput("Caption over the keyboard")
+        waitGone(AttachTags.PREVIEW_CROP)
+        capture("42-viewer-keyboard")
+        val typingImage = node(PictureViewerTags.IMAGE).fetchSemanticsNode().boundsInRoot
+        val typingCaption = node(AttachTags.PREVIEW_CAPTION_BAR).fetchSemanticsNode().boundsInRoot
+        assertTrue("photo clears typing caption", typingImage.bottom <= typingCaption.top)
+        device.pressBack()
+        waitFor(AttachTags.PREVIEW_CROP)
+        node(PictureViewerTags.CLOSE).performClick()
+        waitGone(PictureViewerTags.VIEWER)
+        node(AttachTags.PREVIEW_FOOT).assertDoesNotExist()
+        device.pressBack()
+        waitGone(AttachTags.SHEET)
+        node(AttachTags.PREVIEW_CAPTION).assertDoesNotExist()
+        node(AttachTags.PREVIEW_DRAW).assertDoesNotExist()
+        node(ConversationComposerTags.INPUT).assertExists()
+        capture("43-chat-no-viewer-chrome")
     }
 
     @Test fun the_header_check_puts_the_picks_in_the_composer_unsent() {

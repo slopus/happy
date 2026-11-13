@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -35,13 +34,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,7 +69,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.ui.components.Alert
@@ -78,7 +76,8 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.theme.happyTextStyle
 import java.util.Locale
-import kotlin.math.max
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /**
@@ -88,7 +87,7 @@ import kotlin.math.roundToInt
  * first); the size wedge on the left (`PaintWeightChooserView`), the
  * stroke's width shown in the middle while it moves; under the photo the
  * colours, then the colour button (the whole palette, [PhotoColorSheet])
- * and the six brushes, the chosen one 12 up. Each brush keeps its own
+ * and the six white brush outlines with a circular selector. Each brush keeps its own
  * colour and size, from Telegram's defaults; Arrow is the one it opens on.
  */
 @Composable
@@ -98,21 +97,15 @@ internal fun PhotoDrawScreen(
     onCancel: () -> Unit,
     onDone: (List<PaintStroke>) -> Unit,
 ) {
-    val density = LocalDensity.current
     val crop = edit.crop
     val strokes = remember { mutableStateListOf<PaintStroke>().apply { addAll(edit.strokes) } }
-    val blur = remember { lazy { PhotoPainting.blurShader(photo) } }
-    val long = max(photo.width, photo.height).toFloat()
-    val layer = remember {
-        PhotoPainting.layer(photo.width, photo.height, edit.strokes, if (edit.strokes.any { it.tool == PaintTool.Blur }) blur.value else null)
-    }
     var drawn by remember { mutableIntStateOf(0) }
     var tool by remember { mutableStateOf(PaintTool.Arrow) }
     val colors = remember { mutableStateMapOf<PaintTool, Int>() }
     val sizes = remember { mutableStateMapOf<PaintTool, Float>() }
     val color = colors[tool] ?: tool.defaultColor
     val sizing = sizes[tool] ?: tool.defaultSize
-    var live by remember { mutableStateOf<PaintStroke?>(null) }
+    var live by remember { mutableStateOf<LivePaintStroke?>(null) }
     var area by remember { mutableStateOf(Size.Zero) }
     var resizing by remember { mutableStateOf(false) }
     var palette by remember { mutableStateOf(false) }
@@ -128,15 +121,17 @@ internal fun PhotoDrawScreen(
     val frame = Rect(Offset((area.width - crop.width * scale) / 2, (area.height - crop.height * scale) / 2), Size(crop.width * scale, crop.height * scale))
     val toScreen = remember(crop, scale, frame) { crop.matrix().apply { postScale(scale, scale); postTranslate(frame.left, frame.top) } }
     val toPhoto = remember(toScreen) { Matrix().also { toScreen.invert(it) } }
+    val preview by produceState<PhotoDrawPreview?>(null, photo, toScreen, area) {
+        value = if (area == Size.Zero) null else withContext(Dispatchers.Default) {
+            PhotoDrawPreview(photo, area.width.roundToInt(), area.height.roundToInt(), frame, toScreen, edit.strokes)
+        }
+    }
 
     fun weight(): Float = PhotoPainting.weight(sizing, crop.width)
     // The finger's handler outlives a composition: it reads the brush as it is when the finger lands.
     val brush by rememberUpdatedState(Triple(tool, color, weight()))
     fun redraw() {
-        layer.eraseColor(0)
-        val canvas = Canvas(layer)
-        val shader = if (strokes.any { it.tool == PaintTool.Blur }) blur.value else null
-        strokes.forEach { PhotoPainting.draw(canvas, it, shader, long) }
+        preview?.redraw(strokes)
         drawn++
     }
     fun photoPoint(at: Offset): Offset {
@@ -148,10 +143,10 @@ internal fun PhotoDrawScreen(
     fun snapshot(): Bitmap = Bitmap.createBitmap(area.width.roundToInt().coerceAtLeast(1), area.height.roundToInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888).also {
         val canvas = Canvas(it)
         canvas.drawColor(android.graphics.Color.BLACK)
-        canvas.clipRect(frame.left, frame.top, frame.right, frame.bottom)
-        canvas.concat(toScreen)
-        canvas.drawBitmap(photo, 0f, 0f, paint)
-        canvas.drawBitmap(layer, 0f, 0f, paint)
+        preview?.let { cache ->
+            canvas.drawBitmap(cache.background, 0f, 0f, paint)
+            canvas.drawBitmap(cache.ink, 0f, 0f, paint)
+        }
     }
 
     Column(Modifier.fillMaxSize().background(Color.Black).testTag(PhotoEditTags.DRAW)) {
@@ -206,57 +201,54 @@ internal fun PhotoDrawScreen(
                 Modifier
                     .fillMaxSize()
                     .onSizeChanged { area = Size(it.width.toFloat(), it.height.toFloat()) }
-                    .pointerInput(toPhoto) {
+                    .pointerInput(toPhoto, preview) {
+                        val cache = preview ?: return@pointerInput
                         awaitEachGesture {
                             val down = awaitFirstDown()
-                            val points = arrayListOf(photoPoint(down.position))
                             val (drawTool, drawColor, drawWeight) = brush.let { (each, tint, width) -> Triple(each, if (each.coloured) tint else 0, width) }
-                            live = PaintStroke(drawTool, drawColor, drawWeight, points.toList())
+                            val current = LivePaintStroke(drawTool, drawColor, drawWeight, photoPoint(down.position))
+                            live = current
                             down.consume()
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!change.pressed) break
                                 if (change.positionChange() != Offset.Zero) {
-                                    val next = photoPoint(change.position)
-                                    // A point every couple of the photo's pixels is all a line needs.
-                                    if (PhotoPainting.distance(next, points.last()) > 1.5f) {
-                                        points += next
-                                        live = PaintStroke(drawTool, drawColor, drawWeight, points.toList())
-                                    }
+                                    if (current.append(photoPoint(change.position))) drawn++
                                     change.consume()
                                 }
                             }
-                            val stroke = live
+                            val stroke = current.finish()
                             live = null
-                            if (stroke != null) {
-                                strokes += stroke
-                                PhotoPainting.draw(Canvas(layer), stroke, if (stroke.tool == PaintTool.Blur) blur.value else null, long)
-                                drawn++
-                            }
+                            strokes += stroke
+                            cache.commit(stroke)
+                            drawn++
                         }
                     }
-                    .testTag(PhotoEditTags.DRAW_AREA),
+                    .then(if (preview != null) Modifier.testTag(PhotoEditTags.DRAW_AREA) else Modifier),
             ) {
                 // Read for the layer's changes, which aren't state of their own.
                 if (scale == 0f || drawn < 0) return@Canvas
+                val cache = preview ?: return@Canvas
                 val stroke = live
                 drawIntoCanvas { canvas ->
                     val native = canvas.nativeCanvas
                     native.save()
                     native.clipRect(frame.left, frame.top, frame.right, frame.bottom)
-                    native.concat(toScreen)
-                    native.drawBitmap(photo, 0f, 0f, paint)
-                    val shader = if (stroke?.tool == PaintTool.Blur) blur.value else null
-                    if (stroke?.tool == PaintTool.Eraser) {
+                    native.drawBitmap(cache.background, 0f, 0f, paint)
+                    if (stroke?.stroke?.tool == PaintTool.Eraser) {
                         // The eraser takes from the drawing alone, not the photo under it.
-                        val saved = native.saveLayer(null, null)
-                        native.drawBitmap(layer, 0f, 0f, paint)
-                        PhotoPainting.draw(native, stroke, null, long)
+                        val saved = native.saveLayer(frame.left, frame.top, frame.right, frame.bottom, null)
+                        native.drawBitmap(cache.ink, 0f, 0f, paint)
+                        native.concat(toScreen)
+                        cache.draw(native, stroke.stroke, stroke.path())
                         native.restoreToCount(saved)
                     } else {
-                        native.drawBitmap(layer, 0f, 0f, paint)
-                        if (stroke != null) PhotoPainting.draw(native, stroke, shader, long)
+                        native.drawBitmap(cache.ink, 0f, 0f, paint)
+                        if (stroke != null) {
+                            native.concat(toScreen)
+                            cache.draw(native, stroke.stroke, stroke.path())
+                        }
                     }
                     native.restore()
                 }
@@ -270,7 +262,7 @@ internal fun PhotoDrawScreen(
                 size = sizing,
                 onChange = { sizes[tool] = it },
                 onResizing = { resizing = it },
-                modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
+                modifier = Modifier.align(Alignment.CenterStart),
             )
             pipette?.let { snapshot ->
                 PhotoPipette(
@@ -318,6 +310,8 @@ internal fun PhotoDrawScreen(
 private fun SizeWedge(size: Float, onChange: (Float) -> Unit, onResizing: (Boolean) -> Unit, modifier: Modifier) {
     val label = stringResource(R.string.photo_edit_size)
     val change by rememberUpdatedState(onChange)
+    var touching by remember { mutableStateOf(false) }
+    val shown by animateFloatAsState(if (touching) 1f else 0f, tween(200), label = "brush width")
     Canvas(
         modifier
             .size(PhotoEditSpec.wedgeWidth, PhotoEditSpec.wedgeHeight)
@@ -326,6 +320,7 @@ private fun SizeWedge(size: Float, onChange: (Float) -> Unit, onResizing: (Boole
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
+                    touching = true
                     onResizing(true)
                     change((1f - down.position.y / this.size.height).coerceIn(0f, 1f))
                     down.consume()
@@ -337,6 +332,7 @@ private fun SizeWedge(size: Float, onChange: (Float) -> Unit, onResizing: (Boole
                         moved.consume()
                     }
                     onResizing(false)
+                    touching = false
                 }
             }
             .semantics {
@@ -345,9 +341,9 @@ private fun SizeWedge(size: Float, onChange: (Float) -> Unit, onResizing: (Boole
             }
             .testTag(PhotoEditTags.SIZE),
     ) {
-        val wide = this.size.width * 0.8f
-        val narrow = 4.dp.toPx()
-        val middle = this.size.width / 2
+        val wide = (6 + 26 * shown).dp.toPx()
+        val narrow = 6.dp.toPx()
+        val middle = 32.dp.toPx() * shown
         val top = wide / 2
         val bottom = this.size.height - narrow / 2
         val wedge = Path().apply {
@@ -361,7 +357,7 @@ private fun SizeWedge(size: Float, onChange: (Float) -> Unit, onResizing: (Boole
         drawCircle(Color.White.copy(alpha = 0.3f), wide / 2, Offset(middle, top))
         drawCircle(Color.White.copy(alpha = 0.3f), narrow / 2, Offset(middle, bottom))
         val y = top + (bottom - top) * (1f - size)
-        drawCircle(Color.White, 10.dp.toPx(), Offset(middle, y))
+        drawCircle(Color.White, (12 * (1 - shown) + (4.5f + 11.5f * size) * shown).dp.toPx(), Offset(middle, y))
     }
 }
 
@@ -395,12 +391,12 @@ private fun Swatches(current: Int, enabled: Boolean, onPick: (Int) -> Unit) {
     }
 }
 
-/** The colour button and the six brushes, 44 apart; the chosen brush rises 12 and wears its colour. */
+/** Telegram's PaintToolsView: white 28dp brush glyphs, a translucent circular selector, and the colour button. */
 @Composable
 private fun Tools(tool: PaintTool, color: Int, onTool: (PaintTool) -> Unit, onPalette: () -> Unit) {
     val colorLabel = stringResource(R.string.photo_edit_color)
     Row(
-        Modifier.fillMaxWidth().height(64.dp),
+        Modifier.fillMaxWidth().height(48.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -424,16 +420,15 @@ private fun Tools(tool: PaintTool, color: Int, onTool: (PaintTool) -> Unit, onPa
                 drawCircle(Color(color), this.size.minDimension / 2 - ring * 2)
             }
         }
-        Box(Modifier.size(12.dp))
         for (each in PaintTool.entries) {
             val chosen = each == tool
-            val rise by animateDpAsState(if (chosen) -PhotoEditSpec.toolRise else 0.dp, tween(200), label = "tool rise")
+            val selectionAlpha by animateFloatAsState(if (chosen) 1f else 0f, tween(250), label = "brush selected")
             val label = stringResource(each.label)
             Box(
                 Modifier
                     .size(PhotoEditSpec.toolSpacing)
-                    .offset { IntOffset(0, rise.roundToPx()) }
                     .clip(CircleShape)
+                    .background(Color.White.copy(alpha = selectionAlpha * 0.1875f))
                     .clickable(role = Role.Button) { onTool(each) }
                     .semantics {
                         contentDescription = label
@@ -444,12 +439,8 @@ private fun Tools(tool: PaintTool, color: Int, onTool: (PaintTool) -> Unit, onPa
             ) {
                 Icon(
                     PhotoEditIcons.of(each), null,
-                    tint = when {
-                        chosen && each.coloured -> Color(color).copy(alpha = 1f)
-                        chosen -> Color.White
-                        else -> Color.White.copy(alpha = 0.6f)
-                    },
-                    modifier = Modifier.size(26.dp),
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp),
                 )
             }
         }

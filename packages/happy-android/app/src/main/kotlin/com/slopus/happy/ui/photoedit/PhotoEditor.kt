@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -12,11 +13,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -25,6 +30,9 @@ import androidx.core.view.WindowCompat
 import com.slopus.happy.ui.components.WindowDialog
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.ThemePreference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.max
 
 /** The two edits a photo takes here: Telegram's crop and its drawing. */
 enum class PhotoEditMode { Crop, Draw }
@@ -41,6 +49,7 @@ fun PhotoEditor(
     photo: Bitmap?,
     edit: PhotoEdit?,
     mode: PhotoEditMode,
+    saving: Boolean = false,
     onCancel: () -> Unit,
     onDone: (PhotoEdit) -> Unit,
 ) {
@@ -63,13 +72,23 @@ fun PhotoEditor(
                     when (mode) {
                         PhotoEditMode.Crop -> {
                             // The drawing turns and is cut with the photo.
-                            val layer = remember(photo) {
-                                if (start.strokes.isEmpty()) null
-                                else PhotoPainting.layer(photo.width, photo.height, start.strokes, if (start.strokes.any { it.tool == PaintTool.Blur }) PhotoPainting.blurShader(photo) else null)
+                            val configuration = LocalConfiguration.current
+                            val pixels = with(LocalDensity.current) { max(configuration.screenWidthDp, configuration.screenHeightDp).dp.roundToPx() }.coerceIn(1280, 2048)
+                            val preview by produceState<Bitmap?>(null, photo, start.strokes, pixels) {
+                                value = withContext(Dispatchers.Default) { PhotoPainting.preview(photo, start.strokes, pixels) }
                             }
-                            PhotoCropScreen(photo, layer, start.crop, onCancel, onDone = { onDone(start.copy(crop = it)) })
+                            preview?.let {
+                                PhotoCropScreen(photo, it, start.crop, onCancel, onDone = { onDone(start.copy(crop = it)) })
+                            } ?: run {
+                                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(24.dp).align(Alignment.Center))
+                            }
                         }
                         PhotoEditMode.Draw -> PhotoDrawScreen(photo, start, onCancel, onDone = { onDone(start.copy(strokes = it)) })
+                    }
+                }
+                if (saving) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).clickable(interactionSource = null, indication = null) {}, contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
                     }
                 }
             }

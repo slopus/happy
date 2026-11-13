@@ -38,12 +38,11 @@ object PhotoEditSpec {
     const val SHEET = 0xff252525.toInt()
 
     /** The draw screen's size wedge (`PaintWeightChooserView`), on the left. */
-    val wedgeWidth = 30.dp
+    val wedgeWidth = 64.dp
     val wedgeHeight = 240.dp
 
-    /** The tools under the photo: 44 apart, the chosen one 12 up. */
+    /** The tools under the photo: 44 apart, selected on a translucent circle. */
     val toolSpacing = 44.dp
-    val toolRise = 12.dp
 
     /** The eyedropper's loupe, its ring the colour under it. */
     val loupe = 120.dp

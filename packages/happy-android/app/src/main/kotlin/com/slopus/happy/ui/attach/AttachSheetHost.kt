@@ -165,6 +165,7 @@ fun AttachSheet(
     var staging by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<Viewing?>(null) }
     var editing by remember { mutableStateOf<Editing?>(null) }
+    var savingEdit by remember { mutableStateOf(false) }
     val edits = remember { AttachEdits(File(context.cacheDir, "attachments/edits/${UUID.randomUUID()}")) }
     DisposableEffect(edits) { onDispose { edits.clear() } }
     // The camera's photos, newest first, at the grid's head.
@@ -456,7 +457,8 @@ fun AttachSheet(
                     }
                 },
                 // The caption and Send, and the photo's edits, under it (Telegram's `PhotoViewer` picking).
-                bottom = { shownItem, modifier ->
+                onImageTap = { shownItem -> itemOf(shownItem.key)?.let { toggle(it.picked()) } },
+                bottom = { shownItem, modifier, onBack ->
                     val item = itemOf(shownItem.key) ?: return@PictureViewer
                     AttachViewerFoot(
                         caption = caption,
@@ -473,6 +475,7 @@ fun AttachSheet(
                         edited = edits[item.uri],
                         editable = !item.isVideo,
                         onEdit = { mode -> editing = Editing(item, mode) },
+                        onBack = onBack,
                         modifier = modifier,
                     )
                 },
@@ -492,15 +495,27 @@ fun AttachSheet(
                 photo = photo,
                 edit = edits[open.item.uri]?.edit,
                 mode = open.mode,
-                onCancel = { editing = null },
+                saving = savingEdit,
+                onCancel = { if (!savingEdit) editing = null },
                 onDone = { edit ->
                     val working = photo
-                    editing = null
-                    if (working != null) scope.launch {
-                        val before = edits[open.item.uri]?.edit ?: PhotoEdit(PhotoCrop.whole(working.width, working.height))
-                        edits.save(open.item.uri, working, edit)
-                        // Done with a change picks the photo, as Telegram does.
-                        if (edit != before) selection.pick(open.item.picked())
+                    if (working != null && !savingEdit) {
+                        savingEdit = true
+                        scope.launch {
+                            try {
+                                val before = edits[open.item.uri]?.edit ?: PhotoEdit(PhotoCrop.whole(working.width, working.height))
+                                if (edit != before) {
+                                    edits.save(open.item.uri, working, edit)
+                                    // Done with a change picks the photo, as Telegram does.
+                                    selection.pick(open.item.picked())
+                                }
+                                editing = null
+                            } catch (_: IOException) {
+                                say(R.string.image_upload_upload_failed_title, resources.getString(R.string.attach_unreadable_message, open.item.name))
+                            } finally {
+                                savingEdit = false
+                            }
+                        }
                     }
                 },
             )

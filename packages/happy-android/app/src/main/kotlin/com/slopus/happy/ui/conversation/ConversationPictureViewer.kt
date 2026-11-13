@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import android.view.WindowManager
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
@@ -85,6 +86,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -194,8 +197,9 @@ interface ViewerSource {
  * iOS's `AttachPreviewViewController` has it) takes the top right for the
  * picture in view, and the close button moves to the top left. A
  * [bottom] (the attach sheet's caption and edits, Telegram's
- * `PhotoViewer` picking) sits at the foot for the item in view, its
- * window resized for the keyboard so it can ride it. The
+ * `PhotoViewer` picking) reserves its measured height below the picture,
+ * including the caption keyboard, and supplies the viewer's Back. [onImageTap]
+ * lets the picker toggle selection instead of closing the viewer. The
  * position ("2 of 5") is the page's state for TalkBack, as iOS gives it to
  * VoiceOver.
  */
@@ -205,7 +209,8 @@ fun PictureViewer(
     index: Int,
     source: ViewerSource,
     corner: (@Composable (item: ViewerItem, modifier: Modifier) -> Unit)? = null,
-    bottom: (@Composable (item: ViewerItem, modifier: Modifier) -> Unit)? = null,
+    bottom: (@Composable (item: ViewerItem, modifier: Modifier, onBack: () -> Unit) -> Unit)? = null,
+    onImageTap: ((ViewerItem) -> Unit)? = null,
     onClose: () -> Unit,
 ) {
     if (items.isEmpty()) return
@@ -213,6 +218,8 @@ fun PictureViewer(
     val shown = remember { Animatable(0f) }
     val leave by rememberUpdatedState(onClose)
     val showing by rememberUpdatedState(items)
+    val tapImage by rememberUpdatedState(onImageTap)
+    var footHeight by remember { mutableIntStateOf(0) }
     val origins = ViewerOrigins.Shared
     val pager = rememberPagerState(initialPage = index.coerceIn(0, items.lastIndex)) { items.size }
     val zooms = remember(items) { List(items.size) { PageZoom() } }
@@ -294,6 +301,7 @@ fun PictureViewer(
             // It comes and goes by its own motion, not the system's dialog fade over it.
             window?.setWindowAnimations(0)
             window?.let { WindowCompat.getInsetsController(it, it.decorView).isAppearanceLightStatusBars = false }
+            window?.let { WindowCompat.getInsetsController(it, it.decorView).isAppearanceLightNavigationBars = false }
             @Suppress("DEPRECATION")
             if (bottom != null) window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
@@ -312,6 +320,15 @@ fun PictureViewer(
             flight.visible = true
         }
         val density = LocalDensity.current
+        val focus = LocalFocusManager.current
+        val keyboard = LocalSoftwareKeyboardController.current
+        val typing = bottom != null && WindowInsets.ime.getBottom(density) > 0
+        LaunchedEffect(motion.leaving) {
+            if (motion.leaving && bottom != null) {
+                focus.clearFocus(force = true)
+                keyboard?.hide()
+            }
+        }
         motion.density = density.density
         val pages by remember(items) {
             derivedStateOf { PictureViewing.pages(zooms.getOrNull(pager.currentPage)?.zoomed == true, motion.drag != Offset.Zero || motion.leaving) }
@@ -330,7 +347,7 @@ fun PictureViewer(
         ) {
             HorizontalPager(
                 state = pager,
-                modifier = Modifier.fillMaxSize().testTag(PictureViewerTags.PAGER),
+                modifier = Modifier.fillMaxSize().padding(bottom = with(density) { footHeight.toDp() }).testTag(PictureViewerTags.PAGER),
                 pageSpacing = PictureViewing.PAGE_GAP.dp,
                 beyondViewportPageCount = 1,
                 userScrollEnabled = pages,
@@ -365,7 +382,14 @@ fun PictureViewer(
                         val zoom = zooms[page]
                         // Turned away from, a page is whole again when it comes back.
                         LaunchedEffect(pager.settledPage == page) { if (pager.settledPage != page) zoom.reset() }
-                        PicturePage(item, source, zoom, current, motion, scope, flight.takeIf { flying }, { shown.value }, onTap = close)
+                        PicturePage(item, source, zoom, current, motion, scope, flight.takeIf { flying }, { shown.value }, reservedFoot = bottom != null, onTap = {
+                            val select = tapImage
+                            if (select != null) select(item)
+                            else if (typing) {
+                                focus.clearFocus(force = true)
+                                keyboard?.hide()
+                            } else close()
+                        })
                     }
                 }
             }
@@ -376,7 +400,7 @@ fun PictureViewer(
                 .padding(PictureViewing.CLOSE_INSET.dp)
                 .size(PictureViewing.CLOSE_SIZE.dp)
             if (source.shares) ShareButton(source, items[pager.currentPage], controls.align(Alignment.TopStart))
-            IconButton(
+            if (bottom == null) IconButton(
                 onClick = close,
                 colors = IconButtonDefaults.iconButtonColors(contentColor = Color.White),
                 modifier = controls
@@ -386,7 +410,7 @@ fun PictureViewer(
                 Icon(MaterialSymbols.Close, stringResource(R.string.conversation_picture_close))
             }
             corner?.invoke(items[pager.currentPage], controls.corner(Alignment.TopEnd))
-            bottom?.invoke(items[pager.currentPage], controls.align(Alignment.BottomCenter))
+            bottom?.invoke(items[pager.currentPage], controls.align(Alignment.BottomCenter).onSizeChanged { footHeight = it.height }, close)
         }
     }
 }
@@ -595,6 +619,7 @@ private fun PicturePage(
     scope: CoroutineScope,
     flight: ViewerFlight?,
     progress: () -> Float,
+    reservedFoot: Boolean = false,
     onTap: () -> Unit,
 ) {
     // Decoded once per page and making of it, not on every recomposition.
@@ -619,7 +644,7 @@ private fun PicturePage(
     val read = remember(bytes) { bytes?.let(::pictureSize)?.let { image -> image.width?.let { w -> image.height?.let { h -> w to h } } } }
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
-    val insets = WindowInsets.safeDrawing
+    val insets = if (reservedFoot) WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal) else WindowInsets.safeDrawing
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
@@ -628,10 +653,10 @@ private fun PicturePage(
     ) {
         val safe = with(density) {
             PictureViewing.Insets(
-                left = insets.getLeft(this, direction).toDp().value,
-                top = insets.getTop(this).toDp().value,
-                right = insets.getRight(this, direction).toDp().value,
-                bottom = insets.getBottom(this).toDp().value,
+                left = max(insets.getLeft(this, direction).toDp().value, if (reservedFoot) 12f else 0f),
+                top = insets.getTop(this).toDp().value + if (reservedFoot) 56f else 0f,
+                right = max(insets.getRight(this, direction).toDp().value, if (reservedFoot) 12f else 0f),
+                bottom = if (reservedFoot) 12f else insets.getBottom(this).toDp().value,
             )
         }
         val natural = read ?: PictureViewing.restingSize(item, hashedRatio(item.thumbhash), max(maxWidth.value, maxHeight.value))

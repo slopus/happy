@@ -40,6 +40,22 @@ object ImageNormalizer {
      * [IOException] when the bytes aren't an image.
      */
     fun normalize(open: () -> InputStream, fileName: String?, outputDir: File, now: Long = System.currentTimeMillis(), cropRatio: Double? = null): NormalizedImage {
+        val output = decode(open, cropRatio)
+        val width = output.width
+        val height = output.height
+        val file = File(outputDir, "attachment_${now}_${(Math.random() * 1e9).toLong()}.jpg")
+        try {
+            file.outputStream().use { if (!output.compress(Bitmap.CompressFormat.JPEG, ATTACHMENT_JPEG_QUALITY, it)) throw IOException("JPEG encode failed") }
+        } finally {
+            output.recycle()
+        }
+        val size = file.length()
+        if (size <= 0) throw IOException("Could not determine normalized image size")
+        return NormalizedImage(file, width, height, size, withJpegExtension(fileName, now))
+    }
+
+    /** The upload-sized, upright pixels, also used by the editor before its final JPEG encode. Caller owns the bitmap. */
+    fun decode(open: () -> InputStream, cropRatio: Double? = null): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         open().use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Not an image")
@@ -68,13 +84,8 @@ object ImageNormalizer {
         } else {
             Bitmap.createBitmap(decoded, crop.left, crop.top, crop.width(), crop.height(), matrix, true)
         }
-        val file = File(outputDir, "attachment_${now}_${(Math.random() * 1e9).toLong()}.jpg")
-        file.outputStream().use { if (!output.compress(Bitmap.CompressFormat.JPEG, ATTACHMENT_JPEG_QUALITY, it)) throw IOException("JPEG encode failed") }
-        if (output !== decoded) output.recycle()
-        decoded.recycle()
-        val size = file.length()
-        if (size <= 0) throw IOException("Could not determine normalized image size")
-        return NormalizedImage(file, outputWidth(width, height, orientation), outputHeight(width, height, orientation), size, withJpegExtension(fileName, now))
+        if (output !== decoded) decoded.recycle()
+        return output
     }
 
     /** CameraCrop.rect: centred, ratio=long/short, independent of EXIF orientation. */
@@ -108,14 +119,6 @@ object ImageNormalizer {
         val stem = if (dot > 0) name.substring(0, dot) else name
         return "$stem.jpg"
     }
-
-    private fun swaps(orientation: Int) = orientation in setOf(
-        ExifInterface.ORIENTATION_ROTATE_90, ExifInterface.ORIENTATION_ROTATE_270,
-        ExifInterface.ORIENTATION_TRANSPOSE, ExifInterface.ORIENTATION_TRANSVERSE,
-    )
-
-    private fun outputWidth(width: Int, height: Int, orientation: Int) = if (swaps(orientation)) height else width
-    private fun outputHeight(width: Int, height: Int, orientation: Int) = if (swaps(orientation)) width else height
 
     internal fun Matrix.applyOrientation(orientation: Int) {
         when (orientation) {
