@@ -7,7 +7,9 @@ import UIKit
 /// finger can drag along the bar (`TabSelectionRecognizer`), which turns,
 /// while photos are picked, into the caption: the chat's own composer card
 /// (`AgentInputCardView`) with only its text and send, so the two look
-/// the same; the tabs' glass dematerializes as the card fades in.
+/// the same. One shape morphs from the bar's capsule to the card's frame
+/// and back; inside it the tabs' glass dematerializes as the card comes in,
+/// the tabs rising out and the text and send coming in where they rest.
 ///
 /// The lens is Telegram's own for systems without the private liquid lens
 /// (`LiquidLensView`'s legacy selection): a tinted capsule 3 in, the chosen
@@ -25,6 +27,9 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
     private(set) var selected = 0
     private(set) var picking = false
 
+    /// What morphs: it clips the glass and the card to one rounded shape,
+    /// the bar's or the card's, while it moves between them.
+    private let shape = UIView()
     private let glass = UIVisualEffectView(effect: AttachMenuPanel.glassEffect())
     private static func glassEffect() -> UIGlassEffect {
         let effect = UIGlassEffect(style: .regular)
@@ -60,7 +65,9 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        addSubview(glass)
+        shape.layer.cornerCurve = .continuous
+        addSubview(shape)
+        shape.addSubview(glass)
         tabsHost.clipsToBounds = true
         tabsHost.layer.cornerRadius = 28
         tabsHost.layer.cornerCurve = .continuous
@@ -83,7 +90,7 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
         card.primaryControl.accessibilityIdentifier = "attach-send"
         card.alpha = 0
         card.isHidden = true
-        addSubview(card)
+        shape.addSubview(card)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -172,32 +179,37 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
         gestureRecognizer !== recognizer || !picking
     }
 
-    /// Picked or not: the tabs' glass goes and the card comes, or back.
+    /// Picked or not: the shape morphs between the bar and the card, its
+    /// glass going as the card comes, or back; the same way both ways.
     func setPicking(_ value: Bool, animated: Bool) {
         guard value != picking else { return }
         picking = value
         if !value { field.resignFirstResponder() }
         card.isHidden = false
         glass.isHidden = false
+        // The card's shadow falls outside the shape: clipped while it moves.
+        shape.clipsToBounds = true
         tabsHost.isUserInteractionEnabled = !value
-        let fade = value ? 0.15 : 0.25
-        let alpha = {
+        let swap = {
             self.tabsHost.alpha = value ? 0 : 1
             self.glass.effect = value ? nil : Self.glassEffect()
             self.card.alpha = value ? 1 : 0
         }
-        let done = { (_: Bool) in
+        let done = {
             guard self.picking == value else { return }
             self.card.isHidden = !value
             self.glass.isHidden = value
+            self.shape.clipsToBounds = !value
         }
-        if animated {
-            UIView.animate(withDuration: fade, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState], animations: alpha, completion: done)
-        } else {
-            alpha()
-            done(true)
+        guard animated, window != nil else {
+            swap()
+            relayout(animated: false)
+            return done()
         }
-        relayout(animated: animated)
+        let fade = UIViewPropertyAnimator(duration: AttachMenuMotion.captionSwap, curve: .easeInOut, animations: swap)
+        fade.isUserInteractionEnabled = true
+        fade.startAnimation()
+        relayout(animated: true) { done() }
     }
 
     // MARK: Layout
@@ -222,7 +234,7 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
         return CGRect(x: placed.minX + placed.sides.left + inset, y: placed.bottom - spacing - height, width: width, height: height)
     }
 
-    private func relayout(animated: Bool) {
+    private func relayout(animated: Bool, completion: (() -> Void)? = nil) {
         guard let placed else { return }
         let layout = AttachMenuPanelLayout(.init(
             minX: placed.minX, width: placed.width, bottom: placed.bottom, sides: placed.sides,
@@ -236,14 +248,18 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
         let lifted = lensDrag != nil
         let lensFrame = lensDrag.map { $0.lens(selection: layout.lens, width: layout.tabBar.width).offsetBy(dx: -inset, dy: -inset) }
             ?? (lifted ? lensRest.insetBy(dx: -AttachTabLens.lift, dy: -AttachTabLens.lift) : lensRest)
+        let radius = picking ? MobileComposerMetrics.mobile.shellRadius : layout.glassRadius
+        // The tabs keep the bar's place, and the card its own, in the shape.
+        let bar = layout.tabBar.offsetBy(dx: -own.minX, dy: -own.minY)
         let apply = {
-            // The panel spans the bar or the card; the tabs keep the bar's place.
             self.frame = own
-            self.glass.frame = layout.tabBar.offsetBy(dx: -own.minX, dy: -own.minY)
-            self.glass.cornerConfiguration = .capsule(maximumRadius: layout.glassRadius)
+            self.shape.frame = self.bounds
+            self.shape.layer.cornerRadius = min(radius, own.height / 2)
+            self.glass.frame = self.bounds
+            self.glass.cornerConfiguration = .capsule(maximumRadius: radius)
             self.card.frame = caption.offsetBy(dx: -own.minX, dy: -own.minY)
             self.card.layoutIfNeeded()
-            let tabsOrigin = CGPoint(x: inset, y: inset + (self.picking ? -AttachMenuMetrics.tabsRise : 0))
+            let tabsOrigin = CGPoint(x: bar.minX + inset, y: bar.minY + inset + (self.picking ? -AttachMenuMetrics.tabsRise : 0))
             self.tabsHost.frame = CGRect(origin: tabsOrigin, size: CGSize(width: layout.tabBar.width - 2 * inset, height: layout.tabBar.height - 2 * inset))
             self.tabsPlain.frame = self.tabsHost.bounds
             self.tabsChosen.frame = self.tabsHost.bounds
@@ -262,10 +278,15 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
                 }
             }
         }
-        guard animated, window != nil else { return apply() }
+        guard animated, window != nil else {
+            apply()
+            completion?()
+            return
+        }
         let curve = AttachMenuMotion.openCurve
         let animator = UIViewPropertyAnimator(duration: AttachMenuMotion.barDuration, controlPoint1: CGPoint(x: CGFloat(curve.x1), y: CGFloat(curve.y1)), controlPoint2: CGPoint(x: CGFloat(curve.x2), y: CGFloat(curve.y2)), animations: apply)
         animator.isUserInteractionEnabled = true
+        if let completion { animator.addCompletion { _ in completion() } }
         animator.startAnimation()
     }
 

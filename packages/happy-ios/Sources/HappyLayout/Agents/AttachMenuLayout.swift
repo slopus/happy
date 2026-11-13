@@ -163,8 +163,11 @@ public enum AttachMenuMotion {
     public static let switchDipDuration: TimeInterval = 0.2
     public static let switchReturnDuration: TimeInterval = 0.3
     public static let switchReturnDamping: CGFloat = 70
-    /// The bar turning into "Add N" and back.
+    /// The bar turning into the caption and back: the shape's morph.
     public static let barDuration: TimeInterval = 0.4
+    /// The tabs and the card trading places inside it, ease in-out, the
+    /// same both ways.
+    public static let captionSwap: TimeInterval = 0.2
 }
 
 /// Where the sheet is, in the window's space, for any top edge.
