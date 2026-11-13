@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Platform } from 'react-native';
 import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
 import { SessionComposerModeSelector, getModePanelPlacement, formatComposerModelName } from './SessionComposerModeSelector';
 
@@ -75,6 +76,7 @@ describe('SessionComposerModeSelector', () => {
     });
 
     afterEach(() => {
+        Platform.OS = 'web';
         consoleErrorSpy.mockRestore();
     });
 
@@ -411,6 +413,100 @@ describe('SessionComposerModeSelector', () => {
         act(() => renderer.update(<SessionComposerModeSelector {...props} effort={effortOptions[1]} />));
         expect(knob().props.style.at(-1).left).toBe('100%');
         act(() => renderer.unmount());
+    });
+
+    it.each(['android', 'ios'] as const)('keeps %s dragging relative to the track when touch targets change', (platform) => {
+        Platform.OS = platform;
+        const onEffortChange = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionComposerModeSelector
+                    online model={modelOptions[0]} modelOptions={modelOptions}
+                    effort={effortOptions[0]} effortOptions={effortOptions}
+                    onModelChange={vi.fn()} onEffortChange={onEffortChange}
+                />,
+                { createNodeMock: () => ({
+                    measure: (cb: any) => cb(0, 0, 200, 32, 100, 300),
+                }) },
+            );
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const track = renderer.root.findByProps({ testID: 'session-composer-effort-track' });
+        act(() => track.props.onLayout({ nativeEvent: { layout: { width: 200 } } }));
+        const touch = (pageX: number, locationX: number) => ({ nativeEvent: { pageX, locationX } });
+        const position = () => parseFloat(renderer.root.findByProps({ testID: 'session-composer-effort-knob' }).props.style.at(-1).left);
+
+        // locationX belongs to the hit child (step/knob), which can move beneath the finger.
+        act(() => track.props.onResponderGrant(touch(200, 0)));
+        expect(position()).toBeCloseTo(50);
+        act(() => track.props.onResponderMove(touch(200, 200)));
+        expect(position()).toBeCloseTo(50);
+        act(() => track.props.onResponderMove(touch(242, 0)));
+        expect(position()).toBeCloseTo(75);
+        act(() => track.props.onResponderMove(touch(158, 200)));
+        expect(position()).toBeCloseTo(25);
+        expect(onEffortChange).not.toHaveBeenCalled();
+        act(() => track.props.onResponderRelease(touch(284, 0)));
+        expect(position()).toBe(100);
+        expect(onEffortChange).toHaveBeenCalledExactlyOnceWith('xhigh');
+        act(() => renderer.unmount());
+    });
+
+    it('uses the latest native touch while measurement is pending and commits a quick release once', () => {
+        Platform.OS = 'android';
+        const onEffortChange = vi.fn();
+        let measure: any;
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionComposerModeSelector
+                    online model={modelOptions[0]} modelOptions={modelOptions}
+                    effort={effortOptions[0]} effortOptions={effortOptions}
+                    onModelChange={vi.fn()} onEffortChange={onEffortChange}
+                />,
+                { createNodeMock: () => ({ measure: (cb: any) => { measure = cb; } }) },
+            );
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const track = renderer.root.findByProps({ testID: 'session-composer-effort-track' });
+        act(() => track.props.onLayout({ nativeEvent: { layout: { width: 200 } } }));
+        const touch = (pageX: number) => ({ nativeEvent: { pageX, locationX: 0 } });
+        act(() => track.props.onResponderGrant(touch(116)));
+        act(() => track.props.onResponderMove(touch(200)));
+        act(() => track.props.onResponderRelease(touch(284)));
+        expect(onEffortChange).not.toHaveBeenCalled();
+        act(() => measure(0, 0, 200, 32, 100, 300));
+        expect(onEffortChange).toHaveBeenCalledExactlyOnceWith('xhigh');
+        act(() => renderer.unmount());
+    });
+
+    it.each(['terminate', 'close', 'model-change', 'unmount'])('ignores a late native measurement after %s', (cancel) => {
+        Platform.OS = 'android';
+        const onEffortChange = vi.fn();
+        let measure: any;
+        let renderer: any;
+        const props = { online: true, model: modelOptions[0], modelOptions,
+            effort: effortOptions[0], effortOptions, onModelChange: vi.fn(), onEffortChange };
+        act(() => {
+            renderer = TestRenderer.create(<SessionComposerModeSelector {...props} />,
+                { createNodeMock: () => ({ measure: (cb: any) => { measure = cb; } }) });
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const track = renderer.root.findByProps({ testID: 'session-composer-effort-track' });
+        act(() => track.props.onLayout({ nativeEvent: { layout: { width: 200 } } }));
+        const touch = { nativeEvent: { pageX: 284, locationX: 0 } };
+        act(() => track.props.onResponderGrant(touch));
+        act(() => track.props.onResponderRelease(touch));
+        act(() => {
+            if (cancel === 'terminate') track.props.onResponderTerminate();
+            if (cancel === 'close') renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress();
+            if (cancel === 'model-change') renderer.update(<SessionComposerModeSelector {...props} model={modelOptions[1]} />);
+            if (cancel === 'unmount') renderer.unmount();
+        });
+        act(() => measure(0, 0, 200, 32, 100, 300));
+        expect(onEffortChange).not.toHaveBeenCalled();
+        if (cancel !== 'unmount') act(() => renderer.unmount());
     });
 
     it('formats known GPT model identifiers while preserving other provider names', () => {

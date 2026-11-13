@@ -10,6 +10,7 @@ import {
     TextInput,
     useWindowDimensions,
     View,
+    type GestureResponderEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -60,6 +61,7 @@ export function formatComposerModelName(name: string): string {
 }
 
 type ModePanelAnchor = { x: number; y: number; width: number; height: number };
+type NativeEffortDrag = { pageX: number; trackPageX: number | null; released: boolean };
 
 export function getModePanelPlacement(width: number, height: number, anchor: ModePanelAnchor | null) {
     const panelWidth = Math.min(292, Math.max(0, width - 24));
@@ -102,6 +104,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const trackRef = React.useRef<View>(null);
     const [trackWidth, setTrackWidth] = React.useState(0);
     const dragIndex = React.useRef<number | null>(null);
+    const nativeDrag = React.useRef<NativeEffortDrag | null>(null);
     const [previewFraction, setPreviewFraction] = React.useState<number | null>(null);
     const [pendingEffort, setPendingEffort] = React.useState<string | null>(null);
     const [anchor, setAnchor] = React.useState<ModePanelAnchor | null>(null);
@@ -111,6 +114,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             props.effortOptions.length > 1 ||
             (props.supportsFast && !!props.onFastModeChange));
     const close = React.useCallback(() => {
+        nativeDrag.current = null;
         dragIndex.current = null;
         setPreviewFraction(null);
         setTriggerHovered(false);
@@ -127,11 +131,13 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     }, [enabled, close]);
     const effortKeys = props.effortOptions.map((option) => option.key).join('\0');
     React.useEffect(() => {
+        nativeDrag.current = null;
         dragIndex.current = null;
         setPreviewFraction(null);
         setPendingEffort(null);
         setModelHovered(false);
     }, [props.model?.key, effortKeys]);
+    React.useEffect(() => () => { nativeDrag.current = null; }, []);
     React.useEffect(() => {
         if (pendingEffort && props.effort?.key === pendingEffort) setPendingEffort(null);
     }, [pendingEffort, props.effort?.key]);
@@ -174,6 +180,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const defaultOption = levels.find((option) => option.key === 'medium');
     const defaultModel = props.modelOptions.find(option => /^(?:codex::)?gpt[-_ ]?6\.1[-_ ]sol$/i.test(option.key));
     const reset = () => {
+        finishDrag(false);
         if (props.onReset) { props.onReset(); setPendingEffort(null); setPreviewFraction(null); return; }
         if (defaultModel && defaultModel.key !== props.model?.key) props.onModelChange(defaultModel.key);
         if (defaultOption) { setPendingEffort(defaultOption.key); props.onEffortChange(defaultOption.key); }
@@ -209,12 +216,35 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     };
     const finishDrag = (commit: boolean) => {
         const option = dragIndex.current === null ? undefined : levels[dragIndex.current];
+        nativeDrag.current = null;
         dragIndex.current = null;
         if (commit && option && option.key !== props.effort?.key) {
             setPendingEffort(option.key);
             props.onEffortChange(option.key);
         }
         setPreviewFraction(null);
+    };
+    const startNativeDrag = (event: GestureResponderEvent) => {
+        const drag: NativeEffortDrag = { pageX: event.nativeEvent.pageX, trackPageX: null, released: false };
+        nativeDrag.current = drag;
+        // locationX is relative to the hit child, not necessarily the track. A moving
+        // knob/step changes that origin; measure the track once in page coordinates.
+        trackRef.current?.measure((_x, _y, _width, _height, pageX) => {
+            if (nativeDrag.current !== drag) return;
+            if (!Number.isFinite(pageX)) { finishDrag(false); return; }
+            drag.trackPageX = pageX;
+            selectEffortAt(drag.pageX - pageX);
+            if (drag.released) finishDrag(true);
+        });
+    };
+    const updateNativeDrag = (event: GestureResponderEvent, released = false) => {
+        const drag = nativeDrag.current;
+        if (!drag || drag.released) return;
+        drag.pageX = event.nativeEvent.pageX;
+        drag.released = released;
+        if (drag.trackPageX === null) return;
+        selectEffortAt(drag.pageX - drag.trackPageX);
+        if (released) finishDrag(true);
     };
     return (
         <View
@@ -437,7 +467,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             accessibilityRole="button"
                                             accessibilityState={{ disabled: props.modelOptions.length < 2 }}
                                             disabled={props.modelOptions.length < 2}
-                                            onPress={() => { setModelHovered(false); setModelsOpen(true); }}
+                                            onPress={() => { finishDrag(false); setModelHovered(false); setModelsOpen(true); }}
                                             onHoverIn={() => setModelHovered(true)}
                                             onHoverOut={() => setModelHovered(false)}
                                             style={({ pressed }) => [styles.center, hoverTransition, (pressed || modelHovered) && styles.centerHover]}
@@ -508,9 +538,9 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                 : {
                                                       onStartShouldSetResponderCapture: () => true,
                                                       onStartShouldSetResponder: () => true,
-                                                      onResponderGrant: (event: any) => selectEffortAt(event.nativeEvent.locationX),
-                                                      onResponderMove: (event: any) => selectEffortAt(event.nativeEvent.locationX),
-                                                      onResponderRelease: () => finishDrag(true),
+                                                      onResponderGrant: startNativeDrag,
+                                                      onResponderMove: (event: GestureResponderEvent) => updateNativeDrag(event),
+                                                      onResponderRelease: (event: GestureResponderEvent) => updateNativeDrag(event, true),
                                                       onResponderTerminate: () => finishDrag(false),
                                                   })}
                                         >
