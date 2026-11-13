@@ -1,5 +1,7 @@
 import { saveSessionWarmMessageTime } from './sessionWarmCache';
 import { getConversationMessageTime } from './sessionConversationTime';
+import { getUserMessageTime } from './sessionUserActivity';
+import { updateEncryptedSessionMetadata } from './sessionMetadata';
 import { mergeLastMessageAt } from '@/utils/sessionActivity';
 import { removeProjectSessionFromCache } from './projectWorkspaceCache';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
@@ -326,9 +328,12 @@ type V3PostSessionMessagesResponse = {
 type OutboxMessage = {
     localId: string;
     content: string;
+    userSentAt?: number;
 };
 
 type SendMessageOptions = {
+    /** Submission time survives recovery, locks and attachment upload. */
+    userSentAt?: number;
     /** Preserve the controls chosen when a message entered the staging queue. */
     modeMeta?: ReturnType<typeof resolveMessageModeMeta>;
     /** Fence a route-independent submission against logout or server changes. */
@@ -386,6 +391,7 @@ function deduplicateSessionSnapshots(snapshots: ApiSessionSnapshot[]): ApiSessio
             agentState: newestAgentState.agentState,
             agentStateVersion: newestAgentState.agentStateVersion,
             dataEncryptionKey: newest.dataEncryptionKey ?? older.dataEncryptionKey,
+            lastUserMessageAt: mergeLastMessageAt(newest.lastUserMessageAt, older.lastUserMessageAt),
         });
     }
     return [...byId.values()];
@@ -406,15 +412,18 @@ function mergeHydratedSessions(sessions: HydratedSession[]): HydratedSession {
             ? candidate
             : merged;
         const lastMessageAt = mergeLastMessageAt(candidate.lastMessageAt, merged.lastMessageAt);
+        const lastUserMessageAt = mergeLastMessageAt(candidate.lastUserMessageAt, merged.lastUserMessageAt);
         if (base === merged
             && metadataWinner === merged
             && agentStateWinner === merged
-            && lastMessageAt === merged.lastMessageAt) {
+            && lastMessageAt === merged.lastMessageAt
+            && lastUserMessageAt === merged.lastUserMessageAt) {
             continue;
         }
         merged = {
             ...base,
             lastMessageAt,
+            lastUserMessageAt,
             seq: Math.max(candidate.seq, merged.seq),
             metadata: metadataWinner.metadata,
             metadataVersion: metadataWinner.metadataVersion,
@@ -443,6 +452,7 @@ class Sync {
     encryption!: Encryption;
     serverID!: string;
     private sessionWarmCacheAccountKey: string | null = null;
+    private userActivityWrites = new Map<string, { encryption: Encryption; promise: Promise<void>; revision: number }>();
     private localHistory: LocalHistory | null = null;
     private historyPrefetch = new SessionHistoryPrefetch();
     private historyWindows = new Map<string, HistoryWindow>();
@@ -1847,6 +1857,8 @@ class Sync {
     private failedCodexRecovery = new FailedCodexSessionRecovery();
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<LocalMessageQueueReceipt> {
+        const userSentAt = Date.now();
+        options = { ...options, userSentAt };
         const recoveryOwner = this.encryption;
         const failedSession = storage.getState().sessions[sessionId];
         await this.failedCodexRecovery.ensure(failedSession, recoveryOwner, async () => {
@@ -1925,6 +1937,7 @@ class Sync {
         snapshots: { session: Session | undefined; settings: ReturnType<typeof storage.getState>['settings'] }): Promise<LocalMessageQueueReceipt> {
         const isCurrent = options?.isCurrent ?? (() => true);
         if (!isCurrent()) throw new Error('local-message-session-unavailable');
+        const userSentAt = options?.userSentAt ?? Date.now();
 
         // Snapshot per-turn controls before the first possible await. If the
         // user changes model/effort while attachment upload or initial sync is
@@ -2066,6 +2079,7 @@ class Sync {
             meta: {
                 ...(includeContext ? { continuationContextSourceId: contextSource, displayText: displayText ?? text } : {}),
                 sentFrom,
+                userSentAt,
                 appendSystemPrompt: [systemPrompt, storage.getState().settings.customInstructions?.trim()].filter(Boolean).join('\n\n'),
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
                 ...(modeMeta.permissionModeExplicit ? { permissionModeExplicit: true } : {}),
@@ -2086,7 +2100,8 @@ class Sync {
         }
         stagedOutbox.push({
             localId,
-            content: encryptedRawRecord
+            content: encryptedRawRecord,
+            userSentAt,
         });
 
         // No awaits between ownership validation and the complete outbox commit.
@@ -3898,6 +3913,56 @@ class Sync {
         }
     };
 
+    private observeSessionUserTime = (sessionId: string, at: number) => {
+        const session = storage.getState().sessions[sessionId];
+        if (!session || !Number.isFinite(at) || at <= 0) return;
+        const latest = Math.max(session.lastUserMessageAt ?? 0, session.metadata?.lastUserMessageAt ?? 0, at);
+        if (latest !== session.lastUserMessageAt) this.applySessions([{ ...session, lastUserMessageAt: latest }]);
+        if (this.sessionWarmCacheAccountKey) saveSessionWarmMessageTime(this.sessionWarmCacheAccountKey, sessionId, latest, 'lastUserMessageAt');
+        this.persistSessionUserTime(sessionId);
+    };
+
+    private persistSessionUserTime = (sessionId: string): void => {
+        const encryptionOwner = this.encryption;
+        const session = storage.getState().sessions[sessionId];
+        const encryption = encryptionOwner.getSessionEncryption(sessionId);
+        if (!session?.metadata || !encryption || !(session.lastUserMessageAt! > (session.metadata.lastUserMessageAt ?? 0))) return;
+        const pending = this.userActivityWrites.get(sessionId);
+        if (pending?.encryption === encryptionOwner) { pending.revision++; return; }
+        const owner = this.captureHistoryOwner(sessionId);
+        const assertCurrent = () => {
+            if (!owner.isCurrent() || !accountRuntimeCurrent()
+                || encryptionOwner.getSessionEncryption(sessionId) !== encryption
+                || !storage.getState().sessions[sessionId]) throw new SessionWriteCancelled();
+        };
+        const task = { encryption: encryptionOwner, promise: Promise.resolve(), revision: 1 };
+        task.promise = (async () => {
+            // Drain only event-requested work; a network/CAS failure stops the
+            // drain until another user event or connection signal requests it.
+            let handled = 0;
+            while (handled < task.revision) {
+                const revision = task.revision;
+                assertCurrent();
+                const current = storage.getState().sessions[sessionId];
+                const at = current.lastUserMessageAt ?? 0;
+                if (!current.metadata || at <= (current.metadata.lastUserMessageAt ?? 0)) return;
+                const result = await updateEncryptedSessionMetadata(sessionId, current.metadata, current.metadataVersion,
+                    encryption, metadata => at <= (metadata.lastUserMessageAt ?? 0) ? metadata : { ...metadata, lastUserMessageAt: at }, 3, assertCurrent);
+                assertCurrent();
+                const live = storage.getState().sessions[sessionId];
+                if (result.version >= live.metadataVersion) {
+                    this.applySessions([{ ...live, metadata: result.metadata, metadataVersion: result.version }]);
+                }
+                handled = revision;
+            }
+        })().catch(error => {
+            if (!(error instanceof SessionWriteCancelled)) console.warn('User activity metadata sync deferred until reconnect');
+        }).finally(() => {
+            if (this.userActivityWrites.get(sessionId) === task) this.userActivityWrites.delete(sessionId);
+        });
+        this.userActivityWrites.set(sessionId, task);
+    };
+
     private flushOutbox = async (sessionId: string) => {
         const pending = this.pendingOutbox.get(sessionId);
         if (!pending || pending.length === 0) {
@@ -3949,6 +4014,11 @@ class Sync {
             }
             if (Array.isArray(data.messages)) {
                 this.observeSessionMessageTime(sessionId, data.messages);
+                const submitted = new Map(batch.map(message => [message.localId, message.userSentAt]));
+                for (const message of data.messages) {
+                    const at = message.localId ? submitted.get(message.localId) : undefined;
+                    if (at) this.observeSessionUserTime(sessionId, at);
+                }
                 if (this.sessionWarmCacheAccountKey) {
                     const contents = new Map(batch.map(message => [message.localId, message.content]));
                     appendSessionWarmMessages(this.sessionWarmCacheAccountKey, sessionId, data.messages.flatMap(message => {
@@ -4145,6 +4215,10 @@ class Sync {
             }
         }
         this.observeSessionMessageTime(sessionId, decryptedMessages.map(message => ({ createdAt: getConversationMessageTime(message) ?? 0 })).filter(message => message.createdAt > 0));
+        for (const message of decryptedMessages) {
+            const at = getUserMessageTime(message);
+            if (at) this.observeSessionUserTime(sessionId, at);
+        }
         this.retireObservedLocalMessages(sessionId, normalizedMessages);
         // Warm snapshots may contain disconnected realtime islands. Display
         // them immediately, but only a network page certifies latest progress.
@@ -4326,6 +4400,10 @@ class Sync {
             }
         }
         this.observeSessionMessageTime(sessionId, decryptedMessages.map(message => ({ createdAt: getConversationMessageTime(message) ?? 0 })).filter(message => message.createdAt > 0));
+        for (const message of decryptedMessages) {
+            const at = getUserMessageTime(message);
+            if (at) this.observeSessionUserTime(sessionId, at);
+        }
         this.retireObservedLocalMessages(sessionId, normalizedMessages);
         // Older pages may belong to a disconnected island below an ACK. Only
         // forward catch-up from the applied cursor certifies latest progress.
@@ -4512,6 +4590,7 @@ class Sync {
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
             log.log('🔌 Socket reconnected');
+            for (const session of Object.values(storage.getState().sessions)) this.persistSessionUserTime(session.id);
 
             // Send current focus state on reconnect so the server's
             // suppression rules pick up where we left off (handshake.auth.appState
@@ -4639,6 +4718,8 @@ class Sync {
                     // Update session
                     const conversationAt = getConversationMessageTime(decrypted);
                     if (conversationAt !== null) this.observeSessionMessageTime(updateData.body.sid, [{ createdAt: conversationAt }]);
+                    const userAt = getUserMessageTime(decrypted);
+                    if (userAt) this.observeSessionUserTime(updateData.body.sid, userAt);
                     const session = storage.getState().sessions[updateData.body.sid];
                     if (session) {
                         this.applySessions([{
@@ -5284,6 +5365,7 @@ class Sync {
             if (!options?.replace && existing && (merged === existing || (
                 merged.seq === existing.seq && merged.updatedAt === existing.updatedAt
                 && merged.lastMessageAt === existing.lastMessageAt
+                && merged.lastUserMessageAt === existing.lastUserMessageAt
                 && merged.active === existing.active && merged.activeAt === existing.activeAt
                 && merged.thinking === existing.thinking && merged.thinkingAt === existing.thinkingAt
                 && (merged.presence === undefined || merged.presence === existing.presence)
@@ -5322,6 +5404,7 @@ class Sync {
             : [];
         const active = storage.getState().getActiveSessions();
         storage.getState().applySessions(mergedSessions, options);
+        for (const session of mergedSessions) this.persistSessionUserTime(session.id);
         for (const sessionId of removedSessionIds) {
             this.clearSessionRuntimeState(sessionId);
         }

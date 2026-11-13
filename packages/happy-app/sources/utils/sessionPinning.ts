@@ -1,12 +1,14 @@
-import { compareSessionActivity } from './sessionActivity';
+import { compareSessionUserTime, getSessionExecutionPriority, type SessionOrderData } from './sessionOrdering';
 
-export function sortSessionsForList<T extends { id: string; activeAt?: number; lastMessageAt?: number | null; activityAt?: number; createdAt?: number; updatedAt?: number }>(
+export function sortSessionsForList<T extends SessionOrderData>(
     sessions: T[],
     pinnedOrder: string[],
 ): T[] {
     const orderById = new Map(pinnedOrder.map((id, index) => [id, index]));
 
     return sessions.slice().sort((a, b) => {
+        const priority = getSessionExecutionPriority(a) - getSessionExecutionPriority(b);
+        if (priority) return priority;
         const aPinnedIndex = orderById.get(a.id);
         const bPinnedIndex = orderById.get(b.id);
 
@@ -20,7 +22,7 @@ export function sortSessionsForList<T extends { id: string; activeAt?: number; l
             return 1;
         }
 
-        return compareSessionActivity(a, b);
+        return compareSessionUserTime(a, b);
     });
 }
 

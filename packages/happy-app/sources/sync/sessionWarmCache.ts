@@ -80,9 +80,11 @@ export function saveSessionWarmSnapshots(accountId: string, snapshots: ApiSessio
         if (!existing || snapshot.seq > existing.seq
             || (snapshot.seq === existing.seq && snapshot.updatedAt >= existing.updatedAt)) {
             byId.set(snapshot.id, { ...snapshot, lastMessageAt: mergeLastMessageAt(existing?.lastMessageAt, snapshot.lastMessageAt),
+                lastUserMessageAt: mergeLastMessageAt(existing?.lastUserMessageAt, snapshot.lastUserMessageAt),
                 lastMessage: (existing?.lastMessage?.seq ?? -1) > (snapshot.lastMessage?.seq ?? -1) ? existing?.lastMessage : snapshot.lastMessage });
         } else {
-            byId.set(snapshot.id, { ...existing, lastMessageAt: mergeLastMessageAt(existing.lastMessageAt, snapshot.lastMessageAt) });
+            byId.set(snapshot.id, { ...existing, lastMessageAt: mergeLastMessageAt(existing.lastMessageAt, snapshot.lastMessageAt),
+                lastUserMessageAt: mergeLastMessageAt(existing.lastUserMessageAt, snapshot.lastUserMessageAt) });
         }
     }
     cache.snapshots = [...byId.values()]
@@ -102,13 +104,13 @@ function advanceSnapshotMessageTime(cache: WarmCache, sessionId: string, message
     }
 }
 
-export function saveSessionWarmMessageTime(accountId: string, sessionId: string, timestamp: number): void {
+export function saveSessionWarmMessageTime(accountId: string, sessionId: string, timestamp: number, field: 'lastMessageAt' | 'lastUserMessageAt' = 'lastMessageAt'): void {
     const cache = read(accountId);
     const snapshot = cache.snapshots.find(item => item.id === sessionId);
     if (!snapshot) return;
-    const latest = mergeLastMessageAt(snapshot.lastMessageAt, timestamp);
-    if (latest === snapshot.lastMessageAt) return;
-    snapshot.lastMessageAt = latest;
+    const latest = mergeLastMessageAt(snapshot[field], timestamp);
+    if (latest === snapshot[field]) return;
+    snapshot[field] = latest;
     write(cache);
 }
 

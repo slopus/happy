@@ -4,6 +4,7 @@ import { z } from 'zod';
 export const MessageMetaSchema = z.object({
     continuationContextSourceId: z.string().optional(),
     sentFrom: z.string().optional(), // Source identifier
+    userSentAt: z.number().finite().positive().optional(), // Explicit user submission, inside ciphertext.
     permissionMode: z.string().optional(), // Permission mode key for this message
     permissionModeExplicit: z.boolean().optional(), // True when the user selected a per-session mode
     model: z.string().nullable().optional(), // Model name for this message (null = reset)

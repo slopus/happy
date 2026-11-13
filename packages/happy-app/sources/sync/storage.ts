@@ -34,6 +34,7 @@ import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import { selectAgentSpaceSessions } from '@/utils/agentSpaceIdentity';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
+import { compareSessionOrder, getSessionExecutionPriority } from '@/utils/sessionOrdering';
 import { getSessionActivityTime, mergeLastMessageAt, compareSessionActivity } from '@/utils/sessionActivity';
 
 // Debounce timer for realtimeMode changes
@@ -103,6 +104,8 @@ export interface SessionRowData {
     activeAt?: number;
     // Last message time (or creation for empty conversations).
     activityAt?: number;
+    lastUserMessageAt?: number | null;
+    executionPriority?: number;
     createdAt?: number;
     updatedAt?: number;
     hasDraft: boolean;
@@ -131,6 +134,8 @@ export function buildSessionRowData(session: Session, unreadSessionIds?: Set<str
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
         activityAt: getSessionActivityTime(session),
+        lastUserMessageAt: session.lastUserMessageAt,
+        executionPriority: getSessionExecutionPriority(session),
         ...(!resolved.isConnected && { activeAt: session.activeAt }),
         hasDraft: !!session.draft,
         active: session.active,
@@ -269,7 +274,7 @@ function buildSessionListViewData(
     });
 
     // Presence and metadata writes do not change conversation recency.
-    regularSessions.sort(compareSessionActivity);
+    regularSessions.sort(compareSessionOrder);
     archivedSessions.sort(compareSessionActivity);
 
     // Build unified list view data
@@ -473,6 +478,7 @@ export const storage = create<StorageState>()((set, get) => {
                 mergedSessions[session.id] = {
                     ...session,
                     lastMessageAt: mergeLastMessageAt(existingSession?.lastMessageAt, session.lastMessageAt),
+                    lastUserMessageAt: mergeLastMessageAt(existingSession?.lastUserMessageAt, mergeLastMessageAt(session.lastUserMessageAt, session.metadata?.lastUserMessageAt)),
                     presence,
                     draft: existingSession ? existingDraft ?? null : savedDraft ?? session.draft ?? null,
                     hasPendingLocalMessages: state.pendingMessageSessionIds.has(session.id),
@@ -505,8 +511,8 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             // Keep legacy consumers aligned with the primary list's activity ordering.
-            activeSessions.sort(compareSessionActivity);
-            inactiveSessions.sort(compareSessionActivity);
+            activeSessions.sort(compareSessionOrder);
+            inactiveSessions.sort(compareSessionOrder);
 
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];

@@ -1,4 +1,5 @@
 import { getSnapshotConversationTime } from './sessionConversationTime';
+import { getSnapshotUserMessageTime } from './sessionUserActivity';
 import type { ApiSessionSnapshot } from './apiTypes';
 import type { Encryption } from './encryption/encryption';
 import type { Session } from './storageTypes';
@@ -70,6 +71,7 @@ export async function hydrateSessionSnapshots(
         return {
             ...snapshot,
             lastMessageAt: getSnapshotConversationTime(snapshot, agentState, tail),
+            lastUserMessageAt: getSnapshotUserMessageTime(snapshot, metadata, tail),
             lastMessage: snapshot.lastMessage ?? null,
             metadata,
             agentState,
@@ -113,6 +115,7 @@ export async function hydrateSessionSnapshotForRoute(
         session: {
             ...snapshot,
             lastMessageAt: getSnapshotConversationTime(snapshot, agentState, tail),
+            lastUserMessageAt: getSnapshotUserMessageTime(snapshot, metadata, tail),
             metadata,
             agentState,
             thinking: false,

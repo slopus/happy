@@ -2,7 +2,8 @@ import type { SessionRowData } from '@/sync/storage';
 import type { Machine } from '@/sync/storageTypes';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { sortSessionsForList } from '@/utils/sessionPinning';
-import { getSessionActivityTime, compareSessionActivity } from '@/utils/sessionActivity';
+import { compareSessionOrder } from './sessionOrdering';
+import { getSessionActivityTime } from '@/utils/sessionActivity';
 
 export interface SessionNavigationProjectGroup {
     displayPath: string;
@@ -37,7 +38,7 @@ export function buildSessionNavigationTimeGroups(
     const currentDay = getLocalDayIndex(now);
     const grouped = new Map<number, SessionRowData[]>();
 
-    for (const session of [...sessions].sort(compareSessionActivity)) {
+    for (const session of [...sessions].sort(compareSessionOrder)) {
         const day = getLocalDayIndex(getSessionActivityTime(session));
         const group = grouped.get(day) ?? [];
         group.push(session);

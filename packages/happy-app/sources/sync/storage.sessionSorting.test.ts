@@ -53,6 +53,7 @@ function session(id: string, createdAt: number, updatedAt: number, activeAt = up
         createdAt,
         updatedAt,
         lastMessageAt: updatedAt,
+        lastUserMessageAt: updatedAt,
         active: false,
         activeAt,
         metadata: null,
@@ -107,7 +108,7 @@ describe('storage session ordering', () => {
         storage.getState().applySessions([old, recent]);
         const order = () => storage.getState().sessionListViewData?.find(item => item.type === 'active-sessions');
         expect(order()).toMatchObject({ sessions: [{ id: 'recent' }, { id: 'continued' }] });
-        storage.getState().applySessions([{ ...old, lastMessageAt: 40 }]);
+        storage.getState().applySessions([{ ...old, lastMessageAt: 40, lastUserMessageAt: 40 }]);
         expect(order()).toMatchObject({ sessions: [{ id: 'continued' }, { id: 'recent' }] });
         storage.getState().applySessions([{ ...old, activeAt: 1000, updatedAt: 1000 }]);
         expect(order()).toMatchObject({ sessions: [{ id: 'continued', activityAt: 40 }, { id: 'recent' }] });
@@ -121,4 +122,37 @@ describe('storage session ordering', () => {
         expect(storage.getState().sessionListViewData).toMatchObject([{ sessions: [{ activityAt: 20 }] }]);
     });
 
+});
+
+
+describe('sidebar status priority and durable user recency', () => {
+    beforeEach(() => storage.setState({ sessions: {}, sessionsData: null, sessionListViewData: null, sessionMessages: {} }));
+    const ids = () => (storage.getState().sessionListViewData?.find(row => row.type === 'active-sessions') as any)?.sessions.map((row: any) => row.id);
+    it('does not swap running rows when Agent messages, heartbeats, and metadata alternate', () => {
+        const a = { ...session('a', 1, 100), lastUserMessageAt: 10, active: true,
+            agentState: { turnStatus: { status: 'running' as const, updatedAt: 100 } } };
+        const b = { ...session('b', 2, 200), lastUserMessageAt: 9, active: true,
+            agentState: { turnStatus: { status: 'running' as const, updatedAt: 200 } } };
+        storage.getState().applySessions([a, b]);expect(ids()).toEqual(['a', 'b']);
+        storage.getState().applySessions([{ ...b, lastMessageAt: 300, activeAt: 300 }]);expect(ids()).toEqual(['a', 'b']);
+        storage.getState().applySessions([{ ...a, lastMessageAt: 400, updatedAt: 400 }]);expect(ids()).toEqual(['a', 'b']);
+        storage.getState().applySessions([{ ...b, lastUserMessageAt: 11 }]);expect(ids()).toEqual(['b', 'a']);
+        storage.getState().applySessions([{ ...b, lastUserMessageAt: 8 }]);expect(ids()).toEqual(['b', 'a']);
+    });
+    it('keeps execution priority independent of reconnection and settles completion once', () => {
+        const running = { ...session('running', 1, 100), active: true, lastUserMessageAt: 10,
+            agentState: { turnStatus: { status: 'running' as const, updatedAt: 100 } } };
+        const done = { ...session('done', 2, 200), lastUserMessageAt: 20,
+            agentState: { turnStatus: { status: 'completed' as const, updatedAt: 200 } } };
+        storage.getState().applySessions([done, running]);expect(ids()).toEqual(['running', 'done']);
+        storage.getState().applySessions([{ ...running, active: false, presence: 900 }]);expect(ids()).toEqual(['running', 'done']);
+        storage.getState().applySessions([{ ...running, agentState: { turnStatus: { status: 'completed', updatedAt: 1000 } } }]);expect(ids()).toEqual(['done', 'running']);
+        storage.getState().applySessions([{ ...done, lastMessageAt: 2000 }]);expect(ids()).toEqual(['done', 'running']);
+    });
+    it('merges the encrypted metadata clock while retaining a newer local verified send', () => {
+        const a = { ...session('a', 1, 1000), lastUserMessageAt: 100, metadata: { path: '/r', host: 'h', lastUserMessageAt: 120 } };
+        storage.getState().applySessions([a]);expect(storage.getState().sessions.a.lastUserMessageAt).toBe(120);
+        storage.getState().applySessions([{ ...a, lastUserMessageAt: 90, metadata: { ...a.metadata, lastUserMessageAt: 80 } }]);
+        expect(storage.getState().sessions.a.lastUserMessageAt).toBe(120);
+    });
 });

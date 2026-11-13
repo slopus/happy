@@ -57,12 +57,12 @@ function machine(id: string, displayName: string): Machine {
 }
 
 describe('session navigation groups', () => {
-    it('sorts the time layout by latest activity and groups local calendar days', () => {
+    it('keeps calendar buckets while sorting their rows by user sends', () => {
         const now = new Date(2026, 7, 6, 12).getTime();
         const groups = buildSessionNavigationTimeGroups([
             session({ id: 'yesterday', activityAt: new Date(2026, 7, 5, 18).getTime(), createdAt: 1 }),
             session({ id: 'today-created', createdAt: new Date(2026, 7, 6, 8).getTime() }),
-            session({ id: 'today-active', activityAt: new Date(2026, 7, 6, 10).getTime(), createdAt: 1 }),
+            session({ id: 'today-active', lastUserMessageAt: new Date(2026, 7, 6, 10).getTime(), activityAt: new Date(2026, 7, 6, 10).getTime(), createdAt: 1 }),
             session({ id: 'older', createdAt: new Date(2026, 7, 3, 20).getTime() }),
         ], now);
 
@@ -72,16 +72,18 @@ describe('session navigation groups', () => {
         expect(groups[2].sessions.map((item) => item.id)).toEqual(['older']);
     });
 
-    it('orders the same day by actual message recency, including continued older conversations', () => {
+    it('orders the same day by user sends, including continued older conversations', () => {
         const now = new Date(2026, 7, 6, 12).getTime();
         const groups = buildSessionNavigationTimeGroups([
             session({
                 id: 'older-session-with-latest-ping',
+                lastUserMessageAt: new Date(2026, 7, 6, 11).getTime(),
                 activityAt: new Date(2026, 7, 6, 11, 59).getTime(),
                 createdAt: new Date(2026, 7, 1, 8).getTime(),
             }),
             session({
                 id: 'newer-session',
+                lastUserMessageAt: new Date(2026, 7, 6, 9).getTime(),
                 activityAt: new Date(2026, 7, 6, 9).getTime(),
                 createdAt: new Date(2026, 7, 5, 8).getTime(),
             }),

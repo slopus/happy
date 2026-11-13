@@ -37,6 +37,7 @@ export const ApiSessionSnapshotSchema = z.object({
     lastMessage: ApiMessageSchema.nullable().optional(),
     // Client-verified conversation clock retained by the encrypted warm-cache snapshot.
     lastMessageAt: z.number().finite().nonnegative().nullable().optional(),
+    lastUserMessageAt: z.number().finite().nonnegative().nullable().optional(),
 });
 
 export type ApiSessionSnapshot = z.infer<typeof ApiSessionSnapshotSchema>;

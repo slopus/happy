@@ -32,10 +32,10 @@ describe('sortSessionsForList', () => {
         expect(sorted.map(item => item.id)).toEqual(['newer', 'older']);
     });
 
-    it('orders unpinned sessions by their latest activity instead of creation time', () => {
+    it('orders unpinned sessions by their latest user send instead of Agent activity', () => {
         const sorted = sortSessionsForList([
-            { id: 'created-today', createdAt: 200, lastMessageAt: 210, updatedAt: 1000 },
-            { id: 'continued-today', createdAt: 100, lastMessageAt: 220, updatedAt: 220 },
+            { id: 'created-today', createdAt: 200, lastUserMessageAt: 210, updatedAt: 1000 },
+            { id: 'continued-today', createdAt: 100, lastUserMessageAt: 220, updatedAt: 220 },
         ], []);
 
         expect(sorted.map(item => item.id)).toEqual(['continued-today', 'created-today']);

@@ -24,28 +24,33 @@ export async function updateEncryptedSessionMetadata(
     sessionEncryption: SessionEncryption,
     update: (metadata: Metadata) => Metadata,
     maxRetries: number = 3,
+    assertCurrent: () => void = () => {},
 ): Promise<{ version: number; metadata: Metadata }> {
     let currentVersion = expectedVersion;
     let currentMetadata = metadata;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+        assertCurrent();
         const nextMetadata = update(currentMetadata);
         if (nextMetadata === currentMetadata) {
             return { version: currentVersion, metadata: currentMetadata };
         }
 
         const encryptedMetadata = await sessionEncryption.encryptRaw(nextMetadata);
+        assertCurrent();
         const result = await apiSocket.emitWithAck<SessionMetadataUpdateResponse>('update-metadata', {
             sid: sessionId,
             expectedVersion: currentVersion,
             metadata: encryptedMetadata,
         });
+        assertCurrent();
 
         if (result.result === 'success') {
             if (typeof result.version !== 'number' || typeof result.metadata !== 'string') {
                 throw new Error('Session metadata update returned an invalid response');
             }
             const decrypted = await sessionEncryption.decryptRaw(result.metadata) as Metadata | null;
+            assertCurrent();
             if (!decrypted) {
                 throw new Error('Session metadata update returned invalid encrypted metadata');
             }
@@ -57,6 +62,7 @@ export async function updateEncryptedSessionMetadata(
                 throw new Error('Session metadata version mismatch');
             }
             const latest = await sessionEncryption.decryptRaw(result.metadata) as Metadata | null;
+            assertCurrent();
             if (!latest) {
                 throw new Error('Session metadata version mismatch returned invalid encrypted metadata');
             }

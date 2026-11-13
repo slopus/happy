@@ -38,6 +38,7 @@ export const MetadataSchema = z.object({
     host: z.string(),
     version: z.string().optional(),
     name: z.string().optional(),
+    lastUserMessageAt: z.number().finite().positive().optional(), // Encrypted, monotonic user-send clock.
     os: z.string().optional(),
     summary: z.object({
         text: z.string(),
@@ -152,6 +153,7 @@ export interface Session {
     createdAt: number,
     updatedAt: number,
     lastMessageAt?: number | null, // Latest durable message; presence/metadata never advance it.
+    lastUserMessageAt?: number | null, // Navigation only; never advanced by Agent output.
     active: boolean,
     activeAt: number,
     metadata: Metadata | null,

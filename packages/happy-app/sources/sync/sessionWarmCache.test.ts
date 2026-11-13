@@ -100,6 +100,15 @@ describe('session warm cache', () => {
         expect(restored.lastMessage?.seq).toBe(10);
     });
 
+    it('retains independent user ordering through stale snapshots and assistant tails', () => {
+        saveSessionWarmSnapshots('a', [snapshot('one', 1)]);
+        saveSessionWarmMessageTime('a', 'one', 50, 'lastUserMessageAt');
+        saveSessionWarmMessageTime('a', 'one', 900);
+        appendSessionWarmMessages('a', 'one', [message(1000)]);
+        saveSessionWarmSnapshots('a', [{ ...snapshot('one', 20), lastUserMessageAt: 20 }]);
+        expect(loadSessionWarmCache('a').snapshots[0]).toMatchObject({ lastUserMessageAt: 50, lastMessageAt: 900 });
+    });
+
     it('advances the encrypted latest window without persisting decrypted content', () => {
         saveSessionWarmLatestPage('account-a', 'one', { messages: [message(10)], hasMore: true });
         appendSessionWarmMessages('account-a', 'one', [message(11), message(12)]);

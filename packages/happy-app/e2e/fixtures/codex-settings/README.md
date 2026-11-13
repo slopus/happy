@@ -40,3 +40,9 @@ loopback controller exposes `/sessions`, POST `/presence` (heartbeat + metadata)
 POST `/continue` (one new user message to the older thread), and POST `/shutdown`.
 Verify Yesterday / 2 days ago survive presence, metadata and reload; only explicit
 continuation moves the older thread into Today. No daemon or external model runs.
+
+User-driven ordering transport regression (no browser/model/daemon):
+`pnpm exec tsx --tsconfig packages/happy-cli/tsconfig.json packages/happy-app/e2e/fixtures/codex-settings/verify-user-order.mjs`.
+This creates and removes its own isolated server/account, verifies alternating Agent
+output, confirmed user sends, encrypted metadata conflicts, cold hydration and
+completion priority. It does not collect screenshots or claim rendered UI acceptance.

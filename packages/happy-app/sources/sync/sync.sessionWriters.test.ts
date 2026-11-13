@@ -15,7 +15,7 @@ vi.hoisted(() => {
     };
 });
 
-const mocks = vi.hoisted(() => ({ apiRequest: vi.fn(), fetchActive: vi.fn(), fetchPage: vi.fn(), fetchSnapshot: vi.fn() }));
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn(), updateMetadata: vi.fn(), fetchActive: vi.fn(), fetchPage: vi.fn(), fetchSnapshot: vi.fn() }));
 vi.mock('./apiSessions', async importOriginal => ({
     ...await importOriginal<typeof import('./apiSessions')>(),
     fetchActiveSessionSnapshots: mocks.fetchActive,
@@ -32,6 +32,7 @@ vi.mock('./apiSocket', () => ({
     getCurrentAppState: vi.fn(() => 'active'),
     getHappyClientId: vi.fn(() => 'test-client'),
 }));
+vi.mock('./sessionMetadata', () => ({ updateEncryptedSessionMetadata: mocks.updateMetadata }));
 vi.mock('./pushRegistration', () => ({ syncCurrentPushToken: vi.fn() }));
 vi.mock('./revenueCat', () => ({ RevenueCat: {}, LogLevel: {}, PaywallResult: {} }));
 vi.mock('./uploadMediaFile', () => ({ uploadMediaFile: vi.fn() }));
@@ -130,6 +131,11 @@ beforeEach(() => {
     subject.sessionHydrations?.clear();
     subject.sessionEventCursors?.clear();
     subject.pendingOutbox.clear();
+    subject.userActivityWrites.clear();
+    mocks.updateMetadata.mockImplementation(async (_id, metadata, version, _encryption, update, _retries, assertCurrent) => {
+        assertCurrent?.();
+        return { metadata: update(metadata), version: version + 1 };
+    });
     subject.pendingSettings = {};
     subject.pendingSidebarOrganizationBase = null;
     subject.sessionMessageLoadGate = new SessionMessageLoadGate();
@@ -946,4 +952,95 @@ describe('real session writer composition', () => {
         expect(Boolean(subject.encryption.getSessionEncryption('writer-session'))).toBe(false);
         expect(subject.sessionDeletionMutationGenerations.size).toBe(0);
     });
+});
+
+
+describe('confirmed user-send navigation clock', () => {
+    it('waits for the exact text ACK, ignoring draft, attachments and Agent activity', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        vi.spyOn(Date, 'now').mockReturnValue(100);
+        const crypto = subject.encryption.getSessionEncryption('writer-session');
+        const encrypt = vi.spyOn(crypto, 'encryptRawRecord');
+        const receipt = await sync.sendMessage('writer-session', 'user text');
+        expect(encrypt.mock.calls.at(-1)?.[0]).toMatchObject({ role: 'user', meta: { userSentAt: 100 } });
+        expect(storage.getState().sessions['writer-session'].lastUserMessageAt).toBeNull();
+        // A batch response for an unrelated attachment does not confirm the text.
+        mocks.apiRequest.mockResolvedValueOnce({ ok: true, json: async () => ({ messages: [
+            { id: 'attachment', localId: 'other', seq: 3, createdAt: 999, updatedAt: 999 },
+            { id: 'text', localId: receipt.localIds.at(-1), seq: 4, createdAt: 1000, updatedAt: 1000 },
+        ] }) });
+        await subject.flushOutbox('writer-session');
+        await subject.userActivityWrites.get('writer-session')?.promise;
+        expect(storage.getState().sessions['writer-session']).toMatchObject({ lastUserMessageAt: 100, metadata: { lastUserMessageAt: 100 } });
+        expect(subject.pendingOutbox.has('writer-session')).toBe(false);
+        subject.observeSessionMessageTime('writer-session', [{ createdAt: 2000 }]);
+        subject.observeSessionUserTime('writer-session', 90);
+        expect(storage.getState().sessions['writer-session'].lastUserMessageAt).toBe(100);
+        expect(mocks.updateMetadata).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry a delivered message when encrypted metadata persistence fails', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        mocks.updateMetadata.mockRejectedValue(new Error('synthetic-metadata-unavailable'));
+        const receipt = await sync.sendMessage('writer-session', 'accepted');
+        mocks.apiRequest.mockResolvedValueOnce({ ok: true, json: async () => ({ messages: [
+            { id: 'accepted', localId: receipt.localIds.at(-1), seq: 3, createdAt: 3, updatedAt: 3 },
+        ] }) });
+        await subject.flushOutbox('writer-session');
+        await subject.userActivityWrites.get('writer-session')?.promise;
+        expect(subject.pendingOutbox.has('writer-session')).toBe(false);
+        expect(storage.getState().sessions['writer-session'].lastUserMessageAt).toBeGreaterThan(0);
+        expect(storage.getState().sessions['writer-session'].metadata?.lastUserMessageAt).toBeUndefined();
+        mocks.updateMetadata.mockImplementationOnce(async (_id, metadata, version, _encryption, update) => ({ metadata: update(metadata), version: version + 1 }));
+        subject.persistSessionUserTime('writer-session');
+        await subject.userActivityWrites.get('writer-session')?.promise;
+        expect(storage.getState().sessions['writer-session'].metadata?.lastUserMessageAt).toBe(storage.getState().sessions['writer-session'].lastUserMessageAt);
+    });
+
+    it('rejects a late clock write from a former account owner', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const pending = deferred<any>();
+        mocks.updateMetadata.mockReturnValueOnce(pending.promise);
+        subject.observeSessionUserTime('writer-session', 100);
+        const write = subject.userActivityWrites.get('writer-session')?.promise;
+        subject.encryption = encryption();
+        pending.resolve({ version: 9, metadata: { path: 'former-owner', host: 'former', lastUserMessageAt: 100 } });
+        await write;
+        expect(storage.getState().sessions['writer-session'].metadata?.path).toBe('synthetic-directory');
+    });
+
+    it('keeps a newer metadata version and user clock when an older ACK completes', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const pending = deferred<any>(); mocks.updateMetadata.mockReturnValueOnce(pending.promise);
+        subject.observeSessionUserTime('writer-session', 100);
+        const write = subject.userActivityWrites.get('writer-session')?.promise;
+        const current = storage.getState().sessions['writer-session'];
+        subject.applySessions([{ ...current, metadataVersion: 10, metadata: { ...current.metadata, path: 'new title', lastUserMessageAt: 200 } }]);
+        pending.resolve({ version: 2, metadata: { ...current.metadata, path: 'old title', lastUserMessageAt: 100 } });
+        await write;
+        expect(storage.getState().sessions['writer-session']).toMatchObject({ lastUserMessageAt: 200, metadataVersion: 10, metadata: { path: 'new title' } });
+    });
+});
+
+
+it('drains a fourth confirmed user send arriving during the third metadata write', async () => {
+    await sync.ensureSessionHydrated('writer-session');
+    const gates = Array.from({ length: 4 }, () => deferred<any>());
+    for (const gate of gates) mocks.updateMetadata.mockImplementationOnce(async (_id, metadata, version, _encryption, update) => {
+        await gate.promise;
+        return { metadata: update(metadata), version: version + 1 };
+    });
+    subject.observeSessionUserTime('writer-session', 100);
+    const write = subject.userActivityWrites.get('writer-session')!.promise;
+    for (let index = 0; index < 3; index++) {
+        subject.observeSessionUserTime('writer-session', 200 + index * 100);
+        gates[index].resolve(undefined);
+        await vi.waitFor(() => expect(mocks.updateMetadata).toHaveBeenCalledTimes(index + 2));
+    }
+    gates[3].resolve(undefined);
+    await write;
+    expect(storage.getState().sessions['writer-session']).toMatchObject({ lastUserMessageAt: 400, metadata: { lastUserMessageAt: 400 } });
+    expect(subject.userActivityWrites.has('writer-session')).toBe(false);
 });
