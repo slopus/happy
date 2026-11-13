@@ -1,0 +1,400 @@
+{
+  "description": "Which interactive elements a host enables, for every action type. A disabled button is still drawn, with its label; a disabled press draws its child and is not tappable. Nothing is dropped. Tapping an enabled element reports (element key, action) to the host. Hosts: `happy_agent` is a Happy Agent client showing a version whose source names a live agent; `happy_agent_without_origin` is the same client for a version that names no agent or an archived one; `cluster` is a Happy Cloud client whose version names a live agent. `unknown`, `secret-without-variables`, `secret-with-value`, `cluster-secret-with-value` and `press-unknown` break the action schema, so renderers treat their actions as invalid.",
+  "document": {
+    "genuiRender": 1,
+    "compiler": "conformance",
+    "fallback": "Buttons for every action.",
+    "root": "actions",
+    "elements": {
+      "actions": {
+        "type": "box",
+        "props": {
+          "role": "plain",
+          "direction": "column",
+          "gap": "items"
+        },
+        "children": [
+          "message",
+          "open",
+          "copy",
+          "tool",
+          "secret",
+          "cluster-secret",
+          "cluster-ssh-key",
+          "plugin",
+          "unknown",
+          "secret-without-variables",
+          "secret-with-value",
+          "cluster-secret-with-value",
+          "press-unknown",
+          "press-secret"
+        ]
+      },
+      "message": {
+        "type": "button",
+        "props": {
+          "label": "Ask for a summary",
+          "action": {
+            "type": "message",
+            "text": "Summarise the failures"
+          },
+          "variant": "secondary"
+        }
+      },
+      "open": {
+        "type": "button",
+        "props": {
+          "label": "Open the PR",
+          "action": {
+            "type": "open",
+            "url": "https://github.com/slopus/happy-agent/pull/1"
+          },
+          "variant": "secondary"
+        }
+      },
+      "copy": {
+        "type": "button",
+        "props": {
+          "label": "Copy the command",
+          "action": {
+            "type": "copy",
+            "text": "pnpm test"
+          },
+          "variant": "secondary"
+        }
+      },
+      "tool": {
+        "type": "button",
+        "props": {
+          "label": "Run the tests",
+          "action": {
+            "type": "tool",
+            "name": "run_tests",
+            "input": {
+              "filter": "billing"
+            }
+          },
+          "variant": "secondary"
+        }
+      },
+      "secret": {
+        "type": "button",
+        "props": {
+          "label": "Add Stripe keys",
+          "action": {
+            "type": "secret",
+            "secret": {
+              "id": "stripe",
+              "description": "Stripe test-mode keys",
+              "variables": [
+                {
+                  "name": "STRIPE_SECRET_KEY",
+                  "description": "Secret key, starts with sk_test_"
+                }
+              ]
+            }
+          },
+          "variant": "secondary"
+        }
+      },
+      "cluster-secret": {
+        "type": "button",
+        "props": {
+          "label": "Add Stripe key",
+          "action": {
+            "type": "cluster_secret",
+            "secret": {
+              "type": "endpoint",
+              "name": "Stripe API",
+              "uses": [
+                "egress"
+              ],
+              "owner": "team",
+              "public": {
+                "targets": [
+                  {
+                    "host": "api.stripe.com"
+                  }
+                ],
+                "algorithm": {
+                  "kind": "headers",
+                  "headers": [
+                    {
+                      "name": "Authorization",
+                      "prefix": "Bearer "
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "variant": "secondary"
+        }
+      },
+      "plugin": {
+        "type": "button",
+        "props": {
+          "label": "Get the Linear plugin",
+          "action": {
+            "type": "plugin",
+            "plugin": {
+              "id": "linear"
+            }
+          },
+          "variant": "secondary"
+        }
+      },
+      "unknown": {
+        "type": "button",
+        "props": {
+          "label": "Teleport",
+          "action": {
+            "type": "teleport",
+            "to": "mars"
+          },
+          "variant": "secondary"
+        }
+      },
+      "secret-without-variables": {
+        "type": "button",
+        "props": {
+          "label": "Add a key",
+          "action": {
+            "type": "secret",
+            "secret": {
+              "id": "stripe"
+            }
+          },
+          "variant": "secondary"
+        }
+      },
+      "secret-with-value": {
+        "type": "button",
+        "props": {
+          "label": "Add a key",
+          "action": {
+            "type": "secret",
+            "secret": {
+              "variables": [
+                {
+                  "name": "STRIPE_SECRET_KEY",
+                  "value": "sk_test_123"
+                }
+              ]
+            }
+          },
+          "variant": "secondary"
+        }
+      },
+      "press-unknown": {
+        "type": "press",
+        "props": {
+          "action": {
+            "type": "teleport"
+          },
+          "role": "item"
+        },
+        "children": [
+          "press-unknown.text"
+        ]
+      },
+      "press-unknown.text": {
+        "type": "text",
+        "props": {
+          "spans": [
+            {
+              "text": "A row with an unknown action"
+            }
+          ],
+          "role": "item"
+        }
+      },
+      "press-secret": {
+        "type": "press",
+        "props": {
+          "action": {
+            "type": "secret",
+            "secret": {
+              "id": "stripe",
+              "description": "Stripe test-mode keys",
+              "variables": [
+                {
+                  "name": "STRIPE_SECRET_KEY",
+                  "description": "Secret key, starts with sk_test_"
+                }
+              ]
+            }
+          },
+          "role": "item"
+        },
+        "children": [
+          "press-secret.text"
+        ]
+      },
+      "press-secret.text": {
+        "type": "text",
+        "props": {
+          "spans": [
+            {
+              "text": "A row that adds a secret"
+            }
+          ],
+          "role": "item"
+        }
+      },
+      "cluster-secret-with-value": {
+        "type": "button",
+        "props": {
+          "label": "Add a key",
+          "action": {
+            "type": "cluster_secret",
+            "secret": {
+              "type": "endpoint",
+              "name": "Stripe API",
+              "material": {
+                "Authorization": "sk_live_123"
+              }
+            }
+          },
+          "variant": "secondary"
+        }
+      },
+      "cluster-ssh-key": {
+        "type": "button",
+        "props": {
+          "label": "Add deploy key",
+          "action": {
+            "type": "cluster_secret",
+            "secret": {
+              "type": "ssh_key",
+              "name": "Deploy key",
+              "uses": [
+                "ssh"
+              ],
+              "public": {
+                "hosts": [
+                  "deploy.example.com"
+                ]
+              }
+            }
+          },
+          "variant": "secondary"
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "element": "message",
+      "enabled": {
+        "happy_agent": true,
+        "happy_agent_without_origin": false,
+        "cluster": true
+      }
+    },
+    {
+      "element": "open",
+      "enabled": {
+        "happy_agent": true,
+        "happy_agent_without_origin": true,
+        "cluster": true
+      }
+    },
+    {
+      "element": "copy",
+      "enabled": {
+        "happy_agent": true,
+        "happy_agent_without_origin": true,
+        "cluster": true
+      }
+    },
+    {
+      "element": "tool",
+      "enabled": {
+        "happy_agent": false,
+        "happy_agent_without_origin": false,
+        "cluster": false
+      }
+    },
+    {
+      "element": "secret",
+      "enabled": {
+        "happy_agent": true,
+        "happy_agent_without_origin": false,
+        "cluster": false
+      }
+    },
+    {
+      "element": "cluster-secret",
+      "enabled": {
+        "happy_agent": false,
+        "happy_agent_without_origin": false,
+        "cluster": true
+      }
+    },
+    {
+      "element": "cluster-ssh-key",
+      "enabled": {
+        "happy_agent": false,
+        "happy_agent_without_origin": false,
+        "cluster": true
+      }
+    },
+    {
+      "element": "plugin",
+      "enabled": {
+        "happy_agent": true,
+        "happy_agent_without_origin": true,
+        "cluster": true
+      }
+    },
+    {
+      "element": "unknown",
+      "enabled": {
+        "happy_agent": false,
+        "happy_agent_without_origin": false,
+        "cluster": false
+      }
+    },
+    {
+      "element": "secret-without-variables",
+      "enabled": {
+        "happy_agent": false,
+        "happy_agent_without_origin": false,
+        "cluster": false
+      }
+    },
+    {
+      "element": "secret-with-value",
+      "enabled": {
+        "happy_agent": false,
+        "happy_agent_without_origin": false,
+        "cluster": false
+      }
+    },
+    {
+      "element": "cluster-secret-with-value",
+      "enabled": {
+        "happy_agent": false,
+        "happy_agent_without_origin": false,
+        "cluster": false
+      }
+    },
+    {
+      "element": "press-unknown",
+      "enabled": {
+        "happy_agent": false,
+        "happy_agent_without_origin": false,
+        "cluster": false
+      }
+    },
+    {
+      "element": "press-secret",
+      "enabled": {
+        "happy_agent": true,
+        "happy_agent_without_origin": false,
+        "cluster": false
+      }
+    }
+  ]
+}

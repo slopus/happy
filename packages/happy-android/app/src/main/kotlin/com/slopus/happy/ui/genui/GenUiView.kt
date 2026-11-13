@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -36,6 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
@@ -121,8 +121,8 @@ object GenUiSpec {
     val noticePadding = 12.dp
     val itemMinHeight = 44.dp
 
-    /** Below this width a `switch` draws its compact branch. */
-    val regularWidth = 600.dp
+    /** Below this width of its own a `switch` draws its compact branch (RENDER.md M5). */
+    val regularWidth = 560.dp
 
     val code = happyTextStyle(fontSize = 13, lineHeight = 19, family = AppMono)
     val pill = happyTextStyle(fontSize = 12, lineHeight = 16, weight = FontWeight.Medium)
@@ -215,8 +215,30 @@ class GenUiHost(
     val key: (path: String) -> String? = { null },
 )
 
-/** One document being drawn: its elements, the host, and which element each single-choice group settled on. */
-internal class GenUiScope(val document: RenderDocument, val host: GenUiHost, val chosen: SnapshotStateMap<String, String>)
+/**
+ * What a person did to one drawn document: which element each single-choice
+ * group settled on. A host that draws the document in a list keeps it with
+ * the version, so a row scrolled away and back keeps its choices.
+ */
+@Stable
+class GenUiState {
+    internal val chosen: SnapshotStateMap<String, String> = mutableStateMapOf()
+
+    /** Settles [group] on [key], as a tap would; the first choice stands. */
+    fun choose(group: String, key: String) {
+        if (group !in chosen) chosen[group] = key
+    }
+}
+
+object GenUiTags {
+    const val VIEW = "genui"
+    const val SCROLL = "genui.scroll"
+}
+
+/** One document being drawn: its elements, the host, and what was done to it. */
+internal class GenUiScope(val document: RenderDocument, val host: GenUiHost, val state: GenUiState) {
+    val chosen: SnapshotStateMap<String, String> get() = state.chosen
+}
 
 internal val LocalGenUi = staticCompositionLocalOf<GenUiScope?> { null }
 
@@ -235,17 +257,24 @@ internal val LocalCellEnd = staticCompositionLocalOf<Boolean?> { null }
 internal val LocalRailReach = staticCompositionLocalOf { 0.dp }
 
 /**
- * A render document as an answer block, at the full width of the transcript
- * inside the chat's inset. A document with nothing drawable shows its
+ * A render document as an answer block, at the full width it is given less
+ * [inset] each side (the chat's, by default; a carousel scrolls out into
+ * it). Its height depends only on the document, that width and the text
+ * size (RENDER.md "Measuring"). A document with nothing drawable shows its
  * `fallback` as text.
  */
 @Composable
-fun GenUiView(document: RenderDocument, modifier: Modifier = Modifier, host: GenUiHost = GenUiHost()) {
-    val chosen = remember(document) { mutableStateMapOf<String, String>() }
-    val scope = remember(document, host, chosen) { GenUiScope(document, host, chosen) }
+fun GenUiView(
+    document: RenderDocument,
+    modifier: Modifier = Modifier,
+    host: GenUiHost = GenUiHost(),
+    state: GenUiState = remember(document) { GenUiState() },
+    inset: Dp = GenUiSpec.chatInset,
+) {
+    val scope = remember(document, host, state) { GenUiScope(document, host, state) }
     val shared = if (HappyTheme.colors.dark) GenUiColors.Dark else GenUiColors.Light
-    CompositionLocalProvider(LocalGenUi provides scope, LocalBleed provides GenUiSpec.chatInset, LocalGenUiColors provides shared) {
-        Box(modifier.fillMaxWidth().padding(horizontal = GenUiSpec.chatInset).testTag("genui")) {
+    CompositionLocalProvider(LocalGenUi provides scope, LocalBleed provides inset, LocalGenUiColors provides shared) {
+        Box(modifier.fillMaxWidth().padding(horizontal = inset).testTag(GenUiTags.VIEW)) {
             val root = document.root
             if (document.drawable && root != null) Draw(root, Modifier.fillMaxWidth())
             else document.fallback?.let { Text(it, style = roleStyle(TextRole.Body, Surface.Root).style, color = HappyTheme.colors.text) }
@@ -495,11 +524,18 @@ internal fun Modifier.bleed(bleed: Dp): Modifier = layout { measurable, constrai
 
 // Switch
 
+/**
+ * The branch its own width calls for (RENDER.md M5). Both are composed and
+ * only that one is measured and placed: no subcomposition, so a switch can
+ * sit where its parent asks for intrinsic sizes (a grid cell, an equal row).
+ */
 @Composable
 private fun SwitchView(e: Element.Switch, modifier: Modifier) {
-    BoxWithConstraints(modifier) {
-        val keys = if (maxWidth < GenUiSpec.regularWidth) e.compact else e.regular
-        Column(Modifier.fillMaxWidth()) { keys.forEach { Draw(it, Modifier.fillMaxWidth()) } }
+    val branch: @Composable (List<String>) -> Unit = { keys -> Column(Modifier.fillMaxWidth()) { keys.forEach { Draw(it, Modifier.fillMaxWidth()) } } }
+    Layout(listOf({ branch(e.compact) }, { branch(e.regular) }), modifier.fillMaxWidth()) { (compact, regular), constraints ->
+        val shown = if (constraints.maxWidth < GenUiSpec.regularWidth.roundToPx()) compact else regular
+        val placeables = shown.map { it.measure(constraints) }
+        layout(constraints.maxWidth, placeables.maxOfOrNull { it.height } ?: constraints.minHeight) { placeables.forEach { it.place(0, 0) } }
     }
 }
 
@@ -651,7 +687,8 @@ private fun GenUiScope.activate(key: String, group: String?, action: Action) {
  * Material buttons in Happy's colours: primary is the inverse fill (black on
  * light), secondary a hairline outline, plain the word alone, a chip an
  * outlined capsule. A tone colours the fill or the word. In a single-choice
- * group the chosen one keeps a check and the rest fade and stop responding.
+ * group the chosen one takes a darker outline (and a check for its glyph,
+ * if it has one) and the rest fade and stop responding.
  */
 @Composable
 private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
@@ -669,7 +706,8 @@ private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
     val onFill = if (colors.dark) Color.Black else Color.White
     val fg = if (primary) onFill else toneColor
     val word = if (primary) onFill else wordColor
-    val icon = if (state.chosen) IconName.Check else e.icon
+    // The check stands in for a glyph and is never added beside the word, so choosing doesn't change a button's width (M2).
+    val icon = if (state.chosen && e.icon != null) IconName.Check else e.icon
     val content: @Composable RowScope.() -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             icon?.let { GenUiIcon(it, 16.dp, fg) }

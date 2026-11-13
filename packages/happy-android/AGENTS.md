@@ -2001,6 +2001,31 @@ home's project folders read the wire's `avatar`: `kind: "image"` is
 anything else the placeholder (happy-ios still looks for a `url` the wire
 doesn't carry).
 
+### Gen UI
+
+A `gen_ui` artifact is drawn natively from its version's
+`.genui/render.json` (the render document the computer compiles), never from
+its entry. The contract is happy-agent `docs/genui` (RENDER.md,
+`render/catalog.json`, `theme.json`); `tools/genui/sync.sh <happy-agent>`
+copies its compiled examples into the debug fixtures and its conformance
+cases into `app/src/test/resources/genui/conformance`. `genui/GenUi.kt`
+parses (never fails: unknown primitives drop, unknown values default, a
+`genuiRender` other than 1 keeps only its fallback, an action this build
+can't run is `Action.Unsupported` and its button stays, disabled).
+`ui/genui/GenUiView` draws the 15 primitives; `GenUiHost` says which
+actions run (`supports`) and reads pictures (`cached`/`load`).
+
+Height is a pure function of document, width and text size (RENDER.md
+"Measuring"): images reserve their box from the document, a `switch` picks
+by its own width at 560 dp with both branches composed and one measured (no
+subcomposition, so intrinsics work), a `scroll` measures every card and only
+moves them when scrolled, a chosen button never gains a glyph. Choices live
+in a `GenUiState` the host keeps per version. `GenUiMeasuringTest` runs the
+spec's `measuring.json`; `GenUiLazyListTest` checks first-frame height and
+that scrolling 100 blocks measures each once. Debug builds have "Gen UI
+fixtures", `GenUiGymActivity` (shots, `tools/genui/shoot.sh`) and
+`GenUiArtifactGymActivity` (a fixture through the real artifact screen).
+
 ### Mermaid
 
 `ui/components/MermaidView.kt` renders ```` ```mermaid ```` blocks the way

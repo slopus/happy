@@ -218,9 +218,513 @@
               "description": "Tool input."
             }
           }
+        },
+        {
+          "object": {
+            "type": {
+              "type": {
+                "const": "secret"
+              },
+              "description": "",
+              "required": true
+            },
+            "secret": {
+              "type": {
+                "object": {
+                  "id": {
+                    "type": "string",
+                    "description": "Suggested secret name: 2–32 characters, a lowercase letter followed by lowercase letters, digits, `_` or `-`. When it names an existing secret, the form changes that secret instead of creating one."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Suggested description of the secret, at most 2,000 characters."
+                  },
+                  "variables": {
+                    "type": {
+                      "array": {
+                        "object": {
+                          "name": {
+                            "type": "string",
+                            "description": "Environment variable name, `[A-Za-z_][A-Za-z0-9_]*`, unique ignoring case.",
+                            "required": true
+                          },
+                          "description": {
+                            "type": "string",
+                            "description": "What the value is or where to find it, at most 2,000 characters."
+                          }
+                        }
+                      },
+                      "min": 1,
+                      "max": 64
+                    },
+                    "description": "The variables the agent needs, in order.",
+                    "required": true
+                  }
+                }
+              },
+              "description": "What the Happy Agent secret form starts with. The person may change every field before saving. It never holds a value: values are typed by the person.",
+              "required": true
+            }
+          }
+        },
+        {
+          "object": {
+            "type": {
+              "type": {
+                "const": "cluster_secret"
+              },
+              "description": "",
+              "required": true
+            },
+            "secret": {
+              "type": {
+                "oneOf": [
+                  {
+                    "object": {
+                      "type": {
+                        "type": {
+                          "const": "endpoint"
+                        },
+                        "description": "",
+                        "required": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "description": "An existing cluster secret to change: 24 characters, a lowercase letter then lowercase letters and digits. Its type must match; the server checks at submit. Absent: the form creates one."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Suggested name: 1–100 characters, no control characters, no leading or trailing whitespace.",
+                        "required": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Suggested description, at most 2,000 characters."
+                      },
+                      "owner": {
+                        "type": {
+                          "enum": [
+                            "me",
+                            "team"
+                          ]
+                        },
+                        "description": "Suggested owner: `me` for the person's own secret, `team` for the organization's. The form starts at `me` when absent."
+                      },
+                      "uses": {
+                        "type": {
+                          "array": {
+                            "enum": [
+                              "egress",
+                              "mcp"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 2
+                        },
+                        "description": "Suggested parts of the system that may open the value, each at most once."
+                      },
+                      "public": {
+                        "type": {
+                          "object": {
+                            "targets": {
+                              "type": {
+                                "array": {
+                                  "object": {
+                                    "host": {
+                                      "type": "string",
+                                      "description": "A host name or address, 1–253 characters. Or `*.` and a name, matching its subdomains.",
+                                      "required": true
+                                    },
+                                    "ports": {
+                                      "type": {
+                                        "array": "number",
+                                        "min": 0,
+                                        "max": 16
+                                      },
+                                      "description": "Integer ports 1–65535. Absent: 443."
+                                    },
+                                    "pathPrefixes": {
+                                      "type": {
+                                        "array": "string",
+                                        "min": 0,
+                                        "max": 16
+                                      },
+                                      "description": "Paths starting with `/`, each at most 256 characters. `/v1` admits `/v1` and `/v1/…`. Absent: any path."
+                                    },
+                                    "methods": {
+                                      "type": {
+                                        "array": {
+                                          "enum": [
+                                            "GET",
+                                            "HEAD",
+                                            "POST",
+                                            "PUT",
+                                            "PATCH",
+                                            "DELETE",
+                                            "OPTIONS"
+                                          ]
+                                        },
+                                        "min": 0,
+                                        "max": 16
+                                      },
+                                      "description": "Absent: any method."
+                                    }
+                                  }
+                                },
+                                "min": 1,
+                                "max": 16
+                              },
+                              "description": "Requests the egress proxy applies the value to."
+                            },
+                            "algorithm": {
+                              "type": {
+                                "object": {
+                                  "kind": {
+                                    "type": {
+                                      "const": "headers"
+                                    },
+                                    "description": "",
+                                    "required": true
+                                  },
+                                  "headers": {
+                                    "type": {
+                                      "array": {
+                                        "object": {
+                                          "name": {
+                                            "type": "string",
+                                            "description": "1–64 characters of `A–Z a–z 0–9 - _ .`.",
+                                            "required": true
+                                          },
+                                          "prefix": {
+                                            "type": "string",
+                                            "description": "At most 32 printable ASCII characters sent before the value, such as `Bearer `."
+                                          }
+                                        }
+                                      },
+                                      "min": 1,
+                                      "max": 8
+                                    },
+                                    "description": "The headers the proxy sets, each to its prefix followed by the value. The form asks one value per header.",
+                                    "required": true
+                                  }
+                                }
+                              },
+                              "description": "How the proxy sends the value."
+                            }
+                          }
+                        },
+                        "description": "Suggested public metadata of an endpoint secret."
+                      }
+                    }
+                  },
+                  {
+                    "object": {
+                      "type": {
+                        "type": {
+                          "const": "ssh_key"
+                        },
+                        "description": "",
+                        "required": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "description": "An existing cluster secret to change: 24 characters, a lowercase letter then lowercase letters and digits. Its type must match; the server checks at submit. Absent: the form creates one."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Suggested name: 1–100 characters, no control characters, no leading or trailing whitespace.",
+                        "required": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Suggested description, at most 2,000 characters."
+                      },
+                      "owner": {
+                        "type": {
+                          "enum": [
+                            "me",
+                            "team"
+                          ]
+                        },
+                        "description": "Suggested owner: `me` for the person's own secret, `team` for the organization's. The form starts at `me` when absent."
+                      },
+                      "uses": {
+                        "type": {
+                          "array": {
+                            "enum": [
+                              "ssh"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1
+                        },
+                        "description": "Suggested parts of the system that may open the value, each at most once."
+                      },
+                      "public": {
+                        "type": {
+                          "object": {
+                            "hosts": {
+                              "type": {
+                                "array": "string",
+                                "min": 1,
+                                "max": 16
+                              },
+                              "description": "Hosts the key signs for: names, addresses, or `*.name` patterns, each 1–253 characters."
+                            },
+                            "ports": {
+                              "type": {
+                                "array": "number",
+                                "min": 0,
+                                "max": 8
+                              },
+                              "description": "Integer ports 1–65535 besides 22."
+                            },
+                            "knownHosts": {
+                              "type": {
+                                "array": "string",
+                                "min": 0,
+                                "max": 32
+                              },
+                              "description": "Plain `known_hosts` lines, each at most 8,192 characters."
+                            }
+                          }
+                        },
+                        "description": "Suggested public metadata of an SSH key secret. The public key and fingerprint come from the key the person enters."
+                      }
+                    }
+                  },
+                  {
+                    "object": {
+                      "type": {
+                        "type": {
+                          "const": "git_credential"
+                        },
+                        "description": "",
+                        "required": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "description": "An existing cluster secret to change: 24 characters, a lowercase letter then lowercase letters and digits. Its type must match; the server checks at submit. Absent: the form creates one."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Suggested name: 1–100 characters, no control characters, no leading or trailing whitespace.",
+                        "required": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Suggested description, at most 2,000 characters."
+                      },
+                      "owner": {
+                        "type": {
+                          "enum": [
+                            "me",
+                            "team"
+                          ]
+                        },
+                        "description": "Suggested owner: `me` for the person's own secret, `team` for the organization's. The form starts at `me` when absent."
+                      },
+                      "uses": {
+                        "type": {
+                          "array": {
+                            "enum": [
+                              "git"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1
+                        },
+                        "description": "Suggested parts of the system that may open the value, each at most once."
+                      },
+                      "public": {
+                        "type": {
+                          "object": {
+                            "server": {
+                              "type": "string",
+                              "description": "One host name or address, 1–253 characters, never a pattern."
+                            },
+                            "port": {
+                              "type": "number",
+                              "description": "Integer port 1–65535, only when the server is not on 22 (SSH) or 443 (HTTPS)."
+                            },
+                            "method": {
+                              "type": {
+                                "oneOf": [
+                                  {
+                                    "object": {
+                                      "kind": {
+                                        "type": {
+                                          "const": "ssh_key"
+                                        },
+                                        "description": "",
+                                        "required": true
+                                      },
+                                      "knownHosts": {
+                                        "type": {
+                                          "array": "string",
+                                          "min": 0,
+                                          "max": 32
+                                        },
+                                        "description": "Plain `known_hosts` lines, each at most 8,192 characters."
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "object": {
+                                      "kind": {
+                                        "type": {
+                                          "const": "password"
+                                        },
+                                        "description": "",
+                                        "required": true
+                                      },
+                                      "username": {
+                                        "type": "string",
+                                        "description": "1–128 characters."
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "object": {
+                                      "kind": {
+                                        "type": {
+                                          "const": "token"
+                                        },
+                                        "description": "",
+                                        "required": true
+                                      },
+                                      "username": {
+                                        "type": "string",
+                                        "description": "1–128 characters. Absent: the token is sent as a bearer token."
+                                      }
+                                    }
+                                  }
+                                ]
+                              },
+                              "description": "How git authenticates. The form asks the key, password or token."
+                            },
+                            "repos": {
+                              "type": {
+                                "array": "string",
+                                "min": 0,
+                                "max": 64
+                              },
+                              "description": "Patterns such as `owner/repo` or `owner/*`, each at most 256 characters. Absent: every repository on the server."
+                            },
+                            "operations": {
+                              "type": {
+                                "array": {
+                                  "enum": [
+                                    "read",
+                                    "write",
+                                    "sign"
+                                  ]
+                                },
+                                "min": 1,
+                                "max": 3
+                              },
+                              "description": "What the credential may do, each at most once. Only the `ssh_key` method may `sign`."
+                            }
+                          }
+                        },
+                        "description": "Suggested public metadata of a git credential."
+                      }
+                    }
+                  },
+                  {
+                    "object": {
+                      "type": {
+                        "type": {
+                          "const": "environment"
+                        },
+                        "description": "",
+                        "required": true
+                      },
+                      "id": {
+                        "type": "string",
+                        "description": "An existing cluster secret to change: 24 characters, a lowercase letter then lowercase letters and digits. Its type must match; the server checks at submit. Absent: the form creates one."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Suggested name: 1–100 characters, no control characters, no leading or trailing whitespace.",
+                        "required": true
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Suggested description, at most 2,000 characters."
+                      },
+                      "owner": {
+                        "type": {
+                          "enum": [
+                            "me",
+                            "team"
+                          ]
+                        },
+                        "description": "Suggested owner: `me` for the person's own secret, `team` for the organization's. The form starts at `me` when absent."
+                      },
+                      "uses": {
+                        "type": {
+                          "array": {
+                            "enum": [
+                              "environment",
+                              "mcp"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 2
+                        },
+                        "description": "Suggested parts of the system that may open the value, each at most once."
+                      },
+                      "public": {
+                        "type": {
+                          "object": {
+                            "variables": {
+                              "type": {
+                                "array": "string",
+                                "min": 1,
+                                "max": 256
+                              },
+                              "description": "Variable names, each `[A-Za-z_][A-Za-z0-9_]*`, at most 128 characters and unique. The form asks one value per name."
+                            }
+                          }
+                        },
+                        "description": "Suggested public metadata of an environment secret."
+                      }
+                    }
+                  }
+                ]
+              },
+              "description": "What the Happy Cloud secret form starts with, by secret type. It never holds a value: the form asks for each. Every field is a suggestion the person may change. A valid prefill is not necessarily a secret the cluster accepts; the cluster checks the saved form by its own rules.",
+              "required": true
+            }
+          }
+        },
+        {
+          "object": {
+            "type": {
+              "type": {
+                "const": "plugin"
+              },
+              "description": "",
+              "required": true
+            },
+            "plugin": {
+              "type": {
+                "object": {
+                  "id": {
+                    "type": "string",
+                    "description": "The plugin's ID.",
+                    "required": true
+                  }
+                }
+              },
+              "description": "The plugin whose page the host opens. Installing happens there; the tap installs nothing.",
+              "required": true
+            }
+          }
         }
       ],
-      "description": "What happens when the user activates an interactive element. The renderer reports it; the host decides whether and how to run it, and may ask for confirmation or refuse."
+      "description": "What happens when the user activates an interactive element. The renderer reports it; the host decides whether and how to run it, and may ask for confirmation or refuse. An action a host cannot run leaves its element disabled."
     },
     "icon": {
       "enum": [
@@ -766,7 +1270,7 @@
       }
     },
     "button": {
-      "summary": "A button.",
+      "summary": "A button. With an action the host cannot run, because it does not know or does not serve it, the button is drawn disabled with its label.",
       "children": false,
       "slots": {},
       "props": {
@@ -829,7 +1333,7 @@
       }
     },
     "press": {
-      "summary": "Makes its child tappable. With a missing or invalid action the child is drawn and is not tappable.",
+      "summary": "Makes its child tappable. With a missing or invalid action, or one the host cannot run, the child is drawn and is not tappable.",
       "children": true,
       "slots": {},
       "props": {

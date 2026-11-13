@@ -2,28 +2,30 @@ package com.slopus.happy.ui.genui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.snapping.SnapPosition
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -32,10 +34,18 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.round
 import com.slopus.happy.genui.Element
 import com.slopus.happy.genui.IconName
 import com.slopus.happy.genui.ImageRole
@@ -52,6 +62,10 @@ internal fun Shape.ratio(): Float = when (this) {
     Shape.Square -> 1f
     Shape.Portrait -> 3f / 4f
 }
+
+/** A figure's stored width over height (RENDER.md M3), its shape's where the file gave none, kept to 1:4 through 4:1. */
+internal fun Element.Image.pixelRatio(): Float =
+    if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.25f, 4f) else shape.ratio()
 
 /** Set by a mosaic: its tiles take the cell they are given instead of their shape. */
 private val LocalSized = staticCompositionLocalOf { false }
@@ -74,7 +88,7 @@ internal fun ImageView(key: String, e: Element.Image, modifier: Modifier) {
     var m = when {
         sized -> modifier.fillMaxSize()
         e.role == ImageRole.Thumb -> modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
-        e.role == ImageRole.Figure -> modifier.fillMaxWidth().heightIn(max = 360.dp).aspectRatio(e.shape.ratio(), matchHeightConstraintsFirst = true).clip(RoundedCornerShape(12.dp))
+        e.role == ImageRole.Figure -> modifier.fillMaxWidth().heightIn(max = 360.dp).aspectRatio(e.pixelRatio(), matchHeightConstraintsFirst = true).clip(RoundedCornerShape(12.dp))
         e.role == ImageRole.Tile -> modifier.fillMaxWidth().aspectRatio(e.shape.ratio())
         else -> modifier.fillMaxWidth().aspectRatio(e.shape.ratio()).clip(RoundedCornerShape(12.dp))
     }
@@ -156,28 +170,78 @@ internal fun Mosaic(children: List<String>, modifier: Modifier) {
  * Cards in a row that scrolls out to the chat's edges and snaps one card at a
  * time. A landscape card is 72% of the column (at most 280), a square one 60%,
  * a portrait one 48%, so the next one peeks in at the edge and a tall
- * picture doesn't fill the screen.
+ * picture doesn't fill the screen. Every card is measured, on screen or not,
+ * and the row is as tall as the tallest (RENDER.md M6); scrolling only moves
+ * the cards, so it never measures again.
  */
 @Composable
 internal fun ScrollView(e: Element.Scroll, modifier: Modifier) {
     val bleed = LocalBleed.current
-    val state = rememberLazyListState()
-    BoxWithConstraints(modifier.fillMaxWidth()) {
+    val track = remember { CardTrack() }
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val scrollable = rememberScrollableState { delta -> track.consume(delta) }
+    val fling = remember(track) { CardSnap(track) }
+    Layout(
+        content = { e.children.forEach { Draw(it) } },
+        modifier = modifier
+            .fillMaxWidth()
+            .bleed(bleed)
+            .clipToBounds()
+            .scrollable(scrollable, Orientation.Horizontal, reverseDirection = !rtl, flingBehavior = fling)
+            .testTag(GenUiTags.SCROLL),
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val inset = bleed.roundToPx()
         val share = when (e.shape) {
             Shape.Landscape -> 0.72f
             Shape.Square -> 0.6f
             Shape.Portrait -> 0.48f
         }
-        val cardWidth: Dp = minOf(maxWidth * share, 280.dp)
-        LazyRow(
-            Modifier.bleed(bleed),
-            state = state,
-            contentPadding = PaddingValues(horizontal = bleed),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top,
-            flingBehavior = rememberSnapFlingBehavior(state, SnapPosition.Start),
-        ) {
-            items(e.children) { child -> Draw(child, Modifier.width(cardWidth)) }
+        val card = minOf(((width - inset * 2) * share).toInt(), 280.dp.roundToPx())
+        val gap = 12.dp.roundToPx()
+        val placeables = measurables.map { it.measure(Constraints.fixedWidth(card)) }
+        track.stride = card + gap
+        track.max = (inset * 2 + placeables.size * card + (placeables.size - 1).coerceAtLeast(0) * gap - width).coerceAtLeast(0).toFloat()
+        layout(width, placeables.maxOfOrNull { it.height } ?: 0) {
+            val offset = track.offset.toInt()
+            placeables.forEachIndexed { i, p -> p.placeRelative(inset + i * (card + gap) - offset, 0) }
         }
+    }
+}
+
+/** Where a card row is scrolled to; read only when placing, so a scroll moves the cards without measuring them. */
+@Stable
+private class CardTrack {
+    var offset by mutableFloatStateOf(0f)
+    var stride = 1
+    var max = 0f
+
+    fun consume(delta: Float): Float {
+        val before = offset
+        offset = (offset + delta).coerceIn(0f, max)
+        return offset - before
+    }
+}
+
+/** A fling settles with a card's start on the column's start: the next or previous card when fast enough, else the nearest. */
+private class CardSnap(private val track: CardTrack) : FlingBehavior {
+    override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+        val at = track.offset / track.stride
+        val index = when {
+            initialVelocity > FLING_VELOCITY -> ceil(at)
+            initialVelocity < -FLING_VELOCITY -> floor(at)
+            else -> round(at)
+        }
+        val target = (index * track.stride).coerceIn(0f, track.max)
+        var last = track.offset
+        animate(last, target, initialVelocity, spring(stiffness = Spring.StiffnessMediumLow)) { value, _ ->
+            scrollBy(value - last)
+            last = value
+        }
+        return 0f
+    }
+
+    private companion object {
+        const val FLING_VELOCITY = 400f
     }
 }
