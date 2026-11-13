@@ -230,7 +230,10 @@ final class HostedLegacyAttachTests: XCTestCase {
         card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0))
         let sheet = try await menu()
         try await pick(in: sheet)
-        try XCTUnwrap(view("attach-send", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
+        try XCTUnwrap(view("attach-confirm", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
+        // Confirmed, it waits in the composer, read, until the composer's own send.
+        try await wait(15) { self.presented == nil && self.card.configuration.attachments.count == 1 && !self.card.configuration.attachments.contains(where: \.preparing) }
+        card.delegate?.agentInputCardDidPressSend(card)
         var items: [OutboxRecord] = []
         let deadline = ContinuousClock.now + .seconds(15)
         while items.count < 2, ContinuousClock.now < deadline {
@@ -263,8 +266,9 @@ final class HostedLegacyAttachTests: XCTestCase {
     /// The legacy chat's "+" opens the attach menu with the keyboard put
     /// away; closed, the draft, its selection and the keyboard are as they
     /// were. The caption starts as the draft and writes back to it as it is
-    /// typed; sent, the photo and the caption go out as the composer's own
-    /// send, and the composer is empty after.
+    /// typed; confirmed, the photo waits in the composer with the caption as
+    /// its text and the keyboard up, and goes out with the composer's own
+    /// send, which empties it.
     func testThePlusOpensTheAttachMenuAndSendsAPhotoWithTheDraftAsCaption() async throws {
         try await open()
         card.setText("A draft that stays", selection: NSRange(location: 2, length: 5))
@@ -293,7 +297,14 @@ final class HostedLegacyAttachTests: XCTestCase {
         caption.delegate?.textViewDidChange?(caption)
         XCTAssertEqual(card.text, "A draft that stays, with a photo")
 
-        try XCTUnwrap(view("attach-send", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
+        try XCTUnwrap(view("attach-confirm", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
+        try await wait(15) { self.presented == nil && self.card.configuration.attachments.count == 1 && !self.card.configuration.attachments.contains(where: \.preparing) }
+        XCTAssertEqual(card.text, "A draft that stays, with a photo")
+        try await wait { self.card.textView.isFirstResponder }
+        let staged = try await outbox()
+        XCTAssertTrue(staged.isEmpty, "the confirm sent")
+        try await keep("legacy-attach-staged")
+        card.delegate?.agentInputCardDidPressSend(card)
         var items: [OutboxRecord] = []
         let deadline = ContinuousClock.now + .seconds(15)
         while items.count < 2, ContinuousClock.now < deadline {
@@ -306,7 +317,6 @@ final class HostedLegacyAttachTests: XCTestCase {
         let picture = try await Task.detached { try store.attachment(outboxLocalId: items[0].localId) }.value
         XCTAssertEqual(picture?.mimeType, "image/jpeg")
         try await wait { self.card.text.isEmpty && self.card.configuration.attachments.isEmpty }
-        XCTAssertFalse(card.textView.isFirstResponder, "the keyboard came back after a send from the menu")
     }
 
     // MARK: Upload rings

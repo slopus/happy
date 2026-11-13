@@ -7,12 +7,12 @@ import XCTest
 /// CLI chat compose opens before there is a session (`-composeMachine`:
 /// its first send makes one on the seeded computer). Taps go through
 /// hit-testing, as a finger's do: the hosted tests send the controls'
-/// actions straight, which is how the menu's send could stop answering a
+/// actions straight, which is how the menu's confirm could stop answering a
 /// finger with every one of them passing.
 ///
 /// "+" opens the menu, with and without the keyboard; a photo or a video
-/// picked in the grid and sent with the menu's own send closes the menu,
-/// leaves nothing waiting in the composer and lands in the transcript. On
+/// picked in the grid and confirmed closes the menu and waits in the
+/// composer; the composer's Send empties it and it lands in the transcript. On
 /// an iPad each runs in the split and in a window narrowed to one stack.
 ///
 /// The Happy CLI account is seeded offline and can't encrypt, so its
@@ -91,8 +91,9 @@ final class AttachButtonUITests: XCTestCase {
         }
     }
 
-    /// Picture `index` picked by its circle, sent with the menu's send:
-    /// the menu goes, the composer holds nothing, and `landed` turns true.
+    /// Picture `index` picked by its circle, confirmed into the composer
+    /// (the menu goes, the picture waits there) and sent with its Send:
+    /// the composer holds nothing, and `landed` turns true.
     private func sendsPicture(_ index: Int, _ arguments: [String], landed: () -> Bool) {
         for layout in layouts {
             launch(arguments + layout)
@@ -103,11 +104,13 @@ final class AttachButtonUITests: XCTestCase {
             XCTAssertTrue(cell.waitForExistence(timeout: 10), "\(name): the grid never showed it")
             sleep(1)
             cell.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0)).withOffset(CGVector(dx: -17.5, dy: 17.5)).tap()
-            let send = app.descendants(matching: .any)["attach-send"]
-            XCTAssertTrue(send.waitForExistence(timeout: 3), "\(name): picking offered no send")
+            let confirm = app.descendants(matching: .any)["attach-confirm"]
+            XCTAssertTrue(confirm.waitForExistence(timeout: 3), "\(name): picking offered no confirm")
             sleep(1)
-            send.tap()
-            XCTAssertTrue(waitGone(sheet), "\(name): the menu's send didn't send")
+            confirm.tap()
+            XCTAssertTrue(waitGone(sheet), "\(name): the confirm didn't close the menu")
+            XCTAssertTrue(app.descendants(matching: .any)["composer-attachment"].waitForExistence(timeout: 10), "\(name): it didn't wait in the composer")
+            app.buttons["Send"].tap()
             let deadline = Date().addingTimeInterval(15)
             while !landed(), Date() < deadline { usleep(250_000) }
             XCTAssertTrue(landed(), "\(name): nothing landed in the transcript")

@@ -109,22 +109,24 @@ final class AttachPreviewLayoutTests: XCTestCase {
         XCTAssertEqual(AttachPreviewDismissal(distance: 200, velocity: 1500).velocity, 1500)
     }
 
-    func testWithNoCellItLeavesTheScreenAtLeast2000ASecond() {
+    func testWithNoCellItLeavesTheScreenWithinTheZoomsTime() {
         let slow = AttachPreviewDismissal.leave(velocity: 600, height: 874)
         XCTAssertEqual(slow.offset, 874)
-        XCTAssertEqual(slow.duration, 0.437, accuracy: 0.0001)
-        let up = AttachPreviewDismissal.leave(velocity: -4000, height: 874)
+        XCTAssertEqual(slow.duration, 0.22, accuracy: 0.0001)
+        let up = AttachPreviewDismissal.leave(velocity: -8000, height: 874)
         XCTAssertEqual(up.offset, -874)
-        XCTAssertEqual(up.duration, 0.2185, accuracy: 0.0001)
+        XCTAssertEqual(up.duration, 874.0 / 8000, accuracy: 0.0001, "a finger faster than the zoom keeps its speed")
+        let opening = AttachPreviewDismissal.leave(velocity: 0, height: 874)
+        XCTAssertEqual(opening.offset, 874, "with no velocity it comes from below")
+        XCTAssertEqual(opening.duration, 0.22, accuracy: 0.0001)
     }
 
-    func testTelegramsSpringsStretchedInTime() {
-        let opening = AttachPreviewMotion.stretched(damping: AttachPreviewMotion.dampingIn, factor: AttachPreviewMotion.stretchIn)
-        XCTAssertEqual(opening.mass, 0.8)
-        XCTAssertEqual(opening.stiffness, 300 / 3.24, accuracy: 0.0001)
-        XCTAssertEqual(opening.damping, 25 / 1.8, accuracy: 0.0001)
-        let closing = AttachPreviewMotion.stretched(damping: AttachPreviewMotion.dampingOut, factor: AttachPreviewMotion.stretchOut)
-        XCTAssertEqual(closing.stiffness, 75)
-        XCTAssertEqual(closing.damping, 15)
+    func testThePreviewMovesIn220MillisecondsBothWays() {
+        XCTAssertEqual(AttachPreviewMotion.duration, 0.22)
+        XCTAssertLessThan(AttachPreviewMotion.fadeOut, AttachPreviewMotion.duration)
+        // An ease out that never overshoots.
+        let curve = AttachPreviewMotion.curve
+        XCTAssertGreaterThan(curve.y1, curve.x1)
+        XCTAssertLessThanOrEqual(max(curve.y1, curve.y2), 1)
     }
 }

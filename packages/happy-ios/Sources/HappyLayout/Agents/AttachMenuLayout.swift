@@ -8,13 +8,14 @@ import CoreGraphics
 /// `MediaPickerScreen`, `MediaPickerPlaceholderNode`):
 ///
 ///     ╭───────────────────╮   a sheet over the dimmed chat, a quarter of
-///     │(×)(✓3) Recents ⌄  │   the screen down; dragged up it fills the
+///     │(×)    Recents ⌄   │   the screen down; dragged up it fills the
 ///     │ ┌──┐ ▢ ▢           │   screen, dragged down it goes
 ///     │ │📷│ ▢ ▢           │   the camera two rows tall at the top left,
 ///     │ └──┘ ▢ ▢ ▢ ...     │   the library newest first around it
 ///     │    ( Gallery|Files )│   a glass tab bar 22 off the bottom, which
-///     ╰───────────────────╯   turns into the caption and send while
-///                              photos are picked
+///     ╰───────────────────╯   turns into the caption and the picked
+///                              count (✓ 3) at its end while photos are
+///                              picked
 ///
 /// On an iPad the menu is a 390 × 670 card over the "+" instead. Without
 /// the library the gallery is an explanation with the system's picker
@@ -39,8 +40,8 @@ public enum AttachMenuMetrics {
 
     /// The header (`MediaPickerScreen`, glass): the grid runs under a 68
     /// tall glass bar (`defaultNavigationBarHeight` in a glass modal) with
-    /// the close button 16 in from the corner, 44 round; the picked count
-    /// 12 right of it; the title on their middle.
+    /// the close button 16 in from the corner, 44 round; the title on its
+    /// middle, 12 clear of it.
     public static let headerHeight: CGFloat = 68
     public static let headerInset: CGFloat = 16
     public static let headerButton: CGFloat = 44
@@ -85,10 +86,28 @@ public enum AttachMenuMetrics {
     public static let captionHeight: CGFloat = 40
     public static let captionRadius: CGFloat = 20
     public static let captionTextInset: CGFloat = 16
+    /// The caption's room above and below its text, together.
+    public static let captionPadding: CGFloat = 19
     public static let tabsRise: CGFloat = 11
-    /// Send, in the caption's last 51: a 40 × 34 accent capsule.
-    public static let sendWidth: CGFloat = 51
-    public static let sendBackground = CGSize(width: 40, height: 34)
+    /// The confirm at the caption's end, which takes the picks to the
+    /// composer: a check 20 at 8 and the count from 30 on an accent
+    /// capsule 34 tall, 12 past the count, 3 in from the field's end; it
+    /// takes touches the field's height down and 8 more before it.
+    public static let confirmHeight: CGFloat = 34
+    public static let confirmInset: CGFloat = 3
+    public static let confirmIcon: CGFloat = 20
+    public static let confirmIconX: CGFloat = 8
+    public static let confirmLabelX: CGFloat = 30
+    public static let confirmTrailing: CGFloat = 12
+    public static let confirmSlop: CGFloat = 8
+    /// The capsule for a count `countWidth` wide.
+    public static func confirmWidth(countWidth: CGFloat) -> CGFloat {
+        confirmLabelX + ceil(countWidth) + confirmTrailing
+    }
+    /// What the caption's text keeps clear at its end for the confirm.
+    public static func confirmReserve(countWidth: CGFloat) -> CGFloat {
+        confirmWidth(countWidth: countWidth) + confirmInset + confirmSlop
+    }
     /// Room the page keeps under its content for the bar.
     public static var barReserve: CGFloat { barBottom + barHeight + 8 }
 }
@@ -364,7 +383,7 @@ public struct AttachMenuGridLayout: Equatable, Sendable {
 
 /// The glass panel at the sheet's foot (`AttachmentPanel`, glass), in the
 /// window's space: the tab bar with its lens, or while photos are picked
-/// the caption field with send, which the same glass becomes.
+/// the caption field with the confirm, which the same glass becomes.
 public struct AttachMenuPanelLayout: Equatable, Sendable {
     public struct Tab: Equatable, Sendable {
         /// In the tab bar's space.
@@ -384,11 +403,14 @@ public struct AttachMenuPanelLayout: Equatable, Sendable {
     /// The tabs' offset: up 11 while picking.
     public var tabsOffset: CGFloat
     /// The caption's parts, in the glass's space: the text, its
-    /// placeholder, and send with its capsule.
+    /// placeholder, and the confirm's touch and its capsule; the check
+    /// and the count in the capsule's own space.
     public var text: CGRect
     public var placeholder: CGRect
-    public var send: CGRect
-    public var sendBackground: CGRect
+    public var confirm: CGRect
+    public var confirmBackground: CGRect
+    public var confirmIcon: CGRect
+    public var confirmLabel: CGRect
 
     public struct Input: Equatable, Sendable {
         public var minX: CGFloat
@@ -408,9 +430,11 @@ public struct AttachMenuPanelLayout: Equatable, Sendable {
         public var empty: Bool
         /// The tallest the caption grows.
         public var maxHeight: CGFloat
+        /// The confirm's count measured.
+        public var count: CGSize
         public var pixel: CGFloat
 
-        public init(minX: CGFloat, width: CGFloat, bottom: CGFloat, sides: LayoutInsets = .zero, titles: [CGSize], selected: Int, picking: Bool, focused: Bool = false, textHeight: CGFloat = 0, placeholder: CGSize = .zero, empty: Bool = true, maxHeight: CGFloat = .greatestFiniteMagnitude, pixel: CGFloat) {
+        public init(minX: CGFloat, width: CGFloat, bottom: CGFloat, sides: LayoutInsets = .zero, titles: [CGSize], selected: Int, picking: Bool, focused: Bool = false, textHeight: CGFloat = 0, placeholder: CGSize = .zero, empty: Bool = true, maxHeight: CGFloat = .greatestFiniteMagnitude, count: CGSize = .zero, pixel: CGFloat) {
             self.minX = minX
             self.width = width
             self.bottom = bottom
@@ -423,15 +447,17 @@ public struct AttachMenuPanelLayout: Equatable, Sendable {
             self.placeholder = placeholder
             self.empty = empty
             self.maxHeight = maxHeight
+            self.count = count
             self.pixel = pixel
         }
     }
 
-    /// How wide the caption's text runs, for measuring it.
-    public static func textWidth(width: CGFloat, sides: LayoutInsets, focused: Bool) -> CGFloat {
+    /// How wide the caption's text runs, for measuring it; `countWidth`
+    /// the confirm's count.
+    public static func textWidth(width: CGFloat, sides: LayoutInsets, focused: Bool, countWidth: CGFloat) -> CGFloat {
         typealias M = AttachMenuMetrics
         let side = focused ? M.captionFocusedSide : M.captionSide
-        return max(0, width - sides.left - sides.right - 2 * side - M.captionTextInset - M.sendWidth)
+        return max(0, width - sides.left - sides.right - 2 * side - M.captionTextInset - M.confirmReserve(countWidth: countWidth))
     }
 
     public init(_ input: Input) {
@@ -458,13 +484,21 @@ public struct AttachMenuPanelLayout: Equatable, Sendable {
         let side = input.focused ? M.captionFocusedSide : M.captionSide
         let spacing = input.focused ? M.captionFocusedBottom : M.captionBottom
         let fieldWidth = max(0, inner - 2 * side)
-        let height = min(max(M.captionHeight, ceil(input.textHeight) + 19), max(M.captionHeight, input.maxHeight))
+        let height = min(max(M.captionHeight, ceil(input.textHeight) + M.captionPadding), max(M.captionHeight, input.maxHeight))
         let field = CGRect(x: input.minX + input.sides.left + side, y: input.bottom - spacing - height, width: fieldWidth, height: height)
-        let textWidth = max(0, fieldWidth - M.captionTextInset - M.sendWidth)
-        text = CGRect(x: M.captionTextInset, y: floor((height - ceil(input.textHeight)) / 2 / pixel) * pixel, width: textWidth, height: min(ceil(input.textHeight), height))
-        send = CGRect(x: fieldWidth - M.sendWidth, y: 0, width: M.sendWidth, height: height)
-        let background = M.sendBackground
-        sendBackground = CGRect(x: fieldWidth - 3 - background.width, y: height - floor((M.captionHeight + background.height) / 2) - 0, width: background.width, height: background.height)
+        let reserve = M.confirmReserve(countWidth: input.count.width)
+        let textWidth = max(0, fieldWidth - M.captionTextInset - reserve)
+        // At its tallest the text stops growing and scrolls inside, keeping
+        // the same room above and below it.
+        let textBox = min(ceil(input.textHeight), height - M.captionPadding)
+        text = CGRect(x: M.captionTextInset, y: floor((height - textBox) / 2 / pixel) * pixel, width: textWidth, height: textBox)
+        // The far end of the field, its foot on the last line as the text grows.
+        confirm = CGRect(x: max(0, fieldWidth - reserve), y: 0, width: min(fieldWidth, reserve), height: height)
+        let pill = CGSize(width: M.confirmWidth(countWidth: input.count.width), height: M.confirmHeight)
+        confirmBackground = CGRect(x: fieldWidth - M.confirmInset - pill.width, y: height - floor((M.captionHeight + pill.height) / 2), width: pill.width, height: pill.height)
+        confirmIcon = CGRect(x: M.confirmIconX, y: floor((pill.height - M.confirmIcon) / 2), width: M.confirmIcon, height: M.confirmIcon)
+        let countHeight = ceil(input.count.height)
+        confirmLabel = CGRect(x: M.confirmLabelX, y: floor((pill.height - countHeight) / 2 / pixel) * pixel, width: ceil(input.count.width), height: countHeight)
         let placeholderWidth = min(ceil(input.placeholder.width), textWidth)
         let placeholderHeight = ceil(input.placeholder.height)
         // Unfocused and empty, "Add a caption…" sits in the field's middle.
@@ -485,37 +519,28 @@ public struct AttachMenuPanelLayout: Equatable, Sendable {
 
 /// The header over the grid (`MediaPickerScreen`'s glass controls and
 /// `MediaPickerTitleView`), in the content's space: close at the top left,
-/// the picked count beside it, the title and its album arrow centred.
+/// the title and its album arrow centred. The picked count isn't here: it
+/// is the caption's confirm (`AttachMenuPanelLayout`).
 public struct AttachMenuHeaderLayout: Equatable, Sendable {
     public var close: CGRect
-    /// The picked count's glass (`SelectedButtonNode`, glass): a check 24
-    /// at 6, the number at 27, 38 wider than the number.
-    public var count: CGRect
-    public var countIcon: CGRect
-    public var countLabel: CGRect
     public var title: CGRect
     public var arrow: CGRect?
     /// The fade over a scrolled grid.
     public var edge: CGRect
 
-    public static let countIcon: CGFloat = 24
     public static let arrow = CGSize(width: 24, height: 24)
 
     /// `arrow` is whether the title opens the albums.
-    public init(width: CGFloat, sides: LayoutInsets = .zero, title: CGSize, arrow hasArrow: Bool, countText: CGSize, pixel: CGFloat) {
+    public init(width: CGFloat, sides: LayoutInsets = .zero, title: CGSize, arrow hasArrow: Bool, pixel: CGFloat) {
         typealias M = AttachMenuMetrics
         let pixel = max(pixel, 0.0001)
         let left = sides.left + M.headerInset
         close = CGRect(x: left, y: M.headerInset, width: M.headerButton, height: M.headerButton)
-        let countWidth = ceil(countText.width) + 38
-        count = CGRect(x: close.maxX + M.headerGap, y: M.headerInset, width: countWidth, height: M.headerButton)
-        countIcon = CGRect(x: 6 + pixel, y: floor((M.headerButton - Self.countIcon) / 2) - pixel, width: Self.countIcon, height: Self.countIcon)
-        countLabel = CGRect(x: 27 - pixel, y: floor((M.headerButton - ceil(countText.height)) / 2 / pixel) * pixel, width: ceil(countText.width), height: ceil(countText.height))
         // `MediaPickerTitleView`, glass: the title and the arrow 1 after it,
         // centred together, 1 up; the arrow on the title's middle.
         let titleSize = CGSize(width: ceil(title.width), height: ceil(title.height))
         let total = titleSize.width + (hasArrow ? 1 + Self.arrow.width : 0)
-        let room = max(0, width - 2 * (count.maxX + M.headerGap))
+        let room = max(0, width - 2 * (close.maxX + M.headerGap))
         let titleWidth = min(titleSize.width, max(0, room - (hasArrow ? 1 + Self.arrow.width : 0)))
         let x = floor((width - min(total, room)) / 2 / pixel) * pixel
         let top = floor((close.midY - titleSize.height / 2) / pixel) * pixel - 1

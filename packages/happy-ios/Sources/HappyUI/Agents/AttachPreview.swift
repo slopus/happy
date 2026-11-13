@@ -321,10 +321,13 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
             close()
             return
         }
-        UIView.animate(withDuration: AttachPreviewDismissal.Metrics.returnDuration, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+        let back = Self.motion()
+        back.addAnimations {
             self.pager.transform = .identity
             self.ground.alpha = 1
         }
+        back.isUserInteractionEnabled = true
+        back.startAnimation()
         setChrome(hidden: false)
     }
 
@@ -343,15 +346,10 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         AttachPreviewTransition(opening: false)
     }
 
-    /// Telegram's spring, in UIKit's terms, and how long it takes to settle.
-    private static func spring(damping: CGFloat, stretch: CGFloat) -> UIViewPropertyAnimator {
-        let spring = AttachPreviewMotion.stretched(damping: damping, factor: stretch)
-        let probe = CASpringAnimation()
-        probe.mass = spring.mass
-        probe.stiffness = spring.stiffness
-        probe.damping = spring.damping
-        let timing = UISpringTimingParameters(mass: spring.mass, stiffness: spring.stiffness, damping: spring.damping, initialVelocity: .zero)
-        return UIViewPropertyAnimator(duration: probe.settlingDuration, timingParameters: timing)
+    /// The preview's one motion (`AttachPreviewMotion`), over `duration`.
+    private static func motion(_ duration: TimeInterval = AttachPreviewMotion.duration) -> UIViewPropertyAnimator {
+        let curve = AttachPreviewMotion.curve
+        return UIViewPropertyAnimator(duration: duration, controlPoint1: CGPoint(x: curve.x1, y: curve.y1), controlPoint2: CGPoint(x: curve.x2, y: curve.y2))
     }
 
     /// Where `index`'s cell is in the preview, if it is on the screen.
@@ -398,17 +396,20 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
             view.isUserInteractionEnabled = true
             done()
         }
-        UIView.animate(withDuration: AttachPreviewMotion.groundIn) {
+        let fade = Self.motion()
+        fade.addAnimations {
             self.ground.alpha = 1
             self.chrome.alpha = 1
         }
+        fade.startAnimation()
         guard let page = currentPage, let source = cell(index) else {
-            let leave = AttachPreviewDismissal.leave(velocity: AttachPreviewDismissal.Metrics.leavingSpeed, height: view.bounds.height)
+            let leave = AttachPreviewDismissal.leave(velocity: 0, height: view.bounds.height)
             onHide?(id)
             pager.transform = CGAffineTransform(translationX: 0, y: leave.offset)
-            UIView.animate(withDuration: leave.duration, delay: 0, options: [.curveEaseOut]) {
-                self.pager.transform = .identity
-            } completion: { _ in finish() }
+            let slide = Self.motion(leave.duration)
+            slide.addAnimations { self.pager.transform = .identity }
+            slide.addCompletion { _ in finish() }
+            slide.startAnimation()
             return
         }
         let image = Self.larger((source.view as? AttachPreviewSource)?.previewImage, page.shownImage)
@@ -417,7 +418,7 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         let (clip, picture) = flier(zoom, image: image, source: source.view)
         onHide?(id)
         page.alpha = 0
-        let animator = Self.spring(damping: AttachPreviewMotion.dampingIn, stretch: AttachPreviewMotion.stretchIn)
+        let animator = Self.motion()
         animator.addAnimations {
             clip.frame = zoom.page
             picture.frame = image == nil ? CGRect(origin: .zero, size: zoom.page.size) : zoom.pagePicture
@@ -449,10 +450,13 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         }
         guard let page = currentPage, let source = cell(index) else {
             let leave = AttachPreviewDismissal.leave(velocity: velocity, height: view.bounds.height)
-            UIView.animate(withDuration: AttachPreviewMotion.groundOut) { self.ground.alpha = 0 }
-            UIView.animate(withDuration: leave.duration, delay: 0, options: [.curveEaseIn]) {
+            let slide = Self.motion(leave.duration)
+            slide.addAnimations {
+                self.ground.alpha = 0
                 self.pager.transform = CGAffineTransform(translationX: 0, y: leave.offset)
-            } completion: { _ in finish() }
+            }
+            slide.addCompletion { _ in finish() }
+            slide.startAnimation()
             return
         }
         UIView.animate(withDuration: AttachPreviewMotion.fadeOut) { self.ground.alpha = 0 }
@@ -462,7 +466,7 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         clip.frame = zoom.page
         picture.frame = image == nil ? clip.bounds : zoom.pagePicture
         page.alpha = 0
-        let animator = Self.spring(damping: AttachPreviewMotion.dampingOut, stretch: AttachPreviewMotion.stretchOut)
+        let animator = Self.motion()
         animator.addAnimations {
             clip.frame = zoom.cell
             picture.frame = image == nil ? CGRect(origin: .zero, size: zoom.cell.size) : zoom.cellPicture
@@ -486,7 +490,7 @@ private final class AttachPreviewTransition: NSObject, UIViewControllerAnimatedT
         self.opening = opening
     }
 
-    func transitionDuration(using context: UIViewControllerContextTransitioning?) -> TimeInterval { 0.4 }
+    func transitionDuration(using context: UIViewControllerContextTransitioning?) -> TimeInterval { AttachPreviewMotion.duration }
 
     func animateTransition(using context: UIViewControllerContextTransitioning) {
         if opening {

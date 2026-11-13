@@ -12,8 +12,9 @@ import UniformTypeIdentifiers
 /// As Telegram's menu does, it takes the keyboard down while it is up and
 /// gives it back once the menu, and whatever it opened, is done. The draft,
 /// its selection and what already waits in the composer stay as they were;
-/// only a send from the menu changes them, taking its picks and its caption
-/// into the composer and sending as the composer's own button does.
+/// the menu's confirm adds its picks and makes its caption the draft, then
+/// gives the composer the keyboard, nothing sent: the composer's own send
+/// sends them.
 @MainActor
 final class AttachMenuPresenter: NSObject {
     /// What the presenter reads from and hands back to the composer it serves.
@@ -27,11 +28,6 @@ final class AttachMenuPresenter: NSObject {
         /// The draft, which the menu's caption starts from and writes back to.
         var text: () -> String
         var setText: (String) -> Void
-        /// The composer's own send.
-        var send: () -> Void
-        /// Its send takes pictures still being read (`PreviewAttachment`);
-        /// without, a send from the menu waits until they are in.
-        var sendsWhilePreparing = false
     }
 
     let pictures: ComposerImagePicker
@@ -63,7 +59,7 @@ final class AttachMenuPresenter: NSObject {
             case .camera: presentCamera()
             case .photo(let photo): take(photo)
             case .files: presentFiles()
-            case let .send(ids, caption): send(ids, caption: caption, from: library)
+            case let .stage(ids, caption): stage(ids, caption: caption, from: library)
             }
         }
         sheet.onCaption = { [weak self] text in self?.composer.setText(text) }
@@ -110,22 +106,16 @@ final class AttachMenuPresenter: NSObject {
         }.onCancel = { [weak self] in self?.settle(added: false) }
     }
 
-    /// Sent from the menu: its picks show in the composer at once, from
+    /// Confirmed in the menu: its picks show in the composer at once, from
     /// the library's thumbnails, each with a ring while the picture itself
     /// is read (from iCloud if need be), a few side by side. The caption is
-    /// the composer's text, and the composer sends them as its button does,
-    /// at once where it can send pictures still being read, else once they
-    /// are in. As in Telegram, the keyboard stays down after.
-    func send(_ ids: [String], caption: String, from library: AttachLibrary) {
-        keyboardOwed = false
-        Task { [weak self] in
-            guard let self else { return }
-            await pictures.add(library: ids, from: library)
-            composer.setText(caption)
-            if !composer.sendsWhilePreparing { await pictures.ready() }
-            composer.send()
-            settle(added: false)
-        }
+    /// the composer's text, and the composer has the keyboard, to send them
+    /// with its own button.
+    func stage(_ ids: [String], caption: String, from library: AttachLibrary) {
+        composer.setText(caption)
+        keyboardOwed = true
+        settle(added: true)
+        Task { await pictures.add(library: ids, from: library) }
     }
 
     /// The full camera on its own, where the menu couldn't open it.

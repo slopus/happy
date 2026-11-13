@@ -10,7 +10,8 @@ import UIKit
 /// and down to go. Its Gallery tab is the library newest first under a
 /// glass header, the camera live and two cells tall at the top left,
 /// picked in order with numbered circles; the glass tab bar at its foot
-/// turns into the caption with send while anything is picked. Its File
+/// turns into the caption with the picked count at its end while anything
+/// is picked, which takes the picks to the composer to send there. Its File
 /// tab offers Files and the system's photo picker.
 ///
 /// The gestures are Telegram's, number for number (`AttachSheetPan`,
@@ -35,9 +36,9 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         /// The system's photo picker, which needs no access.
         case photos
         case files
-        /// Picked in the grid, by the library's ids, in order, sent now
-        /// with the caption.
-        case send([String], caption: String)
+        /// Picked in the grid, by the library's ids, in order, to wait in
+        /// the composer with the caption as its text.
+        case stage([String], caption: String)
     }
 
     enum Tab: Int {
@@ -105,16 +106,8 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         effect.isInteractive = true
         return effect
     }
-    private static func countEffect() -> UIGlassEffect {
-        let effect = UIGlassEffect(style: .regular)
-        effect.tintColor = UIColor(Palette.attachMenuAccent)
-        return effect
-    }
     private let closeGlass = UIVisualEffectView(effect: AttachSheetViewController.closeEffect())
     private let closeButton = UIButton(type: .custom)
-    private let countGlass = UIVisualEffectView(effect: AttachSheetViewController.countEffect())
-    private let countIcon = UIImageView(image: UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)))
-    private let countLabel = UILabel()
     private let titleLabel = UILabel()
     private var titleDark = false
     private let gallery = UIView()
@@ -230,9 +223,8 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         files.onFiles = { [weak self] in self?.finish(.files) }
         files.onPhotos = { [weak self] in self?.finish(.photos) }
 
-        // Telegram's glass header: close at the top left, the picked count
-        // beside it, the title in the middle; the fade under them once
-        // the grid scrolls.
+        // Telegram's glass header: close at the top left, the title in the
+        // middle; the fade under them once the grid scrolls.
         edge.alpha = 0
         closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)), for: .normal)
         closeButton.tintColor = UIColor(Palette.attachMenuControl)
@@ -241,17 +233,6 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         closeButton.addAction(UIAction { [weak self] _ in self?.requestClose() }, for: .touchUpInside)
         closeGlass.cornerConfiguration = .capsule()
         closeGlass.contentView.addSubview(closeButton)
-        countGlass.cornerConfiguration = .capsule()
-        countIcon.tintColor = UIColor(Palette.attachMenuOnAccent)
-        countIcon.contentMode = .center
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
-        countLabel.textColor = UIColor(Palette.attachMenuOnAccent)
-        countGlass.contentView.addSubview(countIcon)
-        countGlass.contentView.addSubview(countLabel)
-        countGlass.isAccessibilityElement = true
-        countGlass.accessibilityIdentifier = "attach-count"
-        countGlass.alpha = 0
-        countGlass.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
         titleLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
         titleLabel.textColor = UIColor(Palette.attachMenuTitle)
         titleLabel.textAlignment = .center
@@ -260,14 +241,14 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
 
         pageFade.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         for view in [gallery, files, edge] as [UIView] { pageFade.addSubview(view) }
-        for view in [pageFade, closeGlass, countGlass, titleLabel] as [UIView] { body.addSubview(view) }
+        for view in [pageFade, closeGlass, titleLabel] as [UIView] { body.addSubview(view) }
 
         panel.setTabs([
             (Strings.AttachMenu.gallery, AttachMenuPanel.glyph("photo.fill.on.rectangle.fill"), "attach-tab-gallery"),
             (Strings.AttachMenu.files, AttachMenuPanel.glyph("doc.fill"), "attach-tab-files"),
         ])
         panel.onTab = { [weak self] index in self?.switchTo(Tab(rawValue: index) ?? .gallery) }
-        panel.onSend = { [weak self] in self?.sendPicked() }
+        panel.onConfirm = { [weak self] in self?.stagePicked() }
         panel.onCaption = { [weak self] text in self?.onCaption?(text) }
         panel.onFocus = { [weak self] focused in self?.captionFocused(focused) }
         panel.onResize = { [weak self] in self?.view.setNeedsLayout() }
@@ -480,7 +461,7 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
             noteText.setLayoutFrame(layout.noteText ?? .zero)
             noteButton.setLayoutFrame(layout.noteButton ?? .zero)
         }
-        let inset = UIEdgeInsets(top: layout.topInset, left: 0, bottom: layout.bottomInset, right: 0)
+        let inset = UIEdgeInsets(top: layout.topInset, left: 0, bottom: gridBottomInset(layout), right: 0)
         if grid.contentInset != inset {
             let atTop = grid.contentOffset.y <= -grid.adjustedContentInset.top + AttachSheetPan.topSlop
             grid.contentInset = inset
@@ -494,16 +475,21 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         feed.scrolled()
     }
 
+    /// Room under the grid's last row: the bar's, or what the caption and
+    /// the keyboard cover once they stand higher, so every picture can be
+    /// scrolled clear of them.
+    private func gridBottomInset(_ layout: AttachMenuContentLayout) -> CGFloat {
+        guard panel.picking, gallery.bounds.height > 0 else { return layout.bottomInset }
+        let caption = gallery.convert(panel.frame, from: host)
+        return max(layout.bottomInset, gallery.bounds.height - caption.minY + AttachMenuMetrics.captionFocusedBottom)
+    }
+
     private func layoutHeader() {
         guard let sheet else { return }
         let unbounded = CGSize(width: CGFloat.greatestFiniteMagnitude, height: 44)
-        let header = AttachMenuHeaderLayout(width: body.bounds.width, sides: sheet.sides, title: titleLabel.sizeThatFits(unbounded), arrow: false, countText: countLabel.sizeThatFits(unbounded), pixel: view.hairline)
+        let header = AttachMenuHeaderLayout(width: body.bounds.width, sides: sheet.sides, title: titleLabel.sizeThatFits(unbounded), arrow: false, pixel: view.hairline)
         closeGlass.frame = header.close
         closeButton.frame = closeGlass.bounds
-        countGlass.bounds = CGRect(origin: .zero, size: header.count.size)
-        countGlass.center = CGPoint(x: header.count.midX, y: header.count.midY)
-        countIcon.frame = header.countIcon
-        countLabel.frame = header.countLabel
         titleLabel.setLayoutFrame(header.title)
         edge.frame = header.edge
     }
@@ -524,27 +510,10 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         }
     }
 
-    /// The picked count beside close (`SelectedButtonNode`): it grows from
-    /// nothing with the first pick and shrinks away with the last; the
-    /// panel turns into the caption with it.
+    /// The picked count on the caption's confirm; the panel turns into the
+    /// caption with the first pick and back with the last.
     private func updateCount(animated: Bool) {
-        let count = picked.count
-        if count > 0 {
-            countLabel.text = "\(count)"
-            countGlass.accessibilityLabel = Strings.AttachMenu.picked(count)
-        }
-        layoutHeader()
-        panel.setPicking(count > 0, animated: animated && shown)
-        let visible = count > 0
-        let apply = {
-            self.countGlass.alpha = visible ? 1 : 0
-            self.countGlass.transform = visible ? .identity : CGAffineTransform(scaleX: 0.01, y: 0.01)
-        }
-        if animated, shown {
-            UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.78, initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: apply)
-        } else {
-            apply()
-        }
+        panel.setCount(picked.count, animated: animated && shown)
         view.setNeedsLayout()
     }
 
@@ -836,10 +805,8 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     private func setContent(shown: Bool) {
         pageFade.alpha = shown ? 1 : 0
         titleLabel.alpha = shown ? 1 : 0
-        for (glass, effect) in [(closeGlass, Self.closeEffect()), (countGlass, Self.countEffect())] {
-            glass.effect = shown ? effect : nil
-            glass.contentView.alpha = shown ? 1 : 0
-        }
+        closeGlass.effect = shown ? Self.closeEffect() : nil
+        closeGlass.contentView.alpha = shown ? 1 : 0
         panel.setShown(shown)
     }
 
@@ -1013,7 +980,10 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         keyboard = overlap
         let duration = (info[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
         let curve = (info[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int).flatMap(UIView.AnimationCurve.init(rawValue:)) ?? .easeInOut
-        let animator = UIViewPropertyAnimator(duration: duration, curve: curve) { self.placePanel() }
+        let animator = UIViewPropertyAnimator(duration: duration, curve: curve) {
+            self.placePanel()
+            self.layoutBody()
+        }
         animator.isUserInteractionEnabled = true
         animator.startAnimation()
     }
@@ -1147,9 +1117,11 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         grid.layoutIfNeeded()
     }
 
-    private func sendPicked() {
+    /// The confirm: the menu goes and the picks wait in the composer,
+    /// nothing sent yet.
+    private func stagePicked() {
         guard !picked.isEmpty else { return }
-        finish(.send(picked, caption: panel.caption))
+        finish(.stage(picked, caption: panel.caption))
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {

@@ -1999,8 +1999,8 @@ final class UITests: XCTestCase {
         XCTAssertTrue(newest.waitForExistence(timeout: 10), "the library sheet never showed a photo")
         pause(1)
         capture("media-library")
-        // Newest first, picked with its circle; the question is its caption
-        // and it goes from the menu, as Telegram's does.
+        // Newest first, picked with its circle; the question is its caption,
+        // confirmed into the composer and sent from there.
         pickCircle(newest)
         let caption = app.textViews["attach-caption"]
         XCTAssertTrue(caption.waitForExistence(timeout: 3), "picking didn't offer the caption")
@@ -2010,7 +2010,10 @@ final class UITests: XCTestCase {
         caption.typeText("What colours and words are in this picture? Answer in one sentence, no tools.")
         pause(1)
         capture("media-photo-attached")
-        app.descendants(matching: .any)["attach-send"].tap()
+        app.descendants(matching: .any)["attach-confirm"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["composer-attachment"].waitForExistence(timeout: 10), "the photo didn't wait in the composer")
+        capture("media-photo-staged")
+        app.buttons["Send"].tap()
         let sent = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label ENDSWITH %@", "media", "Picture"))
         XCTAssertTrue(sent.firstMatch.waitForExistence(timeout: 10), "the photo never showed under the message")
         let deadline = Date().addingTimeInterval(120)
@@ -3071,13 +3074,13 @@ final class UITests: XCTestCase {
         pause(1)
         capture("attach-sheet")
 
-        // Two photos, picked in order with their circles: the count shows
-        // beside close and the tabs turn into the caption with send.
+        // Two photos, picked in order with their circles: the tabs turn
+        // into the caption with the count at its far end.
         pickCircle(first)
         pickCircle(app.descendants(matching: .any)["attach-photo:1"])
-        let send = app.descendants(matching: .any)["attach-send"]
-        XCTAssertTrue(send.waitForExistence(timeout: 3), "picking didn't offer send")
-        XCTAssertEqual(app.descendants(matching: .any)["attach-count"].label, "2 selected")
+        let confirm = app.descendants(matching: .any)["attach-confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3), "picking didn't offer the confirm")
+        XCTAssertEqual(confirm.label, "2 selected")
         XCTAssertEqual(first.label, "Photo, picked 1")
         capture("attach-picked")
         // Closed with picks, it asks; nothing comes into the composer.

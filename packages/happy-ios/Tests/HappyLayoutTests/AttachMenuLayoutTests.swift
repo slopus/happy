@@ -139,29 +139,48 @@ final class AttachMenuLayoutTests: XCTestCase {
     }
 
     func testPickingTurnsTheBarIntoTheCaption() {
-        let panel = AttachMenuPanelLayout(.init(minX: 0, width: 402, bottom: 874, titles: titles, selected: 0, picking: true, textHeight: 21, placeholder: CGSize(width: 110, height: 21), empty: true, pixel: 1.0 / 3))
+        let count = CGSize(width: 10, height: 20.3)
+        let panel = AttachMenuPanelLayout(.init(minX: 0, width: 402, bottom: 874, titles: titles, selected: 0, picking: true, textHeight: 21, placeholder: CGSize(width: 110, height: 21), empty: true, count: count, pixel: 1.0 / 3))
         // 28 in from the sides and the bottom, 40 tall, corners 20.
         XCTAssertEqual(panel.glass, rect(28, 806, 346, 40))
         XCTAssertEqual(panel.glassRadius, 20)
         // The tabs rise 11 as they fade.
         XCTAssertEqual(panel.tabsOffset, -11)
-        // Send in the last 51; its 40 × 34 capsule 3 in.
-        XCTAssertEqual(panel.send, rect(295, 0, 51, 40))
-        XCTAssertEqual(panel.sendBackground, rect(303, 3, 40, 34))
+        // The confirm at the far end: a 52 × 34 capsule for "2" (30 to
+        // the count, 12 after it) 3 in, touched 8 before it and the
+        // field's height down.
+        XCTAssertEqual(panel.confirmBackground, rect(291, 3, 52, 34))
+        XCTAssertEqual(panel.confirmBackground.maxX, panel.glass.width - 3)
+        XCTAssertEqual(panel.confirm, rect(283, 0, 63, 40))
+        XCTAssertEqual(panel.confirmIcon, rect(8, 7, 20, 20))
+        XCTAssertEqual(panel.confirmLabel.minX, 30)
+        XCTAssertEqual(panel.confirmLabel.width, 10)
         XCTAssertEqual(panel.text.minY, 28.0 / 3, accuracy: 0.0001)
-        XCTAssertEqual(panel.text.width, 279)
+        XCTAssertEqual(panel.text.width, 267)
+        XCTAssertLessThanOrEqual(panel.text.maxX, panel.confirm.minX, "the text runs under the confirm")
         // Unfocused and empty, the placeholder in the middle.
         XCTAssertEqual(panel.placeholder.midX, 173, accuracy: 0.5)
         // Focused over the keyboard: 16 in, 8 above it, the placeholder at the text's start.
-        let focused = AttachMenuPanelLayout(.init(minX: 0, width: 402, bottom: 538, titles: titles, selected: 0, picking: true, focused: true, textHeight: 21, placeholder: CGSize(width: 110, height: 21), empty: true, pixel: 1.0 / 3))
+        let focused = AttachMenuPanelLayout(.init(minX: 0, width: 402, bottom: 538, titles: titles, selected: 0, picking: true, focused: true, textHeight: 21, placeholder: CGSize(width: 110, height: 21), empty: true, count: count, pixel: 1.0 / 3))
         XCTAssertEqual(focused.glass, rect(16, 490, 370, 40))
         XCTAssertEqual(focused.placeholder.minX, 16)
-        // Three lines: taller, send at the foot, corners still 20.
-        let tall = AttachMenuPanelLayout(.init(minX: 0, width: 402, bottom: 538, titles: titles, selected: 0, picking: true, focused: true, textHeight: 62, placeholder: CGSize(width: 110, height: 21), empty: false, pixel: 1.0 / 3))
+        // Three lines: taller, the confirm at the foot, corners still 20.
+        let tall = AttachMenuPanelLayout(.init(minX: 0, width: 402, bottom: 538, titles: titles, selected: 0, picking: true, focused: true, textHeight: 62, placeholder: CGSize(width: 110, height: 21), empty: false, count: count, pixel: 1.0 / 3))
         XCTAssertEqual(tall.glass, rect(16, 449, 370, 81))
-        XCTAssertEqual(tall.sendBackground, rect(327, 44, 40, 34))
+        XCTAssertEqual(tall.confirmBackground, rect(315, 44, 52, 34))
         XCTAssertEqual(tall.glassRadius, 20)
-        XCTAssertEqual(AttachMenuPanelLayout.textWidth(width: 402, sides: .zero, focused: true), 303)
+        XCTAssertEqual(AttachMenuPanelLayout.textWidth(width: 402, sides: .zero, focused: true, countWidth: 10), 291)
+        // A long caption stops at its tallest and scrolls inside, the
+        // glass never past the room it was given.
+        let long = AttachMenuPanelLayout(.init(minX: 0, width: 402, bottom: 538, titles: titles, selected: 0, picking: true, focused: true, textHeight: 900, placeholder: CGSize(width: 110, height: 21), empty: false, maxHeight: 140, count: count, pixel: 1.0 / 3))
+        XCTAssertEqual(long.glass, rect(16, 390, 370, 140))
+        XCTAssertEqual(long.text.height, 121)
+        XCTAssertEqual(long.text.minY, 9, accuracy: 0.5, "the text left the glass")
+        XCTAssertLessThanOrEqual(long.text.maxY, long.glass.height)
+        // More picked, a wider count: the text gives way.
+        let wide = AttachMenuPanelLayout(.init(minX: 0, width: 402, bottom: 874, titles: titles, selected: 0, picking: true, textHeight: 21, placeholder: CGSize(width: 110, height: 21), empty: true, count: CGSize(width: 20, height: 20.3), pixel: 1.0 / 3))
+        XCTAssertEqual(wide.confirmBackground.width, 62)
+        XCTAssertEqual(wide.text.width, 257)
     }
 
     func testTheIPadCardsBarSitsInTheCard() {
@@ -172,21 +191,18 @@ final class AttachMenuLayoutTests: XCTestCase {
     // MARK: The header
 
     func testTheHeaderIsTelegramsGlassControls() {
-        let header = AttachMenuHeaderLayout(width: 402, title: CGSize(width: 64.5, height: 20.3), arrow: true, countText: CGSize(width: 10, height: 20.3), pixel: 1.0 / 3)
+        let header = AttachMenuHeaderLayout(width: 402, title: CGSize(width: 64.5, height: 20.3), arrow: true, pixel: 1.0 / 3)
         XCTAssertEqual(header.close, rect(16, 16, 44, 44))
-        // The count 12 right of close: 38 wider than its number.
-        XCTAssertEqual(header.count, rect(72, 16, 48, 44))
-        XCTAssertEqual(header.countLabel.minX, 27 - 1.0 / 3, accuracy: 0.0001)
         // Title and arrow centred together on the buttons' middle, 1 up.
         XCTAssertEqual(header.title.minX + (header.arrow!.maxX - header.title.minX) / 2, 201, accuracy: 0.5)
         XCTAssertEqual(header.title.midY, 38 - 1 - 1.0 / 6, accuracy: 0.0001)
         XCTAssertEqual(header.arrow?.minX, header.title.maxX + 1)
         XCTAssertEqual(header.edge, rect(0, 0, 402, 80))
-        let plain = AttachMenuHeaderLayout(width: 402, title: CGSize(width: 64.5, height: 20.3), arrow: false, countText: .zero, pixel: 1.0 / 3)
+        let plain = AttachMenuHeaderLayout(width: 402, title: CGSize(width: 64.5, height: 20.3), arrow: false, pixel: 1.0 / 3)
         XCTAssertNil(plain.arrow)
         XCTAssertEqual(plain.title.midX, 201, accuracy: 0.5)
         // Sideways, clear of the notch.
-        XCTAssertEqual(AttachMenuHeaderLayout(width: 874, sides: LayoutInsets(left: 62, right: 62), title: .zero, arrow: false, countText: .zero, pixel: 1.0 / 3).close.minX, 78)
+        XCTAssertEqual(AttachMenuHeaderLayout(width: 874, sides: LayoutInsets(left: 62, right: 62), title: .zero, arrow: false, pixel: 1.0 / 3).close.minX, 78)
     }
 
     // MARK: The grid

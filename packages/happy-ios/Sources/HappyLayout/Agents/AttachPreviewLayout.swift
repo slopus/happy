@@ -143,11 +143,6 @@ public struct AttachPreviewDismissal: Equatable, Sendable {
         public static let closingSpeed: CGFloat = 700
         /// A close goes at least this fast.
         public static let minimumSpeed: CGFloat = 600
-        /// With no cell to go back to, the picture leaves the screen at
-        /// least this fast (`simpleTransitionOutWithVelocity`).
-        public static let leavingSpeed: CGFloat = 2000
-        /// Let go short, it returns over this long.
-        public static let returnDuration: TimeInterval = 0.3
         /// The drag starts once the finger has gone 12 up or down, and is
         /// never one after 10 to the side
         /// (`TGModernGalleryZoomableScrollViewSwipeGestureRecognizer`).
@@ -177,34 +172,27 @@ public struct AttachPreviewDismissal: Equatable, Sendable {
     }
 
     /// With no cell to go back to: the offset it leaves to, a screen's
-    /// height the way it goes, and how long that takes.
+    /// height the way it goes (down without a velocity), and how long that
+    /// takes: the zoom's time, or less for a finger faster than that.
     public static func leave(velocity: CGFloat, height: CGFloat) -> (offset: CGFloat, duration: TimeInterval) {
-        let speed = max(abs(velocity), Metrics.leavingSpeed)
         let offset = velocity < 0 ? -height : height
-        return (offset, TimeInterval(height / speed))
+        let fling = velocity == 0 ? AttachPreviewMotion.duration : TimeInterval(height / abs(velocity))
+        return (offset, min(AttachPreviewMotion.duration, fling))
     }
 }
 
-/// Telegram's gallery springs (`TGModernGalleryController.animateView`):
-/// mass 0.8, stiffness 300, damping 25 in and 30 out, their keyframes
-/// stretched 1.8 and 2 times; the page shows within 0.07 of the zoom in,
-/// the black and buttons go in 0.15 of the zoom out.
+/// How the preview comes and goes. Telegram's gallery springs
+/// (`TGModernGalleryController.animateView`, stretched 1.8 and 2 times)
+/// take most of a second to settle, which reads as slow; here the zoom out
+/// of the cell, the zoom back into it, a let-go drag's close or return and
+/// the slide with no cell all take 0.22 s on one tight ease out (Android's
+/// the same). The page shows within 0.07 of the zoom in; the buttons, and
+/// the black on a zoom back, go in 0.15.
 public enum AttachPreviewMotion {
-    public static let mass: CGFloat = 0.8
-    public static let stiffness: CGFloat = 300
-    public static let dampingIn: CGFloat = 25
-    public static let dampingOut: CGFloat = 30
-    public static let stretchIn: CGFloat = 1.8
-    public static let stretchOut: CGFloat = 2
+    public static let duration: TimeInterval = 0.22
+    /// The ease out: most of the way in the first half, no overshoot.
+    public static let curve: (x1: CGFloat, y1: CGFloat, x2: CGFloat, y2: CGFloat) = (0.25, 1, 0.5, 1)
     public static let pageFadeIn: TimeInterval = 0.07
-    public static let groundIn: TimeInterval = 0.3
     public static let fadeOut: TimeInterval = 0.15
-    /// With no cell, the black goes over this long as the picture leaves.
-    public static let groundOut: TimeInterval = 0.35
     public static let chrome: TimeInterval = 0.2
-
-    /// A spring stretched `factor` times in time: stiffness over f², damping over f.
-    public static func stretched(damping: CGFloat, factor: CGFloat) -> (mass: CGFloat, stiffness: CGFloat, damping: CGFloat) {
-        (mass, stiffness / (factor * factor), damping / factor)
-    }
 }
