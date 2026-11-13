@@ -93,5 +93,37 @@ final class GenUIActionNodesTests: XCTestCase {
         XCTAssertEqual(reported.map(\.0), ["plugin", "copy"])
         XCTAssertEqual(reported.map(\.1), [.plugin(id: "linear"), .copy("pnpm test")])
     }
+
+    /// A saved secret button keeps its label, its colours and its frame;
+    /// its leading glyph, a lock where it named none, turns to a check,
+    /// and VoiceOver hears "Saved". An unsaved one is drawn as it was.
+    func testASavedSecretButtonKeepsItsLookAndTakesACheck() throws {
+        let (document, _) = try conformance()
+        let plan = GenUIPlanner(document: document, traits: GenUITraits(text: nil, displayScale: 3)).plan(width: 358)
+        let icon = try XCTUnwrap(plan.root.flattened().first { $0.placed.key == "secret.icon" }, "a secret button names no icon: a lock")
+        guard case .glyph("lock", _, _) = icon.placed.mark else { return XCTFail("\(icon.placed.mark)") }
+        let interaction = GenUIInteraction()
+        let built = GenUINodeBuilder.build(plan, interaction: interaction, dark: false, runs: .reporting)
+        var redrawn = 0
+        interaction.redraw = { redrawn += 1 }
+        interaction.adopt(built.choices, secrets: built.secrets)
+        let secret = try XCTUnwrap(built.secrets["secret"])
+        guard case .button(let glyph?) = secret.look else { return XCTFail("no glyph to check") }
+        let before = (secret.node.style.backgroundColor, secret.node.style.borderColor, secret.node.style.borderWidth)
+        XCTAssertFalse(glyph.isSaved)
+        interaction.save("secret", secret: "stripe")
+        XCTAssertTrue(glyph.isSaved)
+        XCTAssertEqual(redrawn, 1)
+        XCTAssertEqual(secret.node.accessibility.label, "Add Stripe keys")
+        XCTAssertEqual(secret.node.accessibility.hint, "Saved")
+        XCTAssertEqual(secret.node.style.backgroundColor, before.0)
+        XCTAssertEqual(secret.node.style.borderColor, before.1)
+        XCTAssertEqual(secret.node.style.borderWidth, before.2)
+        // Built again (another width, the other appearance), it is still saved.
+        let again = GenUINodeBuilder.build(plan, interaction: interaction, dark: true, runs: .reporting)
+        interaction.adopt(again.choices, secrets: again.secrets)
+        guard case .button(let rebuilt?) = try XCTUnwrap(again.secrets["secret"]).look else { return XCTFail("no glyph") }
+        XCTAssertTrue(rebuilt.isSaved)
+    }
 }
 #endif

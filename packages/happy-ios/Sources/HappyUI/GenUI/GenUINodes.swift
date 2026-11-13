@@ -31,8 +31,10 @@ struct GenUIChoiceNodes: @unchecked Sendable {
     enum Look {
         /// A press: its ground takes the accent's soft fill.
         case press(ground: UltraNode)
-        /// A button: an accent ring on the accent's soft fill.
-        case button
+        /// A button: an accent ring on the accent's soft fill when chosen;
+        /// a secret button's leading glyph, which turns to a check once
+        /// its form saved.
+        case button(saved: GenUISavedGlyph?)
     }
 
     let group: String
@@ -362,10 +364,20 @@ final class GenUINodeBuilder {
         // The label and icon are planned from the button's outer edge;
         // its border's room is taken back.
         let inset = button.surface.border == nil ? 0 : button.surface.borderWidth
+        var saved: GenUISavedGlyph?
         for child in placed.children {
             var shifted = child
             shifted.frame = child.frame.offsetBy(dx: -inset, dy: -inset)
-            let content = self.node(shifted)
+            let content: UltraNode
+            if enabled, button.action.opensSecretForm, case .glyph(let name, let ink, let rect) = shifted.mark {
+                // The glyph a saved form turns into a check.
+                let glyph = GenUISavedGlyph()
+                saved = glyph
+                content = UltraNode(style: self.style(shifted.frame))
+                draws(content) { _ in GenUIIcons.draw(glyph.isSaved ? "check" : name, in: rect, ink: UIColor(ink)) }
+            } else {
+                content = self.node(shifted)
+            }
             content.accessibility.hidden = true
             node.addChild(content)
         }
@@ -379,8 +391,8 @@ final class GenUINodeBuilder {
         let group = button.group
         node.onPress = { [weak interaction = self.interaction] in interaction?.activate(key, action, group: group) }
         node.pressedOpacity = 0.6
-        if let group { choices[key] = GenUIChoiceNodes(group: group, node: node, look: .button) }
-        if action.opensSecretForm { secrets[key] = GenUIChoiceNodes(group: group ?? "", node: node, look: .button) }
+        if let group { choices[key] = GenUIChoiceNodes(group: group, node: node, look: .button(saved: nil)) }
+        if action.opensSecretForm { secrets[key] = GenUIChoiceNodes(group: group ?? "", node: node, look: .button(saved: saved)) }
         return node
     }
 
@@ -405,6 +417,17 @@ final class GenUINodeBuilder {
             }
         }
         return node
+    }
+}
+
+/// Whether a secret button's form saved: its glyph draws a check.
+final class GenUISavedGlyph: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSaved: Bool {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
     }
 }
 

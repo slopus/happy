@@ -39,6 +39,8 @@ struct GenUIFolderFiles: GenUIFiles {
 final class GenUIInteraction {
     var onAction: ((_ key: String, _ action: GenUIAction) -> Void)?
     var onViewer: ((_ key: String, _ group: String, _ index: Int) -> Void)?
+    /// Draws the document's glyphs again, a saved one's check among them.
+    var redraw: (() -> Void)?
     /// Each group's chosen element.
     private(set) var chosen: [String: String] = [:]
     private var choices: [String: GenUIChoiceNodes] = [:]
@@ -73,18 +75,20 @@ final class GenUIInteraction {
         showSaved(key)
     }
 
+    /// A saved secret button keeps its label and colours, its leading
+    /// glyph a check; a pressable row that opens a form takes the accent's
+    /// soft ground. VoiceOver hears "Saved" on either.
     private func showSaved(_ key: String) {
         guard let mark = secrets[key] else { return }
-        let fill = Color(GenUITone.accent.fill)
         switch mark.look {
         case .press(let ground):
+            let fill = Color(GenUITone.accent.fill)
             ground.updateStyle { $0.backgroundColor = fill }
             mark.node.onPressOut = { ground.updateStyle { $0.backgroundColor = fill } }
-        case .button:
-            let ring = Color(GenUITone.accent.ink)
-            mark.node.updateStyle { style in
-                style.backgroundColor = fill
-                style.borderColor = ring
+        case .button(let saved):
+            if let saved, !saved.isSaved {
+                saved.isSaved = true
+                redraw?()
             }
         }
         mark.node.accessibility.hint = Strings.GenUI.saved
@@ -153,6 +157,7 @@ final class GenUIBlockView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: GenUIBlockView, _) in view.redraw() }
+        interaction.redraw = { [weak self] in self?.redraw() }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

@@ -113,6 +113,37 @@ final class GenUIActionsUITests: XCTestCase {
         shoot("underscore-breaks")
     }
 
+    /// For the eye: a secret button before and after its form saved, light
+    /// and dark: the same label and colours, its lock turned to a check.
+    func testASavedSecretButtonShowsACheck() {
+        for mode in ["light", "dark"] {
+            app.terminate()
+            app.launchArguments = ["-screen", "genuiChat", "-genuiCount", "1", "-genuiExamples", "13-secret"] + (mode == "dark" ? ["-chatDark"] : [])
+            app.launch()
+            let add = button("Add Stripe keys")
+            reach(add)
+            shoot("secret-unsaved-\(mode)")
+            add.tap()
+            XCTAssertTrue(app.navigationBars["New Secret"].waitForExistence(timeout: 10), "no secret form")
+            let first = app.secureTextFields["genui-secret-value-0"]
+            XCTAssertTrue(first.waitForExistence(timeout: 5))
+            first.tap()
+            // Return goes on to the next value.
+            // Return goes on: past the next variable's name to its value.
+            first.typeText("sk_test_123\n")
+            app.typeText("\n")
+            app.typeText("whsec_123")
+            shoot("secret-filled-\(mode)")
+            app.buttons["genui-secret-save"].tap()
+            XCTAssertTrue(app.navigationBars["Secret Added"].waitForExistence(timeout: 10), "not saved")
+            app.buttons["genui-secret-done"].tap()
+            XCTAssertTrue(add.waitForExistence(timeout: 5))
+            XCTAssertEqual(add.label, "Add Stripe keys")
+            sleep(1)
+            shoot("secret-saved-\(mode)")
+        }
+    }
+
     /// The secret form: prefilled, a value typed, saved, said so; tapped
     /// again it opens on the secret it made, to change it.
     func testASecretIsAddedThenChanged() {

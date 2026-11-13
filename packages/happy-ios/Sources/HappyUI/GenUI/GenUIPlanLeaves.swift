@@ -284,7 +284,9 @@ final class GenUIButtonElement: GenUIElement {
     private let labelWidth: CGFloat
     private let ink: ColorToken
     private let surface: GenUISurface
-    private let hasIcon: Bool
+    /// The leading glyph: the button's own, or a lock on a secret button
+    /// that names none, whose place a saved form's check takes.
+    private let icon: String?
     private let height: CGFloat
 
     init(key: String, _ button: GenUIButton, context: GenUIPlanContext) {
@@ -307,7 +309,7 @@ final class GenUIButtonElement: GenUIElement {
         }
         self.ink = ink
         self.surface = surface
-        hasIcon = button.icon.map(GenUIIcons.exists) ?? false
+        icon = button.icon.flatMap { GenUIIcons.exists($0) ? $0 : nil } ?? (button.action.opensSecretForm ? "lock" : nil)
         label = genuiLine(button.label, ChatTextStyles.genuiButton, ink, alignment: .center, in: context.environment)
         labelWidth = genuiWidth(label)
         let line = genuiLineHeight(ChatTextStyles.genuiButton, context.environment)
@@ -316,7 +318,7 @@ final class GenUIButtonElement: GenUIElement {
     }
 
     private var padding: CGFloat { variant == .chip ? GenUIMetrics.chipPaddingH : GenUIMetrics.buttonPaddingH }
-    private var iconWidth: CGFloat { hasIcon ? GenUIMetrics.buttonIcon + GenUIMetrics.buttonIconGap : 0 }
+    private var iconWidth: CGFloat { icon == nil ? 0 : GenUIMetrics.buttonIcon + GenUIMetrics.buttonIconGap }
 
     override func natural(_ width: CGFloat) -> CGSize { CGSize(width: min(width, labelWidth + iconWidth + 2 * padding), height: height) }
     override func baseline(_ width: CGFloat) -> CGFloat { height / 2 + 5 }
@@ -329,7 +331,7 @@ final class GenUIButtonElement: GenUIElement {
         var placed = GenUIPlaced(key: key, frame: frame, mark: .button(mark))
         let textWidth = max(0, min(labelWidth, frame.width - 2 * padding - iconWidth))
         let x = (frame.width - textWidth - iconWidth) / 2
-        if hasIcon, let name = button.icon {
+        if let name = icon {
             let side = GenUIMetrics.buttonIcon
             placed.children.append(GenUIPlaced(
                 key: "\(key).icon", frame: CGRect(x: x, y: 0, width: side, height: frame.height),
