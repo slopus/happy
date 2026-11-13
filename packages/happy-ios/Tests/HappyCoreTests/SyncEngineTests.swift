@@ -947,6 +947,27 @@ final class SyncEngineTests: XCTestCase {
         await engine.stop()
     }
 
+    /// A task renamed, and one deleted for good, change home from their
+    /// events, as a new one does, and read nothing.
+    func testARenamedAndARemovedTaskChangeHomeWithoutARead() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        await transport.emit(id: "e2", .object(["type": .string("task.updated"), "payload": .object([
+            "taskId": .string("last"), "previousVersion": .string("v1"), "version": .string("v2"), "changes": .object(["name": .string("Renamed")]),
+        ])]))
+        _ = try await wait(engine) { $0.rows.contains { $0.label == "Renamed" } }
+        await transport.emit(id: "e3", .object(["type": .string("task.removed"), "payload": .object(["taskId": .string("first"), "previousVersion": .string("v1")])]))
+        let removed = try await wait(engine) { !$0.rows.contains { $0.label == "First created" } }
+        XCTAssertEqual(taskLabels(removed), ["Renamed"])
+        try await Task.sleep(for: .milliseconds(100))
+        let after = await transport.bootstrapReads()
+        XCTAssertEqual(after, reads)
+        await engine.stop()
+    }
+
     /// What can't be laid over home is read: a task change beyond its own
     /// fields, and an agent made in a project, whose place the event doesn't
     /// carry. A task's own agent, which comes whole with its task, reads nothing.

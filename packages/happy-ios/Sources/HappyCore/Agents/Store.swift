@@ -721,6 +721,15 @@ public actor Store {
         case "task.membership.updated":
             guard let membership = payload["membership"] else { return }
             adoptMembership(membership)
+        case "task.removed":
+            // Deleted for good, its memberships with it, as home takes it
+            // (`HomeEvent`); a read on its way may still hold it.
+            guard let id = payload["taskId"]?.stringValue else { return }
+            if placesHeld != nil { placesHeld?.append(event) }
+            announcedTasks[id] = nil
+            tasks.removeAll { $0["id"]?.stringValue == id }
+            rebuildPlaces()
+            publish()
         case "profile.updated":
             // Names changed somewhere: the ones held are read again.
             let held = Array(userNames.keys)

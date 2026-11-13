@@ -135,4 +135,31 @@ final class PlacesReadTests: XCTestCase {
         XCTAssertEqual(reads, 1)
         await store.stop()
     }
+
+    /// A task deleted for good leaves the lists from its event, as it
+    /// leaves home, with nothing read.
+    func testARemovedTaskLeavesTheListsWithoutARead() async throws {
+        let computer = PlacesComputer()
+        let store = Store(client: AgentClient(transport: computer, token: "t"), placesRereadInterval: .zero)
+        let gone = Task { () -> Bool in
+            var read = false
+            for await snapshot in store.updates {
+                if snapshot.references.agents["a1"] != nil { read = true }
+                if read, snapshot.references.agents["a1"] == nil { return true }
+            }
+            return false
+        }
+        await store.externalEvent(Self.created)
+        try await eventually("the read") { await computer.tasksReads == 1 }
+        try await Task.sleep(for: .milliseconds(200))
+        await store.externalEvent(.object(["type": .string("task.removed"), "payload": .object(["taskId": .string("t1"), "previousVersion": .string("v0001")])]))
+        let timeout = Task { try await Task.sleep(for: .seconds(4)); gone.cancel() }
+        let left = await gone.value
+        timeout.cancel()
+        XCTAssertTrue(left)
+        try await Task.sleep(for: .milliseconds(200))
+        let reads = await computer.tasksReads
+        XCTAssertEqual(reads, 1)
+        await store.stop()
+    }
 }
