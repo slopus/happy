@@ -1,4 +1,3 @@
-import { sessionListDirectory } from '@/sync/ops';
 import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 import { legacySessionFileHref } from '@/utils/sessionFileNavigation';
@@ -18,12 +17,9 @@ import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
-import { GoalBoardTrigger } from '@/components/goalBoard/GoalBoardTrigger';
 import { SessionWorkspaceLink } from '@/components/goalBoard/SessionWorkspaceLink';
 import { GoalBoardButton } from '@/components/goalBoard/GoalBoardButton';
-import { useGoalBoard } from '@/hooks/useGoalBoard';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import type { GoalTask, GoalArtifact } from '@slopus/happy-wire';
 import { DesktopSkinCanvas } from '@/components/DesktopSkinCanvas';
 import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { DesktopReadingWidthContext, useDesktopReadingWidth } from '@/components/DesktopReadingWidth';
@@ -550,8 +546,6 @@ export const SessionView = React.memo((props: SessionViewProps) => (
     </SubagentInspectorProvider>
 ));
 
-const GoalBoardPanel = React.lazy(() => import('@/components/goalBoard/GoalBoardPanel').then(module => ({ default: module.GoalBoardPanel })));
-const GoalArtifactWindow = React.lazy(() => import('@/components/GoalArtifactWindow').then(module => ({ default: module.GoalArtifactWindow })));
 
 const SessionViewContent = React.memo((props: SessionViewProps) => {
     const sessionId = props.id;
@@ -747,7 +741,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     React.useEffect(() => {
         if (fileWorkspace?.enabled && fileWorkspace.snapshot.open) { setDesktopPanelMode('files'); setSidebarMode('allFiles'); }
     }, [fileWorkspace?.enabled, fileWorkspace?.snapshot.open]);
-    const [desktopPanelMode, setDesktopPanelMode] = React.useState<'capabilities' | 'files' | 'tasks'>('capabilities');
+    const [desktopPanelMode, setDesktopPanelMode] = React.useState<'capabilities' | 'files'>('capabilities');
     const handledFileRequest = React.useRef<string | null>(null);
     React.useEffect(() => {
         const request = props.fileOpenRequest;
@@ -771,69 +765,8 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         setSidebarMode('allFiles');
         if (zenMode) toggleLayoutRightSidebar(); else setDesktopRightPanelCollapsed(false);
     }, [isFocused, fileWorkspace?.enabled, fileWorkspace?.openRequestId]);
-    const goalBoardOpen = desktopPanelMode === 'tasks' && !subagentSelection
-        && (desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen);
-    const goalBoard = useGoalBoard(sessionId, goalBoardOpen && isFocused);
     const navigateToTaskSession = useNavigateToSession();
-    const goalTriggerAnchor = React.useRef<View>(null);
-    const [goalArtifact, setGoalArtifact] = React.useState<{ featurePath: string; task: GoalTask; artifact: GoalArtifact } | null>(null);
-    const closeGoalBoard = React.useCallback(() => {
-        if (desktopRightPanelAvailable) setDesktopRightPanelCollapsed(true);
-        else setRightDrawerOpen(false);
-        if (Platform.OS === 'web') {
-            const anchor = goalTriggerAnchor.current as unknown as HTMLElement | null;
-            anchor?.querySelector<HTMLElement>('button')?.focus();
-        }
-    }, [desktopRightPanelAvailable, setDesktopRightPanelCollapsed]);
-    const toggleGoalBoard = () => {
-        setInfoPanelOpen(false);
-        subagentInspector?.close();
-        if (goalBoardOpen) { closeGoalBoard(); return; }
-        setDesktopPanelMode('tasks');
-        if (desktopRightPanelAvailable) {
-            if (zenMode) toggleLayoutRightSidebar(); else setDesktopRightPanelCollapsed(false);
-        } else setRightDrawerOpen(true);
-    };
-    const openGoalArtifact = React.useCallback((task: GoalTask, artifact: GoalArtifact) => {
-        const featurePath = session?.metadata?.goalBoard?.featurePath;
-        if (!featurePath) return;
-        setGoalArtifact({ featurePath, task, artifact });
-    }, [session?.metadata?.goalBoard?.featurePath]);
-    const openGoalTask = React.useCallback(async (task: GoalTask, newSession: boolean) => {
-        const childId = await goalBoard.openTask(task, newSession);
-        const featurePath = goalBoard.snapshot?.featurePath;
-        const machineId = session?.metadata?.machineId;
-        if (Platform.OS === 'web' && featurePath && machineId) {
-            const entry = goalBoard.catalog.find(entry => entry.featurePath === featurePath);
-            router.push({ pathname: '/projects', params: { machine: machineId, ...(entry?.projectPath ? { project: entry.projectPath } : {}), feature: featurePath, task: task.id, conversation: childId } });
-            return;
-        }
-        navigateToTaskSession(childId);
-    }, [goalBoard.openTask, goalBoard.snapshot, goalBoard.catalog, session?.metadata?.machineId, router, navigateToTaskSession]);
-    React.useEffect(() => {
-        if (!isFocused || Platform.OS !== 'web' || !goalBoardOpen || goalArtifact) return;
-        const onEscape = (event: KeyboardEvent) => {
-            if (event.key !== 'Escape' || event.defaultPrevented) return;
-            event.preventDefault();
-            closeGoalBoard();
-        };
-        window.addEventListener('keydown', onEscape);
-        return () => window.removeEventListener('keydown', onEscape);
-    }, [isFocused, goalBoardOpen, goalArtifact, closeGoalBoard]);
-    const goalBoardContent = <React.Suspense fallback={<ActivityIndicator size="small" color={theme.colors.textSecondary} />}>
-        <GoalBoardPanel snapshot={goalBoard.snapshot} catalog={goalBoard.catalog} loading={goalBoard.loading}
-            error={goalBoard.error} offline={goalBoard.offline} activeTaskId={goalBoard.activeTaskId}
-            onSelectFeature={(entry) => { void goalBoard.selectFeature(entry); }} onRefresh={() => { void goalBoard.refresh(); }}
-            onClose={closeGoalBoard} onOpenArtifact={openGoalArtifact} onOpenTask={openGoalTask}
-            getTaskSessionId={goalBoard.getTaskSessionId} openingTaskId={goalBoard.openingTaskId}
-            renderTaskFiles={(task) => <WorkspaceDirectoryTree key={`${sessionId}:${task.indexPath}`} sessionId={sessionId}
-                listDirectory={sessionListDirectory}
-                rootPath={task.indexPath.replace(/[\\/][^\\/]+$/, '')}
-                onOpenFile={(path) => router.push(legacySessionFileHref(sessionId, path))} />} />
-    </React.Suspense>;
-    const latestGoalTask = goalArtifact && goalBoard.snapshot?.featurePath === goalArtifact.featurePath
-        ? goalBoard.snapshot.tasks.find(task => task.id === goalArtifact.task.id) : null;
-    const latestGoalArtifact = latestGoalTask?.artifacts.find(artifact => artifact.id === goalArtifact?.artifact.id);
+    const goalParentSessionId = session?.metadata?.goalBoard?.parentSessionId;
 
     React.useEffect(() => {
         if (isFocused && !canShowFilePanel && desktopPanelMode === 'files') {
@@ -1115,14 +1048,12 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const subagentPanelLabel = subagentSelection
         ? t('toolGroup.subagentPanelLabel', { title: subagentSelection.title ?? subagentSelection.id })
         : null;
-    const desktopPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'tasks' ? t('goalBoard.title') : desktopPanelMode === 'files' && canShowFilePanel
+    const desktopPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
         : t('rightPanelCapabilityHub.title'));
-    const compactPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'tasks' ? t('goalBoard.title') : t('rightPanelCapabilityHub.title'));
-    const switchTasksToCapabilities = desktopPanelMode === 'tasks' && !subagentSelection;
-    const rightPanelToggleLabel = switchTasksToCapabilities ? t('rightPanelCapabilityHub.title') : desktopRightPanelAvailable ? desktopPanelLabel : compactPanelLabel;
-    // From the task board this control switches to capabilities rather than hiding the panel.
-    const rightPanelToggleExpanded = !switchTasksToCapabilities && (desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen);
+    const compactPanelLabel = subagentPanelLabel ?? t('rightPanelCapabilityHub.title');
+    const rightPanelToggleLabel = desktopRightPanelAvailable ? desktopPanelLabel : compactPanelLabel;
+    const rightPanelToggleExpanded = desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen;
     const rightPanelToggleButton = (
         (desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen')
         || compactRightDrawerAvailable
@@ -1134,11 +1065,6 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                 ? t('desktopWorkspace.hidePanel', { panel: rightPanelToggleLabel })
                 : t('desktopWorkspace.showPanel', { panel: rightPanelToggleLabel })}
             onPress={() => {
-                if (switchTasksToCapabilities) {
-                    setDesktopPanelMode('capabilities');
-                    if (desktopRightPanelAvailable) setDesktopRightPanelCollapsed(false); else setRightDrawerOpen(true);
-                    return;
-                }
                 if (desktopRightPanelAvailable) {
                     if (showDesktopRightPanel) subagentInspector?.close();
                     setDesktopRightPanelCollapsed(showDesktopRightPanel);
@@ -1201,9 +1127,9 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             // Save the imperative textarea before the destination composer renders.
             sessionComposerHandleRef.current?.flushDraft();
         }} /> : null;
-    const goalParentAction = showChip && goalBoard.parentSessionId ? (
+    const goalParentAction = showChip && goalParentSessionId ? (
         <GoalBoardButton testID="goal-board-return-parent" label={t('goalBoard.returnToParent')}
-            variant={showSessionHeader ? "toolbar" : "chip"} onPress={() => navigateToTaskSession(goalBoard.parentSessionId!)}>
+            variant={showSessionHeader ? "toolbar" : "chip"} onPress={() => navigateToTaskSession(goalParentSessionId!)}>
             <Ionicons name="arrow-undo-outline" size={16} color={theme.colors.textSecondary} />
             {isTablet && !compactSessionHeader && <Text numberOfLines={1} style={{ color: theme.colors.text, fontSize: 12 }}>{t('goalBoard.returnToParent')}</Text>}
         </GoalBoardButton>
@@ -1215,8 +1141,6 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             {goalParentAction}
             {workspaceLink}
             {moreButton}
-            {showChip && !props.projectTaskContext && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
-                total={goalBoard.snapshot?.tasks.length ?? 0} open={goalBoardOpen} onPress={toggleGoalBoard} /></View>}
             {rightPanelToggleButton}
         </View>
     );
@@ -1227,8 +1151,6 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             {goalParentAction}
             {workspaceLink}
             {moreButton}
-            {showChip && !props.projectTaskContext && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
-                total={goalBoard.snapshot?.tasks.length ?? 0} open={goalBoardOpen} onPress={toggleGoalBoard} /></View>}
             {rightPanelToggleButton}
             {headerRightSlot}
         </View>
@@ -1357,13 +1279,6 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                 )}
             </View>
 
-            {goalArtifact && (
-                <React.Suspense fallback={<ActivityIndicator size="small" color={theme.colors.textSecondary} />}>
-                    <GoalArtifactWindow sessionId={sessionId} featurePath={goalArtifact.featurePath}
-                        task={latestGoalTask ?? goalArtifact.task} artifact={latestGoalArtifact ?? goalArtifact.artifact} onClose={() => setGoalArtifact(null)} />
-                </React.Suspense>
-            )}
-
             {/* Read-only session-info dropdown, anchored under the header chip.
                 A sibling of the (padded) content view — not a child — so its
                 absolute `top` measures from the screen edge without the content
@@ -1409,7 +1324,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                 selection={subagentSelection}
                 sessionId={sessionId}
             />
-        ) : desktopPanelMode === 'tasks' ? goalBoardContent : (
+        ) : (
             <SessionRightPanelContent
                 composerHandleRef={sessionComposerHandleRef}
                 sessionId={sessionId}
@@ -1569,7 +1484,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                             selection={subagentSelection}
                             sessionId={sessionId}
                         />
-                    ) : desktopPanelMode === 'tasks' ? goalBoardContent : <DesktopRightPanel
+                    ) : <DesktopRightPanel
                         activeTab={desktopPanelMode}
                         collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
                             panel: desktopPanelLabel,

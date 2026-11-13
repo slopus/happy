@@ -59,6 +59,7 @@ const mocks = vi.hoisted(() => ({
     exitSpace: vi.fn(),
     routerNavigate: vi.fn(),
     navigateToTaskSession: vi.fn(),
+    legacyGoalBoard: vi.fn(),
     routerPush: vi.fn(),
     routerBack: vi.fn(),
     navigationDispatch: vi.fn(),
@@ -123,11 +124,11 @@ const mocks = vi.hoisted(() => ({
 
 // Goal Board owns its RPC/account lifecycle in dedicated hook tests. Keep
 // this SessionView test focused on route ownership and surface composition.
-vi.mock('@/hooks/useGoalBoard', () => ({ useGoalBoard: () => ({
+vi.mock('@/hooks/useGoalBoard', () => ({ useGoalBoard: (...args: unknown[]) => { mocks.legacyGoalBoard(...args); return ({
     snapshot: null, catalog: [], loading: false, error: null, offline: true,
     openingTaskId: null, activeTaskId: undefined, parentSessionId: (mocks.session.metadata as any).goalBoard?.parentSessionId,
     selectFeature: vi.fn(), refresh: vi.fn(), openTask: vi.fn(), getTaskSessionId: () => null,
-}) }));
+}); } }));
 vi.mock('@/hooks/useNavigateToSession', () => ({ useNavigateToSession: () => mocks.navigateToTaskSession }));
 
 vi.mock('@/components/goalBoard/GoalBoardPanel', () => ({ GoalBoardPanel: (props: any) => React.createElement('GoalBoardPanel', props) }));
@@ -1571,86 +1572,66 @@ describe('SessionView Agent-space boundary', () => {
         (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature' };
         await act(async () => renderer.update(<SessionView id="session-1" />));
         expect(renderer.root.findAllByProps({ testID: 'goal-board-return-parent' })).toHaveLength(0);
-        expect(renderer.root.findByProps({ testID: 'goal-board-trigger' })).toBeTruthy();
+        expect(renderer.root.findAllByProps({ testID: 'goal-board-trigger' })).toHaveLength(0);
         await act(async () => renderer.unmount());
     });
 
-    it('connects task files to the read-only directory API and exact file route', async () => {
-        const { sessionListDirectory } = await import('@/sync/ops');
-        mocks.isDataReady = true;
-        (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature' };
+    it.each([
+        { platform: 'web', width: 1600, tablet: true, embedded: false, landscape: false },
+        { platform: 'web', width: 900, tablet: false, embedded: false, landscape: false },
+        { platform: 'android', width: 390, tablet: false, embedded: false, landscape: false },
+        { platform: 'ios', width: 844, tablet: false, embedded: false, landscape: true },
+        { platform: 'web', width: 1600, tablet: true, embedded: true, landscape: false },
+    ])('retires the legacy task chip/panel and its reads while keeping workspace navigation ($platform/$width/$embedded)', async ({ platform, width, tablet, embedded, landscape }) => {
+        mocks.isDataReady = true; mocks.platformOS = platform; mocks.windowWidth = width;
+        mocks.isTablet = tablet; mocks.isLandscape = landscape;
+        (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature', taskId: 'G01', parentSessionId: 'parent-1' };
         let renderer: any;
-        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
-        await act(async () => renderer.root.findByProps({ testID: 'goal-board-trigger' }).props.onPress());
-        const files = renderer.root.findByType('GoalBoardPanel').props.renderTaskFiles({ indexPath: '/goal/feature/tasks/t1/index.md' });
-        expect(files.props).toMatchObject({ sessionId: 'session-1', rootPath: '/goal/feature/tasks/t1', listDirectory: sessionListDirectory });
-        act(() => files.props.onOpenFile('/goal/feature/tasks/t1/result.md'));
-        expect(mocks.routerPush).toHaveBeenCalledWith((await import('@/utils/sessionFileNavigation')).legacySessionFileHref('session-1', '/goal/feature/tasks/t1/result.md'));
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" embedded={embedded} />); });
+        expect(renderer.root.findAllByProps({ testID: 'goal-board-trigger' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('GoalBoardPanel')).toHaveLength(0);
+        expect(mocks.legacyGoalBoard).not.toHaveBeenCalled();
+        expect(renderer.root.findByType('SessionWorkspaceLink').props).toMatchObject({ id: 'session-1', embedded });
+        expect(renderer.root.findAllByType('Pressable').filter((node: any) => node.props.testID === 'goal-board-return-parent')).toHaveLength(embedded && !landscape ? 0 : 1);
         await act(async () => renderer.unmount());
     });
 
-    it('opens artifacts in a separate reader and keeps the task drawer mounted underneath', async () => {
-        mocks.isDataReady = true;
-        (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature' };
+    it('does not restore the retired chip in file overlays and keeps parent/workspace links', async () => {
+        mocks.isDataReady = true; mocks.platformOS = 'web'; mocks.windowWidth = 1400;
+        mocks.isTablet = true; mocks.fileDiffsSidebarEnabled = true;
+        (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature', parentSessionId: 'parent-1' };
         let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
-        await act(async () => renderer.root.findByProps({ testID: 'goal-board-trigger' }).props.onPress());
-        const board = renderer.root.findByType('GoalBoardPanel');
-        await act(async () => board.props.onOpenArtifact({ id: 'task' }, { id: 'file' }));
-        const reader = renderer.root.findByType('GoalArtifactWindow');
-        expect(reader.props).toMatchObject({ sessionId: 'session-1', featurePath: '/goal/feature', task: { id: 'task' }, artifact: { id: 'file' } });
-        expect(renderer.root.findAllByProps({ testID: 'goal-board-artifact-overlay' })).toHaveLength(0);
-        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
-        expect(renderer.root.findByType('GoalBoardPanel')).toBe(board);
-        act(() => reader.props.onClose());
-        expect(renderer.root.findAllByType('GoalArtifactWindow')).toHaveLength(0);
-        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
-        expect(renderer.root.findByType('GoalBoardPanel')).toBe(board);
-        expect(mocks.routerBack).not.toHaveBeenCalled();
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        act(() => renderer.root.findByType('FilesSidebar').props.onAllFilesFilePress('src/result.md'));
+        expect(renderer.root.findByType('FileViewPanel')).toBeDefined();
+        expect(renderer.root.findAllByProps({ testID: 'goal-board-trigger' })).toHaveLength(0);
+        expect(renderer.root.findByType('SessionWorkspaceLink').props.id).toBe('session-1');
+        expect(renderer.root.findByProps({ testID: 'goal-board-return-parent' })).toBeDefined();
+        expect(mocks.legacyGoalBoard).not.toHaveBeenCalled();
         await act(async () => renderer.unmount());
     });
 
-    it('reveals the task board using the existing zen-mode exit action', async () => {
-        mocks.isDataReady = true;
-        mocks.windowWidth = 1400;
-        mocks.isTablet = true;
-        mocks.platformOS = 'web';
-        mocks.zenMode = true;
-        let renderer: any;
-        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
-        await act(async () => { renderer.root.findByProps({ testID: 'goal-board-trigger' }).props.onPress(); });
-        expect(mocks.toggleLayoutRightSidebar).toHaveBeenCalledTimes(1);
-        await act(async () => renderer.unmount());
-    });
-
-    it('opens tasks in the compact drawer and switches back to capabilities', async () => {
+    it('opens the capability drawer after the task drawer is retired', async () => {
         mocks.isDataReady = true;
         let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
-        await act(async () => { renderer.root.findByProps({ testID: 'goal-board-trigger' }).props.onPress(); });
-        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
-        expect(renderer.root.findByType('RightSwipePanelHost').props.panelAccessibilityLabel).toBe('goalBoard.title');
-        const capabilityToggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
-        expect(capabilityToggle.props.accessibilityLabel).toBe('desktopWorkspace.showPanel');
-        expect(capabilityToggle.props['aria-expanded']).toBe(false);
-        await act(async () => capabilityToggle.props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props.onPress());
         expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
         expect(renderer.root.findByType('RightSwipePanelHost').props.panelAccessibilityLabel).toBe('rightPanelCapabilityHub.title');
+        expect(renderer.root.findAllByType('GoalBoardPanel')).toHaveLength(0);
         await act(async () => renderer.unmount());
     });
 
-    it('closes the active subagent when it covers an open task board', async () => {
+    it('closes an active subagent over the capability drawer', async () => {
         mocks.isDataReady = true;
         mocks.sessionMessages = [{ kind: 'agent-text', id: 'message-one', localId: null, createdAt: 1, text: 'Visible message' }];
         let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
-        await act(async () => renderer.root.findByProps({ testID: 'goal-board-trigger' }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props.onPress());
         act(() => mocks.openSubagent?.({ id: 'agent-one', title: 'Agent', status: 'running' }));
         expect(renderer.root.findByType('SubagentInspectorPanel')).toBeDefined();
-        const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
-        expect(toggle.props.accessibilityLabel).toBe('desktopWorkspace.hidePanel');
-        expect(toggle.props['aria-expanded']).toBe(true);
-        await act(async () => toggle.props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props.onPress());
         expect(renderer.root.findAllByType('SubagentInspectorPanel')).toHaveLength(0);
         expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(false);
         await act(async () => renderer.unmount());
