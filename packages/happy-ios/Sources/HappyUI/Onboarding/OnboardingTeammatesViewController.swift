@@ -216,7 +216,7 @@ final class OnboardingTeammatesViewController: CloudStageViewController, UITextF
     /// kept for it.
     private func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
         let field = CloudColumnLayout.Item(height: emailField.isHidden ? 0 : CloudField.height)
-        let sent = steady ? [] : rows.map { _ in CloudColumnLayout.Item(height: CloudServerRowLayout.Metrics.height, gap: 12) }
+        let sent = steady ? [] : rows.map { CloudColumnLayout.Item(height: $0.height, gap: 12) }
         return [field] + sent + [.init(height: steady ? Self.statusRoom : Self.statusHeight(status, width: width), gap: 12)]
     }
 

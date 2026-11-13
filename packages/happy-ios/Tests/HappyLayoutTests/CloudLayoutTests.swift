@@ -262,6 +262,17 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(row.subtitle, CGRect(x: 74, y: 39, width: 175, height: 40))
     }
 
+    /// Bigger text grows the row by what its lines grow; the padding and
+    /// the picture stay, and the words stay centred down it.
+    func testARowGrowsWithTheTextSize() {
+        XCTAssertEqual(CloudServerRowLayout.height(subtitleLines: 2, titleHeight: 30, subtitleHeight: 28), 96 + 8 + 2 * 8)
+        let row = CloudServerRowLayout(width: 345, button: CGSize(width: 70, height: 32), minButton: 0, subtitleLines: 2, titleHeight: 30, subtitleHeight: 28)
+        XCTAssertEqual(row.title, CGRect(x: 74, y: 17, width: 175, height: 30))
+        XCTAssertEqual(row.subtitle, CGRect(x: 74, y: 47, width: 175, height: 56))
+        XCTAssertEqual(row.picture, CGRect(x: 14, y: 36, width: 48, height: 48))
+        XCTAssertEqual(CloudServerRowLayout.height(subtitleLines: 1, titleHeight: 20, subtitleHeight: 18), 76, "smaller text keeps the designed row")
+    }
+
     // MARK: Create your profile
 
     /// The picture's caption: "Add photo" as measured, with room for a thumb.

@@ -123,6 +123,10 @@ public struct CloudStageLayout: Equatable, Sendable {
         public static let top: CGFloat = 24
         /// A step's list of short lines (the admin bot's points), in from the column's sides.
         public static let pointsInset: CGFloat = 12
+        /// The most a person's text size grows the words in a pill of a
+        /// fixed height (the actions, a row's button): past it they would
+        /// be cut short.
+        public static let pillTextMaxScale: CGFloat = 1.4
         public static let artGap: CGFloat = 24
         /// Between the art and a caption under it (Create your profile's
         /// Add photo).
@@ -306,27 +310,32 @@ public struct CloudServerRowLayout: Equatable, Sendable {
     public var subtitle: CGRect
     public var button: CGRect
 
-    /// The row's height with a subtitle of `lines` lines.
-    public static func height(subtitleLines lines: Int = 1) -> CGFloat {
-        Metrics.height + CGFloat(max(1, lines) - 1) * Metrics.subtitleHeight
+    /// The row's height with a subtitle of `lines` lines, its name and
+    /// subtitle `titleHeight` and `subtitleHeight` a line: bigger text
+    /// grows the row by what it grows, the padding kept.
+    public static func height(subtitleLines lines: Int = 1, titleHeight: CGFloat = Metrics.titleHeight, subtitleHeight: CGFloat = Metrics.subtitleHeight) -> CGFloat {
+        let lines = CGFloat(max(1, lines))
+        let grown = titleHeight - Metrics.titleHeight + lines * (subtitleHeight - Metrics.subtitleHeight)
+        return Metrics.height + (lines - 1) * Metrics.subtitleHeight + max(0, grown)
     }
 
     /// `button` is Join's (or Joined's) own size; `minButton` the least
     /// width it takes (Join's 104; a row of a list of its own, its own
     /// width). The row has room for `subtitleLines` subtitle lines; the
     /// name and the `usedLines` its subtitle fills are centred down it.
-    public init(width: CGFloat, button buttonSize: CGSize, minButton: CGFloat = Metrics.buttonWidth, subtitleLines: Int = 1, usedLines: Int? = nil) {
+    public init(width: CGFloat, button buttonSize: CGSize, minButton: CGFloat = Metrics.buttonWidth, subtitleLines: Int = 1, usedLines: Int? = nil,
+                titleHeight: CGFloat = Metrics.titleHeight, subtitleHeight: CGFloat = Metrics.subtitleHeight) {
         typealias M = Metrics
         let lines = CGFloat(min(max(1, usedLines ?? subtitleLines), max(1, subtitleLines)))
-        let height = Self.height(subtitleLines: subtitleLines)
+        let height = Self.height(subtitleLines: subtitleLines, titleHeight: titleHeight, subtitleHeight: subtitleHeight)
         picture = CGRect(x: M.padding, y: (height - M.picture) / 2, width: M.picture, height: M.picture)
         let buttonWidth = max(minButton, buttonSize.width)
         button = CGRect(x: width - M.padding - buttonWidth, y: (height - buttonSize.height) / 2, width: buttonWidth, height: buttonSize.height)
         let textX = picture.maxX + M.gap
         let textWidth = max(0, button.minX - M.gap - textX)
-        let textTop = (height - M.titleHeight - lines * M.subtitleHeight) / 2
-        title = CGRect(x: textX, y: textTop, width: textWidth, height: M.titleHeight)
-        subtitle = CGRect(x: textX, y: title.maxY, width: textWidth, height: lines * M.subtitleHeight)
+        let textTop = (height - titleHeight - lines * subtitleHeight) / 2
+        title = CGRect(x: textX, y: textTop, width: textWidth, height: titleHeight)
+        subtitle = CGRect(x: textX, y: title.maxY, width: textWidth, height: lines * subtitleHeight)
     }
 }
 

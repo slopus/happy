@@ -588,6 +588,9 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
         self.primary = RoundButton(title: primary)
         self.secondary = secondary.map { RoundButton(title: $0, size: secondaryDisplay == .filled ? .large : .normal, display: secondaryDisplay) }
         super.init(nibName: nil, bundle: nil)
+        for button in [self.primary, self.secondary].compactMap({ $0 }) where button.display == .filled {
+            button.label.style.maxScale = CloudStageLayout.Metrics.pillTextMaxScale
+        }
         if let secondary = self.secondary, secondaryDisplay == .inverted { Self.quiet(secondary) }
         followsTextSize()
     }
@@ -1344,7 +1347,7 @@ final class CloudServersViewController: CloudStageViewController {
     /// moves nothing. They start under the title and scroll with it while
     /// Continue stays put (`pinsActions`).
     private func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
-        let rowItems = steady ? [] : order.map { _ in CloudColumnLayout.Item(height: CloudServerRowLayout.Metrics.height, gap: 12) }
+        let rowItems = steady ? [] : order.map { CloudColumnLayout.Item(height: rows[$0]?.height ?? CloudServerRowLayout.Metrics.height, gap: 12) }
         return rowItems + [
             .init(size: CGSize(width: 44, height: steady || spinner.isAnimating ? 44 : 0), gap: 12, centred: true),
             .init(height: bootstrap.layout(width: width).size.height, gap: 16),
@@ -1628,8 +1631,9 @@ final class CloudServerRow: UIView {
 
     private let glass = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     let picture = UIImageView()
-    let title = StyledLabel(style: TextStyle(.semiBold, size: 17, lineHeight: 22), color: Palette.startText, lines: 1)
-    let subtitle = StyledLabel(style: TextStyle(.regular, size: 15, lineHeight: 20), color: Palette.startTextSecondary, lines: 1)
+    // Grown no further than the pill beside them, so a row keeps room for its words.
+    let title = StyledLabel(style: TextStyle(.semiBold, size: 17, lineHeight: 22, maxScale: CloudStageLayout.Metrics.pillTextMaxScale), color: Palette.startText, lines: 1)
+    let subtitle = StyledLabel(style: TextStyle(.regular, size: 15, lineHeight: 20, maxScale: CloudStageLayout.Metrics.pillTextMaxScale), color: Palette.startTextSecondary, lines: 1)
     let join: RoundButton
     private let joined = UIButton(type: .system)
 
@@ -1652,6 +1656,7 @@ final class CloudServerRow: UIView {
 
     init(action: String = Strings.CloudConnect.join, done: String = Strings.CloudConnect.joined) {
         join = RoundButton(title: action, size: .small)
+        join.label.style.maxScale = CloudStageLayout.Metrics.pillTextMaxScale
         super.init(frame: .zero)
         glass.clipsToBounds = true
         glass.layer.cornerRadius = 22
@@ -1677,6 +1682,11 @@ final class CloudServerRow: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// Its height at the person's text size, for the list it is in.
+    var height: CGFloat {
+        CloudServerRowLayout.height(subtitleLines: subtitleLines, titleHeight: title.lineHeight, subtitleHeight: subtitle.lineHeight)
+    }
+
     private func apply() {
         join.isHidden = state == .joined
         join.isLoading = state == .joining
@@ -1692,11 +1702,14 @@ final class CloudServerRow: UIView {
         let buttonSize = state == .joined ? joined.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 32)) : join.layout(width: compactButton ? natural : 0).size
         let button = CGSize(width: buttonSize.width, height: max(32, buttonSize.height))
         let minButton = compactButton ? 0 : CloudServerRowLayout.Metrics.buttonWidth
-        var layout = CloudServerRowLayout(width: bounds.width, button: button, minButton: minButton, subtitleLines: subtitleLines)
+        let lines = (title: title.lineHeight, subtitle: subtitle.lineHeight)
+        var layout = CloudServerRowLayout(width: bounds.width, button: button, minButton: minButton, subtitleLines: subtitleLines,
+                                          titleHeight: lines.title, subtitleHeight: lines.subtitle)
         // A shorter subtitle than its room: the name and it stay together, centred.
         if subtitleLines > 1 {
-            let used = Int(ceil(subtitle.sizeThatFits(CGSize(width: layout.subtitle.width, height: .greatestFiniteMagnitude)).height / CloudServerRowLayout.Metrics.subtitleHeight - 0.25))
-            layout = CloudServerRowLayout(width: bounds.width, button: button, minButton: minButton, subtitleLines: subtitleLines, usedLines: max(1, used))
+            let used = Int(ceil(subtitle.sizeThatFits(CGSize(width: layout.subtitle.width, height: .greatestFiniteMagnitude)).height / lines.subtitle - 0.25))
+            layout = CloudServerRowLayout(width: bounds.width, button: button, minButton: minButton, subtitleLines: subtitleLines, usedLines: max(1, used),
+                                          titleHeight: lines.title, subtitleHeight: lines.subtitle)
         }
         glass.setLayoutFrame(bounds)
         picture.setLayoutFrame(layout.picture)

@@ -173,7 +173,7 @@ final class OnboardingPluginsViewController: CloudStageViewController, Onboardin
     /// line in room kept for it; they scroll under the title while Skip
     /// stays put (`pinsActions`).
     private func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
-        let rowItems = order.map { _ in CloudColumnLayout.Item(height: CloudServerRowLayout.height(subtitleLines: 2), gap: 12) }
+        let rowItems = order.map { CloudColumnLayout.Item(height: rows[$0]?.height ?? CloudServerRowLayout.height(subtitleLines: 2), gap: 12) }
         return rowItems + [
             .init(size: CGSize(width: 44, height: spinner.isAnimating ? 44 : 0), gap: 12, centred: true),
             .init(height: steady ? Self.statusRoom : Self.statusHeight(status, width: width), gap: 16),
