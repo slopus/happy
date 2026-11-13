@@ -175,6 +175,31 @@ final class OnboardingTests: XCTestCase {
         try await client.completeOnboarding()
     }
 
+    /// Legacy: a server from before gates (happy-cluster's route as deployed)
+    /// still asks a nameless member their name, as one required profile
+    /// gate, and nothing else. Delete with `Onboarding.Legacy`.
+    func testAServerWithoutGatesStillAsksANamelessMemberTheirName() throws {
+        let nameless = try Self.read(#"""
+        {"completed":false,"steps":{"providers":{"done":false,"signedIn":false,"teamCredentials":0},"profile":{"done":true},"project":{"done":false},
+                                    "chiefOfStaff":{"done":false,"name":"Chief of Staff","botId":"cos"}},
+         "server":{"completed":false,"steps":{"chiefOfStaff":{"done":false}}},
+         "member":{"completed":false,"steps":{"profile":{"done":false},"providers":{"done":false}}}}
+        """#)
+        XCTAssertTrue(nameless.legacy)
+        XCTAssertFalse(nameless.completed)
+        XCTAssertEqual(nameless.gates.map(\.id), ["profile"], "the member's step over the installation's; the Chief of Staff isn't asked")
+        XCTAssertEqual(nameless.gate("profile")?.isPending, true)
+        XCTAssertEqual(OnboardingPlan(nameless).step.flatMap(Self.id), "profile")
+
+        let named = try Self.read(#"{"completed":false,"steps":{"profile":{"done":true}},"member":{"completed":true,"steps":{"profile":{"done":true}}}}"#)
+        XCTAssertTrue(named.legacy)
+        XCTAssertTrue(named.completed, "the Chief of Staff's naming never held anyone on a server without gates")
+        XCTAssertNil(OnboardingPlan(named).step)
+        XCTAssertEqual(try Self.read(#"{"completed":false,"steps":{"profile":{"done":false}}}"#).gates.map(\.id), ["profile"])
+        XCTAssertTrue(try Self.read(#"{"completed":false,"steps":{}}"#).completed, "nothing said, nothing asked")
+        XCTAssertFalse(try Self.read(Self.sample).legacy)
+    }
+
     func testOnboardingIsReadAgainOnTheEventsThatMoveItsGates() {
         XCTAssertEqual(Set(Onboarding.refreshEvents), [
             "onboarding.updated", "profile.updated", "bot.updated", "config.updated", "plugins.changed",

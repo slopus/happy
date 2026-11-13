@@ -77,8 +77,13 @@ actor ClusterServer: AgentTransport {
     /// The team's own provider, once one is put.
     private var custom: String?
 
-    init(manager: Bool = true, installed: Bool = true) {
+    /// Onboarding as the deployed server sends it, without gates, for a
+    /// member yet to give their name (`-nameless`).
+    let nameless: Bool
+
+    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false) {
         self.manager = manager
+        self.nameless = nameless
         if !installed { installations = [] }
     }
 
@@ -90,6 +95,8 @@ actor ClusterServer: AgentTransport {
         switch (method, path) {
         case ("GET", "/v0/bootstrap/desktop"): return ok(Self.bootstrap)
         case ("GET", "/v0/health"): return ok(#"{"ok":true}"#)
+        case ("GET", "/v0/onboarding") where nameless:
+            return ok(#"{"completed":false,"steps":{"profile":{"done":true},"chiefOfStaff":{"done":false}},"member":{"completed":false,"steps":{"profile":{"done":false}}}}"#)
         case ("GET", "/v0/permissions"):
             return ok(manager ? #"{"granted":["content.write","bots.manage","mcp.manage","config.manage","providers.manage","providers.own"]}"# : #"{"granted":["content.write","providers.own"]}"#)
         case ("GET", "/v0/cloud/providers"):
@@ -171,7 +178,8 @@ actor ClusterServer: AgentTransport {
 /// A Happy Cloud server's home over `ClusterServer`
 /// (`-screen cluster`), opened on its plugins (`-open plugins`) or one
 /// plugin (`-open plugin:github`), as a member who can't manage them
-/// (`-member`) or with nothing installed (`-fresh`), in dark (`-dark`).
+/// (`-member`) or with nothing installed (`-fresh`), in dark (`-dark`);
+/// a member yet to give their name on a server without gates (`-nameless`).
 @MainActor
 final class ClusterHarness {
     private var account: AccountController?
@@ -181,7 +189,7 @@ final class ClusterHarness {
     }
 
     private func open(window: HarnessWindow, arguments: [String]) async {
-        let server = ClusterServer(manager: !arguments.contains("-member"), installed: !arguments.contains("-fresh"))
+        let server = ClusterServer(manager: !arguments.contains("-member"), installed: !arguments.contains("-fresh"), nameless: arguments.contains("-nameless"))
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/cluster",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

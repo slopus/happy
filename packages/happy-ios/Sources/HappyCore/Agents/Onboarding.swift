@@ -16,15 +16,50 @@ public struct Onboarding: Decodable, Equatable, Sendable {
         self.completed = completed; self.blocking = blocking; self.gates = gates
     }
 
+    /// Read from a server without gates (`Legacy`): the flow only asks the
+    /// name, and never finishes onboarding (`completeOnboarding`).
+    public var legacy = false
+
     enum CodingKeys: String, CodingKey { case completed, blocking, gates }
 
     /// A gate that can't be read is kept as `.unknown`, so a blocking one
     /// still holds the person (Update Happy) rather than vanishing.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        guard c.contains(.gates) else { self = try Legacy(from: decoder).onboarding; return }
         completed = (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? false
         blocking = (try? c.decodeIfPresent([String].self, forKey: .blocking)) ?? []
         gates = ((try? c.decodeIfPresent([Lossy<OnboardingGate>].self, forKey: .gates)) ?? []).compactMap(\.value)
+    }
+
+    // MARK: Legacy: delete once happy-cluster serves gates everywhere
+
+    /// A server from before gates (`steps`, `member.steps`): only whether
+    /// the person still has to give their name, the member's step over the
+    /// installation's, read as one required profile gate. Neither says,
+    /// and nothing is asked.
+    struct Legacy: Decodable {
+        struct Done: Decodable { var done: Bool }
+        struct Steps: Decodable { var profile: Done? }
+        struct Part: Decodable { var steps: Steps? }
+        var steps: Steps?
+        var member: Part?
+
+        var onboarding: Onboarding {
+            let needsName = (member?.steps?.profile ?? steps?.profile).map { !$0.done } ?? false
+            var onboarding = needsName
+                ? Onboarding(completed: false, blocking: ["profile"], gates: [OnboardingGate(id: "profile", requirement: .required, kind: .profile)])
+                : Onboarding(completed: true)
+            onboarding.legacy = true
+            return onboarding
+        }
+
+        init(from decoder: Decoder) throws {
+            enum Keys: String, CodingKey { case steps, member }
+            let c = try decoder.container(keyedBy: Keys.self)
+            steps = try? c.decodeIfPresent(Steps.self, forKey: .steps)
+            member = try? c.decodeIfPresent(Part.self, forKey: .member)
+        }
     }
 
     public func gate(_ id: String) -> OnboardingGate? { gates.first { $0.id == id } }
