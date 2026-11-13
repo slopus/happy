@@ -429,6 +429,8 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         documentTap?.isEnabled = false
         let block = GenUIBlockView()
         block.accessibilityIdentifier = "artifact-gen-ui"
+        // The chat's card of this version shares its answers: a secret saved there is marked here.
+        if vault == nil { block.interaction.use(.of(session.client, artifactId: artifact.id, version: version.number)) }
         block.onHeight = { [weak self] _ in self?.view.setNeedsLayout() }
         block.interaction.onViewer = { [weak self] _, group, index in self?.openGenUIViewer(group, index: index) }
         let artifactId = artifact.id

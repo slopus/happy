@@ -35,27 +35,26 @@ enum GenUIActionRunner {
     }
 
     /// Opens a `secret` element's form, on the secret it saved before if it
-    /// did; saved, the element is marked, if `block` still shows its document.
+    /// did; saved, the element is marked wherever its version shows.
     static func openSecret(_ prefill: GenUISecretPrefill, key: String, artifactId: String, version: Int, in block: GenUIBlockView,
                            client: AgentClient, from controller: UIViewController) {
-        let identity = block.identity
+        let answers = block.interaction.answers
         let form = GenUISecretFormViewController(client: client, artifactId: artifactId, version: version, element: key, prefill: prefill,
-                                                 name: block.interaction.saved[key]) { [weak block] saved in
-            guard let block, block.identity == identity else { return }
-            block.interaction.save(key, secret: saved.secret.id)
+                                                 name: answers.saved[key]) { saved in
+            answers.save(key, secret: saved.secret.id)
         }
         present(form, from: controller)
     }
 
     /// Opens a `cluster_secret` element's form, on the secret it names, or
-    /// else the one it saved before; saved, the element is marked.
+    /// else the one it saved before; saved, the element is marked wherever
+    /// its version shows.
     static func openClusterSecret(_ prefill: GenUIClusterSecretPrefill, key: String, artifactId: String, version: Int, in block: GenUIBlockView,
                                   client: AgentClient, from controller: UIViewController) {
-        let identity = block.identity
+        let answers = block.interaction.answers
         let form = GenUIClusterSecretFormViewController(client: client, artifactId: artifactId, version: version, element: key, prefill: prefill,
-                                                        savedId: block.interaction.saved[key]) { [weak block] saved in
-            guard let block, block.identity == identity else { return }
-            block.interaction.save(key, secret: saved.secretId)
+                                                        savedId: answers.saved[key]) { saved in
+            answers.save(key, secret: saved.secretId)
         }
         present(form, from: controller)
     }

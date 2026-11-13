@@ -32,31 +32,108 @@ struct GenUIFolderFiles: GenUIFiles {
     }
 }
 
+/// What was done to one version of a Gen UI: each single-choice group's
+/// answer and the secret each secret element's form saved. One per version
+/// per computer client (`of`), shared by every view that shows it, the
+/// chat's card and the artifact page alike, so what is done in one shows
+/// in the others. Kept on this phone only, for as long as its client
+/// lives; nothing is sent.
+@MainActor
+final class GenUIAnswers {
+    /// Each group's chosen element.
+    private(set) var chosen: [String: String] = [:]
+    /// The secret each secret element's form saved, by the element's key:
+    /// the name its form opens on when tapped again.
+    private(set) var saved: [String: String] = [:]
+    private let shown = NSHashTable<GenUIInteraction>.weakObjects()
+
+    nonisolated init() {}
+
+    /// The first answer `group` takes; every view showing it marks it.
+    func choose(_ group: String, key: String) {
+        guard chosen[group] == nil else { return }
+        chosen[group] = key
+        for interaction in shown.allObjects { interaction.show(group, chosen: key) }
+    }
+
+    /// `key`'s form saved the secret `id`; every view showing it marks it.
+    func save(_ key: String, secret id: String) {
+        saved[key] = id
+        for interaction in shown.allObjects { interaction.showSaved(key) }
+    }
+
+    fileprivate func watch(_ interaction: GenUIInteraction) { shown.add(interaction) }
+    fileprivate func unwatch(_ interaction: GenUIInteraction) { shown.remove(interaction) }
+
+    /// Each client's versions, the latest `limit`, for as long as it lives.
+    private static let clients = NSMapTable<AnyObject, Versions>.weakToStrongObjects()
+    static let limit = 64
+
+    private final class Versions {
+        var answers: [String: GenUIAnswers] = [:]
+        var order: [String] = []
+    }
+
+    /// `artifactId`'s `version` on `client`: the same answers wherever it
+    /// shows. A version never changes, so they are kept while it is among
+    /// the client's latest `limit`.
+    static func of(_ client: AnyObject, artifactId: String, version: Int) -> GenUIAnswers {
+        let key = "\(artifactId)/\(version)"
+        let versions = clients.object(forKey: client) ?? {
+            let versions = Versions()
+            clients.setObject(versions, forKey: client)
+            return versions
+        }()
+        versions.order.removeAll { $0 == key }
+        versions.order.append(key)
+        if let answers = versions.answers[key] { return answers }
+        let answers = GenUIAnswers()
+        versions.answers[key] = answers
+        if versions.order.count > limit { versions.answers[versions.order.removeFirst()] = nil }
+        return answers
+    }
+}
+
 /// What one shown document's taps do: report an action or an image viewer
-/// to the host, and keep each single-choice group's answer. The answer is
-/// this view's own; nothing is stored.
+/// to the host, and mark its version's answers (`GenUIAnswers`): a group's
+/// choice, a saved secret. Until it is given its version's shared answers
+/// (`use`) it keeps its own.
 @MainActor
 final class GenUIInteraction {
     var onAction: ((_ key: String, _ action: GenUIAction) -> Void)?
     var onViewer: ((_ key: String, _ group: String, _ index: Int) -> Void)?
     /// Draws the document's glyphs again, a saved one's check among them.
     var redraw: (() -> Void)?
-    /// Each group's chosen element.
-    private(set) var chosen: [String: String] = [:]
+    private(set) var answers = GenUIAnswers()
     private var choices: [String: GenUIChoiceNodes] = [:]
-    /// The secret each secret element's form saved, by the element's key:
-    /// the name its form opens on when tapped again.
-    private(set) var saved: [String: String] = [:]
     private var secrets: [String: GenUIChoiceNodes] = [:]
+
+    /// Each group's chosen element.
+    var chosen: [String: String] { answers.chosen }
+    /// The secret each secret element's form saved, by the element's key.
+    var saved: [String: String] { answers.saved }
 
     nonisolated init() {}
 
-    /// Another document: no answers yet.
+    /// Another document: no answers yet, its own until it is given its version's.
     func reset() {
-        chosen = [:]
+        answers.unwatch(self)
+        answers = GenUIAnswers()
         choices = [:]
-        saved = [:]
         secrets = [:]
+    }
+
+    /// Its version's shared answers: what was done before it was given
+    /// them is kept in them, and what they hold shows.
+    func use(_ shared: GenUIAnswers) {
+        guard shared !== answers else { return }
+        let own = answers
+        own.unwatch(self)
+        answers = shared
+        shared.watch(self)
+        for (group, key) in own.chosen { shared.choose(group, key: key) }
+        for (key, id) in own.saved where shared.saved[key] == nil { shared.save(key, secret: id) }
+        showAll()
     }
 
     /// The shown nodes' choices and secret elements; a group already
@@ -64,21 +141,25 @@ final class GenUIInteraction {
     func adopt(_ choices: [String: GenUIChoiceNodes], secrets: [String: GenUIChoiceNodes] = [:]) {
         self.choices = choices
         self.secrets = secrets
+        answers.watch(self)
+        showAll()
+    }
+
+    private func showAll() {
         for (group, key) in chosen { show(group, chosen: key) }
         for key in saved.keys { showSaved(key) }
     }
 
     /// `key`'s form saved the secret `id`: the element is marked, and still
-    /// opens the form, on that secret.
+    /// opens the form, on that secret; so is it wherever its version shows.
     func save(_ key: String, secret id: String) {
-        saved[key] = id
-        showSaved(key)
+        answers.save(key, secret: id)
     }
 
     /// A saved secret button keeps its label and colours, its leading
     /// glyph a check; a pressable row that opens a form takes the accent's
     /// soft ground. VoiceOver hears "Saved" on either.
-    private func showSaved(_ key: String) {
+    fileprivate func showSaved(_ key: String) {
         guard let mark = secrets[key] else { return }
         switch mark.look {
         case .press(let ground):
@@ -99,13 +180,12 @@ final class GenUIInteraction {
     func activate(_ key: String, _ action: GenUIAction, group: String?) {
         if let group {
             guard chosen[group] == nil else { return }
-            chosen[group] = key
-            show(group, chosen: key)
+            answers.choose(group, key: key)
         }
         onAction?(key, action)
     }
 
-    private func show(_ group: String, chosen key: String) {
+    fileprivate func show(_ group: String, chosen key: String) {
         for (member, choice) in choices where choice.group == group {
             let node = choice.node
             node.onPress = nil
@@ -153,6 +233,8 @@ final class GenUIBlockView: UIView {
     private var shown: (planner: GenUIPlanner, width: CGFloat, identity: String?, runs: GenUIRuns)?
     /// Whose document it shows, as `show` was told.
     var identity: String? { shown?.identity }
+    /// The version a conversation shows in it (`apply(_: GenUIEmbed)`).
+    var conversationVersion: (artifactId: String, version: Int)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -161,6 +243,12 @@ final class GenUIBlockView: UIView {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // A conversation's card, put in the conversation after it was given its version.
+        if window != nil { sharesAnswers() }
+    }
 
     deinit {
         loading?.cancel()

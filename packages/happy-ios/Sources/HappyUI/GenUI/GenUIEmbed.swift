@@ -85,6 +85,15 @@ extension GenUIBlockView {
             }
         }
         show(embed.planner, width: embed.width, identity: "\(embed.artifactId)/\(embed.version)", files: files, runs: embed.runs)
+        conversationVersion = (embed.artifactId, embed.version)
+        sharesAnswers()
+    }
+
+    /// A conversation's version's answers on its computer, shared with its
+    /// artifact page, once the view is in the conversation to ask.
+    func sharesAnswers() {
+        guard let shown = conversationVersion, let client = GenUIChatFiles.host(self)?.pageClient else { return }
+        interaction.use(.of(client, artifactId: shown.artifactId, version: shown.version))
     }
 
     fileprivate var closestController: UIViewController? {

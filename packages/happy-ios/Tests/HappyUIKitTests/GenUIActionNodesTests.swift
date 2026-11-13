@@ -125,5 +125,57 @@ final class GenUIActionNodesTests: XCTestCase {
         guard case .button(let rebuilt?) = try XCTUnwrap(again.secrets["secret"]).look else { return XCTFail("no glyph") }
         XCTAssertTrue(rebuilt.isSaved)
     }
+
+    /// One version's answers wherever it shows, as Android keeps them
+    /// (`GenUiState.of`): a secret saved on the chat's card is marked on
+    /// its artifact page and the other way round, a choice too, and a cell
+    /// built again keeps them; another version or another computer has its own.
+    func testAVersionsAnswersAreSharedByTheCardAndThePage() throws {
+        let (document, _) = try conformance()
+        let plan = GenUIPlanner(document: document, traits: GenUITraits(text: nil, displayScale: 3)).plan(width: 358)
+        let client = NSObject()
+        func shown(_ version: Int, on client: AnyObject) throws -> (GenUIInteraction, GenUISavedGlyph) {
+            let interaction = GenUIInteraction()
+            let built = GenUINodeBuilder.build(plan, interaction: interaction, dark: false, runs: .reporting)
+            interaction.adopt(built.choices, secrets: built.secrets)
+            interaction.use(.of(client, artifactId: "g1", version: version))
+            guard case .button(let glyph?) = try XCTUnwrap(built.secrets["secret"]).look else { throw CocoaError(.featureUnsupported) }
+            return (interaction, glyph)
+        }
+        let (card, cardGlyph) = try shown(2, on: client)
+        let (page, pageGlyph) = try shown(2, on: client)
+        var pageRedrawn = 0
+        page.redraw = { pageRedrawn += 1 }
+        // Card to page.
+        card.save("secret", secret: "stripe")
+        XCTAssertEqual(page.saved["secret"], "stripe", "the page opens Change Secret on it")
+        XCTAssertTrue(pageGlyph.isSaved)
+        XCTAssertEqual(pageRedrawn, 1)
+        // Page to card.
+        page.save("other", secret: "linear")
+        XCTAssertEqual(card.saved["other"], "linear")
+        page.activate("choices.1", .unsupported, group: "choices")
+        XCTAssertEqual(card.chosen, ["choices": "choices.1"])
+        // A cell built again for it takes them; one for another version, or
+        // on another computer, starts with none.
+        let (rebuilt, rebuiltGlyph) = try shown(2, on: client)
+        XCTAssertEqual(rebuilt.saved["secret"], "stripe")
+        XCTAssertTrue(rebuiltGlyph.isSaved)
+        let (next, nextGlyph) = try shown(3, on: client)
+        XCTAssertTrue(next.saved.isEmpty)
+        XCTAssertFalse(nextGlyph.isSaved)
+        let (elsewhere, elsewhereGlyph) = try shown(2, on: NSObject())
+        XCTAssertTrue(elsewhere.saved.isEmpty)
+        XCTAssertFalse(elsewhereGlyph.isSaved)
+        XCTAssertTrue(GenUIAnswers.of(client, artifactId: "g1", version: 2) === card.answers)
+        // Kept for the client's latest versions only.
+        for version in 10..<(10 + GenUIAnswers.limit) { _ = GenUIAnswers.of(client, artifactId: "g1", version: version) }
+        XCTAssertTrue(GenUIAnswers.of(client, artifactId: "g1", version: 2).saved.isEmpty)
+        // What a view did before it was given its version's answers is kept in them.
+        let own = GenUIInteraction()
+        own.save("secret", secret: "early")
+        own.use(.of(client, artifactId: "g9", version: 1))
+        XCTAssertEqual(GenUIAnswers.of(client, artifactId: "g9", version: 1).saved["secret"], "early")
+    }
 }
 #endif

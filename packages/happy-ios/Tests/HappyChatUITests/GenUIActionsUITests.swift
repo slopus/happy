@@ -167,6 +167,57 @@ final class GenUIActionsUITests: XCTestCase {
         }
     }
 
+    /// A version's answers are one wherever it shows: a secret saved from
+    /// the chat's card opens Change Secret on its artifact page (light), and
+    /// one saved on the page does on the card (dark).
+    func testASecretSavedOnTheCardOrThePageIsSavedOnTheOther() {
+        for mode in ["light", "dark"] {
+            app.terminate()
+            app.launchArguments = ["-screen", "genuiChat", "-genuiCount", "1", "-genuiExamples", "actions"] + (mode == "dark" ? ["-chatDark"] : [])
+            app.launch()
+            let add = button("Add Stripe keys")
+            let card = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Open", "actions")).firstMatch
+            let page = app.otherElements["artifact"]
+            let pageAdd = page.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Add Stripe keys")).firstMatch
+            if mode == "light" {
+                reach(add)
+                add.tap()
+                saveSecret()
+                reach(card)
+                card.tap()
+                XCTAssertTrue(pageAdd.waitForExistence(timeout: 20), "the page never drew its Gen UI")
+                sleep(1)
+                shoot("shared-page-\(mode)")
+                pageAdd.tap()
+            } else {
+                reach(card)
+                card.tap()
+                XCTAssertTrue(pageAdd.waitForExistence(timeout: 20), "the page never drew its Gen UI")
+                sleep(1)
+                pageAdd.tap()
+                saveSecret()
+                app.navigationBars.buttons.firstMatch.tap()
+                reach(add)
+                shoot("shared-card-\(mode)")
+                add.tap()
+            }
+            XCTAssertTrue(app.navigationBars["Change Secret"].waitForExistence(timeout: 10), "\(mode): not opened on the secret the other view saved")
+            app.buttons["genui-secret-cancel"].tap()
+        }
+    }
+
+    /// The open secret form, its first value typed, saved and closed.
+    private func saveSecret() {
+        XCTAssertTrue(app.navigationBars["New Secret"].waitForExistence(timeout: 10), "no secret form")
+        let value = app.secureTextFields["genui-secret-value-0"]
+        XCTAssertTrue(value.waitForExistence(timeout: 5))
+        value.tap()
+        value.typeText("sk_test_123")
+        app.buttons["genui-secret-save"].tap()
+        XCTAssertTrue(app.navigationBars["Secret Added"].waitForExistence(timeout: 10), "not saved")
+        app.buttons["genui-secret-done"].tap()
+    }
+
     /// The secret form: prefilled, a value typed, saved, said so; tapped
     /// again it opens on the secret it made, to change it.
     func testASecretIsAddedThenChanged() {
