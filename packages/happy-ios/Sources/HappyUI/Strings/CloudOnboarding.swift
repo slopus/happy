@@ -15,6 +15,11 @@ extension Strings {
         static let choosePhoto = "Choose Photo"
         static let photoFailed = "Your photo didn’t upload. Try again."
 
+        static let botTitle = "Name your admin bot"
+        static let botBody = "This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works."
+        static let botNamePlaceholder = "Its name"
+        static let botNameFailed = "Couldn’t save the name. Try again."
+
         static let updateTitle = "Update Happy to continue"
         static let updateBody = "This server asks for a step this version of Happy doesn’t know yet."
         static let updateAction = "Open the App Store"

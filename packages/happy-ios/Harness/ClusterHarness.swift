@@ -101,6 +101,7 @@ actor ClusterServer: AgentTransport {
     private var gates: [Gate]?
     private var profileName: String?
     private var botName = "Chief of Staff"
+    private var botVersion = 1
 
     /// One gate: `id[:required|optional][:open|done|unavailable|theirs]`,
     /// `theirs` being one the person's role can't complete.
@@ -146,7 +147,7 @@ actor ClusterServer: AgentTransport {
         func data(_ gate: Gate) -> String {
             switch gate.id {
             case "adminBot":
-                return #"{"botId":"cos","agentId":"cos-agent","name":"\#(botName)","version":"v1","avatar":null,"title":"Name your admin bot","description":"This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works. Only owners can talk to it."}"#
+                return #"{"botId":"cos","agentId":"cos-agent","name":"\#(botName)","version":"v\#(botVersion)","avatar":null,"title":"Name your admin bot","description":"This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works. Only owners can talk to it."}"#
             case "inference": return #"{"connected":[],"freeModel":true}"#
             case "plugins": return #"{"required":["github"],"plugins":[{"id":"github","name":"GitHub","required":true,"active":false}]}"#
             case "teammates": return #"{"invited":false,"members":1}"#
@@ -188,6 +189,14 @@ actor ClusterServer: AgentTransport {
             guard gates?[index].required == false else { return refuse(409, "gate_required", "This step is required.") }
             gates?[index].skipped = true
             return ok(onboarding)
+        case ("GET", "/v0/bots/cos"):
+            return ok(#"{"bot":{"id":"cos","name":"\#(botName)","version":"v\#(botVersion)","systemKey":"chief_of_staff"}}"#)
+        case ("PATCH", "/v0/bots/cos"):
+            guard headers["If-Match"] == "v\(botVersion)" else { return refuse(409, "version_conflict", "The bot changed.") }
+            botName = sent?["name"]?.stringValue ?? botName
+            botVersion += 1
+            mark("adminBot")
+            return ok(#"{"bot":{"id":"cos","name":"\#(botName)","version":"v\#(botVersion)"}}"#)
         case ("GET", "/v0/profile"): return ok(profile)
         case ("PATCH", "/v0/profile"):
             profileName = sent?["name"]?.stringValue
@@ -379,7 +388,8 @@ final class ClusterHarness {
     }
 
     /// Walks the onboarding flow over `home`, a step every two seconds:
-    /// `name:<name>` saves the profile, `photo` picks a picture, `skip` and
+    /// `name:<name>` saves the profile, `bot:<name>` names the admin bot,
+    /// `photo` picks a picture, `skip` and
     /// `primary` tap the screen's actions.
     private func walk(_ steps: String, home: UIViewController) async {
         for step in steps.split(separator: ",") {
@@ -389,6 +399,10 @@ final class ClusterHarness {
                 profile.nameField.text.text = String(step.dropFirst("name:".count))
                 profile.edited()
                 await profile.submit()
+            } else if step.hasPrefix("bot:"), let bot = top as? OnboardingAdminBotViewController {
+                bot.nameField.text.text = String(step.dropFirst("bot:".count))
+                bot.edited()
+                await bot.submit()
             } else if step == "photo", let photo = top as? OnboardingPhotoViewController {
                 photo.choose(CloudProfileViewController.previewPhoto())
             } else if let notice = top as? CloudStageViewController {

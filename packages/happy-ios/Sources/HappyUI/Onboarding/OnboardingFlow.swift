@@ -142,6 +142,8 @@ final class OnboardingFlow {
             return profileScreen()
         case .avatar:
             return photoScreen(gate)
+        case .adminBot(let bot):
+            return adminBotScreen(gate, bot: bot)
         default:
             // Done on desktop or the web for now; a gate's own screen
             // takes this one's place as it comes.
@@ -173,6 +175,26 @@ final class OnboardingFlow {
             do { session.took(try await session.client.skipOnboardingGate(gate.id)) }
             catch { screen.say(Strings.CloudOnboarding.couldntSkip) }
         }
+    }
+
+    /// The adminBot gate: the Chief of Staff's name, kept as typed or as it was.
+    private func adminBotScreen(_ gate: OnboardingGate, bot: OnboardingGate.AdminBot) -> UIViewController {
+        let session = session
+        let load: ((UIImageView) -> Void)? = bot.avatar.map { avatar in
+            { view in
+                let path = "/v0/bots/\(bot.botId)/avatar"
+                view.image = ThumbHashImages.image(avatar.thumbhash)
+                Task { @MainActor [weak view] in
+                    if let image = await session.images.picture(path, thumbhash: avatar.thumbhash, pixels: 480) { view?.image = image }
+                }
+            }
+        }
+        let screen = OnboardingAdminBotViewController(context: context, bot: bot, optional: gate.requirement == .optional, picture: load) { name in
+            try await session.client.renameBot(bot.botId, name: name)
+            _ = try? await session.readOnboarding()
+        }
+        skips(gate, on: screen)
+        return screen
     }
 
     /// The avatar gate: a picture, saved as the profile's.
