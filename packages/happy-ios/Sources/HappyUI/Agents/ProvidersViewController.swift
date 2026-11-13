@@ -12,7 +12,7 @@ final class ProvidersViewController: SettingsPageViewController {
     private var providers: [CloudProvider]?
     private var failed = false
     /// The ways to add one, offering what the server runs.
-    private lazy var adding = ProviderChooser(session: session, host: self, added: { [weak self] in self?.load() },
+    private(set) lazy var adding = ProviderChooser(session: session, host: self, added: { [weak self] in self?.load() },
                                               changed: { [weak self] in self?.reload() })
     private var offer: CloudAddOffer { adding.offer }
     private var watch: Task<Void, Never>?

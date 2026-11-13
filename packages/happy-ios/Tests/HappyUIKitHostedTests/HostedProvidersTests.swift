@@ -208,14 +208,14 @@ final class HostedProvidersTests: XCTestCase {
 
     private func unavailable(_ status: Int) async throws {
         let (list, navigation, _, _) = try await host(CloudProvidersServer(startFailure: status))
-        XCTAssertTrue(list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
+        XCTAssertTrue(list.adding.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
         list.open(.providersAddOpenAI, destination: .mine)
         let device = try await until { navigation.topViewController as? DeviceSignInViewController }
         _ = try await until { (device.presentedViewController as? UIAlertController)?.title == "Sign-in failed" ? true : nil }
-        XCTAssertFalse(list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
-        XCTAssertTrue(list.chooser().actions.contains { $0.title == "Use a Claude setup token" })
+        XCTAssertFalse(list.adding.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
+        XCTAssertTrue(list.adding.chooser().actions.contains { $0.title == "Use a Claude setup token" })
         list.load()
-        _ = try await until { list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" } ? true : nil }
+        _ = try await until { list.adding.chooser().actions.contains { $0.title == "Sign in with ChatGPT" } ? true : nil }
     }
 
     private func openLink(_ url: String, session: Session, from list: ProvidersViewController) throws {
