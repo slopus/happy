@@ -18,10 +18,16 @@ final class GenUIClusterSecretsUITests: XCTestCase {
         app.launch()
     }
 
-    /// With `GENUI_SHOTS` (`TEST_RUNNER_GENUI_SHOTS`), the screen is kept there as `name`.png.
+    /// The screen, kept in the result as `name`, and with `GENUI_SHOTS`
+    /// (`TEST_RUNNER_GENUI_SHOTS`) there as `name`.png.
     private func shoot(_ name: String) {
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
         guard let folder = ProcessInfo.processInfo.environment["GENUI_SHOTS"] else { return }
-        try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: folder).appendingPathComponent("\(name).png"))
+        try? shot.pngRepresentation.write(to: URL(fileURLWithPath: folder).appendingPathComponent("\(name).png"))
     }
 
     private func button(_ label: String) -> XCUIElement {

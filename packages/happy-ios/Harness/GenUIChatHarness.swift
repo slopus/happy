@@ -259,6 +259,8 @@ private struct GenUIChatComputer: AgentTransport {
 /// its card. With `HAPPY_GYM_METER=1` it runs the gym's scroll script
 /// (`HAPPY_GYM_SCRIPT`) once the rows are in and prints the meter's reading
 /// as `GENUI_GYM key=value…`, also written to `Documents/genui-gym.txt`.
+/// `-genuiShot name` (`-genuiTap label` first) keeps the window as
+/// `Documents/name.png`, for a device the UI tests can't drive.
 @MainActor
 final class GenUIChatHarness {
     private var account: AccountController?
@@ -309,6 +311,15 @@ final class GenUIChatHarness {
             let chat = ChatViewController(session: session, agentId: "harness", title: "Gen UI", spaceId: nil, intro: nil)
             navigation.pushViewController(chat, animated: false)
             GymFrameMeter.installIfAsked(in: window)
+            if let shot = value("-genuiShot", in: arguments) {
+                try await Task.sleep(for: .seconds(6))
+                if let label = value("-genuiTap", in: arguments) {
+                    _ = Self.element(label, in: window)?.accessibilityActivate()
+                    try await Task.sleep(for: .seconds(3))
+                }
+                Self.keep(window, as: shot)
+                return
+            }
             guard GymFrameMeter.shared != nil else { return }
             // The rows and their documents in, then the script, then its reading.
             try await Task.sleep(for: .seconds(6))
@@ -325,6 +336,34 @@ final class GenUIChatHarness {
         } catch {
             print("GENUI_CHAT error: \(error)")
         }
+    }
+
+    private func value(_ name: String, in arguments: [String]) -> String? {
+        arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+    }
+
+    /// The accessibility element labelled `label`, as VoiceOver finds it.
+    private static func element(_ label: String, in view: UIView) -> NSObject? {
+        func search(_ object: NSObject) -> NSObject? {
+            if object.isAccessibilityElement, object.accessibilityLabel == label { return object }
+            if let view = object as? UIView {
+                for sub in view.subviews { if let found = search(sub) { return found } }
+            }
+            for element in (object.accessibilityElements ?? []).compactMap({ $0 as? NSObject }) where element !== object {
+                if let found = search(element) { return found }
+            }
+            return nil
+        }
+        return search(view)
+    }
+
+    /// The window as drawn, in Documents/`name`.png: a device run's
+    /// screenshot (`-genuiShot name`), copied off with devicectl.
+    private static func keep(_ window: UIWindow, as name: String) {
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try? image.pngData()?.write(to: documents.appendingPathComponent("\(name).png"))
+        print("GENUI_SHOT \(name)")
     }
 
     private static func reading(in window: UIWindow) -> String? {

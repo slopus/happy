@@ -267,6 +267,10 @@ public final class GymFrameMeter: NSObject {
             ("max", String(format: "%.2f", (intervals.max() ?? 0) * 1000)),
             ("mainP50", String(format: "%.2f", percentile(busyPerFrame, 0.5) * 1000)),
             ("mainP95", String(format: "%.2f", percentile(busyPerFrame, 0.95) * 1000)),
+            ("mainP99", String(format: "%.2f", percentile(busyPerFrame, 0.99) * 1000)),
+            // Frames whose main-thread work passed a 60 Hz and a 120 Hz frame.
+            ("mainOver16", "\(busyPerFrame.filter { $0 > 1.0 / 60 }.count)"),
+            ("mainOver8", "\(busyPerFrame.filter { $0 > 1.0 / 120 }.count)"),
             ("mainMax", String(format: "%.2f", longestBusy * 1000)),
             ("applies", "\(applies.count)"),
             ("applyMax", String(format: "%.1f", (applies.max() ?? 0) * 1000)),
