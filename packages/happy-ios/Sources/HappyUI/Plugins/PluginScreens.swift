@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
+import SafariServices
 import UIKit
 
 /// The ways into a Happy Cloud server's plugins.
@@ -23,23 +24,35 @@ enum PluginScreens {
         AppCoordinator.applyAppearance(to: navigation.navigationBar)
         controller.present(navigation, animated: true)
     }
+}
 
-    /// A plugin's or an installation's mark as a row draws it: the
-    /// picture once read (its ThumbHash until then), the plugin glyph on a
-    /// tile without one. Reading it calls `arrived` once it's in.
-    static func mark(_ image: PluginImage?, in row: inout SettingsRow, session: Session, arrived: @escaping () -> Void) {
-        // The glyph keeps the icon's lane, and shows while there is no picture.
+/// Plugins' marks as a page's rows draw them: the picture once read (its
+/// ThumbHash until then) over the plugin glyph, which keeps the icon's
+/// lane and shows for a plugin without one. Each picture is asked for
+/// once; `arrived` redraws the page when one comes.
+@MainActor
+final class PluginMarks {
+    private let session: Session
+    private let arrived: () -> Void
+    private var pictures: [String: UIImage] = [:]
+    private var asked: Set<String> = []
+
+    init(session: Session, arrived: @escaping () -> Void) {
+        self.session = session
+        self.arrived = arrived
+    }
+
+    func apply(_ image: PluginImage?, to row: inout SettingsRow) {
         row.icon = ("plugin", .blue)
         guard let image else { return }
-        let pixels = Int(SettingsLayout.Metrics.tile * UIScreen.main.scale)
         row.squareImage = true
-        if let picture = session.images.cachedPicture(image.path, thumbhash: image.thumbhash, pixels: pixels) {
-            row.image = picture
-            return
-        }
-        row.image = ThumbHashImages.image(image.thumbhash)
-        Task { @MainActor in
-            if await session.images.picture(image.path, thumbhash: image.thumbhash, pixels: pixels) != nil { arrived() }
+        row.image = pictures[image.path] ?? ThumbHashImages.image(image.thumbhash)
+        guard asked.insert(image.path).inserted else { return }
+        let pixels = Int(SettingsLayout.Metrics.tile * UIScreen.main.scale)
+        Task { @MainActor [weak self, session] in
+            guard let picture = await session.images.picture(image.path, thumbhash: image.thumbhash, pixels: pixels) else { return }
+            self?.pictures[image.path] = picture
+            self?.arrived()
         }
     }
 }
@@ -50,7 +63,7 @@ enum PluginScreens {
 final class PluginsViewController: SettingsPageViewController {
     private let session: Session
     private var watch: Watch?
-    private var marksAsked: Set<String> = []
+    private lazy var marks = PluginMarks(session: session) { [weak self] in self?.reload() }
 
     init(session: Session) {
         self.session = session
@@ -117,12 +130,7 @@ final class PluginsViewController: SettingsPageViewController {
         return cards
     }
 
-    private func mark(_ image: PluginImage?, in row: inout SettingsRow) {
-        let asked = image.map { !marksAsked.insert($0.path).inserted } ?? true
-        PluginScreens.mark(image, in: &row, session: session) { [weak self] in
-            if !asked { self?.reload() }
-        }
-    }
+    private func mark(_ image: PluginImage?, in row: inout SettingsRow) { marks.apply(image, to: &row) }
 
     private func open(_ pluginId: String) {
         PluginScreens.open(pluginId: pluginId, session: session, from: self)
@@ -131,12 +139,19 @@ final class PluginsViewController: SettingsPageViewController {
 
 /// Desktop's plugin page (HappyAgentPluginPage): what the plugin is, each
 /// of the team's installations of it and what each still needs, then the
-/// tools it gives agents.
+/// tools it gives agents. A manager installs it here, sets each
+/// installation up by one of its plugin's methods (typed fields, or the
+/// provider's page in the in-app browser, closed once it is active), signs
+/// it out and removes it.
 final class PluginViewController: SettingsPageViewController {
     let pluginId: String
     let session: Session
     private var watch: Watch?
-    private var marksAsked: Set<String> = []
+    private lazy var marks = PluginMarks(session: session) { [weak self] in self?.reload() }
+    /// The rows whose act is running: a spinner in place of their value.
+    private(set) var busy: Set<String> = []
+    /// The provider's page while a sign-in runs there, and the installation it is for.
+    private var browser: (page: SFSafariViewController, installationId: String)?
 
     init(session: Session, pluginId: String) {
         self.session = session
@@ -147,11 +162,18 @@ final class PluginViewController: SettingsPageViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.accessibilityIdentifier = "plugin"
-        watch = session.plugins.watch { [weak self] in
-            guard let self else { return }
-            if let catalog = session.plugins.state.catalog { title = catalog.name(of: pluginId) }
-            reload()
+        watch = session.plugins.watch { [weak self] in self?.changed() }
+    }
+
+    private func changed() {
+        guard let catalog = session.plugins.state.catalog else { return reload() }
+        title = catalog.name(of: pluginId)
+        // Signed in on the provider's page: the server says so, and the page goes.
+        if let browser, catalog.installations?.first(where: { $0.id == browser.installationId })?.status == .active {
+            self.browser = nil
+            browser.page.dismiss(animated: true)
         }
+        reload()
     }
 
     override func makeRows() -> [[SettingsRow]] {
@@ -182,12 +204,12 @@ final class PluginViewController: SettingsPageViewController {
         let about: String? = if let plugin { plugin.description.isEmpty ? nil : plugin.description } else { Text.noLongerOffered }
         head.footer = [about, catalog.canManage ? nil : Text.membersCantSetUp].compactMap { $0 }.joined(separator: "\n\n")
         var cards: [[SettingsRow]] = [[head]]
+        if let plugin, catalog.canManage {
+            cards.append([acting(SettingsRow(id: "plugin-install", title: installations.isEmpty ? Text.install : Text.installAgain, icon: ("add", .action),
+                                             accessory: .none, action: { [weak self] in self?.install(plugin) }))])
+        }
         for installation in installations {
-            var status = SettingsRow(id: "installation-\(installation.id)-status", title: Text.status, value: Text.status(installation), accessory: .none)
-            status.header = installation.title
-            status.dimmed = !installation.available
-            status.footer = installation.toolPrefix.isEmpty ? nil : Text.toolPrefix(installation.toolPrefix)
-            cards.append([status])
+            cards.append(card(installation, catalog: catalog))
         }
         if let tools = plugin?.tools, !tools.isEmpty {
             var card = tools.map { tool in
@@ -202,10 +224,265 @@ final class PluginViewController: SettingsPageViewController {
         return cards
     }
 
-    private func mark(_ image: PluginImage?, in row: inout SettingsRow) {
-        let asked = image.map { !marksAsked.insert($0.path).inserted } ?? true
-        PluginScreens.mark(image, in: &row, session: session) { [weak self] in
-            if !asked { self?.reload() }
+    /// One installation: its state, then what a manager can do with it.
+    private func card(_ installation: PluginInstallation, catalog: PluginCatalog) -> [SettingsRow] {
+        typealias Text = Strings.Plugins
+        let id = installation.id
+        var status = SettingsRow(id: "installation-\(id)-status", title: Text.status, value: Text.status(installation), accessory: .none)
+        status.header = installation.title
+        status.dimmed = !installation.available
+        var card = [status]
+        if catalog.canManage, installation.available {
+            if case .signIn(let methods) = catalog.setup(installation) {
+                for method in methods {
+                    card.append(acting(SettingsRow(id: "installation-\(id)-method-\(method.id)", title: Text.setUp(with: method.label), icon: (Self.glyph(method), .action),
+                                                   accessory: .none, action: { [weak self] in self?.setUp(installation, method: method) })))
+                }
+            }
+            if installation.isSignedIn {
+                card.append(acting(SettingsRow(id: "installation-\(id)-sign-out", title: Text.signOut, icon: ("log-out-outline", .action), accessory: .none,
+                                               action: { [weak self] in self?.signOut(installation) })))
+            }
+            card.append(acting(SettingsRow(id: "installation-\(id)-remove", title: Text.remove, icon: ("trash", .action), accessory: .none, destructive: true,
+                                           action: { [weak self] in self?.confirmRemove(installation) })))
+        }
+        card[card.count - 1].footer = installation.toolPrefix.isEmpty ? nil : Text.toolPrefix(installation.toolPrefix)
+        return card
+    }
+
+    private static func glyph(_ method: PluginAuthMethod) -> String {
+        if case .oauth = method { return "globe-outline" }
+        return "key-outline"
+    }
+
+    /// A row whose act is running shows a spinner and does nothing more.
+    private func acting(_ row: SettingsRow) -> SettingsRow {
+        guard busy.contains(row.id) else { return row }
+        var row = row
+        let spinner = UIActivityIndicatorView(style: .medium)
+        spinner.startAnimating()
+        row.valueView = spinner
+        row.action = nil
+        return row
+    }
+
+    private func mark(_ image: PluginImage?, in row: inout SettingsRow) { marks.apply(image, to: &row) }
+
+    // MARK: Acts
+
+    /// Runs `act` with `row` spinning; a refusal is said under `failure`.
+    private func run<T: Sendable>(_ row: String, failure: String, _ act: @escaping @Sendable (AgentClient) async throws -> T, then: @escaping (T) -> Void = { _ in }) {
+        guard !busy.contains(row) else { return }
+        busy.insert(row)
+        reload()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let value = try await session.plugins.write(act)
+                busy.remove(row)
+                reload()
+                then(value)
+            } catch {
+                busy.remove(row)
+                reload()
+                Alerts.show(failure, Strings.Plugins.words(error), on: self)
+            }
+        }
+    }
+
+    /// Installs it once more; an installation with one way to set it up
+    /// goes straight to it.
+    func install(_ plugin: Plugin) {
+        let pluginId = plugin.id
+        run("plugin-install", failure: Strings.Plugins.installFailed, { try await $0.installPlugin(pluginId) }) { [weak self] installation in
+            guard installation.status != .active, plugin.authMethods.count == 1, let method = plugin.authMethods.first else { return }
+            self?.setUp(installation, method: method)
+        }
+    }
+
+    func setUp(_ installation: PluginInstallation, method: PluginAuthMethod) {
+        switch method {
+        case .fields(_, let label, let fields):
+            let form = PluginSetupViewController(title: label, fields: fields) { [weak self] values in
+                guard let self else { throw CancellationError() }
+                let id = installation.id
+                _ = try await session.plugins.write { try await $0.configurePluginInstallation(id, method: method.id, values: values) }
+            }
+            navigationController?.pushViewController(form, animated: true)
+        case .oauth:
+            let id = installation.id
+            run("installation-\(id)-method-\(method.id)", failure: Strings.Plugins.connectFailed, { try await $0.connectPluginInstallation(id, method: method.id) }) { [weak self] url in
+                self?.openSignIn(url, installationId: id)
+            }
+        }
+    }
+
+    /// The provider's page in the app's own browser. The server finishes
+    /// the sign-in; `plugins.changed` says so and the page goes
+    /// (`changed`). Closed by hand, the list is read again.
+    private func openSignIn(_ url: URL, installationId: String) {
+        let page = SFSafariViewController(url: url)
+        page.dismissButtonStyle = .close
+        page.delegate = self
+        browser = (page, installationId)
+        present(page, animated: true)
+    }
+
+    func signOut(_ installation: PluginInstallation) {
+        let id = installation.id
+        run("installation-\(id)-sign-out", failure: Strings.Plugins.signOutFailed) { try await $0.disconnectPluginInstallation(id) }
+    }
+
+    func confirmRemove(_ installation: PluginInstallation) {
+        typealias Text = Strings.Plugins
+        let alert = UIAlertController(title: Text.removeTitle(installation.title), message: Text.removeMessage, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
+        alert.addAction(UIAlertAction(title: Text.removeConfirm, style: .destructive) { [weak self] _ in self?.remove(installation) })
+        present(alert, animated: true)
+    }
+
+    func remove(_ installation: PluginInstallation) {
+        let id = installation.id
+        run("installation-\(id)-remove", failure: Strings.Plugins.removeFailed) { try await $0.removePluginInstallation(id) }
+    }
+}
+
+extension PluginViewController: @MainActor SFSafariViewControllerDelegate {
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+        browser = nil
+        session.plugins.load()
+    }
+}
+
+/// One installation's fields method: a field for each value the plugin
+/// asks for, its help under it, and what the server refused about it in
+/// its place. Secret values are typed into secure fields, sent once and
+/// kept nowhere here. Connect, in the bar, takes them once every required
+/// one is filled; set up, the page goes back.
+final class PluginSetupViewController: SettingsPageViewController, UITextFieldDelegate {
+    typealias Save = @MainActor ([String: String]) async throws -> Void
+
+    private let fields: [PluginAuthMethod.Field]
+    private let save: Save
+    private var inputs: [String: UITextField] = [:]
+    private var refused: [String: String] = [:]
+    private var saving = false
+
+    init(title: String, fields: [PluginAuthMethod.Field], save: @escaping Save) {
+        self.fields = fields
+        self.save = save
+        super.init(title: title)
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.accessibilityIdentifier = "plugin-setup"
+        scroll.keyboardDismissMode = .interactive
+        for (index, field) in fields.enumerated() {
+            let input = UITextField()
+            input.font = SettingsCardView.RowView.titleFont
+            input.textColor = UIColor(Palette.settingsText)
+            input.tintColor = UIColor(Palette.settingsPrimary)
+            input.placeholder = field.label
+            input.isSecureTextEntry = field.secret
+            input.textContentType = field.secret ? .password : nil
+            input.autocapitalizationType = .none
+            input.autocorrectionType = .no
+            input.spellCheckingType = .no
+            input.clearButtonMode = .whileEditing
+            input.returnKeyType = index == fields.count - 1 ? .done : .next
+            input.accessibilityIdentifier = "plugin-field-\(field.key)"
+            input.accessibilityLabel = field.label
+            input.delegate = self
+            input.addTarget(self, action: #selector(edited(_:)), for: .editingChanged)
+            scroll.addSubview(input)
+            inputs[field.key] = input
+        }
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: Strings.Plugins.connect, style: .done, target: self, action: #selector(connect))
+        navigationItem.rightBarButtonItem?.accessibilityIdentifier = "plugin-setup-connect"
+        updateConnect()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if let first = fields.first, let input = inputs[first.key], !input.isFirstResponder { input.becomeFirstResponder() }
+    }
+
+    override func makeRows() -> [[SettingsRow]] {
+        fields.enumerated().map { index, field in
+            var card = [SettingsRow(id: "field-\(field.key)", title: "", accessory: .none, action: { [weak self] in self?.inputs[field.key]?.becomeFirstResponder() })]
+            // What the server refused about it, in red under the field.
+            if let refusal = refused[field.key] {
+                card[0].subtitle = refusal
+                card[0].subtitleLines = 0
+                card[0].destructive = true
+            }
+            card[0].header = field.label
+            let help = field.help.isEmpty ? nil : field.help
+            card[card.count - 1].footer = index == fields.count - 1 ? [help, Strings.Plugins.setupHint].compactMap { $0 }.joined(separator: "\n\n") : help
+            return card
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        for field in fields {
+            inputs[field.key]?.frame = titleFrame("field-\(field.key)") ?? .zero
+        }
+    }
+
+    private var values: [String: String] {
+        inputs.mapValues { ($0.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    private var complete: Bool { fields.allSatisfy { !$0.required || values[$0.key]?.isEmpty == false } }
+
+    /// Typed into again, a refused field's refusal goes.
+    @objc private func edited(_ input: UITextField) {
+        if let key = fields.first(where: { inputs[$0.key] === input })?.key, refused.removeValue(forKey: key) != nil { reload() }
+        updateConnect()
+    }
+
+    private func updateConnect() {
+        navigationItem.rightBarButtonItem?.isEnabled = complete && !saving
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        guard let index = fields.firstIndex(where: { inputs[$0.key] === textField }) else { return false }
+        if index + 1 < fields.count { inputs[fields[index + 1].key]?.becomeFirstResponder() }
+        else if complete { connect() }
+        return false
+    }
+
+    @objc func connect() {
+        guard complete, !saving else { return }
+        saving = true
+        let spinner = UIActivityIndicatorView(style: .medium)
+        spinner.startAnimating()
+        let button = navigationItem.rightBarButtonItem
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: spinner)
+        for input in inputs.values { input.isEnabled = false }
+        let values = values.filter { !$0.value.isEmpty }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await save(values)
+                navigationController?.popViewController(animated: true)
+            } catch {
+                saving = false
+                navigationItem.rightBarButtonItem = button
+                for input in inputs.values { input.isEnabled = true }
+                if let refusal = error as? PluginFieldsRefusal, !refusal.fields.isEmpty {
+                    refused = refusal.fields
+                    reload()
+                    // A refused secret is typed again, not edited.
+                    for (key, _) in refusal.fields where fields.first(where: { $0.key == key })?.secret == true { inputs[key]?.text = "" }
+                    if let key = fields.first(where: { refused[$0.key] != nil })?.key { inputs[key]?.becomeFirstResponder() }
+                } else {
+                    Alerts.show(Strings.Plugins.setupFailed, Strings.Plugins.words(error), on: self)
+                }
+                updateConnect()
+            }
         }
     }
 }

@@ -55,6 +55,18 @@ class SettingsPageViewController: UIViewController {
         cards[card].flash(index)
     }
 
+    /// Where row `id`'s title sits in the scroll view, as last laid out:
+    /// for a field laid over an empty row.
+    func titleFrame(_ id: String) -> CGRect? {
+        for (index, card) in rows.enumerated() where settingsLayout.cards.indices.contains(index) {
+            guard let row = card.firstIndex(where: { $0.id == id }) else { continue }
+            let laid = settingsLayout.cards[index]
+            guard laid.rows.indices.contains(row) else { return nil }
+            return laid.rows[row].title.offsetBy(dx: laid.frame.minX, dy: laid.frame.minY)
+        }
+        return nil
+    }
+
     /// The page's rows, card by card.
     func makeRows() -> [[SettingsRow]] { rowsFor?() ?? [] }
 

@@ -201,12 +201,44 @@ final class ClusterHarness {
             case let open? where open.hasPrefix("plugin:"):
                 navigation.pushViewController(PluginsViewController(session: session), animated: false)
                 PluginScreens.open(pluginId: String(open.dropFirst("plugin:".count)), session: session, from: navigation)
+                await act(on: navigation, session: session, arguments: arguments)
             default:
                 break
             }
         } catch {
             print("CLUSTER_HARNESS error: \(error)")
         }
+    }
+
+    /// On a plugin's page: `-setup <installation>:<method>` opens that
+    /// setup, `-type <text>` types into its first field and `-submit`
+    /// sends it; `-remove <installation>` asks to remove it; `-install`
+    /// installs the plugin again.
+    private func act(on navigation: UINavigationController, session: Session, arguments: [String]) async {
+        func value(_ flag: String) -> String? { arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } }
+        try? await Task.sleep(for: .seconds(1))
+        guard let page = navigation.topViewController as? PluginViewController, let catalog = session.plugins.state.catalog else { return }
+        if arguments.contains("-install"), let plugin = catalog.plugin(page.pluginId) { page.install(plugin) }
+        if let target = value("-remove"), let installation = catalog.installations?.first(where: { $0.id == target }) { page.confirmRemove(installation) }
+        guard let setup = value("-setup")?.split(separator: ":").map(String.init), setup.count == 2,
+              let installation = catalog.installations?.first(where: { $0.id == setup[0] }),
+              let method = catalog.plugin(installation.pluginId)?.authMethods.first(where: { $0.id == setup[1] }) else { return }
+        page.setUp(installation, method: method)
+        try? await Task.sleep(for: .seconds(1))
+        guard let form = navigation.topViewController as? PluginSetupViewController else { return }
+        if let text = value("-type"), let field = form.view.firstField() {
+            field.text = text
+            field.sendActions(for: .editingChanged)
+        }
+        if arguments.contains("-submit") { form.connect() }
+    }
+}
+
+private extension UIView {
+    func firstField() -> UITextField? {
+        if let field = self as? UITextField { return field }
+        for child in subviews { if let found = child.firstField() { return found } }
+        return nil
     }
 }
 #endif

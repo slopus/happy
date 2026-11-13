@@ -519,6 +519,8 @@ final class SettingsCardView: UIView {
                 let label = subtitle ?? makeSubtitle()
                 label.isHidden = false
                 label.text = row.subtitle
+                // A destructive row's line is a refusal: said in red too.
+                label.textColor = UIColor(row.destructive ? Palette.settingsDestructive : Palette.settingsSecondary)
                 // An art row's line wraps, at the person's text size.
                 label.font = fonts?.subtitle ?? Self.subtitleFont
                 label.numberOfLines = fonts == nil ? row.subtitleLines : 0
