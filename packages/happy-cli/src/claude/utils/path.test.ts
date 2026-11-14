@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getProjectPath } from './path';
+import { getProjectPath, getSessionProjectPath, resolveSessionFile } from './path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // Store original env
@@ -159,6 +161,40 @@ describe('getProjectPath', () => {
             const workingDir = '/Users/steve/projects/my-app';
             const result = getProjectPath(workingDir);
             expect(result).toBe(join('/custom/claude/config/', 'projects', '-Users-steve-projects-my-app'));
+        });
+    });
+
+    describe('resolveSessionFile', () => {
+        const sessionId = '0b6f3c1e-8d2a-4e5f-9a7b-1c2d3e4f5a6b';
+        let configDir: string;
+
+        beforeEach(() => {
+            configDir = mkdtempSync(join(tmpdir(), 'happy-path-test-'));
+            process.env.CLAUDE_CONFIG_DIR = configDir;
+        });
+
+        afterEach(() => {
+            rmSync(configDir, { recursive: true, force: true });
+        });
+
+        it('returns the working directory\'s path when the transcript is there', () => {
+            const expected = join(getProjectPath('/work/repo'), `${sessionId}.jsonl`);
+            mkdirSync(getProjectPath('/work/repo'), { recursive: true });
+            writeFileSync(expected, '');
+            expect(resolveSessionFile('/work/repo', sessionId)).toBe(expected);
+        });
+
+        it('finds a transcript EnterWorktree moved to the worktree\'s project dir', () => {
+            const worktreeDir = getProjectPath('/work/repo/.claude/worktrees/wt');
+            mkdirSync(getProjectPath('/work/repo'), { recursive: true });
+            mkdirSync(worktreeDir, { recursive: true });
+            writeFileSync(join(worktreeDir, `${sessionId}.jsonl`), '');
+            expect(resolveSessionFile('/work/repo', sessionId)).toBe(join(worktreeDir, `${sessionId}.jsonl`));
+            expect(getSessionProjectPath('/work/repo', sessionId)).toBe(worktreeDir);
+        });
+
+        it('falls back to the working directory\'s path when the transcript does not exist yet', () => {
+            expect(resolveSessionFile('/work/repo', sessionId)).toBe(join(getProjectPath('/work/repo'), `${sessionId}.jsonl`));
         });
     });
 });

@@ -19,7 +19,7 @@ import {
     retainReconnectCapabilityMonitor,
     shouldReconnect,
 } from '@/utils/lidState';
-import { getProjectPath } from '@/claude/utils/path';
+import { getSessionProjectPath } from '@/claude/utils/path';
 import {
     forkSession as claudeForkSession,
     forkAndTruncateSession as claudeForkAndTruncateSession,
@@ -241,7 +241,7 @@ export class ApiMachineClient {
                 throw new Error('claudeSessionId must be a valid UUID');
             }
             try {
-                const newClaudeSessionId = await claudeForkSession(getProjectPath(directory), claudeSessionId);
+                const newClaudeSessionId = await claudeForkSession(getSessionProjectPath(directory, claudeSessionId), claudeSessionId);
                 return { type: 'success', newClaudeSessionId };
             } catch (error) {
                 if (error instanceof ForkSourceMissingError) {
@@ -264,7 +264,7 @@ export class ApiMachineClient {
                 throw new Error('claudeSessionId must be a valid UUID');
             }
             try {
-                const points = await listClaudeRewindPoints(getProjectPath(directory), claudeSessionId);
+                const points = await listClaudeRewindPoints(getSessionProjectPath(directory, claudeSessionId), claudeSessionId);
                 return { type: 'success', points };
             } catch (error) {
                 if (error instanceof ForkSourceMissingError) {
@@ -287,7 +287,7 @@ export class ApiMachineClient {
             }
             try {
                 const newClaudeSessionId = await claudeForkAndTruncateSession(
-                    getProjectPath(directory),
+                    getSessionProjectPath(directory, claudeSessionId),
                     claudeSessionId,
                     cutAfterUuid,
                 );
