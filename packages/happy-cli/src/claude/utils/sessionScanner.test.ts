@@ -1,12 +1,45 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createSessionScanner } from './sessionScanner'
 import { RawJSONLines } from '../types'
 import type { ClaudeGoalStatusTranscriptEvent } from '../claudeGoalStatus'
-import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
+import { mkdir, writeFile, appendFile, rm, readFile, rename, truncate } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
 import { getProjectPath } from './path'
+
+// Pass-through instrumentation: counts how often, and how many bytes, the
+// scanner reads from transcript files. Everything still hits the real disk.
+const transcriptIo = vi.hoisted(() => ({ opens: 0, stats: 0, readFiles: 0, bytesRead: 0 }))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  const isTranscript = (path: unknown) => String(path).endsWith('.jsonl')
+  return {
+    ...actual,
+    stat: (async (...args: Parameters<typeof actual.stat>) => {
+      if (isTranscript(args[0])) transcriptIo.stats++
+      return actual.stat(...args)
+    }) as typeof actual.stat,
+    readFile: (async (...args: Parameters<typeof actual.readFile>) => {
+      if (isTranscript(args[0])) transcriptIo.readFiles++
+      return actual.readFile(...args)
+    }) as typeof actual.readFile,
+    open: (async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args)
+      if (isTranscript(args[0])) {
+        transcriptIo.opens++
+        const read = handle.read.bind(handle) as (...readArgs: unknown[]) => Promise<{ bytesRead: number }>
+        handle.read = (async (...readArgs: unknown[]) => {
+          const result = await read(...readArgs)
+          transcriptIo.bytesRead += result.bytesRead
+          return result
+        }) as typeof handle.read
+      }
+      return handle
+    }) as typeof actual.open,
+  }
+})
 
 describe('sessionScanner', () => {
   let testDir: string
@@ -439,6 +472,188 @@ describe('sessionScanner', () => {
       type: 'assistant',
       isApiErrorMessage: true,
       apiErrorStatus: 429,
+    })
+  })
+  describe('incremental reads', () => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    const userLine = (id: string, text: string) =>
+      JSON.stringify({ type: 'user', uuid: id, message: { role: 'user', content: text } })
+
+    const sentTexts = () => collectedMessages.map((m) => (m.type === 'user' ? m.message.content : m.type))
+
+    const startScanner = async (sessionId: string | null = null) => {
+      scanner = await createSessionScanner({
+        sessionId,
+        workingDirectory: testDir,
+        onMessage: (msg) => collectedMessages.push(msg),
+      })
+    }
+
+    it('sends lines appended to a transcript exactly once', async () => {
+      const sessionFile = join(projectDir, 'incremental-append.jsonl')
+      await startScanner()
+
+      await writeFile(sessionFile, userLine('a1', 'first') + '\n')
+      scanner!.onNewSession('incremental-append')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['first']))
+
+      await appendFile(sessionFile, userLine('a2', 'second') + '\n')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['first', 'second']))
+
+      await appendFile(sessionFile, userLine('a3', 'third') + '\n' + userLine('a4', 'fourth') + '\n')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['first', 'second', 'third', 'fourth']))
+
+      await sleep(300)
+      expect(sentTexts()).toEqual(['first', 'second', 'third', 'fourth'])
+    })
+
+    it('does not resend entries that existed before the scanner started', async () => {
+      const sessionFile = join(projectDir, 'incremental-initial.jsonl')
+      await writeFile(sessionFile, userLine('i1', 'old one') + '\n' + userLine('i2', 'old two') + '\n')
+      await startScanner('incremental-initial')
+
+      await appendFile(sessionFile, userLine('i3', 'new') + '\n')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['new']))
+    })
+
+    it('holds back a line written in two parts until it is complete', async () => {
+      const sessionFile = join(projectDir, 'incremental-split.jsonl')
+      const line = userLine('s2', 'split across two writes')
+      await startScanner()
+
+      await writeFile(sessionFile, userLine('s1', 'before') + '\n' + line.slice(0, 20))
+      scanner!.onNewSession('incremental-split')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['before']))
+      await sleep(300)
+      expect(sentTexts()).toEqual(['before'])
+
+      await appendFile(sessionFile, line.slice(20) + '\n')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['before', 'split across two writes']))
+
+      await sleep(300)
+      expect(sentTexts()).toEqual(['before', 'split across two writes'])
+    })
+
+    it.each([
+      ['a three-byte character', '日本語のテキスト', '日本'],
+      ['a four-byte emoji', 'party 🎉 time', '🎉'],
+    ])('parses text when a write ends inside %s', async (_name, text, splitInside) => {
+      const sessionFile = join(projectDir, 'incremental-utf8.jsonl')
+      const bytes = Buffer.from(userLine('u1', text) + '\n', 'utf-8')
+      // Cut one byte after the start of the multi-byte character.
+      const cut = bytes.indexOf(Buffer.from(splitInside, 'utf-8')) + 1
+      await startScanner()
+
+      await writeFile(sessionFile, bytes.subarray(0, cut))
+      scanner!.onNewSession('incremental-utf8')
+      await sleep(300)
+      expect(sentTexts()).toEqual([])
+
+      await appendFile(sessionFile, bytes.subarray(cut))
+      await vi.waitFor(() => expect(sentTexts()).toEqual([text]))
+
+      await sleep(300)
+      expect(sentTexts()).toEqual([text])
+    })
+
+    it('rereads a transcript that was replaced by a file with a new inode', async () => {
+      const sessionFile = join(projectDir, 'incremental-replaced.jsonl')
+      const replacement = join(projectDir, 'incremental-replaced.tmp')
+      await startScanner()
+
+      await writeFile(sessionFile, userLine('r1', 'one') + '\n' + userLine('r2', 'two') + '\n')
+      scanner!.onNewSession('incremental-replaced')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['one', 'two']))
+
+      // Larger than the original, so only the inode change reveals it.
+      await writeFile(replacement, [
+        userLine('r1', 'one'),
+        userLine('r2', 'two'),
+        userLine('r3', 'three, written after the replacement'),
+        userLine('r4', 'four'),
+      ].join('\n') + '\n')
+      await rename(replacement, sessionFile)
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['one', 'two', 'three, written after the replacement', 'four']), { timeout: 6000 })
+
+      await sleep(300)
+      expect(sentTexts()).toHaveLength(4)
+    })
+
+    it('rereads a transcript that shrank', async () => {
+      const sessionFile = join(projectDir, 'incremental-shrunk.jsonl')
+      await startScanner()
+
+      await writeFile(sessionFile, userLine('t1', 'one') + '\n' + userLine('t2', 'two') + '\n')
+      scanner!.onNewSession('incremental-shrunk')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['one', 'two']))
+
+      await truncate(sessionFile, 0)
+      await writeFile(sessionFile, userLine('t3', 'x') + '\n')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['one', 'two', 'x']), { timeout: 6000 })
+
+      await sleep(300)
+      expect(sentTexts()).toHaveLength(3)
+    })
+
+    it('rereads a transcript rewritten in place to the same or a larger size', async () => {
+      const sessionFile = join(projectDir, 'incremental-rewritten.jsonl')
+      const original = userLine('w1', 'original') + '\n'
+      await startScanner()
+
+      await writeFile(sessionFile, original)
+      scanner!.onNewSession('incremental-rewritten')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['original']))
+
+      // Same inode, not smaller, and no newline where the last read ended.
+      const rewritten = userLine('w2', 'rewritten with a longer text'.padEnd(original.length + 20, '.')) + '\n'
+      expect(rewritten.length).toBeGreaterThan(original.length)
+      await writeFile(sessionFile, rewritten)
+      await vi.waitFor(() => expect(sentTexts()).toHaveLength(2), { timeout: 6000 })
+      expect(sentTexts()[1]).toMatch(/^rewritten with a longer text/)
+    })
+
+    it('reads nothing from the transcript while it is unchanged', async () => {
+      const sessionFile = join(projectDir, 'incremental-idle.jsonl')
+      const lines = Array.from({ length: 200 }, (_, i) => userLine(`idle-${i}`, `message ${i} ${'x'.repeat(200)}`))
+      await writeFile(sessionFile, lines.join('\n') + '\n')
+      await startScanner('incremental-idle')
+      expect(transcriptIo.bytesRead).toBeGreaterThan(0)
+
+      transcriptIo.opens = transcriptIo.stats = transcriptIo.readFiles = transcriptIo.bytesRead = 0
+      // Long enough for at least one 3 s periodic sync to run.
+      await sleep(3500)
+
+      expect(transcriptIo.stats).toBeGreaterThan(0)
+      expect(transcriptIo.opens).toBe(0)
+      expect(transcriptIo.readFiles).toBe(0)
+      expect(transcriptIo.bytesRead).toBe(0)
+
+      // And an append costs only the appended bytes.
+      const appended = userLine('idle-new', 'appended') + '\n'
+      await appendFile(sessionFile, appended)
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['appended']), { timeout: 6000 })
+      expect(transcriptIo.bytesRead).toBeLessThanOrEqual(appended.length + 1)
+    })
+
+    it('retries lines a failing onMessage callback did not get to', async () => {
+      const sessionFile = join(projectDir, 'incremental-retry.jsonl')
+      let failedOnce = false
+      scanner = await createSessionScanner({
+        sessionId: null,
+        workingDirectory: testDir,
+        onMessage: (msg) => {
+          if (msg.type === 'user' && msg.message.content === 'boom' && !failedOnce) {
+            failedOnce = true
+            throw new Error('consumer failed')
+          }
+          collectedMessages.push(msg)
+        },
+      })
+
+      await writeFile(sessionFile, [userLine('f1', 'ok'), userLine('f2', 'boom'), userLine('f3', 'after')].join('\n') + '\n')
+      scanner.onNewSession('incremental-retry')
+      await vi.waitFor(() => expect(sentTexts()).toEqual(['ok', 'after']), { timeout: 6000 })
     })
   })
 })
