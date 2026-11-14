@@ -8,9 +8,11 @@ import com.slopus.happy.conversation.Mode
 import io.tailcat.NodePublicKey
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonElement
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -221,6 +223,72 @@ class TailcatClientsTest {
         override suspend fun reset(category: RequestCategory) { resets += category }
 
         override suspend fun close() {}
+    }
+
+    private val checks = Collections.synchronizedList(mutableListOf<Client>())
+
+    private fun watched(checkEveryMillis: Long = TailcatClients.CHECK_EVERY_MILLIS) = TailcatClients(
+        connect = { category, key -> Client(category, key.publicKey).also { made += it } },
+        disconnect = { it.closed = true },
+        check = { checks += it },
+        checkEveryMillis = checkEveryMillis,
+    )
+
+    /**
+     * A request with nothing back has its client checked, once in five
+     * seconds however many stall; one answered in time, or on a client that
+     * brought bytes back meanwhile, has it checked never.
+     */
+    @Test
+    fun aStalledRequestChecksItsClientOnceAndAnAnsweredOneNever() = runBlocking {
+        val clients = watched()
+        val query = clients.lease(RequestCategory.Query)
+        val answered = query.watch(quietMillis = 100)
+        delay(20)
+        query.heard()
+        answered.cancel()
+        val heard = query.watch(quietMillis = 100)
+        delay(20)
+        query.heard()
+        delay(200)
+        assertTrue(checks.isEmpty())
+        heard.cancel()
+
+        val stalled = List(3) { query.watch(quietMillis = 50) }
+        delay(300)
+        assertEquals(listOf(made.first()), checks.toList())
+        stalled.forEach { it.cancel() }
+        query.release()
+        clients.close()
+    }
+
+    /** A check whose relay answers lets go of nothing: the client and its key stay, and the next request goes over it. */
+    @Test
+    fun aCheckTheRelayAnswersReconnectsNothing() = runBlocking {
+        val clients = watched(checkEveryMillis = 10)
+        val stream = clients.lease(RequestCategory.Realtime)
+        val silence = stream.watch(quietMillis = 50, repeating = true)
+        delay(300)
+        silence.cancel()
+        assertTrue("A stream silent on is checked again", checks.size >= 2)
+        assertSame(stream.client, clients.lease(RequestCategory.Realtime).client)
+        assertEquals(1, made.size)
+        assertFalse(made[0].closed)
+        clients.close()
+    }
+
+    /** A client let go of after a failure is checked no more on its old leases' behalf. */
+    @Test
+    fun aResetClientIsNotChecked() = runBlocking {
+        val clients = watched()
+        val query = clients.lease(RequestCategory.Query)
+        val stalled = query.watch(quietMillis = 50)
+        clients.reset(query)
+        delay(200)
+        assertTrue(checks.isEmpty())
+        stalled.cancel()
+        query.release()
+        clients.close()
     }
 
     @Test

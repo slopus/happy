@@ -152,6 +152,8 @@ class TailcatTransport internal constructor(
             owners.remove(client)?.close()
             client.close()
         },
+        // The relay pinged and replaced only if silent; direct paths probed.
+        check = { it.wake() },
     )
 
     private class OpenFlow(private val stream: TailcatConnection, private val ownership: OpenFlows.Owner.Flow) {
@@ -196,6 +198,8 @@ class TailcatTransport internal constructor(
         val progress = kotlinx.coroutines.currentCoroutineContext()[BodyProgress]
         val lease = clients.lease(category)
         val deadline = if (category == RequestCategory.File) fileTimeoutMillis else requestTimeoutMillis
+        // In a dead relay even the flow's opening and the head's write hang.
+        val watch = lease.watch()
         return try {
             withTimeout(deadline) {
                 runInterruptible(Dispatchers.IO) {
@@ -209,6 +213,7 @@ class TailcatTransport internal constructor(
                         val parser = HttpResponseParser()
                         while (true) {
                             val bytes = stream.read(65536, timeoutMillis = requestTimeoutMillis)
+                            if (bytes.isNotEmpty()) lease.heard()
                             parser.append(bytes, eof = bytes.isEmpty())?.let { return@runInterruptible it }
                         }
                         @Suppress("UNREACHABLE_CODE") error("unreachable")
@@ -229,6 +234,7 @@ class TailcatTransport internal constructor(
             failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } finally {
+            watch.cancel()
             lease.release()
         }
     }
@@ -237,6 +243,9 @@ class TailcatTransport internal constructor(
         val head = TailcatHttp.requestHead("GET", path, port, credential, null, headers + ("Accept" to "text/event-stream"))
         val lease = clients.lease(RequestCategory.Realtime)
         val opening = java.util.concurrent.atomic.AtomicReference<OpenFlow?>()
+        // Until the head is in; then silent past its heartbeat, its client is checked.
+        val watch = lease.watch()
+        val silence = lease.watch(TailcatClients.STREAM_QUIET_MILLIS, repeating = true)
         val socket: OpenFlow = try {
             withTimeout(requestTimeoutMillis) {
                 runInterruptible(Dispatchers.IO) {
@@ -253,19 +262,22 @@ class TailcatTransport internal constructor(
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             opening.getAndSet(null)?.close()
+            watch.cancel(); silence.cancel()
             lease.release()
             if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
             failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } catch (e: Exception) {
             opening.getAndSet(null)?.close()
+            watch.cancel(); silence.cancel()
             lease.release()
             failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         }
         val reader = object : ByteSource {
             override suspend fun read(): ByteArray = try {
-                runInterruptible(Dispatchers.IO) { socket.read(65536, timeoutMillis = silenceMillis) }.also { if (it.isEmpty()) close() }
+                runInterruptible(Dispatchers.IO) { socket.read(65536, timeoutMillis = silenceMillis) }
+                    .also { if (it.isEmpty()) close() else lease.heard() }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 close()
                 throw e
@@ -276,6 +288,7 @@ class TailcatTransport internal constructor(
             }
 
             override fun close() {
+                watch.cancel(); silence.cancel()
                 lease.release()
                 try {
                     socket.close()
@@ -284,7 +297,7 @@ class TailcatTransport internal constructor(
                 }
             }
         }
-        return TransportStream.open(reader)
+        return TransportStream.open(reader).also { watch.cancel() }
     }
 
     override suspend fun socket(): TransportSocket {
@@ -306,7 +319,7 @@ class TailcatTransport internal constructor(
         }
         return object : TransportSocket {
             // A cancelled read or write closes the stream, which wakes the blocked call.
-            override suspend fun read(maximumBytes: Int): ByteArray = io { stream.read(maximumBytes) }.also { if (it.isEmpty()) close() }
+            override suspend fun read(maximumBytes: Int): ByteArray = io { stream.read(maximumBytes) }.also { if (it.isEmpty()) close() else lease.heard() }
 
             override suspend fun write(bytes: ByteArray) {
                 io { stream.write(bytes) }

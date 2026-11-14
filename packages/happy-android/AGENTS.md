@@ -2221,6 +2221,11 @@ is `packages/happy-ios`. The wire keeps its own names
   live sessions stay. tailcat-kotlin watches no network itself, so a network
   that returns gets the same check on every kept client
   (`Transport.networkChanged`, from `AgentSession.networkReturned`). A
+  relay can also go dead with nothing said (a NAT rebinding, a handoff on
+  the same interface): a request with nothing back over its client for 3 s,
+  and the event stream silent for 20 s (its heartbeat is every 15 s), get
+  the same check on that client, at most once every 5 s
+  (`TailcatClients`' `Lease.watch`, iOS's 5a960ac2e). A
   default network that moves to another one with no loss between (Wi-Fi to
   cellular, `NetworkChange.Moved` from `defaultNetwork().changes()`, iOS's
   4760daf0c) is different: what was open went out the old way and can hang
