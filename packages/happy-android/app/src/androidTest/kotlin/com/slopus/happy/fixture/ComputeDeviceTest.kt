@@ -12,20 +12,24 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import com.slopus.happy.agent.ComputeAccess
+import com.slopus.happy.agent.ComputeAgent
 import com.slopus.happy.agent.ComputeApproval
+import com.slopus.happy.agent.ComputeBoundary
 import com.slopus.happy.agent.ComputeCommands
 import com.slopus.happy.agent.ComputeDraft
-import com.slopus.happy.agent.ComputeHolder
 import com.slopus.happy.agent.ComputeInstall
 import com.slopus.happy.agent.Computer
-import com.slopus.happy.agent.ComputeMode
-import com.slopus.happy.agent.ComputeModeKind
 import com.slopus.happy.agent.ComputeOwner
+import com.slopus.happy.agent.ComputeRole
 import com.slopus.happy.agent.ComputeSnapshot
 import com.slopus.happy.agent.ComputeSource
 import com.slopus.happy.agent.ComputeStatus
+import com.slopus.happy.agent.ComputeSystem
 import com.slopus.happy.agent.ComputerAdd
 import com.slopus.happy.ui.connection.ComputeActions
+import com.slopus.happy.ui.connection.ComputerActions
+import com.slopus.happy.ui.connection.ComputerPending
+import com.slopus.happy.ui.connection.ComputerScreen
 import com.slopus.happy.ui.connection.ComputePending
 import com.slopus.happy.ui.connection.ComputeScreen
 import com.slopus.happy.ui.connection.ComputeTags
@@ -42,12 +46,18 @@ class ComputeDeviceTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     private val now = System.currentTimeMillis()
+    private val open = ComputeBoundary(true, null)
     private val computers = listOf(
-        Computer("n1", "build-01", ComputeStatus.Online, "build-01.acme.internal", "linux", "x86_64", ComputeMode.Sandbox, "GPU box, CUDA 12.4. Use for training; checkouts under /data.", null, now),
-        Computer("n3", "Mac mini", ComputeStatus.Online, "mini.local", "macos", "arm64", ComputeMode.Exclusive(ComputeHolder("a7", "Ship the iOS release")), "Xcode 26 and the iPhone 12 on USB. One agent at a time.", null, now),
-        Computer("n4", "Steve's laptop", ComputeStatus.Online, "steve-mbp", "macos", "arm64", ComputeMode.Private(ComputeOwner.Reader), "My own computer, for my agents.", null, now),
-        Computer("n2", "Team box", ComputeStatus.Online, "team", "linux", "aarch64", ComputeMode.Shared, "Shared staging host with Docker.", null, now),
-        Computer("n5", "Ana's desktop", ComputeStatus.Offline, "ana-desk", "windows", "x86_64", ComputeMode.Private(ComputeOwner.Member("u-ana", "Ana")), null, null, now - 3 * 3_600_000),
+        Computer("n1", "build-01", ComputeStatus.Online, "build-01.acme.internal", "linux", "x86_64", ComputeAccess.Shared, null, 8, 16,
+            listOf(ComputeAgent("a7", "Ship the iOS release"), ComputeAgent("a8", "Fix the flaky checkout test"), ComputeAgent("a9", null)), open,
+            "GPU box, CUDA 12.4. Use for training; checkouts under /data.", now),
+        Computer("n3", "Mac mini", ComputeStatus.Online, "mini.local", "macos", "arm64", ComputeAccess.Shared, null, 1, null,
+            listOf(ComputeAgent("a3", "Profile cold start")),
+            ComputeBoundary(false, "macOS has no sandbox for restricted commands yet."), "Xcode 26 and the iPhone 12 on USB.", now),
+        Computer("n4", "Steve's laptop", ComputeStatus.Online, "steve-mbp", "macos", "arm64", ComputeAccess.Private, ComputeOwner.Reader, 1, 4,
+            emptyList(), open, "My own computer, for my agents.", now),
+        Computer("n5", "Ana's desktop", ComputeStatus.Offline, "ana-desk", "linux", "x86_64", ComputeAccess.Private, ComputeOwner.Member("u-ana", "Ana"), 2, null,
+            emptyList(), open, null, now - 3 * 3_600_000),
     )
     private val requests = listOf(
         ComputeApproval("n4", "Steve's laptop", "a1", "Fix the flaky checkout test", now - 2 * 60_000),
@@ -65,25 +75,46 @@ class ComputeDeviceTest {
     }
 
     @Test
-    fun listWithEveryMode() = shot("compute-list") {
-        ComputeScreen(ComputeSource.State.Loaded(ComputeSnapshot(computers, emptyList())), ComputeAccess.Manage, ComputePending(), null, ComputeActions(), {})
+    fun list() = shot("compute-list") {
+        ComputeScreen(ComputeSource.State.Loaded(ComputeSnapshot(computers, emptyList())), ComputeRole.Manage, ComputePending(), null, ComputeActions(), {})
     }.also {
-        rule.onNodeWithText("In use").assertIsDisplayed()
-        rule.onNodeWithText("Yours").assertIsDisplayed()
+        rule.onNodeWithText("Full").assertIsDisplayed()
+        rule.onNodeWithText("3 of 8 agents").assertIsDisplayed()
+    }
+
+    @Test
+    fun sharedComputer() = shot("compute-detail-shared") {
+        ComputerScreen(ComputeSource.State.Loaded(ComputeSnapshot(computers, emptyList())), "n1", ComputeRole.Manage, ComputerPending(), null, ComputerActions(), {})
+    }.also {
+        rule.onNodeWithTag(ComputeTags.remove("a7")).assertIsDisplayed()
+    }
+
+    @Test
+    fun computerWithoutBoundary() = shot("compute-detail-boundary") {
+        ComputerScreen(ComputeSource.State.Loaded(ComputeSnapshot(computers, emptyList())), "n3", ComputeRole.Manage, ComputerPending(), null, ComputerActions(), {})
+    }.also {
+        rule.onNodeWithTag(ComputeTags.BOUNDARY).assertIsDisplayed()
     }
 
     @Test
     fun joinRequests() = shot("compute-join-requests") {
-        ComputeScreen(ComputeSource.State.Loaded(ComputeSnapshot(computers.filter { it.id in setOf("n1", "n4") }, requests)), ComputeAccess.Use, ComputePending(), null, ComputeActions(), {})
+        ComputeScreen(ComputeSource.State.Loaded(ComputeSnapshot(computers.filter { it.id in setOf("n1", "n4") }, requests)), ComputeRole.Use, ComputePending(), null, ComputeActions(), {})
     }.also {
         rule.onNodeWithTag(ComputeTags.approve("n4/a1")).assertIsDisplayed()
     }
 
     @Test
-    fun membersAddFlow() = shot("compute-add-member") {
-        ComputerAddScreen(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Private)), ComputeAccess.Use, {}, {}, {})
+    fun managersAddFlow() = shot("compute-add-manager") {
+        ComputerAddScreen(ComputerAdd.Choosing(ComputeDraft(ComputeAccess.Shared)), ComputeRole.Manage, {}, {}, {})
     }.also {
-        rule.onNodeWithTag(ComputeTags.mode(ComputeModeKind.Sandbox)).assertIsNotEnabled()
+        rule.onNodeWithTag(ComputeTags.CONCURRENCY).assertIsDisplayed()
+    }
+
+    @Test
+    fun membersAddFlow() = shot("compute-add-member") {
+        ComputerAddScreen(ComputerAdd.Choosing(ComputeDraft(ComputeAccess.Private)), ComputeRole.Use, {}, {}, {})
+    }.also {
+        rule.onNodeWithTag(ComputeTags.access(ComputeAccess.Shared)).assertIsNotEnabled()
     }
 
     @Test
@@ -91,14 +122,16 @@ class ComputeDeviceTest {
         val token = "eyJhbGciOiJFZERTQSJ9.fixture.not-a-real-token"
         ComputerAddScreen(
             ComputerAdd.Shown(ComputeInstall(
-                ComputeModeKind.Private,
+                ComputeAccess.Private, 1,
                 ComputeCommands(
-                    "curl -fsSL https://get.happy-clusters.com/install.sh | HAPPY_CLUSTER_URL='https://acme.happy-clusters.com' HAPPY_JOIN_TOKEN='$token' HAPPY_COMPUTE_MODE='private' sh",
-                    "\$env:HAPPY_CLUSTER_URL='https://acme.happy-clusters.com'; \$env:HAPPY_JOIN_TOKEN='$token'; \$env:HAPPY_COMPUTE_MODE='private'; irm https://get.happy-clusters.com/install.ps1 | iex",
+                    "curl -fsSL https://get.happy-clusters.com/install.sh | HAPPY_CLUSTER_URL='https://acme.happy-clusters.com' HAPPY_JOIN_TOKEN='$token' sh",
+                    "Write-Output 'Happy compute is not available for Windows yet; run the command on Linux (x86_64 or aarch64).'",
                 ),
+                setOf(ComputeSystem.Linux),
+                "macOS and Windows computers are not available yet: Happy compute is published for Linux x86_64 and Linux aarch64 only.",
                 token, "https://acme.happy-clusters.com", now + 3_600_000,
             )),
-            ComputeAccess.Use, {}, {}, {},
+            ComputeRole.Use, {}, {}, {},
         )
     }.also {
         rule.onNodeWithTag(ComputeTags.command("unix")).assertIsDisplayed()
