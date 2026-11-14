@@ -25,6 +25,7 @@ import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
 import { DesktopSkinCanvas } from './DesktopSkinCanvas';
 import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import { ProjectFavoriteShortcuts } from './ProjectFavoriteShortcuts';
 import { KeyboardShortcutsProvider } from './KeyboardShortcuts';
 import {
     getDesktopPanelShortcutPresentation,
@@ -471,6 +472,7 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
             >
                 {globalBar ? <>{backControl}{forwardControl}{!botsWorkspace && sidebarControl}{zenControl}</> : <>{!botsWorkspace && sidebarControl}{zenControl}{backControl}{forwardControl}</>}
             </View>
+            {globalBar && !inTauri && <ProjectFavoriteShortcuts />}
         </View>
     );
 });
@@ -488,6 +490,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     navigationControls: {
         width: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
+        flexShrink: 0,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,

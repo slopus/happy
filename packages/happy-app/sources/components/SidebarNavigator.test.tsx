@@ -35,6 +35,7 @@ vi.mock('@/utils/responsive', () => ({
     useHeaderHeight: () => 48,
 }));
 vi.mock('./SidebarView', () => ({ SidebarView: 'SidebarView' }));
+vi.mock('./ProjectFavoriteShortcuts', () => ({ ProjectFavoriteShortcuts: 'ProjectFavoriteShortcuts' }));
 function PanelLock({ active }: { active: boolean }) {
     useAndroidDrawerSwipeLock(active);
     return null;
@@ -289,6 +290,7 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => { renderer = TestRenderer.create(<SidebarNavigator />); });
         const bar = renderer.root.findByProps({ testID: 'desktop-global-navigation-bar' });
         expect(bar.props.style.backgroundColor).toBe('#182030');
+        expect(bar.findAllByType('ProjectFavoriteShortcuts')).toHaveLength(1);
         expect(bar.findAllByType('Pressable').map((node: any) => node.props.testID)).toEqual([
             'desktop-navigation-back-button', 'desktop-navigation-forward-button',
             'desktop-navigation-sidebar-button', 'desktop-navigation-zen-button',

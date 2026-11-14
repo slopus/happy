@@ -4,11 +4,13 @@ import { StyleSheet } from 'react-native-unistyles';
 import { GoalBoardCardFocus } from './GoalBoardCard';
 import { ProjectSurfaces } from './ProjectSurfaces';
 import { DesktopShortcutTooltip } from '../DesktopShortcutTooltip';
+import { ComposerTooltipHost } from '../ComposerTooltipHost';
 
 interface GoalBoardButtonProps {
     children: React.ReactNode;
     label: string;
     tooltip?: string;
+    tooltipPortal?: boolean;
     testID?: string;
     onPress: () => void;
     selected?: boolean;
@@ -21,7 +23,7 @@ interface GoalBoardButtonProps {
 
 /** Shared keyboard, pointer and touch surface; colors always come from the active theme. */
 export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButtonProps>(function GoalBoardButton({
-    children, label, tooltip, testID, onPress, selected, expanded, disabled, busy, touchTarget = false, variant = 'plain',
+    children, label, tooltip, tooltipPortal = false, testID, onPress, selected, expanded, disabled, busy, touchTarget = false, variant = 'plain',
 }, ref) {
     const surfaces = React.useContext(ProjectSurfaces);
     const [hovered, setHovered] = React.useState(false);
@@ -54,7 +56,9 @@ export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButton
             surfaces && variant !== 'card' && variant !== 'overlay' && { backgroundColor: !disabled && (state.pressed || state.hovered || hovered) ? surfaces.pressed : selected || variant === 'primary' ? surfaces.selected : variant === 'toolbar' || variant === 'icon' ? 'transparent' : surfaces.surface, ...(!focused ? { borderColor: 'transparent' } : {}) },
             disabled ? styles.disabled : undefined,
         ]}
-    >{children}{tooltip && Platform.OS === 'web' ? <DesktopShortcutTooltip label={tooltip} testID={`${testID}-tooltip`} visible={hovered || focused} /> : null}</Pressable>;
+    >{children}{tooltip && Platform.OS === 'web' ? tooltipPortal
+        ? <ComposerTooltipHost visible={hovered || focused}><DesktopShortcutTooltip label={tooltip} testID={`${testID}-tooltip`} visible={hovered || focused} align="center" placement="above" anchorRelative multiline /></ComposerTooltipHost>
+        : <DesktopShortcutTooltip label={tooltip} testID={`${testID}-tooltip`} visible={hovered || focused} /> : null}</Pressable>;
 }));
 
 const styles = StyleSheet.create((theme) => ({
