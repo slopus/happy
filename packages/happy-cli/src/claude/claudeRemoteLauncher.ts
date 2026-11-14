@@ -20,6 +20,7 @@ import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import { applyClaudeModelCatalog, resolveClaudeModelCode } from './utils/modelCatalog';
 
 interface PermissionsField {
     date: number;
@@ -395,13 +396,20 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     },
                     onSDKMetadata: (metadata) => {
                         logger.debug('[remote] SDK metadata received, updating session:', metadata);
-                        session.client.updateMetadata((currentMetadata) => ({
-                            ...currentMetadata,
-                            tools: metadata.tools,
-                            slashCommands: metadata.slashCommands,
-                            mcpServers: metadata.mcpServers,
-                            skills: metadata.skills,
-                        }));
+                        session.client.updateMetadata((currentMetadata) => {
+                            const withCatalog = applyClaudeModelCatalog(currentMetadata,
+                                metadata.models?.length ? metadata.models : undefined);
+                            const currentModelCode = metadata.model
+                                ? resolveClaudeModelCode(metadata.requestedModel, metadata.model)
+                                : withCatalog.currentModelCode;
+                            return {
+                                ...applyClaudeModelCatalog(withCatalog, undefined, currentModelCode),
+                                tools: metadata.tools,
+                                slashCommands: metadata.slashCommands,
+                                mcpServers: metadata.mcpServers,
+                                skills: metadata.skills,
+                            };
+                        });
                     },
                     onUsageLimits: (patch) => {
                         // Merging against currentAgentState re-hydrates window
