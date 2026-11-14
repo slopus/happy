@@ -27,6 +27,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.slopus.happy.AppGraph
 import com.slopus.happy.ui.chat.COMPOSE_STARTED
+import com.slopus.happy.ui.chat.SHOWN_CHAT
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.home.LocalHomeInSidebar
@@ -120,11 +121,11 @@ fun TabletShell(
                 val width = TabletShellSpec.sidebarWidth(window.width)
                 val stack by nav.backStackEntries.collectAsState()
                 val root = MainPanel.root(stack.filter { it.destination !is NavGraph })
-                // The session a compose chat at the root has started, so its row shows selected.
-                val started by remember(root) {
-                    root?.takeIf { it.destination.hasRoute<SessionRoute>() }?.savedStateHandle?.getStateFlow<String?>(COMPOSE_STARTED, null) ?: flowOf(null)
-                }.collectAsStateWithLifecycle(null)
-                val selected = remember(root, started) { root?.let(MainPanelKey::of) }
+                // The session a compose chat at the root has started, or the tab it switched to in place, so its row shows selected.
+                val chat = root?.takeIf { it.destination.hasRoute<SessionRoute>() }?.savedStateHandle
+                val started by remember(root) { chat?.getStateFlow<String?>(COMPOSE_STARTED, null) ?: flowOf(null) }.collectAsStateWithLifecycle(null)
+                val shown by remember(root) { chat?.getStateFlow<String?>(SHOWN_CHAT, null) ?: flowOf(null) }.collectAsStateWithLifecycle(null)
+                val selected = remember(root, started, shown) { root?.let(MainPanelKey::of) }
                 Box(Modifier.width(width).fillMaxHeight().testTag(SidebarTags.SIDEBAR)) {
                     CompositionLocalProvider(
                         LocalWindowLayout provides window.sidebar(width, direction),

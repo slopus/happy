@@ -7,6 +7,7 @@ import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateListOf
@@ -17,10 +18,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
@@ -31,6 +34,7 @@ import com.slopus.happy.model.ComposeKind
 import com.slopus.happy.chat.ChatActions
 import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatMessage
+import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModeResolver
 import com.slopus.happy.chat.NoLivePresence
@@ -85,6 +89,15 @@ import kotlinx.serialization.Serializable
 data class SessionRoute(val id: String)
 
 /**
+ * A chat page keeps the chat it shows in place of its route's under this key: another tab of the
+ * checkout, a resume's new session. The page stays, so the header, tab strip and composer do too.
+ */
+const val SHOWN_CHAT = "chat.shown"
+
+/** The chat a `/session/{id}` page shows: [SHOWN_CHAT] once it has switched in place, else its route's. */
+fun NavBackStackEntry.shownSessionId(): String = savedStateHandle.get<String>(SHOWN_CHAT) ?: toRoute<SessionRoute>().id
+
+/**
  * The chat's destinations. [actions] go to the signed-in account (its
  * sender, composer and session RPCs). [onInfo] opens `/session/{id}/info`.
  */
@@ -96,17 +109,19 @@ fun NavGraphBuilder.chatRoutes(
 ) {
     page<SessionRoute> { entry ->
         val route = entry.toRoute<SessionRoute>()
+        val shown by remember(entry) { entry.savedStateHandle.getStateFlow<String?>(SHOWN_CHAT, null) }.collectAsState()
         // Each takes the chat the screen shows, which a compose chat's route id is not once it has started.
         ChatRoute(
-            graph, route.id, actions,
+            graph, shown ?: route.id, actions,
             onBack = { nav.popBackStack() },
             onInfo = onInfo,
             // An empty chat in this one's place, so Back still leads home.
             onCompose = { nav.composeChat(inPlace = true) },
             onToolPress = { sessionId, message -> nav.navigate(toolPressRoute(sessionId, message)) },
             onToolFilePress = { sessionId, message, file -> nav.navigate(MessageDetailRoute(sessionId, message.id, file = file)) },
-            // A resume that comes back as another session, or another tab of the checkout, replaces this chat in place.
-            onOpenSession = { shown, id -> if (id != shown) nav.navigate(SessionRoute(id)) { popUpTo<SessionRoute> { inclusive = true } } },
+            // A resume that comes back as another session, or another tab of the checkout, replaces this chat in place:
+            // no push, and the page's header, tab strip and composer stay where they are.
+            onOpenSession = { current, id -> if (id != current) entry.savedStateHandle[SHOWN_CHAT] = id },
             onComposeStarted = { id -> entry.savedStateHandle[COMPOSE_STARTED] = id },
         )
     }
@@ -141,7 +156,14 @@ private fun ChatRoute(
             presence = sync?.let { SyncChatPresenceSource(it.presence) } ?: NoLivePresence,
         )
     }
-    val state by remember(feed, sessionId) { feed.state(sessionId) }.collectAsStateWithLifecycle(ChatState())
+    val state = rememberShownChatState(feed, sessionId)
+    // A chat being started from a tab strip's `+` runs as the chat it was opened beside: that chat's
+    // record and picks stand for it, from its first frame, until its own record is in.
+    val anchorId = route.pending?.anchorSessionId
+    val anchor = rememberAnchor(graph, anchorId, state)
+    val anchorMirrorFlow = remember(account, anchorId) { anchorId?.let { account?.composer?.mirror(it) } }
+    val anchorMirror by remember(anchorMirrorFlow) { anchorMirrorFlow ?: flowOf(null) }
+        .collectAsStateWithLifecycle(anchorId?.let { account?.composer?.mirrors?.value?.get(it) })
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     // No session yet: the composer is the new-session draft's.
     val drafting = compose?.composing == true
@@ -158,19 +180,26 @@ private fun ChatRoute(
     // One flow per account and chat: a new one would start a new draft.
     val mirrorFlow = remember(account, sessionId, drafting) { if (drafting) compose?.mirror else account?.composer?.mirror(sessionId) }
     val mirror by remember(mirrorFlow, drafting) { mirrorFlow.takeUnless { drafting } ?: flowOf(ComposerMirror()) }.collectAsStateWithLifecycle(ComposerMirror())
-    val draft = rememberComposerDraft(mirrorFlow, onWrite = { text ->
-        when {
-            compose?.composing == true -> compose.writeDraft(text)
-            !route.writeDraft(text) -> actions.setDraft(sessionId, text)
-        }
-    })
+    // Each chat's own draft from its first frame, so a tab switched to never shows the last one's or a blank.
+    val seed = route.pending?.takeIf { it.sessionId == null }?.draft ?: account?.composer?.mirrors?.value?.get(sessionId)?.draft
+    val draft = key(routeId) {
+        rememberComposerDraft(mirrorFlow, initial = seed.orEmpty(), onWrite = { text ->
+            when {
+                compose?.composing == true -> compose.writeDraft(text)
+                !route.writeDraft(text) -> actions.setDraft(sessionId, text)
+            }
+        })
+    }
     route.SeedDraft(draft)
     val resources = LocalResources.current
     val metadata = state.session?.metadata
     // No session yet: the chips are the new-session draft's, which the start sends.
     val draftOptions by remember(compose) { compose?.newSession?.options ?: flowOf(null) }.collectAsStateWithLifecycle(null)
-    val modes = remember(drafting, draftOptions, metadata, mirror, settings.agentDefaultOverrides) {
-        if (drafting) composeChatModes(draftOptions) else ComposerModeResolver.resolve(metadata, mirror, settings.agentDefaultOverrides, resources::getString)
+    // A chat being started shows the picks it will start with (newSessionLikeSession): its anchor's.
+    val modesMetadata = metadata ?: anchor?.metadata
+    val modesMirror = if (metadata == null && anchor != null) anchorMirror ?: mirror else mirror
+    val modes = remember(drafting, draftOptions, modesMetadata, modesMirror, settings.agentDefaultOverrides) {
+        if (drafting) composeChatModes(draftOptions) else ComposerModeResolver.resolve(modesMetadata, modesMirror, settings.agentDefaultOverrides, resources::getString)
     }
     val latestMirror by rememberUpdatedState(mirror)
     val local by graph.localSettings.values.collectAsStateWithLifecycle()
@@ -199,13 +228,16 @@ private fun ChatRoute(
     val latestSettings by rememberUpdatedState(settings)
     // An empty chat takes images for its first message when the harness it starts does (happy-ios 20e20e0a8).
     val composeOptions = compose?.newSession?.options?.collectAsStateWithLifecycle()?.value
-    val images = rememberComposerImages(
-        enabled = when {
-            drafting -> composeOptions?.let { canUseAttachments(starting = it.startAgent) } ?: true
-            composing -> true
-            else -> canUseAttachments(state.session?.metadata)
-        },
-    )
+    // Pictures are the tab's they were picked in: another tab starts without them.
+    val images = key(routeId) {
+        rememberComposerImages(
+            enabled = when {
+                drafting -> composeOptions?.let { canUseAttachments(starting = it.startAgent) } ?: true
+                composing -> true
+                else -> canUseAttachments(state.session?.metadata)
+            },
+        )
+    }
     val latestImages by rememberUpdatedState(images)
     val notices = remember { mutableStateListOf<Alert>() }
     // Not lifecycle-bound: the change to the background is the one that matters.
@@ -324,7 +356,7 @@ private fun ChatRoute(
         val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
         val link = rememberShownLinkState(accountLinkState(socket == ConnectionStatus.CONNECTED, catchingUp, network))
         // A compose chat that has started is its session's chat: the checkout's tabs are that session's.
-        val slots = rememberSessionScreenSlots(graph, if (compose != null) sessionId else routeId, route.pending, state, onSwitch = { onOpenSession(sessionId, it) }, onBack = onBack)
+        val slots = rememberSessionScreenSlots(graph, if (compose != null) sessionId else routeId, route.pending, anchor, state, onSwitch = { onOpenSession(sessionId, it) }, onBack = onBack)
         val chatSlots = if (compose != null && composing) {
             val kind by compose.newSession.kind.collectAsStateWithLifecycle()
             ChatScreenSlots(
@@ -371,6 +403,50 @@ private fun ChatRoute(
         )
     }
 }
+
+/**
+ * The chat's state. Switched in place to another chat, the screen keeps the one it leaves until the
+ * new one has something to stand: its rows, its empty or deleted state, or [SWITCH_HOLD_MILLIS] gone
+ * by. So a tab never blanks to the loading spinner while the store reads it.
+ */
+@Composable
+private fun rememberShownChatState(feed: ChatFeed, sessionId: String): ChatState {
+    val next by remember(feed, sessionId) { feed.state(sessionId) }.collectAsStateWithLifecycle<ChatState?>(null)
+    var waited by remember(sessionId) { mutableStateOf(false) }
+    LaunchedEffect(sessionId) {
+        delay(SWITCH_HOLD_MILLIS)
+        waited = true
+    }
+    val shown = remember { arrayOfNulls<ChatState>(1) }
+    val current = next
+    if (current != null && (waited || current.stands())) {
+        SideEffect { shown[0] = current }
+        return current
+    }
+    return shown[0] ?: current ?: ChatState()
+}
+
+/**
+ * The chat [anchorId] names, read from the store; the one that was on screen at once when it is that
+ * chat (`+` was pressed in it), so a new tab's composer and placeholder never wait on the read.
+ */
+@Composable
+private fun rememberAnchor(graph: AppGraph, anchorId: String?, state: ChatState): ChatSessionInfo? {
+    val seen = remember { arrayOfNulls<ChatSessionInfo>(1) }
+    state.session?.let { session -> SideEffect { seen[0] = session } }
+    val anchor = remember(anchorId) { mutableStateOf((state.session ?: seen[0])?.takeIf { it.id == anchorId }) }
+    LaunchedEffect(anchorId) {
+        if (anchorId == null) return@LaunchedEffect
+        withContext(Dispatchers.IO) { graph.store.session(anchorId)?.let(ChatSessionInfo::from) }?.let { anchor.value = it }
+    }
+    return anchor.value
+}
+
+/** Whether [ChatScreen] has more than its spinner to show for this state. */
+private fun ChatState.stands(): Boolean = sessionLoaded && (session == null || snapshot.loaded || snapshot.rows.isNotEmpty())
+
+/** How long a chat switched to may leave the last one on screen before its spinner shows. */
+private const val SWITCH_HOLD_MILLIS = 300L
 
 /** The session's machine as the store has it now, re-read when machines change (off the main thread). */
 @Composable

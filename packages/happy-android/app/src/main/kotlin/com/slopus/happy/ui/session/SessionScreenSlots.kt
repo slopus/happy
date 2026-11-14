@@ -9,7 +9,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -47,10 +46,8 @@ import com.slopus.happy.ui.components.PromptModal
 import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.home.rememberSessionMenus
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * SessionView's stand-in handling for one route: [sessionId] is the chat
@@ -117,7 +114,8 @@ class SessionScreenSlots(
  * Happy Agent's activity over the composer; and for a chat still being
  * started, "New chat", its placeholder and a composer configured by the
  * chat it was opened beside. A failed start returns to that chat; leaving
- * a stand-in that has settled or failed retires its record. [onSwitch]
+ * a stand-in that has settled or failed retires its record. [anchor] is
+ * the chat a stand-in was opened beside, as the route has it. [onSwitch]
  * replaces the route's chat in place; [onBack] leaves the screen.
  */
 @Composable
@@ -125,6 +123,7 @@ fun rememberSessionScreenSlots(
     graph: AppGraph,
     routeId: String,
     pending: PendingChat?,
+    anchor: ChatSessionInfo?,
     state: ChatState,
     onSwitch: (String) -> Unit,
     onBack: () -> Unit,
@@ -271,9 +270,6 @@ fun rememberSessionScreenSlots(
     val activityBar: (@Composable () -> Unit)? = if (indicators.isEmpty()) null else ({ RigActivityBar(indicators) })
 
     val pendingSlot = pending?.takeIf { session == null }?.let { chat ->
-        val anchor by produceState<ChatSessionInfo?>(null, chat.anchorSessionId) {
-            value = withContext(Dispatchers.IO) { graph.store.session(chat.anchorSessionId)?.let(ChatSessionInfo::from) }
-        }
         val path = anchor?.metadata?.let { formatPathRelativeToHome(it.path, it.homeDir) }
         ChatPendingSlot(anchor) { PendingChatPlaceholder(chat, path) }
     }

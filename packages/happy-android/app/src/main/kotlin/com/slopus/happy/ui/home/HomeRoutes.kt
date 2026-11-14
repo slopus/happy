@@ -46,6 +46,7 @@ import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.chat.SessionRoute
+import com.slopus.happy.ui.chat.shownSessionId
 import com.slopus.happy.ui.chat.composeChat
 import com.slopus.happy.ui.components.AvatarSettings
 import com.slopus.happy.ui.components.LocalAvatarSettings
@@ -234,7 +235,7 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
     )
     // Opened over its chat, the chat's permission mode is picked here, as its header's menu picks it (iOS da5fda505).
     val overChat = remember(nav, id) {
-        nav.previousBackStackEntry?.let { it.destination.hasRoute<SessionRoute>() && it.toRoute<SessionRoute>().id == id } == true
+        nav.previousBackStackEntry?.let { it.destination.hasRoute<SessionRoute>() && it.shownSessionId() == id } == true
     }
     val resources = LocalResources.current
     val metadata = session?.metadata
@@ -288,7 +289,7 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
 internal fun NavHostController.leaveSessionInfo(sessionId: String, successor: String?, openSession: (String) -> Unit) {
     popBackStack()
     val top = currentBackStackEntry
-    val chatBehind = top?.destination?.hasRoute<SessionRoute>() == true && top.toRoute<SessionRoute>().id == sessionId
+    val chatBehind = top?.destination?.hasRoute<SessionRoute>() == true && top.shownSessionId() == sessionId
     when {
         successor != null && chatBehind -> navigate(SessionRoute(successor)) { popUpTo<SessionRoute> { inclusive = true } }
         successor != null -> openSession(successor)

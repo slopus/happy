@@ -51,6 +51,7 @@ import com.slopus.happy.ui.artifacts.AgentArtifactsRoute
 import com.slopus.happy.ui.feed.AgentFeedRoute
 import com.slopus.happy.ui.chat.COMPOSE_STARTED
 import com.slopus.happy.ui.chat.SessionRoute
+import com.slopus.happy.ui.chat.shownSessionId
 import com.slopus.happy.ui.chat.isComposeChatId
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.SceneAnimation
@@ -209,8 +210,8 @@ object MainPanelKey {
     fun of(entry: NavBackStackEntry): String? {
         val destination = entry.destination
         return when {
-            // A compose chat is the session its first send started, and nothing before.
-            destination.hasRoute<SessionRoute>() -> entry.toRoute<SessionRoute>().id
+            // A compose chat is the session its first send started, and nothing before; a tab picked in place, that tab.
+            destination.hasRoute<SessionRoute>() -> entry.shownSessionId()
                 .let { if (isComposeChatId(it)) entry.savedStateHandle.get<String>(COMPOSE_STARTED) else it }
                 ?.let(::session)
             destination.hasRoute<ConversationRoute>() -> entry.toRoute<ConversationRoute>().agentId?.let(::conversation)

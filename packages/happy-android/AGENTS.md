@@ -284,6 +284,18 @@ win:
   (`RuntimeShader`), at the display's rate (120 on the Fold) while resumed, still with
   animations removed; older Android draws a still gradient in the same
   colours.
+- **Worktree tabs:** a Happy CLI chat in the project layout has its
+  checkout's chats as tabs under the header (`ui/session/WorktreeTabStrip`).
+  A tab, `+`, archiving the open tab and a resume all switch the chat in
+  place: the page stays, so nothing slides and the header, strip and
+  composer stay where they are. The page keeps the chat it shows under
+  `SHOWN_CHAT` on its back stack entry (`shownSessionId()`, which the
+  tablet sidebar and session info read, not the route's id). The chat left
+  stays on screen until the new one has rows, an empty or deleted state,
+  or 300 ms have gone (`rememberShownChatState`), so a switch never blanks
+  to the spinner. Each chat brings its own list and scroll, its draft from
+  the first frame (the composer mirror) and none of the last tab's
+  pictures.
 - **Compose:** from home it opens an empty new chat; from a chat it
   replaces that chat with an empty one, animated, with Back going to home.
   The empty chat becomes the real session in place on the first send, with

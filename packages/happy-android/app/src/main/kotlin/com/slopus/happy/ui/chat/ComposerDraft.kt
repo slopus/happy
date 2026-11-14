@@ -21,8 +21,8 @@ import kotlinx.coroutines.launch
  * writes never moves the text back.
  */
 @Stable
-class ComposerDraft internal constructor() {
-    var text by mutableStateOf("")
+class ComposerDraft internal constructor(initial: String = "") {
+    var text by mutableStateOf(initial)
         private set
 
     /** Texts written and not yet seen back from the mirror, oldest first. */
@@ -51,11 +51,14 @@ class ComposerDraft internal constructor() {
     }
 }
 
-/** The draft over [mirror] (the account's `composer.mirror(sessionId)`), written through [onWrite]. */
+/**
+ * The draft over [mirror] (the account's `composer.mirror(sessionId)`), written through [onWrite];
+ * [initial] is what it holds until the mirror first answers.
+ */
 @Composable
-fun rememberComposerDraft(mirror: Flow<ComposerMirror>?, onWrite: suspend (String) -> Unit): ComposerDraft {
+fun rememberComposerDraft(mirror: Flow<ComposerMirror>?, initial: String = "", onWrite: suspend (String) -> Unit): ComposerDraft {
     val write by rememberUpdatedState(onWrite)
-    val draft = remember(mirror) { ComposerDraft() }
+    val draft = remember(mirror) { ComposerDraft(initial) }
     LaunchedEffect(draft) {
         for (text in draft.writes) write(text)
     }
