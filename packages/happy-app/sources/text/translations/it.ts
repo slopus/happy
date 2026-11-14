@@ -16,6 +16,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    composerContext: {
+        title: "Aggiungi contenuti",
+        all: "Tutto",
+        files: "File e cartelle",
+        plugins: "Plugin",
+        sites: "Siti",
+        sessions: "Conversazioni recenti",
+        upload: "Carica file",
+        uploadHint: "Scegli file dal dispositivo",
+        search: "Cerca file, plugin, siti o conversazioni",
+        empty: "Nessun contenuto corrispondente",
+        emptySites: "Nessun sito disponibile. Qui appariranno i siti delle conversazioni caricate.",
+        loading: "Caricamento…",
+        unavailable: "Impossibile caricare. Riprova.",
+        retry: "Riprova",
+        close: "Chiudi",
+        fileHint: "Directory di lavoro attuale",
+        pluginHint: "Fai riferimento a un plugin installato",
+        sessionHint: "Fai riferimento a una conversazione",
+        sitesHint: "Siti di conversazioni esistenti",
+        back: "Torna a tutti i tipi",
+        referenceHint: "Aggiunge solo un riferimento; la cronologia non viene copiata automaticamente.",
+    },
     personalAgent: {
         defaultName: "Paws",
         editProfile: "Modifica assistente",

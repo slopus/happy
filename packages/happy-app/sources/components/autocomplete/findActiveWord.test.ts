@@ -363,3 +363,15 @@ describe('getActiveWordQuery', () => {
         expect(getActiveWordQuery('@very_long_username')).toBe('very_long_username');
     });
 });
+
+describe('file mention queries with extensions', () => {
+    it('keeps @ active while typing a dotted file path', () => {
+        const text = 'Check @sources/MessageComposer.tsx';
+        expect(findActiveWord(text, { start: text.length, end: text.length }, ['@'])?.activeWord).toBe('@sources/MessageComposer.tsx');
+    });
+    it('preserves email and selected text boundaries', () => {
+        const text = 'mail@example.test';
+        expect(findActiveWord(text, { start: text.length, end: text.length }, ['@'])).toBeUndefined();
+        expect(findActiveWord('@file.ts', { start: 1, end: 8 }, ['@'])).toBeUndefined();
+    });
+});

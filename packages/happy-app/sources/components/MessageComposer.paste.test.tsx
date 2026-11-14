@@ -1,3 +1,4 @@
+vi.mock('./ComposerContextPicker', () => ({ ComposerContextPicker: 'ComposerContextPicker' }));
 vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path', Rect: 'Rect', Circle: 'Circle' }));
 // @vitest-environment jsdom
 import * as React from 'react';
@@ -347,7 +348,7 @@ describe('MessageComposer web image paste', () => {
         expect(renderer.root.findAllByProps({ testID: 'composer-prediction-text' })).toHaveLength(0);
     });
 
-    it('dismisses the prediction before opening an asynchronous attachment picker', () => {
+    it('dismisses prediction and opens the context menu before choosing an attachment', () => {
         const actions: string[] = [];
         let renderer: any;
         act(() => {
@@ -357,8 +358,11 @@ describe('MessageComposer web image paste', () => {
                 onPickImages={() => actions.push('pick')} />);
             renderers.push(renderer);
         });
-        const picker = renderer.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === 'imageUpload.chooseSourceTitle');
+        const picker = renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === 'composer-context-trigger');
         act(() => picker.props.onPress());
+        expect(actions).toEqual(['dismiss']);
+        const menu = renderer.root.findByType('ComposerContextPicker');
+        act(() => menu.props.onPickFiles());
         expect(actions).toEqual(['dismiss', 'pick']);
     });
 

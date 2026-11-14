@@ -139,7 +139,14 @@ export function findActiveWord(
         return undefined;
     }
 
-    const startIndex = findActiveWordStart(content, selection, prefixes);
+    // Dots are valid inside file queries. The generic backward scanner treats
+    // them as punctuation, so detect the current @ token before that scan.
+    const mention = prefixes.includes('@')
+        ? /(?:^|[ \n])(@[^\s,()\[\]{}<>;!?]*)$/.exec(content.slice(0, selection.start))
+        : null;
+    const startIndex = mention
+        ? selection.start - mention[1].length
+        : findActiveWordStart(content, selection, prefixes);
     const activeWordPart = content.substring(startIndex, selection.end);
 
     // Check if the active word ends with a space - if so, no active word

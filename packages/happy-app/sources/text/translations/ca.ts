@@ -16,6 +16,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const ca: TranslationStructure = {
+    composerContext: {
+        title: "Afegeix contingut",
+        all: "Tot",
+        files: "Fitxers i carpetes",
+        plugins: "Connectors",
+        sites: "Llocs web",
+        sessions: "Converses recents",
+        upload: "Puja fitxers",
+        uploadHint: "Tria fitxers del dispositiu",
+        search: "Cerca fitxers, connectors, llocs web o converses",
+        empty: "No hi ha contingut coincident",
+        emptySites: "Encara no hi ha llocs web disponibles. Aquí apareixeran els llocs web de les converses carregades.",
+        loading: "S’està carregant…",
+        unavailable: "No s’ha pogut carregar. Torna-ho a provar.",
+        retry: "Torna-ho a provar",
+        close: "Tanca",
+        fileHint: "Directori de treball actual",
+        pluginHint: "Fes referència a un connector instal·lat",
+        sessionHint: "Fes referència a una conversa",
+        sitesHint: "Llocs web de converses existents",
+        back: "Torna a tots els tipus",
+        referenceHint: "Només afegeix una referència; l’historial no es copia automàticament.",
+    },
     personalAgent: {
         defaultName: "Paws",
         editProfile: "Edita l’assistent",

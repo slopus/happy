@@ -27,6 +27,29 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
+    composerContext: {
+        title: "Добавить содержимое",
+        all: "Всё",
+        files: "Файлы и папки",
+        plugins: "Плагины",
+        sites: "Сайты",
+        sessions: "Недавние диалоги",
+        upload: "Загрузить файлы",
+        uploadHint: "Выбрать файлы на устройстве",
+        search: "Поиск файлов, плагинов, сайтов или диалогов",
+        empty: "Совпадений не найдено",
+        emptySites: "Доступных сайтов пока нет. Здесь появятся сайты из загруженных диалогов.",
+        loading: "Загрузка…",
+        unavailable: "Не удалось загрузить. Повторите попытку.",
+        retry: "Повторить",
+        close: "Закрыть",
+        fileHint: "Текущий рабочий каталог",
+        pluginHint: "Ссылка на установленный плагин",
+        sessionHint: "Ссылка на диалог",
+        sitesHint: "Сайты из существующих диалогов",
+        back: "Вернуться ко всем типам",
+        referenceHint: "Добавляется только ссылка; история диалога не копируется автоматически.",
+    },
     personalAgent: {
         defaultName: "Paws",
         editProfile: "Изменить помощника",

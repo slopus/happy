@@ -17,6 +17,9 @@ import { StatusDot } from './StatusDot';
 import { useActiveWord } from './autocomplete/useActiveWord';
 import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { AgentInputAutocomplete } from './AgentInputAutocomplete';
+import { ComposerContextHost } from './ComposerContextHost';
+import { ComposerContextPicker, type ComposerContextPickerHandle } from './ComposerContextPicker';
+import { findActiveWord } from './autocomplete/findActiveWord';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
@@ -127,9 +130,11 @@ interface MessageComposerProps {
 
 const MAX_CONTEXT_SIZE = 190000;
 
-// Stable fallbacks so home mode (which has no autocomplete) can omit these
+// Stable fallbacks so home mode can omit session autocomplete providers.
+// The shared context picker handles @ independently of those providers.
+// Keep these
 // props without handing MessageComposer.memo a fresh ref on every render.
-const EMPTY_AUTOCOMPLETE_PREFIXES: string[] = [];
+const EMPTY_AUTOCOMPLETE_PREFIXES: string[] = ['@'];
 const EMPTY_AUTOCOMPLETE_SUGGESTIONS = async () => [];
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
@@ -504,7 +509,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         || directoryInvalid
         || Boolean(props.directorySelector?.switching);
     const isSession = props.mode === 'session';
-    const autocompletePrefixes = props.autocompletePrefixes ?? EMPTY_AUTOCOMPLETE_PREFIXES;
+    const autocompletePrefixes = React.useMemo(() => props.autocompletePrefixes
+        ? Array.from(new Set(['@', ...props.autocompletePrefixes])) : EMPTY_AUTOCOMPLETE_PREFIXES, [props.autocompletePrefixes]);
     const autocompleteSuggestions = props.autocompleteSuggestions ?? EMPTY_AUTOCOMPLETE_SUGGESTIONS;
 
     // `hasText` drives only the send-button appearance/enabled state. It's
@@ -698,11 +704,40 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         });
     }, []);
 
+    const [contextFromButton, setContextFromButton] = React.useState(false);
+    const [dismissedContext, setDismissedContext] = React.useState<string | null>(null);
+    const contextPickerRef = React.useRef<ComposerContextPickerHandle>(null);
+    const mentionWord = findActiveWord(inputState.text, inputState.selection, ['@']);
+    const contextIdentity = `${inputState.text}\u0000${inputState.selection.start}:${inputState.selection.end}`;
+    const contextOpen = contextFromButton || (!!mentionWord && dismissedContext !== contextIdentity);
+    const closeContext = React.useCallback((restoreFocus = true) => {
+        setContextFromButton(false);
+        setDismissedContext(contextIdentity);
+        if (restoreFocus) inputRef.current?.focus();
+    }, [contextIdentity]);
+    const selectContext = React.useCallback((text: string) => {
+        const input = inputRef.current;
+        if (!input) return;
+        const liveText = input.getText();
+        // Use the actual token range, preserving text on both sides of the caret.
+        const word = findActiveWord(liveText, inputState.selection, ['@']);
+        const start = word?.offset ?? inputState.selection.start;
+        const end = word?.endOffset ?? inputState.selection.end;
+        const inserted = text ? `${text} ` : '';
+        const after = text && liveText[end] === ' ' ? liveText.slice(end + 1) : liveText.slice(end);
+        const result = liveText.slice(0, start) + inserted + after;
+        const cursor = start + inserted.length;
+        setContextFromButton(false);
+        setDismissedContext(`${result}\u0000${cursor}:${cursor}`);
+        input.setTextAndSelection(result, { start: cursor, end: cursor });
+        input.focus();
+        hapticsLight();
+    }, [inputState.selection]);
+
     // Use the tracked selection from inputState
     const activeWord = useActiveWord(inputState.text, inputState.selection, autocompletePrefixes);
     // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
-    // To customize: useActiveSuggestions(activeWord, autocompleteSuggestions, { clampSelection: false, wrapAround: false })
-    const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord, autocompleteSuggestions, { clampSelection: true, wrapAround: true });
+    const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord?.startsWith('@') || contextOpen ? null : activeWord, autocompleteSuggestions, { clampSelection: true, wrapAround: true });
 
     const predictionText = !hasText && !hasImages && !props.hasContext && !isSendBlocked
         && !props.isSending && !props.showAbortButton ? props.predictionText : null;
@@ -797,6 +832,10 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
+        if (contextOpen) {
+            if (event.key === 'Escape') { closeContext(); return true; }
+            if (contextPickerRef.current?.handleKey(event)) return true;
+        }
         // Handle autocomplete navigation first
         if (suggestions.length > 0) {
             if (event.key === 'ArrowUp') {
@@ -872,7 +911,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled, predictionText, acceptPrediction, props.onDismissPrediction]);
+    }, [contextOpen, closeContext, suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled, predictionText, acceptPrediction, props.onDismissPrediction]);
 
 
 
@@ -886,8 +925,20 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 styles.innerContainer,
                 { maxWidth: readingWidth }
             ]} ref={composerContentRef} testID="message-composer-content">
+                {contextOpen && <View style={[styles.autocompleteOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}>
+                    <ComposerContextHost>
+                        <ComposerContextPicker
+                            ref={contextPickerRef}
+                            query={mentionWord?.activeWord.slice(1) ?? ''}
+                            sessionId={props.sessionId}
+                            onSelect={selectContext}
+                            onPickFiles={props.onPickImages}
+                            onClose={closeContext}
+                        />
+                    </ComposerContextHost>
+                </View>}
                 {/* Autocomplete suggestions overlay */}
-                {suggestions.length > 0 && (
+                {!contextOpen && suggestions.length > 0 && (
                     <View style={[
                         styles.autocompleteOverlay,
                         { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
@@ -959,15 +1010,17 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 {props.zenMode && <View style={{ flex: 1 }} />}
                                 {!props.zenMode && <View style={styles.actionButtonsLeft}>
 
-                                {/* Image picker button (expImageUpload) */}
-                                {props.onPickImages && (
+                                {/* The same content chooser as typing @. */}
+                                {(props.onPickImages || !props.imageAttachmentsOnly) && (
                                     <Pressable
                                         accessibilityRole="button"
-                                        accessibilityLabel={t('imageUpload.chooseSourceTitle')}
+                                        accessibilityLabel={t('composerContext.title')}
+                                        testID="composer-context-trigger"
                                         onPress={() => {
                                             props.onDismissPrediction?.();
                                             hapticsLight();
-                                            props.onPickImages?.();
+                                            if (contextOpen) closeContext();
+                                            else { setDismissedContext(null); setContextFromButton(true); }
                                         }}
                                         hitSlop={8}
                                         onHoverIn={() => setHoveredAction('attach')}
@@ -985,7 +1038,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                                 ? theme.colors.radio.active
                                                 : theme.colors.button.secondary.tint}
                                         />
-                                        <ComposerTooltip testID="composer-attach-tooltip" label={t('imageUpload.chooseSourceTitle')} visible={Platform.OS === 'web' && hoveredAction === 'attach'} />
+                                        <ComposerTooltip testID="composer-attach-tooltip" label={t('composerContext.title')} visible={Platform.OS === 'web' && hoveredAction === 'attach' && !contextOpen} />
                                     </Pressable>
                                 )}
 

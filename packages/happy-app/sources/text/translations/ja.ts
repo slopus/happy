@@ -19,6 +19,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    composerContext: {
+        title: "コンテンツを追加",
+        all: "すべて",
+        files: "ファイルとフォルダー",
+        plugins: "プラグイン",
+        sites: "サイト",
+        sessions: "最近の会話",
+        upload: "ファイルをアップロード",
+        uploadHint: "デバイスからファイルを選択",
+        search: "ファイル、プラグイン、サイト、会話を検索",
+        empty: "一致するコンテンツがありません",
+        emptySites: "利用できるサイトはまだありません。読み込んだ会話のサイトがここに表示されます。",
+        loading: "読み込み中…",
+        unavailable: "読み込めませんでした。再試行してください。",
+        retry: "再試行",
+        close: "閉じる",
+        fileHint: "現在の作業ディレクトリ",
+        pluginHint: "インストール済みプラグインを参照",
+        sessionHint: "会話を参照",
+        sitesHint: "既存の会話のサイト",
+        back: "すべての種類に戻る",
+        referenceHint: "参照のみ追加します。会話履歴は自動ではコピーされません。",
+    },
     personalAgent: {
         defaultName: "Paws",
         editProfile: "アシスタントを編集",

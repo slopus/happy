@@ -18,6 +18,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    composerContext: {
+        title: "新增內容",
+        all: "全部",
+        files: "檔案和資料夾",
+        plugins: "外掛程式",
+        sites: "網站",
+        sessions: "最近對話",
+        upload: "上傳檔案",
+        uploadHint: "從裝置選擇檔案",
+        search: "搜尋檔案、外掛程式、網站或對話",
+        empty: "沒有符合的內容",
+        emptySites: "目前沒有可用的網站，已載入對話中的網站會顯示在這裡",
+        loading: "載入中…",
+        unavailable: "無法載入，請重試",
+        retry: "重試",
+        close: "關閉",
+        fileHint: "目前工作目錄",
+        pluginHint: "引用已安裝的外掛程式",
+        sessionHint: "引用對話",
+        sitesHint: "現有對話中的網站",
+        back: "返回所有類型",
+        referenceHint: "僅新增引用，不會自動複製歷史內容",
+    },
     personalAgent: {
         defaultName: "Paws",
         editProfile: "修改助理",

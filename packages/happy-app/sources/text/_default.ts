@@ -15,6 +15,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    composerContext: {
+        title: "Add content",
+        all: "All",
+        files: "Files and folders",
+        plugins: "Plugins",
+        sites: "Sites",
+        sessions: "Recent conversations",
+        upload: "Upload files",
+        uploadHint: "Choose files from your device",
+        search: "Search files, plugins, sites or conversations",
+        empty: "No matching content",
+        emptySites: "No sites available yet. Sites from loaded conversations will appear here.",
+        loading: "Loading…",
+        unavailable: "Could not load. Please retry.",
+        retry: "Retry",
+        close: "Close",
+        fileHint: "Current working directory",
+        pluginHint: "Reference an installed plugin",
+        sessionHint: "Reference a conversation",
+        sitesHint: "Sites from existing conversations",
+        back: "Back to all types",
+        referenceHint: "Adds a reference only; conversation history is not copied automatically.",
+    },
     personalAgent: {
         defaultName: "Paws",
         editProfile: "Edit assistant",

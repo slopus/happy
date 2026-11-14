@@ -18,6 +18,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    composerContext: {
+        title: "添加内容",
+        all: "全部",
+        files: "文件和文件夹",
+        plugins: "插件",
+        sites: "站点",
+        sessions: "最近对话",
+        upload: "上传文件",
+        uploadHint: "从设备选择文件",
+        search: "搜索文件、插件、站点或对话",
+        empty: "没有匹配内容",
+        emptySites: "还没有可用的站点，已加载对话中的站点会显示在这里",
+        loading: "正在加载…",
+        unavailable: "无法加载，请重试",
+        retry: "重试",
+        close: "关闭",
+        fileHint: "当前工作目录",
+        pluginHint: "引用已安装插件",
+        sessionHint: "引用对话",
+        sitesHint: "已有对话中的站点",
+        back: "返回全部类型",
+        referenceHint: "仅添加引用，不会自动复制历史内容",
+    },
     personalAgent: {
         defaultName: "Paws",
         editProfile: "修改助理",

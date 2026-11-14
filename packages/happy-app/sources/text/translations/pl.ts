@@ -27,6 +27,29 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    composerContext: {
+        title: "Dodaj treść",
+        all: "Wszystko",
+        files: "Pliki i foldery",
+        plugins: "Wtyczki",
+        sites: "Witryny",
+        sessions: "Ostatnie rozmowy",
+        upload: "Prześlij pliki",
+        uploadHint: "Wybierz pliki z urządzenia",
+        search: "Szukaj plików, wtyczek, witryn lub rozmów",
+        empty: "Brak pasującej treści",
+        emptySites: "Nie ma jeszcze dostępnych witryn. Tutaj pojawią się witryny z wczytanych rozmów.",
+        loading: "Wczytywanie…",
+        unavailable: "Nie udało się wczytać. Spróbuj ponownie.",
+        retry: "Ponów",
+        close: "Zamknij",
+        fileHint: "Bieżący katalog roboczy",
+        pluginHint: "Odwołaj się do zainstalowanej wtyczki",
+        sessionHint: "Odwołaj się do rozmowy",
+        sitesHint: "Witryny z istniejących rozmów",
+        back: "Wróć do wszystkich typów",
+        referenceHint: "Dodaje tylko odwołanie; historia nie jest kopiowana automatycznie.",
+    },
     personalAgent: {
         defaultName: "Paws",
         editProfile: "Edytuj asystenta",
