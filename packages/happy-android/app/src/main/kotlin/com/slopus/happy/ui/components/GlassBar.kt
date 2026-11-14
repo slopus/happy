@@ -82,7 +82,8 @@ fun barInsetTop(): Dp {
  * under it. The content is recorded for the glass here, unless the screen
  * records its own [source] (where another glass, a dock's, reads the same
  * recording; it must not record itself). A [backdrop] is drawn in the
- * ground's place, with the ground's alphas ([Modifier.glassBar]).
+ * ground's place, with the ground's alphas ([Modifier.glassBar]). [clear],
+ * the bar has no glass at all: only its controls draw, over the content.
  */
 @Composable
 fun GlassBarLayout(
@@ -92,6 +93,7 @@ fun GlassBarLayout(
     source: GlassSource? = null,
     backdrop: (DrawScope.() -> Unit)? = null,
     feathered: Boolean = true,
+    clear: Boolean = false,
     content: @Composable (top: Dp) -> Unit,
 ) {
     val own = rememberGlassSource(ground)
@@ -100,7 +102,7 @@ fun GlassBarLayout(
     SubcomposeLayout(modifier) { constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val barPlaceables = subcompose("bar") {
-            Box(Modifier.glassBar(glass, ground, blurs, backdrop, feathered).testTag(GlassBarTags.BAR)) {
+            Box((if (clear) Modifier else Modifier.glassBar(glass, ground, blurs, backdrop, feathered)).testTag(GlassBarTags.BAR)) {
                 CompositionLocalProvider(LocalBarOnGlass provides true, content = bar)
             }
         }.map { it.measure(loose.copy(maxHeight = Constraints.Infinity)) }

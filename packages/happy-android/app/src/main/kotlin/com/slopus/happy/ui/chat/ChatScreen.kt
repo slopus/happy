@@ -308,6 +308,8 @@ fun ChatScreen(
                 source = glass,
                 // Only the transcript runs under the bar; what stands in for it is held below the bar's foot.
                 feathered = showsList,
+                // A chat being started has no glass: its new work's picture slides up under Back still seen (Kirill).
+                clear = session == null && pending != null,
                 bar = {
                     Column(Modifier.liftBackdrop(lift, blur)) {
                         // An empty chat's header is Back alone; its name and actions fade in with the first send (iOS 323fb2e9f).
