@@ -6,6 +6,8 @@ import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
 import { getProjectPath } from "./path";
+import { isPermissionMode } from "./permissionMode";
+import type { PermissionMode } from "@/api/types";
 
 /**
  * Known internal Claude Code event types that should be silently skipped.
@@ -211,6 +213,19 @@ export async function createSessionScanner(opts: {
 }
 
 export type SessionScanner = ReturnType<typeof createSessionScanner>;
+
+/** Restore the mode recorded by the last main-session user turn at takeover. */
+export async function readSessionPermissionMode(workingDirectory: string, sessionId: string): Promise<PermissionMode | undefined> {
+    const entries = await readSessionEntries(getProjectPath(workingDirectory), sessionId);
+    for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        if (entry.kind !== 'message' || entry.message.type !== 'user'
+            || entry.message.isSidechain || entry.message.isMeta) continue;
+        const mode = entry.message.permissionMode;
+        if (typeof mode === 'string' && isPermissionMode(mode)) return mode;
+    }
+    return undefined;
+}
 
 
 //
