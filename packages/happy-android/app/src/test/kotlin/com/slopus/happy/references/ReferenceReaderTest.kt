@@ -66,7 +66,7 @@ class ReferenceReaderTest {
         reader.read(text)
         runCurrent()
         assertEquals(listOf("r1", "gone"), fake.asked)
-        assertEquals("See [Q3 revenue report](${HappyReferences.linkPrefix}artifact/r1) and an unavailable artifact.", HappyReferences.markdown(text, reader.references.value))
+        assertEquals("See [Q3 revenue report](happy://artifacts/r1) and an unavailable artifact.", HappyReferences.markdown(text, reader.references.value))
     }
 
     @Test
@@ -204,7 +204,7 @@ class ReferenceReaderTest {
         assertSame(before, reader.references.value)
         catalog.value = catalog.value.copy(bots = mapOf("b1" to bot))
         runCurrent()
-        assertEquals("[Chef](${HappyReferences.linkPrefix}agent/ab)", HappyReferences.markdown("<happy-agent id=\"ab\"/>", reader.references.value))
+        assertEquals("[Chef](happy://agents/ab)", HappyReferences.markdown("<happy-agent id=\"ab\"/>", reader.references.value))
         reader.setWords(ReferenceWords.English.copy(unavailableKinds = mapOf("agent" to "un agente no disponible")))
         runCurrent()
         assertEquals("un agente no disponible", HappyReferences.markdown("<happy-agent id=\"zz\"/>", reader.references.value))

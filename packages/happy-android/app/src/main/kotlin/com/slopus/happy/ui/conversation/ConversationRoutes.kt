@@ -471,7 +471,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val computer = computerName(graph, route.connectionId)
     // A name a message wrote, or a Happy URL, opens what it names here.
     val happyLinks = com.slopus.happy.ui.connection.LocalHappyLinks.current
-    val references = remember(nav, session, happyLinks) { com.slopus.happy.ui.references.ReferenceOpener(nav, route.connectionId, session.references, happyLinks) }
+    val references = remember(nav, session, happyLinks) { com.slopus.happy.ui.references.ReferenceOpener(nav, route.connectionId, session.references, happyLinks, session::isHere) }
     val links = remember(nav, computer, conversation.agentId, references) {
         LinkOpener.agent(context, computer, app = references::open, opens = references::opens) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
     }
@@ -483,7 +483,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     }.collectAsStateWithLifecycle(false)
     val roleCanSend = permissions.allows(if (chief) Permission.BOTS_MANAGE else Permission.CONTENT_WRITE)
     // A command's artwork is read and kept as the agent's other pictures are.
-    ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) {
+    ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) { com.slopus.happy.ui.references.ProvideBusyLinks(references, session.references) {
         ConversationScreen(
             state = state,
             opensAttach = route.attach,
@@ -552,7 +552,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                 )
             },
         )
-    } }
+    } } }
     state.alert?.let { problemText(it) }?.let {
         val title = stringResource(R.string.common_error)
         val ok = stringResource(R.string.common_ok)

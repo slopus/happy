@@ -105,6 +105,26 @@ data class References(
         }
     }
 
+    /**
+     * The reference a link to [url] names when this connection holds it, read
+     * from the address (a Happy URL or a share link; [here] says which
+     * installation is this connection's): an in-app link, desktop's `link`
+     * view. Null for another server's, for what isn't held (archived, a
+     * project, a person) and for any other address.
+     */
+    fun resolve(url: String, here: (String) -> Boolean): HappyReferences.Reference? {
+        val (reference, instanceId) = HappyReferences.reference(url) ?: return null
+        if (instanceId != null && !here(instanceId)) return null
+        return reference.takeIf { view(it) is View.Link }
+    }
+
+    /** Whether a link to [url] names a conversation [resolve] finds whose work runs now, one of [busy]'s agent IDs: its label shimmers. */
+    fun busy(url: String, here: (String) -> Boolean, busy: Set<String>): Boolean {
+        if (busy.isEmpty()) return false
+        val reference = resolve(url, here) ?: return false
+        return entity(reference)?.agentId in busy
+    }
+
     /** The conversation a reference opens, for an agent or a workspace. */
     fun entity(reference: HappyReferences.Reference): Entity? = when (reference.kind) {
         "agent" -> agents[reference.id]
@@ -129,7 +149,7 @@ data class References(
     }
 
     companion object {
-        /** Whether [text] may hold a reference at all, a Happy link or a share link that may read as one: most messages don't, and are never parsed for one. */
+        /** Whether [text] may hold a reference at all, a tag, a Happy link or a share link: most messages don't, and are never parsed for one. */
         fun mayHold(text: String): Boolean =
             text.contains("<happy-") || text.contains("happy:", ignoreCase = true) || text.contains("happy-file:", ignoreCase = true) ||
                 text.contains(com.slopus.happy.agent.HappyShareLinks.PREFIX)

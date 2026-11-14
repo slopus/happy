@@ -81,6 +81,8 @@ import com.slopus.happy.ui.browser.LocalLinkOpener
 import com.slopus.happy.ui.browser.webLinkGestures
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonSize
+import com.slopus.happy.ui.components.ShimmerSpec
+import com.slopus.happy.ui.components.shimmerBoxes
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -315,6 +317,10 @@ private fun rememberSpans(spans: List<MarkdownSpan>): AnnotatedString {
 private fun SpansText(spans: List<MarkdownSpan>, style: TextStyle, color: Color, modifier: Modifier = Modifier, onLayout: ((TextLayoutResult) -> Unit)? = null) {
     val text = rememberSpans(spans)
     val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    // A link to a conversation at work shimmers (desktop's busy reference link).
+    val busy = LocalBusyLinks.current?.takeIf { text.hasLinkAnnotations(0, text.length) }
+    val laid = if (busy != null) layout.value else null
+    val boxes = remember(text, laid, busy) { if (busy == null || laid == null) emptyList() else busyLinkBoxes(text, laid, busy) }
     Text(
         text = text,
         style = style,
@@ -323,7 +329,10 @@ private fun SpansText(spans: List<MarkdownSpan>, style: TextStyle, color: Color,
             layout.value = it
             onLayout?.invoke(it)
         },
-        modifier = modifier.webLinkGestures(text, layout).revealText(layout),
+        modifier = modifier
+            .webLinkGestures(text, layout)
+            .shimmerBoxes(boxes, ShimmerSpec.sheen(color, LocalLinkGround.current ?: HappyTheme.colors.surface))
+            .revealText(layout),
     )
 }
 
@@ -349,8 +358,8 @@ fun spansToAnnotatedString(spans: List<MarkdownSpan>, onLink: ((String) -> Unit)
             fontFamily = if (SpanStyle.Code in span.styles) AppMono else null,
         )
         val url = span.url
-        if (url != null && com.slopus.happy.references.HappyReferences.mention(url) != null) {
-            // A person this phone named: in the strong face, opening nothing, as in a conversation.
+        if (url != null && com.slopus.happy.references.HappyReferences.mention(url)) {
+            // A person: in the strong face, opening nothing, as in a conversation.
             withStyle(style.copy(fontWeight = FontWeight.SemiBold)) { append(span.text) }
         } else if (url != null && onLink != null) {
             withLink(LinkAnnotation.Clickable(url, LinkStyles) { onLink(url) }) { withStyle(style) { append(span.text) } }

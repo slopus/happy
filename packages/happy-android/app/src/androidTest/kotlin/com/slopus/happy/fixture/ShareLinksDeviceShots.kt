@@ -78,8 +78,8 @@ import java.io.File
  * Share links on a device: the Artifacts list's held row copies an
  * artifact's link.happy.page link, and a chat's share links read and open
  * in the app through the real [com.slopus.happy.ui.connection.HappyLinks]:
- * the one naming this installation by its live title and opening the
- * artifact, another server's saying it isn't connected.
+ * the one naming this installation, by its current name or as its
+ * address, opening the artifact, another server's saying it isn't connected.
  *
  * What is real: ArtifactsScreen, ConversationScreen over a real Conversation
  * and ReferenceReader, ArtifactScreen and ArtifactLoader, HappyLinks and the
@@ -146,7 +146,7 @@ class ShareLinksDeviceShots {
                     ProvideReferenceWords(reader)
                     val context = LocalContext.current
                     // As ConversationEntry wires its chat: a name opens what it names, a Happy URL or share link goes to HappyLinks.
-                    val references = remember(nav) { ReferenceOpener(nav, id, reader, happyLinks) }
+                    val references = remember(nav) { ReferenceOpener(nav, id, reader, happyLinks) { it == INSTANCE } }
                     val links = remember(references) { LinkOpener.agent(context, "Fixture", app = references::open, opens = references::opens) {} }
                     ProvideLinks(links) {
                         NavHost(nav, startDestination = "artifacts") {
@@ -204,12 +204,13 @@ class ShareLinksDeviceShots {
         device.findObject(By.pkg("com.android.systemui").desc("Dismiss"))?.click()
         device.wait(Until.gone(By.pkg("com.android.systemui").res("com.android.systemui", "clipboard_preview")), 8_000)
 
-        // 3. The chat: the bare link here by its live title, a labelled one by it too, another server's.
+        // 3. The chat: the bare link as its address, a labelled one by the artifact's title, another server's as the placeholder.
         rule.runOnUiThread { navigator!!.navigate("chat") }
-        rule.waitUntil(15_000) { rule.onAllNodes(hasTestTag(PROSE) and hasText("They are here: Fixture notes"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(15_000) { rule.onAllNodes(hasTestTag(PROSE) and hasText("They are here: $NOTES"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         capture("3-chat")
 
-        // 4. A tap on the labelled share link, which reads as the artifact's live title, opens it in the app.
+        // 4. A tap on the labelled share link opens the artifact in the app.
+        rule.waitUntil(15_000) { rule.onAllNodes(hasTestTag(PROSE) and hasText("Fixture notes, labelled", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         tapRowStart("Fixture notes, labelled")
         rule.waitUntil(15_000) { navigator!!.currentBackStackEntry?.destination?.route?.contains("ArtifactRoute") == true }
         rule.waitUntil(15_000) { rule.onAllNodes(hasText("A test fixture", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
@@ -219,7 +220,7 @@ class ShareLinksDeviceShots {
         // 5. Another server's share link: not connected, and nothing opens.
         rule.runOnUiThread { navigator!!.popBackStack() }
         rule.waitForIdle()
-        tapRowStart("The other team")
+        tapRowStart("an unavailable agent is on a server")
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("Can't open this link", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         capture("5-other-server")
     }

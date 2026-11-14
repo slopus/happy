@@ -3,8 +3,8 @@ package com.slopus.happy.references
 import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyReferenceKind
 import com.slopus.happy.agent.HappyShareLinks
+import com.slopus.happy.agent.HappyUrl
 import com.slopus.happy.agent.HappyUrls
-import java.util.UUID
 
 /**
  * Happy reference tags (`<happy-KIND id="…"/>`) an agent writes inline in
@@ -72,138 +72,94 @@ object HappyReferences {
     // Reading
 
     /**
-     * The scheme of the links written for references. Minted once per
-     * launch, as desktop's and iOS's are, so a link an agent wrote by hand
-     * never passes for one: only a tag the grammar accepted becomes one.
+     * What a link's address names, read from the address itself when it is
+     * drawn or tapped: a Happy URL (`happy://`, `happy-file:`), or a
+     * link.happy.page share link as the Happy URL it carries. Null for a
+     * malformed one and any other address.
      */
-    val linkPrefix: String = "happy-reference-${UUID.randomUUID().toString().take(8)}:"
+    fun target(url: String): HappyUrl? = HappyUrls.parse(HappyShareLinks.parse(url)?.url ?: url)
 
-    /** `kind/id`, and `/version` when the reference pins one. */
-    fun link(reference: Reference): String =
-        "$linkPrefix${reference.kind}/${reference.id}" + (reference.version?.let { "/$it" } ?: "")
-
-    /** A mention's link: `user/id`, and `/me` when it names the reader. */
-    fun mentionLink(reference: Reference, me: Boolean): String = "${linkPrefix}user/${reference.id}" + if (me) "/me" else ""
-
-    /** The person a mention's link names, and whether it is the reader. */
-    fun mention(link: String): Pair<String, Boolean>? {
-        if (!link.startsWith(linkPrefix)) return null
-        val parts = link.substring(linkPrefix.length).split('/')
-        if (!(parts.size == 2 || (parts.size == 3 && parts[2] == "me")) || parts[0] != "user" || !isId(parts[1])) return null
-        return parts[1] to (parts.size == 3)
+    /** The reference [url] names, and the installation it is locked to, if any: null for a file, a settings page or any other address. */
+    fun reference(url: String): Pair<Reference, String?>? {
+        val target = target(url) ?: return null
+        val link = target.link as? HappyLink.Reference ?: return null
+        return link.tagReference() to target.instanceId
     }
 
-    /** The reference a link written by [markdown] points at; null for a mention or any other link. */
-    fun reference(link: String): Reference? {
-        if (!link.startsWith(linkPrefix)) return null
-        val parts = link.substring(linkPrefix.length).split('/')
-        if ((parts.size != 2 && parts.size != 3) || !isId(parts[1])) return null
-        if (parts.size == 2) return Reference(parts[0], parts[1])
-        if (!isVersion(parts[2])) return null
-        return Reference(parts[0], parts[1], version = parts[2].toInt())
-    }
-
-    /** Whether [link] is one [markdown] wrote: a reference or a mention. */
-    fun owns(link: String): Boolean = link.startsWith(linkPrefix)
+    /** Whether [url] names a person: a mention, drawn in the strong face and opening nothing. */
+    fun mention(url: String): Boolean = reference(url)?.first?.kind == "user"
 
     /**
-     * Whether a Markdown link to [url] opens in the app: a reference this
-     * phone wrote (not a mention, which opens nothing), a Happy URL
-     * (`happy://`, `happy-file:`) an agent did, or a link.happy.page share
-     * link carrying one.
+     * Whether a Markdown link to [url] is the app's own to open: a Happy URL
+     * (`happy://`, `happy-file:`), well-formed or not, or a link.happy.page
+     * share link carrying one. A mention opens nothing.
      */
-    fun opensInApp(url: String): Boolean =
-        (reference(url) != null && mention(url) == null) || com.slopus.happy.agent.HappyUrls.owns(url) ||
-            com.slopus.happy.agent.HappyShareLinks.parse(url) != null
+    fun opensInApp(url: String): Boolean = (HappyUrls.owns(url) || HappyShareLinks.parse(url) != null) && !mention(url)
 
     /**
      * The Markdown a message is drawn from (desktop's `messageReferencesResolve`,
-     * iOS `HappyReferences.markdown`): a reference that opens is a link with its
-     * live name, any other its words; a kind this build doesn't know is never
-     * asked about. Happy links written as Markdown (`[label](happy://agents/…)`)
-     * read the same way, the live name winning over the written label, which
-     * stands in while the name is read and for what can't be looked up.
-     *
-     * [here] says which installation is the conversation's: a Happy link naming
-     * another is its label as words, a link.happy.page share link naming this
-     * one reads as the Happy link it carries, and another server's stays a web
-     * address. A file or settings link stays as written (its path, or
-     * "Settings", where it has no words), and a button stays one, on the Happy
-     * URL it opens. Still [streaming], a tag only partly come is held back, and
-     * a share link at the very end is left as written until it is whole.
+     * iOS `HappyReferences.markdown`). A Happy link, a share link or a
+     * `happy://` one written as Markdown (`[](https://link.happy.page/…)`),
+     * reads as the current name of what it names, whatever its label says
+     * (a label goes stale on a rename), and keeps the address it was written
+     * with: what it opens and whether it shimmers is read from that address
+     * where it is drawn ([target], [References.resolve]). A person reads as "@"
+     * and their name. What isn't found, archived, malformed or another
+     * server's ([here] says which installation is this connection's) reads as
+     * its placeholder ("an unavailable agent"), never the label: a share link
+     * stays a link, so a tap says its server isn't connected, and a `happy://`
+     * one is words. As on desktop, a deleted artifact is its last title as
+     * words, a file link its path and a settings link "Settings"; a button
+     * keeps its words. A bare link is its address. A tag (`<happy-agent id/>`)
+     * reads as a link to the Happy URL it names, or as its words where it opens
+     * nothing; a kind this build doesn't know is never asked about. Still
+     * [streaming], a tag only partly come is held back.
      */
     fun markdown(text: String, references: References, streaming: Boolean = false, here: ((String) -> Boolean)? = null): String {
-        val linked = HappyMarkdownLinks.replace(shareLinksHere(text, here, streaming)) { match ->
-            val url = match.link ?: return@replace null
+        val linked = HappyMarkdownLinks.replace(text) { match ->
+            if (match.image) return@replace null
             val title = if (match.button) " \"button\"" else ""
-            // A button stays one, which the screen draws as its words where it opens nothing.
-            fun words(name: String): String = if (match.button) "[$name](${match.url}$title)" else name
-            url.instanceId?.let { named -> if (here?.invoke(named) != true) return@replace words(words(match, url.link, references)) }
-            val reference = when (val link = url.link) {
-                is HappyLink.Settings, is HappyLink.File -> {
-                    // Opened as written; one naming this installation reads as the plain form,
-                    // and one with no words of its own (a bare share link) as its path.
-                    val unnamed = written(match).isEmpty() && !match.image
-                    if (url.instanceId == null && !unnamed) return@replace null
-                    val name = when {
-                        !unnamed -> match.label
-                        link is HappyLink.File -> label(link.path)
-                        else -> SETTINGS
+            fun link(name: String) = "[$name](${match.url}$title)"
+            // What opens nothing: a share link still says so when tapped, a Happy URL is its words.
+            fun unresolved(words: String) = if (match.button || match.url.startsWith(HappyShareLinks.PREFIX)) link(words) else words
+            val url = match.link ?: return@replace if (match.button) null else unresolved(label(references.words.unavailableReference))
+            when (val target = url.link) {
+                is HappyLink.Settings -> if (match.button) null else link(SETTINGS)
+                is HappyLink.File -> if (match.button) null else link(label(target.path))
+                is HappyLink.Reference -> {
+                    val reference = target.tagReference()
+                    val placeholder = label(references.placeholder(reference))
+                    if (url.instanceId?.let { here?.invoke(it) != true } == true) return@replace unresolved(placeholder)
+                    val shown = references.view(reference)
+                    val name = label(shown.label).ifEmpty { placeholder }
+                    when {
+                        shown !is References.View.Text -> link(name)
+                        name == placeholder -> unresolved(name)
+                        // Named, not offered: a deleted artifact's last title, a hidden subagent's.
+                        else -> if (match.button) link(name) else name
                     }
-                    return@replace "[$name](${HappyUrls.format(link)}$title)"
                 }
-                is HappyLink.Reference -> link.tagReference()
-            }
-            val shown = references.view(reference)
-            val written = written(match)
-            val name = when {
-                shown is References.View.Link && shown.reading && written.isNotEmpty() -> written
-                shown is References.View.Text && shown.label == references.placeholder(reference) && written.isNotEmpty() -> written
-                else -> label(shown.label).ifEmpty { label(references.placeholder(reference)) }
-            }
-            when (shown) {
-                // A button opens through the Happy URL it was written with, under the live name.
-                is References.View.Link -> if (match.button) "[$name](${HappyUrls.format(url.link)}$title)" else "[$name](${link(reference)})"
-                is References.View.Mention -> "[$name](${mentionLink(reference, shown.me)})"
-                is References.View.Text -> words(name)
             }
         }
         return replace(linked, streaming) { reference ->
             val shown = if (reference.kind in knownKinds) references.view(reference) else References.View.Text(references.placeholder(reference))
             val name = label(shown.label).ifEmpty { label(references.placeholder(reference)) }
             when (shown) {
-                is References.View.Link -> "[$name](${link(reference)})"
-                is References.View.Mention -> "[$name](${mentionLink(reference, shown.me)})"
+                is References.View.Link, is References.View.Mention -> url(reference)?.let { "[$name]($it)" } ?: name
                 is References.View.Text -> name
             }
         }
     }
 
     /**
-     * The same words as plain text, for what is read aloud and copied (`messageReferencesPlainText`).
-     * A share link stays the address it was written as: copied, it still opens from anywhere.
+     * The same words as plain text, for what is read aloud and copied
+     * (`messageReferencesPlainText`): tags as their names, and everything
+     * else, links among it, exactly as written.
      */
-    fun plain(text: String, references: References, streaming: Boolean = false, here: ((String) -> Boolean)? = null): String {
-        val linked = HappyMarkdownLinks.replace(text) { match -> plainWords(match, references, here) }
-        return replace(linked, streaming) { reference ->
+    fun plain(text: String, references: References, streaming: Boolean = false): String =
+        replace(text, streaming) { reference ->
             if (reference.kind in knownKinds) references.view(reference).label else references.placeholder(reference)
         }
-    }
-
-    /** The words one Happy link reads as in plain text (desktop's `linkPlainWords`). */
-    private fun plainWords(match: HappyMarkdownLinks.Match, references: References, here: ((String) -> Boolean)?): String {
-        val url = match.link ?: return label(match.label)
-        url.instanceId?.let { named -> if (here?.invoke(named) != true) return words(match, url.link, references) }
-        val written = written(match)
-        val link = url.link as? HappyLink.Reference ?: return written.ifEmpty { (url.link as? HappyLink.File)?.path ?: SETTINGS }
-        val reference = link.tagReference()
-        val shown = references.view(reference)
-        return when {
-            shown is References.View.Link && shown.reading && written.isNotEmpty() -> written
-            shown is References.View.Text && shown.label == references.placeholder(reference) && written.isNotEmpty() -> written
-            else -> shown.label
-        }
-    }
 
     /**
      * [text] with the Happy links naming this installation ([here]) as the
@@ -211,47 +167,35 @@ object HappyReferences {
      * ([ReferenceReader.read]).
      */
     fun linkTags(text: String, here: ((String) -> Boolean)?): String =
-        HappyMarkdownLinks.replace(shareLinksHere(text, here, streaming = false)) { match ->
+        HappyMarkdownLinks.replace(text) { match ->
             val url = match.link ?: return@replace null
             if (url.instanceId != null && here?.invoke(url.instanceId) != true) return@replace null
             (url.link as? HappyLink.Reference)?.tagReference()?.let(::tagSource)
         }
 
-    /**
-     * [text] with every share link outside code that names this installation
-     * ([here]) written as the `happy://` link it carries (desktop's
-     * `shareLinksHere`, 5a4c075c): a link's destination is replaced, and a bare
-     * or angle-bracketed one becomes an empty-label link that takes its
-     * target's name. Still [streaming], one at the very end may not have come
-     * whole and is left as written.
-     */
-    internal fun shareLinksHere(text: String, here: ((String) -> Boolean)?, streaming: Boolean): String {
-        if (here == null || !text.contains(HappyShareLinks.PREFIX)) return text
-        val cut = if (!streaming) text.length else text.lastIndexOf(HappyShareLinks.PREFIX).takeIf { start -> text.substring(start).none(Char::isWhitespace) } ?: text.length
-        return HappyShareLinks.rewrite(text.substring(0, cut), here) + text.substring(cut)
-    }
-
-    /** A link to what this conversation's installation doesn't hold: its label, or words for what it names. */
-    private fun words(match: HappyMarkdownLinks.Match, link: HappyLink, references: References): String = label(match.label).ifEmpty {
-        when (link) {
-            is HappyLink.File -> label(link.path)
-            is HappyLink.Settings -> SETTINGS
-            is HappyLink.Reference -> references.placeholder(link.tagReference())
-        }
-    }
-
-    /**
-     * The words a link was written with, as a name: none when they are only an
-     * address, as a bare share link's are once it reads as the Happy link it
-     * carries (desktop's documents read it so).
-     */
-    private fun written(match: HappyMarkdownLinks.Match): String {
-        val written = label(match.label)
-        return if (HappyShareLinks.parse(written) != null || HappyMarkdownLinks.isHappyUrl(written)) "" else written
-    }
-
     /** What a settings link with no words reads as (desktop's). */
     private const val SETTINGS = "Settings"
+
+    /** [reference] as the tag that names it. */
+    private fun tagSource(reference: Reference): String =
+        "<happy-${reference.kind} id=\"${reference.id}\"" +
+            (reference.version?.let { " version=\"$it\"" } ?: "") +
+            (reference.workspaceId?.let { " workspace=\"$it\"" } ?: "") + "/>"
+
+    /** The Happy URL a tag's [reference] names, on the conversation's own installation; null where the grammar has none. */
+    private fun url(reference: Reference): String? {
+        val kind = HappyReferenceKind.entries.firstOrNull { it.host == reference.kind + "s" } ?: return null
+        return runCatching {
+            HappyUrls.format(
+                HappyLink.Reference(
+                    kind,
+                    reference.id,
+                    version = reference.version.takeIf { kind == HappyReferenceKind.Artifact },
+                    workspaceId = reference.workspaceId.takeIf { kind == HappyReferenceKind.Service },
+                ),
+            )
+        }.getOrNull()
+    }
 
     /** A Happy URL's entity as the reference a tag would name. */
     private fun HappyLink.Reference.tagReference(): Reference {
@@ -266,12 +210,6 @@ object HappyReferences {
         }
         return Reference(kind, id, version, workspaceId)
     }
-
-    /** [reference] as the tag that names it. */
-    private fun tagSource(reference: Reference): String =
-        "<happy-${reference.kind} id=\"${reference.id}\"" +
-            (reference.version?.let { " version=\"$it\"" } ?: "") +
-            (reference.workspaceId?.let { " workspace=\"$it\"" } ?: "") + "/>"
 
     private val lineBreaks = Regex("\\s*[\\r\\n]+\\s*")
 

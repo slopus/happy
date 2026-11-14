@@ -80,6 +80,9 @@ import com.slopus.happy.ui.browser.Link
 import com.slopus.happy.ui.browser.linkAt
 import com.slopus.happy.ui.browser.webLinkGestures
 import com.slopus.happy.ui.chat.AgentSelectable
+import com.slopus.happy.ui.chat.LocalBusyLinks
+import com.slopus.happy.ui.chat.LocalLinkGround
+import com.slopus.happy.ui.chat.busyLinkBoxes
 import com.slopus.happy.ui.chat.LocalTextReveal
 import com.slopus.happy.ui.chat.LiftSelection
 import com.slopus.happy.ui.chat.LocalTrailingSlot
@@ -97,6 +100,8 @@ import com.slopus.happy.ui.chat.rememberCopyText
 import com.slopus.happy.ui.chat.rememberLiftSource
 import com.slopus.happy.ui.chat.revealHeight
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.ShimmerSpec
+import com.slopus.happy.ui.components.shimmerBoxes
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -192,6 +197,16 @@ private fun DrawnProse(prose: Prose, segment: DrawnSegment, index: Int, fill: Bo
         }
     }
     val unscaled = { width: Float -> width / scale[0] }
+    // A link to a conversation at work shimmers over the drawn words (desktop's busy reference link).
+    val busy = LocalBusyLinks.current
+    val boxes = remember(segment, busy, fill, rtl) {
+        if (busy == null || !segment.hasLinks) return@remember emptyList()
+        val width = unscaledWidth(segment, fill, prose.available)
+        segment.parts.flatMapIndexed { i, part ->
+            part.pieces.flatMap { piece -> busyLinkBoxes(piece.text, piece.layout, busy, Offset(piece.left(width, rtl), (segment.tops[i] + piece.y).toFloat())) }
+        }
+    }
+    val sheen = ShimmerSpec.sheen(palette.text, LocalLinkGround.current ?: colors.surface)
     val measure = remember(segment, prose.available, fill, rtl, density) {
         MeasurePolicy { _, constraints ->
             val width = if (constraints.hasBoundedWidth) constraints.maxWidth else prose.available
@@ -235,6 +250,7 @@ private fun DrawnProse(prose: Prose, segment: DrawnSegment, index: Int, fill: Bo
                 },
             )
             .then(if (reveal != null) Modifier.onPlaced { reveal.placed(index, it) } else Modifier)
+            .shimmerBoxes(boxes, sheen) { scale[0] }
             .drawBehind {
                 val s = scale[0]
                 val width = size.width / s

@@ -43,8 +43,10 @@ import com.slopus.happy.ui.browser.LinkOpener
 import com.slopus.happy.ui.browser.ProvideLinks
 import com.slopus.happy.ui.connection.LocalHappyLinks
 import com.slopus.happy.ui.connection.rememberHappyLinks
+import com.slopus.happy.ui.components.LocalShimmerPhase
 import com.slopus.happy.ui.conversation.ConversationScreen
 import com.slopus.happy.ui.conversation.ConversationScreenActions
+import com.slopus.happy.ui.references.ProvideBusyLinks
 import com.slopus.happy.ui.references.ProvideReferenceWords
 import com.slopus.happy.ui.references.ReferenceOpener
 import com.slopus.happy.ui.theme.HappyTheme
@@ -66,12 +68,15 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * Happy links in a chat and in a Markdown artifact on a device, as desktop
- * reads them: a task's share link, a bot's `happy://` link, an artifact's tag
- * and a Surface's instance link each by its live name; one naming what this
- * phone doesn't hold as words; another server's share link as its address,
- * saying it isn't connected when tapped. The person's own message names what
- * it links too, and an artifact's document reads its links the same way.
+ * Happy links in a chat and in a Markdown artifact on a device, as every
+ * client reads them now: a task's share link, a bot's `happy://` link and an
+ * artifact's link each by the current name of what it names, whatever its
+ * label, the bot's shimmering while it works; a bold link bold; one naming
+ * what this phone doesn't hold, and another server's, as the placeholder
+ * ("an unavailable agent"), the share link saying it isn't connected when
+ * tapped; a bare share link as its address; a tag by its live name. The
+ * person's own message and an artifact's document read their links the same
+ * way.
  *
  * What is real: ConversationScreen over a real Conversation and
  * ReferenceReader (over a made-up catalog), ArtifactScreen and ArtifactLoader,
@@ -126,8 +131,9 @@ class LinkChipsDeviceShots {
         }
         connection = id
         val here = { instanceId: String -> instanceId == INSTANCE }
+        val catalog = MutableStateFlow(CATALOG)
         val files = ArtifactClient(AgentClient(Agent(request), "fixture"))
-        val reader = ReferenceReader(scope, MutableStateFlow(CATALOG), emptyFlow(), readArtifact = { files.artifact(it) }, readUsers = { emptyMap() })
+        val reader = ReferenceReader(scope, catalog, emptyFlow(), readArtifact = { files.artifact(it) }, readUsers = { emptyMap() })
         val conversation = Conversation(
             api = ConversationApi(request),
             signals = emptyFlow(),
@@ -145,9 +151,10 @@ class LinkChipsDeviceShots {
                     ProvideReferenceWords(reader)
                     val context = LocalContext.current
                     // As ConversationEntry wires its chat: a name opens what it names, a Happy URL or share link goes to HappyLinks.
-                    val references = remember(nav) { ReferenceOpener(nav, id, reader, happyLinks) }
+                    val references = remember(nav) { ReferenceOpener(nav, id, reader, happyLinks, here) }
                     val links = remember(references) { LinkOpener.agent(context, "Fixture", app = references::open, opens = references::opens) {} }
-                    ProvideLinks(links) {
+                    // The sweep held where it crosses the middle of a link, since a test runs no infinite frames.
+                    ProvideLinks(links) { ProvideBusyLinks(references, reader) { CompositionLocalProvider(LocalShimmerPhase provides 0.45f) {
                         NavHost(nav, startDestination = "chat") {
                             composable("chat") {
                                 val state by conversation.state.collectAsStateWithLifecycle()
@@ -191,28 +198,31 @@ class LinkChipsDeviceShots {
                                 )
                             }
                         }
-                    }
+                    } } }
                     androidx.compose.runtime.SideEffect { navigator = nav }
                 }
             }
         }
 
-        // 1. The chat: every link by what it names now.
+        // 1. The chat: every link by its current name, the busy bot's shimmering, the bare share link as its address.
         rule.waitUntil(20_000) { rule.onAllNodes(hasTestTag(PROSE) and hasText("Launch brief is ready", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(PROSE) and hasText("Ship the release", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size >= 2 }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(PROSE) and hasText("Bot: Chef is cooking", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasTestTag(PROSE) and hasText("Unresolved: an unavailable agent", substring = true), useUnmergedTree = true).assertExists()
+        rule.onNode(hasTestTag(PROSE) and hasText("Bare: $TASK", substring = true), useUnmergedTree = true).assertExists()
+        assertEquals(setOf("ab"), reader.busy.value)
         capture("1-chat")
 
-        // 2. A tap on the artifact's name opens it; its document reads its own links by name.
+        // 2. A tap on the artifact's name opens it; its document reads its own links the same way.
         tapRowStart("Launch brief is ready")
         rule.waitUntil(15_000) { navigator!!.currentBackStackEntry?.destination?.route?.contains("ArtifactRoute") == true }
         assertEquals("fx-brief", navigator!!.currentBackStackEntry!!.toRoute<ArtifactRoute>().artifactId)
         rule.waitUntil(15_000) { rule.onAllNodes(hasText("Owner: Ship the release", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         capture("2-document")
 
-        // 3. Back in the chat, another server's share link says it isn't connected.
+        // 3. Back in the chat, another server's share link reads as the placeholder and says it isn't connected.
         rule.runOnUiThread { navigator!!.popBackStack() }
         rule.waitForIdle()
-        tapRowStart("is on a server this phone")
+        tapRowStart("an unavailable agent is on a server")
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("Can't open this link", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         capture("3-other-server")
     }
@@ -241,15 +251,21 @@ class LinkChipsDeviceShots {
         const val TASK = "https://link.happy.page/#1/$INSTANCE/agents/at?as=task"
         const val GONE = "https://link.happy.page/#1/$INSTANCE/agents/zz9?as=session"
         const val THEIRS = "https://link.happy.page/#1/$OTHER/agents/t7bgxjt05aexj73frl6ul37e?as=task"
+        const val BRIEF_SHARE = "https://link.happy.page/#1/$INSTANCE/artifacts/fx-brief"
 
         fun json(text: String) = TransportResponse(200, mapOf("content-type" to "application/json"), text.toByteArray())
 
         private fun obj(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
 
-        /** A bot, a task and a Surface the person is in, as a catalog holds them. Nobody's. */
+        /** A bot at work, a task and a Surface the person is in, as a catalog holds them. Nobody's. */
         val CATALOG = AgentCatalog(
             bots = mapOf("b1" to obj("""{"id":"b1","name":"Chef","workspaceId":"wb","agent":{"id":"ab","workspaceId":"wb","subtasks":[]}}""")),
             tasks = mapOf("t1" to obj("""{"id":"t1","name":"Ship the release","workspaceId":"wt","agent":{"id":"at","workspaceId":"wt","subtasks":[]}}""")),
+            memberships = mapOf("t1" to obj("""{"taskId":"t1","orderKey":"a"}""")),
+            agents = mapOf(
+                "ab" to obj("""{"id":"ab","workspaceId":"wb","version":"1","status":"working","subtasks":[]}"""),
+                "at" to obj("""{"id":"at","workspaceId":"wt","version":"1","status":"idle","subtasks":[]}"""),
+            ),
             surfaces = mapOf("s1" to obj("""{"id":"s1","type":"todo","name":"Groceries","members":[{"userId":"u1","orderKey":"a"}]}""")),
             userId = "u1",
             loaded = true,
@@ -258,22 +274,23 @@ class LinkChipsDeviceShots {
         val BRIEF = """
             # Launch brief
 
-            Owner: $TASK
+            Owner: []($TASK)
 
-            Ask [the chef](happy://agents/ab) about the menu, and tick off [the list](happy://$INSTANCE/surfaces/s1).
+            Ask [](happy://agents/ab) about the menu, and tick off [the list](happy://$INSTANCE/surfaces/s1).
 
-            Their plan: $THEIRS
+            Their plan: []($THEIRS)
         """.trimIndent()
 
         val PAGE = """{"hasMore":false,"runs":[{"id":"r1","status":"completed","startedAt":1,"messages":[
-            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"How is $TASK going?"}],"metadata":{}},
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"How is []($TASK) going?"}],"metadata":{}},
             {"id":"m2","role":"agent","createdAt":2,"content":[
-                {"type":"text","text":"Task: $TASK is on track."},
-                {"type":"text","text":"Bot: [the chef bot](happy://agents/ab) has the menu."},
-                {"type":"text","text":"<happy-artifact id=\"fx-brief\"/> is ready to read."},
-                {"type":"text","text":"Surface: [shopping list](happy://$INSTANCE/surfaces/s1)"},
-                {"type":"text","text":"Archived: $GONE"},
-                {"type":"text","text":"$THEIRS is on a server this phone isn't connected to."}
+                {"type":"text","text":"Task: []($TASK) is on track (its label is ignored: [old name]($TASK))."},
+                {"type":"text","text":"Bot: [](happy://agents/ab) is cooking. Tag: <happy-agent id=\"ab\"/> is cooking too."},
+                {"type":"text","text":"[](happy://artifacts/fx-brief) is ready to read."},
+                {"type":"text","text":"Bold: **[]($BRIEF_SHARE)**"},
+                {"type":"text","text":"Unresolved: [an old session]($GONE)"},
+                {"type":"text","text":"[Their plan]($THEIRS) is on a server this phone isn't connected to."},
+                {"type":"text","text":"Bare: $TASK"}
             ],"metadata":{}}
         ]}]}"""
     }

@@ -141,24 +141,4 @@ class HappyShareLinksTest {
         // A percent-encoded parameter is read as the page reads it.
         assertEquals(HappyShareRole.Task, HappyShareLinks.parse("${page}1/$instance/agents/$id?as=%74ask")?.role)
     }
-
-    @Test
-    fun readsShareLinksNamingThisInstanceInMarkdownAsTheHappyLinksTheyCarry() {
-        val share = "${page}1/$instance/agents/$id?as=task"
-        val happy = "happy://$instance/agents/$id"
-        val foreign = "${page}1/$other/agents/$id"
-        val here = { instanceId: String -> instanceId == instance }
-        assertEquals("See [](${happy}).", HappyShareLinks.rewrite("See $share.", here))
-        assertEquals("See [the plan]($happy) now", HappyShareLinks.rewrite("See [the plan]($share) now", here))
-        assertEquals("[]($happy)", HappyShareLinks.rewrite("<$share>", here))
-        // Another server's, or any without an instance here, is a web address.
-        assertEquals("See $foreign", HappyShareLinks.rewrite("See $foreign", here))
-        assertEquals("See $share", HappyShareLinks.rewrite("See $share", { false }))
-        // Code stays literal.
-        assertEquals("`$share` and []($happy)", HappyShareLinks.rewrite("`$share` and $share", here))
-        val fenced = "```\n$share\n```\n$share"
-        assertEquals("```\n$share\n```\n[]($happy)", HappyShareLinks.rewrite(fenced, here))
-        // The bare form is the caller's to choose.
-        assertEquals("See <$happy|$share>.", HappyShareLinks.rewrite("See $share.", here) { target, written -> "<${target.url}|$written>" })
-    }
 }

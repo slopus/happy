@@ -199,7 +199,7 @@ private val LinkUnderline = ComposeSpanStyle(textDecoration = TextDecoration.Und
 
 /**
  * MarkdownView's RenderSpans for a drawn row: the same styles, http(s)
- * links and the app's own (references, Happy URLs) as [LinkAnnotation.Url]
+ * links and the app's own (Happy URLs, share links) as [LinkAnnotation.Url]
  * (for hit tests and semantics) with their underline as a style, since nothing applies a link's styles to a
  * measured text but [androidx.compose.foundation.text.BasicText].
  */
@@ -211,11 +211,11 @@ internal fun proseSpans(spans: List<MarkdownSpan>): AnnotatedString = buildAnnot
             fontFamily = if (SpanStyle.Code in span.styles) AppMono else null,
         )
         val url = span.url
-        if (url != null && (isHttpMarkdownLink(url) || HappyReferences.opensInApp(url))) {
-            withLink(LinkAnnotation.Url(url)) { withStyle(style.merge(LinkUnderline)) { append(span.text) } }
-        } else if (url != null && HappyReferences.mention(url) != null) {
-            // A person this phone named (never a link an agent typed): in the strong face, opening nothing.
+        if (url != null && HappyReferences.mention(url)) {
+            // A person: in the strong face, opening nothing (desktop's MessageMention).
             withStyle(style.copy(fontWeight = FontWeight.SemiBold)) { append(span.text) }
+        } else if (url != null && (isHttpMarkdownLink(url) || HappyReferences.opensInApp(url))) {
+            withLink(LinkAnnotation.Url(url)) { withStyle(style.merge(LinkUnderline)) { append(span.text) } }
         } else if (SpanStyle.Code in span.styles) {
             // A long press on it takes it whole (desktop 3e08585d), not the word under the finger.
             pushStringAnnotation(INLINE_CODE, "")

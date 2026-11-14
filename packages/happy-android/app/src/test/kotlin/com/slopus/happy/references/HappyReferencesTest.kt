@@ -83,18 +83,17 @@ class HappyReferencesTest {
 
     private fun owners(): References = References.entities(catalog).let { (agents, workspaces) -> References(agents, workspaces) }
 
-    private fun markdown(text: String, references: References) =
-        HappyReferences.markdown(text, references).replace(HappyReferences.linkPrefix, "ref:")
+    private fun markdown(text: String, references: References) = HappyReferences.markdown(text, references)
 
     @Test
     fun anAgentReadsAsItsConversationsName() {
         val references = owners()
         // A bot's or task's own agent by the bot's or task's name; a subtask by its title.
-        assertEquals("[Chef](ref:agent/ab)", markdown("<happy-agent id=\"ab\"/>", references))
-        assertEquals("[Birthday party for Maya](ref:agent/at)", markdown("<happy-agent id=\"at\"/>", references))
-        assertEquals("Started [Guest list template](ref:agent/as) to draft it.", markdown("Started <happy-agent id=\"as\"/> to draft it.", references))
+        assertEquals("[Chef](happy://agents/ab)", markdown("<happy-agent id=\"ab\"/>", references))
+        assertEquals("[Birthday party for Maya](happy://agents/at)", markdown("<happy-agent id=\"at\"/>", references))
+        assertEquals("Started [Guest list template](happy://agents/as) to draft it.", markdown("Started <happy-agent id=\"as\"/> to draft it.", references))
         // A subtask without a name yet, and one the lists don't hold (archived).
-        assertEquals("[Untitled agent](ref:agent/ag)", markdown("<happy-agent id=\"ag\"/>", references))
+        assertEquals("[Untitled agent](happy://agents/ag)", markdown("<happy-agent id=\"ag\"/>", references))
         assertEquals("an unavailable agent", markdown("<happy-agent id=\"gone\"/>", references))
         assertEquals(References.Entity("Guest list template", "as"), references.entity(HappyReferences.Reference("agent", "as")))
     }
@@ -105,7 +104,7 @@ class HappyReferencesTest {
         val renamed = buildJsonObject { put("id", "as"); put("workspaceId", "ws"); put("title", "Seating plan") }
         val archived = buildJsonObject { put("id", "ag"); put("archivedAt", 1) }
         val references = References.entities(catalog.copy(agents = mapOf("as" to renamed, "ag" to archived))).let { (a, w) -> References(a, w) }
-        assertEquals("[Seating plan](ref:agent/as)", markdown("<happy-agent id=\"as\"/>", references))
+        assertEquals("[Seating plan](happy://agents/as)", markdown("<happy-agent id=\"as\"/>", references))
         assertEquals("an unavailable agent", markdown("<happy-agent id=\"ag\"/>", references))
         // An archived task isn't either.
         val gone = catalog.copy(tasks = catalog.tasks.mapValues { JsonObject(it.value + ("archivedAt" to JsonPrimitive(1))) })
@@ -118,17 +117,17 @@ class HappyReferencesTest {
         assertEquals("Dispatched to Find flights.", markdown("Dispatched to <happy-agent id=\"c1\"/>.", references))
         assertEquals("Subagent", markdown("<happy-agent id=\"c2\"/>", references))
         // A subtask the lists hold still opens as itself.
-        assertEquals("[Guest list template](ref:agent/as)", markdown("<happy-agent id=\"as\"/>", references))
+        assertEquals("[Guest list template](happy://agents/as)", markdown("<happy-agent id=\"as\"/>", references))
         assertNull(references.entity(HappyReferences.Reference("agent", "c1")))
     }
 
     @Test
     fun aWorkspaceReadsAsWhatItHolds() {
         val references = owners()
-        assertEquals("[Chef](ref:workspace/wb)", markdown("<happy-workspace id=\"wb\"/>", references))
-        assertEquals("[Birthday party for Maya](ref:workspace/wt)", markdown("<happy-workspace id=\"wt\"/>", references))
+        assertEquals("[Chef](happy://workspaces/wb)", markdown("<happy-workspace id=\"wb\"/>", references))
+        assertEquals("[Birthday party for Maya](happy://workspaces/wt)", markdown("<happy-workspace id=\"wt\"/>", references))
         // A subtask's own workspace by the first subtask in it.
-        assertEquals("[Guest list template](ref:workspace/ws)", markdown("<happy-workspace id=\"ws\"/>", references))
+        assertEquals("[Guest list template](happy://workspaces/ws)", markdown("<happy-workspace id=\"ws\"/>", references))
         assertEquals("ab", references.entity(HappyReferences.Reference("workspace", "wb"))?.agentId)
         assertEquals("an unavailable workspace", markdown("<happy-workspace id=\"nope\"/>", references))
     }
@@ -138,13 +137,13 @@ class HappyReferencesTest {
         var references = References()
         val text = "See <happy-artifact id=\"r1\" version=\"2\"/>."
         assertEquals(listOf("r1"), references.unread(text))
-        assertEquals("reading", "See [artifact](ref:artifact/r1/2).", markdown(text, references))
+        assertEquals("reading", "See [artifact](happy://artifacts/r1?version=2).", markdown(text, references))
         val read = References.artifact(buildJsonObject { put("title", "Q3 revenue report"); put("status", "active"); put("type", "markdown"); put("latestVersion", 2) })
         references = references.copy(artifacts = mapOf("r1" to read))
         assertEquals(emptyList<String>(), references.unread(text))
-        assertEquals("See [Q3 revenue report](ref:artifact/r1/2).", markdown(text, references))
+        assertEquals("See [Q3 revenue report](happy://artifacts/r1?version=2).", markdown(text, references))
         references = references.copy(artifacts = mapOf("r1" to References.Artifact.Active(" ", "html", 1)))
-        assertEquals("See [Untitled artifact](ref:artifact/r1/2).", markdown(text, references))
+        assertEquals("See [Untitled artifact](happy://artifacts/r1?version=2).", markdown(text, references))
         // Deleted: named, not offered. Missing: words that say so.
         references = references.copy(artifacts = mapOf("r1" to References.artifact(buildJsonObject { put("title", "Old report"); put("status", "deleted") })))
         assertEquals("See Old report.", markdown(text, references))
@@ -159,18 +158,18 @@ class HappyReferencesTest {
     fun aPersonReadsAsAMentionSetApartForTheReader() {
         var references = References(users = mapOf("u-steve" to "Steve", "u-kirill" to " Kirill "), me = "u-steve")
         val text = "<happy-user id=\"u-steve\"/>, can you look? <happy-user id=\"u-kirill\"/> signed off."
-        assertEquals("[@Steve](ref:user/u-steve/me), can you look? [@Kirill](ref:user/u-kirill) signed off.", markdown(text, references))
+        assertEquals("[@Steve](happy://users/u-steve), can you look? [@Kirill](happy://users/u-kirill) signed off.", markdown(text, references))
         assertEquals("@Steve, can you look? @Kirill signed off.", HappyReferences.plain(text, references))
         // Someone not read yet is a mention waiting for its name; someone the computer doesn't know reads as words that say so.
         assertEquals(listOf("u-gone"), references.unknownUsers("$text <happy-user id=\"u-gone\"/> <happy-user id=\"u-gone\"/>"))
-        assertEquals("[@…](ref:user/u-gone)", markdown("<happy-user id=\"u-gone\"/>", references))
+        assertEquals("[@…](happy://users/u-gone)", markdown("<happy-user id=\"u-gone\"/>", references))
         references = references.copy(missingUsers = setOf("u-gone"))
         assertEquals("an unavailable user", markdown("<happy-user id=\"u-gone\"/>", references))
-        // The link says who, and whether it is the reader; it opens nothing.
-        assertEquals("u-steve" to true, HappyReferences.mention(HappyReferences.mentionLink(HappyReferences.Reference("user", "u-steve"), me = true)))
-        assertEquals("u-kirill" to false, HappyReferences.mention(HappyReferences.mentionLink(HappyReferences.Reference("user", "u-kirill"), me = false)))
-        assertNull(HappyReferences.mention(HappyReferences.link(HappyReferences.Reference("agent", "a1"))))
-        assertNull("a hand-written link passed for a mention", HappyReferences.mention("happy-reference:user/u-steve"))
+        // A link to a person is a mention, whoever wrote it; it opens nothing.
+        assertTrue(HappyReferences.mention("happy://users/u-steve"))
+        assertTrue(HappyReferences.mention("happy://abcdefghijklmnopqrstuvwx/users/u-steve"))
+        assertEquals(false, HappyReferences.mention("happy://agents/a1"))
+        assertEquals(false, HappyReferences.opensInApp("happy://users/u-steve"))
         assertNull(references.entity(HappyReferences.Reference("user", "u-steve")))
     }
 
@@ -186,7 +185,7 @@ class HappyReferencesTest {
     fun theAppsWordsReadWhereNothingNamesIt() {
         val words = ReferenceWords("artefacto", "Artefacto sin título", "Agente sin título", "Espacio sin título", "Subagente", mapOf("agent" to "un agente no disponible"), "una referencia no disponible")
         val references = owners().copy(words = words)
-        assertEquals("[artefacto](ref:artifact/r)", markdown("<happy-artifact id=\"r\"/>", references))
+        assertEquals("[artefacto](happy://artifacts/r)", markdown("<happy-artifact id=\"r\"/>", references))
         assertEquals("un agente no disponible", markdown("<happy-agent id=\"gone\"/>", references))
         assertEquals("una referencia no disponible", markdown("<happy-gizmo id=\"g\"/> ", references).trim())
     }
@@ -195,18 +194,63 @@ class HappyReferencesTest {
     fun namesAreRunningWordsAndOnlyThisPhonesLinksOpen() {
         val references = References(agents = mapOf("a1" to References.Entity("Guest *list* [draft]\nnow", "a1")))
         val text = "Started <happy-agent id=\"a1\"/> to draft the [guest] list, not `<happy-agent id=\"a1\"/>`."
-        assertEquals("Started [Guest list (draft) now](ref:agent/a1) to draft the [guest] list, not `<happy-agent id=\"a1\"/>`.", markdown(text, references))
+        assertEquals("Started [Guest list (draft) now](happy://agents/a1) to draft the [guest] list, not `<happy-agent id=\"a1\"/>`.", markdown(text, references))
         assertEquals("Started Guest *list* [draft]\nnow to draft the [guest] list, not `<happy-agent id=\"a1\"/>`.", HappyReferences.plain(text, references))
-        assertEquals(HappyReferences.Reference("agent", "a1"), HappyReferences.reference(HappyReferences.link(HappyReferences.Reference("agent", "a1"))))
-        // A pinned version survives the link.
-        assertEquals(HappyReferences.Reference("artifact", "r", version = 3), HappyReferences.reference(HappyReferences.link(HappyReferences.Reference("artifact", "r", version = 3))))
-        assertNull(HappyReferences.reference(HappyReferences.linkPrefix + "artifact/r/0"))
-        assertNull("a hand-written link passed for a reference", HappyReferences.reference("happy-reference:agent/a1"))
-        // What opens in the app: this phone's references and Happy URLs, never a mention or the web.
-        assertTrue(HappyReferences.opensInApp(HappyReferences.link(HappyReferences.Reference("agent", "a1"))))
+        // What a link names is read from its own address: a Happy URL, internal or locked to an installation, or a share link carrying one.
+        assertEquals(HappyReferences.Reference("agent", "a1") to null, HappyReferences.reference("happy://agents/a1"))
+        assertEquals(HappyReferences.Reference("artifact", "r", version = 3) to null, HappyReferences.reference("happy://artifacts/r?version=3"))
+        assertEquals(HappyReferences.Reference("agent", "a1") to "abcdefghijklmnopqrstuvwx", HappyReferences.reference("happy://abcdefghijklmnopqrstuvwx/agents/a1"))
+        assertEquals(HappyReferences.Reference("agent", "a1") to "abcdefghijklmnopqrstuvwx", HappyReferences.reference("https://link.happy.page/#1/abcdefghijklmnopqrstuvwx/agents/a1?as=task"))
+        assertNull(HappyReferences.reference("happy://artifacts/r?version=0"))
+        assertNull(HappyReferences.reference("happy://settings/providers"))
+        assertNull(HappyReferences.reference("https://example.com"))
+        // What opens in the app: Happy URLs and share links, never a mention or the web.
+        assertTrue(HappyReferences.opensInApp("happy://agents/a1"))
         assertTrue(HappyReferences.opensInApp("happy://artifacts/r1"))
-        assertEquals(false, HappyReferences.opensInApp(HappyReferences.mentionLink(HappyReferences.Reference("user", "u"), me = false)))
+        assertTrue(HappyReferences.opensInApp("https://link.happy.page/#1/abcdefghijklmnopqrstuvwx/agents/a1"))
         assertEquals(false, HappyReferences.opensInApp("https://example.com"))
+    }
+
+    @Test
+    fun happyLinksReadAsTheCurrentNameAndKeepTheirAddress() {
+        val references = owners().copy(
+            artifacts = mapOf("r1" to References.Artifact.Active("Q3 report", "markdown", 2)),
+            users = mapOf("u1" to "Steve"),
+        )
+        val here = { instanceId: String -> instanceId == "abcdefghijklmnopqrstuvwx" }
+        val share = "https://link.happy.page/#1/abcdefghijklmnopqrstuvwx/agents/ab?as=bot"
+        val bold = "https://link.happy.page/#1/abcdefghijklmnopqrstuvwx/artifacts/r1"
+        val theirs = "happy://zyxwvutsrqponmlkjihgfedc/agents/ab"
+        val text = "Ask []($share), see [my notes](happy://artifacts/r1) or **[X]($bold)**, " +
+            "[their bot]($theirs), [gone](happy://agents/nobody), [Bob](happy://users/u1) and $share."
+        // The label is never what a Happy link reads as: the current name, or the placeholder; the address stays as written.
+        // What opens nothing is words, unless it is a share link, which still says so when tapped.
+        assertEquals(
+            "Ask [Chef]($share), see [Q3 report](happy://artifacts/r1) or **[Q3 report]($bold)**, " +
+                "an unavailable agent, an unavailable agent, [@Steve](happy://users/u1) and $share.",
+            HappyReferences.markdown(text, references, here = here),
+        )
+        val foreign = "https://link.happy.page/#1/zyxwvutsrqponmlkjihgfedc/agents/ab"
+        assertEquals("[an unavailable agent]($foreign) [an unavailable agent]($share)",
+            HappyReferences.markdown("[their bot]($foreign) [old]($share)", References(), here = here))
+        // A malformed Happy link, and a deleted artifact by its last title, are words.
+        assertEquals("an unavailable reference, Old report",
+            HappyReferences.markdown("[x](happy://agents/), [](happy://artifacts/r2)", references.copy(artifacts = mapOf("r2" to References.Artifact.Deleted("Old report")))))
+        // Copying keeps it all exactly as written.
+        assertEquals(text, HappyReferences.plain(text, references))
+        // A file link reads as its path and a settings link as "Settings", as on desktop; a button keeps its words.
+        assertEquals(
+            "[src/main.ts](happy://agents/ab/files/src/main.ts) [Settings](happy://settings/providers) [Open providers](happy://settings/providers \"button\")",
+            markdown("[main](happy://agents/ab/files/src/main.ts) [Providers](happy://settings/providers) [Open providers](happy://settings/providers \"button\")", references),
+        )
+        // A tag becomes a link to the Happy URL it names.
+        val tagged = markdown("<happy-agent id=\"ab\"/> wrote <happy-artifact id=\"r1\" version=\"2\"/>", references)
+        assertEquals("[Chef](happy://agents/ab) wrote [Q3 report](happy://artifacts/r1?version=2)", tagged)
+        for (shown in listOf(HappyReferences.markdown(text, references, here = here), HappyReferences.plain(text, references), tagged)) {
+            assertEquals(false, shown.contains("happy-reference"))
+        }
+        // What a link names is read once, as its tag would be.
+        assertEquals("<happy-artifact id=\"r1\"/> <happy-agent id=\"ab\"/> $theirs", HappyReferences.linkTags("[](happy://artifacts/r1) []($share) $theirs", here))
     }
 
     @Test
@@ -233,7 +277,7 @@ class HappyReferencesTest {
         val surfaces = References.surfaces(catalog)
         assertEquals(mapOf("s1" to "Groceries"), surfaces)
         val references = References(surfaces = surfaces + ("s4" to " "))
-        assertEquals("[Groceries](ref:surface/s1) and [Untitled](ref:surface/s4) but an unavailable surface",
-            HappyReferences.markdown("[list](happy://surfaces/s1) and <happy-surface id=\"s4\"/> but [](happy://surfaces/s2)", references).replace(HappyReferences.linkPrefix, "ref:"))
+        assertEquals("[Groceries](happy://surfaces/s1) and [Untitled](happy://surfaces/s4) but an unavailable surface",
+            HappyReferences.markdown("[list](happy://surfaces/s1) and <happy-surface id=\"s4\"/> but [](happy://surfaces/s2)", references))
     }
 }

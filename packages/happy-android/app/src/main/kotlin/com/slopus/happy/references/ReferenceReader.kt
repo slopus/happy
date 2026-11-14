@@ -4,6 +4,7 @@ import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentCatalog
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.AgentEvent
+import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.decode
 import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
@@ -79,6 +80,18 @@ class ReferenceReader(
         .distinctUntilChanged()
         .flowOn(compute)
         .stateIn(scope, SharingStarted.Eagerly, entities(catalog.value).let { References(it.agents, it.workspaces, me = it.me, surfaces = it.surfaces) })
+
+    /**
+     * The conversations whose work runs now, by agent ID, as home's rows
+     * shimmer ([com.slopus.happy.agent.AgentFeedRow.Conversation.running]):
+     * a link to one shimmers while it works. Apart from [references], so a
+     * turn starting or ending builds no row again.
+     */
+    val busy: StateFlow<Set<String>> = catalog
+        .map { now -> AgentFeed.derive(now).conversations.filter { it.running }.mapTo(HashSet()) { it.agentId } as Set<String> }
+        .distinctUntilChanged()
+        .flowOn(compute)
+        .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     init {
         scope.launch { events.collect(::take) }

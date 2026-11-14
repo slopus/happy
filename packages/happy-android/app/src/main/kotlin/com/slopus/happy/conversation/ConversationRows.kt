@@ -342,14 +342,14 @@ class ConversationRowBuilder(
             val sender = message.senderAgentId
             if (sender != null && sender != agentId && sender != parentAgentId) {
                 val text = inboundText(message.text, sender).trim()
-                return listOf(ConversationRow.Collaborator("$id:from", sender, plain(text, references, here), parseMarkdown(resolved(text, references, false, here), hasPage)))
+                return listOf(ConversationRow.Collaborator("$id:from", sender, plain(text, references), parseMarkdown(resolved(text, references, false, here), hasPage)))
             }
             // The agent that manages this one gives it its work: it reads as the person's lane.
             val fromManager = message.role == "agent" && sender != null && sender != agentId
             if (message.role == "user" || fromManager) {
                 val written = message.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
                     .let { if (fromManager && sender != null) inboundText(it, sender) else it }.trim()
-                val text = plain(written, references, here)
+                val text = plain(written, references)
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 val files = message.content.mapIndexedNotNull { index, block -> (block as? Block.File)?.ref(id, index) }
                 if (text.isEmpty() && pictures.isEmpty() && files.isEmpty()) return emptyList()
@@ -367,7 +367,7 @@ class ConversationRowBuilder(
                     is Block.Text -> block.text.trim().takeIf { it.isNotEmpty() }?.let { text ->
                         val shown = resolved(text, references, growing != null, here)
                         val holder = growing?.invoke(key, shown, true)
-                        rows += ConversationRow.Text(key, plain(text, references, here), holder?.content?.value?.blocks ?: parseMarkdown(shown, hasPage), holder)
+                        rows += ConversationRow.Text(key, plain(text, references), holder?.content?.value?.blocks ?: parseMarkdown(shown, hasPage), holder)
                     }
                     is Block.Reasoning -> block.text.trim().takeIf { it.isNotEmpty() }?.let {
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
@@ -416,8 +416,8 @@ class ConversationRowBuilder(
         }
 
         /**
-         * [text]'s Markdown with its references and Happy links as [references] reads them, and the share links naming
-         * [here]'s installation as the Happy links they carry; still [streaming], a tag only partly come is held back.
+         * [text]'s Markdown with its tags and Happy links (share links among them) by the live names [references]
+         * reads, the links still to the addresses written; still [streaming], a tag only partly come is held back.
          */
         internal fun resolved(text: String, references: References?, streaming: Boolean, here: ((String) -> Boolean)? = null): String = when {
             references == null -> text
@@ -425,9 +425,9 @@ class ConversationRowBuilder(
             else -> text
         }
 
-        /** [text] with its references as words: what is copied and read aloud. */
-        internal fun plain(text: String, references: References?, here: ((String) -> Boolean)? = null): String =
-            if (references == null || !References.mayHold(text)) text else HappyReferences.plain(text, references, here = here)
+        /** [text] with its tags as words and everything else, links among it, as written: what is copied and read aloud. */
+        internal fun plain(text: String, references: References?): String =
+            if (references == null || !References.mayHold(text)) text else HappyReferences.plain(text, references)
 
         /** A question's row, one key waiting at the end or settled in its turn, so it moves rather than swaps. */
         fun askKey(questionId: String): String = "ask:$questionId"

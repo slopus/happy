@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,7 @@ import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.NoticeKind
 import com.slopus.happy.conversation.ToolUse
 import com.slopus.happy.ui.chat.BubblePalette
+import com.slopus.happy.ui.chat.LocalLinkGround
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.UserMessage
 import com.slopus.happy.ui.components.Icon
@@ -359,7 +361,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
                 },
                 onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
                 tapLabel = toggle,
-                body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
+                body = if (prose != null) { _ -> CompositionLocalProvider(LocalLinkGround provides bubble.background) { UserProse(row, prose, cut, actions.legacy) } } else null,
             )
         }
     } else if (media) {

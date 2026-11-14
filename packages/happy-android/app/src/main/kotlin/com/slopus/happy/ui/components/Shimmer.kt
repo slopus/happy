@@ -17,6 +17,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -273,6 +276,112 @@ private class ShimmerNode(var clock: ShimmerClock, var highlight: Color, var pha
             ),
             blendMode = BlendMode.SrcAtop,
         )
+    }
+}
+
+/**
+ * [shimmer] for parts of what this draws: the band sweeps through each of
+ * [boxes] (in this node's pixels before [scale]) on its own, across its own
+ * width, as desktop's inline ShimmerText sweeps a busy link inside a
+ * paragraph. Nothing else this draws changes. No boxes, or animations off,
+ * is no shimmer at all.
+ */
+@Composable
+fun Modifier.shimmerBoxes(boxes: List<Rect>, highlight: Color, scale: () -> Float = { 1f }): Modifier {
+    val phase = LocalShimmerPhase.current
+    if (boxes.isEmpty() || (phase == null && rememberReduceMotion())) return this
+    val clock = rememberShimmerClock()
+    var visible by remember { mutableStateOf(true) }
+    if (phase == null && visible) {
+        DisposableEffect(clock) {
+            clock.attach()
+            onDispose { clock.detach() }
+        }
+    }
+    return this
+        .onVisibilityChanged { visible = it }
+        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .then(ShimmerBoxesElement(clock, boxes, highlight, scale, phase, sweeping = phase == null && visible))
+}
+
+/**
+ * Freezes every [shimmerBoxes] sweep under it at one point of the loop (0 to
+ * 1), for screenshots: a Compose test cancels the infinite frames the clock
+ * runs on.
+ */
+val LocalShimmerPhase = staticCompositionLocalOf<Float?> { null }
+
+private data class ShimmerBoxesElement(
+    val clock: ShimmerClock,
+    val boxes: List<Rect>,
+    val highlight: Color,
+    val scale: () -> Float,
+    val phase: Float?,
+    val sweeping: Boolean,
+) : ModifierNodeElement<ShimmerBoxesNode>() {
+    override fun create() = ShimmerBoxesNode(clock, boxes, highlight, scale, phase, sweeping)
+
+    override fun update(node: ShimmerBoxesNode) {
+        if (node.clock !== clock) node.sweep(false)
+        node.clock = clock
+        node.boxes = boxes
+        node.highlight = highlight
+        node.scale = scale
+        node.phase = phase
+        node.sweep(sweeping)
+        node.invalidateDraw()
+    }
+}
+
+private class ShimmerBoxesNode(
+    var clock: ShimmerClock,
+    var boxes: List<Rect>,
+    var highlight: Color,
+    var scale: () -> Float,
+    var phase: Float?,
+    private var sweeping: Boolean,
+) : Modifier.Node(), DrawModifierNode {
+    private var onClock = false
+
+    override fun onAttach() = sweep(sweeping)
+
+    override fun onDetach() {
+        sweep(false)
+        sweeping = false
+    }
+
+    fun sweep(on: Boolean) {
+        sweeping = on
+        val want = on && isAttached
+        if (want == onClock) return
+        onClock = want
+        if (want) clock.draws(this) else clock.undraws(this)
+    }
+
+    override fun ContentDrawScope.draw() {
+        drawContent()
+        val at = phase ?: if (sweeping) clock.phase else return
+        val s = scale()
+        val center = ShimmerSpec.bandCenter(at)
+        for (box in boxes) {
+            val left = box.left * s
+            val width = box.width * s
+            if (width <= 0f) continue
+            val at = left + center * width
+            val half = ShimmerSpec.BAND_HALF_WIDTH * width
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    0f to highlight.copy(alpha = 0f),
+                    0.5f to highlight,
+                    1f to highlight.copy(alpha = 0f),
+                    startX = at - half,
+                    endX = at + half,
+                ),
+                topLeft = Offset(left, box.top * s),
+                size = Size(width, box.height * s),
+                blendMode = BlendMode.SrcAtop,
+            )
+        }
     }
 }
 

@@ -26,7 +26,7 @@ class ConversationReferencesTest {
         assertEquals("See Q3 revenue report for the numbers.", row.text)
         val link = spans(row).single { it.url != null }
         assertEquals("Q3 revenue report", link.text)
-        assertEquals(HappyReferences.Reference("artifact", "r1"), HappyReferences.reference(link.url!!))
+        assertEquals(HappyReferences.Reference("artifact", "r1"), HappyReferences.reference(link.url!!)?.first)
         // Without references the tag stays as written.
         assertEquals("See <happy-artifact id=\"r1\"/> for the numbers.", (ConversationRowBuilder.build(message, "a1", null, false).single() as ConversationRow.Text).text)
     }

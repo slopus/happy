@@ -342,7 +342,7 @@ class LinksTest {
         val system = object : UriHandler { override fun openUri(uri: String) { opened += uri } }
         val opener = LinkOpener.legacy(ApplicationProvider.getApplicationContext(), system)
         opener.open("happy://artifacts/r1")
-        opener.open(com.slopus.happy.references.HappyReferences.link(com.slopus.happy.references.HappyReferences.Reference("agent", "a1")))
+        opener.open("happy://abcdefghijklmnopqrstuvwx/agents/a1")
         opener.open(url)
         assertEquals(listOf(url), opened)
     }

@@ -1,25 +1,27 @@
 package com.slopus.happy.references
 
+import com.slopus.happy.agent.HappyShareLinks
 import com.slopus.happy.agent.HappyUrl
-import com.slopus.happy.agent.HappyUrls
 
 /**
  * The Happy links an agent writes as Markdown inline links,
- * `[label](happy://agents/…)`, `![alt](happy://artifacts/…)` or with a
- * title, `[label](happy://settings/providers "button")`: found the way
+ * `[](https://link.happy.page/#1/…)`, `[label](happy://agents/…)`,
+ * `![alt](happy://artifacts/…)` or with a title,
+ * `[label](happy://settings/providers "button")`: found the way
  * `@slopus/happy-agent-client`'s `parseHappyLinks` finds them, as iOS
- * `HappyMarkdownLinks` ports it. Never in fenced code or a code span, never
- * after a backslash, and never across a blank line. Only destinations under
- * the `happy` or `happy-file` scheme are Happy links; every other link is
- * left as written.
+ * `HappyMarkdownLinks` ports it, the label possibly empty. Never in fenced
+ * code or a code span, never after a backslash, and never across a blank
+ * line. Only destinations under the `happy` or `happy-file` scheme, and
+ * link.happy.page share links, are Happy links; every other link is left as
+ * written.
  */
 object HappyMarkdownLinks {
     data class Match(
         /** The Markdown between the brackets, as written. */
         val label: String,
-        /** The destination as written. */
+        /** The destination as written: a Happy URL or a share link. */
         val url: String,
-        /** Null when the destination is malformed. */
+        /** What it opens, a share link as the Happy URL it carries; null when the destination is malformed. */
         val link: HappyUrl?,
         /** Titled exactly `button`. */
         val button: Boolean,
@@ -35,7 +37,7 @@ object HappyMarkdownLinks {
 
     /** Every Happy link in [markdown], in order. */
     fun matches(markdown: String): List<Match> {
-        if (!markdown.contains("happy", ignoreCase = true)) return emptyList()
+        if (!markdown.contains("happy", ignoreCase = true) && !markdown.contains(HappyShareLinks.PREFIX)) return emptyList()
         val found = ArrayList<Match>()
         for ((blockStart, blockEnd) in HappyReferences.textBlocks(markdown)) {
             var index = blockStart
@@ -136,7 +138,7 @@ object HappyMarkdownLinks {
             destinationEnd = index
         }
         val url = text.substring(destinationStart, destinationEnd)
-        if (!isHappyUrl(url)) return null
+        if (!isHappyUrl(url) && !url.startsWith(HappyShareLinks.PREFIX)) return null
         var title: String? = null
         val beforeTitle = index
         while (index < end && isSpace(text[index])) index++
@@ -158,7 +160,7 @@ object HappyMarkdownLinks {
         return Match(
             label = text.substring(at + 1, labelEnd),
             url = url,
-            link = HappyUrls.parse(url),
+            link = HappyReferences.target(url),
             button = title == "button",
             source = text.substring(start, index),
             start = start,

@@ -34,7 +34,7 @@ sealed interface MarkdownBlock {
     data class Buttons(val links: List<MarkdownSpan>) : MarkdownBlock
 }
 
-private val SPAN_PATTERN = Regex("""(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(((?:[^()]|\([^()]*\))+)\))?)|(`(.*?)(?:`|$))""")
+private val SPAN_PATTERN = Regex("""(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]*)\](?:\(((?:[^()]|\([^()]*\))+)\))?)|(`(.*?)(?:`|$))""")
 private val URL_PATTERN = Regex("""https?://[^\s<]+""")
 private val TRAILING_PUNCTUATION = Regex("""[),.;:!?]$""")
 private val TABLE_SEPARATOR = Regex("""^[|\s\-:=]*$""")
@@ -125,47 +125,53 @@ private fun MutableList<MarkdownSpan>.pushTextWithAutoLinks(text: String, styles
     if (lastIndex < text.length) add(MarkdownSpan(styles, text.substring(lastIndex)))
 }
 
-fun parseMarkdownSpans(markdown: String, header: Boolean): List<MarkdownSpan> {
-    val spans = ArrayList<MarkdownSpan>()
+fun parseMarkdownSpans(markdown: String, header: Boolean): List<MarkdownSpan> = ArrayList<MarkdownSpan>().also { it.addSpans(markdown, header, emptySet()) }
+
+/**
+ * [markdown]'s spans, each with [styles] over its own. Bold and italic are
+ * read again inside, so a link or code in them is one, in their style
+ * (`**[X](url)**` is one bold link).
+ */
+private fun MutableList<MarkdownSpan>.addSpans(markdown: String, header: Boolean, styles: Set<SpanStyle>) {
     var lastIndex = 0
     for (match in SPAN_PATTERN.findAll(markdown)) {
         // JS's global exec never yields an empty match here, but Kotlin's
         // findAll steps past one; an empty match carries nothing either way.
         if (match.value.isEmpty()) continue
         val plain = markdown.substring(lastIndex, match.range.first)
-        if (plain.isNotEmpty()) spans.pushTextWithAutoLinks(plain, emptySet())
+        if (plain.isNotEmpty()) pushTextWithAutoLinks(plain, styles)
         val g = match.groups
         when {
-            g[1] != null -> spans.pushTextWithAutoLinks(g[2]?.value.orEmpty(), if (header) emptySet() else setOf(SpanStyle.Bold))
-            g[3] != null -> spans.pushTextWithAutoLinks(g[4]?.value.orEmpty(), if (header) emptySet() else setOf(SpanStyle.Italic))
+            g[1] != null -> addSpans(g[2]?.value.orEmpty(), header, if (header) styles else styles + SpanStyle.Bold)
+            g[3] != null -> addSpans(g[4]?.value.orEmpty(), header, if (header) styles else styles + SpanStyle.Italic)
             g[5] != null -> {
                 val target = g[7]?.value
-                if (target != null) spans.add(link(g[6]!!.value, target))
-                else spans.pushTextWithAutoLinks("[${g[6]!!.value}]", emptySet())
+                if (target != null) add(link(g[6]!!.value, target, styles))
+                else pushTextWithAutoLinks("[${g[6]!!.value}]", styles)
             }
-            g[8] != null -> spans.add(MarkdownSpan(setOf(SpanStyle.Code), g[9]?.value.orEmpty()))
+            g[8] != null -> add(MarkdownSpan(styles + SpanStyle.Code, g[9]?.value.orEmpty()))
         }
         lastIndex = match.range.last + 1
     }
-    if (lastIndex < markdown.length) spans.pushTextWithAutoLinks(markdown.substring(lastIndex), emptySet())
-    return spans
+    if (lastIndex < markdown.length) pushTextWithAutoLinks(markdown.substring(lastIndex), styles)
 }
 
 /**
- * `[text](target)` as a span. A Happy link titled `button` is one; a settings
- * link that is malformed or has a blank label, and a malformed Happy link
- * asking to be a button, are their label as inert text (API.md, "Buttons",
- * "Settings links").
+ * `[text](target)` as a span in [styles]. A Happy link titled `button` is
+ * one; a settings link that is malformed or has a blank label, and a
+ * malformed Happy link asking to be a button, are their label as inert text
+ * (API.md, "Buttons", "Settings links").
  */
-private fun link(text: String, target: String): MarkdownSpan {
+private fun link(text: String, target: String, styles: Set<SpanStyle> = emptySet()): MarkdownSpan {
     val parts = LINK_TARGET.matchEntire(target.trim())
     val url = parts?.let { it.groups[1]?.value ?: it.groups[2]?.value } ?: target
     val title = parts?.let { it.groups[3] ?: it.groups[4] ?: it.groups[5] }?.value
     val link = HappyUrls.parse(url)?.link
     val button = title == "button" && HappyUrls.owns(url)
     val inert = (button && link == null) || (SETTINGS_HOST.containsMatchIn(url) && (link == null || text.isBlank()))
-    if (inert) return MarkdownSpan(emptySet(), text)
-    return MarkdownSpan(emptySet(), text, url, button = button)
+    if (inert) return MarkdownSpan(styles, text)
+    // A link with no words of its own (`[](url)` that nothing named) shows its address.
+    return MarkdownSpan(styles, text.ifEmpty { url }, url, button = button)
 }
 
 /**

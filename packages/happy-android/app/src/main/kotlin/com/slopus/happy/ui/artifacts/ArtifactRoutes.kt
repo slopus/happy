@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.artifacts
 
 import com.slopus.happy.references.HappyReferences
+import com.slopus.happy.ui.references.ProvideBusyLinks
 import com.slopus.happy.ui.references.ReferenceOpener
 import com.slopus.happy.ui.page
 import android.content.res.Resources
@@ -165,7 +166,9 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
     val ui by loader.state.collectAsStateWithLifecycle()
     val title by loader.title.collectAsStateWithLifecycle()
     val plugins = session?.pluginsAvailable?.collectAsStateWithLifecycle()?.value == true
-    ArtifactScreen(
+    // What a Happy link names opens in the app, as one in a message does, and shimmers while it works.
+    val opener = remember(nav, session, happyLinks) { ReferenceOpener(nav, route.connectionId, session!!.references, happyLinks, session::isHere) }
+    ProvideBusyLinks(opener, session!!.references) { ArtifactScreen(
         title = title,
         ui = ui,
         media = loader.media,
@@ -194,9 +197,8 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                 },
                 artifactKey = "artifact-${route.artifactId}",
                 references = session?.references?.references,
-                resolve = { text, references -> HappyReferences.markdown(text, references, here = session!!::isHere) },
-                // What a Happy link names opens in the app, as one in a message does.
-                openApp = { url -> ReferenceOpener(nav, route.connectionId, session?.references, happyLinks).open(url) },
+                resolve = { text, references -> HappyReferences.markdown(text, references, here = session::isHere) },
+                openApp = { url -> opener.open(url) },
                 // The artifact itself, not one file of it a link opened.
                 onDelete = if (route.path == null) ({ ArtifactClient(session!!.client).delete(route.artifactId) }) else null,
                 genUiSecrets = session?.client?.let { GenUiSecretApi(it) },
@@ -204,7 +206,7 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
             )
         },
         history = rememberArtifactHistory(loader, session, nav, route, title),
-    )
+    ) }
 }
 
 /** The artifact's versions for its screen; another version takes this screen's place, so Back still leaves the artifact. */

@@ -80,6 +80,30 @@ class MarkdownParserTest {
         assertEquals(MarkdownBlock.Header(2, listOf(plain("Title"))), parseMarkdown("## **Title**").single())
     }
 
+    @Test fun `links and code inside bold and italic keep the style`() {
+        val share = "https://link.happy.page/#1/k3x9q2m7p0a4b8c1d5e6f7g2/artifacts/r1"
+        val bold = setOf(SpanStyle.Bold)
+        assertEquals(listOf(MarkdownSpan(bold, "X", share)), (parseMarkdown("**[X]($share)**").single() as MarkdownBlock.Text).content)
+        assertEquals(
+            listOf(plain("See "), MarkdownSpan(bold, "the "), MarkdownSpan(bold, "plan", "happy://agents/a1"), MarkdownSpan(bold, " now"), plain(".")),
+            (parseMarkdown("See **the [plan](happy://agents/a1) now**.").single() as MarkdownBlock.Text).content,
+        )
+        assertEquals(
+            listOf(MarkdownSpan(setOf(SpanStyle.Italic), "run "), MarkdownSpan(setOf(SpanStyle.Italic, SpanStyle.Code), "make")),
+            (parseMarkdown("*run `make`*").single() as MarkdownBlock.Text).content,
+        )
+        // Italic inside bold, and a bare address in bold is a bold link.
+        assertEquals(
+            listOf(MarkdownSpan(bold, "a "), MarkdownSpan(setOf(SpanStyle.Bold, SpanStyle.Italic), "b")),
+            (parseMarkdown("**a *b***").single() as MarkdownBlock.Text).content.filter { it.text.isNotEmpty() },
+        )
+        assertEquals(listOf(MarkdownSpan(bold, share, share)), (parseMarkdown("**$share**").single() as MarkdownBlock.Text).content)
+        // A link with no words that nothing named shows its address.
+        assertEquals(listOf(plain(share, share)), (parseMarkdown("[]($share)").single() as MarkdownBlock.Text).content)
+        // A header keeps its links, without the style.
+        assertEquals(MarkdownBlock.Header(2, listOf(plain("X", share))), parseMarkdown("## **[X]($share)**").single())
+    }
+
     @Test fun `code blocks, mermaid, rules, options and numbered lists`() {
         val blocks = parseMarkdown("```kotlin\nval x = 1\n\nprintln(x)\n```\n```mermaid\ngraph TD\n```\n---\n<options>\n<option>Yes</option>\n<option>No</option>\n</options>\n1. one\n  2. two\n10. ten")
         assertEquals(MarkdownBlock.CodeBlock("kotlin", "val x = 1\n\nprintln(x)"), blocks[0])
