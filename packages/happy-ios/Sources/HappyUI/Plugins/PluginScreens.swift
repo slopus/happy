@@ -248,7 +248,6 @@ final class PluginViewController: SettingsPageViewController {
             card.append(acting(SettingsRow(id: "installation-\(id)-remove", title: Text.remove, icon: ("trash", .action), accessory: .none, destructive: true,
                                            action: { [weak self] in self?.confirmRemove(installation) })))
         }
-        card[card.count - 1].footer = installation.toolPrefix.isEmpty ? nil : Text.toolPrefix(installation.toolPrefix)
         return card
     }
 

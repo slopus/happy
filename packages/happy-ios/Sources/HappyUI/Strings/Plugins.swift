@@ -23,7 +23,6 @@ extension Strings {
         static let installedValue = "Installed"
         static let status = "Status"
         static func version(_ version: String) -> String { "Version \(version)" }
-        static func toolPrefix(_ prefix: String) -> String { "Agents call its tools as \(prefix)…" }
 
         static let install = "Install"
         static let installAgain = "Install Again"

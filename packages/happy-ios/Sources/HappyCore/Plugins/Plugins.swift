@@ -163,11 +163,11 @@ public struct PluginInstallation: Decodable, Equatable, Sendable, Identifiable {
     /// Signed in with a method, and serving: it has a way out (Sign Out).
     public var isSignedIn: Bool { status == .active && authMethod != nil }
 
-    /// How it is told apart from its siblings: its label, or its number past the first.
+    /// How it is named to people: the plugin's name, with its label when it has one.
     public var title: String {
         let name = pluginName ?? pluginId
         if let label { return "\(name) · \(label)" }
-        return ordinal > 1 ? "\(name) \(ordinal)" : name
+        return name
     }
 }
 

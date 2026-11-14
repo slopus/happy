@@ -68,12 +68,9 @@ internal fun PluginMark(image: PluginImage?, size: Dp, radius: Dp = size * 0.25f
     if (image != null) AgentPicture(image.path, image.thumbhash, size, radius) else TileMark(Ionicon.ExtensionPuzzleOutline, RowTile.Orange, size)
 }
 
-/** How one installation is named beside its siblings: its label, or its number past the first. */
-internal fun installationTitle(installation: PluginInstallation): String = when {
-    installation.label != null -> "${installation.name} · ${installation.label}"
-    installation.ordinal > 1 -> "${installation.name} ${installation.ordinal}"
-    else -> installation.name
-}
+/** How one installation is named to people: the plugin's name, with its label when it has one. */
+internal fun installationTitle(installation: PluginInstallation): String =
+    installation.label?.let { "${installation.name} · $it" } ?: installation.name
 
 @Composable
 internal fun statusWords(installation: PluginInstallation): String = when {

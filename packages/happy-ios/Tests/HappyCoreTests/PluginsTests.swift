@@ -118,7 +118,7 @@ final class PluginsTests: XCTestCase {
         await server.answer("GET /v0/plugins/installations", 200, Self.installations)
         let catalog = try await AgentClient(transport: server, token: "t").pluginCatalog()
         let installations = try XCTUnwrap(catalog.installations)
-        XCTAssertEqual(installations.map(\.title), ["GitHub", "GitHub · Acme", "GitHub 3", "jira"])
+        XCTAssertEqual(installations.map(\.title), ["GitHub", "GitHub · Acme", "GitHub", "jira"])
         XCTAssertEqual(installations.map(\.status), [.active, .methodUnavailable, .notConfigured, .active])
         XCTAssertEqual(installations.map(\.isSignedIn), [true, false, false, false])
         let methods = try XCTUnwrap(catalog.plugin("github")).authMethods
