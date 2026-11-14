@@ -13,6 +13,13 @@ const flag = (name) => args[args.indexOf(name) + 1];
 const save = () => fs.writeFileSync(statePath, JSON.stringify(state));
 const strip = (uri) => uri.replace(/^oss:\/\/[^/]+\//, '');
 
+if (args[0] === 'ossutil' && args[1] === 'cat') {
+  const object = state[strip(args[2])];
+  if (!object || object.text === undefined) process.exit(1);
+  fs.writeSync(1, object.text.slice(0, args.includes('--head') ? Number(flag('--head')) : undefined));
+  process.exit(0);
+}
+
 if (args[0] === 'ossutil' && args[1] === 'set-props') {
   const key = strip(args[2]);
   if (!state[key]) process.exit(1);
@@ -103,8 +110,8 @@ for (const file of files) {
     fs.appendFileSync(process.env.FAKE_ALIYUN_LOG, `COPIED ${key}\n`);
     if (process.env.FAKE_CORRUPT_COPY_KEY === key) state[key].md5 = '0'.repeat(32);
   }
-  if (key.startsWith('manifests/') && !source.startsWith('oss://') && !recursive) {
-    state[key].text = fs.readFileSync(source, 'utf8');
+  if ((key.startsWith('manifests/') || key.endsWith('.paws-release-revision')) && !source.startsWith('oss://')) {
+    state[key].text = fs.readFileSync(recursive ? path.join(source, file.relative) : source, 'utf8');
   }
   copied++;
   if (Number(process.env.FAKE_FAIL_AFTER) === copied) {

@@ -55,6 +55,12 @@ async function runUpload(fixture, extraEnv = {}) {
     return { ...result, log: await readFile(fixture.logPath, 'utf8').catch(() => '') };
 }
 
+async function activateFixtureRevision(fixture) {
+    const state = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+    state['web/current/.paws-release-revision'] = state[`web/releases/${revision}/.paws-release-revision`];
+    await writeFile(fixture.statePath, JSON.stringify(state));
+}
+
 test('uploads immutable release once, then copies live assets inside OSS', async () => {
     const fixture = await createFixture();
     try {
@@ -235,12 +241,115 @@ test('a new release copies only changed public objects and retains old asset URL
         assert.equal(result.status, 0, result.stderr);
         assert.match(result.stdout, /OSS public sync _expo\/: 2 copied, 0 reused/);
         assert.match(result.stdout, /OSS public sync assets\/: 0 copied, 1 reused/);
-        const copied = result.log.split('\n').filter(line => line.startsWith('COPIED '));
+        const copied = result.log.split('\n').filter(line => line.startsWith('COPIED _expo/'));
         assert.deepEqual(copied.sort(), ['COPIED _expo/static/[route] #chunk.js', 'COPIED _expo/static/app.js']);
         const final = JSON.parse(await readFile(fixture.statePath, 'utf8'));
         assert.ok(final['assets/retained-old.png']);
         assert.equal(final['_expo/static/app.js'].md5, createHash('md5').update('changed').digest('hex'));
         assert.equal(final['_expo/static/app.js'].cacheControl, 'public,max-age=31536000,immutable');
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('a new immutable release uploads only changed bytes and copies matching prior objects inside OSS', async () => {
+    const fixture = await createFixture();
+    try {
+        await writeFile(join(fixture.dist, '_expo', 'static', 'large.js'), Buffer.alloc(9 * 1024 * 1024, 65));
+        assert.equal((await runUpload(fixture)).status, 0);
+        await activateFixtureRevision(fixture);
+        const next = 'c'.repeat(40);
+        await writeFile(join(fixture.dist, '.paws-release-revision'), next + '\n');
+        await writeFile(join(fixture.dist, '_expo', 'static', 'app.js'), 'changed');
+        await writeFile(fixture.logPath, '');
+        const result = await runUpload(fixture);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /2 uploaded \(48 B\), \d+ copied inside OSS/);
+        const state = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        for (const name of ['assets/fonts/Ionicons.abc.ttf', '_expo/static/large.js', 'canvaskit.wasm']) {
+            assert.deepEqual(state[`web/releases/${next}/${name}`], state[`web/releases/${revision}/${name}`]);
+            assert.ok(result.log.includes(`COPIED web/releases/${next}/${name}`));
+        }
+        assert.notEqual(state[`web/releases/${next}/_expo/static/app.js`].md5, state[`web/releases/${revision}/_expo/static/app.js`].md5);
+        assert.equal(state[`web/releases/${next}/.paws-release-revision`].text, next + '\n');
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('a prior object with equal size but different bytes is uploaded, never reused', async () => {
+    const fixture = await createFixture();
+    try {
+        assert.equal((await runUpload(fixture)).status, 0);
+        await activateFixtureRevision(fixture);
+        const next = 'd'.repeat(40);
+        await writeFile(join(fixture.dist, '.paws-release-revision'), next + '\n');
+        await writeFile(join(fixture.dist, '_expo', 'static', 'app.js'), 'new');
+        await writeFile(fixture.logPath, '');
+        const result = await runUpload(fixture);
+        assert.equal(result.status, 0, result.stderr);
+        assert.ok(!result.log.includes(`COPIED web/releases/${next}/_expo/static/app.js`));
+        const state = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        assert.equal(state[`web/releases/${next}/_expo/static/app.js`].md5, createHash('md5').update('new').digest('hex'));
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('a corrupted server-side release copy fails verification before public asset updates', async () => {
+    const fixture = await createFixture();
+    try {
+        assert.equal((await runUpload(fixture)).status, 0);
+        await activateFixtureRevision(fixture);
+        const next = 'e'.repeat(40);
+        await writeFile(join(fixture.dist, '.paws-release-revision'), next + '\n');
+        await writeFile(fixture.logPath, '');
+        const result = await runUpload(fixture, { FAKE_CORRUPT_COPY_KEY: `web/releases/${next}/canvaskit.wasm` });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /OSS object failed checksum verification/);
+        assert.doesNotMatch(result.log, /COPIED (?:_expo|assets|desktop-skins)\//);
+        assert.doesNotMatch(result.stdout, /等待公开 HTTP/);
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('an interrupted reuse batch resumes without changing the active entry', async () => {
+    const fixture = await createFixture();
+    try {
+        assert.equal((await runUpload(fixture)).status, 0);
+        await activateFixtureRevision(fixture);
+        const next = 'f'.repeat(40);
+        await writeFile(join(fixture.dist, '.paws-release-revision'), next + '\n');
+        const interrupted = await runUpload(fixture, { FAKE_FAIL_AFTER: '2' });
+        assert.notEqual(interrupted.status, 0);
+        const partial = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        assert.equal(partial['web/current/.paws-release-revision'].text, revision + '\n');
+        assert.equal(Object.keys(partial).filter(key => key.startsWith(`web/releases/${next}/`)).length, 2);
+        const retry = await runUpload(fixture);
+        assert.equal(retry.status, 0, retry.stderr);
+        assert.match(retry.stdout, /1 uploaded \(41 B\), \d+ copied inside OSS .*2 reused/);
+        const complete = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        assert.equal(complete[`web/releases/${next}/.paws-release-revision`].text, next + '\n');
+        assert.equal(complete['web/current/.paws-release-revision'].text, revision + '\n');
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('invalid prior revision hints fall back to uploading without using arbitrary source prefixes', async () => {
+    const fixture = await createFixture();
+    try {
+        await writeFile(fixture.statePath, JSON.stringify({
+            'web/current/.paws-release-revision': { size: 9, md5: '0'.repeat(32), text: '../escape' },
+        }));
+        const result = await runUpload(fixture);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /0 copied inside OSS/);
+        assert.doesNotMatch(result.log, /web\/releases\/\.\./);
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('prior-release listing errors abort instead of pretending the source is absent', async () => {
+    const fixture = await createFixture();
+    try {
+        assert.equal((await runUpload(fixture)).status, 0);
+        await activateFixtureRevision(fixture);
+        await writeFile(join(fixture.dist, '.paws-release-revision'), 'f'.repeat(40) + '\n');
+        await writeFile(fixture.logPath, '');
+        const result = await runUpload(fixture, { FAKE_FAIL_LIST_PREFIX: `web/releases/${revision}/` });
+        assert.notEqual(result.status, 0);
+        assert.doesNotMatch(result.log, /ossutil cp /);
     } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 

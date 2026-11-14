@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { parse } from 'yaml';
 import { buildPlan, runCleanup } from './cleanup-web-assets.cjs';
@@ -172,7 +173,7 @@ test('large deletion batches are capped at 1000 and exact raw keys survive encod
 });
 
 test('destructive CLI mode refuses local/feature branch execution before OSS access', () => {
-  const r = spawnSync(process.execPath, [new URL('./cleanup-web-assets.cjs', import.meta.url).pathname, '--apply'], {
+  const r = spawnSync(process.execPath, [fileURLToPath(new URL('./cleanup-web-assets.cjs', import.meta.url)), '--apply'], {
     encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/heads/feature',
       GITHUB_WORKFLOW: 'Daily Web OSS retention', PAWS_WEB_RETENTION_LOCK: 'paws-web-production' },
   });

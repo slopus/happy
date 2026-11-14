@@ -76,6 +76,37 @@ function matches(object, file) {
     (etag === file.md5 || etag === file.multipartETag);
 }
 
+function previousWebRelease(bucket, prefix) {
+  const markerKey = 'web/current/.paws-release-revision';
+  const marker = listObjects(bucket, markerKey).get(markerKey);
+  if (!marker) return;
+  // This is only a reuse hint, never an activation decision. Failed prior
+  // releases are safe sources too: every selected object's bytes are checked.
+  if (Number(marker.Size) > 128) return;
+  const revision = aliyun(['ossutil', 'cat', `oss://${bucket}/${markerKey}`, '--head', '128',
+    '--endpoint', endpoint, '--addressing-style', addressingStyle]).trim();
+  if (!/^[a-f0-9]{40}$/.test(revision)) return;
+  const candidate = `web/releases/${revision}/`;
+  return candidate !== prefix ? candidate : undefined;
+}
+
+function copySelectedObjects(bucket, sourcePrefix, destinationPrefix, files) {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'paws-oss-reuse-'));
+  try {
+    if (files.some(file => /[\r\n]/.test(file.relativePath))) {
+      throw new Error('OSS copy list cannot represent newline-containing paths');
+    }
+    const selection = path.join(temporary, 'files.txt');
+    fs.writeFileSync(selection, files.map(file => file.relativePath).join('\n') + '\n');
+    aliyun(['ossutil', 'cp', '-r', `oss://${bucket}/${sourcePrefix}`, `oss://${bucket}/${destinationPrefix}`,
+      '--files-from-raw', selection, '--copy-props', 'metadata', '--job', '4',
+      '--force', '--bigfile-threshold', '8Mi', '--part-size', '1Mi', '--parallel', '4',
+      '--endpoint', endpoint, '--addressing-style', addressingStyle], true);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
 function syncDirectory(sourceDirectory, bucket, prefix, options = {}) {
   if (!prefix.endsWith('/')) throw new Error(`OSS prefix must end with /: ${prefix}`);
   const source = path.resolve(sourceDirectory);
@@ -90,7 +121,8 @@ function syncDirectory(sourceDirectory, bucket, prefix, options = {}) {
     };
   });
   const existing = listObjects(bucket, prefix);
-  const missing = [];
+  let missing = [];
+  let copied = [];
   let reusedBytes = 0;
   for (const file of files) {
     const remote = existing.get(file.key);
@@ -100,6 +132,22 @@ function syncDirectory(sourceDirectory, bucket, prefix, options = {}) {
       throw new Error(`Immutable OSS object differs from local content: ${file.key}`);
     } else {
       missing.push(file);
+    }
+  }
+
+  if (missing.length && options.reusePreviousWebRelease) {
+    if (!/^web\/releases\/[a-f0-9]{40}\/$/.test(prefix)) {
+      throw new Error('Previous-release reuse requires an immutable Web release prefix');
+    }
+    const sourcePrefix = previousWebRelease(bucket, prefix);
+    if (sourcePrefix) {
+      const candidates = listObjects(bucket, sourcePrefix);
+      copied = missing.filter(file => matches(candidates.get(sourcePrefix + file.relativePath), file));
+      if (copied.length) {
+        copySelectedObjects(bucket, sourcePrefix, prefix, copied);
+        const copiedPaths = new Set(copied.map(file => file.relativePath));
+        missing = missing.filter(file => !copiedPaths.has(file.relativePath));
+      }
     }
   }
 
@@ -131,18 +179,21 @@ function syncDirectory(sourceDirectory, bucket, prefix, options = {}) {
     }
   }
   const uploadedBytes = missing.reduce((sum, file) => sum + file.size, 0);
-  console.log(`OSS sync ${prefix}: ${missing.length} uploaded (${uploadedBytes} B), ${files.length - missing.length} reused (${reusedBytes} B)`);
-  return { uploadedFiles: missing.length, uploadedBytes, reusedFiles: files.length - missing.length, reusedBytes };
+  const copiedBytes = copied.reduce((sum, file) => sum + file.size, 0);
+  const reusedFiles = files.length - missing.length - copied.length;
+  console.log(`OSS sync ${prefix}: ${missing.length} uploaded (${uploadedBytes} B), ${copied.length} copied inside OSS (${copiedBytes} B), ${reusedFiles} reused (${reusedBytes} B)`);
+  return { uploadedFiles: missing.length, uploadedBytes, copiedFiles: copied.length, copiedBytes, reusedFiles, reusedBytes };
 }
 
 if (require.main === module) {
-  const [source, bucket, prefix, cacheControl] = process.argv.slice(2);
+  const [source, bucket, prefix, cacheControl, reuse] = process.argv.slice(2);
   if (!source || !bucket || !prefix) {
-    console.error('Usage: node scripts/oss-upload-sync.cjs <source-directory> <bucket> <prefix> [cache-control]');
+    console.error('Usage: node scripts/oss-upload-sync.cjs <source-directory> <bucket> <prefix> [cache-control] [--reuse-previous-web-release]');
     process.exit(2);
   }
   try {
-    syncDirectory(source, bucket, prefix, { cacheControl });
+    if (reuse && reuse !== '--reuse-previous-web-release') throw new Error(`Unknown option: ${reuse}`);
+    syncDirectory(source, bucket, prefix, { cacheControl, reusePreviousWebRelease: !!reuse });
   } catch (error) {
     console.error(error.stderr ? error.stderr.toString() : error.message);
     process.exit(1);

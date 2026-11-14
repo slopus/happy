@@ -38,6 +38,10 @@ Paws Web origin：`https://47.115.228.20:8443`。
   tunnel 或任何其他 origin/端口代替该正式入口。
 - “在线测试”不授权把未合并分支发布到 `8443`。需要测试未合并分支时，应明确询问是否
   需要临时外部预览。
+- OTA 的自动判定由 `scripts/classify-ota-impact.cjs` 统一管理：仅 Web 平台实现和 Web
+  资源变更跳过手机 OTA；共享运行代码保守保留发布。新 Web 专用实现优先用 `.web.*`
+  平台文件隔离，不按 Desktop 文件名或主观发布标签跳过共享代码。完整规则与资源复用
+  见 [Web / OTA 发布优化](docs/releases/web-ota-delivery.md)。
 
 ## 浏览器自动化工具约束
 
@@ -187,7 +191,8 @@ gh run list --repo wangjs-jacky/happy --commit <merge-sha> \
 
 - **OTA**：仅当合并命中 `ota-production.yml` 的路径过滤时才会产生 run。若 run 成功，
   从 job summary 或 merge commit comment 记录并报告 Update ID、channel、runtimeVersion
-  与 manifest URL。若 native-sensitive 检查使发布 job 跳过，必须明确报告“未发布 OTA”
+  与 manifest URL。若仅 Web 或无手机运行文件变化使发布 job 跳过，报告“已跳过 OTA，
+  无需因此重建 APK”。若 native-sensitive 检查使发布 job 跳过，必须明确报告“未发布 OTA”
   及需要匹配原生包的后续动作；若不命中路径过滤，则报告“未触发 OTA”，不得把它表述为
   已发布。失败或取消同样是发布未完成，必须报告并继续处理或交由维护者决定。
 - **Web**：每次 `main` push 都会触发 `web-production-deploy.yml`。必须等待

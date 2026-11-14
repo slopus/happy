@@ -65,7 +65,7 @@ upload_directory() {
     if [[ -d "$source_dir" ]]; then
         echo "==> 校验并补传 $source_dir 到 $destination"
         node scripts/oss-upload-sync.cjs "$source_dir" "$OSS_BUCKET" \
-            "${destination#"oss://$OSS_BUCKET/"}" "$cache_control"
+            "${destination#"oss://$OSS_BUCKET/"}" "$cache_control" --reuse-previous-web-release
     fi
 }
 

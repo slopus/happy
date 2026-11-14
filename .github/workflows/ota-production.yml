@@ -1,7 +1,7 @@
 name: Self-hosted OTA production (on merge to main)
 run-name: '${{ github.event.head_commit.message || github.ref_name }} · OTA 生产发布'
 
-# 生产 OTA：每当 JS-compatible 改动合并进 main（且命中 packages/happy-app/**），
+# 生产 OTA：每当影响手机的 JS-compatible 改动合并进 main（且命中 packages/happy-app/**），
 # 自动把这次改动以 OTA 形式发到 production 频道。native-sensitive merge 会跳过发布，
 # 等匹配二进制就绪后再手动触发。
 # 与 ota-preview.yml 互补：preview 在 PR 阶段真机验证，production 在合并后上线。
@@ -19,6 +19,8 @@ on:
       - main
     paths:
       - 'packages/happy-app/**'
+      - 'scripts/classify-ota-impact.cjs'
+      - '.github/workflows/ota-production.yml'
       - 'patches/fix-expo-camera-scanner-transitions.cjs'
       - 'scripts/postinstall.cjs'
       # Documentation and tests do not change the shipped Expo bundle. Keep
@@ -50,47 +52,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect native-sensitive changes
+      - name: Classify native compatibility and mobile impact
         id: changes
-        shell: bash
         env:
           BASE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "ota_compatible=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          native_changed=false
-          while IFS= read -r file; do
-            case "$file" in
-              packages/happy-app/app.config.js|\
-              packages/happy-app/expo-project.json|\
-              packages/happy-app/google-services.json|\
-              packages/happy-app/package.json|\
-              packages/happy-app/ota-runtime-versions.json|\
-              packages/happy-app/ota-ios-runtime-versions.json|\
-              packages/happy-app/eas.json|\
-              packages/happy-app/android/*|\
-              packages/happy-app/ios/*|\
-              packages/happy-app/plugins/*|\
-              patches/fix-expo-camera-scanner-transitions.cjs|\
-              scripts/postinstall.cjs|\
-              pnpm-lock.yaml)
-                native_changed=true
-                echo "Native-sensitive OTA path: $file"
-                ;;
-            esac
-          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-
-          if [ "$native_changed" = true ]; then
-            echo "ota_compatible=false" >> "$GITHUB_OUTPUT"
-            echo "### Production OTA skipped" >> "$GITHUB_STEP_SUMMARY"
-            echo "This merge changes native-sensitive files. Release the matching production binary before publishing its runtime manually." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "ota_compatible=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: node scripts/classify-ota-impact.cjs
 
   publish-production:
     needs: classify-ota-compatibility

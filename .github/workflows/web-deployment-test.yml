@@ -15,6 +15,10 @@ on:
       - 'scripts/dreamskin-sources.json'
       - 'packages/happy-app/public/desktop-skins/**'
       - 'scripts/oss-upload-sync.cjs'
+      - 'scripts/classify-ota-impact*'
+      - 'scripts/ota-delivery-workflows.test.mjs'
+      - '.github/workflows/ota-production.yml'
+      - '.github/workflows/ota-preview.yml'
       - 'scripts/test-helpers/fake-aliyun.cjs'
       - 'scripts/deploy-agent-party*'
       - 'scripts/configure-production-agent-party-caddy*'
@@ -42,6 +46,10 @@ on:
       - 'scripts/dreamskin-sources.json'
       - 'packages/happy-app/public/desktop-skins/**'
       - 'scripts/oss-upload-sync.cjs'
+      - 'scripts/classify-ota-impact*'
+      - 'scripts/ota-delivery-workflows.test.mjs'
+      - '.github/workflows/ota-production.yml'
+      - '.github/workflows/ota-preview.yml'
       - 'scripts/test-helpers/fake-aliyun.cjs'
       - 'scripts/deploy-agent-party*'
       - 'scripts/configure-production-agent-party-caddy*'
@@ -71,4 +79,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter monorepo
       - name: Verify deployment and supersession guards
-        run: node --test scripts/configure-production-bots-caddy.test.mjs scripts/cleanup-web-assets.test.mjs scripts/dreamskin-import-core.test.mjs scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/verify-web-release.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs
+        run: node --test scripts/classify-ota-impact.test.cjs scripts/ota-delivery-workflows.test.mjs scripts/configure-production-bots-caddy.test.mjs scripts/cleanup-web-assets.test.mjs scripts/dreamskin-import-core.test.mjs scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/verify-web-release.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs
