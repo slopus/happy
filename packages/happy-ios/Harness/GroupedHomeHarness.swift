@@ -22,7 +22,31 @@ private actor GroupedHomeTransport: AgentTransport {
     /// The cloned repo's picture, as the daemon serves it.
     let avatar: Data
     let lineCounts: Bool
-    init(avatar: Data, lineCounts: Bool = false) { self.avatar = avatar; self.lineCounts = lineCounts }
+    /// Every name but Happy's runs past its row (`-longTitles`).
+    let longTitles: Bool
+    init(avatar: Data, lineCounts: Bool = false, longTitles: Bool = false) { self.avatar = avatar; self.lineCounts = lineCounts; self.longTitles = longTitles }
+
+    /// `entries` with each name and title (a subtask's too) run long.
+    private func lengthened(_ entries: [[String: Any]]) -> [[String: Any]] {
+        guard longTitles else { return entries }
+        func long(_ value: Any?) -> Any? {
+            guard let text = value as? String, text != "Happy" else { return value }
+            return text + " for the autumn launch and everything around it"
+        }
+        func agent(_ value: [String: Any]) -> [String: Any] {
+            var copy = value
+            copy["title"] = long(copy["title"])
+            if let subtasks = copy["subtasks"] as? [[String: Any]] { copy["subtasks"] = subtasks.map(agent) }
+            if let agents = copy["agents"] as? [[String: Any]] { copy["agents"] = agents.map(agent) }
+            return copy
+        }
+        return entries.map { entry in
+            var entry = agent(entry)
+            entry["name"] = long(entry["name"])
+            if let inner = entry["agent"] as? [String: Any] { entry["agent"] = agent(inner) }
+            return entry
+        }
+    }
 
     /// Tasks and bots made here, newest first, the ones still to be named
     /// by their first message, and the events stream to tell of them.
@@ -72,16 +96,16 @@ private actor GroupedHomeTransport: AgentTransport {
         [
             "cursor": "c1", "profile": ["userId": NSNull()],
             "userSettings": [],
-            "bots": bots, "tasks": tasks,
+            "bots": lengthened(bots), "tasks": lengthened(tasks),
             "taskMemberships": tasks.map { ["taskId": $0["id"]!] },
             "surfaces": Self.surfaces,
-            "projects": [
+            "projects": lengthened([
                 ["id": "p1", "name": "happy", "status": "active", "orderKey": "a", "avatar": ["kind": "image", "source": "user", "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI"], "agents": [Self.agent("root", "Root chat")]],
                 ["id": "p2", "name": "website", "status": "active", "orderKey": "b", "agents": []],
-            ],
-            "workspaces": [
+            ]),
+            "workspaces": lengthened([
                 ["id": "w1", "projectId": "p1", "parentId": "p1", "name": "ios-grouped-home", "kind": "worktree", "status": "active", "orderKey": "a", "agents": [Self.agent("w1-agent", "Grouped home", ago: 18)]],
-            ],
+            ]),
         ]
     }
 
@@ -241,6 +265,7 @@ private actor GroupedHomeTransport: AgentTransport {
 @MainActor
 final class GroupedHomeHarness {
     private var lineCounts = false
+    private var longTitles = false
     private var account: AccountController?
     private var home: AgentHomeViewController?
 
@@ -255,6 +280,7 @@ final class GroupedHomeHarness {
             try? report.write(to: URL.documentsDirectory.appendingPathComponent("font-metrics.txt"), atomically: true, encoding: .utf8)
         }
         lineCounts = arguments.contains("-lineCounts")
+        longTitles = arguments.contains("-longTitles")
         if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
         if arguments.contains("-light") { window.overrideUserInterfaceStyle = .light }
         let bottom = arguments.contains("-bottom")
@@ -289,7 +315,7 @@ final class GroupedHomeHarness {
     private var transport: GroupedHomeTransport?
 
     private func open(window: UIWindow, churns: Bool) async {
-        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts)
+        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts, longTitles: longTitles)
         await transport.setChurns(churns)
         self.transport = transport
         let account = AccountController(

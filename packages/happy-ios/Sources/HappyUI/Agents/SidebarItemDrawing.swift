@@ -12,7 +12,8 @@ import UltraView
 ///
 /// It draws what `RowView` lays out with labels, in the same faces,
 /// colours and frames, as those labels would draw it: one line centred on
-/// its box and cut at the tail. It holds only values, and decides nothing
+/// its box, a title too long for it fading out at its end
+/// (`SidebarTypography.draw`), anything else cut at the tail. It holds only values, and decides nothing
 /// about where anything goes.
 struct SidebarItemDrawing: Drawing, Equatable {
     var row: Row

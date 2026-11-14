@@ -113,20 +113,51 @@ enum SidebarTypography {
         return ((box.midY + xHeight / 2) * max(1, scale)).rounded() / max(1, scale)
     }
 
+    /// One line on the row's baseline. A title (no `originX`) too long for
+    /// its box keeps every letter and fades out over its last `titleFade`
+    /// (`fades`); one that fits draws whole. A right-aligned count
+    /// (`originX`) is only clipped.
     nonisolated static func draw(_ text: NSAttributedString, in box: CGRect, scale: CGFloat, originX: CGFloat? = nil) {
         guard box.width > 0, text.length > 0, let context = UIGraphicsGetCurrentContext() else { return }
-        var line = CTLineCreateWithAttributedString(text)
-        if originX == nil, CTLineGetTypographicBounds(line, nil, nil, nil) > box.width {
-            let ellipsis = CTLineCreateWithAttributedString(NSAttributedString(string: "…", attributes: text.attributes(at: 0, effectiveRange: nil)))
-            line = CTLineCreateTruncatedLine(line, box.width, .end, ellipsis) ?? ellipsis
-        }
+        let line = CTLineCreateWithAttributedString(text)
+        let fade = originX == nil && fades(line, width: box.width)
         context.saveGState()
         context.clip(to: box)
+        if fade { context.beginTransparencyLayer(in: box, auxiliaryInfo: nil) }
+        context.saveGState()
         context.textMatrix = .identity
         context.translateBy(x: originX ?? box.minX, y: baseline(in: box, scale: scale))
         context.scaleBy(x: 1, y: -1)
         context.textPosition = .zero
         CTLineDraw(line, context)
+        context.restoreGState()
+        if fade {
+            fadeTail(of: box, in: context)
+            context.endTransparencyLayer()
+        }
+        context.restoreGState()
+    }
+
+    /// Whether `text` runs past `width` and so fades: measured, never guessed.
+    nonisolated static func fades(_ text: NSAttributedString, width: CGFloat) -> Bool {
+        text.length > 0 && fades(CTLineCreateWithAttributedString(text), width: width)
+    }
+
+    private nonisolated static func fades(_ line: CTLine, width: CGFloat) -> Bool {
+        CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) > width
+    }
+
+    /// Keeps what is drawn in `box`'s last `titleFade` in proportion to a
+    /// ramp from whole to clear, which ends at the box's end.
+    private nonisolated static func fadeTail(of box: CGRect, in context: CGContext) {
+        let length = min(Metrics.titleFade, box.width)
+        let tail = CGRect(x: box.maxX - length, y: box.minY, width: length, height: box.height)
+        let colors = [CGColor(gray: 0, alpha: 1), CGColor(gray: 0, alpha: 0)] as CFArray
+        guard let ramp = CGGradient(colorsSpace: CGColorSpaceCreateDeviceGray(), colors: colors, locations: [0, 1]) else { return }
+        context.saveGState()
+        context.clip(to: tail)
+        context.setBlendMode(.destinationIn)
+        context.drawLinearGradient(ramp, start: CGPoint(x: tail.minX, y: tail.midY), end: CGPoint(x: tail.maxX, y: tail.midY), options: [])
         context.restoreGState()
     }
 }

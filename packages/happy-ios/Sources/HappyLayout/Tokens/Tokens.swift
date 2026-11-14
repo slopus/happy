@@ -249,6 +249,10 @@ public enum Metrics {
     public static let cornerRadius: CGFloat = 6 * phone
     /// A picture's rounding in its lane: a rounded square, never a circle.
     public static let pictureRadius: CGFloat = 6 * phone
+    /// A title too long for its row fades out over its last this many
+    /// points, to clear at the label's end, instead of ending in "…"
+    /// (desktop's 12px, not scaled).
+    public static let titleFade: CGFloat = 12
     /// Legacy home's session/project title size, keeping this row's face and weight.
     public static let labelSize: CGFloat = TextStyles.sessionTitle.size
     /// Legacy home's "BOTS" / "PROJECTS" section size, keeping the mono bold face.
