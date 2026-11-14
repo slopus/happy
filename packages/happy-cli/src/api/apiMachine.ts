@@ -580,6 +580,7 @@ export class ApiMachineClient {
 
         this.socket.io.on('error', (error: any) => {
             logger.debug('[API MACHINE] Socket error:', error);
+            this.startSmartReconnect();
         });
     }
 
