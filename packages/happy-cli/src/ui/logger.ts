@@ -17,9 +17,32 @@ import { join, basename } from 'node:path'
 /**
  * Consistent date/time formatting functions
  */
-function createTimestampForFilename(date: Date = new Date()): string {
+
+/**
+ * Resolve the host's local IANA time zone, falling back to UTC when the
+ * environment doesn't expose a usable one.
+ *
+ * Containers that don't set `TZ` (e.g. Anthropic's reference dev container)
+ * make `Intl.DateTimeFormat().resolvedOptions().timeZone` report `Etc/Unknown`,
+ * which the `toLocale*String` APIs reject with a `RangeError`. Because the
+ * logger is constructed at module load, that used to crash the CLI on startup.
+ * See https://github.com/slopus/happy/issues/194.
+ */
+export function resolveLocalTimeZone(): string {
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    // Validate here: an unusable zone (e.g. 'Etc/Unknown') throws building the
+    // formatter, so we fall back before it ever reaches toLocaleString below.
+    new Intl.DateTimeFormat('en-US', { timeZone })
+    return timeZone ?? 'UTC'
+  } catch {
+    return 'UTC'
+  }
+}
+
+export function createTimestampForFilename(date: Date = new Date()): string {
   return date.toLocaleString('sv-SE', { 
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone: resolveLocalTimeZone(),
     year: 'numeric',
     month: '2-digit', 
     day: '2-digit',
@@ -29,9 +52,9 @@ function createTimestampForFilename(date: Date = new Date()): string {
   }).replace(/[: ]/g, '-').replace(/,/g, '') + '-pid-' + process.pid
 }
 
-function createTimestampForLogEntry(date: Date = new Date()): string {
+export function createTimestampForLogEntry(date: Date = new Date()): string {
   return date.toLocaleTimeString('en-US', { 
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone: resolveLocalTimeZone(),
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',
