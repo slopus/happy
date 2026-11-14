@@ -1805,7 +1805,7 @@ class ConversationTest {
         """{"id":"$id","status":"$status","startedAt":1,"messages":[${messages.joinToString(",")}]}"""
 
     private fun kept(hasMore: Boolean, vararg runs: String): JsonObject =
-        Json.parseToJsonElement("""{"version":1,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
+        Json.parseToJsonElement("""{"version":2,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
 
     private val keptTwoRuns get() = kept(
         true,
@@ -1882,7 +1882,10 @@ class ConversationTest {
                 Run(
                     "r1", "completed", 5,
                     listOf(
-                        Message("m1", "user", 1, listOf(Block.Text("Hi"), Block.Image("image/png", "AAAA"))),
+                        Message(
+                            "m1", "user", 1,
+                            listOf(Block.Text("Hi"), Block.Image("image/png", "AAAA"), Block.File("def", "IMG.jpg", "image/jpeg", 2000000, "image", 4032.0, 3024.0, "th", 2.0)),
+                        ),
                         Message(
                             "m2", "agent", 2,
                             listOf(
@@ -1904,6 +1907,12 @@ class ConversationTest {
             mode = Mode("codex", "m", "low", null, "auto"),
         )
         assertEquals(kept, KeptConversation.parse(Json.parseToJsonElement(kept.json().toString()).jsonObject))
+    }
+
+    @Test fun `history kept before file blocks kept their kind is read again`() {
+        // Version 1 wrote a picture's file block as a name only, so it would stay a file card.
+        val old = """{"version":1,"hasMore":false,"pending":[],"runs":[${run("r1", "completed", """{"id":"m1","role":"user","createdAt":1,"content":[{"type":"file","attachment":"def","name":"IMG.jpg","mimeType":"image/jpeg","size":2}],"metadata":{}}""")}]}"""
+        assertNull(KeptConversation.parse(Json.parseToJsonElement(old).jsonObject))
     }
 
     private val catalog = """[{"name":"compact","hasArguments":false,"description":"Summarize older messages to free context space.","kind":"compaction"},""" +
