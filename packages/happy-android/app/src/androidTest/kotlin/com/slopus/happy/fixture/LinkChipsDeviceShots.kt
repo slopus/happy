@@ -75,8 +75,8 @@ import java.io.File
  * what this phone doesn't hold, and another server's, as the placeholder
  * ("an unavailable agent"), the share link saying it isn't connected when
  * tapped; a bare share link as its address; a tag by its live name. The
- * person's own message and an artifact's document read their links the same
- * way.
+ * person's own message reads its links the same way; an artifact's document
+ * keeps the labels it gave its links and names only `[](…)`.
  *
  * What is real: ConversationScreen over a real Conversation and
  * ReferenceReader (over a made-up catalog), ArtifactScreen and ArtifactLoader,
@@ -179,7 +179,7 @@ class LinkChipsDeviceShots {
                                         files, null, scope, ArtifactRef(route.artifactId, route.version, route.type, route.title, route.followsLatest),
                                         resolve = { text ->
                                             reader.read(HappyReferences.linkTags(text, here))
-                                            HappyReferences.markdown(text, reader.references.value, here = here)
+                                            HappyReferences.markdown(text, reader.references.value, here = here, labels = true)
                                         },
                                     ).also(ArtifactLoader::load)
                                 }
@@ -192,7 +192,7 @@ class LinkChipsDeviceShots {
                                         onBack = { nav.popBackStack() },
                                         link = loader::link,
                                         references = reader.references,
-                                        resolve = { text, now -> HappyReferences.markdown(text, now, here = here) },
+                                        resolve = { text, now -> HappyReferences.markdown(text, now, here = here, labels = true) },
                                         openApp = references::open,
                                     ),
                                 )
@@ -212,7 +212,7 @@ class LinkChipsDeviceShots {
         assertEquals(setOf("ab"), reader.busy.value)
         capture("1-chat")
 
-        // 2. A tap on the artifact's name opens it; its document reads its own links the same way.
+        // 2. A tap on the artifact's name opens it; its document keeps the labels it gave its links (the busy one shimmering) and names the rest.
         tapRowStart("Launch brief is ready")
         rule.waitUntil(15_000) { navigator!!.currentBackStackEntry?.destination?.route?.contains("ArtifactRoute") == true }
         assertEquals("fx-brief", navigator!!.currentBackStackEntry!!.toRoute<ArtifactRoute>().artifactId)
@@ -276,9 +276,15 @@ class LinkChipsDeviceShots {
 
             Owner: []($TASK)
 
-            Ask [](happy://agents/ab) about the menu, and tick off [the list](happy://$INSTANCE/surfaces/s1).
+            Ask [the chef](happy://agents/ab) about the menu, and tick off [the shopping list](happy://$INSTANCE/surfaces/s1).
+
+            Archived, still by its label: [last week's session]($GONE)
+
+            Unlabelled and gone: []($GONE)
 
             Their plan: []($THEIRS)
+
+            Bare: $TASK
         """.trimIndent()
 
         val PAGE = """{"hasMore":false,"runs":[{"id":"r1","status":"completed","startedAt":1,"messages":[

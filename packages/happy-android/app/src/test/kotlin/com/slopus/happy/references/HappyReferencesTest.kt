@@ -254,6 +254,31 @@ class HappyReferencesTest {
     }
 
     @Test
+    fun aDocumentKeepsTheLabelsItGaveItsLinks() {
+        val references = owners()
+        val here = { instanceId: String -> instanceId == "abcdefghijklmnopqrstuvwx" }
+        val share = "https://link.happy.page/#1/abcdefghijklmnopqrstuvwx/agents/ab?as=bot"
+        val gone = "https://link.happy.page/#1/abcdefghijklmnopqrstuvwx/agents/zz"
+        val text = "Ask [the chef]($share), [old](happy://agents/zz), [last week]($gone), []($share), []($gone), " +
+            "[main](happy://agents/ab/files/src/main.ts), <happy-agent id=\"ab\"/> and $share."
+        // Labelled, as written, resolving or not; unlabelled, the name or the placeholder; a tag its name; a bare link its address.
+        assertEquals(
+            "Ask [the chef]($share), [old](happy://agents/zz), [last week]($gone), [Chef]($share), [an unavailable agent]($gone), " +
+                "[main](happy://agents/ab/files/src/main.ts), [Chef](happy://agents/ab) and $share.",
+            HappyReferences.markdown(text, references, here = here, labels = true),
+        )
+        // A chat never keeps them.
+        assertEquals(
+            "Ask [Chef]($share), an unavailable agent, [an unavailable agent]($gone), [Chef]($share), [an unavailable agent]($gone), " +
+                "[src/main.ts](happy://agents/ab/files/src/main.ts), [Chef](happy://agents/ab) and $share.",
+            HappyReferences.markdown(text, references, here = here),
+        )
+        // The labelled links still resolve and shimmer by their address.
+        assertEquals(HappyReferences.Reference("agent", "ab"), references.resolve(share, here))
+        assertEquals(true, references.busy(share, here, setOf("ab")))
+    }
+
+    @Test
     fun streamingHoldsBackATagStillArriving() {
         assertEquals("Started ", HappyReferences.droppingPartialTag("Started <happy-agent id=\"a"))
         assertEquals("1 < 2", HappyReferences.droppingPartialTag("1 < 2"))

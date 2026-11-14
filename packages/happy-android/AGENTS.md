@@ -1482,7 +1482,10 @@ change its wire behaviour on Android alone.
   colour under `LocalLinkGround`). A tag (`<happy-agent id/>`) reads the same,
   as a link to the Happy URL it names. Copied text is exactly what was
   written; only tags read as their names (`HappyReferences.plain`). The
-  person's own bubble reads the same as an agent's. Bold and italic are
+  person's own bubble reads the same as an agent's. An artifact's Markdown
+  document may name its links (Kirill): there `markdown(labels = true)` keeps
+  a labelled Happy link as written, resolving or not, still opening and
+  shimmering by its address; `[](…)` still reads as the name. Bold and italic are
   parsed again inside (`addSpans`), so `**[](url)**` is one bold link.
 - **Settings links and buttons** (API.md "Happy links", `ui/connection/SettingsLinks.kt`):
   `happy://settings/<page>` is a closed list of pages (`HappyUrls.SETTINGS_PAGES`).

@@ -135,10 +135,10 @@ private class ArtifactHolder(session: AgentSession?, route: ArtifactRoute, resou
                 resources.getString(R.string.artifact_media_label, resources.getString(if (isVideo) R.string.artifact_video else R.string.artifact_picture), name)
             },
             library = it.media,
-            // Its Happy links read as a message's: by their live names, what they name read once each.
+            // Its Happy links read as a message's, by their live names, unless the document named them; what they name is read once each.
             resolve = { text ->
                 it.references.read(HappyReferences.linkTags(text, it::isHere))
-                HappyReferences.markdown(text, it.references.references.value, here = it::isHere)
+                HappyReferences.markdown(text, it.references.references.value, here = it::isHere, labels = true)
             },
         ).also(ArtifactLoader::load)
     }
@@ -197,7 +197,7 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                 },
                 artifactKey = "artifact-${route.artifactId}",
                 references = session?.references?.references,
-                resolve = { text, references -> HappyReferences.markdown(text, references, here = session::isHere) },
+                resolve = { text, references -> HappyReferences.markdown(text, references, here = session::isHere, labels = true) },
                 openApp = { url -> opener.open(url) },
                 // The artifact itself, not one file of it a link opened.
                 onDelete = if (route.path == null) ({ ArtifactClient(session!!.client).delete(route.artifactId) }) else null,

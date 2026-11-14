@@ -114,10 +114,14 @@ object HappyReferences {
      * reads as a link to the Happy URL it names, or as its words where it opens
      * nothing; a kind this build doesn't know is never asked about. Still
      * [streaming], a tag only partly come is held back.
+     *
+     * With [labels] (an artifact's document, where Kirill allows naming a
+     * link), a Happy link with words of its own stays exactly as written,
+     * opening and shimmering as any other; `[](…)` still reads as the name.
      */
-    fun markdown(text: String, references: References, streaming: Boolean = false, here: ((String) -> Boolean)? = null): String {
+    fun markdown(text: String, references: References, streaming: Boolean = false, here: ((String) -> Boolean)? = null, labels: Boolean = false): String {
         val linked = HappyMarkdownLinks.replace(text) { match ->
-            if (match.image) return@replace null
+            if (match.image || (labels && label(match.label).isNotEmpty())) return@replace null
             val title = if (match.button) " \"button\"" else ""
             fun link(name: String) = "[$name](${match.url}$title)"
             // What opens nothing: a share link still says so when tapped, a Happy URL is its words.
