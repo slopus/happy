@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { SessionRouteOwnership } from './sessionRouteOwnership';
 
 describe('session route ownership', () => {
+    it('distinguishes switches and initial retries from same-session detail returns', () => {
+        const owners = new SessionRouteOwnership();
+        const first = owners.enter('a');
+        expect(first.initialPosition).toBe('latest');
+        owners.leave(first);
+        const retry = owners.enter('a');
+        expect(retry.initialPosition).toBe('latest');
+        owners.opened(first); // A stale completion cannot consume this entry.
+        expect(owners.enter('a').initialPosition).toBe('latest');
+        owners.opened(owners.current()!);
+        owners.leave(owners.current()!);
+        expect(owners.enter('a').initialPosition).toBe('restore');
+        expect(owners.enter('b').initialPosition).toBe('latest');
+        expect(owners.enter('a').initialPosition).toBe('latest');
+        owners.opened(owners.current()!);
+        owners.resetEntryPosition();
+        expect(owners.enter('a').initialPosition).toBe('latest');
+    });
     it('ignores stale cleanup across route switches and same-session remounts', () => {
         const owners = new SessionRouteOwnership();
         const a = owners.enter('a');

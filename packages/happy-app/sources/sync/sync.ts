@@ -647,6 +647,7 @@ class Sync {
     }
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
+        this.sessionRouteOwnership.resetEntryPosition();
         sessionTextStream.activate(null);
         this.credentials = credentials;
         this.encryption = encryption;
@@ -668,6 +669,7 @@ class Sync {
     }
 
     async restore(credentials: AuthCredentials, encryption: Encryption) {
+        this.sessionRouteOwnership.resetEntryPosition();
         sessionTextStream.activate(null);
         // NOTE: No awaiting anything here, we're restoring from a disk (ie app restarted)
         // Purchases sync is invalidated in #init() and will complete asynchronously
@@ -2923,7 +2925,7 @@ class Sync {
         return true;
     }
 
-    public openSession = (sessionId: string, owner = this.beginSessionRoute(sessionId), options: { retry?: boolean } = {}): SessionOpenPromise => {
+    public openSession = (sessionId: string, owner = this.beginSessionRoute(sessionId), options: { retry?: boolean; initialPosition?: 'latest' } = {}): SessionOpenPromise => {
         if (owner.sessionId !== sessionId || !this.sessionRouteOwnership.owns(owner)) {
             return Promise.reject(new SessionRouteAbandonedError());
         }
@@ -2938,10 +2940,11 @@ class Sync {
         if (options.retry) markSessionCriticalPathHydrationRetry();
         markSessionCriticalPathAppStage('web.messages.latest_started');
         const historyOwner = this.localHistory;
+        const preferLatest = Platform.OS === 'web' && options.initialPosition === 'latest';
         const latestPagePromise: Promise<V3GetSessionMessagesResponse> = hasLoadedMessageCache
             ? Promise.resolve({ messages: [], hasMore: false })
             : historyOwner ? (async (): Promise<V3GetSessionMessagesResponse> => {
-                const reading = await historyOwner.readReadingState(sessionId);
+                const reading = preferLatest ? null : await historyOwner.readReadingState(sessionId);
                 const window = await historyOwner.readWindow(sessionId, { anchorSeq: reading?.anchorSeq });
                 if (window) return { messages: window.messages, hasMore: window.hasMoreOlder, localWindow: window,
                     revalidateTail: !reading || reading.followLatest === true || window.isAtLatest };
@@ -2973,8 +2976,8 @@ class Sync {
             if (!found) return 'not-found';
 
             if (hasLoadedMessageCache) {
-                if (this.localHistory && storage.getState().sessionMessages[sessionId]?.isAtLatest !== false) {
-                    await this.loadHistoryBoundary(sessionId, 'latest', undefined, true, true);
+                if ((this.localHistory || preferLatest) && (preferLatest || storage.getState().sessionMessages[sessionId]?.isAtLatest !== false)) {
+                    await this.loadHistoryBoundary(sessionId, 'latest', undefined, true, !preferLatest);
                 } else if (!this.localHistory) {
                     await this.getMessagesSync(sessionId).invalidateAndAwait();
                     this.markLatestVerified(sessionId, operation.committedPageOperation);
@@ -3005,7 +3008,7 @@ class Sync {
                         if (this.localHistory === historyOwner && this.sessionRouteOwnership.owns(owner)
                             && this.sessionMessageLoadGate.isCurrent(operation.messageLoad)
                             && storage.getState().sessionMessages[sessionId]?.latestVerifiedOwnerEpoch !== owner.ownerEpoch) {
-                            void this.loadHistoryBoundary(sessionId, 'latest', undefined, true, true);
+                            void this.loadHistoryBoundary(sessionId, 'latest', undefined, true, !preferLatest);
                         }
                     }, 0);
                     return 'ready';
@@ -3067,7 +3070,10 @@ class Sync {
         // started latest-message request is still transferring. Ready routes
         // already await their message work as part of `opening`.
         void opening.then(async result => {
-            if (result === 'ready') void this.startHistoryPrefetch();
+            if (result === 'ready') {
+                this.sessionRouteOwnership.opened(owner);
+                void this.startHistoryPrefetch();
+            }
             if (result === 'not-found') {
                 await targetTransfersSettled;
                 // The not-found screen remains mounted, so component cleanup

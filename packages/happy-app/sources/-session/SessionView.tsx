@@ -598,6 +598,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     } = useDesktopWorkspaceLayout();
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
     const [routeOwner, setRouteOwner] = React.useState<SessionRouteOwner | null>(null);
+    const hasOpenedSession = React.useRef(false);
     const subagentInspector = useSubagentInspector();
     const subagentSelection = subagentInspector?.selection ?? null;
 
@@ -615,11 +616,15 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         const attempt = (index: number) => {
             owner = sync.beginSessionRoute(sessionId);
             setRouteOwner(owner);
-            opening = index > 0 || retryGeneration > 0
-                ? sync.openSession(sessionId, owner, { retry: true })
-                : sync.openSession(sessionId, owner);
+            const initialPosition = Platform.OS === 'web' && !hasOpenedSession.current
+                && owner.initialPosition === 'latest' ? 'latest' as const : undefined;
+            opening = sync.openSession(sessionId, owner, {
+                ...(index > 0 || retryGeneration > 0 ? { retry: true } : {}),
+                ...(initialPosition ? { initialPosition } : {}),
+            });
             void opening.then((resolution) => {
                 if (cancelled) return;
+                if (resolution === 'ready') hasOpenedSession.current = true;
                 setSessionResolution(resolution);
             }).catch((error: unknown) => {
                 if (cancelled) return;
@@ -1677,7 +1682,11 @@ function SessionViewLoaded({
     const isTablet = useIsTablet();
     const { messages, isLoaded, isAtLatest, hasMoreNewer, newerError } = useSessionMessages(sessionId);
     const annotations = useMessageAnnotations(sessionId);
-    const [followLatestRequest, setFollowLatestRequest] = React.useState(0);
+    // A route can remount on a same-session detail return. Only conversation
+    // switches request latest; the route owner survives those UI lifetimes.
+    const [followLatestRequest, setFollowLatestRequest] = React.useState(
+        Platform.OS === 'web' && routeOwner.initialPosition === 'latest' ? 1 : 0,
+    );
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;

@@ -1079,6 +1079,61 @@ describe('ConversationTranscript older history pagination', () => {
         act(() => renderer.unmount());
     });
 
+    it('honors the initial latest request before a saved reading position resolves and keeps later user scrolling', async () => {
+        const scrollToEnd = vi.fn(); const scrollToIndex = vi.fn(); const scrollToOffset = vi.fn();
+        let resolveReading!: (state: ReadingState) => void;
+        const saved = new Promise<ReadingState>(resolve => { resolveReading = resolve; });
+        const adapter = { key: 'switch-latest', read: () => saved, save: vi.fn(),
+            wireId: (id: string) => id, wireSeq: () => 1 };
+        const render = (id: string) => <ConversationTranscript metadata={null} sessionId="switch-latest"
+            messages={[userMessage(id)]} reading={adapter} followLatestRequest={1} />;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(render('old'), {
+            createNodeMock: (element: any) => element.type === 'FlatList'
+                ? { scrollToEnd, scrollToIndex, scrollToOffset } : null,
+        }); });
+        expect(scrollToEnd).toHaveBeenCalledWith({ animated: true });
+        await act(async () => resolveReading({ version: 1, anchorId: 'old', anchorSeq: 1,
+            offset: -50, expandedGroupIds: [], followLatest: false }));
+        act(() => byId(renderer, 'conversation-transcript-list').props.onContentSizeChange(800, 5000));
+        await flushFrame();
+        expect(scrollToIndex).not.toHaveBeenCalled();
+        expect(scrollToOffset).not.toHaveBeenCalled();
+        act(() => {
+            const list = byId(renderer, 'conversation-transcript-list');
+            list.props.onScrollBeginDrag();
+            list.props.onScroll({ nativeEvent: { contentOffset: { y: 400 },
+                contentSize: { height: 5000 }, layoutMeasurement: { height: 800 } } });
+        });
+        scrollToEnd.mockClear();
+        await act(async () => renderer.update(render('new-output')));
+        act(() => byId(renderer, 'conversation-transcript-list').props.onContentSizeChange(800, 5500));
+        await flushFrame();
+        expect(scrollToEnd).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('loads the latest window on entry and waits for its commit before scrolling', async () => {
+        let finish!: () => void;
+        const jump = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        const scrollToEnd = vi.fn();
+        const render = (latest: boolean) => <ConversationTranscript metadata={null} sessionId="switch-history"
+            messages={[userMessage(latest ? 'latest' : 'old')]} isAtLatest={latest}
+            onJumpToLatest={jump} followLatestRequest={1} />;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(render(false), {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { scrollToEnd } : null,
+        }); });
+        expect(jump).toHaveBeenCalledOnce();
+        expect(scrollToEnd).not.toHaveBeenCalled();
+        await act(async () => finish());
+        expect(scrollToEnd).not.toHaveBeenCalled();
+        await act(async () => renderer.update(render(true)));
+        expect(scrollToEnd).toHaveBeenCalledWith({ animated: true });
+        expect(jump).toHaveBeenCalledOnce();
+        act(() => renderer.unmount());
+    });
+
     it('restarts Web latest-following after a user message is sent', async () => {
         const scrollToEnd = vi.fn(); let renderer: any;
         const render = (request: number, id: string) => <ConversationTranscript metadata={null}

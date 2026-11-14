@@ -2,6 +2,7 @@ export type SessionRouteOwner = Readonly<{
     sessionId: string;
     ownerEpoch: number;
     phase: 'opening' | 'interactive' | 'terminal';
+    initialPosition?: 'latest' | 'restore';
 }>;
 
 export class SessionRouteAbandonedError extends Error {
@@ -22,10 +23,23 @@ export class SessionRouteCoordinationError extends Error {
 export class SessionRouteOwnership {
     private owner: SessionRouteOwner | null = null;
     private nextEpoch = 0;
+    private lastSessionId: string | null = null;
+    private entryPending = true;
 
     enter(sessionId: string): SessionRouteOwner {
-        return this.owner = { sessionId, ownerEpoch: ++this.nextEpoch, phase: 'opening' };
+        if (this.lastSessionId !== sessionId) {
+            this.lastSessionId = sessionId;
+            this.entryPending = true;
+        }
+        return this.owner = { sessionId, ownerEpoch: ++this.nextEpoch, phase: 'opening',
+            initialPosition: this.entryPending ? 'latest' : 'restore' };
     }
+
+    opened(owner: SessionRouteOwner) {
+        if (this.owns(owner)) this.entryPending = false;
+    }
+
+    resetEntryPosition() { this.lastSessionId = null; this.entryPending = true; }
 
     promote(owner: SessionRouteOwner): SessionRouteOwner | null {
         if (!this.owns(owner) || this.owner?.phase === 'terminal') return null;

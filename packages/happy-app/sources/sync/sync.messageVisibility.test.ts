@@ -724,23 +724,24 @@ describe('message visibility synchronization', () => {
         }
     });
 
-    it('renders anchored local history through Deferred without a verified-latest marker', async () => {
+    it('renders the latest local tail through Deferred despite a saved historical reading position', async () => {
         const view = await localHistoryViewHarness({ historical: true });
         try {
             await act(async () => { await expect(view.opening).resolves.toBe('ready'); });
+            await vi.waitFor(() => expect(view.storage.getState().sessionMessages['paint-history'].latestVerifiedOwnerEpoch).not.toBeNull());
             await view.paint();
             expect(view.renderer.root.findAllByType('FlatList')).toHaveLength(1);
             expect(view.renderer.root.findByType('FlatList').props.data).toContainEqual(expect.objectContaining({
-                message: expect.objectContaining({ kind: 'user-text', text: 'message-150' }),
+                message: expect.objectContaining({ kind: 'user-text', text: 'message-400' }),
             }));
             expect(view.storage.getState().sessionMessages['paint-history']).toMatchObject({
-                isAtLatest: false, latestVerifiedOwnerEpoch: null,
+                isAtLatest: true,
             });
             expect(view.storage.getState().sessionMessages['paint-history'].messages.some(message =>
-                message.kind === 'user-text' && message.text === 'message-150')).toBe(true);
+                message.kind === 'user-text' && message.text === 'message-400')).toBe(true);
             expect(await view.history.readReadingState('paint-history')).toEqual(view.reading);
-            expect(view.marker).not.toHaveBeenCalled();
-            expect(mocks.apiRequest).not.toHaveBeenCalled();
+            expect(view.marker).toHaveBeenCalledOnce();
+            expect(mocks.apiRequest).toHaveBeenCalledWith('/v3/sessions/paint-history/messages?after_seq=400&limit=100');
         } finally { view.close(); }
     });
 
@@ -775,7 +776,7 @@ describe('message visibility synchronization', () => {
         } finally { view.close(); }
     });
 
-    it.each([false, true])('keeps the visible reading anchor when background verification discovers multiple new pages (warm: %s)', async warm => {
+    it.each([false, true])('prefers latest on entry and preserves reading on retained reopen with new pages (warm: %s)', async warm => {
         let tail = deferred<Response>();
         mocks.apiRequest.mockReturnValueOnce(tail.promise);
         const view = await localHistoryViewHarness({ complete: true, anchoredLatest: true });
@@ -793,10 +794,16 @@ describe('message visibility synchronization', () => {
             await vi.waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(1));
             mocks.apiRequest.mockResolvedValueOnce(response({ messages: view.page(416, 440), hasMore: true }));
             await act(async () => { tail.resolve(response({ messages: view.page(41, 140), hasMore: true })); });
-            await vi.waitFor(() => expect(view.storage.getState().sessionMessages['paint-history'].hasMoreNewer).toBe(true));
+            await vi.waitFor(() => {
+                const state = view.storage.getState().sessionMessages['paint-history'];
+                if (warm) expect(state.hasMoreNewer).toBe(true);
+                else expect(state.latestVerifiedOwnerEpoch).not.toBeNull();
+            });
             const messages = view.storage.getState().sessionMessages['paint-history'];
-            expect(messages).toMatchObject({ isAtLatest: false, latestVerifiedOwnerEpoch: null });
-            expect(messages.messages).toContainEqual(expect.objectContaining({ kind: 'user-text', text: 'message-40' }));
+            expect(messages.isAtLatest).toBe(!warm);
+            if (warm) expect(messages.latestVerifiedOwnerEpoch).toBeNull();
+            else expect(messages.latestVerifiedOwnerEpoch).not.toBeNull();
+            expect(messages.messages).toContainEqual(expect.objectContaining({ kind: 'user-text', text: warm ? 'message-40' : 'message-440' }));
             expect(await view.history.readReadingState('paint-history')).toEqual(view.reading);
             expect((await view.history.readWindow('paint-history'))?.newestSeq).toBe(440);
             expect(mocks.apiRequest).toHaveBeenCalledTimes(2);
@@ -1740,6 +1747,34 @@ describe('message visibility synchronization', () => {
         expect(syncForTest.historyWindows.get('viewport-capacity').newestSeq).toBe(2);
         expect(mocks.state.sessionMessages['viewport-capacity'].newerError).toBeFalsy();
     }, 20000);
+
+    it.each(['cold', 'cached-tail', 'cached-history'] as const)('opens latest instead of the old reading anchor (%s)', async cache => {
+        globalThis.indexedDB = new IDBFactory(); globalThis.IDBKeyRange = IDBKeyRange;
+        Platform.OS = 'web';
+        const id = `latest-entry-${cache}`;
+        installSession(id);
+        const history = (await openLocalHistory(`server|${id}`))!;
+        await history.commitPage(id, { direction: 'older', boundary: 2147483647,
+            messages: Array.from({ length: 600 }, (_, i) => apiMessage(i + 1)), hasMore: false });
+        await history.writeReadingState(id, { version: 1, anchorId: 'message-10', anchorSeq: 10,
+            offset: 16, expandedGroupIds: [], followLatest: false });
+        syncForTest.localHistory = history;
+        if (cache !== 'cold') {
+            const lease = syncForTest.sessionMessageLoadGate.enter(id);
+            const window = await history.readWindow(id, cache === 'cached-tail' ? undefined : { anchorSeq: 10 });
+            await syncForTest.applyHistoryWindow(id, window, syncForTest.sessionMessageLoadGate.begin(lease));
+            expect(mocks.state.sessionMessages[id].isAtLatest).toBe(cache === 'cached-tail');
+        }
+        mocks.apiRequest.mockResolvedValue(response({ messages: [], hasMore: false }));
+        const owner = syncForTest.beginSessionRoute(id);
+        await expect(syncForTest.openSession(id, owner, { initialPosition: 'latest' })).resolves.toBe('ready');
+        // Cold disk hydration schedules its network verification after opening.
+        await vi.waitFor(() => expect(mocks.state.sessionMessages[id].latestVerifiedOwnerEpoch).toBe(owner.ownerEpoch));
+        const window = syncForTest.historyWindows.get(id);
+        expect(window.isAtLatest).toBe(true);
+        expect(window.messages.at(-1).seq).toBe(600);
+        expect(window.messages.some((row: ApiMessage) => row.seq === 10)).toBe(false);
+    });
 
     it('moves past a stale restored anchor with bounded pagination and reloads it on newer navigation', async () => {
         globalThis.indexedDB = new IDBFactory();

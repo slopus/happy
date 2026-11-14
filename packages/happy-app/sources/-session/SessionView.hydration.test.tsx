@@ -317,9 +317,11 @@ describe('SessionView deep-link hydration', () => {
         mocks.promoteSessionRoute.mockImplementation((owner) => owners.promote(owner));
         mocks.leaveSessionRoute.mockImplementation((owner) => owners.leave(owner));
         mocks.ensureSessionHydrated.mockResolvedValue(true);
-        mocks.openSession.mockImplementation(async (id: string) => (
-            await mocks.ensureSessionHydrated(id) ? 'ready' : 'not-found'
-        ));
+        mocks.openSession.mockImplementation(async (id: string, owner: any) => {
+            if (!await mocks.ensureSessionHydrated(id)) return 'not-found';
+            owners.opened(owner);
+            return 'ready';
+        });
     });
 
     afterEach(() => {
@@ -379,10 +381,41 @@ describe('SessionView deep-link hydration', () => {
         const restoredOwner = mocks.beginSessionRoute.mock.results.at(-1)!.value;
         expect(restoredOwner.ownerEpoch).toBeGreaterThan(firstOwner.ownerEpoch);
         expect(mocks.promoteSessionRoute).toHaveBeenLastCalledWith(restoredOwner);
+        expect(mocks.openSession.mock.calls.at(-1)?.[2]).toEqual({});
         expect(mocks.currentViewingSessionId).toBe('main-session');
         expect(renderer.root.findByType('MessageComposer')).toBe(mainComposer);
         act(() => renderer.unmount());
         expect(mocks.currentViewingSessionId).toBeNull();
+    });
+
+    it('gives a deferred Web chat an entry latest request and retains it across modal focus changes', async () => {
+        mocks.messagesLoaded = true;
+        mocks.messages = [{ id: 'cached-message' }];
+        mocks.session = {
+            id: 'latest-on-entry', seq: 3, active: true, activeAt: 10,
+            createdAt: 1, updatedAt: 10, metadata: { path: '/test', host: 'test' },
+            metadataVersion: 1, agentState: null, agentStateVersion: 0, thinking: false, thinkingAt: 0,
+        };
+        const Focus = mocks.focusContext.Provider;
+        const tree = (focused: boolean) => <Focus value={focused}><SessionView id="latest-on-entry" /></Focus>;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(tree(true)); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+        const chat = renderer.root.findByType('ChatList');
+        expect(chat.props.followLatestRequest).toBe(1);
+        expect(mocks.openSession.mock.calls[0][2]).toEqual({ initialPosition: 'latest' });
+        await act(async () => renderer.update(tree(false)));
+        await act(async () => renderer.update(tree(true)));
+        await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+        expect(renderer.root.findByType('ChatList')).toBe(chat);
+        expect(chat.props.followLatestRequest).toBe(1);
+        expect(mocks.openSession.mock.calls.at(-1)?.[2]).toEqual({});
+        act(() => renderer.unmount());
+        await act(async () => { renderer = TestRenderer.create(tree(true)); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+        expect(renderer.root.findByType('ChatList').props.followLatestRequest).toBe(0);
+        expect(mocks.openSession.mock.calls.at(-1)?.[2]).toEqual({});
+        act(() => renderer.unmount());
     });
 
     it('does not acquire an unfocused route and ignores its late hydration after focus moves away', async () => {
@@ -424,7 +457,7 @@ describe('SessionView deep-link hydration', () => {
         mocks.openSession.mockResolvedValue('not-found');
         await act(async () => { renderer.root.findByProps({ testID: 'session-retry' }).props.onPress(); });
         expect(mocks.openSession.mock.calls.length).toBe(5);
-        expect(mocks.openSession.mock.calls[4][2]).toEqual({ retry: true });
+        expect(mocks.openSession.mock.calls[4][2]).toEqual({ retry: true, initialPosition: 'latest' });
         expect(renderer.root.findAllByProps({ testID: 'session-not-found' }).length).toBeGreaterThan(0);
         act(() => renderer.unmount());
     });
@@ -446,7 +479,7 @@ describe('SessionView deep-link hydration', () => {
 
         await act(async () => { await vi.advanceTimersByTimeAsync(1); });
         expect(mocks.beginSessionRoute).toHaveBeenCalledTimes(2);
-        expect(mocks.openSession.mock.calls[1][2]).toEqual({ retry: true });
+        expect(mocks.openSession.mock.calls[1][2]).toEqual({ retry: true, initialPosition: 'latest' });
         act(() => renderer.unmount());
     });
 
@@ -458,7 +491,7 @@ describe('SessionView deep-link hydration', () => {
         await act(async () => { renderer = TestRenderer.create(<SessionView id="deep-session" />); });
 
         expect(mocks.ensureSessionHydrated).toHaveBeenCalledWith('deep-session');
-        expect(mocks.openSession).toHaveBeenCalledWith('deep-session', expect.objectContaining({ sessionId: 'deep-session', phase: 'opening' }));
+        expect(mocks.openSession).toHaveBeenCalledWith('deep-session', expect.objectContaining({ sessionId: 'deep-session', phase: 'opening' }), { initialPosition: 'latest' });
         expect(mocks.promoteSessionRoute).not.toHaveBeenCalled();
         expect(mocks.setCurrentViewingSession).not.toHaveBeenCalled();
         expect(renderer.root.findByProps({ testID: 'session-loading' })).toBeTruthy();
@@ -630,7 +663,7 @@ describe('SessionView deep-link hydration', () => {
             const recovery = deferred<'ready'>();
             mocks.openSession.mockReturnValueOnce(recovery.promise);
             await act(async () => { renderer.root.findByProps({ testID: 'session-retry-cached' }).props.onPress(); });
-            expect(mocks.openSession.mock.calls[4][2]).toEqual({ retry: true });
+            expect(mocks.openSession.mock.calls[4][2]).toEqual({ retry: true, initialPosition: 'latest' });
             expect(renderer.root.findByType('AgentContentView')).toBe(chat);
             mocks.messagesLoaded = true;
             await act(async () => { recovery.resolve('ready'); });

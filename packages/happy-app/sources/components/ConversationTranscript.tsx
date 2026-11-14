@@ -700,13 +700,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         catch { if (sessionRef.current === session) jumpPending.current = false; }
         finally { if (jumpRequest.current === request) jumpRequest.current = null; }
     }, [isAtLatest, scrollLatest, props.onJumpToLatest, props.sessionId, coordinator, reading]);
-    const followLatestRequestRef = React.useRef(props.followLatestRequest ?? 0);
-    React.useEffect(() => {
-        const request = props.followLatestRequest ?? 0;
-        if (request === followLatestRequestRef.current) return;
-        followLatestRequestRef.current = request;
-        void scrollToBottom();
-    }, [props.followLatestRequest, scrollToBottom]);
+    const followLatestRequestRef = React.useRef(0);
     const onContentSizeChange = React.useCallback((_width: number, height: number) => {
         const boundary = boundaryAttemptKey('older');
         const previous = contentMeasurementRef.current;
@@ -757,8 +751,17 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         userScrollStarted.current = false;
         userScrollDirection.current = undefined;
         userScrollOffset.current = null;
+        followLatestRequestRef.current = 0;
         setBoundaries({ older: false, newer: false });
     }, [props.sessionId]);
+    // Consume an entry request after the session reset, including when a
+    // deferred transcript first mounts with an already-positive request.
+    React.useEffect(() => {
+        const request = props.followLatestRequest ?? 0;
+        if (request === followLatestRequestRef.current) return;
+        followLatestRequestRef.current = request;
+        void scrollToBottom();
+    }, [props.sessionId, props.followLatestRequest, scrollToBottom]);
     React.useEffect(() => {
         if (Platform.OS !== 'web' || inverted || !isAtLatest || !initialWebFill.current
             || props.isLoadingOlder || props.olderError || props.hasMoreOlder !== true) return;

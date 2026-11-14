@@ -30,6 +30,13 @@ Acceptance cases:
 
 Use only Ego for browser execution. Record one numeric task space, exact target, clean expected URL, and a session-bound Happy capture context. Set and assert the viewport in the same Ego round as each screenshot. Separate reviewers should create a separate fixture session; different task spaces still share same-origin local preferences.
 
+Session-switch scrolling regression:
+
+1. While `serve.mjs` is running, run `pnpm exec tsx --tsconfig packages/happy-cli/tsconfig.json packages/happy-app/e2e/fixtures/codex-settings/seed-scroll-switch.mjs`.
+2. Authenticate an Ego Page using the private auth entry, then navigate to the clean Web root. Import `verify-scroll-switch.ego.mjs` inside that same Ego task space and call `verifyScrollSwitch({ page, runtime, seed })`, reading `runtime.json` and `scroll-switch-runtime.json` from the ignored output directory. The optional `onState(label, metrics)` callback supports fresh verified-state video frames.
+3. This checks A → scroll up → B → A without transcript wheel events during switching, incoming output while reading, same-session detail return, and reload to latest. The two synthetic conversations have 360 messages each. A loopback `/append` call adds one synthetic reply; no model or production account is involved.
+4. Stop the seed controller using `POST <seed.controllerUrl>/shutdown`, then stop the main fixture using its own `/shutdown`. Detail return checks a stable visible row and its signed viewport offset because cached window replacement can change the absolute scroll offset. Wait for that row to mount before asserting.
+
 The original browser execution recipe and media from the 2026-11-11 run are local evidence, not portable task-space IDs; see `docs/validation/codex-unified-settings.md`.
 
 Recency regression: while this isolated fixture is running, start
