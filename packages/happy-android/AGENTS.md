@@ -2225,7 +2225,10 @@ is `packages/happy-ios`. The wire keeps its own names
   the same interface): a request with nothing back over its client for 3 s,
   and the event stream silent for 20 s (its heartbeat is every 15 s), get
   the same check on that client, at most once every 5 s
-  (`TailcatClients`' `Lease.watch`, iOS's 5a960ac2e). A
+  (`TailcatClients`' `Lease.watch`, iOS's 5a960ac2e). A request's flow given up
+  on before its answer is whole, and an event stream let go of, are reset
+  (`TailcatConnection.abort`), so the computer stops sending; a FIN would
+  have it send the rest, taken in and discarded (iOS's 934460ea4). A
   default network that moves to another one with no loss between (Wi-Fi to
   cellular, `NetworkChange.Moved` from `defaultNetwork().changes()`, iOS's
   4760daf0c) is different: what was open went out the old way and can hang
