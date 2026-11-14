@@ -34,6 +34,8 @@ export interface BuildAgyArgsOptions {
   addDirs?: string[];
   /** Value for `--print-timeout` (e.g. "10m"). */
   printTimeout?: string;
+  /** Path for agy's per-turn log file. */
+  logFile?: string;
 }
 
 /**
@@ -59,6 +61,9 @@ export function buildAgyArgs(opts: BuildAgyArgsOptions): string[] {
   }
   if (opts.printTimeout) {
     args.push('--print-timeout', opts.printTimeout);
+  }
+  if (opts.logFile) {
+    args.push('--log-file', opts.logFile);
   }
 
   args.push('--print', opts.prompt);
