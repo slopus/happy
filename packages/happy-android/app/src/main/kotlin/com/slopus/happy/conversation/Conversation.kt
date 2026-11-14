@@ -1111,6 +1111,8 @@ class Conversation(
                     val attached = attachments(next)
                     val attachments = attached ?: upload(next.files)
                     val images = if (attached == null) next.images else emptyList()
+                    // The words go as this try went, whatever the route's memory says by the time they do.
+                    val text = wire(next, attaching = cloudFiles || attached != null)
                     skillRequested(next)
                     val deliver: suspend (List<SentAttachment>) -> Message? = { files ->
                         withRetries {
@@ -1122,7 +1124,7 @@ class Conversation(
                                     uploads.set(UploadBoard.pictureKey(next.id, index), if (share >= 1f) UploadPhase.Done else UploadPhase.Uploading(share))
                                 }
                             }
-                            withContext(progress) { api.send(agentId, next.id, wire(next), images, mode, next.toolRequest, files) }
+                            withContext(progress) { api.send(agentId, next.id, text, images, mode, next.toolRequest, files) }
                         }
                     }
                     val message = try {
@@ -1278,12 +1280,12 @@ class Conversation(
     /** Files go as attachments: on Happy Cloud, and to a computer with the route. */
     private val attaches: Boolean get() = cloudFiles || !attachmentRoute.missing
 
-    /** What [send] says: its words where its files go as attachments beside them; else with the paths it wrote them to. */
-    private fun wire(send: Outgoing): String = if (attaches) send.text else WorkspaceUploads.text(send.text, send.files)
+    /** What [send] says: its words where its files go as attachments beside them ([attaching]); else with the paths it wrote them to. */
+    private fun wire(send: Outgoing, attaching: Boolean): String = if (attaching) send.text else WorkspaceUploads.text(send.text, send.files)
 
     /** [send] as its bubble reads until the agent has it: its files listed by name where they go as attachments, else by path. */
     private fun shown(send: Outgoing): String =
-        if (attaches) WorkspaceUploads.listed(send.text, send.files.map { it.name }) else wire(send)
+        if (attaches) WorkspaceUploads.listed(send.text, send.files.map { it.name }) else wire(send, attaching = false)
 
     /**
      * New work's first `/skill args` ([Outgoing.skill]) asks for the skill

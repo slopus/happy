@@ -61,6 +61,8 @@ private class FakeAgent {
     var daemon: FakeAttachments? = null
     /** Runs as a send arrives, before it is answered: a test's way to expire an upload. */
     var beforeSend: () -> Unit = {}
+    /** Runs as a workspace file write arrives. */
+    var beforeWrite: () -> Unit = {}
     /** Sends to [attachments]' route, and to [daemon]'s. */
     val fileRequest: AgentFileRequest = { method, path, body, headers ->
         requests += Triple(method, path, null)
@@ -97,6 +99,7 @@ private class FakeAgent {
             route == "/v0/tasks" -> ok("""{"task":{"id":${(body as JsonObject)["id"]},"agent":{"id":"${(body as JsonObject)["agentId"]!!.toString().trim('"')}","workspaceId":"w","status":"idle"}},"membership":{}}""")
             route.endsWith("/bootstrap") -> { beforeBootstrap(); ok(bootstrap) }
             method == "PUT" && route.startsWith("/v0/workspaces/") && route.endsWith("/file") -> {
+                beforeWrite()
                 val o = body as JsonObject
                 val key = route.removePrefix("/v0/workspaces/").removeSuffix("/file") + ":" + o["path"]!!.toString().trim('"')
                 val bytes = java.util.Base64.getDecoder().decode(o["content"]!!.toString().trim('"'))
@@ -1355,6 +1358,24 @@ class ConversationTest {
         assertTrue(chat.send("Again", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))) { emptyList() })
         advanceUntilIdle()
         assertTrue(chat.state.value.rows.filterIsInstance<ConversationRow.User>().first { it.text.startsWith("Again") }.delivery is Delivery.Failed)
+    }
+
+    @Test fun `a send that went the old way names its files though the route's memory runs out on the way`() = runTest {
+        var now = 0L
+        val route = AttachmentRoute { now }.apply { markMissing() }
+        val agent = FakeAgent().apply { daemon = FakeAttachments(); beforeWrite = { now = AttachmentRoute.FORGET_MILLIS } }
+        val chat = conversation(agent, route = route)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        assertTrue(chat.send("", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))) { emptyList() })
+        advanceUntilIdle()
+        assertFalse("forgotten during the write", route.missing)
+        val send = agent.requests.single { it.second.endsWith("/send") }.third!!
+        val id = send["id"]!!.jsonPrimitive.content
+        assertEquals("Attached file:\n- ./.happy-uploads/$id/0-notes.pdf", send["text"]!!.jsonPrimitive.content)
+        assertNull(send["content"])
+        assertTrue(agent.daemon!!.requests.isEmpty())
     }
 
     @Test fun `a computer found without the route is asked again after ten minutes`() {
