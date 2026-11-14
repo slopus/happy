@@ -33,6 +33,8 @@ public enum Alerts {
         _ title: String,
         _ message: String? = nil,
         placeholder: String? = nil,
+        text: String? = nil,
+        keyboard: UIKeyboardType = .URL,
         confirmTitle: String,
         on controller: UIViewController
     ) async -> String? {
@@ -40,9 +42,10 @@ public enum Alerts {
             let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
             alert.addTextField { field in
                 field.placeholder = placeholder
+                field.text = text
                 field.autocapitalizationType = .none
                 field.autocorrectionType = .no
-                field.keyboardType = .URL
+                field.keyboardType = keyboard
             }
             alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel) { _ in continuation.resume(returning: nil) })
             alert.addAction(UIAlertAction(title: confirmTitle, style: .default) { [weak alert] _ in
