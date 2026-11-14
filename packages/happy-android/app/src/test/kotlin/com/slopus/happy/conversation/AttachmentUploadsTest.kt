@@ -168,6 +168,20 @@ class AttachmentUploadsTest {
         assertEquals(listOf("PUT" to "bytes */${9 * mib}"), daemon.requests)
     }
 
+    @Test fun `a file uploaded before is asked after, and sent again only where it is gone`() = runTest {
+        val file = file(1000)
+        val id = uploads.upload("a1", file)
+        file.attachmentId = id
+        daemon.requests.clear()
+        uploads.upload("a1", file)
+        assertEquals(listOf("PUT" to "bytes */1000"), daemon.requests)
+        daemon.stored.clear()
+        daemon.requests.clear()
+        assertEquals(id, uploads.upload("a1", file))
+        assertEquals(listOf("PUT" to "bytes */1000", "PUT" to "bytes 0-999/1000"), daemon.requests)
+        assertTrue(daemon.stored.containsKey(id))
+    }
+
     @Test fun `a dropped connection asks again and goes on from what is held`() = runTest {
         val size = 20 * mib
         val file = file(size.toInt())

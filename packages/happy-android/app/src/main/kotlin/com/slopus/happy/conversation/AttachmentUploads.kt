@@ -20,10 +20,21 @@ import kotlin.coroutines.CoroutineContext
  * Whether the computer has the attachments routes, as its connection last
  * found: an older one (before happy-agent v2026.11.6-preview.4) answers the
  * first upload `404`, and its sends keep pictures inline and write files to
- * the workspace from then on.
+ * the workspace for [FORGET_MILLIS] (iOS's 10 minutes), when an updated
+ * computer is asked again.
  */
-class AttachmentRoute {
-    @Volatile var missing: Boolean = false
+class AttachmentRoute(private val now: () -> Long = System::currentTimeMillis) {
+    @Volatile private var missingAt: Long? = null
+
+    val missing: Boolean get() = missingAt?.let { now() - it < FORGET_MILLIS } == true
+
+    fun markMissing() {
+        missingAt = now()
+    }
+
+    companion object {
+        const val FORGET_MILLIS = 10 * 60_000L
+    }
 }
 
 /** The first request of an upload answered `404` (or `405`, `501`): the computer has no attachments route. */
@@ -47,7 +58,12 @@ class AttachmentUploads(
     /** Where the file is hashed and read. */
     private val io: CoroutineContext = Dispatchers.IO,
 ) {
-    /** [file] uploaded to [agentId]; its attachment ID. [sent] hears how many of its bytes the computer has, or is being written. */
+    /**
+     * [file] uploaded to [agentId]; its attachment ID. One uploaded before
+     * ([OutgoingFile.attachmentId]) is asked after first, and sent again
+     * only where the computer no longer holds it. [sent] hears how many of
+     * its bytes the computer has, or is being written.
+     */
     suspend fun upload(agentId: String, file: OutgoingFile, sent: (Long) -> Unit = {}): String {
         val id = file.digest ?: withContext(io) { digest(file.file) }.also { file.digest = it }
         // As it is on the disk: a picked file's stated size may be missing.
@@ -58,7 +74,7 @@ class AttachmentUploads(
         var restarted = false
         while (true) {
             try {
-                return if (size <= DIRECT) whole(named, headers, file, size, id, sent) else chunks(named, headers, file, size, id, sent)
+                return if (size <= DIRECT && file.attachmentId == null) whole(named, headers, file, size, id, sent) else chunks(named, headers, file, size, id, sent)
             } catch (e: ConversationApiException) {
                 // Past the upload's request limit: it is cancelled and sent once more from the start.
                 if (e.status != 400 || e.code != "invalid_request" || restarted) throw e

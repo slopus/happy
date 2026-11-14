@@ -1668,10 +1668,13 @@ gained lines is all additions too, and git calls it modified.
   range 8 MiB at a time. A broken connection or a `5xx` waits, asks again and
   goes on from `received`; five failures in a row without a range taken fail
   the send, whose Retry resumes it (the digest and attachment ID stay on the
-  `OutgoingFile`). Past the request limit (`400`) the upload is deleted and
-  sent again once; `409 hash_mismatch` fails. A `404` on a send's first
-  upload is a computer without the route (`AttachmentRoute`, kept per
-  connection): its sends go the old way. The sender's bytes are kept in the
+  `OutgoingFile`). A file uploaded before is asked after (`bytes */size`) on
+  every try and sent again where it is gone, since an unsent upload expires
+  after 24 h; a send refused `attachment_not_found` does that once more under
+  the same message ID. Past the request limit (`400`) the upload is deleted
+  and sent again once; `409 hash_mismatch` fails. A `404` on a send's first
+  upload is a computer without the route (`AttachmentRoute`, per connection,
+  forgotten after 10 minutes as on iOS): its sends go the old way. The sender's bytes are kept in the
   connection's `MediaLibrary` under `attachment/<agentId>/<sha256>`, so it
   never downloads its own. A message's `file` blocks are `MediaRef`s with
   `attachment` set (`Block.File.ref`): pictures and recordings flow under its

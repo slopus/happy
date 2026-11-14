@@ -59,6 +59,8 @@ private class FakeAgent {
     var attachments: ArrayList<Triple<String, String, ByteArray>>? = ArrayList()
     /** A computer's attachments routes (`…/attachments/:sha256`); null answers them 404, as an older computer does. */
     var daemon: FakeAttachments? = null
+    /** Runs as a send arrives, before it is answered: a test's way to expire an upload. */
+    var beforeSend: () -> Unit = {}
     /** Sends to [attachments]' route, and to [daemon]'s. */
     val fileRequest: AgentFileRequest = { method, path, body, headers ->
         requests += Triple(method, path, null)
@@ -109,6 +111,9 @@ private class FakeAgent {
             route.endsWith("/messages") && failOlder && "before=" in path -> TransportResponse(503, body = "{}".toByteArray())
             route.endsWith("/messages") && "after=" in path && afterPage != null -> ok(afterPage!!)
             route.endsWith("/messages") -> ok(page)
+            route.endsWith("/send") && daemon != null && run { beforeSend(); true } &&
+                (body as JsonObject)["content"]?.jsonArray.orEmpty().any { it.jsonObject["type"]?.jsonPrimitive?.content == "file" && it.jsonObject["attachment"]!!.jsonPrimitive.content !in daemon!!.stored } ->
+                TransportResponse(400, body = """{"error":"No such attachment.","code":"attachment_not_found"}""".toByteArray())
             route.endsWith("/send") && halfway != null -> {
                 val bytes = body.toString().toByteArray()
                 val progress = kotlinx.coroutines.currentCoroutineContext()[com.slopus.happy.connection.BodyProgress]
@@ -178,7 +183,7 @@ class ConversationTest {
         started: (Mode) -> Unit = {},
         cloudFiles: Boolean = false,
         // An older computer unless a test says otherwise: pictures inline, files in the workspace.
-        route: AttachmentRoute = AttachmentRoute().apply { missing = true },
+        route: AttachmentRoute = AttachmentRoute().apply { markMissing() },
         kept: MutableMap<String, java.io.File> = HashMap(),
         created: (JsonObject) -> Unit = {},
     ) = Conversation(
@@ -1304,6 +1309,62 @@ class ConversationTest {
         assertEquals(mapOf(photoId to photo, docId to doc), kept)
         val id = send["id"]!!.jsonPrimitive.content
         assertEquals(UploadPhase.Done, chat.uploads.phase(UploadBoard.pictureKey(id, 0)))
+        assertFalse(route.missing)
+    }
+
+    @Test fun `Retry after the computer let an unsent upload go asks after it and uploads it again under the same message`() = runTest {
+        val daemon = FakeAttachments()
+        val agent = FakeAgent().apply { this.daemon = daemon; sendStatus = 400 }
+        val chat = conversation(agent, route = AttachmentRoute())
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        assertTrue(chat.send("Look", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))) { emptyList() })
+        advanceUntilIdle()
+        val row = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single()
+        assertTrue(row.delivery is Delivery.Failed)
+        // A day later: the unsent upload expired.
+        daemon.stored.clear()
+        daemon.requests.clear()
+        agent.sendStatus = 202
+        chat.retrySend(row.messageId)
+        advanceUntilIdle()
+        val id = FakeAttachments.hex(doc.readBytes())
+        assertEquals(listOf("PUT" to "bytes */2", "PUT" to "bytes 0-1/2"), daemon.requests)
+        assertTrue(daemon.stored.containsKey(id))
+        val sends = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!!["id"]!!.jsonPrimitive.content }
+        assertEquals(listOf(row.messageId, row.messageId), sends.takeLast(2))
+        assertEquals(Delivery.Pending, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
+    }
+
+    @Test fun `a send refused for an attachment gone meanwhile uploads it again once`() = runTest {
+        val daemon = FakeAttachments()
+        var expired = 0
+        val agent = FakeAgent().apply { this.daemon = daemon; beforeSend = { if (expired++ == 0) daemon.stored.clear() } }
+        val chat = conversation(agent, route = AttachmentRoute())
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        assertTrue(chat.send("Look", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))) { emptyList() })
+        advanceUntilIdle()
+        assertEquals(listOf("PUT" to null, "PUT" to "bytes */2", "PUT" to "bytes 0-1/2"), daemon.requests)
+        assertEquals(2, agent.requests.filter { it.second.endsWith("/send") }.map { it.third!!["id"] }.also { assertEquals(1, it.distinct().size) }.size)
+        assertEquals(Delivery.Pending, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
+        // Gone again: once is all; the message fails with Retry.
+        agent.beforeSend = { daemon.stored.clear() }
+        assertTrue(chat.send("Again", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))) { emptyList() })
+        advanceUntilIdle()
+        assertTrue(chat.state.value.rows.filterIsInstance<ConversationRow.User>().first { it.text.startsWith("Again") }.delivery is Delivery.Failed)
+    }
+
+    @Test fun `a computer found without the route is asked again after ten minutes`() {
+        var now = 0L
+        val route = AttachmentRoute { now }
+        assertFalse(route.missing)
+        route.markMissing()
+        now = AttachmentRoute.FORGET_MILLIS - 1
+        assertTrue(route.missing)
+        now = AttachmentRoute.FORGET_MILLIS
         assertFalse(route.missing)
     }
 

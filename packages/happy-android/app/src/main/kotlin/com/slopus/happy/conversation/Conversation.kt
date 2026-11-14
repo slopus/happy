@@ -1112,16 +1112,25 @@ class Conversation(
                     val attachments = attached ?: upload(next.files)
                     val images = if (attached == null) next.images else emptyList()
                     skillRequested(next)
-                    val message = withRetries {
-                        // The bytes of each picture's base64 written say how far it is.
-                        var ranges: UploadRanges? = null
-                        val progress = com.slopus.happy.connection.BodyProgress { body, sent ->
-                            val found = ranges ?: UploadRanges(body, images.map { it.data }).also { ranges = it }
-                            found.shares(sent).forEachIndexed { index, share ->
-                                uploads.set(UploadBoard.pictureKey(next.id, index), if (share >= 1f) UploadPhase.Done else UploadPhase.Uploading(share))
+                    val deliver: suspend (List<SentAttachment>) -> Message? = { files ->
+                        withRetries {
+                            // The bytes of each picture's base64 written say how far it is.
+                            var ranges: UploadRanges? = null
+                            val progress = com.slopus.happy.connection.BodyProgress { body, sent ->
+                                val found = ranges ?: UploadRanges(body, images.map { it.data }).also { ranges = it }
+                                found.shares(sent).forEachIndexed { index, share ->
+                                    uploads.set(UploadBoard.pictureKey(next.id, index), if (share >= 1f) UploadPhase.Done else UploadPhase.Uploading(share))
+                                }
                             }
+                            withContext(progress) { api.send(agentId, next.id, wire(next), images, mode, next.toolRequest, files) }
                         }
-                        withContext(progress) { api.send(agentId, next.id, wire(next), images, mode, next.toolRequest, attachments) }
+                    }
+                    val message = try {
+                        deliver(attachments)
+                    } catch (e: ConversationApiException) {
+                        // An upload the computer let go of before the message went (unsent for 24 h): checked and sent again once.
+                        if (attached == null || e.code != "attachment_not_found") throw e
+                        deliver(attachments(next) ?: throw e)
                     }
                     // All there, whatever the transport told on the way; the echo clears them.
                     images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Done) }
@@ -1228,11 +1237,11 @@ class Conversation(
 
     /**
      * A send's pictures and files as the agent's attachments
-     * ([AttachmentUploads]), each uploaded once: a retry goes on from what
-     * the computer holds. Each picture's ring follows its bytes, and its
-     * bytes are kept for its tile. Null for a send with neither, and where
-     * the computer has no attachments route, which is remembered for its
-     * connection.
+     * ([AttachmentUploads]): a retry goes on from what the computer holds,
+     * and one already uploaded is only asked after, since an unsent upload
+     * expires. Each picture's ring follows its bytes, and its bytes are kept
+     * for its tile. Null for a send with neither, and where the computer has
+     * no attachments route, which is remembered for its connection a while.
      */
     private suspend fun attachments(send: Outgoing): List<SentAttachment>? {
         if (attachmentRoute.missing) return null
@@ -1243,7 +1252,6 @@ class Conversation(
         val sizes = withContext(io) { all.map { it.file.length() } }
         all.zip(sizes).firstOrNull { (_, size) -> size > AttachmentUploads.MAX_SIZE }?.let { (file, _) -> throw FileTooLarge(file.name) }
         all.forEachIndexed { index, file ->
-            if (file.attachmentId != null) return@forEachIndexed
             val key = UploadBoard.pictureKey(send.id, index).takeIf { index < pictures.size }
             val size = sizes[index].coerceAtLeast(1)
             file.attachmentId = try {
@@ -1251,7 +1259,7 @@ class Conversation(
             } catch (e: AttachmentRouteMissing) {
                 // Only a send's first request tells: once any is in, the computer has the route.
                 if (all.any { it.attachmentId != null }) throw e
-                attachmentRoute.missing = true
+                attachmentRoute.markMissing()
                 return null
             } catch (e: ConversationApiException) {
                 if (e.status == 413) throw FileTooLarge(file.name)
