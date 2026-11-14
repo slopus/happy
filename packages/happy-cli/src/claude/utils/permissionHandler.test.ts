@@ -90,10 +90,58 @@ describe('PermissionHandler', () => {
         const handler = new PermissionHandler(session as any);
         const setMode = vi.fn(async () => {});
 
-        handler.setPermissionModeUpdater(setMode);
+        handler.setPermissionModeUpdater(setMode, undefined);
         handler.handleModeChange('yolo');
 
         expect(setMode).toHaveBeenCalledWith('bypassPermissions');
+    });
+
+    it('does not push the mode the query was spawned with', async () => {
+        const { session } = createSessionMock();
+        const handler = new PermissionHandler(session as any);
+        const setMode = vi.fn(async () => {});
+
+        handler.setPermissionModeUpdater(setMode, 'auto');
+        handler.handleModeChange('auto');
+
+        expect(setMode).not.toHaveBeenCalled();
+    });
+
+    // Regression: a push that reaches a closed query rejects ("Query closed
+    // before response received"). The handler used to compare against the mode
+    // it had asked for, so every later push of that same mode was skipped and
+    // the live query stayed on the old one until the user toggled away and back.
+    it('retries a mode whose push to the live query failed', async () => {
+        const { session } = createSessionMock();
+        const handler = new PermissionHandler(session as any);
+        const setMode = vi.fn()
+            .mockRejectedValueOnce(new Error('Query closed before response received'))
+            .mockResolvedValue(undefined);
+
+        handler.setPermissionModeUpdater(setMode, 'default');
+        handler.handleModeChange('auto');
+        await vi.waitFor(() => expect(setMode).toHaveBeenCalledTimes(1));
+        await Promise.resolve();
+
+        handler.handleModeChange('auto');
+        expect(setMode).toHaveBeenCalledTimes(2);
+        expect(setMode).toHaveBeenLastCalledWith('auto');
+
+        await Promise.resolve();
+        handler.handleModeChange('auto');
+        expect(setMode).toHaveBeenCalledTimes(2);
+    });
+
+    it('drops the live-query callback on reset', async () => {
+        const { session } = createSessionMock();
+        const handler = new PermissionHandler(session as any);
+        const setMode = vi.fn(async () => {});
+
+        handler.setPermissionModeUpdater(setMode, 'default');
+        handler.reset();
+        handler.handleModeChange('yolo');
+
+        expect(setMode).not.toHaveBeenCalled();
     });
 
     it('keeps main-thread request IDs unchanged', async () => {
