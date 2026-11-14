@@ -9,6 +9,7 @@
     <string name="compose_opening_task">タスクを開いています…</string>
     <string name="compose_task_placeholder">このタスクで何をしますか？</string>
     <string name="compose_loading_computers">コンピューターを読み込み中…</string>
+    <string name="compose_session_note">セッションは、コンピューター上の1つのフォルダーで動くエージェントです。ターミナルで起動したのと同じように動きます。</string>
     <string name="compose_still_loading">コンピューターをまだ読み込んでいます。少し待ってからもう一度お試しください。</string>
     <string name="compose_offline_computer">このコンピューターはオフラインです。そこで Happy を起動するか、別のコンピューターを選んでください。</string>
     <string name="compose_offline_happy_agent">このコンピューターの Happy Agent はオフラインです。起動するか、別のコンピューターを選んでください。</string>

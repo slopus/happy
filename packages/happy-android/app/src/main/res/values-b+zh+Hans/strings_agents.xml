@@ -9,6 +9,7 @@
     <string name="compose_opening_task">正在打开任务…</string>
     <string name="compose_task_placeholder">这个任务要做什么？</string>
     <string name="compose_loading_computers">正在加载电脑…</string>
+    <string name="compose_session_note">会话是在你电脑上某个文件夹里工作的智能体，就像你在终端里启动它一样。</string>
     <string name="compose_still_loading">你的电脑仍在加载。请稍后再试。</string>
     <string name="compose_offline_computer">这台电脑处于离线状态。请在上面启动 Happy，或选择另一台。</string>
     <string name="compose_offline_happy_agent">这台电脑上的 Happy Agent 处于离线状态。请启动它，或选择另一台电脑。</string>

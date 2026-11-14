@@ -9,6 +9,7 @@
     <string name="compose_opening_task">S\'està obrint la tasca…</string>
     <string name="compose_task_placeholder">Què ha de fer aquesta tasca?</string>
     <string name="compose_loading_computers">S\'estan carregant els ordinadors…</string>
+    <string name="compose_session_note">Una sessió és un agent treballant en una carpeta del teu ordinador, com si l\'haguessis iniciat en un terminal.</string>
     <string name="compose_still_loading">Els teus ordinadors encara s\'estan carregant. Torna-ho a provar d\'aquí a un moment.</string>
     <string name="compose_offline_computer">Aquest ordinador està fora de línia. Obre Happy en ell o tria\'n un altre.</string>
     <string name="compose_offline_happy_agent">Happy Agent està fora de línia en aquest ordinador. Obre\'l o tria un altre ordinador.</string>

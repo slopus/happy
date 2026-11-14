@@ -9,6 +9,7 @@
     <string name="compose_opening_task">Abrindo tarefa…</string>
     <string name="compose_task_placeholder">O que esta tarefa deve fazer?</string>
     <string name="compose_loading_computers">Carregando computadores…</string>
+    <string name="compose_session_note">Uma sessão é um agente trabalhando em uma pasta do seu computador, como se você o tivesse iniciado em um terminal.</string>
     <string name="compose_still_loading">Seus computadores ainda estão carregando. Tente de novo em instantes.</string>
     <string name="compose_offline_computer">Este computador está offline. Inicie o Happy nele ou escolha outro.</string>
     <string name="compose_offline_happy_agent">Happy Agent está offline neste computador. Inicie-o ou escolha outro computador.</string>

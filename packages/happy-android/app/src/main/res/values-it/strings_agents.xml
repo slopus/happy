@@ -9,6 +9,7 @@
     <string name="compose_opening_task">Apertura dell\'attività…</string>
     <string name="compose_task_placeholder">Cosa deve fare questa attività?</string>
     <string name="compose_loading_computers">Caricamento dei computer…</string>
+    <string name="compose_session_note">Una sessione è un agente al lavoro in una cartella del tuo computer, come se l\'avessi avviato da un terminale.</string>
     <string name="compose_still_loading">I tuoi computer si stanno ancora caricando. Riprova tra un momento.</string>
     <string name="compose_offline_computer">Questo computer è offline. Avvia Happy su di esso o scegline un altro.</string>
     <string name="compose_offline_happy_agent">Happy Agent è offline su questo computer. Avvialo o scegli un altro computer.</string>

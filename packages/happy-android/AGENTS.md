@@ -304,16 +304,22 @@ win:
   (`ui/chat/ComposeChat.kt`, iOS's LegacyComposeStart): its composer
   writes the account's new-session draft; centred between the bar and the
   composer (`ui/chat/NewWorkPanel.kt`, iOS's NewWorkPanel/NewWorkLayout)
-  sit Session | Bot | Task (always shown; a kind no computer's Happy Agent
-  makes is dimmed, all pickable while the computers are still arriving),
-  the computer (always, with an Online / Offline · 3d / Happy Agent offline
-  chip on its corner, "Loading computers…" until they are in), then a
-  session's folder and harness, or a bot's name (a refusal said inside the
-  field), each a menu, the folders following the computer. Bot and Task
+  sit Session | Bot | Task (only once some computer's Happy Agent makes a
+  bot or a task: a Happy CLI-only account has a session alone to make, so
+  no choice shows; a kind no computer makes is dimmed), the computer
+  (always, with an Online / Offline · 3d / Happy Agent offline chip on its
+  corner, "Loading computers…" until they are in), then a session's folder
+  and harness, or a bot's name (a refusal said inside the field), each a
+  menu that leaves the keyboard up, the folders following the computer.
+  Each row names what it picks ("Machine", "Folder", "Harness") before
+  the pick, and a line under them says what the kind is (a bot's and a
+  task's are Happy Agent new work's words). The block lays out where the
+  tallest keyboard seen would leave it (`reservingKeyboard`), so the
+  keyboard coming or going moves nothing. Bot and Task
   go to a computer whose Happy Agent makes them and answers
   (`MachineTarget`, `NewSessionServices.setKind`), moved off an offline
-  one unless the person picked it. Short of room the block drops its note,
-  then tightens. Its first send starts the session, bot or task (Happy
+  one unless the person picked it. Short of room the block tightens and
+  keeps its note; with less still it runs up under the bar. Its first send starts the session, bot or task (Happy
   Agent's `target: {kind: "task"}`) with that text and images, and the
   screen then shows it. A send to a computer that doesn't answer, or
   before the computers are in, is refused in full before anything starts;

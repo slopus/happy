@@ -35,8 +35,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * A Happy account's new work (happy-ios NewWorkLayout(givingWay:),
  * NewWorkStatusLayout): the kind 220 wide, 16 over 44 rows 8 apart, 10 over
- * the note, centred in its room; short of room the note goes first, then
- * the gaps close to 14 and 6. The computer row's chip is 18 high, ends 16
+ * the note, centred in its room; short of room the gaps close to 14 and 6,
+ * the note stays, and with less still the block runs up under the bar. The computer row's chip is 18 high, ends 16
  * from the row's end and rises 9 over its top, as wide as its words and at
  * most 150, taking no part in the row's layout.
  */
@@ -129,13 +129,15 @@ class ComposeTargetLayoutTest {
         assertEquals("centred in its room", ((room.top + room.bottom) / 2).value, ((art.top + note.bottom) / 2).value, 1f)
     }
 
-    @Test fun `short of room the picture keeps its size, and the note goes first`() {
+    @Test fun `short of room the picture keeps its size, and the note stays as the block runs up`() {
         // The picture and its gap, 144, over kind 32 + 16 + 44 + 8 + 44 = 144; margins 12 each; the note's line won't fit.
         show(144.dp + 144.dp + 24.dp + 10.dp, art = StateArt.Action)
-        assertDp("never smaller", 128, rule.node(NewWorkTags.art(StateArt.Action)).bounds.width)
-        assertDp("the gaps kept", rule.node(NewWorkTags.KIND).bounds.bottom + 16.dp, rule.node(NewWorkTags.MACHINE).bounds.top)
-        val note = rule.onAllNodes(hasTestTag(NewWorkTags.NOTE), useUnmergedTree = true).fetchSemanticsNodes().single()
-        assertTrue("the note is there, unseen", note.layoutInfo.isPlaced)
+        val room = rule.node(ROOM).bounds
+        val art = rule.node(NewWorkTags.art(StateArt.Action)).bounds
+        assertDp("never smaller", 128, art.width)
+        assertDp("the gaps close", rule.node(NewWorkTags.KIND).bounds.bottom + 14.dp, rule.node(NewWorkTags.MACHINE).bounds.top)
+        assertDp("the note 12 over the composer", room.bottom - 12.dp, rule.node(NewWorkTags.NOTE).bounds.bottom)
+        assertTrue("above the room: $art, $room", art.top < room.top)
     }
 
     @Test fun `with no room the block stands on the composer and runs up, picture and all`() {
@@ -143,19 +145,18 @@ class ComposeTargetLayoutTest {
         val room = rule.node(ROOM).bounds
         val art = rule.node(NewWorkTags.art(StateArt.Action)).bounds
         assertDp("never smaller", 128, art.width)
-        assertDp("12 over the composer", room.bottom - 12.dp, rule.node(NewWorkTags.FOLDER).bounds.bottom)
+        assertDp("12 over the composer, note and all", room.bottom - 12.dp, rule.node(NewWorkTags.NOTE).bounds.bottom)
         assertDp("16 over the kind", art.bottom + 16.dp, rule.node(NewWorkTags.KIND).bounds.top)
         assertTrue("above the room: $art, $room", art.top < room.top)
     }
 
-    @Test fun `short of room the note goes first`() {
-        // kind 32 + 16 + 44 + 8 + 44 = 144, the note's 10 and its line on top; margins 12 each.
-        show(176.dp)
+    @Test fun `short of room the gaps close and the note stays`() {
+        // kind 32 + 14 + 44 + 6 + 44 = 140, the note's 10 and its line on top; margins 12 each.
+        show(140.dp + 10.dp + 24.dp + 24.dp)
         val kind = rule.node(NewWorkTags.KIND).bounds
         val machine = rule.node(NewWorkTags.MACHINE).bounds
-        assertDp("the gaps kept", kind.bottom + 16.dp, machine.top)
-        val placed = rule.onAllNodes(hasTestTag(NewWorkTags.NOTE), useUnmergedTree = true).fetchSemanticsNodes().single()
-        assertTrue("the note is there, unseen", placed.layoutInfo.isPlaced)
+        assertDp("14 under the kind", kind.bottom + 14.dp, machine.top)
+        assertTrue("the note shows", rule.node(NewWorkTags.NOTE).bounds.top >= rule.node(NewWorkTags.FOLDER).bounds.bottom)
     }
 
     @Test fun `with less room still the gaps close`() {

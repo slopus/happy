@@ -283,9 +283,10 @@ fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: 
 
 /**
  * One of a Happy account's rows (happy-ios NewWorkMenuRow): a 44 capsule on
- * the input ground, 16 in, a 16 glyph 8 before what is chosen (16, the
- * middle truncated), opening [menu] under it. Dimmed while fixed. The
- * computer's row wears its [status] as a chip on its top-right corner.
+ * the input ground, 16 in, a 16 glyph 8 before what it picks ([label], 16
+ * secondary, kept whole) and what is chosen (16, the middle truncated, giving
+ * way first), opening [menu] under it. Dimmed while fixed. The computer's
+ * row wears its [status] as a chip on its top-right corner.
  */
 @Composable
 fun NewWorkMenuRow(
@@ -294,6 +295,7 @@ fun NewWorkMenuRow(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    label: String? = null,
     status: NewWorkStatus? = null,
     menu: @Composable () -> Unit = {},
 ) {
@@ -312,7 +314,8 @@ fun NewWorkMenuRow(
             horizontalArrangement = Arrangement.spacedBy(NewWorkSpec.rowIconGap, Alignment.CenterHorizontally),
         ) {
             Icon(icon, NewWorkSpec.rowIcon, colors.input.text)
-            Text(title, style = NewWorkSpec.field, color = colors.input.text, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+            label?.let { Text(it, style = NewWorkSpec.field, color = colors.textSecondary, maxLines = 1, softWrap = false) }
+            Text(title, style = NewWorkSpec.field, color = colors.input.text, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.weight(1f, fill = false))
         }
         status?.let {
             NewWorkStatusChip(
@@ -501,10 +504,10 @@ fun NewWorkNameField(
  * (happy-ios NewWorkLayout(givingWay:)): the kind's optional [art] over the
  * optional [kind] control, field-high [rows] and an optional [note]. What it
  * asks is what the first send makes, so short of room it gives way instead
- * of going: the note goes, then the gaps close (16 → 14 under the kind, which the computer's
- * chip still clears; 8 → 6 between rows); the picture keeps its size. With
- * no room even then it stands 12 over the composer and runs up under the
- * bar. Going ([shown] false) it fades out over 0.2 s, ease-out, as [NewWorkRoom].
+ * of going: the gaps close (16 → 14 under the kind, which the computer's
+ * chip still clears; 8 → 6 between rows); the picture keeps its size and
+ * the note, which says what is being made, stays (Kirill). With no room
+ * even then it stands 12 over the composer and runs up under the bar. Going ([shown] false) it fades out over 0.2 s, ease-out, as [NewWorkRoom].
  */
 @Composable
 fun NewWorkGivingWay(
@@ -545,12 +548,11 @@ fun NewWorkGivingWay(
         val artGap = NewWorkSpec.artToKind.roundToPx()
         val kindToRows = NewWorkSpec.kindToRows.roundToPx()
         val rowGapPx = NewWorkSpec.rowGap.roundToPx()
-        // (picture, kind gap, row gap, note): the note goes, then the gaps close; the picture stays at its size.
+        // (picture, kind gap, row gap, note): the gaps close; the picture and the note stay.
         val side = if (art != null) NewWorkSpec.art.roundToPx() else null
         val attempts = listOf(
             GivingWay(side, kindToRows, rowGapPx, true),
-            GivingWay(side, kindToRows, rowGapPx, false),
-            GivingWay(side, NewWorkSpec.tightKindToRows.roundToPx(), NewWorkSpec.tightRowGap.roundToPx(), false),
+            GivingWay(side, NewWorkSpec.tightKindToRows.roundToPx(), NewWorkSpec.tightRowGap.roundToPx(), true),
         )
         fun total(attempt: GivingWay) = (attempt.art?.let { it + artGap } ?: 0) + stackHeight(attempt.kindGap, attempt.rowGap, attempt.withNote)
         val chosen = attempts.firstOrNull { height >= total(it) + 2 * margin } ?: attempts.last()

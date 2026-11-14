@@ -380,19 +380,22 @@ fun ComposeChat.Dialogs() {
  * Agent's new work asks Task or Bot (happy-ios NewWorkPanel `.session`,
  * [NewWorkGivingWay]): what the first send makes and where it goes.
  *
- * - Session | Bot | Task always heads it, so nothing comes or goes as the
- *   computers arrive: a kind no computer's Happy Agent makes shows dimmed,
- *   and while they are still arriving every kind can be picked (500c1c485,
- *   c9adf9162). Picking Bot or Task moves the draft to a computer whose
- *   Happy Agent makes it and answers ([NewSessionServices.setKind]).
+ * - Session | Bot | Task heads it once some computer's Happy Agent makes a
+ *   bot or a task (Kirill): with none, a session is all there is to make and
+ *   no choice shows. A kind no computer's Happy Agent makes shows dimmed.
+ *   Picking Bot or Task moves the draft to a computer whose Happy Agent
+ *   makes it and answers ([NewSessionServices.setKind]).
+ * - Each row says what it picks ("Machine", "Folder", "Harness", secondary)
+ *   before what is picked.
  * - The computer, always, with whether it answers in a chip on its corner
  *   ("Online", "Offline · 3d", "Happy Agent offline", "…" while arriving);
  *   its menu lists, for a bot or a task, only computers whose Happy Agent
  *   makes it, those that answer first, and leads with why the chosen one
  *   can't take the send while it can't.
  * - A session's folder and harness; a bot's name ("Name your bot", its
- *   refusal said inside the field) and what a bot is; a task asks nothing
- *   more, and keeps that room empty, so Bot | Task moves nothing.
+ *   refusal said inside the field); a task asks nothing more, and keeps
+ *   that room empty, so Bot | Task moves nothing.
+ * - Under them, what the kind is ([ComposeKindNote]).
  *
  * Fixed while the start runs; it fades once the session has started. Its
  * menus leave the keyboard up for the composer.
@@ -427,15 +430,19 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
         stringResource(R.string.new_work_task),
     )
     val kindLabel = stringResource(R.string.home_dock_bot_kind)
+    // With no computer's Happy Agent making bots or tasks there is only a session to make: no choice to show.
+    val choosesKind = kind != ComposeKind.Session || current?.offersBots == true || current?.offersTasks == true
 
+    val machineLabel = stringResource(R.string.home_dock_picker_machine)
     val machineTitle = if (awaits) stringResource(R.string.compose_loading_computers) else current.machine?.name ?: stringResource(R.string.home_dock_select_machine)
     val machineStatus = composeMachineStatus(current, awaits)
     val machineRow: @Composable () -> Unit = {
         NewWorkMenuRow(
             Ionicon.DesktopOutline, machineTitle, enabled,
             onClick = { open = NewSessionPage.Machine },
+            label = machineLabel.takeUnless { awaits },
             status = machineStatus,
-            modifier = Modifier.testTag(NewWorkTags.MACHINE).semantics { contentDescription = listOfNotNull(machineTitle, machineStatus?.text).joinToString(", ") },
+            modifier = Modifier.testTag(NewWorkTags.MACHINE).semantics { contentDescription = listOfNotNull(machineLabel + ": " + machineTitle, machineStatus?.text).joinToString(", ") },
         ) {
             HappyDropdownMenu(expanded = open == NewSessionPage.Machine, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.MACHINE_MENU), keepsKeyboard = true) {
                 MachineMenu(compose, current, kind, awaits) { open = null }
@@ -447,11 +454,13 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
         when (kind) {
             ComposeKind.Session -> {
                 val folder = current?.project?.name ?: "~"
+                val folderLabel = stringResource(R.string.workspace_folder)
                 add {
                     NewWorkMenuRow(
                         Ionicon.FolderOutline, folder, enabled && current != null,
                         onClick = { open = NewSessionPage.Project },
-                        modifier = Modifier.testTag(NewWorkTags.FOLDER).semantics { contentDescription = folder },
+                        label = folderLabel,
+                        modifier = Modifier.testTag(NewWorkTags.FOLDER).semantics { contentDescription = "$folderLabel: $folder" },
                     ) {
                         if (current != null) {
                             HappyDropdownMenu(expanded = open == NewSessionPage.Project, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.FOLDER_MENU), keepsKeyboard = true) {
@@ -469,31 +478,21 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
     }
     NewWorkGivingWay(
         shown = compose.composing,
-        kind = {
-            NewWorkSegments(
-                labels = kindLabels,
-                selected = kinds.indexOf(kind),
-                enabled = enabled,
-                tag = { ComposeChatTags.kind(kinds[it]) },
-                onPick = { newSession.setKind(kinds[it]) },
-                segmentEnabled = { kinds[it] in offered },
-                modifier = Modifier.semantics { contentDescription = kindLabel },
-            )
-        },
-        rows = rows,
-        note = if (kind != ComposeKind.Session) {
+        kind = if (!choosesKind) null else {
             {
-                Text(
-                    stringResource(R.string.home_dock_bot_lede),
-                    style = NewWorkSpec.note,
-                    color = HappyTheme.colors.textSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().then(if (kind == ComposeKind.Bot) Modifier.testTag(NewWorkTags.NOTE) else Modifier.reserved()),
+                NewWorkSegments(
+                    labels = kindLabels,
+                    selected = kinds.indexOf(kind),
+                    enabled = enabled,
+                    tag = { ComposeChatTags.kind(kinds[it]) },
+                    onPick = { newSession.setKind(kinds[it]) },
+                    segmentEnabled = { kinds[it] in offered },
+                    modifier = Modifier.semantics { contentDescription = kindLabel },
                 )
             }
-        } else {
-            null
         },
+        rows = rows,
+        note = { ComposeKindNote(kind, choosesKind) },
         modifier = Modifier.testTag(ComposeChatTags.TARGET),
         art = when (kind) {
             ComposeKind.Session -> null
@@ -501,6 +500,33 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
             ComposeKind.Task -> StateArt.Action
         },
     )
+}
+
+/**
+ * What the first send makes, in a line or two (13/18 secondary, centred): a
+ * bot's and a task's words are Happy Agent's new work's. While the kind is
+ * a choice, each note keeps the room of the longest, so switching moves
+ * nothing.
+ */
+@Composable
+private fun ComposeKindNote(kind: ComposeKind, choosesKind: Boolean) {
+    val notes = mapOf(
+        ComposeKind.Session to R.string.compose_session_note,
+        ComposeKind.Bot to R.string.new_work_bot_note,
+        ComposeKind.Task to R.string.new_work_task_note,
+    )
+    Box {
+        for ((each, text) in notes) {
+            if (each != kind && !choosesKind) continue
+            Text(
+                stringResource(text),
+                style = NewWorkSpec.note,
+                color = HappyTheme.colors.textSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().then(if (each == kind) Modifier.testTag(NewWorkTags.NOTE) else Modifier.reserved()),
+            )
+        }
+    }
 }
 
 /**
@@ -664,6 +690,7 @@ private fun HarnessRow(
     NewWorkMenuRow(
         if (help) Ionicon.HelpCircleOutline else Ionicon.HardwareChipOutline, title, enabled && options != null,
         onClick = { if (help) uriHandler.openUri(HARNESS_SETUP_HELP_URL) else onOpen() },
+        label = stringResource(R.string.home_dock_picker_harness).takeUnless { help },
         modifier = Modifier.testTag(NewWorkTags.HARNESS).semantics { contentDescription = description },
     ) {
         if (options != null && !help) {

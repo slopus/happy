@@ -9,6 +9,7 @@
     <string name="compose_opening_task">Otwieranie zadania…</string>
     <string name="compose_task_placeholder">Co ma zrobić to zadanie?</string>
     <string name="compose_loading_computers">Wczytywanie komputerów…</string>
+    <string name="compose_session_note">Sesja to agent pracujący w jednym folderze na Twoim komputerze, tak jakbyś uruchomił go w terminalu.</string>
     <string name="compose_still_loading">Twoje komputery wciąż się wczytują. Spróbuj za chwilę.</string>
     <string name="compose_offline_computer">Ten komputer jest offline. Uruchom na nim Happy albo wybierz inny.</string>
     <string name="compose_offline_happy_agent">Happy Agent jest offline na tym komputerze. Uruchom go albo wybierz inny komputer.</string>

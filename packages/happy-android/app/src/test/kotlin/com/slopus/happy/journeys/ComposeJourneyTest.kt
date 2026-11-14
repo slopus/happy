@@ -113,17 +113,15 @@ class ComposeJourneyTest {
         rule.setContent { HappyApp(graph) }
         rule.waitFor(FlatRowTags.ROW)
 
-        // One computer: shown all the same, saying it answers (c9adf9162); its most recent folder. No Happy Agent: Bot and Task dimmed.
+        // One computer: shown all the same, saying it answers (c9adf9162); its most recent folder. No Happy Agent: only a session to make, so no kind to choose.
         rule.node(HomeTags.COMPOSE).performClick()
         rule.waitFor(NewWorkTags.FOLDER)
         rule.onNode(hasText("● Online") and hasAnyAncestor(hasTestTag(NewWorkTags.MACHINE_STATUS)), useUnmergedTree = true).assertExists()
-        // The folder can show from the first machine row before the rest of
-        // initial sync finishes. Kinds stay available until that is known.
         rule.waitUntil(5_000) { newSession.options.value?.machinesSynced == true }
-        rule.node(ComposeChatTags.kind(ComposeKind.Task)).assertIsNotEnabled()
-        rule.node(ComposeChatTags.kind(ComposeKind.Bot)).assertIsNotEnabled()
+        rule.node(NewWorkTags.KIND).assertDoesNotExist()
+        rule.node(NewWorkTags.NOTE).assertTextEquals(ApplicationProvider.getApplicationContext<android.content.Context>().getString(com.slopus.happy.R.string.compose_session_note))
         rule.waitUntil(5_000) { newSession.draft.value.selectedPath == "/h/repo" }
-        rule.node(NewWorkTags.FOLDER).assertContentDescriptionEquals("~/repo")
+        rule.node(NewWorkTags.FOLDER).assertContentDescriptionEquals("Folder: ~/repo")
         rule.node(NewWorkTags.FOLDER).performClick()
         rule.waitFor(ComposeChatTags.FOLDER_MENU)
         rule.node(ComposeChatTags.CUSTOM_PATH).assertExists()
