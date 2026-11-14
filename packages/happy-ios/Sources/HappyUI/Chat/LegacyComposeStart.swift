@@ -69,14 +69,17 @@ final class LegacyComposeStart: NSObject {
             ops: account.homeOps
         )
         starter = Self.makeStarter(account)
+        // Hears the keyboard from now, before this screen's comes up with it.
+        _ = KeyboardReserve.shared
         super.init()
         starter.presenter = self
         starter.onPhaseChange = { [weak self] _ in self?.onChange?() }
         composer.onChange = { [weak self] in
             guard let self else { return }
-            if followMachine() { return }
+            if settleKind() || followMachine() { return }
             onChange?()
         }
+        _ = settleKind()
         let snapshots = account.homeFeed.snapshots()
         feed = Task { [weak self] in
             for await snapshot in snapshots {
@@ -114,16 +117,37 @@ final class LegacyComposeStart: NSObject {
         HomeDockKind.current(createsBot: drafts.createsBot, createsTask: drafts.createsTask)
     }
 
-    /// Every kind the panel shows, always, so the control never comes or
-    /// goes as the computers arrive.
-    static let shownKinds: [HomeDockKind] = [.session, .bot, .task]
+    static let allKinds: [HomeDockKind] = [.session, .bot, .task]
+
+    /// This account's computers have been fetched, now or on an earlier
+    /// launch (its store keeps them).
+    var knowsComputers: Bool { composer.choices.machinesSynced }
+
+    /// The kinds the panel shows: every one once this account's computers
+    /// have been fetched (ever: the store keeps them, so from the first
+    /// frame after that) and one of them is a Happy Agent that makes a bot
+    /// or a task; else a session alone, which hides the control (Kirill).
+    /// So an account of Happy CLI computers only never sees it, and it
+    /// never shows while the computers are not known yet, only to go.
+    var shownKinds: [HomeDockKind] {
+        knowsComputers && kinds.count > 1 ? Self.allKinds : [.session]
+    }
+
+    /// A bot or a task kept in the draft from before, on an account whose
+    /// computers make neither now, is a session again: nothing on screen
+    /// could pick it back. True when it moved the draft.
+    private func settleKind() -> Bool {
+        guard composer.choices.machinesSynced, kinds.count == 1, kind != .session, sessionId == nil, !isStarting else { return false }
+        composer.selectKind(.session)
+        return true
+    }
 
     /// The kinds that can be picked: those some computer makes, the one
     /// already picked, and while the computers are still arriving, all
     /// (where it goes is settled when they are in).
     var enabledKinds: Set<HomeDockKind> {
         var enabled = Set(kinds).union([kind])
-        if !composer.choices.machinesSynced { enabled.formUnion(Self.shownKinds) }
+        if !composer.choices.machinesSynced { enabled.formUnion(Self.allKinds) }
         return enabled
     }
 
@@ -233,6 +257,12 @@ final class LegacyComposeStart: NSObject {
         let bot = drafts.bot
         let createsTask = drafts.createsTask
         let attachments = message.attachments
+        // Nothing is asked before the computers are known: the panel
+        // isn't up yet to ask it.
+        if !knowsComputers, let warning = machineWarning {
+            showStartError(warning)
+            throw Refused(message: warning)
+        }
         // A bot's name is asked for where it is typed, before anything
         // starts; the text stays in the composer.
         if bot.createsBot, let problem = BotName.problem(bot.botName) {

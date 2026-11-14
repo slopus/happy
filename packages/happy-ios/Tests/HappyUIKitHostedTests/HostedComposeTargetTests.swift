@@ -275,7 +275,7 @@ final class HostedComposeTargetTests: XCTestCase {
         for row in [panel.kind, panel.machine, panel.name] as [UIView] {
             XCTAssertFalse(row.isHidden)
             let frame = row.convert(row.bounds, to: chat.view)
-            XCTAssertGreaterThan(frame.minY, bar, "\(row) under the bar")
+            XCTAssertGreaterThanOrEqual(frame.minY, bar - 0.5, "\(row) under the bar")
             XCTAssertLessThan(frame.maxY, composerTop, "\(row) over the composer")
         }
         let machines = Self.actions(start.machineMenuElements()).map(\.title)
@@ -315,8 +315,9 @@ final class HostedComposeTargetTests: XCTestCase {
     }
 
     /// A bigger text size and a few lines typed: the composer grows into
-    /// the room the bot's panel had. The note gives way; the kind, the
-    /// computer and the name stay over the composer, never a blank gap.
+    /// the room the bot's panel had. The kind stops at the bar's foot and
+    /// the rows rise over the note; the kind, the computer and the name
+    /// stay between the bar and the composer, never a blank gap.
     func testABotAtALargerTextSizeKeepsItsNameAndComputer() async throws {
         let log = TargetSpawns()
         let (home, navigation, window, _) = try await reportedAccount(log: log)
@@ -337,7 +338,7 @@ final class HostedComposeTargetTests: XCTestCase {
         XCTAssertFalse(panel.isHidden, "the bot's name and computer are on screen")
         for row in [panel.kind, panel.machine, panel.name] as [UIView] {
             let frame = row.convert(row.bounds, to: chat.view)
-            XCTAssertGreaterThan(frame.minY, bar, "\(row) under the bar")
+            XCTAssertGreaterThanOrEqual(frame.minY, bar - 0.5, "\(row) under the bar")
             XCTAssertLessThan(frame.maxY, composerTop, "\(row) over the composer")
         }
     }
@@ -463,10 +464,10 @@ final class HostedComposeTargetTests: XCTestCase {
         XCTAssertEqual(row.statusText, "● Offline · 3d")
         try assertBalanced(row, "offline")
         let offlineFrame = row.frame
-        let offlineName = try XCTUnwrap(row.titleLabel).convert(row.titleLabel!.bounds, to: row)
+        let offlineName = row.pickLabel.frame
         let label = row.statusFrame
         XCTAssertFalse(offlineName.intersects(label), "the name never runs under the chip")
-        XCTAssertFalse(offlineName.width < row.titleLabel!.intrinsicContentSize.width - 1, "the name isn't cut")
+        XCTAssertEqual(row.pickLabel.lineBreakMode, .byTruncatingTail, "a long name is cut at its end")
         XCTAssertEqual(offlineFrame.height, NewWorkLayout.Metrics.rowHeight, "no row of its own")
         XCTAssertEqual(panel.folder.frame.minY, offlineFrame.maxY + NewWorkLayout.Metrics.rowGap, "nothing between the computer and its folder")
         keep(window, "target-5-offline-in-row")
@@ -497,8 +498,8 @@ final class HostedComposeTargetTests: XCTestCase {
         try await until { row.title == "MacBook-Pro-7.local" && row.statusText == "● Online" }
         chat.view.layoutIfNeeded()
         XCTAssertEqual(row.frame, offlineFrame, "the row neither moved nor grew")
-        let onlineName = try XCTUnwrap(row.titleLabel).convert(row.titleLabel!.bounds, to: row)
-        XCTAssertEqual(onlineName.midX, offlineName.midX, accuracy: 0.5, "the name is centred where it was")
+        let onlineName = row.pickLabel.frame
+        XCTAssertEqual(onlineName.minX, offlineName.minX, accuracy: 0.5, "the name stands where it was")
         XCTAssertEqual(onlineName.midY, offlineName.midY, accuracy: 0.5)
         XCTAssertEqual(row.statusFrame.maxX, label.maxX, accuracy: 0.5, "the chip ends where it did")
         XCTAssertEqual(row.statusFrame.midY, label.midY, accuracy: 0.5)
@@ -515,28 +516,26 @@ final class HostedComposeTargetTests: XCTestCase {
             + panel.subviews.map { "\(type(of: $0)) \($0.frame) hidden=\($0.isHidden) alpha=\($0.alpha)" }
     }
 
-    /// The computer row is laid out as any row: its icon and name centred
-    /// in it, its content as far in from either end, a row's height. Its
-    /// status chip, when it has one, is on its top-right corner, clear of
-    /// the name, inside the panel and clear of the kind over it.
+    /// The computer row is laid out as any row: its glyph and its name in
+    /// its two columns, centred on its middle, the name lined up with the
+    /// project's, a row's height. Its status chip, when it has one, is on
+    /// its top-right corner, clear of the name, inside the panel and clear
+    /// of the kind over it.
     private func assertBalanced(_ row: NewWorkMenuRow, _ what: String, file: StaticString = #filePath, line: UInt = #line) throws {
         row.superview?.layoutIfNeeded()
         row.layoutIfNeeded()
-        let name = try XCTUnwrap(row.titleLabel, file: file, line: line)
-        let icon = try XCTUnwrap(row.imageView, file: file, line: line)
+        let name = row.pickLabel
+        let icon = row.glyphView
+        XCTAssertFalse(name.isHidden, "\(what): in two columns", file: file, line: line)
         XCTAssertEqual(name.frame.midY, row.bounds.midY, accuracy: 0.5, "\(what): the name is centred in the row", file: file, line: line)
         XCTAssertEqual(icon.frame.midY, row.bounds.midY, accuracy: 0.5, "\(what): the icon is centred in the row", file: file, line: line)
-        let insets = try XCTUnwrap(row.configuration?.contentInsets, file: file, line: line)
-        XCTAssertEqual(insets.leading, insets.trailing, "\(what): the content insets are symmetric", file: file, line: line)
-        XCTAssertEqual(insets.top, insets.bottom, "\(what)", file: file, line: line)
-        XCTAssertEqual(icon.frame.minX, row.bounds.width - name.frame.maxX, accuracy: 1, "\(what): the content is as far in from either end", file: file, line: line)
+        XCTAssertEqual(icon.frame.minX, NewWorkRowColumns.inset, accuracy: 0.5, "\(what): the icon starts the row", file: file, line: line)
+        XCTAssertEqual(row.bounds.width - name.frame.maxX, NewWorkRowColumns.inset, accuracy: 0.5, "\(what): the name runs to the row's end", file: file, line: line)
         XCTAssertEqual(row.bounds.height, NewWorkLayout.Metrics.rowHeight, "\(what): a row's height", file: file, line: line)
-        let plain = NewWorkMenuRow(icon: .ionicons("desktop-outline"))
-        plain.title = row.title
-        plain.frame = row.bounds
-        plain.layoutIfNeeded()
-        XCTAssertEqual(name.frame.midY, try XCTUnwrap(plain.titleLabel).frame.midY, accuracy: 0.5, "\(what): where a row without a status puts it", file: file, line: line)
-        XCTAssertEqual(name.frame.midX, try XCTUnwrap(plain.titleLabel).frame.midX, accuracy: 0.5, "\(what): where a row without a status puts it", file: file, line: line)
+        if let panel = row.superview as? NewWorkPanel, !panel.folder.isHidden {
+            panel.folder.layoutIfNeeded()
+            XCTAssertEqual(name.frame.minX, panel.folder.pickLabel.frame.minX, accuracy: 0.5, "\(what): lined up with the project", file: file, line: line)
+        }
         guard row.statusText != nil, let panel = row.superview as? NewWorkPanel else { return }
         let chip = row.statusFrame
         XCTAssertEqual(chip.midY, 0, accuracy: 0.5, "\(what): the chip is on the row's top edge", file: file, line: line)
@@ -560,12 +559,13 @@ final class HostedComposeTargetTests: XCTestCase {
     /// The report: a big account opened, the computers not in yet, and a
     /// Bot picked on an earlier compose. On main the panel showed neither
     /// the name nor the computer and Send said "Give the bot a name" in an
-    /// alert. Here the kind, the computer (loading) and the name show at
-    /// once; Send asks for the name in place, then says the computers are
-    /// loading; as they arrive (the Happy CLI rows first, Happy Agent's
-    /// later) nothing in the panel moves, the bot stays a bot, and once a
-    /// Happy Agent that makes bots is in it goes there.
-    func testABotWhoseComputersArriveLateShowsItsRowsAndGoesWhereItCan() async throws {
+    /// alert. Here nothing of the panel shows until this account's
+    /// computers are known (Kirill), so it never comes in one shape and
+    /// changes to another: Send says the computers are loading and keeps
+    /// the text; Happy CLI's rows arriving first show nothing yet; once the
+    /// list is whole the panel comes, the kinds and the bot on the Happy
+    /// Agent that makes bots, and Send asks for the name in place.
+    func testABotWhoseComputersArriveLateShowsNothingUntilTheyAreIn() async throws {
         let log = TargetSpawns()
         let (home, navigation, window, account) = try await reportedAccount(log: log, seed: { store in
             try store.addPendingSettings(["sessionListGrouping": .string("flat")])
@@ -573,31 +573,14 @@ final class HostedComposeTargetTests: XCTestCase {
         defer { window.isHidden = true }
         let (chat, card, panel, start) = try await emptyChat(home, navigation)
         start.drafts.setCreatesBot(true)
-        try await until { panel.sessionKind == .bot }
         try await Task.sleep(for: .milliseconds(400))
         chat.view.layoutIfNeeded()
         keep(window, "late-0-loading")
         XCTAssertFalse(start.composer.choices.machinesSynced)
-        XCTAssertFalse(panel.isHidden)
-        XCTAssertFalse(panel.kind.isHidden)
-        XCTAssertFalse(panel.machine.isHidden)
-        XCTAssertFalse(panel.name.superview!.isHidden, "the name field shows")
-        XCTAssertEqual(panel.machine.title, "Loading computers…")
-        XCTAssertEqual(panel.machine.statusText, "● …")
-        try assertBalanced(panel.machine, "loading")
-        let loading = Self.panelFrames(panel, in: chat.view)
-        let loadingName = panel.machine.titleLabel!.frame
+        XCTAssertTrue(panel.isHidden, "nothing until the computers are known")
 
         card.setText("yo", selection: NSRange(location: 2, length: 0))
         card.delegate?.agentInputCardDidChangeText(card)
-        card.delegate?.agentInputCardDidPressSend(card)
-        try await until { panel.name.isFirstResponder }
-        XCTAssertNil(chat.presentedViewController, "the name is asked for in place")
-        XCTAssertEqual(panel.validation, "Give the bot a name")
-        panel.name.text = "Release Captain"
-        panel.name.sendActions(for: .editingChanged)
-        let composerView = try XCTUnwrap(Self.subview(SessionComposerView.self, in: chat.view))
-        try await until { !composerView.sending }
         card.delegate?.agentInputCardDidPressSend(card)
         try await until { chat.presentedViewController is UIAlertController }
         XCTAssertEqual((chat.presentedViewController as? UIAlertController)?.message, "Your computers are still loading. Try again in a moment.")
@@ -609,6 +592,7 @@ final class HostedComposeTargetTests: XCTestCase {
         }
         XCTAssertEqual(card.text, "yo", "the text stays")
         XCTAssertTrue(log.spawned.isEmpty)
+        let composerView = try XCTUnwrap(Self.subview(SessionComposerView.self, in: chat.view))
         try await until { !composerView.sending }
 
         // Happy CLI's rows arrive first, Happy Agent's not yet.
@@ -620,36 +604,41 @@ final class HostedComposeTargetTests: XCTestCase {
         chat.view.layoutIfNeeded()
         keep(window, "late-2-happy-cli-only")
         XCTAssertTrue(start.drafts.createsBot, "still a bot: Happy Agent may be on its way")
-        XCTAssertEqual(panel.machine.title, "Loading computers…")
-        XCTAssertEqual(Self.panelFrames(panel, in: chat.view), loading, "a computer arriving moved the panel")
+        XCTAssertTrue(panel.isHidden, "still not known")
 
         // Happy Agent's arrive and the list is whole.
         try await Task.detached {
             for machine in agents { try store.upsertMachine(machine) }
             try store.setCursor(.machinesLastSync, 1)
         }.value
-        try await until { panel.machine.title == "MacBook-Pro-7.local" && panel.machine.statusText == "● Online" }
+        try await until { !panel.isHidden && panel.machine.title == "MacBook-Pro-7.local" && panel.machine.statusText == "● Online" }
         try await Task.sleep(for: .milliseconds(300))
         chat.view.layoutIfNeeded()
         keep(window, "late-3-arrived")
-        XCTAssertTrue(start.drafts.createsBot)
+        XCTAssertFalse(panel.kind.isHidden)
+        XCTAssertEqual(panel.sessionKind, .bot)
+        XCTAssertFalse(panel.name.superview!.isHidden, "the name field shows")
         XCTAssertEqual(start.drafts.draft.selectedMachineId, Self.todaysMac, "it went to the Happy Agent that makes bots")
         XCTAssertEqual(start.drafts.draft.agentType, .rig)
-        XCTAssertEqual(Self.panelFrames(panel, in: chat.view), loading, "the computers arriving moved the panel")
         try assertBalanced(panel.machine, "arrived")
-        XCTAssertEqual(panel.machine.titleLabel!.frame.midX, loadingName.midX, accuracy: 0.5, "the name is centred where the loading text was")
-        XCTAssertEqual(panel.machine.titleLabel!.frame.midY, loadingName.midY, accuracy: 0.5)
 
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { panel.name.isFirstResponder }
+        XCTAssertNil(chat.presentedViewController, "the name is asked for in place")
+        XCTAssertEqual(panel.validation, "Give the bot a name")
+        panel.name.text = "Release Captain"
+        panel.name.sendActions(for: .editingChanged)
+        try await until { !composerView.sending }
         card.delegate?.agentInputCardDidPressSend(card)
         try await until { !log.spawned.isEmpty }
         XCTAssertEqual(log.spawned.map(\.machineId), [Self.todaysAgent])
         XCTAssertEqual(log.spawned.map(\.happyAgentTarget), [.object(["kind": .string("bot"), "name": .string("Release Captain")])])
     }
 
-    /// A session on the same account before its computers are in: the
-    /// computer (loading), the folder and the harness show at once, with
-    /// the kinds, and fill in where they stand.
-    func testASessionShowsItsRowsWhileTheComputersArrive() async throws {
+    /// A session on the same account before its computers are in: nothing
+    /// shows; once they are, the panel comes in its final shape, the kinds
+    /// over the computer, the folder and the harness (Kirill).
+    func testASessionShowsNothingUntilTheComputersAreIn() async throws {
         let log = TargetSpawns()
         let (home, navigation, window, account) = try await reportedAccount(log: log, seed: { store in
             try store.addPendingSettings(["sessionListGrouping": .string("flat")])
@@ -659,11 +648,8 @@ final class HostedComposeTargetTests: XCTestCase {
         chat.view.layoutIfNeeded()
         keep(window, "late-session-0-loading")
         XCTAssertEqual(panel.sessionKind, .session)
-        XCTAssertEqual([panel.kind, panel.machine, panel.folder, panel.harness].map(\.isHidden), [false, false, false, false])
-        XCTAssertEqual(panel.machine.title, "Loading computers…")
-        XCTAssertNotEqual(panel.harness.title, Strings.Home.harnessHelp, "not setup help before anything is known")
-        XCTAssertEqual(start.enabledKinds, [.session, .bot, .task], "nothing is known yet: every kind can be picked")
-        let loading = Self.panelFrames(panel, in: chat.view)
+        XCTAssertTrue(panel.isHidden, "nothing until the computers are known")
+        XCTAssertEqual(start.shownKinds, [.session], "no kinds offered before they are known")
 
         let (cli, agents) = Self.reportedMachines()
         let store = account.store
@@ -671,11 +657,12 @@ final class HostedComposeTargetTests: XCTestCase {
             for machine in cli + agents { try store.upsertMachine(machine) }
             try store.setCursor(.machinesLastSync, 1)
         }.value
-        try await until { panel.machine.title == "MacBook-Pro.local" && panel.machine.statusText?.hasPrefix("● Offline") == true }
+        try await until { !panel.isHidden && panel.machine.title == "MacBook-Pro.local" && panel.machine.statusText?.hasPrefix("● Offline") == true }
         try await Task.sleep(for: .milliseconds(300))
         chat.view.layoutIfNeeded()
         keep(window, "late-session-1-arrived")
-        XCTAssertEqual(Self.panelFrames(panel, in: chat.view), loading, "the computers arriving moved the panel")
+        XCTAssertFalse(panel.kind.isHidden, "Happy Agent makes bots and tasks: the kinds show")
+        XCTAssertEqual([panel.machine, panel.folder, panel.harness].map(\.isHidden), [false, false, false])
         XCTAssertEqual(panel.harness.title, "Codex")
         try assertBalanced(panel.machine, "session arrived")
     }
@@ -741,15 +728,16 @@ final class HostedComposeTargetTests: XCTestCase {
         panel.showsMachine = true
         panel.machine.title = "MacBook-Pro-7.local"
         panel.setSessionKinds([.session, .bot, .task], current: .bot, botName: "")
-        // With room, and with the least room the panel still fits in,
-        // where the gap under the kind is tightest; the robot stays.
+        // With room, and with so little that the rows have risen over the
+        // note up to the kind: the chip still clears the kind.
         typealias M = NewWorkLayout.Metrics
-        let tightest = 160 + M.art + M.artToKind + panel.kind.intrinsicContentSize.height + M.tightKindToRows + 2 * M.rowHeight + M.tightRowGap + 2 * M.margin
+        let tightest = 160 + panel.kind.intrinsicContentSize.height + M.kindToRows + 3 * M.rowHeight + 2 * M.rowGap + M.margin
         for bottom in [600, tightest] {
             let layout = panel.layout(width: 393, top: 160, bottom: bottom)
-            XCTAssertTrue(layout.fits, "\(bottom)")
+            XCTAssertEqual(layout.kind.map { layout.block.minY + $0.minY }, 160 + (bottom == tightest ? 0 : (600 - 160 - layout.block.height) / 2 + M.art + M.artToKind), "\(bottom)")
             if bottom == tightest {
-                XCTAssertEqual(try XCTUnwrap(layout.rows.first).minY - (try XCTUnwrap(layout.kind).maxY), M.tightKindToRows, "the tight gaps")
+                XCTAssertEqual(try XCTUnwrap(layout.rows.first).minY - (try XCTUnwrap(layout.kind).maxY), M.kindToRows, "the rows up to the kind")
+                XCTAssertEqual(layout.noteAlpha, 0)
             }
             for label in labels {
                 panel.machine.status = (label, UIColor(Palette.warningText))

@@ -327,14 +327,13 @@ final class HostedComposeTests: XCTestCase {
         let start = try XCTUnwrap(chat.composeStart)
         try await until { panel.folder.title.contains("happy") }
         XCTAssertEqual(start.kinds, [.session])
-        XCTAssertFalse(panel.kind.isHidden, "Session | Bot | Task always show")
-        XCTAssertEqual(start.enabledKinds, [.session], "Happy CLI alone makes sessions")
-        XCTAssertEqual((0..<3).map(panel.kind.isEnabledForSegment), [true, false, false], "Bot and Task show disabled")
+        XCTAssertEqual(start.shownKinds, [.session], "Happy CLI alone makes sessions")
+        XCTAssertTrue(panel.kind.isHidden, "no Session | Bot | Task without a Happy Agent")
         XCTAssertFalse(panel.machine.isHidden, "the computer shows, with whether it answers")
         XCTAssertFalse(panel.folder.isHidden)
         XCTAssertFalse(panel.harness.isHidden)
         XCTAssertGreaterThan(panel.harness.frame.minY, panel.folder.frame.maxY)
-        assertCentred(panel, in: chat)
+        assertPlaced(panel, in: chat)
         keep(window, "legacy-new-work-one-machine")
 
         XCTAssertNotNil(card.configuration.model?.menu, "the model must be pickable before a session exists")
@@ -389,7 +388,7 @@ final class HostedComposeTests: XCTestCase {
         try await until { panel.machine.title == "Harness Mac" }
         XCTAssertTrue(panel.folder.title.contains("happy"))
         XCTAssertLessThan(panel.machine.frame.maxY, panel.folder.frame.minY, "the computer is over its folder")
-        assertCentred(panel, in: chat)
+        assertPlaced(panel, in: chat)
         keep(window, "legacy-new-work-two-machines")
 
         let machines = Self.actions(start.machineMenuElements())
@@ -434,7 +433,7 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertEqual(panel.sessionKinds, [.session, .bot, .task])
         XCTAssertEqual(start.drafts.draft.agentType, .claude)
         XCTAssertFalse(panel.folder.isHidden)
-        assertCentred(panel, in: chat)
+        assertPlaced(panel, in: chat)
         keep(window, "legacy-new-work-kinds")
 
         try pick(.task, in: panel)
@@ -446,7 +445,7 @@ final class HostedComposeTests: XCTestCase {
         try await until { card.configuration.model?.menu?.selectedKey == "codex:gpt" }
         card.delegate?.agentInputCard(card, didSelect: "claude:opus", in: .model)
         try await until { card.configuration.model?.menu?.selectedKey == "claude:opus" }
-        assertCentred(panel, in: chat)
+        assertPlaced(panel, in: chat)
         try await until { panel.art.isLoaded }
         try await Task.sleep(for: .milliseconds(800))
         keep(window, "legacy-new-work-task")
@@ -593,7 +592,7 @@ final class HostedComposeTests: XCTestCase {
         try await until { panel.sessionKind == .bot && start.drafts.draft.agentType == .rig }
         XCTAssertTrue(panel.folder.isHidden)
         XCTAssertEqual(panel.name.placeholder, "Name your bot")
-        assertCentred(panel, in: chat)
+        assertPlaced(panel, in: chat)
         try await until { panel.art.isLoaded }
         try await Task.sleep(for: .milliseconds(800))
         keep(window, "legacy-new-work-bot")
@@ -628,15 +627,22 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertEqual(start.drafts.botName, "")
     }
 
-    /// The panel's middle is the middle of the room between the bar and
-    /// the composer.
-    private func assertCentred(_ panel: NewWorkPanel, in chat: LegacyChatViewController, line: UInt = #line) {
+    /// The panel is centred between the bar and the composer when it fits;
+    /// short of room its first control stops at the bar's foot and the rest
+    /// stays clear of the composer.
+    private func assertPlaced(_ panel: NewWorkPanel, in chat: LegacyChatViewController, line: UInt = #line) {
         chat.view.layoutIfNeeded()
         let bar = chat.navigationController?.navigationBar.frame.maxY ?? chat.view.safeAreaInsets.top
         let composer = Self.subview(AgentInputCardView.self, in: chat.view)?.convert(CGPoint.zero, to: chat.view).y ?? chat.view.bounds.maxY
-        XCTAssertGreaterThan(panel.frame.minY, bar, line: line)
-        XCTAssertLessThan(panel.frame.maxY, composer, line: line)
-        XCTAssertEqual(panel.frame.midY, (bar + composer) / 2, accuracy: 30, "\(panel.frame) between \(bar) and \(composer)", line: line)
+        let controls: [UIView] = [panel.kind, panel.machine, panel.folder, panel.harness, panel.name.superview].compactMap { $0 }
+        let frames = controls.filter { !$0.isHidden && $0.superview === panel }.map { panel.convert($0.frame, to: chat.view) }
+        let top = frames.map(\.minY).min() ?? panel.frame.minY
+        let bottom = frames.map(\.maxY).max() ?? panel.frame.maxY
+        XCTAssertGreaterThanOrEqual(top, bar - 0.5, "\(frames) clear the bar at \(bar)", line: line)
+        XCTAssertLessThan(bottom, composer, "the rows clear the composer", line: line)
+        if panel.frame.minY > bar {
+            XCTAssertEqual(panel.frame.midY, (bar + composer) / 2, accuracy: 30, "\(panel.frame) between \(bar) and \(composer)", line: line)
+        }
     }
 
     private static func actions(_ elements: [UIMenuElement]) -> [UIAction] {

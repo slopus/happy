@@ -122,6 +122,9 @@ extension Strings {
         public static let composerSession = "Session"
         public static let composerBot = "Bot"  // HomeDock.tsx:117, spelled out
         public static let composerKindLabel = "What to create"  // HomeDock.tsx:2148, spelled out
+        /// What a session is, under a compose chat's rows, as Happy Agent's
+        /// new work says what a bot and a task are (`newWorkBotNote`).
+        public static let sessionNote = "A session is an agent working in one folder on your computer, as if you had started it in a terminal."
         public static let botLede = "Bots are virtual colleagues great for recurring work like releases, competitor analysis, or to own a large feature across several projects and worktrees"  // HomeDock.tsx:121, spelled out
         public static let createBot = "Create bot"  // HomeDock.tsx:2033, spelled out
     }

@@ -13,12 +13,16 @@ import UIKit
 ///   ("generated if left blank"); a task asks nothing and names itself
 ///   from its first message, as one sent with a blank name always has.
 ///   It keeps the bot's room empty, so Task | Bot moves nothing.
-/// - `.session` (a legacy account): the computer, shown only when the
-///   account has more than one, the folder on it, and the harness. Where
-///   the computer's Happy Agent makes bots or tasks, Session | Bot | Task
-///   heads it, as home's dock did: a task asks only the computer, a bot
-///   the computer and its name, which it can't go without. A task keeps
-///   the bot's name and note as empty room, so Bot | Task moves nothing.
+/// - `.session` (a legacy account): the computer, the project on it, and
+///   the harness, each row two columns lined up across the rows, what it
+///   picks and the pick (`NewWorkRowColumns`). Where a computer's Happy
+///   Agent makes bots or tasks, Session | Bot | Task heads it, as home's
+///   dock did: a task asks only the computer, a bot the computer and its
+///   name, which it can't go without. Between the kind and the rows a
+///   line says what the kind is: a bot's and a task's are `.work`'s words.
+///   While the kind is a choice the block keeps its tallest kind's room
+///   (the picture's, the longest line's, three rows'), so the choice holds
+///   still as it changes (Kirill).
 ///
 /// A bot stands under the robot and a task under the magic wand, the
 /// empty states' 128 (`NewWorkLayout.Metrics.art`), still: each plays only
@@ -128,7 +132,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         folder.isHidden = current != .session
         harness.isHidden = current != .session
         field.isHidden = current != .bot
-        note.isHidden = current != .bot
+        note.text = Self.note(current)
         showArt(Self.art(current))
         if current != .bot { validation = nil }
         if current != .bot, name.isFirstResponder { onReturn?() }
@@ -181,8 +185,16 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             name.attributedPlaceholder = Self.placeholder(NewSessionChoices.botNamePlaceholder)
             name.autocapitalizationType = .words
             field.isHidden = true
-            note.text = Strings.Home.botLede
-            note.isHidden = true
+            note.text = Self.note(.session)
+            note.accessibilityIdentifier = "new-work-note"
+            machine.label = Strings.Home.machineTitle
+            folder.label = Strings.Home.projectTitle
+            harness.label = Strings.Home.harnessTitle
+            let font = Fonts.ui(.regular, size: 16)
+            let widest = [machine, folder, harness].map { (($0.label ?? "") as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+            for row in [machine, folder, harness] { row.labelWidth = widest }
+            // A path is cut from its start, so its folder shows (Kirill).
+            folder.pickBreakMode = .byTruncatingHead
             machine.accessibilityIdentifier = "new-work-machine"
             folder.accessibilityIdentifier = "new-work-folder"
             harness.accessibilityIdentifier = "new-work-harness"
@@ -201,13 +213,13 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         ])
     }
 
-    /// `.session`'s rows, top to bottom, as the kind lays them out: a
-    /// task's hidden name keeps a bot's room.
+    /// `.session`'s rows, top to bottom, as the kind lays them out.
     private var sessionRows: [UIView] {
-        [machine, folder, harness].filter { !$0.isHidden } + (sessionKind == .session ? [] : [field])
+        [machine, folder, harness].filter { !$0.isHidden } + (sessionKind == .bot ? [field] : [])
     }
 
-    private var measuredNote: Measurable { Self.measured(note) }
+    /// `.session`: the kind is a choice, and holds still as it changes.
+    private var holdsKind: Bool { mode == .session && !kind.isHidden }
 
     /// `.work`: a bot's note, laid out for either kind, so Task | Bot moves
     /// nothing; a task's stands in the name's place, over that room.
@@ -245,7 +257,8 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
                 width: width, sides: sides, top: top, bottom: bottom,
                 kindHeight: kind.isHidden ? nil : kind.intrinsicContentSize.height,
                 givingWay: sessionRows.count,
-                note: sessionKind == .session ? nil : measuredNote, art: artScene != nil
+                note: sessionNoteRoom, art: artScene != nil,
+                reserveArt: holdsKind, reserveRows: holdsKind ? 3 : 0
             )
         }
     }
@@ -267,8 +280,12 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             }
         case .session:
             for (row, frame) in zip(sessionRows, layout.rows) { row.frame = frame }
-            // Short of room the note gives way first (`NewWorkLayout`).
-            note.alpha = layout.showsNote ? 1 : 0
+            // At the top of the longest kind's room.
+            if let room = layout.note {
+                note.frame = CGRect(x: room.minX, y: room.minY, width: room.width, height: Self.measured(note).size(fitting: room.width).height)
+            }
+            // Covered by the rows as they rise to the kind (`NewWorkLayout`).
+            note.alpha = layout.noteAlpha
         }
         name.frame = field.bounds.insetBy(dx: 16, dy: 0)
     }
@@ -312,6 +329,30 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         field.isHidden = !bot
         if !bot, name.isFirstResponder { onReturn?() }
         superview?.setNeedsLayout()
+    }
+
+    /// `.session`: what the kind is.
+    private static func note(_ kind: HomeDockKind) -> String {
+        switch kind {
+        case .session: Strings.Home.sessionNote
+        case .bot: Strings.newWorkBotNote
+        case .task: Strings.newWorkTaskNote
+        }
+    }
+
+    /// `.session`: the note's room, the longest of the kinds shown, so
+    /// switching kinds keeps it.
+    private var sessionNoteRoom: Measurable {
+        let rooms = sessionKinds.map { kind in
+            let label = UILabel()
+            label.font = note.font
+            label.numberOfLines = 0
+            label.text = Self.note(kind)
+            return Self.measured(label)
+        }
+        return Measurable { width in
+            rooms.map { $0.size(fitting: width) }.max { $0.height < $1.height } ?? .zero
+        }
     }
 
     private static func art(_ kind: HomeDockKind) -> StateScene? {
@@ -365,8 +406,10 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     }
 }
 
-/// One of `.session`'s rows: an icon, what is chosen, and the menu that
-/// chooses it, on the name field's ground, centred. The computer's row
+/// One of `.session`'s rows: an icon, what it picks, what is chosen, and
+/// the menu that chooses it, on the name field's ground: with a
+/// `labelWidth`, two columns from its start (`NewWorkRowColumns`), else
+/// centred. The computer's row
 /// also says whether it answers, in a small chip on its top-right corner
 /// (`NewWorkStatusLayout`): laid over the row, it takes no part in its
 /// layout, so the icon and the name sit as in any row and a status
@@ -375,6 +418,29 @@ final class NewWorkMenuRow: UIButton {
     let showsStatus: Bool
     private let chip = UIView()
     private let statusLabel = UILabel()
+    private let iconView = UIImageView()
+    private let labelView = UILabel()
+    private let valueView = UILabel()
+
+    /// Two columns, the label's as wide as `labelWidth` (the widest
+    /// label's) and the glyph; nil, centred.
+    var labelWidth: CGFloat? {
+        didSet {
+            for view in [iconView, labelView, valueView] { view.isHidden = labelWidth == nil }
+            showTitle()
+            setNeedsLayout()
+        }
+    }
+
+    /// How the pick is cut, in two columns: at its end, or a path from its start.
+    var pickBreakMode: NSLineBreakMode {
+        get { valueView.lineBreakMode }
+        set { valueView.lineBreakMode = newValue }
+    }
+
+    /// The glyph and the pick in two columns, for tests.
+    var glyphView: UIImageView { iconView }
+    var pickLabel: UILabel { valueView }
 
     init(icon: Icon, showsStatus: Bool = false) {
         self.showsStatus = showsStatus
@@ -394,6 +460,20 @@ final class NewWorkMenuRow: UIButton {
         }
         self.configuration = configuration
         showsMenuAsPrimaryAction = true
+        self.icon = icon
+        iconView.image = .icon(icon, size: 16)
+        iconView.tintColor = UIColor(Palette.inputText)
+        iconView.contentMode = .center
+        labelView.font = Fonts.ui(.regular, size: 16)
+        labelView.textColor = UIColor(Palette.textSecondary)
+        valueView.font = Fonts.ui(.regular, size: 16)
+        valueView.textColor = UIColor(Palette.inputText)
+        valueView.lineBreakMode = .byTruncatingTail
+        for view in [iconView, labelView, valueView] {
+            view.isUserInteractionEnabled = false
+            view.isHidden = true
+            addSubview(view)
+        }
         if showsStatus {
             chip.backgroundColor = UIColor(Palette.surface)
             chip.layer.cornerRadius = NewWorkStatusLayout.height / 2
@@ -412,19 +492,50 @@ final class NewWorkMenuRow: UIButton {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    var title: String {
-        get { configuration?.title ?? "" }
-        set {
-            guard configuration?.title != newValue else { return }
-            configuration?.title = newValue
+    var title: String = "" {
+        didSet {
+            guard title != oldValue else { return }
+            showTitle()
             updateAccessibility()
         }
+    }
+
+    /// What the row picks ("Machine", "Folder", "Harness"), in the
+    /// secondary colour before the pick; nil for the pick alone.
+    var label: String? {
+        didSet {
+            guard label != oldValue else { return }
+            showTitle()
+            updateAccessibility()
+        }
+    }
+
+    private func showTitle() {
+        if labelWidth != nil {
+            configuration?.image = nil
+            configuration?.attributedTitle = nil
+            configuration?.title = nil
+            labelView.text = label
+            valueView.text = title
+            return
+        }
+        guard let label else {
+            configuration?.attributedTitle = nil
+            configuration?.title = title
+            return
+        }
+        var text = AttributedString(label + "  ")
+        text.foregroundColor = UIColor(Palette.textSecondary)
+        var pick = AttributedString(title)
+        pick.foregroundColor = UIColor(Palette.inputText)
+        configuration?.attributedTitle = text + pick
     }
 
     var icon: Icon? {
         didSet {
             guard let icon, icon != oldValue else { return }
-            configuration?.image = .icon(icon, size: 16)
+            iconView.image = .icon(icon, size: 16)
+            if labelWidth == nil { configuration?.image = .icon(icon, size: 16) }
         }
     }
 
@@ -449,6 +560,12 @@ final class NewWorkMenuRow: UIButton {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if let labelWidth {
+            let frames = NewWorkRowColumns(size: bounds.size, labelWidth: labelWidth, lineHeight: valueView.font.lineHeight)
+            iconView.frame = frames.icon
+            labelView.frame = frames.label
+            valueView.frame = frames.value
+        }
         guard showsStatus else { return }
         let text = statusLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: NewWorkStatusLayout.height))
         chip.frame = NewWorkStatusLayout.chip(rowWidth: bounds.width, textWidth: text.width)
@@ -462,6 +579,7 @@ final class NewWorkMenuRow: UIButton {
     }
 
     private func updateAccessibility() {
+        if let label { accessibilityLabel = label }
         accessibilityValue = [title, status?.text].compactMap { $0 }.joined(separator: ", ")
     }
 }

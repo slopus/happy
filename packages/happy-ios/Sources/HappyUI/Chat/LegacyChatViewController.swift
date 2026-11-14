@@ -850,14 +850,17 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // an empty chat sits between the bar and the dock.
         placeholder.setLayoutFrame(dock.isHidden ? view.bounds : screen.placeholder)
         if composing != nil {
-            // Centred between the bar and the dock, which rides the
-            // keyboard: the panel moves with it, in the same pass.
+            // Centred between the bar and the dock where the tallest keyboard
+            // seen leaves it, so the keyboard coming or going moves nothing
+            // (Kirill).
             let area = screen.placeholder
             composeRoom = area
-            let layout = composeTarget.layout(width: size.width, sides: safeArea, top: area.minY, bottom: area.maxY)
-            composeTarget.place(layout)
-            // A bot's or a task's picture never goes: short of room it runs up under the bar.
-            composeTarget.isHidden = !layout.fits && layout.art == nil
+            let keyboardTop = ultraKeyboard?.keyboardTop(guideTop: keyboardTracker.frame.minY) ?? keyboardTracker.frame.minY
+            let reserve = KeyboardReserve.shared.hold(size.height - keyboardTop, height: size.height)
+            // The dock rests on the safe area's bottom with the keyboard down.
+            let dockFoot = min(keyboardTop, size.height - safeArea.bottom)
+            let bottom = NewWorkLayout.heldBottom(bottom: area.maxY, keyboardTop: dockFoot, height: size.height, reserve: reserve)
+            composeTarget.place(composeTarget.layout(width: size.width, sides: safeArea, top: area.minY, bottom: bottom))
         }
         header.maxWidth = ChatTitleLayout.maxWidth(barWidth: band.width)
         dock.setLayoutFrame(screen.dock)
@@ -1394,11 +1397,13 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // Made: the panel stays as it was while it goes, though the draft
         // already offers a session again.
         guard compose.sessionId == nil else { return }
+        // Nothing of it until this account's computers are known, so it
+        // comes in its final shape, the kinds or a session alone.
+        composeTarget.isHidden = !compose.knowsComputers
         composeTarget.isLocked = compose.isStarting
-        // Every kind and the computer show from the first frame, whatever
-        // has arrived: a big account's computers can take a while, and the
-        // panel fills in where it stands rather than grow under the keyboard.
-        composeTarget.setSessionKinds(LegacyComposeStart.shownKinds, enabled: compose.enabledKinds, current: compose.kind, botName: compose.drafts.botName)
+        // The kinds show where a computer's Happy Agent makes more than a
+        // session (`shownKinds`).
+        composeTarget.setSessionKinds(compose.shownKinds, enabled: compose.enabledKinds, current: compose.kind, botName: compose.drafts.botName)
         composeTarget.showsMachine = true
         composeTarget.machine.title = compose.machineName
         composeTarget.machine.status = compose.machineStatus
