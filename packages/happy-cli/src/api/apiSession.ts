@@ -219,6 +219,13 @@ export class ApiSessionClient extends EventEmitter {
     private closed = false;
     private ignoreArchiveSignal = false;
     private skipInitialMessages = false;
+    /**
+     * Lowest seq seen live on the socket that the receive cursor could not take
+     * yet. While a reconnect skip is still paging through history, anything at
+     * or past this seq was sent after the client came up and must be routed,
+     * not swallowed with the backlog.
+     */
+    private firstLiveSeq = Infinity;
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
         uuidToProviderSubagent: new Map<string, string>(),
@@ -334,6 +341,9 @@ export class ApiSessionClient extends EventEmitter {
                 if (data.body.t === 'new-message') {
                     const messageSeq = data.body.message?.seq;
                     if (typeof messageSeq !== 'number' || messageSeq !== this.lastReceivedSeq + 1 || data.body.message.content.t !== 'encrypted') {
+                        if (typeof messageSeq === 'number' && messageSeq > this.lastReceivedSeq) {
+                            this.firstLiveSeq = Math.min(this.firstLiveSeq, messageSeq);
+                        }
                         this.receiveSync.invalidate();
                         return;
                     }
@@ -631,7 +641,7 @@ export class ApiSessionClient extends EventEmitter {
                     maxSeq = message.seq;
                 }
 
-                if (skipRouting) continue;
+                if (skipRouting && message.seq < this.firstLiveSeq) continue;
 
                 if (message.content?.t !== 'encrypted') {
                     continue;
@@ -650,6 +660,9 @@ export class ApiSessionClient extends EventEmitter {
             }
 
             this.lastReceivedSeq = Math.max(this.lastReceivedSeq, maxSeq);
+            if (this.firstLiveSeq <= this.lastReceivedSeq) {
+                this.firstLiveSeq = Infinity;
+            }
             const hasMore = !!response.data.hasMore;
             if (hasMore && maxSeq === afterSeq) {
                 logger.debug('[API] fetchMessages pagination stalled, stopping to avoid infinite loop', {
