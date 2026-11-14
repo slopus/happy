@@ -304,7 +304,7 @@ win:
   (`ui/chat/ComposeChat.kt`, iOS's LegacyComposeStart): its composer
   writes the account's new-session draft; centred between the bar and the
   composer (`ui/chat/NewWorkPanel.kt`, iOS's NewWorkPanel/NewWorkLayout),
-  at most 256 wide, sit the kind's picture, Session | Bot | Task (only once some computer of this account has a Happy Agent that makes a
+  at most 256 wide, sit the kind's picture (77, 0.6 of an empty state's), Session | Bot | Task (only once some computer of this account has a Happy Agent that makes a
   bot or a task: a Happy CLI-only account has a session alone to make, so
   no choice shows; a kind no computer makes is dimmed), the computer
   (always, with an Online / Offline · 3d / Happy Agent offline chip on its

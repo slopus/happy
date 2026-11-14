@@ -126,6 +126,8 @@ object NewWorkSpec {
     /** A Happy account's block ([NewWorkGivingWay]), snugger (Kirill): at most 256. */
     val givingWayMaxWidth = 256.dp
     fun givingWayWidth(width: Dp): Dp = minOf(givingWayMaxWidth, width - side * 2).coerceAtLeast(0.dp)
+    /** Its picture, 0.6 of [art] (Kirill). */
+    val givingWayArt = 77.dp
 }
 
 /** Room kept for what another kind shows: laid out, but neither drawn nor read out. */
@@ -145,14 +147,14 @@ val WorkKind.art: StateArt
  * than a blank frame while it is read.
  */
 @Composable
-fun NewWorkArt(art: StateArt, modifier: Modifier = Modifier) {
+fun NewWorkArt(art: StateArt, modifier: Modifier = Modifier, size: Dp = NewWorkSpec.art) {
     Box(modifier) {
         for (each in listOf(StateArt.Action, StateArt.Ready).sortedBy { it == art }) {
             // The one shown is drawn last, over the other, and takes the taps.
             val shown = each == art
             key(each) {
                 Box(if (shown) Modifier.testTag(NewWorkTags.art(each)) else Modifier.reserved()) {
-                    StateAnimation(each, size = NewWorkSpec.art, autoplay = false, immediate = true)
+                    StateAnimation(each, size = size, autoplay = false, immediate = true)
                 }
             }
         }
@@ -516,7 +518,7 @@ fun NewWorkNameField(
  * A Happy account's new work, centred between the bar and the composer
  * (happy-ios NewWorkLayout(givingWay:)), at most 256 wide
  * ([NewWorkSpec.givingWayWidth]), top to bottom: the kind's optional
- * [art], the optional [kind] control, an optional [note] saying what the
+ * [art] (at [NewWorkSpec.givingWayArt]), the optional [kind] control, an optional [note] saying what the
  * kind is, then field-high [rows]. The kind control holds still as the kind
  * changes (Kirill): the block is laid out at its tallest, the picture's
  * room kept with [reserveArt] and [reserveRows] rows' room, so a kind with
@@ -547,7 +549,7 @@ fun NewWorkGivingWay(
     val slots = listOfNotNull(kind) + rows + listOfNotNull(note)
     Layout({
         slots.forEach { slot -> Box { slot() } }
-        if (art != null) NewWorkArt(art)
+        if (art != null) NewWorkArt(art, size = NewWorkSpec.givingWayArt)
     }, modifier.fillMaxSize().testTag(NewWorkTags.PANEL)) { measurables, constraints ->
         val width = constraints.maxWidth
         val height = constraints.maxHeight
@@ -561,7 +563,7 @@ fun NewWorkGivingWay(
         val rowGap = NewWorkSpec.rowGap.roundToPx()
         val margin = NewWorkSpec.margin.roundToPx()
         val artGap = NewWorkSpec.artToKind.roundToPx()
-        val side = if (art != null || reserveArt) NewWorkSpec.art.roundToPx() else null
+        val side = if (art != null || reserveArt) NewWorkSpec.givingWayArt.roundToPx() else null
         // Rows not asked keep a field's room.
         val rowCount = maxOf(rows.size, reserveRows)
         val rowsHeight = rowPlaceables.sumOf { it.height } + (reserveRows - rows.size).coerceAtLeast(0) * NewWorkSpec.rowHeight.roundToPx()

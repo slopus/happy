@@ -36,7 +36,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * A Happy account's new work (happy-ios NewWorkLayout(givingWay:),
- * NewWorkStatusLayout), at most 256 wide, top to bottom: the picture 16
+ * NewWorkStatusLayout), at most 256 wide, top to bottom: the picture, 77, 16
  * over the kind 220 wide, 16 over the note, 16 over 44 rows 8 apart,
  * centred in its room; as Happy Agent's new work, short of room nothing
  * closes or shrinks: the block stands 12 over the composer and runs up
@@ -126,8 +126,8 @@ class ComposeTargetLayoutTest {
         rule.waitForIdle()
         val room = rule.node(ROOM).bounds
         val art = rule.node(NewWorkTags.art(StateArt.Ready)).bounds
-        // The picture's room and three rows': 144 + 32 + 16 + 18 + 16 + 3 × 44 + 2 × 8 = 374, centred.
-        assertEquals("centred at its tallest", ((room.top + room.bottom) / 2).value, (art.top + 187.dp).value, 1f)
+        // The picture's room and three rows': 93 + 32 + 16 + 18 + 16 + 3 × 44 + 2 × 8 = 323, centred.
+        assertEquals("centred at its tallest", ((room.top + room.bottom) / 2).value, (art.top + 161.5.dp).value, 1f)
     }
 
     @Test fun `the chip rides the computer row's top-right corner`() {
@@ -164,22 +164,22 @@ class ComposeTargetLayoutTest {
         val art = rule.node(NewWorkTags.art(StateArt.Ready)).bounds
         val kind = rule.node(NewWorkTags.KIND).bounds
         val folder = rule.node(NewWorkTags.FOLDER).bounds
-        assertDp("an empty state's 128", 128, art.width)
+        assertDp("0.6 of an empty state's 128", 77, art.width)
         assertDp("square", art.width, art.height)
-        assertDp("centred across", ((411 - 128) / 2f).dp, art.left)
+        assertDp("centred across", ((411 - 77) / 2f).dp, art.left)
         assertDp("16 over the kind", art.bottom + 16.dp, kind.top)
         assertEquals("centred in its room", ((room.top + room.bottom) / 2).value, ((art.top + folder.bottom) / 2).value, 1f)
     }
 
     @Test fun `short of room nothing shrinks or closes, the block stands on the composer and runs up, picture first`() {
-        // The picture and its gap, 144, over kind 32 + 16 + 18 + 16 + 44 + 8 + 44 = 178; 12 over the composer: 20 short.
-        show(144.dp + 178.dp + 12.dp - 20.dp, art = StateArt.Action)
+        // The picture and its gap, 93, over kind 32 + 16 + 18 + 16 + 44 + 8 + 44 = 178; 12 over the composer: 20 short.
+        show(93.dp + 178.dp + 12.dp - 20.dp, art = StateArt.Action)
         val room = rule.node(ROOM).bounds
         val art = rule.node(NewWorkTags.art(StateArt.Action)).bounds
         val kind = rule.node(NewWorkTags.KIND).bounds
         val note = rule.node(NewWorkTags.NOTE).bounds
         val machine = rule.node(NewWorkTags.MACHINE).bounds
-        assertDp("never smaller", 128, art.width)
+        assertDp("never smaller", 77, art.width)
         assertDp("16 over the kind", art.bottom + 16.dp, kind.top)
         assertDp("16 under the kind", kind.bottom + 16.dp, note.top)
         assertDp("16 over the rows", note.bottom + 16.dp, machine.top)
@@ -192,7 +192,7 @@ class ComposeTargetLayoutTest {
         show(200.dp, art = StateArt.Action, note = false)
         val room = rule.node(ROOM).bounds
         val art = rule.node(NewWorkTags.art(StateArt.Action)).bounds
-        assertDp("never smaller", 128, art.width)
+        assertDp("never smaller", 77, art.width)
         assertDp("12 over the composer", room.bottom - 12.dp, rule.node(NewWorkTags.FOLDER).bounds.bottom)
         assertDp("16 under the kind, clear of the chip", rule.node(NewWorkTags.KIND).bounds.bottom + 16.dp, rule.node(NewWorkTags.MACHINE).bounds.top)
         assertTrue("above the room: $art, $room", art.top < room.top)
