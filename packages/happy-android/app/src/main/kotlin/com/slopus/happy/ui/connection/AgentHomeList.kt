@@ -615,7 +615,7 @@ private fun FeedPlaceRow(unread: Int, onClick: () -> Unit) {
     PlaceRow(stringResource(R.string.feed_title), { TileMark(Octicon.Pulse, RowTile.Red) }, onClick, count = count, countLabel = label)
 }
 
-/** Artifacts, the Feed, or a Surface: its [mark] (a glyph on its tile), and its name; bold with a [count] after it while something in it is unread. */
+/** Artifacts, the Feed, or a Surface: its [mark] (a glyph on its tile), and its name, its end fading where it runs out of room ([com.slopus.happy.ui.components.TitleFade]); bold with a [count] after it while something in it is unread. */
 @Composable
 private fun PlaceRow(name: String, mark: @Composable () -> Unit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, count: Int? = null, countLabel: String? = null) {
     Row(
@@ -626,12 +626,13 @@ private fun PlaceRow(name: String, mark: @Composable () -> Unit, onClick: () -> 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { mark() }
-        Text(
+        ShimmerText(
             name,
             style = if (count != null) AgentHomeSpec.title.copy(fontWeight = FontWeight.SemiBold) else AgentHomeSpec.title,
-            color = HappyTheme.colors.text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            baseColor = HappyTheme.colors.text,
+            highlightColor = HappyTheme.colors.text,
+            shimmering = false,
+            fade = true,
             modifier = Modifier
                 .padding(start = AgentHomeSpec.markGap)
                 .weight(1f)
