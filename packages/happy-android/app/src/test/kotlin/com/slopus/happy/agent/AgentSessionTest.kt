@@ -7,9 +7,11 @@ import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.AgentConnectionCredentials
 import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.connection.ByteSource
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.connection.TransportStream
 import com.slopus.happy.documents.DocumentStreamEvent
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +28,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -192,6 +195,41 @@ class AgentSessionTest {
         eventually({ agent.streamCursors.size }) { it == 2 }
         assertEquals("c0", agent.streamCursors[1])
         assertEquals(1, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
+    }
+
+    /** A stream whose reads block their thread, as Tailcat's do: going to the background stops it at once, and coming back opens another. */
+    @Test
+    fun theBackgroundStopsALinkWhoseReadsBlock() = runBlocking {
+        val chunks = java.util.concurrent.LinkedBlockingQueue<String>()
+        val streams = java.util.concurrent.atomic.AtomicInteger()
+        val stopped = CompletableDeferred<Unit>()
+        val session = sessions {
+            object : Transport by agent {
+                override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream {
+                    streams.incrementAndGet()
+                    var headSent = false
+                    return TransportStream.open(object : ByteSource {
+                        override suspend fun read(): ByteArray = try {
+                            runInterruptible(Dispatchers.IO) {
+                                if (headSent) chunks.take().toByteArray().let { "${it.size.toString(16)}\r\n".toByteArray() + it + "\r\n".toByteArray() }
+                                else "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n".toByteArray().also { headSent = true }
+                            }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            stopped.complete(Unit)
+                            throw e
+                        }
+
+                        override fun close() {}
+                    })
+                }
+            }
+        }.session(id)!!
+        chunks.put(Wire.hello("c0"))
+        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        foreground.value = false
+        withTimeout(2_000) { stopped.await() }
+        foreground.value = true
+        eventually({ streams.get() }) { it == 2 }
     }
 
     @Test

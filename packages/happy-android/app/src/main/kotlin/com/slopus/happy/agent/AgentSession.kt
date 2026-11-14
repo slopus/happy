@@ -660,12 +660,16 @@ class AgentSession internal constructor(
                 linking = on && signedIn
                 when {
                     !signedIn -> statusState.value = AgentLinkStatus.SignInRequired
+                    // Off the collector: Tailcat's reads block their thread, and on the collector's
+                    // they would hold up the next value, so a background could not stop the link.
                     on -> coroutineScope {
-                        // Kept through a background: its tunnels check every way to the
-                        // agent before the stream asks them for anything.
-                        if (suspended.getAndSet(false)) linkLock.withLock { route?.second }?.resumed()
-                        launch { watchGit() }
-                        live()
+                        launch {
+                            // Kept through a background: its tunnels check every way to the
+                            // agent before the stream asks them for anything.
+                            if (suspended.getAndSet(false)) linkLock.withLock { route?.second }?.resumed()
+                            launch { watchGit() }
+                            live()
+                        }
                     }
                     statusState.value == AgentLinkStatus.SignInRequired -> statusState.value = AgentLinkStatus.Connecting
                 }

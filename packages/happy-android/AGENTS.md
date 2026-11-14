@@ -2218,7 +2218,10 @@ is `packages/happy-ios`. The wire keeps its own names
   broke. The relay is pinged and replaced only if it doesn't answer within
   two seconds, every direct path is probed and one that stopped answering
   dropped, and an expired session rekeys; clients, requests under way and
-  live sessions stay. tailcat-kotlin watches no network itself, so a network
+  live sessions stay. Tailcat's reads block their thread (`runInterruptible`),
+  so `AgentSession` runs its link in a coroutine of its own: on the thread
+  collecting foreground and sign-in, a blocked read would keep a background
+  from stopping it. tailcat-kotlin watches no network itself, so a network
   that returns gets the same check on every kept client
   (`Transport.networkChanged`, from `AgentSession.networkReturned`). A
   relay can also go dead with nothing said (a NAT rebinding, a handoff on
