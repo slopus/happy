@@ -316,6 +316,9 @@ public struct MessageLayout: Equatable, Sendable {
     /// the bubble at its foot, or on pictures sent alone in `deliveryPill`.
     public var delivery: CGRect? = nil
     public var deliveryPill: CGRect? = nil
+    /// The files the person attached that are no picture or video, one
+    /// card each under the pictures, at the right.
+    public var cards: [CGRect] = []
 
     /// The first Markdown run, for an agent message that is only text.
     public var markdown: MarkdownLayout? {
@@ -402,7 +405,8 @@ public struct MessageLayout: Equatable, Sendable {
     /// `delivery` is the time and mark to place at the bubble's foot, with
     /// `trailing` measuring the text's last line (its width, at a width);
     /// with no text, it goes on the last picture.
-    public static func user(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable?, fold: Fold? = nil, pictures: [MediaFlow.Image] = [], showsStatus: Bool, delivery: MessageStatusLayout? = nil, trailing: Measurable? = nil) -> MessageLayout {
+    public static func user(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable?, fold: Fold? = nil, pictures: [MediaFlow.Image] = [], cards: Int = 0,
+                            showsStatus: Bool, delivery: MessageStatusLayout? = nil, trailing: Measurable? = nil) -> MessageLayout {
         typealias M = Metrics
         let column = ChatColumn(rowWidth: width, maxContentWidth: maxContentWidth)
         let inner = max(0, column.width - 2 * M.marginH)
@@ -468,6 +472,15 @@ public struct MessageLayout: Equatable, Sendable {
                 deliveryFrame = pill.frame
             }
         }
+        var cardFrames: [CGRect] = []
+        if cards > 0 {
+            let measure = min(maxBubble, MediaFlow.messageMaxWidth)
+            for _ in 0..<cards {
+                if bubble != nil || !pictureFrames.isEmpty || !cardFrames.isEmpty { bottom += M.blockGap }
+                cardFrames.append(CGRect(x: right - measure, y: bottom, width: measure, height: ResultCardLayout.height))
+                bottom += ResultCardLayout.height
+            }
+        }
         var status: CGRect?
         if showsStatus {
             status = CGRect(x: column.x + M.marginH, y: bottom + M.statusGap, width: inner, height: M.statusHeight)
@@ -476,7 +489,7 @@ public struct MessageLayout: Equatable, Sendable {
         return MessageLayout(
             size: CGSize(width: max(0, width), height: bottom + M.marginV),
             parts: [], bubble: bubble, text: textFrame, cut: cut, foldControl: foldControl, pictures: pictureFrames, status: status,
-            delivery: deliveryFrame, deliveryPill: deliveryPill
+            delivery: deliveryFrame, deliveryPill: deliveryPill, cards: cardFrames
         )
     }
 }

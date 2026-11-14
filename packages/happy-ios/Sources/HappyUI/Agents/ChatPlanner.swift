@@ -221,13 +221,15 @@ actor ChatPlanner {
             // the accent bubble at the right, its photos under it, whole.
             // Only a ludicrous one, past `foldLines`, is cut there until
             // tapped open.
-            // A file that is no picture or video is named under the words.
+            // A file on its way that is no picture or video is named under
+            // the words; once the computer holds it, it is a card that opens it.
             let named = item.pieces.compactMap { piece -> String? in
-                switch piece {
-                case .sentFile(let file) where !file.isVisual: return "📎 \(file.name)"
-                case .file(let media) where media.attachment != nil: return "📎 \(media.item.name)"
-                default: return nil
-                }
+                guard case .sentFile(let file) = piece, !file.isVisual else { return nil }
+                return "📎 \(file.name)"
+            }
+            let files = item.pieces.compactMap { piece -> Media? in
+                guard case .file(let media) = piece, media.attachment != nil else { return nil }
+                return media
             }
             let written = ([text] + named).filter { !$0.isEmpty }.joined(separator: "\n\n")
             let string = ChatTextStyles.text.string(written, color: Palette.userMessageText, in: environment)
@@ -267,7 +269,7 @@ actor ChatPlanner {
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
                 // A refusal is the red mark in the slot, as Telegram's: no
                 // line under the bubble, so the row never grows when a send fails.
-                pictures: pictures.map(\.image), showsStatus: false,
+                pictures: pictures.map(\.image), cards: files.count, showsStatus: false,
                 delivery: status, trailing: body?.trailing
             )
             var items: [ChatDrawItem] = []
@@ -306,6 +308,15 @@ actor ChatPlanner {
                     hits.append(ChatHit(frame: frame, action: .openMedia(key)))
                 }
             }
+            // A file's card, as an agent's: its ring reads or pauses it, the
+            // rest opens it once here.
+            for (file, frame) in zip(files, layout.cards) {
+                let drawn = ChatMediaPlan.draw(ChatMediaPlan.card(file: file), in: frame, environment: environment)
+                items += drawn.items
+                hits.insert(drawn.hit, at: 0)
+                let chip = ResultCardLayout(frame: frame, opens: true).chip
+                hits.insert(ChatHit(frame: chip.insetBy(dx: -8, dy: -8), action: .toggleDownload(file.key)), at: 0)
+            }
             // The mark says where it is, so the bubble is never dimmed.
             if let box = layout.delivery {
                 if let pill = layout.deliveryPill {
@@ -315,9 +326,9 @@ actor ChatPlanner {
                 items += placed.items
                 if failure { hits.insert(ChatHit(frame: placed.mark.insetBy(dx: -8, dy: -8), action: .retry(localId: item.id)), at: 0) }
             }
-            let label = [text, failure ? Strings.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+            let label = ([text] + files.map(\.item.name) + [failure ? Strings.sendFailed : ""]).filter { !$0.isEmpty }.joined(separator: ", ")
             let shape = layout.bubble.map { ChatBox(frame: $0, fill: Palette.userBubble, radius: M.bubbleRadius) }
-                ?? ChatBox(frame: layout.pictures.reduce(CGRect.null) { $0.union($1) })
+                ?? ChatBox(frame: (layout.pictures + layout.cards).reduce(CGRect.null) { $0.union($1) })
             let flight = ChatRowFlight(bubble: shape, text: layout.text, status: layout.delivery, media: !pictures.isEmpty)
             let selection = layout.bubble.flatMap { bubble in
                 selectable.isEmpty ? nil : ChatSelectable(texts: selectable, whole: text, frame: bubble, card: false)

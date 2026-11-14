@@ -49,6 +49,8 @@ private actor AttachComputer: AgentTransport {
 
     private func answer(method: String, path: String, body: Data?) throws -> HTTP1Response {
         asked.append("\(method) \(path)")
+        // A computer from before conversation attachments: the picture goes inline.
+        if path.contains("/attachments/") { return .init(status: 404, body: Data(#"{"code":"not_found"}"#.utf8)) }
         let value = try body.map { try JSONDecoder().decode(JSONValue.self, from: $0) }
         if path == "/v0/config" {
             // One model, so a send has a mode to go with.
