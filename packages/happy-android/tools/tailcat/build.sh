@@ -8,19 +8,9 @@
 #
 # patches/*.patch are applied on top of the commit, in order, and named in
 # the version (-p<count>). They are fixes not yet in tailcat-kotlin itself;
-# drop each one once the pinned commit has it:
-#   0001  tailcat-swift 69a661b's closing-flow limits: application-closed TCP
-#         flows finish FIN/ACK and TIME-WAIT outside the live 1024 / 256
-#         budgets (at most 1024 of them, oldest evicted), so a browser's
-#         short requests can't exhaust the stack.
-#   0002  A network change or a resume is checked, not assumed to have broken
-#         anything: TailcatClient.wake(), and notifyNetworkChanged() and the
-#         discovery worker's address change, ping DERP and reconnect only if
-#         nothing comes back within 2 s, probe the selected direct route and
-#         drop it only if its Pong doesn't come back by then, and re-advertise.
-#         Sockets and the session stay; resetNetworkPaths() is the forced reset.
+# drop each one once the pinned commit has it. There are none today.
 set -euo pipefail
-COMMIT=06303967c95dc6a05454037cbc931f68e0570c48
+COMMIT=705a8682c5ff954b8758f8fa9d91168e9d4612d1
 here="$(cd "$(dirname "$0")" && pwd)"
 patches=("$here"/patches/*.patch)
 [ -e "${patches[0]}" ] || patches=()

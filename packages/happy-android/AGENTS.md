@@ -2235,10 +2235,13 @@ is `packages/happy-ios`. The wire keeps its own names
   variant) into `vendor/maven`, which `settings.gradle.kts` reads for the
   `io.tailcat` group only; the catalog pins the version. When it is
   published, switch the catalog and delete both. `tools/tailcat/patches`
-  holds fixes not yet in tailcat-kotlin, applied on top of the commit
-  (the version's `-p<n>`): today tailcat-swift 69a661b's closing-flow
-  limits, without which the in-app browser's short requests run the stack
-  out of connections. Upstream them and drop the patch.
+  would hold fixes not yet in tailcat-kotlin, applied on top of the commit
+  (the version's `-p<n>`); there are none today. The pinned commit has
+  tailcat-swift's recovery fixes to its 7cad775 except SACK (rejoin on a
+  restarted computer's `meow\x03`, 15 s unanswered and 5 s owed-data
+  rejoins, resend of what each flow owes after a rejoin or a relay
+  replaced) and its transport (window scaling, full receive queues, NewReno,
+  paced DERP sends).
 - **Live check:** `LivePairingTest` pairs with a real Happy Agent
   when `HAPPY_PAIRING_LINK` holds a fresh code, writes the emoji for the
   person confirming in Happy Agent, then reads health and config with the
