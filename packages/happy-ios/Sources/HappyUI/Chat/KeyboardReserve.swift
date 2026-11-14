@@ -37,6 +37,12 @@ final class KeyboardReserve: NSObject {
         return CGFloat(held)
     }
 
+    /// Forgets every keyboard seen.
+    func forget() {
+        tallest = [:]
+        UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
+    }
+
     @objc private func keyboardWillChangeFrame(_ notification: Notification) {
         guard let end = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect, !end.isEmpty,
               let screen = notification.object as? UIScreen

@@ -243,14 +243,14 @@ final class NewWorkLayoutTests: XCTestCase {
         XCTAssertLessThan(under.block.minY, 100, "under the bar rather than gone")
     }
 
-    /// A legacy account's bot: the robot is always 128; short of room it
+    /// A legacy account's bot: the robot is always 77; short of room it
     /// goes up under the bar first, the kind stopping at the bar's foot.
     func testABotsPictureNeverShrinks() throws {
         for bottom: CGFloat in [760, 460, 360, 300] {
             let layout = NewWorkLayout(width: 393, top: 103, bottom: bottom, kindHeight: 32, givingWay: 2, note: botNote, art: true)
-            XCTAssertEqual(layout.art?.width, M.art, "\(bottom)")
-            XCTAssertEqual(try XCTUnwrap(layout.kind).minY, M.art + M.artToKind, "\(bottom)")
-            XCTAssertGreaterThanOrEqual(layout.block.minY + M.art + M.artToKind, 103 - 0.001, "\(bottom): the kind under the bar's foot")
+            XCTAssertEqual(layout.art?.width, M.givingWayArt, "\(bottom)")
+            XCTAssertEqual(try XCTUnwrap(layout.kind).minY, M.givingWayArt + M.artToKind, "\(bottom)")
+            XCTAssertGreaterThanOrEqual(layout.block.minY + M.givingWayArt + M.artToKind, 103 - 0.001, "\(bottom): the kind under the bar's foot")
         }
         let short = NewWorkLayout(width: 393, top: 103, bottom: 360, kindHeight: 32, givingWay: 2, note: botNote, art: true)
         XCTAssertFalse(short.fits)

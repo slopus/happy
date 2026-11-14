@@ -87,6 +87,8 @@ final class HostedComposeTests: XCTestCase {
     override func setUp() {
         super.setUp()
         LegacyFonts.registerBundledFonts()
+        // No keyboard seen, whatever earlier tests' keyboards were.
+        MainActor.assumeIsolated { KeyboardReserve.shared.forget() }
     }
 
     override func tearDown() {
@@ -562,7 +564,7 @@ final class HostedComposeTests: XCTestCase {
             XCTAssertFalse(panel.art.isAnimating, "\(kind): still until tapped")
             XCTAssertEqual(panel.art.progress, scene.restsOnFirstFrame ? 0 : 1, accuracy: 0.001, "\(kind): at rest")
             let art = try XCTUnwrap(panel.art.superview).convert(panel.art.frame, to: chat.view)
-            XCTAssertEqual(art.size, CGSize(width: NewWorkLayout.Metrics.art, height: NewWorkLayout.Metrics.art), "\(kind): never smaller")
+            XCTAssertEqual(art.size, CGSize(width: NewWorkLayout.Metrics.givingWayArt, height: NewWorkLayout.Metrics.givingWayArt), "\(kind): never smaller")
             XCTAssertEqual(art.midX, panel.convert(panel.kind.frame, to: chat.view).midX, accuracy: 0.5, "\(kind): over the kind")
             XCTAssertEqual(panel.kind.frame.minY - panel.art.frame.maxY, NewWorkLayout.Metrics.artToKind, accuracy: 0.5)
             places[kind] = [panel.frame, panel.art.frame, panel.kind.frame, panel.machine.frame]

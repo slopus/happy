@@ -40,6 +40,8 @@ public struct NewWorkLayout: Equatable, Sendable {
         public static let artToKind: CGFloat = 16
         /// A legacy account's block, snugger than Happy Agent's (Kirill).
         public static let givingWayMaxWidth: CGFloat = 256
+        /// A legacy account's picture, 0.6 of `art` (Kirill).
+        public static let givingWayArt: CGFloat = 77
     }
 
     /// The block, in the screen.
@@ -119,7 +121,7 @@ public struct NewWorkLayout: Equatable, Sendable {
     /// offline, a name refused) adds to it: that is said inside the row.
     ///
     ///     bar ─────────────────────────
-    ///                  (robot)                 art, always 128
+    ///                  (robot)                 art, always 77
     ///               [ Session | Bot | Task ]   stops at the bar's foot
     ///               what a bot is              note, covered last
     ///               [ Machine | computer  ]
@@ -132,7 +134,7 @@ public struct NewWorkLayout: Equatable, Sendable {
         let room = bottom - top
         let rowCount = max(count, reserveRows)
         var y: CGFloat = 0
-        let side: CGFloat? = art || reserveArt ? M.art : nil
+        let side: CGFloat? = art || reserveArt ? M.givingWayArt : nil
         if let side { y = side + M.artToKind }
         // The kind, the note and the rows, `kindToRows` apart.
         var gap: CGFloat = 0

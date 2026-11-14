@@ -25,8 +25,9 @@ import UIKit
 ///   still as it changes (Kirill).
 ///
 /// A bot stands under the robot and a task under the magic wand, the
-/// empty states' 128 (`NewWorkLayout.Metrics.art`), still: each plays only
-/// when tapped, once, and comes back to rest. A session has none.
+/// empty states' 128 (`NewWorkLayout.Metrics.art`), or 77 for a legacy
+/// account (`givingWayArt`), still: each plays only when tapped, once, and
+/// comes back to rest. A session has none.
 final class NewWorkPanel: UIView, UITextFieldDelegate {
     enum Mode {
         case work

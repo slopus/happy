@@ -104,6 +104,8 @@ final class HostedComposeTargetTests: XCTestCase {
     override func setUp() {
         super.setUp()
         LegacyFonts.registerBundledFonts()
+        // No keyboard seen, whatever earlier tests' keyboards were.
+        MainActor.assumeIsolated { KeyboardReserve.shared.forget() }
     }
 
     override func tearDown() {
@@ -734,7 +736,7 @@ final class HostedComposeTargetTests: XCTestCase {
         let tightest = 160 + panel.kind.intrinsicContentSize.height + M.kindToRows + 3 * M.rowHeight + 2 * M.rowGap + M.margin
         for bottom in [600, tightest] {
             let layout = panel.layout(width: 393, top: 160, bottom: bottom)
-            XCTAssertEqual(layout.kind.map { layout.block.minY + $0.minY }, 160 + (bottom == tightest ? 0 : (600 - 160 - layout.block.height) / 2 + M.art + M.artToKind), "\(bottom)")
+            XCTAssertEqual(layout.kind.map { layout.block.minY + $0.minY }, 160 + (bottom == tightest ? 0 : (600 - 160 - layout.block.height) / 2 + M.givingWayArt + M.artToKind), "\(bottom)")
             if bottom == tightest {
                 XCTAssertEqual(try XCTUnwrap(layout.rows.first).minY - (try XCTUnwrap(layout.kind).maxY), M.kindToRows, "the rows up to the kind")
                 XCTAssertEqual(layout.noteAlpha, 0)
