@@ -57,10 +57,13 @@ import { logger } from '@/ui/logger';
 import { existsSync } from 'node:fs';
 import { isBun } from './runtime';
 
-export type HappyCLIEntrypoint = 'main' | 'codex-worker';
+export type HappyCLIEntrypoint = 'main' | 'codex-worker' | 'codex-skill-discovery';
 
 export function resolveHappyCLIEntrypoint(entrypoint: HappyCLIEntrypoint = 'main'): string {
-  return join(projectPath(), 'dist', entrypoint === 'codex-worker' ? 'codexWorkerEntry.mjs' : 'index.mjs');
+  const file = entrypoint === 'codex-worker' ? 'codexWorkerEntry.mjs'
+    : entrypoint === 'codex-skill-discovery' ? 'codexSkillDiscoveryEntry.mjs'
+    : 'index.mjs';
+  return join(projectPath(), 'dist', file);
 }
 
 /**

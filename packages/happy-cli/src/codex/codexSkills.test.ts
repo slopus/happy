@@ -1,9 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { listCodexSkillNames } from './codexSkills';
+
+vi.mock('node:fs', async (importOriginal) => {
+    const fs = await importOriginal<typeof import('node:fs')>();
+    return { ...fs, readdirSync: vi.fn(fs.readdirSync) };
+});
 
 function writeSkill(root: string, relativePath: string, frontmatterName?: string): void {
     const filePath = join(root, relativePath);
@@ -18,6 +23,7 @@ describe('listCodexSkillNames', () => {
     const created: string[] = [];
 
     afterEach(() => {
+        vi.mocked(readdirSync).mockClear();
         for (const dir of created.splice(0)) {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -48,6 +54,32 @@ describe('listCodexSkillNames', () => {
             'openai-docs',
             'supabase:supabase',
         ]);
+    });
+
+    it('treats a Skill as a leaf without scanning its state, dependencies or linked volume', () => {
+        const homeDir = mkdtempSync(join(tmpdir(), 'codex-skills-leaf-'));
+        const linkedVolume = mkdtempSync(join(tmpdir(), 'codex-skills-volume-'));
+        created.push(homeDir, linkedVolume);
+        writeSkill(homeDir, '.codex/skills/workflow/SKILL.md', 'workflow');
+        writeSkill(homeDir, '.codex/skills/workflow/state/nested/SKILL.md', 'private-state');
+        writeSkill(homeDir, '.codex/skills/workflow/node_modules/package/SKILL.md', 'dependency');
+        writeSkill(linkedVolume, 'outside/SKILL.md', 'linked-volume');
+        const leaf = join(homeDir, '.codex/skills/workflow');
+        symlinkSync(linkedVolume, join(leaf, 'external-volume'), process.platform === 'win32' ? 'junction' : 'dir');
+        vi.mocked(readdirSync).mockClear();
+
+        expect(listCodexSkillNames({ cwd: homeDir, homeDir })).toEqual(['workflow']);
+        const scanned = vi.mocked(readdirSync).mock.calls.map(([path]) => String(path));
+        expect(scanned.some(path => path === leaf || path.startsWith(leaf + '/'))).toBe(false);
+        expect(scanned.some(path => path.startsWith(linkedVolume))).toBe(false);
+    });
+
+    it('keeps traversing aggregate containers to find sibling plugin Skills', () => {
+        const homeDir = mkdtempSync(join(tmpdir(), 'codex-skills-container-'));
+        created.push(homeDir);
+        writeSkill(homeDir, '.codex/plugins/cache/vendor/plugin/1.0.0/skills/one/SKILL.md', 'one');
+        writeSkill(homeDir, '.codex/plugins/cache/vendor/plugin/1.0.0/skills/two/SKILL.md', 'two');
+        expect(listCodexSkillNames({ cwd: homeDir, homeDir })).toEqual(['plugin:one', 'plugin:two']);
     });
 
     it('dedupes repeated names across roots', () => {

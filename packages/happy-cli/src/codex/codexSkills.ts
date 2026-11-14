@@ -87,6 +87,18 @@ function collectSkillFiles(root: string): string[] {
         }
         seenDirectories.add(realDir);
 
+        // A Skill's private state, dependencies and linked projects are not
+        // additional catalog roots. Avoid even opening those directories.
+        const skillFile = join(dir, 'SKILL.md');
+        try {
+            if (existsSync(skillFile) && statSync(skillFile).isFile()) {
+                files.push(skillFile);
+                return;
+            }
+        } catch {
+            // Unreadable metadata does not prevent discovery of other Skills.
+        }
+
         let entries: Dirent<string>[];
         try {
             entries = readdirSync(dir, { withFileTypes: true, encoding: 'utf8' });

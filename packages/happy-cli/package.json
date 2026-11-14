@@ -42,6 +42,16 @@
         "default": "./dist/codexWorkerEntry.mjs"
       }
     },
+    "./internal/codex-skill-discovery": {
+      "require": {
+        "types": "./dist/codexSkillDiscoveryEntry.d.cts",
+        "default": "./dist/codexSkillDiscoveryEntry.cjs"
+      },
+      "import": {
+        "types": "./dist/codexSkillDiscoveryEntry.d.mts",
+        "default": "./dist/codexSkillDiscoveryEntry.mjs"
+      }
+    },
     "./lib": {
       "require": {
         "types": "./dist/lib.d.cts",

@@ -71,7 +71,7 @@ import {
 import { mergeCodexSessionConfigIntoMetadata } from './sessionConfigMetadata';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import type { GoalCommand, UsageCommand } from '@/parsers/specialCommands';
-import { listCodexSkillNames } from './codexSkills';
+import { discoverCodexSkillNames } from './codexSkillDiscovery';
 import { registerSessionTitleWorker } from '@/title/sessionTitleWorker';
 import { updateQueuedMessageCount } from '@/api/sessionTurnStatus';
 import { mergeReconnectMetadata, applyCodexReconnectUpdate } from './reconnectMetadata';
@@ -401,7 +401,7 @@ export async function runCodex(opts: {
     const initialPermissionMode = boundMode?.permissionMode ?? opts.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
     let discoveredSkills: string[] = [];
     try {
-        discoveredSkills = applicationPolicy ? [] : listCodexSkillNames({ cwd: process.cwd() });
+        discoveredSkills = applicationPolicy ? [] : await discoverCodexSkillNames({ cwd: process.cwd() });
     } catch (error) {
         logger.debug('[codex] Failed to discover local skills', error);
     }
