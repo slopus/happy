@@ -304,7 +304,7 @@ win:
   (`ui/chat/ComposeChat.kt`, iOS's LegacyComposeStart): its composer
   writes the account's new-session draft; centred between the bar and the
   composer (`ui/chat/NewWorkPanel.kt`, iOS's NewWorkPanel/NewWorkLayout),
-  at most 256 wide, sit the kind's picture, Session | Bot | Task (only once some computer's Happy Agent makes a
+  at most 256 wide, sit the kind's picture, Session | Bot | Task (only once some computer of this account has a Happy Agent that makes a
   bot or a task: a Happy CLI-only account has a session alone to make, so
   no choice shows; a kind no computer makes is dimmed), the computer
   (always, with an Online / Offline · 3d / Happy Agent offline chip on its
@@ -323,7 +323,9 @@ win:
   go to a computer whose Happy Agent makes them and answers
   (`MachineTarget`, `NewSessionServices.setKind`), moved off an offline
   one unless the person picked it. Short of room the block tightens, then
-  its picture shrinks (to 48 at least), and keeps its note; with less still it runs up under the bar. Its first send starts the session, bot or task (Happy
+  its picture shrinks (to 48 at least), and keeps its note; with less still it runs up under the bar.
+  Nothing of it shows until the account's computers are known (stored, or
+  the first sync's), so the choice never flashes in or out. Its first send starts the session, bot or task (Happy
   Agent's `target: {kind: "task"}`) with that text and images, and the
   screen then shows it. A send to a computer that doesn't answer, or
   before the computers are in, is refused in full before anything starts;

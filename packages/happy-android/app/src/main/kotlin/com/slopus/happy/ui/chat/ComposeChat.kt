@@ -382,9 +382,12 @@ fun ComposeChat.Dialogs() {
  * Agent's new work asks Task or Bot (happy-ios NewWorkPanel `.session`,
  * [NewWorkGivingWay]): what the first send makes and where it goes.
  *
- * - Session | Bot | Task heads it once some computer's Happy Agent makes a
- *   bot or a task (Kirill): with none, a session is all there is to make and
- *   no choice shows. A kind no computer's Happy Agent makes shows dimmed.
+ * - Session | Bot | Task heads it once some computer of this account has a
+ *   Happy Agent that makes a bot or a task (Kirill): with none, a session is
+ *   all there is to make and no choice shows. A kind no computer's Happy
+ *   Agent makes shows dimmed. Nothing shows until the account's computers
+ *   are known (stored, or the first sync's), so the choice never comes or
+ *   goes as they arrive.
  *   Picking Bot or Task moves the draft to a computer whose Happy Agent
  *   makes it and answers ([NewSessionServices.setKind]).
  * - Top to bottom: the kind's picture, the choice, what the kind is
@@ -435,8 +438,13 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
         stringResource(R.string.new_work_task),
     )
     val kindLabel = stringResource(R.string.home_dock_bot_kind)
-    // With no computer's Happy Agent making bots or tasks there is only a session to make: no choice to show.
-    val choosesKind = kind != ComposeKind.Session || current?.offersBots == true || current?.offersTasks == true
+    // What this account's computers make is known once they are: stored from an earlier sync, or the first sync's,
+    // which stores them all at once. Until then nothing shows, so the choice never comes or goes as they arrive.
+    val known = current != null && (current.machinesSynced || current.targets.isNotEmpty())
+    // With no computer of this account's Happy Agent making bots or tasks there is only a session to make: no choice.
+    val choosesKind = current != null && known && (current.offersBots || current.offersTasks)
+    // A kind picked where there is no choice (another account's) shows as a session until the routing settles it.
+    val shown = if (choosesKind) kind else ComposeKind.Session
 
     val machineLabel = stringResource(R.string.home_dock_picker_machine)
     val projectLabel = stringResource(R.string.home_dock_picker_project)
@@ -458,13 +466,13 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
             modifier = Modifier.testTag(NewWorkTags.MACHINE).semantics { contentDescription = listOfNotNull(machineLabel + ": " + machineTitle, machineStatus?.text).joinToString(", ") },
         ) {
             HappyDropdownMenu(expanded = open == NewSessionPage.Machine, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.MACHINE_MENU), keepsKeyboard = true) {
-                MachineMenu(compose, current, kind, awaits) { open = null }
+                MachineMenu(compose, current, shown, awaits) { open = null }
             }
         }
     }
     val rows = buildList<@Composable () -> Unit> {
         add(machineRow)
-        when (kind) {
+        when (shown) {
             ComposeKind.Session -> {
                 val folder = current?.project?.name ?: "~"
                 add {
@@ -492,12 +500,12 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
         }
     }
     NewWorkGivingWay(
-        shown = compose.composing,
+        shown = compose.composing && known,
         kind = if (!choosesKind) null else {
             {
                 NewWorkSegments(
                     labels = kindLabels,
-                    selected = kinds.indexOf(kind),
+                    selected = kinds.indexOf(shown),
                     enabled = enabled,
                     tag = { ComposeChatTags.kind(kinds[it]) },
                     onPick = { newSession.setKind(kinds[it]) },
@@ -507,9 +515,9 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
             }
         },
         rows = rows,
-        note = { ComposeKindNote(kind, choosesKind) },
+        note = { ComposeKindNote(shown, choosesKind) },
         modifier = Modifier.testTag(ComposeChatTags.TARGET),
-        art = when (kind) {
+        art = when (shown) {
             ComposeKind.Session -> null
             ComposeKind.Bot -> StateArt.Ready
             ComposeKind.Task -> StateArt.Action
