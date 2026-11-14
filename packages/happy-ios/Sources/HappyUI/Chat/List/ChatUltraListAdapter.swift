@@ -177,7 +177,7 @@ final class ChatUltraRow: ListRow {
                 if live.contains(where: { $0.intersects(box.frame) }) { return true }
             case .text(_, let frame), .icon(_, _, let frame, _):
                 if live.contains(where: { $0.intersects(frame) }) { return true }
-            case .spinner(let frame, _, _), .shimmer(_, let frame), .elapsed(_, let frame, _), .diff(_, let frame, _, _, _, _),
+            case .spinner(let frame, _, _), .shimmer(_, let frame), .sheen(_, let frame, _), .elapsed(_, let frame, _), .diff(_, let frame, _, _, _, _),
                  .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),
                  .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame), .delivery(_, let frame): live.append(frame)
             case .pulse(let box): live.append(box.frame)

@@ -556,17 +556,28 @@ ported from happy-agent-client's `happyLinks.ts`.
   link opens nothing here is its label as words; a malformed one asking
   to be a button is too. The Markdown parser reads a link's title apart
   from its destination (`LegacyMarkdown.link`).
-- **Entity links in a conversation** (`[label](happy://agents/…)`, found
-  by `HappyMarkdownLinks` as happy-agent-client's `parseHappyLinks` finds
-  them) read as desktop's `messageReferencesResolve`: the live name wins,
-  and the written label stands in while it is read and for what this
-  phone can't look up. `HappyReferences.markdown` turns each into the
-  same reference link a `<happy-KIND/>` tag becomes. An agent or
-  workspace the bots and tasks hold opens its conversation, an artifact
-  its viewer, and a Surface its screen (`SurfaceScreens`). A person is a
-  mention, and a project or service is words. A link naming another
-  installation is its label as words. The bots, tasks and Surfaces come
-  from the account's bootstrap (`SyncEngine` → `Store.externalDirectory`).
+- **Entity links in a conversation** (`[](happy://agents/…)` or a
+  link.happy.page share link, found by `HappyMarkdownLinks` as
+  happy-agent-client's `parseHappyLinks` finds them) read as the live name
+  of what they name, whatever words they were written with (those go stale
+  on a rename); a person as "@" and their name. What nothing here names
+  (gone, archived, another server's) reads as the placeholder ("an
+  unavailable agent"), never the words. A bare share link shows its
+  address. `HappyReferences.markdown` puts the name in the link's words and
+  leaves its address exactly as written: where a link goes is read from
+  that address as it is drawn (`ChatLinks.kind`), and copying gives the
+  message as written. One that resolves on the conversation's server opens
+  in the app: an agent or workspace the bots and tasks hold its
+  conversation, an artifact its viewer, a Surface its screen
+  (`SurfaceScreens`), and a link to a conversation at work carries the
+  sidebar's shimmer (`ChatSheen`, desktop's `sheen`). An unresolved share
+  link stays tappable and goes through instance-link routing ("not
+  connected"); an unresolved `happy://` link is plain words. As on desktop,
+  a file link shows its path and a settings link "Settings" when written
+  without words. A `<happy-KIND/>` tag reads the same way.
+  Links and code inside bold or italic keep that style. The bots, tasks
+  and Surfaces come from the account's bootstrap (`SyncEngine` →
+  `Store.externalDirectory`).
 - **File links** (`happy://agents/<id>/files/<path>#L<n>`) are read when
   tapped (`AgentClient.linkedFile`: the agent's workspace, then
   `GET /v0/workspaces/:id/file`), then shown read-only by

@@ -339,9 +339,9 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         let id = "artifact:\(artifact.id):\(documentPath)"
         let references = references
         let plan = await Task.detached(priority: .userInitiated) {
-            // Its Happy links (and share links naming this server) read as a message's: by their live names.
+            // Its Happy links read as a message's: by their live names.
             let resolved = HappyReferences.markdown(text, instanceId: references.instanceId, view: references.view)
-            return Self.plan(resolved, id: id, key: key, syntax: syntax, document: MarkdownDocument(pictures: shown))
+            return Self.plan(resolved, id: id, key: key, syntax: syntax, document: MarkdownDocument(pictures: shown), references: references)
         }.value
         // Only the newest plan is drawn.
         guard generation == planning else { return }
@@ -363,10 +363,10 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
 
     /// The agent text's look (desktop's Figtree 16/24 markdown) in the
     /// reading column, its pictures in their own shapes.
-    nonisolated static func plan(_ text: String, id: String, key: ChatPlanner.Key, syntax: CodeSyntaxService, document: MarkdownDocument) -> ChatRowPlan {
+    nonisolated static func plan(_ text: String, id: String, key: ChatPlanner.Key, syntax: CodeSyntaxService, document: MarkdownDocument, references: References? = nil) -> ChatRowPlan {
         let markdown = MarkdownPiece(
             text, color: Palette.text, diagrams: ChatMermaidHeights(row: id), syntax: syntax, in: key.environment,
-            body: ChatTextStyles.text, header: ChatTextStyles.header, document: document
+            body: ChatTextStyles.text, header: ChatTextStyles.header, document: document, links: references
         )
         let layout = MessageLayout.agent(width: key.width, maxContentWidth: key.maxContentWidth, parts: [.markdown(markdown.blocks)])
         guard case .markdown(let placed, let origin)? = layout.parts.first else { return ChatRowPlan(id: id, size: layout.size, items: []) }
@@ -404,16 +404,8 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     /// one in a message does; another of the artifact's files opens here,
     /// pushed; an address on the web in the browser, through the computer.
     func open(link: String) {
-        if let reference = HappyReferences.reference(link: link) {
-            return openReference(reference, references: references, rows: rows, session: session)
-        }
-        // Any other Happy link (a file, a settings page) as the instance link it means here.
-        if HappyLink.isHappyURL(link) {
-            guard let parsed = HappyLink(link) else { return }
-            let instanceId = parsed.instanceId ?? session.instanceId
-            if let instanceId, let url = HappyLink(parsed.target, instanceId: instanceId).url { openHappyLink(url) }
-            return
-        }
+        // A file it links as the instance link it means here.
+        if openHappyLink(link, references: references, rows: rows, session: session) { return }
         switch ArtifactMarkdown.resolve(link, from: documentPath) {
         case .file(let path, _):
             guard let version, let media, let file = version.files.first(where: { $0.path == path }) else { return show(alert: Strings.ArtifactMedia.fileUnavailable) }

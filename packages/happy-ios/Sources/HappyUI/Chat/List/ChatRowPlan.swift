@@ -152,6 +152,10 @@ enum ChatDrawItem {
     case spinner(CGRect, tint: ColorToken, scale: CGFloat)
     /// A label carrying the shimmer while its work goes (`ChatShimmerView`).
     case shimmer(ChatShimmerText, frame: CGRect)
+    /// A busy link's band over the words drawn under it (`ChatSheen`): a
+    /// copy of the text at `frame` with only that link's words, in the
+    /// band's colour, wiped through across `run`, the link in the frame.
+    case sheen(ChatTextLayout, frame: CGRect, run: CGRect)
     /// A running tool's timer: whole seconds since `since` (ms), as "12.0s",
     /// at the row's text size (nil: the designed size).
     case elapsed(since: Int64, frame: CGRect, text: TextEnvironment?)

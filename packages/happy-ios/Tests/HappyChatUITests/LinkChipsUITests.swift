@@ -1,11 +1,12 @@
 import XCTest
 
 /// Happy links as desktop reads them, on grouped home's computer
-/// (`-screen groupedHome -linkChips`): Landing page copy's reply names an
-/// artifact, a task, a bot and a Surface by their live names, an agent this
-/// phone doesn't hold as words and another server's task as its address;
-/// the person's message names its task as a link too. The artifact's name
-/// opens it, and its Markdown document reads its own links the same way.
+/// (`-screen groupedHome -linkChips`): Landing page copy's reply links a
+/// task, a bot at work, an artifact and a task in bold by their live
+/// names, an agent this phone doesn't hold and another server's task by
+/// the placeholder, and a task by its bare address; the person's message
+/// names its task too. Tapping the artifact's name opens it, and its
+/// Markdown document reads its own links the same way.
 @MainActor
 final class LinkChipsUITests: XCTestCase {
     private let app = XCUIApplication()
@@ -17,7 +18,7 @@ final class LinkChipsUITests: XCTestCase {
     }
 
     func testLinksReadAsWhatTheyName() {
-        app.launchArguments = ["-screen", "groupedHome", "-linkChips"]
+        app.launchArguments = ["-screen", "groupedHome", "-linkChips", "-shimmerPhase", "0.45"]
         app.launch()
         addTeardownBlock { [app] in app.terminate() }
         let landing = row("Landing page copy")
@@ -25,26 +26,35 @@ final class LinkChipsUITests: XCTestCase {
         pause(2)
         landing.tap()
 
-        // The reply: every link by what it names now.
-        let reply = message(beginningWith: "Launch brief is ready")
+        // The reply: every link by what it names now (the spoken words keep
+        // the Markdown's marks).
+        let reply = message(beginningWith: "Here is where things stand")
         XCTAssertTrue(reply.waitForExistence(timeout: 15), "no reply")
-        for words in ["Fix login crash is bisecting", "Research Assistant has the papers", "Surface: Groceries", "Archived: an unavailable agent", "Theirs: https://link.happy.page/"] {
+        for words in ["Task: Quarterly report has", "Bot: Research Assistant is", "Artifact: Launch brief is", "Bold: **Onboarding emails** go",
+                      "Archived: an unavailable agent", "Bare: https://link.happy.page/#1/", "Theirs: an unavailable agent"] {
             XCTAssertTrue(reply.label.contains(words), "\(words) not in \(reply.label)")
         }
+        XCTAssertFalse(reply.label.contains("happy-reference"))
         // The person's own words name the task.
         XCTAssertTrue(message(beginningWith: "How is Fix login crash going?").exists, "the person's message")
         pause(1.5)
-        keep("chips-01-chat")
+        keep("links-01-chat")
 
-        // The artifact's name, the reply's first words, opens it.
-        reply.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 30, dy: 12)).tap()
+        // The artifact's name opens it.
+        tapLine(3, at: 130, in: reply)
         let document = app.descendants(matching: .any)["artifact-document"]
         XCTAssertTrue(document.waitForExistence(timeout: 15), "the artifact's link opened nothing")
-        let named = NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "Owner: [Fix login crash]", "[Research Assistant]", "[Groceries]")
+        let named = NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "[Research Assistant]", "[Groceries]")
         expectation(for: named, evaluatedWith: document)
         waitForExpectations(timeout: 10)
         pause(1.5)
-        keep("chips-02-document")
+        keep("links-02-document")
+    }
+
+    /// Taps the reply's `line`th list item (its first paragraph above; 24
+    /// a line, blocks 8 apart), `x` in from its left.
+    private func tapLine(_ line: Int, at x: CGFloat, in reply: XCUIElement) {
+        reply.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: 24 + 8 + 32 * CGFloat(line - 1) + 12)).tap()
     }
 
     private func row(_ label: String) -> XCUIElement {

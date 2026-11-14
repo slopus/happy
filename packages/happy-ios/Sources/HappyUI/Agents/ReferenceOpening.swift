@@ -1,8 +1,39 @@
 #if canImport(UIKit)
 import HappyCore
+import HappyWire
 import UIKit
 
 extension UIViewController {
+    /// A Happy link tapped in a message or a document, `happy://` or a
+    /// share link: what this conversation's installation holds opens here
+    /// (a file through `file`, when given); anything else goes through
+    /// instance-link routing, which opens it on its connection or says it
+    /// can't. False for a link that is no Happy link.
+    func openHappyLink(_ text: String, references: References, rows: [Row], session: Session, file: ((HappyLink.File) -> Void)? = nil) -> Bool {
+        guard let link = ChatLinks.happyLink(text) else { return HappyLink.isHappyURL(text) }
+        switch ChatLinks.kind(text, references: references) {
+        case .here(_, _):
+            switch link.target {
+            case .reference(let named):
+                openReference(.init(kind: named.kind.rawValue, id: named.id, version: named.version, workspaceId: named.workspaceId), references: references, rows: rows, session: session)
+                return true
+            case .settings(let page):
+                SettingsLinks.open(page, options: link.providerOptions, session: session, from: self)
+                return true
+            case .file(let linked):
+                if let file { file(linked); return true }
+            }
+        case .mention, .words:
+            return true
+        case .elsewhere, .web:
+            break
+        }
+        // A link naming no installation is this conversation's.
+        let instanceId = link.instanceId ?? session.instanceId
+        openHappyLink(instanceId.flatMap { HappyLink(link.target, instanceId: $0).url } ?? text)
+        return true
+    }
+
     /// What a message or a document names, opened over this screen: an
     /// artifact at the version the reference pinned, a Surface, or a
     /// conversation as its row in `rows` opens it. What `references`

@@ -407,25 +407,39 @@ struct MarkdownPiece {
     /// headings (V2 passes desktop's).
     /// `document`: the pictures and links of a document that has files of
     /// its own (an artifact); nil reads them as a conversation does.
-    /// `opens`: whether a Happy link opens anything where this is shown; a
-    /// button whose link doesn't is its label as words.
+    /// `links`: what the conversation's Happy links read as, and `server`
+    /// the server it is on (`ChatLinks.kind`); without them only web
+    /// addresses and settings and file links are links, and no button opens.
+    /// A busy link's band is mixed toward `ground`, what the text sits on.
+    /// `copied`: what Select Text shows and copies, the message exactly as
+    /// written where `markdown` is what it reads as.
     init(
         _ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService, in environment: TextEnvironment?,
         body: ChatTextStyle = ChatTextStyles.markdownText, header: (Int) -> ChatTextStyle = ChatTextStyles.markdownHeader,
-        document: MarkdownDocument? = nil, opens: (String) -> Bool = { _ in false }
+        document: MarkdownDocument? = nil, links: References? = nil, server: String? = nil, ground: ColorToken = Palette.surface, copied: String? = nil
     ) {
         var blocks: [MarkdownLayout.Block] = []
         var drawers: [Drawer] = []
+        let copied = copied ?? markdown
+
+        func opens(_ url: String) -> Bool {
+            links.map { ChatLinks.opens(url, references: $0, server: server) } ?? false
+        }
+
+        func string(_ spans: [MarkdownSpan], style: ChatTextStyle) -> NSAttributedString {
+            ChatSpans.string(spans, style: style, color: color, in: environment, everyLink: document != nil, links: links)
+        }
 
         func hold(_ frame: CGRect, _ paragraph: String) -> [ChatHit] {
-            selectable ? [ChatHit(frame: frame, action: .markdownSelectable(paragraph: paragraph, markdown: markdown), hold: true)] : []
+            selectable ? [ChatHit(frame: frame, action: .markdownSelectable(paragraph: paragraph, markdown: copied), hold: true)] : []
         }
 
         func text(_ measured: MeasuredText) -> Drawer {
             { placed, origin in
                 let frame = placed.frame.offsetBy(dx: origin.x, dy: origin.y)
                 let layout = measured.layout(for: placed.frame)
-                return Drawn(items: [.text(layout, frame)], hits: hold(frame, measured.string.string), texts: [.init(layout: layout, frame: frame)])
+                let items: [ChatDrawItem] = [.text(layout, frame)] + ChatSheen.items(layout, frame: frame, ground: ground)
+                return Drawn(items: items, hits: hold(frame, measured.string.string), texts: [.init(layout: layout, frame: frame)])
             }
         }
 
@@ -435,13 +449,13 @@ struct MarkdownPiece {
             paragraph = nil
             switch block {
             case .text(let spans):
-                let measured = MeasuredText(ChatSpans.string(spans, style: body, color: color, in: environment, everyLink: document != nil))
+                let measured = MeasuredText(string(spans, style: body))
                 blocks.append(.text(measured.measurable))
                 drawers.append(text(measured))
                 paragraph = measured
 
             case .header(let level, let spans):
-                let measured = MeasuredText(ChatSpans.string(spans, style: header(level), color: color, in: environment, everyLink: document != nil))
+                let measured = MeasuredText(string(spans, style: header(level)))
                 blocks.append(.header(level: level, measured.measurable))
                 drawers.append(text(measured))
 
@@ -454,18 +468,18 @@ struct MarkdownPiece {
             case .list(let items):
                 let rows = items.map { item in
                     (MeasuredText(body.string(Self.bullet(depth: item.depth), color: color, in: environment)),
-                     MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment, everyLink: document != nil)), item.depth)
+                     MeasuredText(string(item.spans, style: body)), item.depth)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
-                drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1, Self.copiedMarker("-", depth: $0.2)) }, hold: hold))
+                drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1, Self.copiedMarker("-", depth: $0.2)) }, ground: ground, hold: hold))
 
             case .numberedList(let items):
                 let rows = items.map { item in
                     (MeasuredText(body.string("\(item.number).", color: color, in: environment)),
-                     MeasuredText(ChatSpans.string(item.spans, style: body, color: color, in: environment, everyLink: document != nil)), item.depth, item.number)
+                     MeasuredText(string(item.spans, style: body)), item.depth, item.number)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
-                drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1, Self.copiedMarker("\($0.3).", depth: $0.2)) }, hold: hold))
+                drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1, Self.copiedMarker("\($0.3).", depth: $0.2)) }, ground: ground, hold: hold))
 
             case .codeBlock(let language, let content):
                 Self.code(language: language, content: content, syntax: syntax, environment: environment, blocks: &blocks, drawers: &drawers, hold: hold)
@@ -533,7 +547,7 @@ struct MarkdownPiece {
             case .table(let headers, let rows):
                 let all = [headers] + rows
                 let measured = all.enumerated().map { rowIndex, row in
-                    row.map { MeasuredText(ChatSpans.string($0, style: rowIndex == 0 ? ChatTextStyles.tableHeader : ChatTextStyles.tableCell, color: color, in: environment, everyLink: document != nil)) }
+                    row.map { MeasuredText(string($0, style: rowIndex == 0 ? ChatTextStyles.tableHeader : ChatTextStyles.tableCell)) }
                 }
                 let lengths = all.map { row in row.map { $0.reduce(0) { $0 + $1.text.utf16.count } } }
                 blocks.append(.table(.init(columnWidths: MarkdownLayout.columnWidths(lengths: lengths), rows: measured.map { $0.map(\.measurable) })))
@@ -642,7 +656,7 @@ struct MarkdownPiece {
     /// A list: the marker isn't selectable, the item's text is, and copies
     /// with its marker (`lead`), one item a line.
     private static func listDrawer(
-        _ rows: [(marker: MeasuredText, text: MeasuredText, copied: String)], hold: @escaping (CGRect, String) -> [ChatHit]
+        _ rows: [(marker: MeasuredText, text: MeasuredText, copied: String)], ground: ColorToken, hold: @escaping (CGRect, String) -> [ChatHit]
     ) -> Drawer {
         { placed, origin in
             guard case .list(_, let items) = placed else { return Drawn(items: [], hits: []) }
@@ -654,6 +668,7 @@ struct MarkdownPiece {
                 let layout = rows[index].text.layout(for: item.text)
                 drawn.append(.text(rows[index].marker.layout(for: item.marker), item.marker.offsetBy(dx: origin.x, dy: origin.y)))
                 drawn.append(.text(layout, text))
+                drawn += ChatSheen.items(layout, frame: text, ground: ground)
                 hits += hold(text, rows[index].text.string.string)
                 texts.append(.init(layout: layout, frame: text, lead: rows[index].copied, joiner: index == 0 ? "\n\n" : "\n"))
             }

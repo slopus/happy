@@ -28,6 +28,8 @@ final class WarmChats {
         fileprivate var planning: Task<Void, Never>?
         fileprivate var left: Int?
         fileprivate var intent: Int?
+        /// The agents its items link, and what that was read from.
+        fileprivate var linked: (items: [ChatItem], agents: [String: References.Entity], linked: Set<String>)?
 
         fileprivate init(agentId: String, conversation: Conversation, planner: ChatPlanner) {
             self.agentId = agentId
@@ -161,6 +163,8 @@ final class WarmChats {
     /// them on screen (nil before it is measured).
     func update(rows: [Row], visible shown: ClosedRange<Int>?, references: References) {
         let next = Warmth.candidates(rows)
+        var references = references
+        references.busy.formUnion(References.busy(in: rows))
         let referencesChanged = references != self.references
         self.references = references
         guard next != candidates || shown != self.visible || referencesChanged || !started else { return }
@@ -337,11 +341,16 @@ final class WarmChats {
         var references = references
         references.subagents = chat.snapshot.subagentTitles
         references.instanceId = instanceId
+        // As its screen opens it: every finished turn folded.
+        let items = TurnFold.fold(chat.snapshot.items, expanded: [])
+        // Only the work of what its messages link, as its screen narrows it.
+        if chat.linked?.items != items || chat.linked?.agents != references.agents {
+            chat.linked = (items, references.agents, items.reduce(into: Set<String>()) { $0.formUnion(references.agents(in: $1.text)) })
+        }
+        references.busy = references.busy.intersection(chat.linked?.linked ?? [])
         var key = ChatPlanner.Key(width: layout.width, maxContentWidth: ContentWidth.maxWidth, environment: layout.environment, references: references, subagentTitles: chat.snapshot.subagentTitles)
         key.server = server
         key.agentId = chat.agentId
-        // As its screen opens it: every finished turn folded.
-        let items = TurnFold.fold(chat.snapshot.items, expanded: [])
         if chat.plans?.items == items, chat.plans?.key == key { return }
         chat.planning?.cancel()
         let planner = chat.planner

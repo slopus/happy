@@ -127,7 +127,7 @@ private actor GroupedHomeTransport: AgentTransport {
     static let instanceId = "k3x9q2m7p0a4b8c1d5e6f7g2"
     private static var shareLinksRuns: Data {
         let page = "https://link.happy.page/#1/\(instanceId)/agents"
-        let reply = "Ask \(page)/happy-agent?as=bot about the tone, and read [the crash](\(page)/crash-agent?as=task) first. "
+        let reply = "Ask [](\(page)/happy-agent?as=bot) about the tone, and read [the crash](\(page)/crash-agent?as=task) first. "
             + "Theirs: https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task"
         let run: [String: Any] = ["id": "r1", "status": "completed", "startedAt": now - 60_000, "endedAt": now - 50_000, "reason": "completed", "messages": [
             ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "Who should I ask about the headlines?"]]],
@@ -137,21 +137,25 @@ private actor GroupedHomeTransport: AgentTransport {
     }
 
     /// `-linkChips`: as `-shareLinks`, and Landing page copy's conversation
-    /// names a task, a bot, an artifact, a Surface, an agent this phone
-    /// doesn't hold and another server's task, the person's message one
-    /// task, and the artifact is a Markdown brief whose links name them too.
+    /// links a task, a bot at work, an artifact, a task in bold, an agent
+    /// this phone doesn't hold and another server's task, each read as what
+    /// it names now whatever words it was written with, and a task by a
+    /// bare share link; the person's message links one task, and the
+    /// artifact is a Markdown brief whose links read the same way.
     var linkChips = false
     func setLinkChips(_ on: Bool) { linkChips = on }
     private static var linkChipsRuns: Data {
         let page = "https://link.happy.page/#1/\(instanceId)/agents"
-        let reply = "<happy-artifact id=\"brief\"/> is ready to read.\n\n"
-            + "- Task: \(page)/crash-agent?as=task is bisecting.\n"
-            + "- Bot: [the researcher](happy://agents/research-agent) has the papers.\n"
-            + "- Surface: [the list](happy://\(instanceId)/surfaces/groceries)\n"
-            + "- Archived: \(page)/gone-agent?as=session\n"
-            + "- Theirs: https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task"
+        let reply = "Here is where things stand.\n\n"
+            + "- Task: [](\(page)/report-agent?as=task) has its charts.\n"
+            + "- Bot: [a stale name](happy://agents/research-agent) is reading the papers.\n"
+            + "- Artifact: [](happy://artifacts/brief) is ready.\n"
+            + "- Bold: **[](\(page)/onboarding-agent?as=task)** go out Monday.\n"
+            + "- Archived: [](\(page)/gone-agent?as=session)\n"
+            + "- Bare: \(page)/report-agent?as=task\n"
+            + "- Theirs: [](https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task)"
         let run: [String: Any] = ["id": "r1", "status": "completed", "startedAt": now - 60_000, "endedAt": now - 50_000, "reason": "completed", "messages": [
-            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "How is \(page)/crash-agent?as=task going?"]]],
+            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "How is [](\(page)/crash-agent?as=task) going?"]]],
             ["id": "m1", "role": "agent", "createdAt": now - 55_000, "metadata": [:], "content": [["type": "text", "text": reply]]],
         ]]
         return (try? JSONSerialization.data(withJSONObject: ["runs": [run], "hasMore": false])) ?? Data()
@@ -354,6 +358,10 @@ final class GroupedHomeHarness {
         let churns = arguments.contains("-churn")
         let shareLinks = arguments.contains("-shareLinks")
         let linkChips = arguments.contains("-linkChips")
+        // Every shimmer parked at one point of its loop, for a screenshot.
+        if let index = arguments.firstIndex(of: "-shimmerPhase"), arguments.indices.contains(index + 1) {
+            ShimmerClock.shared.frozenPhase = Double(arguments[index + 1])
+        }
         if let index = arguments.firstIndex(of: "-drawDelay"), arguments.indices.contains(index + 1) {
             SidebarItemDrawing.testDrawDelay = Double(arguments[index + 1]) ?? 0
         }
@@ -407,6 +415,14 @@ final class GroupedHomeHarness {
             // their own pushes (new work's waits for its keyboard).
             window.rootViewController = ShellViewController(context: context, phone: navigation)
             window.layoutIfNeeded()
+            // `-openChat <agentId>`: that conversation over home, for a run with no finger.
+            let arguments = ProcessInfo.processInfo.arguments
+            if let index = arguments.firstIndex(of: "-openChat"), arguments.indices.contains(index + 1) {
+                try? await Task.sleep(for: .seconds(2))
+                if let session = Session.session(for: connection.id, context: context) {
+                    navigation.pushViewController(ChatViewController(session: session, agentId: arguments[index + 1], title: "Landing page copy", spaceId: nil, intro: nil), animated: false)
+                }
+            }
         } catch {
             print("GROUPED_HOME error: \(error)")
         }

@@ -160,22 +160,21 @@ final class ShareLinksTests: XCTestCase {
         XCTAssertEqual(HappyShareLink.rewrite("```\r\n\(share)\r\n```\r\n\(share)", here: here), "```\r\n\(share)\r\n```\r\n[](\(happy))")
     }
 
-    func testAShareLinkInAMessageReadsAsItsLiveName() {
+    func testAShareLinkInAMessageReadsAsWhatItNames() {
         var references = References.entities(owners: [
             .object(["name": .string("Chef"), "workspaceId": .string("wb"), "agent": .object(["id": .string("ab"), "workspaceId": .string("wb"), "subtasks": .array([])])]),
         ])
         references.instanceId = Self.instance
-        func markdown(_ text: String) -> String {
-            HappyReferences.markdown(text, instanceId: references.instanceId, files: references.opens, view: references.view)
-                .replacingOccurrences(of: HappyReferences.linkPrefix, with: "ref:")
-        }
         let share = "\(Self.page)1/\(Self.instance)/agents/ab?as=bot"
-        XCTAssertEqual(markdown("Ask \(share)."), "Ask [Chef](ref:agent/ab).")
-        XCTAssertEqual(markdown("Ask [the bot](\(share))."), "Ask [Chef](ref:agent/ab).")
-        XCTAssertEqual(HappyReferences.plain("Ask \(share).", instanceId: references.instanceId, view: references.view), "Ask Chef.")
-        // Another server's stays the address it is.
+        // Bare, its address; as a link, the live name at its own address: where it goes is read as it is drawn.
+        XCTAssertEqual(HappyReferences.markdown("Ask \(share).", instanceId: Self.instance, view: references.view), "Ask \(share).")
+        XCTAssertEqual(HappyReferences.markdown("Ask [](\(share)).", instanceId: Self.instance, view: references.view), "Ask [Chef](\(share)).")
+        XCTAssertEqual(HappyReferences.plain("Ask [the bot](\(share)).", instanceId: Self.instance, view: references.view), "Ask Chef.")
+        XCTAssertEqual(ChatLinks.kind(share, references: references), .here(HappyLink("happy://\(Self.instance)/agents/ab")!, busy: false))
+        XCTAssertEqual(HappyShareLink.bare(in: "Ask \(share). Or [x](\(share))").map(\.url), [share])
+        // Another server's is routed as the instance link it carries.
         let foreign = "\(Self.page)1/\(Self.other)/agents/ab?as=bot"
-        XCTAssertEqual(markdown("Ask \(foreign)."), "Ask \(foreign).")
+        XCTAssertEqual(ChatLinks.kind(foreign, references: references), .elsewhere(HappyLink("happy://\(Self.other)/agents/ab")!))
         // An artifact it names is read here.
         XCTAssertEqual(References().unread(in: "\(Self.page)1/\(Self.instance)/artifacts/r1"), [])
         var here = References()

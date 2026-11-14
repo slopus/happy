@@ -7,12 +7,16 @@ import HappyWire
 /// `@slopus/happy-agent-client`'s `parseHappyLinks` finds them. Never in
 /// fenced code or a code span, never after a backslash, and never across
 /// a blank line. Only destinations under the `happy` or `happy-file`
-/// scheme are Happy links; every other link is left as written.
+/// scheme, and link.happy.page share links, are Happy links; every other
+/// link is left as written.
 public enum HappyMarkdownLinks {
     public struct Match: Equatable, Sendable {
         /// The Markdown between the brackets, as written.
         public var label: String
-        /// Nil when the destination is malformed.
+        /// The destination as written.
+        public var url: String
+        /// Nil when the destination is malformed; a share link's is the
+        /// instance link it carries.
         public var link: HappyLink?
         /// Titled exactly `button`.
         public var button: Bool
@@ -119,7 +123,8 @@ public enum HappyMarkdownLinks {
             destination = from..<index
         }
         let url = String(decoding: units[destination], as: UTF16.self)
-        guard HappyLink.isHappyURL(url) else { return nil }
+        let shared = HappyShareLink.parse(url)
+        guard HappyLink.isHappyURL(url) || shared != nil else { return nil }
         var title: String?
         let beforeTitle = index
         while index < end, isSpace(units[index]) { index += 1 }
@@ -141,7 +146,8 @@ public enum HappyMarkdownLinks {
         index += 1
         return Match(
             label: String(decoding: units[(at + 1)..<labelEnd], as: UTF16.self),
-            link: HappyLink(url),
+            url: url,
+            link: shared.map { HappyLink($0.url) } ?? HappyLink(url),
             button: title == "button",
             source: String(decoding: units[start..<index], as: UTF16.self),
             start: start, end: index
@@ -149,19 +155,75 @@ public enum HappyMarkdownLinks {
     }
 }
 
-/// The Happy links a conversation draws as links once
-/// `HappyReferences.markdown` has read them: a reference it wrote, a
-/// settings link, or a file link on this installation.
+/// Where a link in a conversation goes, read from its address as written
+/// when it is drawn: the Markdown is never rewritten, so whatever is shown
+/// or copied is what was written.
 public enum ChatLinks {
-    /// Drawn as a link, even where its page goes nowhere.
-    public static func drawn(_ url: String) -> Bool {
-        HappyReferences.reference(link: url) != nil || SettingsLinkPlace.page(url) != nil || file(url) != nil
+    public enum Kind: Equatable, Sendable {
+        /// An address on the web.
+        case web
+        /// What the conversation's installation holds: it opens in the app,
+        /// `busy` while its agent works.
+        case here(HappyLink, busy: Bool)
+        /// A person the conversation names, set apart and opening nothing;
+        /// `me` when it is the reader.
+        case mention(me: Bool)
+        /// A share link nothing here holds (another server's, or something
+        /// archived or gone): its words, routed as an instance link on a
+        /// tap, which opens it on its connection or says it can't.
+        case elsewhere(HappyLink)
+        /// Words only: a `happy://` link nothing here holds, a malformed
+        /// one, a file found not to open, or anything that isn't a web
+        /// address.
+        case words
     }
 
-    /// Whether a tap on `url`, in a conversation on `server`, opens
-    /// anything: a button whose link doesn't is its words.
-    public static func opens(_ url: String, server: String?) -> Bool {
-        SettingsLinkPlace.opens(url, server: server) || HappyReferences.reference(link: url) != nil || file(url) != nil
+    /// The Happy link `url` is, a share link read as the instance link it carries.
+    public static func happyLink(_ url: String) -> HappyLink? {
+        if let shared = HappyShareLink.parse(url) { return HappyLink(shared.url) }
+        return HappyLink(url)
+    }
+
+    /// Where `url` goes in a conversation whose links `references` read.
+    public static func kind(_ url: String, references: References) -> Kind {
+        guard let link = happyLink(url) else {
+            return LegacyMarkdown.isHTTPLink(url) && !HappyLink.isHappyURL(url) ? .web : .words
+        }
+        // Only a share link leaves the app, so only one is routed (desktop's rule).
+        let unresolved: Kind = HappyLink.isHappyURL(url) ? .words : .elsewhere(link)
+        if let named = link.instanceId, named != references.instanceId { return unresolved }
+        switch link.target {
+        case .settings:
+            return .here(link, busy: false)
+        case .file(let file):
+            return references.opens(file) ? .here(link, busy: false) : .words
+        case .reference(let named):
+            let reference = HappyReferences.Reference(kind: named.kind.rawValue, id: named.id, version: named.version, workspaceId: named.workspaceId)
+            switch references.view(reference) {
+            case .link: return .here(link, busy: references.busy(reference))
+            case .mention(_, let me): return .mention(me: me)
+            // A deleted artifact's last title is words, as desktop keeps it.
+            case .text(let label): return label == HappyReferences.placeholder(reference) ? unresolved : .words
+            }
+        }
+    }
+
+    /// Whether a button to `url`, in a conversation on `server`, does
+    /// anything on a tap: one that doesn't is its words.
+    public static func opens(_ url: String, references: References, server: String?) -> Bool {
+        switch kind(url, references: references) {
+        case .here(let link, _):
+            guard case .settings(let page) = link.target else { return true }
+            return SettingsLinkPlace.place(page, server: server) != nil
+        case .elsewhere: return true
+        case .web, .mention, .words: return false
+        }
+    }
+
+    /// Drawn as a link where nothing says what a conversation holds (the
+    /// relay's chat): a settings or file link, even where it goes nowhere.
+    public static func drawn(_ url: String) -> Bool {
+        SettingsLinkPlace.page(url) != nil || file(url) != nil
     }
 
     /// The file `url` links to on this installation.

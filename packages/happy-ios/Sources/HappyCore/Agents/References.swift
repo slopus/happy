@@ -98,6 +98,8 @@ public struct References: Equatable, Sendable {
     public var instanceId: String?
     /// File links (canonical URLs) found not to open here: their words.
     public var closedFiles: Set<String> = []
+    /// The agents whose work runs now, by ID: a link to one shimmers.
+    public var busy: Set<String> = []
 
     public init(agents: [String: Entity] = [:], workspaces: [String: Entity] = [:], artifacts: [String: Artifact] = [:]) {
         self.agents = agents
@@ -195,14 +197,40 @@ public struct References: Equatable, Sendable {
         return ids
     }
 
-    /// The IDs of `kind` the Happy links in `text` name on this installation.
+    /// The IDs of `kind` the Happy links in `text` name on this
+    /// installation: Markdown links and share links written out bare.
     private func linked(_ kind: HappyLink.Kind, in text: String) -> [String] {
+        linked(in: text).compactMap { $0.kind == kind ? $0.id : nil }
+    }
+
+    private func linked(in text: String) -> [HappyLink.Reference] {
         guard Self.holds(text, "happy://") || Self.holds(text, "https://link.happy.page/#") else { return [] }
-        return HappyMarkdownLinks.matches(HappyReferences.shareLinksHere(text, instanceId: instanceId)).compactMap { match in
-            guard let link = match.link, link.instanceId == nil || link.instanceId == instanceId,
-                  case .reference(let reference) = link.target, reference.kind == kind else { return nil }
-            return reference.id
+        let links = HappyMarkdownLinks.matches(text).compactMap(\.link) + HappyShareLink.bare(in: text).compactMap { ChatLinks.happyLink($0.url) }
+        return links.compactMap { link in
+            guard link.instanceId == nil || link.instanceId == instanceId, case .reference(let reference) = link.target else { return nil }
+            return reference
         }
+    }
+
+    /// The conversations `text` names, by tag or link, as the agents
+    /// that hold them: the ones whose work its links show.
+    public func agents(in text: String) -> Set<String> {
+        var named: [HappyReferences.Reference] = []
+        if Self.holds(text, "<happy-agent") || Self.holds(text, "<happy-workspace") {
+            for case .reference(let reference, _) in HappyReferences.parse(text) { named.append(reference) }
+        }
+        named += linked(in: text).map { HappyReferences.Reference(kind: $0.kind.rawValue, id: $0.id) }
+        return Set(named.compactMap { entity($0)?.agentId })
+    }
+
+    /// The agents of the rows the sidebar shows at work, as `busy` takes them.
+    public static func busy(in rows: [Row]) -> Set<String> {
+        Set(rows.compactMap { $0.status == .working ? $0.agentId : nil })
+    }
+
+    /// Whether the conversation `reference` opens is at work now.
+    public func busy(_ reference: HappyReferences.Reference) -> Bool {
+        entity(reference).map { busy.contains($0.agentId) } ?? false
     }
 
     /// Whether a file link may still open: one not yet found missing.

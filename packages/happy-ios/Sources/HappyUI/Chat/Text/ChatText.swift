@@ -104,9 +104,13 @@ extension ChatTextStyle {
 /// italic swap the face, inline code takes the mono style, links are
 /// underlined and carry their URL (`RenderSpans`). In an `environment`,
 /// every face is at its text size. `everyLink` makes any address a link,
-/// for a document whose screen resolves its relative ones.
+/// for a document whose screen resolves its relative ones. `links` reads
+/// where a Happy link goes in the conversation (`ChatLinks.kind`); without
+/// it only web addresses and settings and file links are links.
 enum ChatSpans {
-    static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?, everyLink: Bool = false) -> NSAttributedString {
+    static func string(
+        _ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?, everyLink: Bool = false, links: References? = nil
+    ) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let uiColor = UIColor(color)
         for span in spans {
@@ -119,49 +123,81 @@ enum ChatSpans {
             } else if span.styles.contains(.italic) {
                 spanStyle = style.with(style.emphasisFace)
             }
-            // A person this phone named (never a link an agent typed): in
-            // the strong face and the mention's ink, on a tint when it is the reader.
-            if let url = span.url, let mention = HappyReferences.mention(link: url) {
-                var attributes = style.attributes(color: UIColor(Palette.mention), font: style.with(style.strongFace).font(in: environment), in: environment)
-                if mention.me { attributes[.backgroundColor] = UIColor(Palette.mentionMe) }
-                result.append(NSAttributedString(string: span.text, attributes: attributes))
-                continue
-            }
-            var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
-            // An http(s) link, a reference this phone wrote (never one an
-            // agent typed), a settings link or a file link, drawn as a link
-            // even where its page goes nowhere. A team server's code is
-            // inert text: only the scanner takes one.
-            if let url = span.url, !ServerLink.isServerLink(url),
-               (everyLink && !url.isEmpty) || LegacyMarkdown.isHTTPLink(url) || ChatLinks.drawn(url) {
-                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
-                attributes[.chatLink] = url
-            }
-            result.append(NSAttributedString(string: span.text, attributes: attributes))
+            let base = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
+            result.append(NSAttributedString(string: span.text, attributes: link(span.url, base, style: style, in: environment, everyLink: everyLink, links: links)))
         }
         return result
     }
 
     /// A person's message as typed (desktop's `messagePlainTextSegments`):
-    /// its words as they are, each reference that opens underlined as a
-    /// link to it, and a person in the strong face, opening nothing.
-    static func plain(_ segments: [HappyReferences.PlainSegment], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?) -> NSAttributedString {
+    /// its words as they are, and each link drawn as a message's are.
+    static func plain(_ segments: [HappyReferences.PlainSegment], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?, links: References) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let uiColor = UIColor(color)
         for segment in segments {
+            let base = style.attributes(color: uiColor, in: environment)
             switch segment {
             case .text(let words):
-                result.append(NSAttributedString(string: words, attributes: style.attributes(color: uiColor, in: environment)))
-            case .link(let words, let link) where HappyReferences.mention(link: link) != nil:
-                result.append(NSAttributedString(string: words, attributes: style.attributes(color: uiColor, font: style.with(style.strongFace).font(in: environment), in: environment)))
-            case .link(let words, let link):
-                var attributes = style.attributes(color: uiColor, in: environment)
-                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
-                attributes[.chatLink] = link
-                result.append(NSAttributedString(string: words, attributes: attributes))
+                result.append(NSAttributedString(string: words, attributes: base))
+            case .link(let words, let url):
+                result.append(NSAttributedString(string: words, attributes: link(url, base, style: style, in: environment, everyLink: false, links: links)))
             }
         }
         return result
+    }
+
+    /// `attributes` for words linking to `url`: underlined and carrying it
+    /// where a tap goes somewhere, marked busy where its agent works; a
+    /// person in the strong face and the mention's ink, on a tint when it
+    /// is the reader. A team server's code is inert text: only the scanner
+    /// takes one.
+    private static func link(
+        _ url: String?, _ attributes: [NSAttributedString.Key: Any], style: ChatTextStyle, in environment: TextEnvironment?, everyLink: Bool, links: References?
+    ) -> [NSAttributedString.Key: Any] {
+        guard let url, !url.isEmpty, !ServerLink.isServerLink(url) else { return attributes }
+        var attributes = attributes
+        func linked(busy: Bool = false) -> [NSAttributedString.Key: Any] {
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            attributes[.chatLink] = url
+            if busy { attributes[.chatBusy] = true }
+            return attributes
+        }
+        guard let links else {
+            return everyLink || LegacyMarkdown.isHTTPLink(url) || ChatLinks.drawn(url) ? linked() : attributes
+        }
+        switch ChatLinks.kind(url, references: links) {
+        case .web, .elsewhere: return linked()
+        case .here(_, let busy): return linked(busy: busy)
+        case .mention(let me):
+            attributes[.foregroundColor] = UIColor(Palette.mention)
+            attributes[.font] = style.with(style.strongFace).font(in: environment)
+            if me { attributes[.backgroundColor] = UIColor(Palette.mentionMe) }
+            return attributes
+        case .words: return everyLink ? linked() : attributes
+        }
+    }
+}
+
+/// The band a busy link's words carry (desktop's ShimmerText, `sheen`): the
+/// words stay as drawn, and a pale copy of them alone is wiped through.
+enum ChatSheen {
+    /// A `.sheen` for each busy link in `layout`, drawn at `frame` on `ground`.
+    static func items(_ layout: ChatTextLayout, frame: CGRect, ground: ColorToken) -> [ChatDrawItem] {
+        let string = layout.string
+        var items: [ChatDrawItem] = []
+        string.enumerateAttribute(.chatBusy, in: NSRange(location: 0, length: string.length)) { value, range, _ in
+            guard value != nil else { return }
+            let rects = layout.selectionRects(for: range)
+            guard let first = rects.first else { return }
+            let run = rects.dropFirst().reduce(first) { $0.union($1) }
+            let copy = NSMutableAttributedString(attributedString: string)
+            copy.addAttribute(.foregroundColor, value: UIColor.clear, range: NSRange(location: 0, length: copy.length))
+            copy.removeAttribute(.backgroundColor, range: NSRange(location: 0, length: copy.length))
+            let ink = (string.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? UIColor).map { ColorToken($0) } ?? Palette.text
+            copy.addAttribute(.foregroundColor, value: UIColor(Shimmer.highlight(.sheen, ink: ink, ground: ground)), range: range)
+            items.append(.sheen(ChatTextLayout(copy, width: layout.width, maxLines: layout.maxLines), frame: frame, run: run))
+        }
+        return items
     }
 }
 
@@ -169,6 +205,9 @@ extension NSAttributedString.Key {
     /// A tappable http(s) link's URL. Not `.link`: that one makes TextKit
     /// recolour the run.
     static let chatLink = NSAttributedString.Key("HappyChatLink")
+    /// A link to a conversation whose work runs now: its words carry the
+    /// band (`ChatSheen`). TextKit ignores it.
+    static let chatBusy = NSAttributedString.Key("HappyChatBusy")
     /// The pixels per point of the screen text made at a text size is drawn
     /// on (`TextEnvironment.displayScale`), so `ChatTextLayout` rounds its
     /// box up to that screen's pixels. TextKit ignores it.

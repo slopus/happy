@@ -55,17 +55,17 @@ final class HappyReferencesTests: XCTestCase {
     ]
 
     private func markdown(_ text: String, _ references: References) -> String {
-        HappyReferences.markdown(text, view: references.view).replacingOccurrences(of: HappyReferences.linkPrefix, with: "ref:")
+        HappyReferences.markdown(text, view: references.view)
     }
 
     func testAnAgentReadsAsItsConversationsName() {
         let references = References.entities(owners: Self.owners)
         // A bot's or task's own agent by the bot's or task's name; a subtask by its title.
-        XCTAssertEqual(markdown("<happy-agent id=\"ab\"/>", references), "[Chef](ref:agent/ab)")
-        XCTAssertEqual(markdown("<happy-agent id=\"at\"/>", references), "[Birthday party for Maya](ref:agent/at)")
-        XCTAssertEqual(markdown("Started <happy-agent id=\"as\"/> to draft it.", references), "Started [Guest list template](ref:agent/as) to draft it.")
+        XCTAssertEqual(markdown("<happy-agent id=\"ab\"/>", references), "[Chef](happy://agents/ab)")
+        XCTAssertEqual(markdown("<happy-agent id=\"at\"/>", references), "[Birthday party for Maya](happy://agents/at)")
+        XCTAssertEqual(markdown("Started <happy-agent id=\"as\"/> to draft it.", references), "Started [Guest list template](happy://agents/as) to draft it.")
         // A subtask without a name yet, and one the lists don't hold (archived).
-        XCTAssertEqual(markdown("<happy-agent id=\"ag\"/>", references), "[Untitled agent](ref:agent/ag)")
+        XCTAssertEqual(markdown("<happy-agent id=\"ag\"/>", references), "[Untitled agent](happy://agents/ag)")
         XCTAssertEqual(markdown("<happy-agent id=\"gone\"/>", references), "an unavailable agent")
         XCTAssertEqual(references.entity(.init(kind: "agent", id: "as")), .init(label: "Guest list template", agentId: "as"))
     }
@@ -76,16 +76,16 @@ final class HappyReferencesTests: XCTestCase {
         XCTAssertEqual(markdown("Dispatched to <happy-agent id=\"c1\"/>.", references), "Dispatched to Find flights.")
         XCTAssertEqual(markdown("<happy-agent id=\"c2\"/>", references), "Subagent")
         // A subtask the lists hold still opens as itself.
-        XCTAssertEqual(markdown("<happy-agent id=\"as\"/>", references), "[Guest list template](ref:agent/as)")
+        XCTAssertEqual(markdown("<happy-agent id=\"as\"/>", references), "[Guest list template](happy://agents/as)")
         XCTAssertNil(references.entity(.init(kind: "agent", id: "c1")))
     }
 
     func testAWorkspaceReadsAsWhatItHolds() {
         let references = References.entities(owners: Self.owners)
-        XCTAssertEqual(markdown("<happy-workspace id=\"wb\"/>", references), "[Chef](ref:workspace/wb)")
-        XCTAssertEqual(markdown("<happy-workspace id=\"wt\"/>", references), "[Birthday party for Maya](ref:workspace/wt)")
+        XCTAssertEqual(markdown("<happy-workspace id=\"wb\"/>", references), "[Chef](happy://workspaces/wb)")
+        XCTAssertEqual(markdown("<happy-workspace id=\"wt\"/>", references), "[Birthday party for Maya](happy://workspaces/wt)")
         // A subtask's own workspace by the first subtask in it.
-        XCTAssertEqual(markdown("<happy-workspace id=\"ws\"/>", references), "[Guest list template](ref:workspace/ws)")
+        XCTAssertEqual(markdown("<happy-workspace id=\"ws\"/>", references), "[Guest list template](happy://workspaces/ws)")
         XCTAssertEqual(references.entity(.init(kind: "workspace", id: "wb"))?.agentId, "ab")
         XCTAssertEqual(markdown("<happy-workspace id=\"nope\"/>", references), "an unavailable workspace")
     }
@@ -94,12 +94,12 @@ final class HappyReferencesTests: XCTestCase {
         var references = References()
         let text = "See <happy-artifact id=\"r1\" version=\"2\"/>."
         XCTAssertEqual(references.unread(in: text), ["r1"])
-        XCTAssertEqual(markdown(text, references), "See [artifact](ref:artifact/r1/2).", "reading")
+        XCTAssertEqual(markdown(text, references), "See [artifact](happy://artifacts/r1?version=2).", "reading")
         references.artifacts["r1"] = References.artifact(.object(["title": .string("Q3 revenue report"), "status": .string("active"), "type": .string("markdown"), "latestVersion": .number(2)]))
         XCTAssertEqual(references.unread(in: text), [])
-        XCTAssertEqual(markdown(text, references), "See [Q3 revenue report](ref:artifact/r1/2).")
+        XCTAssertEqual(markdown(text, references), "See [Q3 revenue report](happy://artifacts/r1?version=2).")
         references.artifacts["r1"] = .active(title: " ", type: "html", latestVersion: 1)
-        XCTAssertEqual(markdown(text, references), "See [Untitled artifact](ref:artifact/r1/2).")
+        XCTAssertEqual(markdown(text, references), "See [Untitled artifact](happy://artifacts/r1?version=2).")
         // Deleted: named, not offered. Missing: words that say so.
         references.artifacts["r1"] = References.artifact(.object(["title": .string("Old report"), "status": .string("deleted")]))
         XCTAssertEqual(markdown(text, references), "See Old report.")
@@ -115,20 +115,17 @@ final class HappyReferencesTests: XCTestCase {
         references.users = ["u-steve": "Steve", "u-kirill": " Kirill "]
         references.me = "u-steve"
         let text = "<happy-user id=\"u-steve\"/>, can you look? <happy-user id=\"u-kirill\"/> signed off."
-        XCTAssertEqual(markdown(text, references), "[@Steve](ref:user/u-steve/me), can you look? [@Kirill](ref:user/u-kirill) signed off.")
+        XCTAssertEqual(markdown(text, references), "[@Steve](happy://users/u-steve), can you look? [@Kirill](happy://users/u-kirill) signed off.")
         XCTAssertEqual(HappyReferences.plain(text, view: references.view), "@Steve, can you look? @Kirill signed off.")
         // Someone not read yet is a mention waiting for its name; someone
         // the daemon doesn't know reads as words that say so.
         XCTAssertEqual(references.unknownUsers(in: text + " <happy-user id=\"u-gone\"/> <happy-user id=\"u-gone\"/>"), ["u-gone"])
-        XCTAssertEqual(markdown("<happy-user id=\"u-gone\"/>", references), "[@…](ref:user/u-gone)")
+        XCTAssertEqual(markdown("<happy-user id=\"u-gone\"/>", references), "[@…](happy://users/u-gone)")
         references.missingUsers = ["u-gone"]
         XCTAssertEqual(markdown("<happy-user id=\"u-gone\"/>", references), "an unavailable user")
         // The link says who, and whether it is the reader; it opens nothing.
-        XCTAssertEqual(HappyReferences.mention(link: HappyReferences.mentionLink(.init(kind: "user", id: "u-steve"), me: true))?.id, "u-steve")
-        XCTAssertEqual(HappyReferences.mention(link: HappyReferences.mentionLink(.init(kind: "user", id: "u-steve"), me: true))?.me, true)
-        XCTAssertEqual(HappyReferences.mention(link: HappyReferences.mentionLink(.init(kind: "user", id: "u-kirill"), me: false))?.me, false)
-        XCTAssertNil(HappyReferences.mention(link: HappyReferences.link(.init(kind: "agent", id: "a1"))))
-        XCTAssertNil(HappyReferences.mention(link: "happy-reference:user/u-steve"), "a hand-written link passed for a mention")
+        XCTAssertEqual(ChatLinks.kind("happy://users/u-steve", references: references), .mention(me: true))
+        XCTAssertEqual(ChatLinks.kind("happy://users/u-kirill", references: references), .mention(me: false))
         XCTAssertNil(references.entity(.init(kind: "user", id: "u-steve")))
     }
 
@@ -141,18 +138,22 @@ final class HappyReferencesTests: XCTestCase {
     func testNamesAreRunningWordsAndOnlyThisPhonesLinksOpen() {
         let references = References(agents: ["a1": .init(label: "Guest *list* [draft]\nnow", agentId: "a1")])
         let text = "Started <happy-agent id=\"a1\"/> to draft the [guest] list, not `<happy-agent id=\"a1\"/>`."
-        XCTAssertEqual(markdown(text, references), "Started [Guest list (draft) now](ref:agent/a1) to draft the [guest] list, not `<happy-agent id=\"a1\"/>`.")
+        XCTAssertEqual(markdown(text, references), "Started [Guest list (draft) now](happy://agents/a1) to draft the [guest] list, not `<happy-agent id=\"a1\"/>`.")
         XCTAssertEqual(HappyReferences.plain(text, view: references.view), "Started Guest *list* [draft]\nnow to draft the [guest] list, not `<happy-agent id=\"a1\"/>`.")
-        XCTAssertEqual(HappyReferences.reference(link: HappyReferences.link(.init(kind: "agent", id: "a1"))), .init(kind: "agent", id: "a1"))
+        XCTAssertEqual(HappyReferences.url(.init(kind: "agent", id: "a1")), "happy://agents/a1")
         // A pinned version survives the link.
-        XCTAssertEqual(HappyReferences.reference(link: HappyReferences.link(.init(kind: "artifact", id: "r", version: 3))), .init(kind: "artifact", id: "r", version: 3))
-        XCTAssertNil(HappyReferences.reference(link: HappyReferences.linkPrefix + "artifact/r/0"))
-        XCTAssertNil(HappyReferences.reference(link: "happy-reference:agent/a1"), "a hand-written link passed for a reference")
+        XCTAssertEqual(HappyReferences.url(.init(kind: "artifact", id: "r", version: 3)), "happy://artifacts/r?version=3")
+        XCTAssertNil(HappyReferences.url(.init(kind: "gizmo", id: "g")))
     }
 
     func testStreamingHoldsBackATagStillArriving() {
         XCTAssertEqual(HappyReferences.droppingPartialTag("Started <happy-agent id=\"a"), "Started ")
         XCTAssertEqual(HappyReferences.droppingPartialTag("1 < 2"), "1 < 2")
         XCTAssertEqual(HappyReferences.droppingPartialTag("Done <happy-agent id=\"a\"/>"), "Done <happy-agent id=\"a\"/>")
+        // A share link still arriving, as desktop holds it back.
+        XCTAssertEqual(HappyReferences.droppingPartialTag("Ask [](https://link.happy.p"), "Ask ")
+        XCTAssertEqual(HappyReferences.droppingPartialTag("Ask [](https://link.happy.page/#1/kaaaaaaaaaaaaaaaaaaaaaaa/agents/a"), "Ask ")
+        XCTAssertEqual(HappyReferences.droppingPartialTag("Ask [](https://link.happy.page/#1/kaaaaaaaaaaaaaaaaaaaaaaa/agents/a) now"), "Ask [](https://link.happy.page/#1/kaaaaaaaaaaaaaaaaaaaaaaa/agents/a) now")
+        XCTAssertEqual(HappyReferences.droppingPartialTag("See [docs](https://a.io/x"), "See [docs](https://a.io/x")
     }
 }

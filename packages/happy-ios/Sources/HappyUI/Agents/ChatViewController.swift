@@ -162,8 +162,15 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         known.subagents = chat.subagentTitles
         known.instanceId = session.instanceId
         known.closedFiles = closedFiles
+        // Only the work of what the messages link shows: another agent
+        // starting or stopping plans nothing again.
+        known.busy = references.busy.union(homeBusy).intersection(linkedAgents)
         return known
     }
+    /// The agents home's rows show at work.
+    private var homeBusy: Set<String> = []
+    /// The agents the messages name, by tag or link.
+    private var linkedAgents: Set<String> = []
     /// File links found not to open here, read as their words.
     private var closedFiles: Set<String> = []
     /// File links being read, so a second tap waits for the first.
@@ -884,8 +891,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         // ones too.
         // References in messages read as the names they have now.
         if snapshot.references != references {
+            let shown = subagentReferences
             references = snapshot.references
-            replan()
+            if subagentReferences != shown { replan() }
         }
         if snapshot.allRows != sidebarRows {
             sidebarRows = snapshot.allRows
@@ -912,6 +920,12 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// or task the agent renames is renamed here too, on a computer whose
     /// sidebar is the account's bootstrap rather than the spaces document.
     private func follow(_ home: HomeSnapshot) {
+        let busy = References.busy(in: home.allRows)
+        if busy != homeBusy {
+            let shown = subagentReferences
+            homeBusy = busy
+            if subagentReferences != shown { replan() }
+        }
         let agentId = media.agentId
         let spaceId = spaceId
         guard let row = home.allRows.first(where: { row in spaceId.map { row.spaceId == $0 } ?? (row.agentId == agentId && row.depth == 0) }),
@@ -1243,7 +1257,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     /// Plans the rows off the main thread, then shows them in one frame.
     private func replan() {
-        let key = planKey
+        var key = planKey
         // Nothing is planned from history not yet read.
         guard key.width > 0, !reading(chat) else { return }
         // Ticks outlive only the question they were for.
@@ -1260,7 +1274,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         // Only words not looked through yet, as of what references read as
         // now: a long conversation isn't read again on every layout pass.
-        if scanned.references != references { scanned = Scanned(references: references) }
+        var settled = references
+        settled.busy = []
+        if scanned.references != settled { scanned = Scanned(references: settled) }
         // A row is looked into once per making of it (`ChatItem.revision`):
         // its words aren't joined and compared again on every word that
         // lands in another row.
@@ -1275,6 +1291,14 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             guard scanned.texts[item.id] != text else { continue }
             scanned.texts[item.id] = text
             fresh.append(item)
+        }
+        // The agents they link, whose work their links show.
+        // Share links count only as addressed to this computer, as `subagentReferences` knows it.
+        let known = subagentReferences
+        let linked = linkedAgents.union(fresh.flatMap { known.agents(in: $0.text) })
+        if linked != linkedAgents {
+            linkedAgents = linked
+            key = planKey
         }
         // Artifacts the messages name are read for their titles, once each.
         let unread = fresh.flatMap { references.unread(in: $0.text) }
@@ -2008,13 +2032,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         Task { await conversation.loadOlder() }
     }
 
-    /// A link in a row: the reference it names, else the web.
+    /// A link in a row: a Happy link in the app, else the web.
     private func open(link: String) {
-        if let reference = HappyReferences.reference(link: link) { open(reference) }
-        else if let page = SettingsLinkPlace.page(link) { SettingsLinks.open(page, options: HappyLink(link)?.providerOptions ?? .init(), session: session, from: self) }
-        else if let file = ChatLinks.file(link) { open(file) }
-        else if HappyLink.isHappyURL(link) { return }
-        else if let url = URL(string: link) { openBrowser(url, session: session, agentID: media.agentId) }
+        if openHappyLink(link, references: subagentReferences, rows: sidebarRows, session: session, file: { [weak self] in self?.open($0) }) { return }
+        if let url = URL(string: link) { openBrowser(url, session: session, agentID: media.agentId) }
     }
 
     /// A file link, read before anything shows: the file read-only over

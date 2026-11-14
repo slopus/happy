@@ -898,6 +898,8 @@ public actor Store {
         references.me = me
         references.missingUsers = usersMissing
         references.surfaces = Dictionary((bootstrapped?.surfaces ?? surfaces).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // The conversations whose rows shimmer: links to them do too.
+        references.busy = References.busy(in: snapshot.allRows)
         snapshot.references = references
         continuation.yield(snapshot)
         // What the events changed is kept too, once they settle.

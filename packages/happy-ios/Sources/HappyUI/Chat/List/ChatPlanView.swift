@@ -60,6 +60,7 @@ final class ChatPlanView: UIView {
     private var timers: [ChatElapsedLabel] = []
     private var pulses: [ChatPulseView] = []
     private var shimmers: [ChatShimmerView] = []
+    private var sheens: [ChatSheenView] = []
     private var diffs: [DiffChunkView] = []
     private var diffHeaders: [DiffFileHeaderView] = []
     private var scrollers: [ChatScrollerView] = []
@@ -163,6 +164,7 @@ final class ChatPlanView: UIView {
         var timerIndex = 0
         var pulseIndex = 0
         var shimmerIndex = 0
+        var sheenIndex = 0
         var diffIndex = 0
         var diffHeaderIndex = 0
         var scrollerIndex = 0
@@ -222,6 +224,11 @@ final class ChatPlanView: UIView {
                 let view = take(&shimmers, &shimmerIndex) { ChatShimmerView() }
                 view.setLayoutFrame(frame)
                 view.show(text)
+                order.append(view)
+            case .sheen(let copy, let frame, let run):
+                let view = take(&sheens, &sheenIndex) { ChatSheenView() }
+                view.setLayoutFrame(frame)
+                view.show(copy, run: run)
                 order.append(view)
             case .pulse(let box):
                 let view = take(&pulses, &pulseIndex) { ChatPulseView() }
@@ -329,6 +336,10 @@ final class ChatPlanView: UIView {
             view.isHidden = true
         }
         for view in shimmers[shimmerIndex...] {
+            view.stop()
+            view.isHidden = true
+        }
+        for view in sheens[sheenIndex...] {
             view.stop()
             view.isHidden = true
         }
@@ -450,7 +461,7 @@ extension ChatDrawItem {
     var markFrame: CGRect {
         switch self {
         case .box(let box), .pulse(let box): box.frame
-        case .text(_, let frame), .icon(_, _, let frame, _), .spinner(let frame, _, _), .shimmer(_, let frame), .elapsed(_, let frame, _),
+        case .text(_, let frame), .icon(_, _, let frame, _), .spinner(let frame, _, _), .shimmer(_, let frame), .sheen(_, let frame, _), .elapsed(_, let frame, _),
              .diff(_, let frame, _, _, _, _), .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),
              .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame), .delivery(_, let frame): frame
         }

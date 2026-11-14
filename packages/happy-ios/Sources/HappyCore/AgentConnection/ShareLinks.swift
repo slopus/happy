@@ -82,6 +82,21 @@ public enum HappyShareLink {
         }
     }
 
+    /// Each share link written out bare in `text`, not as a Markdown
+    /// link's destination or words: its UTF-16 range, less the sentence's
+    /// trailing punctuation, and the address. Only exactly one counts.
+    public static func bare(in text: String) -> [(range: NSRange, url: String)] {
+        guard text.contains(prefix) else { return [] }
+        let ns = text as NSString
+        return shareURLInText.matches(in: text, range: NSRange(location: 0, length: ns.length)).compactMap { match in
+            let before = ns.substring(to: match.range.location)
+            if before.hasSuffix("](") || before.hasSuffix("[") { return nil }
+            let url = trimmingTrailingPunctuation(ns.substring(with: match.range))
+            guard parse(url) != nil else { return nil }
+            return (NSRange(location: match.range.location, length: url.utf16.count), url)
+        }
+    }
+
     // MARK: Grammar
 
     private static let prefix = origin + "/#"

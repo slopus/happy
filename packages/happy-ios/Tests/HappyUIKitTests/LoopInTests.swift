@@ -82,7 +82,7 @@ final class LoopInTests: XCTestCase {
         references.me = "u-steve"
         let text = "<happy-user id=\"u-steve\"/>, could you take a pass at the voice screen? <happy-user id=\"u-kirill\"/> wants the new waveform icon in it."
         let spans = LegacyMarkdown.parseSpans(HappyReferences.markdown(text, view: references.view), header: false)
-        let string = ChatSpans.string(spans, style: ChatTextStyles.text, color: Palette.text, in: nil)
+        let string = ChatSpans.string(spans, style: ChatTextStyles.text, color: Palette.text, in: nil, links: references)
         XCTAssertTrue(string.string.hasPrefix("@Steve, could you"), string.string)
 
         let light = UITraitCollection(userInterfaceStyle: .light)

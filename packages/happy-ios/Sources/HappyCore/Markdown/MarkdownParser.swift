@@ -263,11 +263,9 @@ public enum LegacyMarkdown {
                 pushText(&spans, source.substring(with: NSRange(location: last, length: match.range.location - last)), styles: [])
             }
             if match.has(1) {
-                let text = match.group(2, in: markdown) ?? ""
-                pushText(&spans, text, styles: header ? [] : [.bold])
+                spans += styled(parseSpans(match.group(2, in: markdown) ?? "", header: header), header ? nil : .bold)
             } else if match.has(3) {
-                let text = match.group(4, in: markdown) ?? ""
-                pushText(&spans, text, styles: header ? [] : [.italic])
+                spans += styled(parseSpans(match.group(4, in: markdown) ?? "", header: header), header ? nil : .italic)
             } else if match.has(5) {
                 let label = match.group(6, in: markdown) ?? ""
                 if let target = match.group(7, in: markdown), !target.isEmpty {
@@ -287,6 +285,17 @@ public enum LegacyMarkdown {
         return spans
     }
 
+    /// What a bold or italic run holds, its links and code included, in
+    /// that style as well (happy-app reads the run as flat words).
+    static func styled(_ spans: [MarkdownSpan], _ style: MarkdownSpan.Style?) -> [MarkdownSpan] {
+        guard let style else { return spans }
+        return spans.map { span in
+            var span = span
+            if !span.styles.contains(style) { span.styles.append(style) }
+            return span
+        }
+    }
+
     /// `[label](target)` as a span: the destination, bare or in `<>`, apart
     /// from its title. A Happy link titled `button` is one; a settings link
     /// that is malformed or has a blank label, and a malformed Happy link
@@ -300,12 +309,10 @@ public enum LegacyMarkdown {
             url = match.group(1, in: trimmed) ?? match.group(2, in: trimmed) ?? trimmed
             title = match.group(3, in: trimmed) ?? match.group(4, in: trimmed) ?? match.group(5, in: trimmed)
         }
-        // A reference `HappyReferences.markdown` wrote for a Happy link is one too.
-        let written = HappyReferences.reference(link: url) != nil
         let link = HappyLink(url)
-        let button = title == "button" && (HappyLink.owns(url) || written)
+        let button = title == "button" && HappyLink.owns(url)
         let settings = Patterns.settingsHost.firstMatch(in: url) != nil
-        if (button && link == nil && !written) || (settings && (link == nil || trim(label).isEmpty)) {
+        if (button && link == nil) || (settings && (link == nil || trim(label).isEmpty)) {
             return MarkdownSpan(text: label)
         }
         return MarkdownSpan(text: label, url: url, button: button)

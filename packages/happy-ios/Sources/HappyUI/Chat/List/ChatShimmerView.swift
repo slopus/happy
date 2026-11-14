@@ -54,4 +54,37 @@ final class ChatShimmerView: UIView {
         band.run = CGRect(x: 0, y: 0, width: min(text?.ink.size.width ?? 0, bounds.width), height: bounds.height)
     }
 }
+
+/// A `.sheen` item's live view: the band alone over words the row draws
+/// itself, crossing the busy link's run while the band can run.
+final class ChatSheenView: UIView {
+    private let copy = ChatTextView()
+    private lazy var band = ShimmerBand(copy: copy)
+
+    var sweepBegan: CFTimeInterval? { band.sweepBegan }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+        copy.isAccessibilityElement = false
+        addSubview(band)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ layout: ChatTextLayout, run: CGRect) {
+        copy.layout = layout
+        band.run = run
+        band.shimmering = true
+        setNeedsLayout()
+    }
+
+    func stop() { band.shimmering = false }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        band.frame = bounds
+    }
+}
 #endif

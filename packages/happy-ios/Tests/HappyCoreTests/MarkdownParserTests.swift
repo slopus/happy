@@ -187,6 +187,24 @@ final class MarkdownParserTests: XCTestCase {
         ])
     }
 
+    /// Links and code inside bold or italic keep that style (happy-app reads
+    /// the run as flat words, its link's Markdown shown raw).
+    func testLinksAndCodeInsideBoldOrItalicAreStyled() {
+        let share = "https://link.happy.page/#1/k3x9q2m7p0a4b8c1d5e6f7g2/agents/a1?as=task"
+        XCTAssertEqual(LegacyMarkdown.parseSpans("**[X](\(share))**", header: false), [MarkdownSpan(styles: [.bold], text: "X", url: share)])
+        XCTAssertEqual(LegacyMarkdown.parseSpans("*see [docs](https://a.io) and `x`*", header: false), [
+            MarkdownSpan(styles: [.italic], text: "see "),
+            MarkdownSpan(styles: [.italic], text: "docs", url: "https://a.io"),
+            MarkdownSpan(styles: [.italic], text: " and "),
+            MarkdownSpan(styles: [.code, .italic], text: "x"),
+        ])
+        XCTAssertEqual(LegacyMarkdown.parseSpans("**a *b* c**", header: false), [
+            MarkdownSpan(styles: [.bold], text: "a "), MarkdownSpan(styles: [.italic, .bold], text: "b"), MarkdownSpan(styles: [.bold], text: " c"),
+        ])
+        // A heading keeps no inline style, its links still links.
+        XCTAssertEqual(LegacyMarkdown.parseSpans("**[X](happy://agents/a1)**", header: true), [MarkdownSpan(text: "X", url: "happy://agents/a1")])
+    }
+
     func testALinksTitleIsApartFromItsDestination() {
         XCTAssertEqual(LegacyMarkdown.parseSpans(#"[a](https://x.dev "Docs") [b](<https://y.dev/a b>) [c](https://w.dev/Foo_(bar))"#, header: false), [
             MarkdownSpan(text: "a", url: "https://x.dev"), MarkdownSpan(text: " "),
