@@ -19,17 +19,16 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ComputersTest {
-    /** What `GET /v0/computers` sends a manager: one computer in each mode, one revoked, one in a mode from the future. */
+    /** What `GET /v0/computers` sends a manager: shared and private computers, one revoked, one with an access from the future, one missing its view. */
     private val computers = """{"computers":[
-        {"id":"n-sandbox","name":null,"hostname":"build-01","status":"online","os":"linux","arch":"x86_64","since":1730000000000,"mode":"sandbox","description":"GPU box, CUDA 12.4","owner":null,"exclusiveAgent":null,"sandboxError":"bwrap: no user namespaces","sandboxCapacity":{"used":1,"total":4},"activeSandboxes":[]},
-        {"id":"n-shared","name":"Team box","hostname":"team","status":"offline","os":"linux","arch":"aarch64","since":1730000100000,"mode":"shared","description":null,"owner":null,"exclusiveAgent":null},
-        {"id":"n-exclusive","name":"Mac mini","hostname":"mini.local","status":"online","os":"macos","arch":"aarch64","since":1730000200000,"mode":"exclusive","description":"","owner":null,"exclusiveAgent":{"id":"agent-7","title":"Ship the release"}},
-        {"id":"n-hidden-holder","name":"Render","hostname":"render","status":"online","os":"linux","arch":"x86_64","mode":"exclusive","owner":null,"exclusiveAgent":{"id":"agent-9","title":null}},
-        {"id":"n-mine","name":"Laptop","hostname":"laptop","status":"enrolling","os":"windows","arch":"x86_64","since":1730000300000,"mode":"private","description":"My own","owner":"user-me","exclusiveAgent":null},
-        {"id":"n-theirs","name":"Ana's desk","hostname":"desk","status":"draining","os":"linux","arch":"x86_64","mode":"private","owner":"user-ana","exclusiveAgent":null},
-        {"id":"n-legacy","hostname":null,"name":null,"status":"online","mode":"private","owner":null},
-        {"id":"n-revoked","name":"Old","status":"revoked","mode":"sandbox"},
-        {"id":"n-future","name":"Next","status":"online","mode":"teleport"}
+        {"id":"n-shared","name":null,"hostname":"build-01","status":"online","os":"linux","arch":"x86_64","since":1730000000000,"description":"GPU box, CUDA 12.4","access":"shared","owner":null,"concurrency":8,"maxConcurrency":16,"agents":[{"id":"agent-7","title":"Ship the release"},{"id":"agent-9","title":null}],"boundary":{"available":true,"reason":null}},
+        {"id":"n-full","name":"Mac mini","hostname":"mini.local","status":"online","os":"macos","arch":"aarch64","since":1730000200000,"description":"","access":"shared","owner":null,"concurrency":1,"maxConcurrency":null,"agents":[{"id":"agent-3","title":"Profile"}],"boundary":{"available":false,"reason":"bwrap: no user namespaces"}},
+        {"id":"n-mine","name":"Laptop","hostname":"laptop","status":"enrolling","os":"windows","arch":"x86_64","since":1730000300000,"description":"My own","access":"private","owner":"user-me","concurrency":1,"maxConcurrency":4,"agents":[],"boundary":{"available":true,"reason":null}},
+        {"id":"n-theirs","name":"Ana's desk","hostname":"desk","status":"draining","os":"linux","arch":"x86_64","access":"private","owner":"user-ana","concurrency":2,"agents":[],"boundary":{"available":true}},
+        {"id":"n-ownerless","hostname":null,"name":null,"status":"offline","access":"private","owner":null,"concurrency":1,"agents":[],"boundary":{"available":true,"reason":null}},
+        {"id":"n-revoked","name":"Old","status":"revoked","access":"shared","concurrency":8,"agents":[],"boundary":{"available":true}},
+        {"id":"n-future","name":"Next","status":"online","access":"team","concurrency":8,"agents":[],"boundary":{"available":true}},
+        {"id":"n-old","name":"Before","status":"online","mode":"sandbox","sandboxCapacity":{"used":1,"total":4}}
     ]}"""
     private val approvals = """{"approvals":[
         {"computerId":"n-mine","computerName":"Laptop","agentId":"agent-1","agentTitle":"Fix the build","createdAt":1730000400000},
@@ -54,19 +53,21 @@ class ComputersTest {
     private fun client(server: Server) = AgentClient(server, "test", cloud = true)
     private fun json(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
 
+    private val available = ComputeBoundary(true, null)
+
     @Test
-    fun eachModeCarriesItsHolderOrOwnerAndTheFieldsAgentsRead() = runTest {
+    fun eachComputerCarriesItsAccessOwnerPlacesAndBoundary() = runTest {
         val server = Server(::answer)
         val snapshot = Computers.read(client(server), readerId = "user-me")
         assertEquals(
             listOf(
-                Computer("n-sandbox", "build-01", ComputeStatus.Online, "build-01", "linux", "x86_64", ComputeMode.Sandbox, "GPU box, CUDA 12.4", "bwrap: no user namespaces", 1730000000000),
-                Computer("n-exclusive", "Mac mini", ComputeStatus.Online, "mini.local", "macos", "aarch64", ComputeMode.Exclusive(ComputeHolder("agent-7", "Ship the release")), null, null, 1730000200000),
-                Computer("n-legacy", "n-legacy", ComputeStatus.Online, null, null, null, ComputeMode.Private(null), null, null, null),
-                Computer("n-hidden-holder", "Render", ComputeStatus.Online, "render", "linux", "x86_64", ComputeMode.Exclusive(ComputeHolder("agent-9", null)), null, null, null),
-                Computer("n-theirs", "Ana's desk", ComputeStatus.Draining, "desk", "linux", "x86_64", ComputeMode.Private(ComputeOwner.Member("user-ana", null)), null, null, null),
-                Computer("n-mine", "Laptop", ComputeStatus.Enrolling, "laptop", "windows", "x86_64", ComputeMode.Private(ComputeOwner.Reader), "My own", null, 1730000300000),
-                Computer("n-shared", "Team box", ComputeStatus.Offline, "team", "linux", "aarch64", ComputeMode.Shared, null, null, 1730000100000),
+                Computer("n-shared", "build-01", ComputeStatus.Online, "build-01", "linux", "x86_64", ComputeAccess.Shared, null, 8, 16,
+                    listOf(ComputeAgent("agent-7", "Ship the release"), ComputeAgent("agent-9", null)), available, "GPU box, CUDA 12.4", 1730000000000),
+                Computer("n-full", "Mac mini", ComputeStatus.Online, "mini.local", "macos", "aarch64", ComputeAccess.Shared, null, 1, null,
+                    listOf(ComputeAgent("agent-3", "Profile")), ComputeBoundary(false, "bwrap: no user namespaces"), null, 1730000200000),
+                Computer("n-theirs", "Ana's desk", ComputeStatus.Draining, "desk", "linux", "x86_64", ComputeAccess.Private, ComputeOwner.Member("user-ana", null), 2, null, emptyList(), available, null, null),
+                Computer("n-mine", "Laptop", ComputeStatus.Enrolling, "laptop", "windows", "x86_64", ComputeAccess.Private, ComputeOwner.Reader, 1, 4, emptyList(), available, "My own", 1730000300000),
+                Computer("n-ownerless", "n-ownerl", ComputeStatus.Offline, null, null, null, ComputeAccess.Private, null, 1, null, emptyList(), available, null, null),
             ),
             snapshot.computers,
         )
@@ -87,26 +88,36 @@ class ComputersTest {
     }
 
     @Test
-    fun aComputerIsBusyOnlyWhileOnlineAndHeld() = runTest {
+    fun aComputerIsFullOnceAgentsHoldEveryPlace() = runTest {
         val computers = Computers.read(client(Server(::answer)), readerId = "user-me").computers.associateBy { it.id }
-        assertEquals(listOf("n-exclusive", "n-hidden-holder"), computers.values.filter { it.busy }.map { it.id })
-        assertFalse(computers.getValue("n-exclusive").copy(status = ComputeStatus.Offline).busy)
+        assertEquals(listOf("n-full"), computers.values.filter { it.full }.map { it.id })
+        assertTrue(computers.getValue("n-shared").copy(concurrency = 2).full)
     }
 
     @Test
-    fun onlyAManagerReleasesAHeldComputer() = runTest {
+    fun aManagerOrThePrivateOwnerManagesAComputer() = runTest {
         val computers = Computers.read(client(Server(::answer)), readerId = "user-me").computers.associateBy { it.id }
-        assertEquals(setOf("n-exclusive", "n-hidden-holder"), computers.values.filter { it.releasable(ComputeAccess.Manage) }.map { it.id }.toSet())
-        assertEquals(emptyList<String>(), computers.values.filter { it.releasable(ComputeAccess.Use) }.map { it.id })
+        assertEquals(computers.keys, computers.values.filter { it.manageable(ComputeRole.Manage) }.map { it.id }.toSet())
+        assertEquals(listOf("n-mine"), computers.values.filter { it.manageable(ComputeRole.Use) }.map { it.id })
+        assertEquals(emptyList<String>(), computers.values.filter { it.manageable(ComputeRole.None) }.map { it.id })
     }
 
     @Test
-    fun accessFollowsComputeUseThenPoolsManage() {
-        assertEquals(ComputeAccess.None, ComputeAccess.of(true, ServerPermissions.Unknown))
-        assertEquals(ComputeAccess.None, ComputeAccess.of(true, ServerPermissions(true, setOf("pools.manage"))))
-        assertEquals(ComputeAccess.None, ComputeAccess.of(false, ServerPermissions(true, setOf("compute.use", "pools.manage"))))
-        assertEquals(ComputeAccess.Use, ComputeAccess.of(true, ServerPermissions(true, setOf("compute.use"))))
-        assertEquals(ComputeAccess.Manage, ComputeAccess.of(true, ServerPermissions(true, setOf("compute.use", "pools.manage"))))
+    fun concurrencyIsHeldToTheComputersLimitAndTheClusters() = runTest {
+        val computers = Computers.read(client(Server(::answer)), readerId = "user-me").computers.associateBy { it.id }
+        assertEquals(16, computers.getValue("n-shared").concurrencyLimit)
+        assertEquals(64, computers.getValue("n-full").concurrencyLimit)
+        assertEquals(4, computers.getValue("n-mine").concurrencyLimit)
+        assertEquals(64, computers.getValue("n-shared").copy(maxConcurrency = 128).concurrencyLimit)
+    }
+
+    @Test
+    fun roleFollowsComputeUseThenPoolsManage() {
+        assertEquals(ComputeRole.None, ComputeRole.of(true, ServerPermissions.Unknown))
+        assertEquals(ComputeRole.None, ComputeRole.of(true, ServerPermissions(true, setOf("pools.manage"))))
+        assertEquals(ComputeRole.None, ComputeRole.of(false, ServerPermissions(true, setOf("compute.use", "pools.manage"))))
+        assertEquals(ComputeRole.Use, ComputeRole.of(true, ServerPermissions(true, setOf("compute.use"))))
+        assertEquals(ComputeRole.Manage, ComputeRole.of(true, ServerPermissions(true, setOf("compute.use", "pools.manage"))))
     }
 
     @Test
@@ -115,50 +126,56 @@ class ComputersTest {
         val source = ComputeSource(client(Server(::answer)), readerId = "user-me") { ids -> asked += ids; mapOf("user-ana" to "Ana") }
         source.refresh()
         val computers = (source.state.value as ComputeSource.State.Loaded).snapshot.computers.associateBy { it.id }
-        assertEquals(ComputeMode.Private(ComputeOwner.Member("user-ana", "Ana")), computers.getValue("n-theirs").mode)
-        assertEquals(ComputeMode.Private(ComputeOwner.Reader), computers.getValue("n-mine").mode)
+        assertEquals(ComputeOwner.Member("user-ana", "Ana"), computers.getValue("n-theirs").owner)
+        assertEquals(ComputeOwner.Reader, computers.getValue("n-mine").owner)
         assertEquals(listOf(setOf("user-ana")), asked)
     }
 
     @Test
     fun installKeepsCommandsVerbatimInMillisecondsAndNeverPrintsThem() {
-        val install = Computers.install(json("""{"mode":"private","token":"jt-secret","expiresAt":1730003600000,"clusterUrl":"https://acme.happy-clusters.com","commands":{"unix":"curl -fsSL https://get.example/install.sh | HAPPY_COMPUTE_MODE='private' sh","windows":"irm https://get.example/install.ps1 | iex"}}"""))!!
-        assertEquals(ComputeModeKind.Private, install.mode)
-        assertEquals("curl -fsSL https://get.example/install.sh | HAPPY_COMPUTE_MODE='private' sh", install.commands!!.unix)
+        val install = Computers.install(json("""{"access":"private","concurrency":1,"token":"jt-secret","expiresAt":1730003600000,"clusterUrl":"https://acme.happy-clusters.com","commands":{"unix":"curl -fsSL https://get.example/install.sh | HAPPY_JOIN_TOKEN='jt-secret' sh","windows":"irm https://get.example/install.ps1 | iex"},"platforms":["linux-x86_64","linux-aarch64","solaris-sparc"],"notice":"macOS and Windows computers are not available yet."}"""))!!
+        assertEquals(ComputeAccess.Private, install.access)
+        assertEquals(1, install.concurrency)
+        assertEquals("curl -fsSL https://get.example/install.sh | HAPPY_JOIN_TOKEN='jt-secret' sh", install.commands!!.unix)
         assertEquals("irm https://get.example/install.ps1 | iex", install.commands.windows)
+        assertEquals(setOf(ComputeSystem.Linux), install.systems)
+        assertEquals("macOS and Windows computers are not available yet.", install.notice)
         assertEquals("jt-secret", install.token)
         assertEquals("https://acme.happy-clusters.com", install.clusterUrl)
         assertEquals(1730003600000, install.expiresAt)
         assertFalse(install.toString().contains("jt-secret"))
         assertFalse(ComputerAdd.Shown(install).toString().contains("jt-secret"))
 
-        val bare = Computers.install(json("""{"mode":"sandbox","token":"jt-2","expiresAt":1730003600000,"clusterUrl":"https://acme.happy-clusters.com","commands":null}"""))!!
+        val bare = Computers.install(json("""{"access":"shared","concurrency":8,"token":"jt-2","expiresAt":1730003600000,"clusterUrl":"https://acme.happy-clusters.com","commands":null,"platforms":[],"notice":null}"""))!!
         assertNull(bare.commands)
+        assertNull(bare.notice)
         assertEquals("jt-2", bare.token)
-        assertNull(Computers.install(json("""{"mode":"sandbox","expiresAt":1}""")))
-        assertNull(Computers.install(json("""{"mode":"pool","token":"t","expiresAt":1}""")))
+        assertNull(Computers.install(json("""{"access":"shared","concurrency":8,"expiresAt":1}""")))
+        assertNull(Computers.install(json("""{"mode":"sandbox","token":"t","expiresAt":1}""")))
     }
 
     @Test
-    fun aJoinTokenIsMintedWithOnlyTheMode() = runTest {
-        val server = Server { 201 to """{"mode":"private","token":"jt","expiresAt":1730003600000,"clusterUrl":"https://c","commands":null}""" }
-        Computers.create(client(server), ComputeDraft(ComputeModeKind.Private))
-        Computers.create(client(server), ComputeDraft(ComputeModeKind.Exclusive))
+    fun aJoinTokenIsMintedWithTheAccessAndOnlyAPickedConcurrency() = runTest {
+        val server = Server { 201 to """{"access":"private","concurrency":1,"token":"jt","expiresAt":1730003600000,"clusterUrl":"https://c","commands":null,"platforms":[],"notice":null}""" }
+        Computers.create(client(server), ComputeDraft(ComputeAccess.Private))
+        Computers.create(client(server), ComputeDraft(ComputeAccess.Shared, concurrency = 12))
         assertEquals(listOf("POST /v0/computers/join-tokens", "POST /v0/computers/join-tokens"), server.asked.map { it.first })
-        assertEquals(json("""{"mode":"private"}"""), json(server.asked[0].second!!))
-        assertEquals(json("""{"mode":"exclusive"}"""), json(server.asked[1].second!!))
+        assertEquals(json("""{"access":"private"}"""), json(server.asked[0].second!!))
+        assertEquals(json("""{"access":"shared","concurrency":12}"""), json(server.asked[1].second!!))
     }
 
     @Test
     fun mutationsUseTheComputerRoutesWithEscapedIds() = runTest {
         val server = Server { 200 to "{}" }
         val client = client(server)
-        Computers.releaseLock(client, "n-exclusive")
+        Computers.setConcurrency(client, "n-shared", 12)
+        Computers.removeAgent(client, "n-shared", "agent/7")
         Computers.answer(client, ComputeApproval("n-mine", null, "agent/2", null, 0), approve = true)
         Computers.answer(client, ComputeApproval("n-mine", null, "agent-1", null, 0), approve = false)
         assertEquals(
             listOf(
-                "POST /v0/computers/n-exclusive/release-lock" to "{}",
+                "PATCH /v0/computers/n-shared" to """{"concurrency":12}""",
+                "DELETE /v0/computers/n-shared/agents/agent%2F7" to null,
                 "POST /v0/computers/approvals/n-mine/agent%2F2" to """{"approve":true}""",
                 "POST /v0/computers/approvals/n-mine/agent-1" to """{"approve":false}""",
             ),
@@ -167,39 +184,50 @@ class ComputersTest {
     }
 
     @Test
-    fun addingStartsOnTheModesTheReaderMayPickAndOnlyAManagerLeavesPrivate() {
-        assertNull(ComputerAdd.open(ComputeAccess.None))
-        val member = ComputerAdd.open(ComputeAccess.Use)!!
-        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Private)), member)
-        assertSame(member, member.edit(ComputeAccess.Use) { it.copy(mode = ComputeModeKind.Sandbox) })
+    fun addingStartsOnTheAccessTheReaderMayPickAndOnlyAManagerPicksShared() {
+        assertNull(ComputerAdd.open(ComputeRole.None))
+        val member = ComputerAdd.open(ComputeRole.Use)!!
+        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeAccess.Private)), member)
+        assertSame(member, member.edit(ComputeRole.Use) { it.copy(access = ComputeAccess.Shared) })
 
-        val manager = ComputerAdd.open(ComputeAccess.Manage)!!
-        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Sandbox)), manager)
-        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Exclusive)), manager.edit(ComputeAccess.Manage) { it.copy(mode = ComputeModeKind.Exclusive) })
+        val manager = ComputerAdd.open(ComputeRole.Manage)!!
+        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeAccess.Shared)), manager)
+        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeAccess.Private)), manager.edit(ComputeRole.Manage) { it.copy(access = ComputeAccess.Private) })
+    }
+
+    @Test
+    fun concurrencyDefaultsByAccessUntilPickedAndStaysInRange() {
+        assertEquals(8, ComputeDraft(ComputeAccess.Shared).agents)
+        assertEquals(1, ComputeDraft(ComputeAccess.Private).agents)
+        val picked = ComputerAdd.Choosing(ComputeDraft(ComputeAccess.Shared)).edit(ComputeRole.Manage) { it.copy(concurrency = 3) }
+        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeAccess.Shared, 3)), picked)
+        assertEquals(3, picked.edit(ComputeRole.Manage) { it.copy(access = ComputeAccess.Private) }.form!!.agents)
+        assertSame(picked, picked.edit(ComputeRole.Manage) { it.copy(concurrency = 0) })
+        assertSame(picked, picked.edit(ComputeRole.Manage) { it.copy(concurrency = 65) })
     }
 
     @Test
     fun aRequestUnderWayHoldsTheFormAndARefusalGoesBackToIt() {
-        val draft = ComputeDraft(ComputeModeKind.Shared)
+        val draft = ComputeDraft(ComputeAccess.Shared)
         val creating = ComputerAdd.Choosing(draft).create()!!
         assertEquals(ComputerAdd.Creating(draft), creating)
         assertFalse(creating.closable)
         assertNull(creating.create())
-        assertSame(creating, creating.edit(ComputeAccess.Manage) { it.copy(mode = ComputeModeKind.Exclusive) })
+        assertSame(creating, creating.edit(ComputeRole.Manage) { it.copy(access = ComputeAccess.Private) })
 
         val failed = ComputerAdd.Failed(draft, "Compute nodes are not configured on this deployment.")
         assertTrue(failed.closable)
         assertEquals(ComputerAdd.Creating(draft), failed.create())
-        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Exclusive)), failed.edit(ComputeAccess.Manage) { it.copy(mode = ComputeModeKind.Exclusive) })
+        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeAccess.Private)), failed.edit(ComputeRole.Manage) { it.copy(access = ComputeAccess.Private) })
         assertEquals(draft, failed.form)
     }
 
     @Test
-    fun installsRunOnTheSystemsEachModeSupports() {
-        assertEquals(setOf(ComputeSystem.Linux), ComputeModeKind.Sandbox.systems)
-        assertEquals(setOf(ComputeSystem.Linux), ComputeModeKind.Shared.systems)
-        assertEquals(setOf(ComputeSystem.Linux, ComputeSystem.MacOS), ComputeModeKind.Exclusive.systems)
-        assertEquals(setOf(ComputeSystem.Linux, ComputeSystem.MacOS, ComputeSystem.Windows), ComputeModeKind.Private.systems)
+    fun publishedPlatformsNameTheirSystem() {
+        assertEquals(ComputeSystem.Linux, ComputeSystem.ofPlatform("linux-x86_64"))
+        assertEquals(ComputeSystem.MacOS, ComputeSystem.ofPlatform("macos-aarch64"))
+        assertEquals(ComputeSystem.Windows, ComputeSystem.ofPlatform("windows-x86_64"))
+        assertNull(ComputeSystem.ofPlatform("freebsd-x86_64"))
     }
 
     @Test
@@ -256,8 +284,15 @@ class ComputersTest {
         val server = Server(::answer)
         val source = ComputeSource(client(server), "user-me")
         source.answer(ComputeApproval("n-mine", "Laptop", "agent-1", "Fix the build", 0), approve = true)
+        val computer = Computers.read(client(Server(::answer)), "user-me").computers.first { it.id == "n-shared" }
+        source.setConcurrency(computer, 4)
+        source.removeAgent(computer, computer.agents.first())
         assertEquals(
-            listOf("POST /v0/computers/approvals/n-mine/agent-1", "GET /v0/computers", "GET /v0/computers/approvals"),
+            listOf(
+                "POST /v0/computers/approvals/n-mine/agent-1", "GET /v0/computers", "GET /v0/computers/approvals",
+                "PATCH /v0/computers/n-shared", "GET /v0/computers", "GET /v0/computers/approvals",
+                "DELETE /v0/computers/n-shared/agents/agent-7", "GET /v0/computers", "GET /v0/computers/approvals",
+            ),
             server.asked.map { it.first },
         )
     }

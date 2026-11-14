@@ -1,6 +1,6 @@
 package com.slopus.happy.ui.connection
 
-import com.slopus.happy.agent.ComputeAccess
+import com.slopus.happy.agent.ComputeRole
 import com.slopus.happy.agent.Permission
 import com.slopus.happy.agent.AutoJoinKind
 import com.slopus.happy.connection.HappyCloud
@@ -541,7 +541,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     // The Chief of Staff is an admin bot: asking it needs a role that manages bots.
     val permissions = session?.permissions?.collectAsStateWithLifecycle()?.value
     val askChief = permissions?.allows(Permission.BOTS_MANAGE) ?: true
-    val compute = ComputeAccess.of(cloud, permissions ?: com.slopus.happy.agent.ServerPermissions.Unknown) != ComputeAccess.None
+    val compute = ComputeRole.of(cloud, permissions ?: com.slopus.happy.agent.ServerPermissions.Unknown) != ComputeRole.None
     val policy = cloud && permissions?.let(com.slopus.happy.agent.PolicyDocument::served) == true
     val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy) {
         AgentSettingsActions(

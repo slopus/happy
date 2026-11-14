@@ -1,6 +1,7 @@
 package com.slopus.happy.agent
 
 import com.slopus.happy.chat.arr
+import com.slopus.happy.chat.bool
 import com.slopus.happy.chat.long
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
@@ -19,42 +20,34 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /** The systems a computer's installer runs on. */
-enum class ComputeSystem { Linux, MacOS, Windows }
-
-/**
- * How a computer takes agents, fixed by the config on the computer itself, and
- * the systems its installer accepts (happy-cluster deploy/README.md,
- * "Installing a node"). Only private installs without sudo.
- */
-enum class ComputeModeKind(val wire: String, val systems: Set<ComputeSystem>) {
-    Sandbox("sandbox", setOf(ComputeSystem.Linux)),
-    Shared("shared", setOf(ComputeSystem.Linux)),
-    Exclusive("exclusive", setOf(ComputeSystem.Linux, ComputeSystem.MacOS)),
-    Private("private", setOf(ComputeSystem.Linux, ComputeSystem.MacOS, ComputeSystem.Windows));
+enum class ComputeSystem(val wire: String) {
+    Linux("linux"), MacOS("macos"), Windows("windows");
 
     companion object {
-        fun of(wire: String?): ComputeModeKind? = entries.firstOrNull { it.wire == wire }
+        /** A published build, as `linux-x86_64`. */
+        fun ofPlatform(platform: String): ComputeSystem? = entries.firstOrNull { it.wire == platform.substringBefore('-') }
     }
 }
 
-/** The agent holding an exclusive computer; [title] is null where the reader may not read its conversation. */
-data class ComputeHolder(val agentId: String, val title: String?)
+/** Who may send agents to a computer, fixed when it joins: the whole team, or its owner alone. */
+enum class ComputeAccess(val wire: String, val defaultConcurrency: Int) {
+    Shared("shared", 8), Private("private", 1);
+
+    companion object {
+        fun of(wire: String?): ComputeAccess? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+/** An agent placed on a computer; [title] is null where the reader may not read its conversation. */
+data class ComputeAgent(val id: String, val title: String?)
+
+/** Whether a computer can run restricted commands; full-access commands run either way. [reason] says why not. */
+data class ComputeBoundary(val available: Boolean, val reason: String?)
 
 /** Who owns a private computer, as the reader sees them. */
 sealed interface ComputeOwner {
     data object Reader : ComputeOwner
     data class Member(val userId: String, val name: String?) : ComputeOwner
-}
-
-/** A computer's mode, with what only that mode carries. */
-sealed interface ComputeMode {
-    val kind: ComputeModeKind
-
-    data object Sandbox : ComputeMode { override val kind get() = ComputeModeKind.Sandbox }
-    data object Shared : ComputeMode { override val kind get() = ComputeModeKind.Shared }
-    data class Exclusive(val holder: ComputeHolder?) : ComputeMode { override val kind get() = ComputeModeKind.Exclusive }
-    /** [owner] is null for a computer that joined before owners were kept. */
-    data class Private(val owner: ComputeOwner?) : ComputeMode { override val kind get() = ComputeModeKind.Private }
 }
 
 /** Where a computer stands. A revoked computer is not listed. */
@@ -66,17 +59,23 @@ enum class ComputeStatus(val wire: String) {
     }
 }
 
-/** What the reader may do with compute: add any computer and free a held one, use computers and add a private one, or nothing. */
-enum class ComputeAccess {
+/** What the reader may do with compute: add any computer and manage every one, use computers and add a private one, or nothing. */
+enum class ComputeRole {
     Manage, Use, None;
 
     companion object {
-        fun of(cloud: Boolean, permissions: ServerPermissions): ComputeAccess = when {
+        fun of(cloud: Boolean, permissions: ServerPermissions): ComputeRole = when {
             !cloud || Permission.COMPUTE_USE !in permissions.granted -> None
             Permission.POOLS_MANAGE in permissions.granted -> Manage
             else -> Use
         }
     }
+}
+
+/** How many agents a computer takes at once, as the cluster bounds it. */
+object ComputeConcurrency {
+    const val MIN = 1
+    const val MAX = 64
 }
 
 /** One computer agents can join (`GET /v0/computers`). */
@@ -89,20 +88,28 @@ data class Computer(
     /** `macos`, `linux` or `windows`, as the computer reported it. */
     val os: String?,
     val arch: String?,
-    val mode: ComputeMode,
+    val access: ComputeAccess,
+    /** A private computer's owner; null for a shared one or one whose owner wasn't sent. */
+    val owner: ComputeOwner?,
+    /** How many agents it takes at once. */
+    val concurrency: Int,
+    /** The most it can be set to, where the computer says. */
+    val maxConcurrency: Int?,
+    val agents: List<ComputeAgent>,
+    val boundary: ComputeBoundary,
     /** What agents read about it in `list_compute`. */
     val description: String?,
-    /** Why its sandbox failed its self-test, while it does; only managers are sent it. */
-    val sandboxError: String?,
     /** When [status] last changed, in milliseconds. */
     val since: Long?,
 ) {
-    val holder: ComputeHolder? get() = (mode as? ComputeMode.Exclusive)?.holder
+    /** Every place taken: listed still, but no other agent joins. */
+    val full: Boolean get() = agents.size >= concurrency
 
-    /** Online and held by an agent, so every other join is refused. */
-    val busy: Boolean get() = status == ComputeStatus.Online && holder != null
+    /** The highest [concurrency] it may be set to. */
+    val concurrencyLimit: Int get() = minOf(ComputeConcurrency.MAX, maxConcurrency ?: ComputeConcurrency.MAX).coerceAtLeast(ComputeConcurrency.MIN)
 
-    fun releasable(access: ComputeAccess): Boolean = access == ComputeAccess.Manage && holder != null
+    /** A manager or the private computer's owner changes its concurrency and removes its agents. */
+    fun manageable(role: ComputeRole): Boolean = role == ComputeRole.Manage || (role == ComputeRole.Use && owner == ComputeOwner.Reader)
 }
 
 /** An agent waiting for the reader to let it join one of their private computers. */
@@ -127,17 +134,25 @@ class ComputeCommands(val unix: String, val windows: String)
  * memory only, never logged or saved, and not a data class so it never prints.
  */
 class ComputeInstall(
-    val mode: ComputeModeKind,
+    val access: ComputeAccess,
+    val concurrency: Int,
     /** Null where the server publishes no installer; [token] and [clusterUrl] are then the way in. */
     val commands: ComputeCommands?,
+    /** The systems with a published supervisor build; a command is shown only for these. */
+    val systems: Set<ComputeSystem>,
+    /** What isn't available yet, in the server's words. */
+    val notice: String?,
     val token: String,
     val clusterUrl: String,
     /** In milliseconds. */
     val expiresAt: Long,
 )
 
-/** What a new computer will be: its mode. It joins named by its hostname. */
-data class ComputeDraft(val mode: ComputeModeKind)
+/** What a new computer will be: who may use it and, once picked, how many agents at once. It joins named by its hostname. */
+data class ComputeDraft(val access: ComputeAccess, val concurrency: Int? = null) {
+    /** What the computer will take: the one picked, or the cluster's default for [access]. */
+    val agents: Int get() = concurrency ?: access.defaultConcurrency
+}
 
 /**
  * Adding a computer, while its page is up: the form, its request, a refusal
@@ -159,15 +174,16 @@ sealed interface ComputerAdd {
             is Shown -> null
         }
 
-    /** Changes the draft, which takes back a refusal the earlier draft got. A member may pick only private. */
-    fun edit(access: ComputeAccess, change: (ComputeDraft) -> ComputeDraft): ComputerAdd {
+    /** Changes the draft, which takes back a refusal the earlier draft got. A member may pick only private; concurrency stays in range. */
+    fun edit(role: ComputeRole, change: (ComputeDraft) -> ComputeDraft): ComputerAdd {
         val draft = when (this) {
             is Choosing -> draft
             is Failed -> draft
             else -> return this
         }
         val next = change(draft)
-        if (next.mode != ComputeModeKind.Private && access != ComputeAccess.Manage) return this
+        if (next.access == ComputeAccess.Shared && role != ComputeRole.Manage) return this
+        if (next.concurrency != null && next.concurrency !in ComputeConcurrency.MIN..ComputeConcurrency.MAX) return this
         return Choosing(next)
     }
 
@@ -182,16 +198,16 @@ sealed interface ComputerAdd {
     val closable: Boolean get() = this !is Creating
 
     companion object {
-        /** A manager starts on sandbox; a member may add only a private computer of their own. */
-        fun open(access: ComputeAccess): ComputerAdd? = when (access) {
-            ComputeAccess.Manage -> Choosing(ComputeDraft(ComputeModeKind.Sandbox))
-            ComputeAccess.Use -> Choosing(ComputeDraft(ComputeModeKind.Private))
-            ComputeAccess.None -> null
+        /** A manager starts on shared; a member may add only a private computer of their own. */
+        fun open(role: ComputeRole): ComputerAdd? = when (role) {
+            ComputeRole.Manage -> Choosing(ComputeDraft(ComputeAccess.Shared))
+            ComputeRole.Use -> Choosing(ComputeDraft(ComputeAccess.Private))
+            ComputeRole.None -> null
         }
     }
 }
 
-/** Happy Cloud's computers in modes (happy-cluster deploy/README.md, "Compute nodes"). Every route needs `compute.use`. */
+/** Happy Cloud's computers (happy-cluster deploy/README.md, "Compute nodes"). Every route needs `compute.use`. */
 object Computers {
     private const val ROOT = "/v0/computers"
 
@@ -206,17 +222,26 @@ object Computers {
         )
     }
 
-    /** Mints the computer's single-use join token and its install commands. */
+    /** Mints the computer's single-use join token and its install commands; concurrency only where the person picked one. */
     suspend fun create(client: AgentClient, draft: ComputeDraft): ComputeInstall? {
         require(client.cloud)
-        val body = JsonObject(mapOf("mode" to JsonPrimitive(draft.mode.wire)))
-        return install(client.decode<JsonObject>("POST", "$ROOT/join-tokens", body))
+        val body = buildMap {
+            put("access", JsonPrimitive(draft.access.wire))
+            draft.concurrency?.let { put("concurrency", JsonPrimitive(it)) }
+        }
+        return install(client.decode<JsonObject>("POST", "$ROOT/join-tokens", JsonObject(body)))
     }
 
-    /** Frees an exclusive computer from the agent holding it (`pools.manage`). */
-    suspend fun releaseLock(client: AgentClient, computerId: String) {
+    /** How many agents the computer takes at once (`pools.manage` or the private owner). */
+    suspend fun setConcurrency(client: AgentClient, computerId: String, concurrency: Int) {
         require(client.cloud)
-        client.send("POST", "$ROOT/${AgentClient.escape(computerId)}/release-lock", JsonObject(emptyMap()))
+        client.send("PATCH", "$ROOT/${AgentClient.escape(computerId)}", JsonObject(mapOf("concurrency" to JsonPrimitive(concurrency))))
+    }
+
+    /** Takes an agent off the computer, freeing its place (`pools.manage` or the private owner). */
+    suspend fun removeAgent(client: AgentClient, computerId: String, agentId: String) {
+        require(client.cloud)
+        client.send("DELETE", "$ROOT/${AgentClient.escape(computerId)}/agents/${AgentClient.escape(agentId)}")
     }
 
     suspend fun answer(client: AgentClient, approval: ComputeApproval, approve: Boolean) {
@@ -228,20 +253,13 @@ object Computers {
         )
     }
 
-    /** A computer, or null for a revoked one or one in no mode this phone knows. */
+    /** A computer, or null for a revoked one or one this phone can't read. */
     internal fun computer(node: JsonObject, readerId: String?): Computer? {
         val id = node["id"].str?.takeIf { it.isNotBlank() } ?: return null
         val status = ComputeStatus.of(node["status"].str) ?: return null
-        val mode = when (ComputeModeKind.of(node["mode"].str) ?: return null) {
-            ComputeModeKind.Sandbox -> ComputeMode.Sandbox
-            ComputeModeKind.Shared -> ComputeMode.Shared
-            ComputeModeKind.Exclusive -> ComputeMode.Exclusive(node["exclusiveAgent"].obj?.let { held ->
-                held["id"].str?.let { ComputeHolder(it, held["title"].text) }
-            })
-            ComputeModeKind.Private -> ComputeMode.Private(node["owner"].text?.let { owner ->
-                if (owner == readerId) ComputeOwner.Reader else ComputeOwner.Member(owner, null)
-            })
-        }
+        val access = ComputeAccess.of(node["access"].str) ?: return null
+        val concurrency = node["concurrency"].long?.toInt()?.takeIf { it >= ComputeConcurrency.MIN } ?: return null
+        val boundary = node["boundary"].obj ?: return null
         val hostname = node["hostname"].text
         return Computer(
             id = id,
@@ -250,9 +268,20 @@ object Computers {
             hostname = hostname,
             os = node["os"].text,
             arch = node["arch"].text,
-            mode = mode,
+            access = access,
+            owner = node["owner"].text?.takeIf { access == ComputeAccess.Private }?.let { owner ->
+                if (owner == readerId) ComputeOwner.Reader else ComputeOwner.Member(owner, null)
+            },
+            concurrency = concurrency,
+            maxConcurrency = node["maxConcurrency"].long?.toInt(),
+            agents = node["agents"].arr.orEmpty().mapNotNull { agent ->
+                agent.obj?.let { ComputeAgent(it["id"].str ?: return@mapNotNull null, it["title"].text) }
+            },
+            boundary = ComputeBoundary(
+                available = boundary["available"].bool ?: return null,
+                reason = boundary["reason"].text,
+            ),
             description = node["description"].text,
-            sandboxError = node["sandboxError"].text,
             since = node["since"].long,
         )
     }
@@ -268,9 +297,13 @@ object Computers {
     /** `expiresAt` is milliseconds: the cluster sends the token's `exp` times 1000. */
     internal fun install(answer: JsonObject): ComputeInstall? {
         val commands = answer["commands"].obj
+        val access = ComputeAccess.of(answer["access"].str) ?: return null
         return ComputeInstall(
-            mode = ComputeModeKind.of(answer["mode"].str) ?: return null,
+            access = access,
+            concurrency = answer["concurrency"].long?.toInt() ?: return null,
             commands = commands?.let { ComputeCommands(it["unix"].str ?: return@let null, it["windows"].str ?: return@let null) },
+            systems = answer["platforms"].arr.orEmpty().mapNotNull { platform -> platform.str?.let(ComputeSystem::ofPlatform) }.toSet(),
+            notice = answer["notice"].text,
             token = answer["token"].str ?: return null,
             clusterUrl = answer["clusterUrl"].str.orEmpty(),
             expiresAt = answer["expiresAt"].long ?: return null,
@@ -331,8 +364,13 @@ class ComputeSource(
     /** Throws what the server said; the install is never kept here. */
     suspend fun create(draft: ComputeDraft): ComputeInstall? = Computers.create(client, draft).also { refresh() }
 
-    suspend fun releaseLock(computer: Computer) {
-        Computers.releaseLock(client, computer.id)
+    suspend fun setConcurrency(computer: Computer, concurrency: Int) {
+        Computers.setConcurrency(client, computer.id, concurrency)
+        refresh()
+    }
+
+    suspend fun removeAgent(computer: Computer, agent: ComputeAgent) {
+        Computers.removeAgent(client, computer.id, agent.id)
         refresh()
     }
 
@@ -342,7 +380,7 @@ class ComputeSource(
     }
 
     private suspend fun named(snapshot: ComputeSnapshot): ComputeSnapshot {
-        val members = snapshot.computers.mapNotNull { ((it.mode as? ComputeMode.Private)?.owner as? ComputeOwner.Member)?.userId }.toSet()
+        val members = snapshot.computers.mapNotNull { (it.owner as? ComputeOwner.Member)?.userId }.toSet()
         if (members.isEmpty()) return snapshot
         val known = try {
             names(members)
@@ -352,8 +390,8 @@ class ComputeSource(
             emptyMap()
         }
         return snapshot.copy(computers = snapshot.computers.map { computer ->
-            val owner = (computer.mode as? ComputeMode.Private)?.owner as? ComputeOwner.Member ?: return@map computer
-            computer.copy(mode = ComputeMode.Private(owner.copy(name = known[owner.userId])))
+            val owner = computer.owner as? ComputeOwner.Member ?: return@map computer
+            computer.copy(owner = owner.copy(name = known[owner.userId]))
         })
     }
 

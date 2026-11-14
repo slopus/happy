@@ -13,10 +13,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,10 +37,14 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -55,13 +60,14 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.ComputeAccess
+import com.slopus.happy.agent.ComputeAgent
 import com.slopus.happy.agent.ComputeApproval
+import com.slopus.happy.agent.ComputeConcurrency
 import com.slopus.happy.agent.ComputeDraft
 import com.slopus.happy.agent.ComputeInstall
 import com.slopus.happy.agent.Computer
-import com.slopus.happy.agent.ComputeMode
-import com.slopus.happy.agent.ComputeModeKind
 import com.slopus.happy.agent.ComputeOwner
+import com.slopus.happy.agent.ComputeRole
 import com.slopus.happy.agent.ComputeSource
 import com.slopus.happy.agent.ComputeStatus
 import com.slopus.happy.agent.ComputeSystem
@@ -94,70 +100,91 @@ import java.util.Date
 
 @Serializable data class CloudComputeRoute(val connectionId: String)
 
+@Serializable data class CloudComputerRoute(val connectionId: String, val computerId: String)
+
 object ComputeTags {
     const val ROW = "compute.row"
     const val LIST = "compute.list"
     const val ADD = "compute.add"
     const val CREATE = "compute.create"
     const val FAILURE = "compute.failure"
+    const val BOUNDARY = "compute.boundary"
+    const val AGENTS = "compute.agents"
+    const val CONCURRENCY = "compute.concurrency"
+    const val FEWER = "compute.concurrency.fewer"
+    const val MORE = "compute.concurrency.more"
+    const val SAVE = "compute.concurrency.save"
     fun computer(id: String) = "compute.computer.$id"
-    fun release(id: String) = "compute.release.$id"
+    fun agent(id: String) = "compute.agent.$id"
+    fun remove(agentId: String) = "compute.remove.$agentId"
     fun request(key: String) = "compute.request.$key"
     fun approve(key: String) = "compute.approve.$key"
     fun deny(key: String) = "compute.deny.$key"
-    fun mode(mode: ComputeModeKind) = "compute.mode.${mode.wire}"
+    fun access(access: ComputeAccess) = "compute.access.${access.wire}"
     fun command(system: String) = "compute.command.$system"
 }
 
 internal fun NavGraphBuilder.cloudComputeRoutes(graph: AppGraph, nav: NavHostController) {
     page<CloudComputeRoute> { entry ->
-        CloudComputePage(graph, entry.toRoute<CloudComputeRoute>().connectionId) { nav.popBackStack() }
+        val connectionId = entry.toRoute<CloudComputeRoute>().connectionId
+        CloudComputePage(graph, connectionId, onOpen = { nav.navigate(CloudComputerRoute(connectionId, it.id)) }) { nav.popBackStack() }
+    }
+    page<CloudComputerRoute> { entry ->
+        val route = entry.toRoute<CloudComputerRoute>()
+        CloudComputerPage(graph, route.connectionId, route.computerId) { nav.popBackStack() }
     }
 }
 
-/** Answers and releases sent and not settled yet. */
-data class ComputePending(val answers: Map<String, Boolean> = emptyMap(), val releases: Set<String> = emptySet())
+/** Answers sent and not settled yet. */
+data class ComputePending(val answers: Map<String, Boolean> = emptyMap())
 
-/** Why the last answer or release didn't go through: the server's words, or null when it gave none. */
+/** Why the last change didn't go through: the server's words, or null when it gave none. */
 data class ComputeFailure(val reason: String?)
 
 class ComputeActions(
     val onRetry: () -> Unit = {},
     val onAdd: () -> Unit = {},
-    val onRelease: (Computer) -> Unit = {},
+    val onOpen: (Computer) -> Unit = {},
     val onAnswer: (ComputeApproval, Boolean) -> Unit = { _, _ -> },
 )
 
 private fun said(e: Exception): String? = (e as? AgentApiException)?.message?.takeIf { it.isNotBlank() }
 
+/** The connection's compute while the page is resumed: what the reader may do and, where they may use it, the source read for them. */
 @Composable
-private fun CloudComputePage(graph: AppGraph, connectionId: String, onBack: () -> Unit) {
+private fun rememberCompute(graph: AppGraph, connectionId: String): Pair<ComputeRole, ComputeSource?> {
     val session = remember(connectionId) { graph.agentSessions.session(connectionId) }
     val permissions = session?.permissions?.collectAsStateWithLifecycle()?.value ?: ServerPermissions.Unknown
-    val access = ComputeAccess.of(session?.client?.cloud == true, permissions)
-    if (session == null || access == ComputeAccess.None) {
-        ComputeScreen(ComputeSource.State.Loading, ComputeAccess.None, ComputePending(), null, ComputeActions(), onBack)
-        return
-    }
+    val role = ComputeRole.of(session?.client?.cloud == true, permissions)
+    if (session == null || role == ComputeRole.None) return ComputeRole.None to null
     val readerId = graph.agentConnections.accounts.collectAsStateWithLifecycle().value.firstOrNull { it.id == connectionId }?.userId
     val source = remember(session, readerId) { ComputeSource(session.client, readerId) { ids -> session.team.names(ids) } }
-    val state by source.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(source, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { source.observe(session.events) }
     }
+    return role to source
+}
+
+@Composable
+private fun CloudComputePage(graph: AppGraph, connectionId: String, onOpen: (Computer) -> Unit, onBack: () -> Unit) {
+    val (role, source) = rememberCompute(graph, connectionId)
+    if (source == null) {
+        ComputeScreen(ComputeSource.State.Loading, ComputeRole.None, ComputePending(), null, ComputeActions(), onBack)
+        return
+    }
+    val state by source.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var add by remember(source) { mutableStateOf<ComputerAdd?>(null) }
     var pending by remember(source) { mutableStateOf(ComputePending()) }
     var failure by remember(source) { mutableStateOf<ComputeFailure?>(null) }
-    var releasing by remember(source) { mutableStateOf<Computer?>(null) }
     val noCommand = stringResource(R.string.compute_no_command)
     ComputeScreen(
-        state, access, pending, failure,
+        state, role, pending, failure,
         ComputeActions(
             onRetry = { scope.launch { source.refresh() } },
-            onAdd = { add = ComputerAdd.open(access) },
-            onRelease = { releasing = it },
+            onAdd = { add = ComputerAdd.open(role) },
+            onOpen = onOpen,
             onAnswer = { approval, approve ->
                 if (approval.key !in pending.answers) {
                     pending = pending.copy(answers = pending.answers + (approval.key to approve))
@@ -178,34 +205,6 @@ private fun CloudComputePage(graph: AppGraph, connectionId: String, onBack: () -
         ),
         onBack,
     )
-    releasing?.let { computer ->
-        val release = stringResource(R.string.compute_release)
-        HappyAlert(Alert(
-            title = stringResource(R.string.compute_release_confirm, computer.name),
-            message = stringResource(R.string.compute_release_message),
-            buttons = listOf(
-                AlertButton(stringResource(R.string.common_cancel)),
-                AlertButton(release, destructive = true) {
-                    releasing = null
-                    if (computer.id !in pending.releases) {
-                        pending = pending.copy(releases = pending.releases + computer.id)
-                        failure = null
-                        scope.launch {
-                            try {
-                                source.releaseLock(computer)
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                failure = ComputeFailure(said(e))
-                            } finally {
-                                pending = pending.copy(releases = pending.releases - computer.id)
-                            }
-                        }
-                    }
-                },
-            ),
-        ), onDismiss = { releasing = null })
-    }
     add?.let { current ->
         // The install carries a single-use secret: kept off screenshots and the recents thumbnail.
         PageDialog(
@@ -214,8 +213,8 @@ private fun CloudComputePage(graph: AppGraph, connectionId: String, onBack: () -
         ) {
             ComputerAddScreen(
                 add = current,
-                access = access,
-                onChange = { change -> add = add?.edit(access, change) },
+                role = role,
+                onChange = { change -> add = add?.edit(role, change) },
                 onCreate = {
                     val creating = add?.create()
                     if (creating != null) {
@@ -241,14 +240,15 @@ private fun CloudComputePage(graph: AppGraph, connectionId: String, onBack: () -
  * Settings › Compute on a Happy Cloud server (desktop's
  * HappyAgentComputeSettings): the requests to join the reader's private
  * computers, then every computer agents can join, one flat list, online first.
- * A row is the name and its status, the mode and whose it is, where it runs,
- * what agents read about it, who holds it, then Release where the
- * reader may. A manager adds a computer in any mode; a member a private one.
+ * A row is the name and its status, shared or private and whose, how many of
+ * its places agents hold, where it runs, what agents read about it, and a
+ * warning where restricted commands can't run; it opens the computer. A
+ * manager adds a shared or private computer; a member a private one.
  */
 @Composable
 internal fun ComputeScreen(
     state: ComputeSource.State,
-    access: ComputeAccess,
+    role: ComputeRole,
     pending: ComputePending,
     failure: ComputeFailure?,
     actions: ComputeActions,
@@ -256,40 +256,34 @@ internal fun ComputeScreen(
 ) {
     Screen(header = { StackHeader(stringResource(R.string.compute_title), onBack) }) {
         ItemList(modifier = Modifier.testTag(ComputeTags.LIST)) {
-            if (access == ComputeAccess.None) {
+            if (role == ComputeRole.None) {
                 ItemGroup { Item(stringResource(R.string.compute_permission), titleLines = 0, showChevron = false) }
                 return@ItemList
             }
             when (state) {
                 ComputeSource.State.Loading -> ItemGroup { Item(stringResource(R.string.compute_title), loading = true, showChevron = false) }
-                ComputeSource.State.Failed -> ItemGroup {
-                    Item(stringResource(R.string.cloud_failed), subtitle = stringResource(R.string.team_server_try_again), onClick = actions.onRetry, showChevron = false)
-                }
+                ComputeSource.State.Failed -> FailedGroup(actions.onRetry)
                 is ComputeSource.State.Loaded -> {
                     val (computers, approvals) = state.snapshot
-                    failure?.let {
-                        ItemGroup(footer = it.reason ?: stringResource(R.string.cloud_failed), modifier = Modifier.testTag(ComputeTags.FAILURE)) {
-                            Item(stringResource(R.string.compute_action_failed), titleColor = HappyTheme.colors.textDestructive, showChevron = false)
-                        }
-                    }
+                    failure?.let { FailureGroup(it) }
                     if (approvals.isNotEmpty()) {
                         ItemGroup(title = stringResource(R.string.compute_requests_title), footer = stringResource(R.string.compute_requests_footer)) {
                             for (approval in approvals) key(approval.key) { ApprovalRow(approval, pending.answers[approval.key], actions.onAnswer) }
                         }
                     }
                     if (computers.isEmpty() && approvals.isEmpty()) {
-                        ItemGroup(footer = stringResource(if (access == ComputeAccess.Manage) R.string.compute_empty_manage else R.string.compute_empty_use)) {
+                        ItemGroup(footer = stringResource(if (role == ComputeRole.Manage) R.string.compute_empty_manage else R.string.compute_empty_use)) {
                             Item(stringResource(R.string.compute_empty_title), showChevron = false)
                             AddRow(actions.onAdd)
                         }
                     } else {
                         ItemGroup(
                             title = stringResource(R.string.compute_computers_title),
-                            footer = stringResource(if (access == ComputeAccess.Manage) R.string.compute_computers_footer_manage else R.string.compute_computers_footer_use),
+                            footer = stringResource(if (role == ComputeRole.Manage) R.string.compute_computers_footer_manage else R.string.compute_computers_footer_use),
                         ) {
                             if (computers.isEmpty()) Item(stringResource(R.string.compute_no_computers), titleColor = HappyTheme.colors.textSecondary, showChevron = false)
                             for (computer in computers) key(computer.id) {
-                                ComputerRow(computer, access, computer.id in pending.releases, actions)
+                                ComputerSummary(computer, Modifier.testTag(ComputeTags.computer(computer.id))) { actions.onOpen(computer) }
                             }
                             AddRow(actions.onAdd)
                         }
@@ -297,6 +291,20 @@ internal fun ComputeScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FailedGroup(onRetry: () -> Unit) {
+    ItemGroup {
+        Item(stringResource(R.string.cloud_failed), subtitle = stringResource(R.string.team_server_try_again), onClick = onRetry, showChevron = false)
+    }
+}
+
+@Composable
+private fun FailureGroup(failure: ComputeFailure) {
+    ItemGroup(footer = failure.reason ?: stringResource(R.string.cloud_failed), modifier = Modifier.testTag(ComputeTags.FAILURE)) {
+        Item(stringResource(R.string.compute_action_failed), titleColor = HappyTheme.colors.textDestructive, showChevron = false)
     }
 }
 
@@ -313,8 +321,9 @@ private fun AddRow(onAdd: () -> Unit) {
 
 private val subtitle = ItemSpec.subtitle
 
+/** A computer in a card: the list's row, which opens it ([onClick]), and the head of its own page. */
 @Composable
-private fun ComputerRow(computer: Computer, access: ComputeAccess, releasing: Boolean, actions: ComputeActions) {
+private fun ComputerSummary(computer: Computer, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val colors = HappyTheme.colors
     val resources = LocalContext.current.resources
     val detail = listOfNotNull(
@@ -322,29 +331,26 @@ private fun ComputerRow(computer: Computer, access: ComputeAccess, releasing: Bo
         listOfNotNull(computer.os?.let { OS_NAMES[it] ?: it }, computer.arch).joinToString(" ").ifEmpty { null },
         computer.since?.takeIf { computer.status != ComputeStatus.Online }?.let { formatLastSeen(resources, it, System.currentTimeMillis()) },
     ).joinToString(" · ")
-    Column(Modifier.fillMaxWidth().testTag(ComputeTags.computer(computer.id)).padding(horizontal = ItemSpec.paddingHorizontal, vertical = 12.dp)) {
+    val clickable = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier
+    Column(modifier.fillMaxWidth().then(clickable).padding(horizontal = ItemSpec.paddingHorizontal, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(computer.name, style = ItemSpec.title, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(ItemSpec.rightSectionGap))
             StatusLabel(computer)
+            if (onClick != null) Icon(Ionicon.ChevronForward, ItemSpec.chevronSize, colors.grouped.chevron, Modifier.padding(start = ItemSpec.chevronGap))
         }
         FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Badge(modeLabel(computer.mode.kind), colors.textSecondary)
-            ownerLabel(computer.mode)?.let { (label, yours) -> Badge(label, if (yours) colors.textLink else colors.textSecondary) }
+            Badge(accessLabel(computer.access), colors.textSecondary)
+            ownerLabel(computer.owner)?.let { (label, yours) -> Badge(label, if (yours) colors.textLink else colors.textSecondary) }
+            Badge(agentsCount(computer), if (computer.full) colors.boxWarning.border else colors.textSecondary)
         }
         if (detail.isNotEmpty()) Text(detail, style = subtitle, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
         computer.description?.let { Text(it, style = subtitle, color = colors.text, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)) }
-        computer.holder?.let { holder ->
-            Text(
-                holder.title?.let { stringResource(R.string.compute_held_by, it) } ?: stringResource(R.string.compute_held_by_agent),
-                style = subtitle, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-        computer.sandboxError?.let { Text(stringResource(R.string.compute_sandbox_failed, it), style = subtitle, color = colors.textDestructive, modifier = Modifier.padding(top = 4.dp)) }
-        if (computer.releasable(access)) {
-            // Pulled out by the buttons' own inset, so their words start on the text's keyline.
-            Row(Modifier.padding(top = 4.dp).offset(x = (-8).dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RowAction(stringResource(R.string.compute_release), colors.textDestructive, Modifier.testTag(ComputeTags.release(computer.id)), loading = releasing) { actions.onRelease(computer) }
+        if (!computer.boundary.available && onClick != null) {
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Ionicon.WarningOutline, 16.dp, colors.boxWarning.border)
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.compute_boundary_title), style = subtitle, color = colors.textSecondary)
             }
         }
     }
@@ -353,16 +359,19 @@ private fun ComputerRow(computer: Computer, access: ComputeAccess, releasing: Bo
 private val OS_NAMES = mapOf("macos" to "macOS", "linux" to "Linux", "windows" to "Windows")
 
 @Composable
+private fun agentsCount(computer: Computer): String =
+    pluralStringResource(R.plurals.compute_agents_count, computer.concurrency, computer.agents.size, computer.concurrency)
+
+@Composable
 private fun StatusLabel(computer: Computer) {
     val colors = HappyTheme.colors
-    val (label, color) = when {
-        computer.busy -> stringResource(R.string.compute_status_busy) to colors.boxWarning.border
-        else -> when (computer.status) {
-            ComputeStatus.Online -> stringResource(R.string.compute_status_online) to colors.status.connected
-            ComputeStatus.Offline -> stringResource(R.string.compute_status_offline) to colors.status.disconnected
-            ComputeStatus.Draining -> stringResource(R.string.compute_status_draining) to colors.status.connecting
-            ComputeStatus.Enrolling -> stringResource(R.string.compute_status_joining) to colors.status.connecting
-        }
+    val (label, color) = when (computer.status) {
+        ComputeStatus.Online ->
+            if (computer.full) stringResource(R.string.compute_status_full) to colors.boxWarning.border
+            else stringResource(R.string.compute_status_online) to colors.status.connected
+        ComputeStatus.Offline -> stringResource(R.string.compute_status_offline) to colors.status.disconnected
+        ComputeStatus.Draining -> stringResource(R.string.compute_status_draining) to colors.status.connecting
+        ComputeStatus.Enrolling -> stringResource(R.string.compute_status_joining) to colors.status.connecting
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         StatusDot(color, size = 8.dp)
@@ -382,24 +391,20 @@ private fun Badge(text: String, color: Color) {
 }
 
 @Composable
-internal fun modeLabel(mode: ComputeModeKind): String = stringResource(when (mode) {
-    ComputeModeKind.Sandbox -> R.string.compute_mode_sandbox
-    ComputeModeKind.Shared -> R.string.compute_mode_shared
-    ComputeModeKind.Exclusive -> R.string.compute_mode_exclusive
-    ComputeModeKind.Private -> R.string.compute_mode_private
+internal fun accessLabel(access: ComputeAccess): String = stringResource(when (access) {
+    ComputeAccess.Shared -> R.string.compute_access_shared
+    ComputeAccess.Private -> R.string.compute_access_private
 })
 
 @Composable
-private fun modeAbout(mode: ComputeModeKind): String = stringResource(when (mode) {
-    ComputeModeKind.Sandbox -> R.string.compute_mode_sandbox_about
-    ComputeModeKind.Shared -> R.string.compute_mode_shared_about
-    ComputeModeKind.Exclusive -> R.string.compute_mode_exclusive_about
-    ComputeModeKind.Private -> R.string.compute_mode_private_about
+private fun accessAbout(access: ComputeAccess): String = stringResource(when (access) {
+    ComputeAccess.Shared -> R.string.compute_access_shared_about
+    ComputeAccess.Private -> R.string.compute_access_private_about
 })
 
-/** Whose a private computer is, and whether it is the reader's; null for the other modes and an unknown owner. */
+/** Whose a private computer is, and whether it is the reader's; null for a shared one and an unknown owner. */
 @Composable
-private fun ownerLabel(mode: ComputeMode): Pair<String, Boolean>? = when (val owner = (mode as? ComputeMode.Private)?.owner) {
+private fun ownerLabel(owner: ComputeOwner?): Pair<String, Boolean>? = when (owner) {
     null -> null
     ComputeOwner.Reader -> stringResource(R.string.compute_yours) to true
     is ComputeOwner.Member -> (owner.name?.let { stringResource(R.string.compute_owner_named, it) } ?: stringResource(R.string.compute_owner_member)) to false
@@ -439,16 +444,215 @@ private fun ApprovalRow(approval: ComputeApproval, answering: Boolean?, onAnswer
     }
 }
 
+/** Removals and a concurrency change sent and not settled yet. */
+data class ComputerPending(val removals: Set<String> = emptySet(), val saving: Boolean = false)
+
+class ComputerActions(
+    val onRetry: () -> Unit = {},
+    val onRemove: (ComputeAgent) -> Unit = {},
+    val onSave: (Int) -> Unit = {},
+)
+
+@Composable
+private fun CloudComputerPage(graph: AppGraph, connectionId: String, computerId: String, onBack: () -> Unit) {
+    val (role, source) = rememberCompute(graph, connectionId)
+    if (source == null) {
+        ComputerScreen(ComputeSource.State.Loading, computerId, ComputeRole.None, ComputerPending(), null, ComputerActions(), onBack)
+        return
+    }
+    val state by source.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var pending by remember(source) { mutableStateOf(ComputerPending()) }
+    var failure by remember(source) { mutableStateOf<ComputeFailure?>(null) }
+    var removing by remember(source) { mutableStateOf<ComputeAgent?>(null) }
+    val computer = ((state as? ComputeSource.State.Loaded)?.snapshot?.computers)?.firstOrNull { it.id == computerId }
+    ComputerScreen(
+        state, computerId, role, pending, failure,
+        ComputerActions(
+            onRetry = { scope.launch { source.refresh() } },
+            onRemove = { removing = it },
+            onSave = { concurrency ->
+                if (computer != null && !pending.saving) {
+                    pending = pending.copy(saving = true)
+                    failure = null
+                    scope.launch {
+                        try {
+                            source.setConcurrency(computer, concurrency)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            failure = ComputeFailure(said(e))
+                        } finally {
+                            pending = pending.copy(saving = false)
+                        }
+                    }
+                }
+            },
+        ),
+        onBack,
+    )
+    removing?.let { agent ->
+        HappyAlert(Alert(
+            title = stringResource(R.string.compute_remove_confirm, agent.title ?: stringResource(R.string.compute_request_agent)),
+            message = stringResource(R.string.compute_remove_message),
+            buttons = listOf(
+                AlertButton(stringResource(R.string.common_cancel)),
+                AlertButton(stringResource(R.string.compute_remove), destructive = true) {
+                    removing = null
+                    if (computer != null && agent.id !in pending.removals) {
+                        pending = pending.copy(removals = pending.removals + agent.id)
+                        failure = null
+                        scope.launch {
+                            try {
+                                source.removeAgent(computer, agent)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                failure = ComputeFailure(said(e))
+                            } finally {
+                                pending = pending.copy(removals = pending.removals - agent.id)
+                            }
+                        }
+                    }
+                },
+            ),
+        ), onDismiss = { removing = null })
+    }
+}
+
 /**
- * Adding a computer (desktop's HappyAgentComputeMachineAddDialog): the four
- * modes, each in a sentence, a member's three other modes dimmed; then the
- * one-time install, its commands
- * for the systems that mode runs on, each with Copy.
+ * One computer, opened from Settings › Compute: its card as the list shows
+ * it; where restricted commands can't run, why, and that only full-access
+ * commands run there; the agents on it, each with Remove for a manager or
+ * the private owner; then how many agents it takes at once, which they may
+ * change (1 to its limit, Save once changed).
+ */
+@Composable
+internal fun ComputerScreen(
+    state: ComputeSource.State,
+    computerId: String,
+    role: ComputeRole,
+    pending: ComputerPending,
+    failure: ComputeFailure?,
+    actions: ComputerActions,
+    onBack: () -> Unit,
+) {
+    val computer = (state as? ComputeSource.State.Loaded)?.snapshot?.computers?.firstOrNull { it.id == computerId }
+    Screen(header = { StackHeader(computer?.name ?: stringResource(R.string.compute_title), onBack) }) {
+        ItemList(modifier = Modifier.testTag(ComputeTags.LIST)) {
+            if (role == ComputeRole.None) {
+                ItemGroup { Item(stringResource(R.string.compute_permission), titleLines = 0, showChevron = false) }
+                return@ItemList
+            }
+            when {
+                state == ComputeSource.State.Loading -> ItemGroup { Item(stringResource(R.string.compute_title), loading = true, showChevron = false) }
+                state == ComputeSource.State.Failed -> FailedGroup(actions.onRetry)
+                computer == null -> ItemGroup { Item(stringResource(R.string.compute_gone), titleLines = 0, showChevron = false) }
+                else -> ComputerGroups(computer, role, pending, failure, actions)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComputerGroups(computer: Computer, role: ComputeRole, pending: ComputerPending, failure: ComputeFailure?, actions: ComputerActions) {
+    val colors = HappyTheme.colors
+    val manageable = computer.manageable(role)
+    failure?.let { FailureGroup(it) }
+    ItemGroup { ComputerSummary(computer, Modifier.testTag(ComputeTags.computer(computer.id))) }
+    if (!computer.boundary.available) {
+        val footer = listOfNotNull(computer.boundary.reason, stringResource(R.string.compute_boundary_footer)).joinToString(" ")
+        ItemGroup(footer = footer, modifier = Modifier.testTag(ComputeTags.BOUNDARY)) {
+            Item(
+                stringResource(R.string.compute_boundary_title),
+                titleLines = 0,
+                icon = { Icon(Ionicon.WarningOutline, 24.dp, colors.boxWarning.border) },
+                showChevron = false,
+            )
+        }
+    }
+    ItemGroup(title = agentsCount(computer), modifier = Modifier.testTag(ComputeTags.AGENTS)) {
+        if (computer.agents.isEmpty()) Item(stringResource(R.string.compute_no_agents), titleColor = colors.textSecondary, showChevron = false)
+        for (agent in computer.agents) key(agent.id) {
+            Item(
+                agent.title ?: stringResource(R.string.compute_request_agent),
+                showChevron = false,
+                modifier = Modifier.testTag(ComputeTags.agent(agent.id)),
+                rightElement = if (manageable) ({
+                    RowAction(
+                        stringResource(R.string.compute_remove), colors.textDestructive,
+                        Modifier.testTag(ComputeTags.remove(agent.id)), loading = agent.id in pending.removals,
+                    ) { actions.onRemove(agent) }
+                }) else null,
+            )
+        }
+    }
+    var concurrency by remember(computer.concurrency) { mutableIntStateOf(computer.concurrency) }
+    val limit = computer.concurrencyLimit
+    ItemGroup(footer = stringResource(R.string.compute_concurrency_footer, limit)) {
+        if (manageable) {
+            ConcurrencyRow(concurrency, limit, enabled = !pending.saving) { concurrency = it }
+            if (concurrency != computer.concurrency) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    RoundButton(stringResource(R.string.common_save), onClick = { actions.onSave(concurrency) }, loading = pending.saving, modifier = Modifier.testTag(ComputeTags.SAVE))
+                }
+            }
+        } else {
+            Item(stringResource(R.string.compute_concurrency_title), detail = computer.concurrency.toString(), showChevron = false, modifier = Modifier.testTag(ComputeTags.CONCURRENCY))
+        }
+    }
+}
+
+/** "Agents at once" with − value +, each a 48 target, held to 1…[limit]. */
+@Composable
+private fun ConcurrencyRow(value: Int, limit: Int, enabled: Boolean, onChange: (Int) -> Unit) {
+    val colors = HappyTheme.colors
+    Item(
+        stringResource(R.string.compute_concurrency_title),
+        showChevron = false,
+        modifier = Modifier.testTag(ComputeTags.CONCURRENCY),
+        rightElement = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StepButton(Ionicon.Remove, stringResource(R.string.compute_concurrency_fewer), enabled && value > ComputeConcurrency.MIN, Modifier.testTag(ComputeTags.FEWER)) { onChange(value - 1) }
+                Text(
+                    value.toString(),
+                    style = ItemSpec.detail,
+                    color = colors.text,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(min = 32.dp),
+                )
+                StepButton(Ionicon.Add, stringResource(R.string.compute_concurrency_more), enabled && value < limit, Modifier.testTag(ComputeTags.MORE)) { onChange(value + 1) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun StepButton(icon: Ionicon, label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val color = HappyTheme.colors.textLink
+    Box(
+        modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, 22.dp, color.copy(alpha = if (enabled) 1f else 0.4f))
+    }
+}
+
+/**
+ * Adding a computer (desktop's HappyAgentComputeMachineAddDialog): shared
+ * (the team) or private (the reader alone), each in a sentence, shared
+ * dimmed for a member; how many agents at once, the access's default until
+ * changed; then the one-time install, its commands for the systems with a
+ * published build, each with Copy, and what isn't available yet.
  */
 @Composable
 internal fun ComputerAddScreen(
     add: ComputerAdd,
-    access: ComputeAccess,
+    role: ComputeRole,
     onChange: ((ComputeDraft) -> ComputeDraft) -> Unit,
     onCreate: () -> Unit,
     onClose: () -> Unit,
@@ -466,21 +670,24 @@ internal fun ComputerAddScreen(
                         }
                     }
                     ItemGroup(
-                        title = stringResource(R.string.compute_mode_title),
-                        footer = if (access == ComputeAccess.Manage) null else stringResource(R.string.compute_mode_member_footer),
+                        title = stringResource(R.string.compute_access_title),
+                        footer = if (role == ComputeRole.Manage) null else stringResource(R.string.compute_access_member_footer),
                     ) {
-                        for (mode in ComputeModeKind.entries) {
-                            val allowed = access == ComputeAccess.Manage || mode == ComputeModeKind.Private
+                        for (access in ComputeAccess.entries) {
+                            val allowed = role == ComputeRole.Manage || access == ComputeAccess.Private
                             Item(
-                                modeLabel(mode),
-                                subtitle = modeAbout(mode),
+                                accessLabel(access),
+                                subtitle = accessAbout(access),
                                 subtitleLines = 3,
                                 enabled = allowed && !busy,
-                                onClick = { onChange { it.copy(mode = mode) } },
-                                rightElement = { if (draft.mode == mode) Icon(Ionicon.Checkmark, 22.dp, HappyTheme.colors.textLink) else Spacer(Modifier.size(22.dp)) },
-                                modifier = Modifier.testTag(ComputeTags.mode(mode)),
+                                onClick = { onChange { it.copy(access = access) } },
+                                rightElement = { if (draft.access == access) Icon(Ionicon.Checkmark, 22.dp, HappyTheme.colors.textLink) else Spacer(Modifier.size(22.dp)) },
+                                modifier = Modifier.testTag(ComputeTags.access(access)),
                             )
                         }
+                    }
+                    ItemGroup(footer = stringResource(R.string.compute_concurrency_footer, ComputeConcurrency.MAX)) {
+                        ConcurrencyRow(draft.agents, ComputeConcurrency.MAX, enabled = !busy) { value -> onChange { it.copy(concurrency = value) } }
                     }
                     Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                         RoundButton(stringResource(R.string.compute_create), onClick = onCreate, loading = busy, modifier = Modifier.testTag(ComputeTags.CREATE))
@@ -499,20 +706,19 @@ private fun InstallGroups(install: ComputeInstall, onDone: () -> Unit) {
         expired = true
     }
     val expires = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(install.expiresAt))
-    ItemGroup(footer = stringResource(installNote(install.mode)) + " " + stringResource(R.string.compute_command_note)) {
+    val note = listOfNotNull(stringResource(installNote(install.access)), stringResource(R.string.compute_command_note), install.notice).joinToString(" ")
+    ItemGroup(footer = note) {
         Item(stringResource(if (expired) R.string.compute_expired else R.string.compute_expires, expires), titleLines = 0, showChevron = false)
     }
     if (!expired) {
         val commands = install.commands
-        if (commands == null) {
+        val systems = install.systems
+        val unix = ComputeSystem.Linux in systems || ComputeSystem.MacOS in systems
+        if (commands == null || (!unix && ComputeSystem.Windows !in systems)) {
             CommandGroup(stringResource(R.string.compute_server), "server", install.clusterUrl)
             CommandGroup(stringResource(R.string.compute_join_token), "token", install.token)
         } else {
-            val systems = install.mode.systems
-            CommandGroup(
-                stringResource(if (ComputeSystem.MacOS in systems) R.string.compute_command_unix else R.string.compute_command_linux),
-                "unix", commands.unix,
-            )
+            if (unix) CommandGroup(stringResource(unixLabel(systems)), "unix", commands.unix)
             if (ComputeSystem.Windows in systems) CommandGroup(stringResource(R.string.compute_command_windows), "windows", commands.windows)
         }
     }
@@ -521,11 +727,15 @@ private fun InstallGroups(install: ComputeInstall, onDone: () -> Unit) {
     }
 }
 
-private fun installNote(mode: ComputeModeKind): Int = when (mode) {
-    ComputeModeKind.Sandbox -> R.string.compute_install_sandbox
-    ComputeModeKind.Shared -> R.string.compute_install_shared
-    ComputeModeKind.Exclusive -> R.string.compute_install_exclusive
-    ComputeModeKind.Private -> R.string.compute_install_private
+private fun unixLabel(systems: Set<ComputeSystem>): Int = when {
+    ComputeSystem.Linux !in systems -> R.string.compute_command_macos
+    ComputeSystem.MacOS in systems -> R.string.compute_command_unix
+    else -> R.string.compute_command_linux
+}
+
+private fun installNote(access: ComputeAccess): Int = when (access) {
+    ComputeAccess.Shared -> R.string.compute_install_shared
+    ComputeAccess.Private -> R.string.compute_install_private
 }
 
 /** One command, verbatim, and its Copy, which marks the clip sensitive and says Copied for a moment. */
