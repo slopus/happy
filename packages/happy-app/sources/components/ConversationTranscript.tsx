@@ -35,6 +35,8 @@ import { getAgentMessageForkTargets, type MessageForkTarget } from '@/utils/mess
 import { BaseModal } from '@/modal/components/BaseModal';
 import { t } from '@/text';
 import { MessageView } from './MessageView';
+import { TranscriptMessageOptionsContext } from './TranscriptReadOnlyContext';
+import { inferMessageOptionResponses } from '@/sync/messageOptionResponses';
 import { firstAgentTextIds } from './turnAvatars';
 import { AgentWorkGroupView, ToolGroupView } from './ToolGroupView';
 import { AttachmentGalleryView } from './AttachmentGalleryView';
@@ -142,12 +144,14 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         [props.messages, browserProgress.runs]);
     const defaultItems = useGroupedMessages(props.scopedItems ? [] : transcriptMessages, props.groupToolCalls ?? true, groupingOptions);
     const displayItems = props.scopedItems ?? defaultItems;
+    const optionResponses = React.useMemo(() => inferMessageOptionResponses(props.messages), [props.messages]);
     const showTurnAvatars = Platform.OS === 'web' && !!props.turnAvatar;
     const firstAgentIds = React.useMemo(() => showTurnAvatars ? firstAgentTextIds(displayItems) : new Set<string>(), [displayItems, showTurnAvatars]);
     const inverted = props.inverted ?? Platform.OS !== 'web';
     const invertedRef = React.useRef(inverted);
     invertedRef.current = inverted;
     const isAtLatest = props.isAtLatest ?? true;
+    const messageOptions = React.useMemo(() => ({ responses: optionResponses, inactive: !isAtLatest }), [optionResponses, isAtLatest]);
     const [boundaries, setBoundaries] = React.useState({ older: false, newer: false });
     const attempted = React.useRef(new Set<string>());
     const jumpPending = React.useRef(false);
@@ -217,6 +221,11 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     }, [displayItems, inverted, props.reading, props.sessionId, props.scopedItems]);
     const listItemsRef = React.useRef(listItems);
     listItemsRef.current = listItems;
+    // Mount a bounded tail batch immediately, then align its measured bottom.
+    // Starting at the final row alone can leave a short reply above a blank
+    // viewport until the virtualizer expands its initial render window.
+    const initialScrollIndex = React.useRef(Platform.OS === 'web' && !inverted && isAtLatest
+        && (props.followLatestRequest ?? 0) > 0 && listItems.length ? Math.max(0, listItems.length - 10) : undefined);
     viewportRange.current = () => {
         if (Platform.OS !== 'web' || (!props.reading && !props.scopedViewport)) return undefined;
         const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
@@ -384,6 +393,25 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         listRef: coordinator ? scrollPortRef : flatListRef, viewportRef, expanded: expandedKeys, restoreExpanded: setExpandedKeys,
         externallyScheduled: Boolean(coordinator), canCapture: () => !coordinator || coordinator.canCapture() });
     if (coordinator) coordinator.onSettled = () => { void reading.capture(); };
+    const liveReading = React.useRef(reading); liveReading.current = reading;
+    const latestWindow = React.useRef(isAtLatest); latestWindow.current = isAtLatest;
+    React.useLayoutEffect(() => {
+        if (coordinator) reading.layoutLatestNow();
+    });
+    React.useLayoutEffect(() => {
+        if (!coordinator || typeof ResizeObserver === 'undefined') return;
+        const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
+        if (!node) return;
+        // Observe real geometry, including footer-only streaming and font/media
+        // reflow that does not change the message IDs or call RN's size handler.
+        let active = true;
+        const observer = new ResizeObserver(() => {
+            if (active && !liveReading.current.layoutLatestNow()) void liveReading.current.layout();
+        });
+        observer.observe(node);
+        if (node.firstElementChild) observer.observe(node.firstElementChild);
+        return () => { active = false; observer.disconnect(); };
+    }, [coordinator]);
     const contentGeneration = React.useMemo(() => ({}), [collapsedGroups, expandedKeys, manuallyCollapsedKeys, props.currentTurnActive,
         props.groupToolCalls, props.messages]);
     const cancelReadingRestoreRef = React.useRef(reading.cancelRestore);
@@ -680,8 +708,9 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         boundaryFill.current = null;
         if (Platform.OS === 'web') userScrollStarted.current = false;
         reading.jumpLatest();
-        if (inverted) scrollPortRef.current?.scrollToOffset({ offset: 0, animated: true });
-        else scrollPortRef.current?.scrollToEnd({ animated: true });
+        const animated = Platform.OS !== 'web';
+        if (inverted) scrollPortRef.current?.scrollToOffset({ offset: 0, animated });
+        else scrollPortRef.current?.scrollToEnd({ animated });
     }, [inverted, reading, coordinator]);
     const sessionRef = React.useRef(props.sessionId); sessionRef.current = props.sessionId;
     const scrollToBottom = React.useCallback(async () => {
@@ -712,8 +741,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         }
         setContentMeasurement(measurement);
         if (jumpPending.current && isAtLatest) { jumpPending.current = false; scrollLatest(); }
-        else void reading.layout();
-    }, [boundaryAttemptKey, contentGeneration, isAtLatest, scrollLatest, reading, viewportHeight]);
+        else if (!coordinator || !reading.layoutLatestNow()) void reading.layout();
+    }, [boundaryAttemptKey, contentGeneration, isAtLatest, scrollLatest, reading, viewportHeight, coordinator]);
     React.useEffect(() => {
         if (Platform.OS === 'web' || contentMeasurement === null || contentMeasurement.generation === contentGeneration
             || contentMeasurement.boundary !== boundaryAttemptKey('older')) return;
@@ -854,6 +883,10 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             const currentInverted = invertedRef.current;
             const atOlderBoundary = currentInverted ? maxOffset - node.scrollTop <= 24 : node.scrollTop - Math.max(0, extent.current.leading) <= 24;
             const atNewerBoundary = currentInverted ? node.scrollTop <= 24 : maxOffset - node.scrollTop - Math.max(0, extent.current.trailing) <= 24;
+            if (delta !== undefined && delta > 0 && atNewerBoundary && latestWindow.current) {
+                liveReading.current.jumpLatest();
+                liveReading.current.layoutLatestNow();
+            }
             // Keys/touch can express navigation even when no scroll event can
             // fire at the edge. Layout/anchor scrolls never rearm this gate.
             if (delta !== undefined && delta < 0 && atOlderBoundary) loadBoundaryRef.current('older');
@@ -914,6 +947,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     }, [coordinator]);
 
     return (
+        <TranscriptMessageOptionsContext.Provider value={messageOptions}>
         <BrowserProgressContext.Provider value={browserProgress}>
         <TranscriptReadingContext.Provider value={reading.markers}>
         <TranscriptGroupExpansionContext.Provider value={nestedExpansion}>
@@ -940,7 +974,9 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 // index, making unmeasured anchors/latest impossible to seek.
                 // Estimates mount the target; reading markers correct its offset.
                 getItemLayout={Platform.OS === 'web' ? getWebItemLayout : undefined}
+                initialScrollIndex={initialScrollIndex.current}
                 {...(coordinator ? {
+                    initialScrollToEnd: initialScrollIndex.current !== undefined,
                     scrollCoordinator: coordinator,
                     historyBoundaryKeys: currentBoundaryAttemptKeys.current,
                     onAnchorOffsetChange: reading.adjustOffset,
@@ -1040,6 +1076,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         </TranscriptGroupExpansionContext.Provider>
         </TranscriptReadingContext.Provider>
         </BrowserProgressContext.Provider>
+        </TranscriptMessageOptionsContext.Provider>
     );
 });
 

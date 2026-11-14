@@ -37,10 +37,12 @@ import {
     type MarkdownTypographyMode,
 } from './markdownTypography';
 import { calculateTableColumnWidths } from './markdownTableLayout';
+import type { MessageOptionResponse } from '@/sync/messageOptionResponses';
 
 // Option type for callback
 export type Option = {
     title: string;
+    responseKey?: string;
 };
 
 export type MarkdownViewVariant = 'default' | 'foldedPrompt';
@@ -68,6 +70,11 @@ export const MarkdownView = React.memo((props: {
     fileLinks?: boolean;
     imageUrls?: Record<string, string | null>;
     annotationTargets?: boolean;
+    optionKey?: string;
+    optionResponses?: Record<string, MessageOptionResponse>;
+    optionResponse?: MessageOptionResponse;
+    optionsInactive?: boolean;
+    onOptionDismiss?: (key: string) => Promise<void>;
 }) => {
     const blocks = React.useMemo(() => props.readOnly ? parseReadOnlyMarkdown(props.markdown, {allowImages: !!props.imageUrls}) : parseMarkdown(props.markdown), [props.markdown, props.readOnly, props.imageUrls]);
     const variant = props.variant ?? 'default';
@@ -127,7 +134,10 @@ export const MarkdownView = React.memo((props: {
                     } else if (block.type === 'mermaid') {
                         return <MermaidRenderer content={block.content} key={index} typography={props.typography} />;
                     } else if (block.type === 'options') {
-                        return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} variant={variant} question={isQuestion(previousBlock) && previousBlock.type === 'text' ? previousBlock.content : undefined} onLinkPress={handleLinkPress} />;
+                        const responseKey = props.optionKey ? `${props.optionKey}:${index}` : undefined;
+                        return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} variant={variant} question={isQuestion(previousBlock) && previousBlock.type === 'text' ? previousBlock.content : undefined} onLinkPress={handleLinkPress}
+                            responseKey={responseKey} response={(responseKey && props.optionResponses?.[responseKey]) || props.optionResponse}
+                            inactive={props.optionsInactive} onDismiss={props.onOptionDismiss} />;
                     } else if (block.type === 'table') {
                         return <RenderTableBlock headers={block.headers} rows={block.rows} onLinkPress={handleLinkPress} selectable={selectable} key={index} first={index === 0} last={index === blocks.length - 1} variant={variant} />;
                     } else if (block.type === 'image') {
@@ -331,10 +341,14 @@ function RenderOptionsBlock(props: {
     variant: MarkdownViewVariant,
     question?: MarkdownSpan[],
     onLinkPress: (url: string) => void,
+    responseKey?: string;
+    response?: MessageOptionResponse;
+    inactive?: boolean;
+    onDismiss?: (key: string) => Promise<void>;
 }) {
     const imageStyleOptions = React.useMemo(() => parseImageStyleOptions(props.items), [props.items]);
 
-    if (props.onOptionPress && imageStyleOptions.length > 0) {
+    if (props.onOptionPress && !props.response && !props.inactive && imageStyleOptions.length > 0) {
         return (
             <RenderImageStyleOptionsBlock
                 items={imageStyleOptions}
@@ -358,6 +372,10 @@ function RenderQuestionOptions(props: {
     variant: MarkdownViewVariant;
     question?: MarkdownSpan[];
     onLinkPress: (url: string) => void;
+    responseKey?: string;
+    response?: MessageOptionResponse;
+    inactive?: boolean;
+    onDismiss?: (key: string) => Promise<void>;
 }) {
     const { theme } = useUnistyles();
     const typography = useMarkdownTypography();
@@ -368,7 +386,7 @@ function RenderQuestionOptions(props: {
     const [cardWidth, setCardWidth] = React.useState(0);
     const [inputFocused, setInputFocused] = React.useState(false);
     const compactFooter = Platform.OS !== 'web' || cardWidth <= 480;
-    const [dismissed, setDismissed] = React.useState(false);
+    const [submitted, setSubmitted] = React.useState<MessageOptionResponse | null>(null);
     const [sending, setSending] = React.useState(false);
     const sendingRef = React.useRef(false);
     const answer = customText.trim() || (selected === null ? '' : props.items[selected]);
@@ -377,8 +395,8 @@ function RenderQuestionOptions(props: {
         sendingRef.current = true;
         setSending(true);
         try {
-            await props.onOptionPress({ title: answer });
-            setDismissed(true);
+            await props.onOptionPress({ title: answer, ...(props.responseKey ? { responseKey: props.responseKey } : {}) });
+            setSubmitted({ status: 'answered', answer, updatedAt: Date.now() });
         } catch {
             // Keep the draft and selection available for retry.
             Modal.alert(t('common.error'), t('common.retry'));
@@ -387,14 +405,37 @@ function RenderQuestionOptions(props: {
             setSending(false);
         }
     };
-    if (dismissed) return null;
+    const dismiss = async () => {
+        if (sendingRef.current) return;
+        sendingRef.current = true; setSending(true);
+        try {
+            if (props.onDismiss && props.responseKey) await props.onDismiss(props.responseKey);
+            setSubmitted({ status: 'dismissed', updatedAt: Date.now() });
+        } catch { Modal.alert(t('common.error'), t('common.retry')); }
+        finally { sendingRef.current = false; setSending(false); }
+    };
+    const response = props.response ?? submitted;
+    if (response || props.inactive) return <View testID="markdown-question-card" style={[style.optionsContainer, style.questionCard, props.first && style.first, props.last && style.last]}>
+        <View style={style.questionHeader}>
+            <Ionicons name={response?.status === 'answered' ? 'checkmark-circle-outline' : 'help-circle-outline'} size={18} color={theme.colors.textSecondary} />
+            <Text style={style.questionLabel}>{t('tools.names.question')}</Text>
+            <Text testID="question-response-status" style={[style.questionLabel, { marginLeft: 'auto' }]}>{response ? t(response.status === 'answered' ? 'agentInput.asyncQuestion.answered' : 'agentInput.asyncQuestion.dismissed') : t('agentInput.codexPermissionMode.readOnly')}</Text>
+        </View>
+        {props.question && <Text selectable style={style.questionText}><RenderSpans spans={props.question} baseStyle={style.questionText} selectable onLinkPress={props.onLinkPress} /></Text>}
+        {props.items.map((item, index) => <View key={index} testID={`question-resolved-option-${index}`} style={[style.optionItem, response?.answer === item && style.optionItemSelected]}>
+            <View style={[style.optionNumber, response?.answer === item && style.optionNumberSelected]}><Text style={style.optionNumberText}>{index + 1}</Text></View>
+            <Text selectable style={[style.optionText, { flex: 1 }]}>{item}</Text>
+            {response?.answer === item && <Ionicons name="checkmark" size={18} color={theme.colors.textSecondary} />}
+        </View>)}
+        {response?.answer && !props.items.includes(response.answer) && <Text testID="question-completed-answer" selectable style={style.optionText}>{response.answer}</Text>}
+    </View>;
     return (
         <View testID="markdown-question-card" onLayout={event => setCardWidth(event.nativeEvent.layout.width)} style={[style.optionsContainer, props.onOptionPress && style.questionCard, props.variant === 'foldedPrompt' && style.foldedOptionsContainer, props.first && style.first, props.last && style.last]}>
             {props.onOptionPress && <>
                 <View style={style.questionHeader}>
                     <Ionicons name="help-circle-outline" size={18} color={theme.colors.textSecondary} />
                     <Text style={style.questionLabel}>{t('tools.names.question')}</Text>
-                    <Pressable testID="question-close" accessibilityRole="button" accessibilityLabel={t('agentInput.questionClose')} disabled={sending} onPress={() => setDismissed(true)} style={style.questionClose}>
+                    <Pressable testID="question-close" accessibilityRole="button" accessibilityLabel={t('agentInput.questionClose')} disabled={sending} onPress={() => void dismiss()} style={style.questionClose}>
                         <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
                     </Pressable>
                 </View>
@@ -455,7 +496,7 @@ function RenderQuestionOptions(props: {
                         />
                     </View>
                     <View testID="question-actions" style={[style.questionActions, compactFooter && style.questionActionsCompact]}>
-                        <Pressable testID="question-skip" accessibilityRole="button" disabled={sending} onPress={() => setDismissed(true)} style={({ pressed }) => [style.questionSkip, pressed && style.optionItemPressed]}>
+                        <Pressable testID="question-skip" accessibilityRole="button" disabled={sending} onPress={() => void dismiss()} style={({ pressed }) => [style.questionSkip, pressed && style.optionItemPressed]}>
                             <Text style={style.optionText}>{t('agentInput.questionSkip')}</Text>
                         </Pressable>
                         <Pressable testID="question-send" accessibilityRole="button" aria-busy={sending} accessibilityState={{ disabled: !answer || sending, busy: sending }} disabled={!answer || sending} onPress={() => void submit()} style={[style.questionSend, (!answer || sending) && style.optionCustomSendDisabled]}>

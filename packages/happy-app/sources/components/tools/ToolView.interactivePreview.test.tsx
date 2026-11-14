@@ -25,7 +25,7 @@ vi.mock('@/text', () => ({
 }));
 vi.mock('@/hooks/useElapsedTime', () => ({ useElapsedTime: () => 1 }));
 vi.mock('@/utils/toolDisplay', () => ({
-    getTerminalToolCommand: () => null, isInlineAudioFileTool: () => false, isInlineImageFileTool: () => false, isInlineVideoFileTool: () => false, shouldRenderToolCardHeader: () => true,
+    getTerminalToolCommand: (tool: any) => tool.name === 'CodexBash' ? tool.input?.command ?? null : null, isInlineAudioFileTool: () => false, isInlineImageFileTool: () => false, isInlineVideoFileTool: () => false, shouldRenderToolCardHeader: () => true,
 }));
 vi.mock('./views/_all', () => ({ getToolViewComponent: () => null }));
 vi.mock('./views/MCPToolView', () => ({ formatMCPTitle: () => 'Demo App' }));
@@ -45,6 +45,20 @@ const tool = {
 };
 
 describe('ToolView interactive preview title', () => {
+    it('keeps a mixed historical Skill failure visible as a terminal error', () => {
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ToolView metadata={null} tool={{
+            ...tool, name: 'Skill', state: 'error',
+            input: { skillNames: ['release-ops'], command: 'cat /skills/release-ops/SKILL.md; ls /missing' },
+            result: 'ls: /missing: No such file or directory',
+        }} />); });
+        expect(renderer.root.findByProps({ testID: 'tool-card-header' })).toBeTruthy();
+        expect(renderer.root.findAllByType('Ionicons').some((node: any) => node.props.name === 'alert-circle-outline')).toBe(true);
+        expect(renderer.root.findByType('ToolError').props.message).toBe('ls: /missing: No such file or directory');
+        act(() => renderer.unmount());
+    });
+
     beforeEach(() => {
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     });

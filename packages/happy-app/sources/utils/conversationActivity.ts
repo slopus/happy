@@ -1,5 +1,6 @@
-import { summarizeToolFailureOutput, toolFailureDetail } from '@slopus/happy-wire';
+import { isGenericToolFailure, selectToolFailure, summarizeToolFailureOutput } from '@slopus/happy-wire';
 import { Message, ToolCall, ToolCallMessage } from '@/sync/typesMessage';
+import { getEffectiveToolName } from './toolIdentity';
 
 export type ConversationActivityStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -80,7 +81,7 @@ function toolStatus(tool: ToolCall): ConversationActivityStatus {
 function getToolFailure(message: ToolCallMessage): ToolCall['failure'] | null {
     const tool = message.tool;
     if (tool.state !== 'error') return null;
-    if (tool.failure?.summary && summarizeToolFailureOutput(tool.failure.summary)) {
+    if (tool.failure?.summary && !isGenericToolFailure(tool.failure.summary) && summarizeToolFailureOutput(tool.failure.summary)) {
         return tool.failure;
     }
 
@@ -90,23 +91,13 @@ function getToolFailure(message: ToolCallMessage): ToolCall['failure'] | null {
         .filter((child) => child.kind === 'agent-text' && child.isThinking)
         .map((child) => child.kind === 'agent-text' ? child.text : '')
         .join('');
-    for (const output of [tool.result, commandOutput, tool.failure?.detail]) {
-        if (typeof output !== 'string') continue;
-        const summary = summarizeToolFailureOutput(output);
-        if (!summary) continue;
-        const detail = toolFailureDetail(output, summary);
-        return {
-            ...tool.failure,
-            summary,
-            ...(detail !== summary ? { detail } : {}),
-        };
-    }
-    return null;
+    const failure = selectToolFailure([tool.result, commandOutput, tool.failure?.detail, tool.failure?.summary], tool.failure?.summary ?? '');
+    return failure.summary ? { ...tool.failure, ...failure } : null;
 }
 
 export function getSkillNamesFromTool(tool: Pick<ToolCall, 'name' | 'input'>): string[] {
     if (tool.name === 'ego-browser' || tool.name === 'ego-ops') return [tool.name];
-    if (tool.name !== 'Skill') {
+    if (getEffectiveToolName(tool) !== 'Skill') {
         return [];
     }
 

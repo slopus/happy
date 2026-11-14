@@ -1,5 +1,5 @@
 import * as React from "react";
-import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext } from "./TranscriptReadOnlyContext";
+import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext, TranscriptMessageOptionsContext } from "./TranscriptReadOnlyContext";
 import { ActivityIndicator, Image, View, Text, Pressable, Platform, TextInput } from "react-native";
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +22,7 @@ import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 import { getMessageExecutionModeLabel } from '@/utils/messageExecutionMode';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { getUserMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
+import { messageOptionKey, type MessageOptionResponse } from '@/sync/messageOptionResponses';
 import { getUserMessageDisplayText } from './messageDisplayText';
 
 
@@ -30,6 +31,8 @@ export const MessageView = React.memo((props: {
   turnAvatar?: { id: string; imageUrl: string | null; thumbhash?: string | null };
   metadata: Metadata | null;
   sessionId?: string;
+  optionResponse?: MessageOptionResponse;
+  optionsInactive?: boolean;
   getMessageById?: (id: string) => Message | null;
   /**
    * Long-press handler for user-text bubbles. Wired by ChatList from
@@ -50,6 +53,7 @@ export const MessageView = React.memo((props: {
   canEditUserMessage?: boolean;
   onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
 }) => {
+  const options = React.useContext(TranscriptMessageOptionsContext);
   const [avatarImageFailed, setAvatarImageFailed] = React.useState(false);
   const { theme } = useUnistyles();
   const readingWidth = useDesktopReadingWidth();
@@ -90,6 +94,8 @@ export const MessageView = React.memo((props: {
           message={props.message}
           metadata={props.metadata}
           sessionId={props.sessionId}
+          optionResponse={props.optionResponse ?? options.responses.get(props.message.id)}
+          optionsInactive={props.optionsInactive || options.inactive}
           getMessageById={props.getMessageById}
           onForkFromMessage={props.onForkFromMessage}
           forkingFromMessageId={props.forkingFromMessageId}
@@ -109,6 +115,8 @@ function RenderBlock(props: {
   message: Message;
   metadata: Metadata | null;
   sessionId?: string;
+  optionResponse?: MessageOptionResponse;
+  optionsInactive?: boolean;
   getMessageById?: (id: string) => Message | null;
   onForkFromMessage?: (
     messageId: string,
@@ -145,6 +153,8 @@ function RenderBlock(props: {
           message={props.message}
           metadata={props.metadata}
           sessionId={props.sessionId}
+          optionResponse={props.optionResponse}
+          optionsInactive={props.optionsInactive}
           forkTarget={props.agentForkTarget}
           onForkFromMessage={props.onForkFromMessage}
           forkingFromMessageId={props.forkingFromMessageId}
@@ -415,6 +425,8 @@ function AgentTextBlock(props: {
   message: AgentTextMessage;
   metadata: Metadata | null;
   sessionId?: string;
+  optionResponse?: MessageOptionResponse;
+  optionsInactive?: boolean;
   forkTarget?: MessageForkTarget;
   onForkFromMessage?: (
     messageId: string,
@@ -436,8 +448,23 @@ function AgentTextBlock(props: {
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback(async (option: Option) => {
-    if (!readOnly && props.sessionId) await sync.sendMessage(props.sessionId, option.title, { source: 'option' });
-  }, [props.sessionId, readOnly]);
+    if (readOnly || props.optionsInactive || props.optionResponse || !props.sessionId) return;
+    await sync.sendMessage(props.sessionId, option.title, { source: 'option' });
+    // The durable outbox has accepted the reply. A receipt failure must not
+    // expose a retry that would send the same answer twice.
+    if (option.responseKey) {
+      await sync.recordMessageOptionResponse(props.sessionId, option.responseKey, {
+        status: 'answered', answer: option.title, updatedAt: Date.now(),
+      }).catch(() => {});
+    }
+  }, [props.sessionId, props.optionsInactive, props.optionResponse, readOnly]);
+  const optionKey = messageOptionKey(props.message,
+    props.sessionId ? sync.getMessageWireId?.(props.sessionId, props.message.id) : null,
+    props.sessionId ? sync.getMessageWireBlockKey?.(props.sessionId, props.message.id) : null);
+  const handleOptionDismiss = React.useCallback(async (key: string) => {
+    if (readOnly || props.optionsInactive || !props.sessionId) throw new Error('Read-only transcript');
+    await sync.recordMessageOptionResponse(props.sessionId, key, { status: 'dismissed', updatedAt: Date.now() });
+  }, [props.sessionId, props.optionsInactive, readOnly]);
   const copyMessage = React.useCallback(async () => {
     try {
       await Clipboard.setStringAsync(props.message.text);
@@ -500,7 +527,7 @@ function AgentTextBlock(props: {
           return sessionRespondAsyncQuestion(props.sessionId, action);
         }}
       /> : <AnnotatableMessage sessionId={props.sessionId} messageId={props.message.id} enabled={!readOnly && !restrictedContent}>
-        <MarkdownView readOnly={restrictedContent} markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+        <MarkdownView readOnly={restrictedContent} optionKey={optionKey} optionResponses={props.metadata?.messageOptionResponses} optionResponse={props.optionResponse} optionsInactive={props.optionsInactive || readOnly} onOptionDismiss={handleOptionDismiss} markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
       </AnnotatableMessage>}
       {showActions && (
         <View
@@ -641,6 +668,8 @@ function ToolCallBlock(props: {
   message: ToolCallMessage;
   metadata: Metadata | null;
   sessionId?: string;
+  optionResponse?: MessageOptionResponse;
+  optionsInactive?: boolean;
   getMessageById?: (id: string) => Message | null;
 }) {
   if (!props.message.tool) {

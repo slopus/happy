@@ -1092,7 +1092,7 @@ describe('ConversationTranscript older history pagination', () => {
             createNodeMock: (element: any) => element.type === 'FlatList'
                 ? { scrollToEnd, scrollToIndex, scrollToOffset } : null,
         }); });
-        expect(scrollToEnd).toHaveBeenCalledWith({ animated: true });
+        expect(scrollToEnd).toHaveBeenCalledWith({ animated: false });
         await act(async () => resolveReading({ version: 1, anchorId: 'old', anchorSeq: 1,
             offset: -50, expandedGroupIds: [], followLatest: false }));
         act(() => byId(renderer, 'conversation-transcript-list').props.onContentSizeChange(800, 5000));
@@ -1129,8 +1129,41 @@ describe('ConversationTranscript older history pagination', () => {
         await act(async () => finish());
         expect(scrollToEnd).not.toHaveBeenCalled();
         await act(async () => renderer.update(render(true)));
-        expect(scrollToEnd).toHaveBeenCalledWith({ animated: true });
+        expect(scrollToEnd).toHaveBeenCalledWith({ animated: false });
         expect(jump).toHaveBeenCalledOnce();
+        act(() => renderer.unmount());
+    });
+
+    it.each([
+        { platform: 'web', request: 1, latest: true, inverted: false, expected: 15 },
+        { platform: 'web', request: 0, latest: true, inverted: false, expected: undefined },
+        { platform: 'web', request: 1, latest: false, inverted: false, expected: undefined },
+        { platform: 'web', request: 1, latest: true, inverted: true, expected: undefined },
+        { platform: 'android', request: 1, latest: true, inverted: true, expected: undefined },
+    ])('initializes a bounded tail batch only for a latest Web entry ($platform/$request/$latest/$inverted)', async ({ platform, request, latest, inverted, expected }) => {
+        (Platform as any).OS = platform;
+        let renderer: any;
+        const render = (count: number) => <ConversationTranscript metadata={null} sessionId="initial-tail"
+            messages={Array.from({ length: count }, (_, index) => userMessage(String(index)))}
+            isAtLatest={latest} inverted={inverted} followLatestRequest={request} />;
+        await act(async () => { renderer = TestRenderer.create(render(25)); });
+        expect(byId(renderer, 'conversation-transcript-list').props.initialScrollIndex).toBe(expected);
+        expect(Boolean(byId(renderer, 'conversation-transcript-list').props.initialScrollToEnd)).toBe(expected !== undefined);
+        await act(async () => renderer.update(render(30)));
+        expect(byId(renderer, 'conversation-transcript-list').props.initialScrollIndex).toBe(expected);
+        act(() => renderer.unmount());
+    });
+
+    it.each(['ios', 'android'])('retains animated latest navigation on %s', async platform => {
+        (Platform as any).OS = platform;
+        const scrollToOffset = vi.fn(); let renderer: any;
+        const render = (request: number) => <ConversationTranscript metadata={null}
+            sessionId="native-latest" messages={[userMessage('last')]} followLatestRequest={request} />;
+        await act(async () => { renderer = TestRenderer.create(render(0), {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { scrollToOffset } : null,
+        }); });
+        await act(async () => renderer.update(render(1)));
+        expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
         act(() => renderer.unmount());
     });
 
@@ -1150,11 +1183,124 @@ describe('ConversationTranscript older history pagination', () => {
             } });
         });
         await act(async () => { renderer.update(render(1, 'after')); });
-        expect(scrollToEnd).toHaveBeenCalledWith({ animated: true });
+        expect(scrollToEnd).toHaveBeenCalledWith({ animated: false });
         act(() => renderer.unmount());
     });
 
-    it('coalesces streaming layout updates into one Web latest scroll per frame', async () => {
+    it('follows actual footer and viewport resize events, pauses for reading, and cleans up its observer', async () => {
+        const callbacks: Array<() => void> = [];
+        const observe = vi.fn(); const disconnect = vi.fn();
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback: () => void) { callbacks.push(callback); }
+            observe = observe;
+            disconnect = disconnect;
+        });
+        const node = document.createElement('div'); node.appendChild(document.createElement('div'));
+        const scrollToEnd = vi.fn(); let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<ConversationTranscript metadata={null}
+            sessionId="actual-resize" messages={[userMessage('same-row')]} />, {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { scrollToEnd, getScrollableNode: () => node } : null,
+        }); });
+        expect(observe).toHaveBeenCalledWith(node);
+        expect(observe).toHaveBeenCalledWith(node.firstElementChild);
+        await flushFrame(); scrollToEnd.mockClear();
+        act(() => { callbacks.forEach(callback => callback()); callbacks.forEach(callback => callback()); });
+        expect(scrollToEnd).toHaveBeenCalledTimes(2);
+        await flushFrame();
+        expect(scrollToEnd).toHaveBeenCalledTimes(2);
+        act(() => {
+            const list = byId(renderer, 'conversation-transcript-list');
+            list.props.onScrollBeginDrag();
+            list.props.onScroll({ nativeEvent: { contentOffset: { y: 200 }, contentSize: { height: 5000 }, layoutMeasurement: { height: 800 } } });
+        });
+        scrollToEnd.mockClear();
+        act(() => callbacks.forEach(callback => callback())); await flushFrame();
+        expect(scrollToEnd).not.toHaveBeenCalled();
+        act(() => byId(renderer, 'conversation-transcript-list').props.onScroll({ nativeEvent: {
+            contentOffset: { y: 4200 }, contentSize: { height: 5000 }, layoutMeasurement: { height: 800 },
+        } }));
+        scrollToEnd.mockClear();
+        act(() => callbacks.forEach(callback => callback())); await flushFrame();
+        expect(scrollToEnd).toHaveBeenCalledOnce();
+        act(() => renderer.unmount()); expect(disconnect).toHaveBeenCalledOnce();
+    });
+
+    it('rejects queued resize callbacks from a previous session and after unmount', async () => {
+        const callbacks: Array<() => void> = [];
+        const disconnect = vi.fn();
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback: () => void) { callbacks.push(callback); }
+            observe() {}
+            disconnect = disconnect;
+        });
+        const node = document.createElement('div'); node.appendChild(document.createElement('div'));
+        const scrollToEnd = vi.fn(); let renderer: any;
+        const render = (sessionId: string) => <ConversationTranscript metadata={null}
+            sessionId={sessionId} messages={[userMessage('same-row')]} />;
+        await act(async () => { renderer = TestRenderer.create(render('resize-a'), {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { scrollToEnd, getScrollableNode: () => node } : null,
+        }); });
+        await act(async () => renderer.update(render('resize-b')));
+        await flushFrame(); scrollToEnd.mockClear();
+        expect(disconnect).toHaveBeenCalledOnce();
+        act(() => callbacks[0]()); await flushFrame();
+        expect(scrollToEnd).not.toHaveBeenCalled();
+        act(() => callbacks[1]()); await flushFrame();
+        expect(scrollToEnd).toHaveBeenCalledOnce();
+        scrollToEnd.mockClear(); act(() => renderer.unmount());
+        act(() => callbacks[1]()); await flushFrame();
+        expect(disconnect).toHaveBeenCalledTimes(2);
+        expect(scrollToEnd).not.toHaveBeenCalled();
+    });
+
+    it('resumes latest following on a downward wheel at the live edge but not a historical boundary', async () => {
+        const callbacks: Array<() => void> = [];
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback: () => void) { callbacks.push(callback); }
+            observe() {}
+            disconnect() {}
+        });
+        const node = document.createElement('div'); node.appendChild(document.createElement('div'));
+        Object.defineProperties(node, { scrollHeight: { value: 5000 }, clientHeight: { value: 800 } });
+        node.scrollTop = 4200;
+        const scrollToEnd = vi.fn(); let renderer: any;
+        const render = (latest: boolean) => <ConversationTranscript metadata={null} sessionId="wheel-live-edge"
+            messages={[userMessage('same-row')]} isAtLatest={latest} />;
+        await act(async () => { renderer = TestRenderer.create(render(true), {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { scrollToEnd, getScrollableNode: () => node } : null,
+        }); });
+        await flushFrame(); scrollToEnd.mockClear();
+        act(() => { node.dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })); callbacks[0](); });
+        await flushFrame(); expect(scrollToEnd).not.toHaveBeenCalled();
+        act(() => { node.dispatchEvent(new WheelEvent('wheel', { deltaY: 1 })); callbacks[0](); });
+        expect(scrollToEnd).toHaveBeenCalledTimes(2);
+        await flushFrame(); expect(scrollToEnd).toHaveBeenCalledTimes(2);
+        await act(async () => renderer.update(render(false)));
+        scrollToEnd.mockClear();
+        act(() => { node.dispatchEvent(new WheelEvent('wheel', { deltaY: 1 })); callbacks[0](); });
+        await flushFrame(); expect(scrollToEnd).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('aligns hydrated Web row commits before the next frame and yields after a user scroll', async () => {
+        const scrollToEnd = vi.fn(); let renderer: any;
+        const render = (count: number) => <ConversationTranscript metadata={null} sessionId="hydrated-tail"
+            messages={Array.from({ length: count }, (_, index) => userMessage(String(index)))} />;
+        await act(async () => { renderer = TestRenderer.create(render(3), {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { scrollToEnd } : null,
+        }); });
+        await flushFrame(); scrollToEnd.mockClear();
+        await act(async () => renderer.update(render(30)));
+        expect(scrollToEnd).toHaveBeenCalledWith({ animated: false });
+        scrollToEnd.mockClear();
+        act(() => byId(renderer, 'conversation-transcript-list').props.onScrollBeginDrag());
+        await act(async () => renderer.update(render(35)));
+        await flushFrame();
+        expect(scrollToEnd).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('finishes each Web streaming layout before paint without a delayed follow frame', async () => {
         const scrollToEnd = vi.fn(); let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<ConversationTranscript metadata={null}
             sessionId="stream-follow" messages={[userMessage('stream')]} />, {
@@ -1167,9 +1313,11 @@ describe('ConversationTranscript older history pagination', () => {
             list.props.onContentSizeChange(800, 1100);
             list.props.onContentSizeChange(800, 1200);
         });
-        expect(scrollToEnd).not.toHaveBeenCalled();
+        // Three content events and the resulting measurement commit all align
+        // synchronously. The real adapter suppresses identical DOM writes.
+        expect(scrollToEnd).toHaveBeenCalledTimes(4);
         await flushFrame();
-        expect(scrollToEnd).toHaveBeenCalledTimes(1);
+        expect(scrollToEnd).toHaveBeenCalledTimes(4);
         act(() => renderer.unmount());
     });
 
@@ -1207,7 +1355,7 @@ describe('ConversationTranscript older history pagination', () => {
         act(() => renderer.unmount());
     });
 
-    it('drops a pending Web latest scroll when the user starts scrolling', async () => {
+    it('does not apply a later Web latest scroll after the user claims the viewport', async () => {
         const scrollToEnd = vi.fn(); let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<ConversationTranscript metadata={null}
             sessionId="stream-pause" messages={[userMessage('stream')]} />, {
@@ -1219,6 +1367,7 @@ describe('ConversationTranscript older history pagination', () => {
             list.props.onContentSizeChange(800, 1000);
             list.props.onScrollBeginDrag();
         });
+        scrollToEnd.mockClear();
         await flushFrame();
         expect(scrollToEnd).not.toHaveBeenCalled();
         act(() => renderer.unmount());
@@ -1697,7 +1846,7 @@ describe('ConversationTranscript older history pagination', () => {
         expect(jump).toHaveBeenCalledOnce(); expect(scrollToEnd).not.toHaveBeenCalled();
         await act(async () => { finish(); renderer.update(render(true)); });
         act(() => byId(renderer, 'conversation-transcript-list').props.onContentSizeChange(100, 2000));
-        expect(scrollToEnd).toHaveBeenCalledWith({ animated: true });
+        expect(scrollToEnd).toHaveBeenCalledWith({ animated: false });
         act(() => renderer.unmount());
     });
 

@@ -11,6 +11,124 @@ const group = (id: string, ids: string[]) => ({ type: 'tool-group', id, messages
 const wire = (id: string) => id.replace(/-replayed$/, '');
 
 describe('durable transcript reading anchors', () => {
+    it.each(['resolve', 'reject', 'cancel'] as const)('allows an explicit latest jump during a pending read while capture remains fenced (%s)', async result => {
+        (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+        let resolveRead!: (state: ReadingState) => void; let rejectRead!: (error: Error) => void;
+        const read = new Promise<ReadingState>((resolve, reject) => { resolveRead = resolve; rejectRead = reject; });
+        const save = vi.fn(); const scrollToIndex = vi.fn();
+        const node = { height: 1000, viewport: 600, offset: 0 };
+        const scrollToEnd = vi.fn(() => { node.offset = node.height - node.viewport; });
+        const measure = vi.fn((callback: any) => callback(0, 0, 800, 600));
+        const adapter = { key: 'pending-read', read: () => read, save, wireId: wire, wireSeq: () => 1 };
+        const listRef = { current: { scrollToEnd, scrollToIndex } };
+        const viewportRef = { current: { measureInWindow: measure } };
+        let reading!: ReturnType<typeof useTranscriptReading>;
+        function Probe() {
+            reading = useTranscriptReading({ adapter, items: [], inverted: false, isAtLatest: true,
+                listRef, viewportRef, expanded: [], restoreExpanded: () => {} });
+            return null;
+        }
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<Probe />); });
+            expect(reading.layoutLatestNow()).toBe(false); // Default following still waits for read.
+            reading.jumpLatest();
+            expect(reading.layoutLatestNow()).toBe(true);
+            expect(node.offset).toBe(400);
+            node.height += 106;
+            expect(reading.layoutLatestNow()).toBe(true);
+            expect(node.offset).toBe(506); // A footer reflow cannot wait for disk readiness.
+            await reading.capture();
+            expect(measure).not.toHaveBeenCalled();
+            expect(save).not.toHaveBeenCalled();
+            if (result === 'cancel') reading.cancelRestore('older');
+            node.height += 40;
+            scrollToEnd.mockClear();
+            await act(async () => {
+                if (result === 'reject') rejectRead(new Error('reading store unavailable'));
+                else resolveRead({ version: 1, anchorId: 'old-anchor', anchorSeq: 1,
+                    offset: -50, expandedGroupIds: [], followLatest: false });
+            });
+            if (result === 'cancel') {
+                expect(reading.layoutLatestNow()).toBe(false);
+                expect(scrollToEnd).not.toHaveBeenCalled();
+                expect(node.offset).toBe(506);
+            } else {
+                expect(scrollToEnd).toHaveBeenCalledWith({ animated: false });
+                expect(node.offset).toBe(546); // Read completion aligns in the same microtask.
+                expect(reading.layoutLatestNow()).toBe(true);
+            }
+            expect(scrollToIndex).not.toHaveBeenCalled();
+        } finally { act(() => renderer?.unmount()); delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT; }
+    });
+
+    it('follows latest synchronously, cancels its queued frame and yields to user and historical ownership', async () => {
+        (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+        const frames = new Map<number, FrameRequestCallback>(); let next = 0;
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.set(++next, callback); return next; });
+        vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+        const scrollToEnd = vi.fn();
+        let reading!: ReturnType<typeof useTranscriptReading>;
+        const listRef = { current: { scrollToEnd } };
+        function Probe({ latest = true }: { latest?: boolean }) {
+            reading = useTranscriptReading({ items: [], inverted: false, isAtLatest: latest,
+                listRef, viewportRef: { current: null }, expanded: [], restoreExpanded: () => {} });
+            return null;
+        }
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<Probe />); });
+            expect(frames.size).toBe(1);
+            expect(reading.layoutLatestNow()).toBe(true);
+            expect(scrollToEnd).toHaveBeenCalledExactlyOnceWith({ animated: false });
+            expect(frames.size).toBe(0);
+            reading.cancelRestore('older');
+            expect(reading.layoutLatestNow()).toBe(false);
+            expect(scrollToEnd).toHaveBeenCalledOnce();
+            reading.jumpLatest();
+            expect(reading.layoutLatestNow()).toBe(true);
+            await act(async () => renderer.update(<Probe latest={false} />));
+            expect(reading.layoutLatestNow()).toBe(false);
+            act(() => renderer.unmount()); renderer = null;
+            expect(reading.layoutLatestNow()).toBe(false);
+        } finally {
+            if (renderer) act(() => renderer.unmount());
+            vi.unstubAllGlobals(); delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
+        }
+    });
+
+    it('does not reuse old owner readiness during a new owner commit or bypass its pending historical restore', async () => {
+        (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+        const scrollToEnd = vi.fn();
+        let readNew!: (state: ReadingState) => void;
+        const deferred = new Promise<ReadingState>(resolve => { readNew = resolve; });
+        const adapter = (key: string, read: () => Promise<ReadingState | null>) => ({ key, read, save: vi.fn(), wireId: wire, wireSeq: () => 1 });
+        const oldOwner = adapter('old-owner', async () => null);
+        const newOwner = adapter('new-owner', () => deferred);
+        let reading!: ReturnType<typeof useTranscriptReading>;
+        const prepaintResults: boolean[] = [];
+        function Probe({ owner }: { owner: typeof oldOwner }) {
+            reading = useTranscriptReading({ adapter: owner, items: [], inverted: false, isAtLatest: true,
+                listRef: { current: { scrollToEnd } }, viewportRef: { current: null }, expanded: [], restoreExpanded: () => {} });
+            React.useLayoutEffect(() => { prepaintResults.push(reading.layoutLatestNow()); }, [owner]);
+            return null;
+        }
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<Probe owner={oldOwner} />); });
+            reading.jumpLatest();
+            expect(reading.layoutLatestNow()).toBe(true);
+            scrollToEnd.mockClear();
+            await act(async () => renderer.update(<Probe owner={newOwner} />));
+            expect(prepaintResults).toEqual([false, false]);
+            expect(reading.layoutLatestNow()).toBe(false);
+            await act(async () => readNew({ version: 1, anchorId: 'history', anchorSeq: 1,
+                offset: -20, followLatest: false, expandedGroupIds: [] }));
+            expect(reading.layoutLatestNow()).toBe(false);
+            expect(scrollToEnd).not.toHaveBeenCalled();
+        } finally { act(() => renderer?.unmount()); delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT; }
+    });
+
     it('does not measure or persist on coordinated Web scroll events', async () => {
         const measure = vi.fn(() => ({ top: 0, height: 600 }));
         const save = vi.fn();
@@ -51,6 +169,7 @@ describe('durable transcript reading anchors', () => {
         let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<Probe />); });
         await reading!.layout();
+        expect(reading!.layoutLatestNow()).toBe(false);
         expect(scrollToEnd).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });

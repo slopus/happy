@@ -746,6 +746,18 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
 });
 
 describe('extractSkillNamesFromCommand', () => {
+    it.each([
+        'cat /skills/release-ops/SKILL.md; ls /skills/release-ops/scripts',
+        'cat /skills/release-ops/SKILL.md && curl https://example.com',
+        'cat /skills/release-ops/SKILL.md /missing.txt',
+        'cat /skills/release-ops/SKILL.md | node script.js',
+    ])('keeps mixed commands as terminal operations: %s', (command) => {
+        expect(extractSkillNamesFromCommand(command)).toEqual([]);
+        expect(mapCodexMcpMessageToSessionEnvelopes({
+            type: 'exec_command_begin', call_id: 'mixed', command,
+        }, { currentTurnId: 'turn-1' }).envelopes[0]).toMatchObject({ ev: { name: 'CodexBash' } });
+    });
+
     it('deduplicates personal and plugin skill paths', () => {
         expect(extractSkillNamesFromCommand(
             "sed -n '1,200p' /Users/a/.agents/skills/dev/SKILL.md /repo/plugins/obsidian-tools/skills/ob-chat/SKILL.md /repo/plugins/obsidian-tools/skills/ob-chat/SKILL.md",
@@ -1375,5 +1387,45 @@ describe('native async question presentation', () => {
         const mapped = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', item_id: 'bad', message: text,
             delivery: 'async', questions: [{ title: '' }] }, { currentTurnId: 'turn' }).envelopes;
         expect(mapped[0].ev).toEqual({ t: 'text', text });
+    });
+});
+
+
+describe('command failure fidelity', () => {
+    it('selects stderr diagnostics over a generic error object', () => {
+        expect(mapCodexMcpMessageToSessionEnvelopes({
+            type: 'exec_command_end', call_id: 'diagnostic', status: 'completed', exit_code: 1,
+            error: { message: 'Command exited with code 1.' },
+            stderr: 'ls: /skills/release-ops/scripts: No such file or directory',
+        }, { currentTurnId: 'turn-1' }).envelopes[0]).toMatchObject({ ev: {
+            status: 'failed', error: { summary: 'ls: /skills/release-ops/scripts: No such file or directory' },
+        } });
+    });
+    it.each(['cancelled', 'canceled', 'aborted', 'interrupted'])('preserves explicit %s with nonzero exit', (status) => {
+        expect(mapCodexMcpMessageToSessionEnvelopes({
+            type: 'exec_command_end', call_id: 'cancelled', status, exit_code: 130,
+        }, { currentTurnId: 'turn-1' }).envelopes[0]).toMatchObject({ ev: { status: 'cancelled' } });
+    });
+});
+
+
+describe('historical command failure fidelity', () => {
+    it.each([
+        ['completed', 1, 'failed'], ['completed', 0, 'completed'], ['cancelled', 130, 'cancelled'],
+    ])('replays %s / exit %s as %s', (status, exitCode, expected) => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({ turns: [{ id: 'turn-1', items: [{
+            id: 'mixed-history', type: 'commandExecution', status, exitCode,
+            command: 'cat /skills/release-ops/SKILL.md; ls /missing',
+            aggregatedOutput: exitCode ? 'ls: /missing: No such file or directory' : 'ok',
+        } as any] }] });
+        expect(envelopes.find(item => item.ev.t === 'tool-call-start')).toMatchObject({ ev: { name: 'CodexBash' } });
+        expect(envelopes.find(item => item.ev.t === 'tool-call-end')).toMatchObject({ ev: { status: expected } });
+    });
+    it('keeps completed error payloads failed', () => {
+        expect(mapCodexMcpMessageToSessionEnvelopes({
+            type: 'exec_command_end', status: 'completed', error: { message: 'Permission denied' },
+        }, { currentTurnId: 'turn-1' }).envelopes[0]).toMatchObject({ ev: {
+            status: 'failed', error: { summary: 'Permission denied' },
+        } });
     });
 });

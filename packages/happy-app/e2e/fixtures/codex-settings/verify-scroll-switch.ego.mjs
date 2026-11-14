@@ -25,7 +25,7 @@ export async function verifyScrollSwitch({ page, runtime, seed, onState = async 
         await page.waitForURL(route(session));
         await page.waitForFunction(text => {
             const node = document.querySelector('[data-testid="conversation-transcript-list"]');
-            return node && node.innerText.includes(text) && node.scrollHeight - node.clientHeight - node.scrollTop < 30;
+            return node && node.innerText.includes(text) && node.scrollHeight - node.clientHeight - node.scrollTop <= 1;
         }, session.latest, { timeout: 30000 });
         return metrics();
     };
@@ -86,9 +86,28 @@ export async function verifyScrollSwitch({ page, runtime, seed, onState = async 
     report.push({ case: 'USER-READING', pass: true, before, after });
     await onState('新增回复保留历史位置', after);
 
-    await page.click('loc=role:button[name="会话详情"]');
-    await page.waitForSelector('text=运行位置');
-    await page.click('button[aria-label="会话详情"] >> nth=1');
+    const detailsLabel = (await page.evaluate(() => Boolean(document.querySelector('button[aria-label="会话详情"]')))) ? '会话详情' : 'Session details';
+    // Wait for the durable reading capture, rather than assuming its idle
+    // debounce has finished while a recording is consuming compositor time.
+    await page.waitForFunction(async () => {
+        const node = document.querySelector('[data-testid="conversation-transcript-list"]');
+        let fiber = node[Object.keys(node).find(key => key.startsWith('__reactFiber$'))];
+        for (let i = 0; fiber && i < 40; i++, fiber = fiber.return) {
+            const reading = fiber.memoizedProps?.reading;
+            if (!reading?.read) continue;
+            const state = await reading.read();
+            if (!state || state.followLatest !== false) return false;
+            const anchor = [...node.querySelectorAll('[data-transcript-key]')].find(row => {
+                const key = JSON.parse(row.dataset.transcriptKey);
+                return key.includes(state.anchorId) && (!state.anchorBlock || key.includes(state.anchorBlock));
+            });
+            return anchor && Math.abs(anchor.getBoundingClientRect().top - node.getBoundingClientRect().top - state.offset) < 2;
+        }
+        return false;
+    }, undefined, { timeout: 10000 });
+    await page.click(`loc=role:button[name="${detailsLabel}"]`);
+    await page.waitForSelector(`button[aria-label="${detailsLabel}"] >> nth=1`);
+    await page.click(`button[aria-label="${detailsLabel}"] >> nth=1`);
     await page.waitForURL(`${route(a)}/info`);
     await page.evaluate(() => history.back());
     await page.waitForURL(route(a));

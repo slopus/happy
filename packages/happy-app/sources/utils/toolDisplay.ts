@@ -1,5 +1,6 @@
 import { ToolCall } from '@/sync/typesMessage';
 import { stringifyToolCommand } from './toolCommand';
+import { getEffectiveToolName } from './toolIdentity';
 import { getSkillNamesFromTool } from './conversationActivity';
 
 const TERMINAL_TOOL_NAMES = new Set([
@@ -139,7 +140,7 @@ export function getToolSummaryDetail(tool: Pick<ToolCall, 'name' | 'input' | 'de
 }
 
 export function getTerminalToolCommand(tool: Pick<ToolCall, 'name' | 'input'>): string | null {
-    if (!isTerminalToolName(tool.name)) {
+    if (!isTerminalToolName(getEffectiveToolName(tool))) {
         return null;
     }
 

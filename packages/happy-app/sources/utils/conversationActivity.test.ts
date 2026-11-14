@@ -32,6 +32,23 @@ function toolMessage(
 }
 
 describe('conversation activity model', () => {
+    it('repairs a generic historical summary using the real diagnostic', () => {
+        const skill = toolMessage('1', 'Skill', { skillNames: ['dev'] }, 'error');
+        skill.tool.failure = { summary: 'Command exited with code 1.' };
+        skill.tool.result = '---\nname: dev\n---\n' + 'instructions\n'.repeat(600) + 'ls: /missing: No such file or directory';
+        expect(collectConversationActivities([skill]).skills[0].failure).toMatchObject({
+            summary: 'ls: /missing: No such file or directory',
+            detail: expect.stringContaining('ls: /missing: No such file or directory'),
+        });
+    });
+    it('does not attribute a mixed historical terminal failure to the Skill', () => {
+        const mixed = toolMessage('1', 'Skill', {
+            skillNames: ['release-ops'], command: 'cat /skills/release-ops/SKILL.md; ls /missing',
+        }, 'error');
+        expect(getSkillNamesFromTool(mixed.tool)).toEqual([]);
+        expect(collectConversationActivities([mixed]).skills).toEqual([]);
+    });
+
     it('extracts native and normalized Skill names', () => {
         expect(getSkillNamesFromTool(toolMessage('1', 'Skill', {
             skillNames: ['dev', 'obsidian-tools:ob-chat'],

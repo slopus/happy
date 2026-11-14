@@ -27,6 +27,103 @@ const props = (data: number[]) => ({ data, getItem: (rows: number[], index: numb
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
+it('scrolls to the measured Web bottom after rich rows and footer outgrow item estimates', async () => {
+    let list: any; let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<List {...props([1, 2, 3])}
+        ref={(value: any) => { list = value; }} renderItem={() => <span />} />); });
+    const node = { scrollHeight: 5000, clientHeight: 600, scrollTop: 0, addEventListener() {}, removeEventListener() {} };
+    const scrollTo = vi.fn();
+    list._scrollRef = { getScrollableNode: () => node, scrollTo };
+    list.scrollToEnd({ animated: false });
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: 4400, animated: false });
+    node.scrollHeight = 5600;
+    list.scrollToEnd({ animated: false });
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: 5000, animated: false });
+    node.scrollTop = 5000;
+    scrollTo.mockClear();
+    list.scrollToEnd({ animated: false });
+    expect(scrollTo).not.toHaveBeenCalled();
+    node.scrollHeight = 300;
+    list.scrollToEnd({ animated: true });
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: 0, animated: true });
+    act(() => renderer.unmount());
+});
+
+it.each(['hidden', 'inverted', 'invalid'] as const)('preserves the vendor fallback when measured geometry is %s', async mode => {
+    const fallback = vi.spyOn(VendorList.prototype, 'scrollToEnd').mockImplementation(() => {});
+    let list: any; let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<List {...props([1, 2, 3])}
+        inverted={mode === 'inverted'} ref={(value: any) => { list = value; }} renderItem={() => <span />} />); });
+    const node = { scrollHeight: mode === 'invalid' ? NaN : 5000,
+        clientHeight: mode === 'hidden' ? 0 : 600, addEventListener() {}, removeEventListener() {} };
+    const scrollTo = vi.fn();
+    list._scrollRef = { getScrollableNode: () => node, scrollTo };
+    list.scrollToEnd({ animated: true });
+    expect(fallback).toHaveBeenCalledExactlyOnceWith({ animated: true });
+    expect(scrollTo).not.toHaveBeenCalled();
+    act(() => renderer.unmount());
+});
+
+it.each([false, true])('positions a latest entry at the measured bottom in its first vendor size event (hidden initially: %s)', async hidden => {
+    let list: any; let renderer: any;
+    const node = { scrollHeight: 5000, clientHeight: hidden ? 0 : 600,
+        addEventListener() {}, removeEventListener() {} };
+    const scrollTo = vi.fn(); const contentSize = vi.fn();
+    const coordinator = new WebTranscriptScrollCoordinator(() => list);
+    const ownedEnd = vi.spyOn(coordinator.driver, 'scrollToEnd');
+    await act(async () => { renderer = TestRenderer.create(<List {...props(Array.from({ length: 100 }, (_, index) => index))}
+        initialScrollIndex={90} initialScrollToEnd scrollCoordinator={coordinator} onContentSizeChange={contentSize}
+        ref={(value: any) => { list = value; }} renderItem={({ item }: { item: number }) => <span data-row={item} />} />); });
+    list._scrollRef = { getScrollableNode: () => node, scrollTo };
+    const estimatedSeek = vi.spyOn(list, 'scrollToIndex');
+    try {
+        act(() => list._onContentSizeChange(800, 5000));
+        expect(contentSize).toHaveBeenCalledWith(800, 5000);
+        expect(estimatedSeek).not.toHaveBeenCalled();
+        if (hidden) {
+            expect(scrollTo).not.toHaveBeenCalled();
+            node.clientHeight = 600;
+            act(() => list._onLayout({ nativeEvent: { layout: { width: 800, height: 600 } } }));
+        }
+        expect(ownedEnd).toHaveBeenCalledExactlyOnceWith({ animated: false });
+        expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ y: 4400, animated: false });
+        expect(coordinator.interaction).toBe('programmaticJump');
+        expect(renderer.root.findAllByType('span').length).toBeLessThanOrEqual(10);
+        act(() => list._onContentSizeChange(800, 5600));
+        expect(ownedEnd).toHaveBeenCalledOnce();
+    } finally { act(() => renderer.unmount()); coordinator.dispose(); }
+});
+
+it.each(['restore', 'inverted', 'user-input'] as const)('does not apply an initial latest alignment for %s', async mode => {
+    let list: any; let renderer: any;
+    const coordinator = new WebTranscriptScrollCoordinator(() => list);
+    const scrollTo = vi.fn();
+    const node = { scrollHeight: 5000, clientHeight: 600, addEventListener() {}, removeEventListener() {} };
+    await act(async () => { renderer = TestRenderer.create(<List {...props(Array.from({ length: 100 }, (_, index) => index))}
+        initialScrollIndex={90} initialScrollToEnd={mode !== 'restore'} inverted={mode === 'inverted'}
+        scrollCoordinator={coordinator} ref={(value: any) => { list = value; }} renderItem={() => <span />} />); });
+    list._scrollRef = { getScrollableNode: () => node, scrollTo };
+    const estimatedSeek = vi.spyOn(list, 'scrollToIndex').mockImplementation(() => {});
+    try {
+        if (mode === 'user-input') coordinator.userIntent('older');
+        act(() => list._onContentSizeChange(800, 5000));
+        expect(scrollTo).not.toHaveBeenCalled();
+        if (mode === 'user-input') expect(estimatedSeek).not.toHaveBeenCalled();
+        else expect(estimatedSeek).toHaveBeenCalledExactlyOnceWith({ animated: false, index: 90 });
+    } finally { act(() => renderer.unmount()); coordinator.dispose(); }
+});
+
+it('mounts only the initial tail batch using the real vendor render mask', async () => {
+    let list: any; let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<List {...props(Array.from({ length: 100 }, (_, index) => index))}
+        initialScrollIndex={90} ref={(value: any) => { list = value; }}
+        renderItem={({ item }: { item: number }) => <span data-row={item} />} />); });
+    expect(list.state.cellsAroundViewport).toEqual({ first: 90, last: 99 });
+    expect(renderer.root.findAllByType('span').map((row: any) => row.props['data-row']))
+        .toEqual(Array.from({ length: 10 }, (_, index) => 90 + index));
+    act(() => renderer.unmount());
+});
+
 it.each(['input', 'replacement', 'disconnect'])('retains a growing group’s visible Skill through delayed geometry, then yields on %s', async cancel => {
     let list: any; let renderer: any; let skillTop = 8;
     const skill = { isConnected: true, getBoundingClientRect: () => ({ top: skillTop, bottom: skillTop + 24 }) };

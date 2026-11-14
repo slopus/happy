@@ -1,3 +1,4 @@
+import { selectToolFailure } from '@slopus/happy-wire';
 import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import { TranscriptReadOnlyContext } from "../TranscriptReadOnlyContext";
 import * as React from 'react';
@@ -19,6 +20,7 @@ import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
 import { getTerminalToolCommand, isInlineAudioFileTool, isInlineImageFileTool, isInlineVideoFileTool, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
 import { McpAppHost } from './McpAppHost';
+import { getEffectiveToolName } from '@/utils/toolIdentity';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -30,7 +32,9 @@ interface ToolViewProps {
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
-    const { tool, onPress, sessionId, messageId } = props;
+    const { onPress, sessionId, messageId } = props;
+    const effectiveName = getEffectiveToolName(props.tool);
+    const tool = effectiveName === props.tool.name ? props.tool : { ...props.tool, name: effectiveName };
     const readOnly = React.useContext(TranscriptReadOnlyContext);
     const router = useRouter();
     const openFile = useOpenSessionFile(sessionId);
@@ -171,6 +175,13 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     const terminalCommand = getTerminalToolCommand(tool);
     const isCompactTerminalTool = terminalCommand !== null;
+    const terminalFailure = isCompactTerminalTool && tool.state === 'error'
+        && tool.permission?.status !== 'canceled' && tool.permission?.status !== 'denied'
+        ? selectToolFailure([
+            tool.failure?.summary, tool.failure?.detail, tool.result,
+            ...(props.messages ?? []).flatMap(message => message.kind === 'agent-text' && message.isThinking ? [message.text] : []),
+        ], 'The tool reported a failure.')
+        : null;
     const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
     const isInlineVideoFile = isInlineVideoFileTool(tool);
     const isInlineAudioFile = isInlineAudioFileTool(tool);
@@ -313,6 +324,12 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     </View>
                 );
             })()}
+
+            {terminalFailure ? (
+                <View style={styles.content} testID="terminal-failure-summary">
+                    <ToolError message={terminalFailure.summary} />
+                </View>
+            ) : null}
 
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
             {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}

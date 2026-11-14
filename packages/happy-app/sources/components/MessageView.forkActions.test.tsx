@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 import { MessageView } from './MessageView';
-import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext } from './TranscriptReadOnlyContext';
+import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext, TranscriptMessageOptionsContext } from './TranscriptReadOnlyContext';
 import * as Clipboard from 'expo-clipboard';
 
 vi.mock('react-native', () => ({
@@ -25,7 +25,11 @@ vi.mock('./tools/ToolView', () => ({ ToolView: 'ToolView' }));
 vi.mock('./ConversationActivityStrip', () => ({ ConversationActivityStrip: 'ConversationActivityStrip' }));
 vi.mock('./DesktopShortcutTooltip', () => ({ DesktopShortcutTooltip: 'DesktopShortcutTooltip' }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 900 } }));
-vi.mock('@/sync/sync', () => ({ sync: { sendMessage: vi.fn() } }));
+const syncMocks = vi.hoisted(() => ({
+    sendMessage: vi.fn(), recordMessageOptionResponse: vi.fn(),
+    getMessageWireId: vi.fn(), getMessageWireBlockKey: vi.fn(),
+}));
+vi.mock('@/sync/sync', () => ({ sync: syncMocks }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('@/text', () => ({
     t: (key: string) => ({
@@ -312,6 +316,105 @@ describe('native async question rendering', () => {
         act(() => { renderer = TestRenderer.create(<MessageView message={message} metadata={{ path: '/project', host: 'machine', capabilities: { codexAsyncQuestions: true } }} sessionId="session" />); });
         expect(renderer.root.findAllByType('MarkdownView')).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'async-question-card' }).filter((node: any) => typeof node.type === 'string')).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+});
+
+
+describe('MessageView persistent option receipts', () => {
+    beforeEach(() => {
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+        syncMocks.sendMessage.mockReset().mockResolvedValue(undefined);
+        syncMocks.recordMessageOptionResponse.mockReset().mockResolvedValue(undefined);
+        syncMocks.getMessageWireId.mockReset().mockReturnValue('wire-question');
+        syncMocks.getMessageWireBlockKey.mockReset().mockReturnValue('text:2');
+    });
+
+    function mount(props: Record<string, unknown> = {}, context?: React.ContextType<typeof TranscriptMessageOptionsContext>) {
+        let renderer: any;
+        act(() => {
+            const message = <MessageView message={agentMessage} metadata={null} sessionId="session" {...props} />;
+            renderer = TestRenderer.create(context ? <TranscriptMessageOptionsContext.Provider value={context}>
+                <React.Fragment>{message}</React.Fragment>
+            </TranscriptMessageOptionsContext.Provider> : message);
+        });
+        return renderer;
+    }
+
+    it('uses sync wire/block identity and forwards metadata receipts to Markdown', () => {
+        const responses = { 'saved-key': { status: 'answered' as const, answer: 'A', updatedAt: 3 } };
+        const renderer = mount({ metadata: { path: '/project', host: 'machine', messageOptionResponses: responses } });
+        const markdown = renderer.root.findByType('MarkdownView');
+        expect(syncMocks.getMessageWireId).toHaveBeenCalledWith('session', 'agent-1');
+        expect(syncMocks.getMessageWireBlockKey).toHaveBeenCalledWith('session', 'agent-1');
+        expect(markdown.props.optionKey).toBe(JSON.stringify(['wire-question', 'text:2']));
+        expect(markdown.props.optionResponses).toBe(responses);
+        act(() => renderer.unmount());
+    });
+
+    it('resolves after an accepted send even when saving its receipt fails', async () => {
+        syncMocks.recordMessageOptionResponse.mockRejectedValueOnce(new Error('receipt unavailable'));
+        const renderer = mount();
+        const choose = renderer.root.findByType('MarkdownView').props.onOptionPress;
+        await expect(choose({ title: 'A', responseKey: 'stable-key:0' })).resolves.toBeUndefined();
+        expect(syncMocks.sendMessage).toHaveBeenCalledExactlyOnceWith('session', 'A', { source: 'option' });
+        expect(syncMocks.recordMessageOptionResponse).toHaveBeenCalledExactlyOnceWith('session', 'stable-key:0', {
+            status: 'answered', answer: 'A', updatedAt: expect.any(Number),
+        });
+        expect(syncMocks.sendMessage.mock.invocationCallOrder[0]).toBeLessThan(syncMocks.recordMessageOptionResponse.mock.invocationCallOrder[0]);
+        act(() => renderer.unmount());
+    });
+
+    it('rejects a failed send without recording a completed answer', async () => {
+        syncMocks.sendMessage.mockRejectedValueOnce(new Error('outbox unavailable'));
+        const renderer = mount();
+        await expect(renderer.root.findByType('MarkdownView').props.onOptionPress({ title: 'A', responseKey: 'key:0' }))
+            .rejects.toThrow('outbox unavailable');
+        expect(syncMocks.recordMessageOptionResponse).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('rejects a failed dismiss receipt so the card can remain available', async () => {
+        syncMocks.recordMessageOptionResponse.mockRejectedValueOnce(new Error('receipt unavailable'));
+        const renderer = mount();
+        await expect(renderer.root.findByType('MarkdownView').props.onOptionDismiss('stable-key:0'))
+            .rejects.toThrow('receipt unavailable');
+        expect(syncMocks.recordMessageOptionResponse).toHaveBeenCalledExactlyOnceWith('session', 'stable-key:0', {
+            status: 'dismissed', updatedAt: expect.any(Number),
+        });
+        expect(syncMocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('records a successful dismissal without sending a new chat message', async () => {
+        const renderer = mount();
+        await expect(renderer.root.findByType('MarkdownView').props.onOptionDismiss('stable-key:0')).resolves.toBeUndefined();
+        expect(syncMocks.recordMessageOptionResponse).toHaveBeenCalledExactlyOnceWith('session', 'stable-key:0', {
+            status: 'dismissed', updatedAt: expect.any(Number),
+        });
+        expect(syncMocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it.each(['answered', 'dismissed'] as const)('passes a %s context receipt into nested message rows and blocks another send', async status => {
+        const response = { status, updatedAt: 3, ...(status === 'answered' ? { answer: 'A' } : {}) };
+        const renderer = mount({}, { responses: new Map([['agent-1', response]]), inactive: false });
+        const markdown = renderer.root.findByType('MarkdownView');
+        expect(markdown.props.optionResponse).toBe(response);
+        await markdown.props.onOptionPress({ title: 'A', responseKey: 'stable-key:0' });
+        expect(syncMocks.sendMessage).not.toHaveBeenCalled();
+        expect(syncMocks.recordMessageOptionResponse).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('passes inactive context into nested rows and blocks both mutation paths', async () => {
+        const renderer = mount({}, { responses: new Map(), inactive: true });
+        const markdown = renderer.root.findByType('MarkdownView');
+        expect(markdown.props.optionsInactive).toBe(true);
+        await markdown.props.onOptionPress({ title: 'A', responseKey: 'stable-key:0' });
+        await expect(markdown.props.onOptionDismiss('stable-key:0')).rejects.toThrow('Read-only transcript');
+        expect(syncMocks.sendMessage).not.toHaveBeenCalled();
+        expect(syncMocks.recordMessageOptionResponse).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 });

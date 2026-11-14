@@ -2,6 +2,7 @@ import { saveSessionWarmMessageTime } from './sessionWarmCache';
 import { getConversationMessageTime } from './sessionConversationTime';
 import { getUserMessageTime } from './sessionUserActivity';
 import { updateEncryptedSessionMetadata } from './sessionMetadata';
+import { withMessageOptionResponse, type MessageOptionResponse } from './messageOptionResponses';
 import { mergeLastMessageAt } from '@/utils/sessionActivity';
 import { removeProjectSessionFromCache } from './projectWorkspaceCache';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
@@ -784,6 +785,23 @@ class Sync {
         this.historyWireProvenance.clear();
         this.memoryReadingStates.clear();
         await clearing;
+    };
+
+    public recordMessageOptionResponse = async (id: string, key: string, response: MessageOptionResponse): Promise<void> => {
+        const session = storage.getState().sessions[id];
+        const encryptionOwner = this.encryption;
+        const encryption = encryptionOwner.getSessionEncryption(id);
+        if (!session?.metadata || !encryption) throw new Error('Question session is unavailable');
+        const owner = this.captureHistoryOwner(id);
+        const assertCurrent = () => {
+            if (!owner.isCurrent() || !accountRuntimeCurrent() || this.encryption !== encryptionOwner
+                || encryptionOwner.getSessionEncryption(id) !== encryption) throw new SessionWriteCancelled();
+        };
+        const result = await updateEncryptedSessionMetadata(id, session.metadata, session.metadataVersion, encryption,
+            metadata => withMessageOptionResponse(metadata, key, response), 3, assertCurrent);
+        assertCurrent();
+        const live = storage.getState().sessions[id];
+        if (live && result.version >= live.metadataVersion) this.applySessions([{ ...live, metadata: result.metadata, metadataVersion: result.version }]);
     };
 
     public readSessionReadingState = (id: string): Promise<ReadingState | null> => this.localHistory?.readReadingState(id)

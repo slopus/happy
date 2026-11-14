@@ -14,6 +14,7 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
     return class AnchoredWebVirtualizedList extends Base {
         private appliedAnchorRevision = 0;
         private pendingLayoutAnchor: { node: HTMLElement; offset: number; transaction: number } | null = null;
+        private initialLatestPositioned = false;
         constructor(props: any) {
             super(props);
             if (!this.state?.cellsAroundViewport || !this._scrollMetrics || typeof props.getItemLayout !== 'function') {
@@ -21,6 +22,49 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
             }
             this.state = { ...this.state, anchorProps: props, anchorRevision: 0,
                 readAnchorOffset: () => this._scrollRef?.getScrollableNode?.()?.scrollTop ?? this._scrollMetrics.offset };
+            // The vendor seeks initialScrollIndex inside its first size event.
+            // For a latest entry that index mounts a bounded tail batch; it is
+            // not the desired viewport. Replace only that initial seek, and
+            // align the measured bottom in this same event before paint.
+            for (const event of ['_onContentSizeChange', '_onLayout'] as const) {
+                const original = this[event];
+                if (typeof original !== 'function') throw new Error('Unsupported Web transcript virtualizer layout events');
+                this[event] = (...args: any[]) => {
+                    if (this.props.initialScrollToEnd && !this.props.inverted) this._hasTriggeredInitialScrollToIndex = true;
+                    original(...args);
+                    this.alignInitialLatest();
+                };
+            }
+        }
+
+        private alignInitialLatest() {
+            if (!this.props.initialScrollToEnd || this.props.inverted || this.initialLatestPositioned) return;
+            const coordinator = this.props.scrollCoordinator;
+            if (coordinator?.interaction === 'userScrolling') {
+                this.initialLatestPositioned = true;
+                return;
+            }
+            const node = this._scrollRef?.getScrollableNode?.() as HTMLElement | undefined;
+            if (!node || !Number.isFinite(node.scrollHeight) || !Number.isFinite(node.clientHeight)
+                || node.scrollHeight <= 0 || node.clientHeight <= 0) return;
+            this.initialLatestPositioned = true;
+            if (coordinator) coordinator.driver.scrollToEnd({ animated: false });
+            else this.scrollToEnd({ animated: false });
+        }
+
+        scrollToEnd(params?: { animated?: boolean }) {
+            const node = this._scrollRef?.getScrollableNode?.() as HTMLElement | undefined;
+            // Vendor scrollToEnd uses getItemLayout estimates. Rich text,
+            // streaming footers and delayed images can outgrow those estimates.
+            if (!this.props.inverted && node && Number.isFinite(node.scrollHeight)
+                && Number.isFinite(node.clientHeight) && node.clientHeight > 0) {
+                const offset = Math.max(0, node.scrollHeight - node.clientHeight);
+                if (Math.abs(node.scrollTop - offset) > 0.5 || !Number.isFinite(node.scrollTop)) {
+                    this.scrollToOffset({ offset, animated: params?.animated ?? false });
+                }
+                return;
+            }
+            super.scrollToEnd(params);
         }
 
         static getDerivedStateFromProps(props: any, previous: any): any {

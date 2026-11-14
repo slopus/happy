@@ -1,3 +1,4 @@
+import { getEffectiveToolName } from '@/utils/toolIdentity';
 import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import * as React from 'react';
 import { View, Text, Pressable, ActivityIndicator, Platform } from 'react-native';
@@ -358,7 +359,7 @@ function ToolSummaryRow(props: {
     const router = useRouter();
     const openFile = useOpenSessionFile(props.sessionId);
     const { tool } = props.message;
-    const category = getToolSummaryCategory(tool.name);
+    const category = getToolSummaryCategory(getEffectiveToolName(tool));
     const detail = getToolSummaryDetail(tool);
     const title = getToolRowTitle(category, tool.name);
     const filePath = isFileEditTool(tool.name) && typeof tool.input?.file_path === 'string'
@@ -441,7 +442,7 @@ function getGroupSummaryCategory(messages: Message[]): ToolSummaryCategory | nul
     const categories = new Set<ToolSummaryCategory>();
     for (const message of messages) {
         if (message.kind === 'tool-call') {
-            categories.add(getToolSummaryCategory(message.tool.name));
+            categories.add(getToolSummaryCategory(getEffectiveToolName(message.tool)));
         }
     }
     if (categories.size === 1) {

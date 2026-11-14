@@ -190,7 +190,9 @@ describe('MarkdownView typography scope', () => {
         expect(onOptionPress).toHaveBeenCalledExactlyOnceWith({ title: '我选择' });
         expect(renderer.root.findByProps({ testID: 'question-send' }).props.disabled).toBe(true);
         await act(async () => { resolveSend(); });
-        expect(renderer.root.findAllByProps({ testID: 'markdown-question-card' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'markdown-question-card' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'question-send' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'question-option-0' })).toHaveLength(0);
     });
 
     it('keeps a custom draft after failure and retries the trimmed reply', async () => {
@@ -220,7 +222,36 @@ describe('MarkdownView typography scope', () => {
         act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} onOptionPress={onOptionPress} />); });
         act(() => { renderer.root.findByProps({ testID }).props.onPress(); });
         expect(onOptionPress).not.toHaveBeenCalled();
-        expect(renderer.root.findAllByProps({ testID: 'markdown-question-card' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'markdown-question-card' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'question-send' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'question-option-0' })).toHaveLength(0);
+    });
+
+    it.each(['answered', 'dismissed'] as const)('restores a persisted %s receipt as read-only after remount', status => {
+        const onOptionPress = vi.fn();
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} optionKey="wire" onOptionPress={onOptionPress} />); });
+        act(() => { renderer.unmount(); });
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} optionKey="wire" optionResponses={{ 'wire:1': { status, answer: '我选择', updatedAt: 1 } }} onOptionPress={onOptionPress} />); });
+        expect(renderer.root.findAllByProps({ testID: 'question-send' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'question-response-status' }).children).toContain(`agentInput.asyncQuestion.${status}`);
+        expect(onOptionPress).not.toHaveBeenCalled();
+    });
+
+    it('keeps a skipped card available if its persistent receipt fails', async () => {
+        const onDismiss = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(undefined);
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} optionKey="wire" onOptionDismiss={onDismiss} onOptionPress={vi.fn()} />); });
+        await act(async () => { await renderer.root.findByProps({ testID: 'question-skip' }).props.onPress(); });
+        expect(renderer.root.findAllByProps({ testID: 'question-send' })).toHaveLength(1);
+        await act(async () => { await renderer.root.findByProps({ testID: 'question-skip' }).props.onPress(); });
+        expect(renderer.root.findAllByProps({ testID: 'question-send' })).toHaveLength(0);
+        expect(onDismiss).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves an incomplete history window inert without inventing a skipped receipt', () => {
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} optionsInactive onOptionPress={vi.fn()} />); });
+        expect(renderer.root.findAllByProps({ testID: 'question-send' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'question-response-status' }).children).toContain('agentInput.codexPermissionMode.readOnly');
     });
 
     it('leaves restricted history inert and preserves its question text', () => {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { messageOptionResponseSchema } from './messageOptionResponses';
 import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema, ARTIFACT_PROTOCOL, asyncQuestionResponseSchema } from "@slopus/happy-wire";
 
 //
@@ -10,6 +11,7 @@ export const MetadataSchema = z.object({
     goalBoard: GoalBoardBindingSchema.optional(),
     goalBoardSnapshot: GoalBoardSnapshotSchema.optional(),
     codexAsyncQuestionResponses: z.record(z.string(), asyncQuestionResponseSchema).optional(),
+    messageOptionResponses: z.record(z.string(), messageOptionResponseSchema).optional(),
     goalBoardTaskSessions: z.record(z.string().max(65536), z.string().max(256)).optional(),
     models: z.array(z.object({
         code: z.string(),

@@ -1,3 +1,4 @@
+import { getEffectiveToolName } from './toolIdentity';
 import { describe, expect, it } from 'vitest';
 import { ToolCall } from '@/sync/typesMessage';
 import {
@@ -24,6 +25,15 @@ function tool(name: string, input: unknown): ToolCall {
 }
 
 describe('terminal tool display helpers', () => {
+    it('renders a mixed legacy Skill record as terminal while retaining the command', () => {
+        const command = 'cat /skills/release-ops/SKILL.md; ls /missing';
+        const legacy = tool('Skill', { skillNames: ['release-ops'], command });
+        expect(getEffectiveToolName(legacy)).toBe('CodexBash');
+        expect(getToolSummaryCategory(getEffectiveToolName(legacy))).toBe('terminal');
+        expect(getTerminalToolCommand(legacy)).toBe(command);
+        expect(getToolSummaryDetail(legacy)).toBe(command);
+    });
+
     it('detects command-like terminal tools', () => {
         expect(isTerminalToolName('Bash')).toBe(true);
         expect(isTerminalToolName('CodexBash')).toBe(true);

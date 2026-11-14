@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeToolFailureOutput, toolFailureDetail } from './toolFailure';
+import { selectToolFailure, summarizeToolFailureOutput, toolFailureDetail } from './toolFailure';
 
 describe('command failure summaries', () => {
     it('ignores a documented error example and selects the real terminal diagnostic', () => {
@@ -40,5 +40,34 @@ describe('bounded command failure details', () => {
 
     it('keeps short output unchanged', () => {
         expect(toolFailureDetail('Error: failed', 'Error: failed')).toBe('Error: failed');
+    });
+});
+
+
+describe('real runtime diagnostics after document output', () => {
+    it.each([
+        'ls: /skills/release-ops/scripts: No such file or directory',
+        'rg: /missing: No such file or directory (os error 2)',
+        'find: /missing: Permission denied',
+        'curl: (22) The requested URL returned error: 404',
+        'node:internal/modules/cjs/loader:1404',
+        "FileNotFoundError: [Errno 2] No such file or directory: '/missing'",
+    ])('retains %s', (diagnostic) => {
+        const output = '---\nname: release-ops\n---\n' + 'instructions\n'.repeat(600) + diagnostic;
+        expect(summarizeToolFailureOutput(output)).toBe(diagnostic);
+        expect(toolFailureDetail(output, 'Command exited with code 1.')).toContain(diagnostic);
+    });
+});
+
+
+describe('failure candidate selection', () => {
+    it.each(['stderr', 'output', 'aggregatedOutput', 'aggregated_output', 'result', 'content'])('finds diagnostics in nested %s after generic metadata', field => {
+        expect(selectToolFailure([
+            { message: 'Command exited with code 1.', [field]: 'curl: (6) Could not resolve host: invalid.test' },
+        ], 'The tool reported a failure.').summary).toBe('curl: (6) Could not resolve host: invalid.test');
+    });
+    it('keeps a real plain message over an exit-code-only error', () => {
+        expect(selectToolFailure(['Command exited with code 1.', 'Access denied by the service'], 'fallback').summary)
+            .toBe('Access denied by the service');
     });
 });
