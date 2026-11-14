@@ -137,7 +137,8 @@ fun gitRemovedColor(colors: HappyColors) = if (colors.dark) Color(0xFFFF453A) el
 /**
  * One session in the flat home list: 60 avatar centred in a row padded 16
  * either side and 10 above and below; title 17/22 semibold (shimmering while
- * the agent works) with a 20 dot after it while it waits or is unread (its
+ * the agent works, its last 12 fading where it runs out of room,
+ * [com.slopus.happy.ui.components.TitleFade]) with a 20 dot after it while it waits or is unread (its
  * slot kept, so the title never moves; no time); the project 15/20; the
  * worktree 13/18 with a 13 branch glyph, then the draft glyph and line
  * counts. A hairline runs from the text (x = 88) to the edge. Archived rows,
@@ -252,6 +253,7 @@ fun FlatSessionRow(
                             baseColor = ink,
                             highlightColor = ShimmerSpec.sheen(ink, ground),
                             shimmering = presentation.shimmerTitle,
+                            fade = true,
                             modifier = Modifier.wrapContentHeight(unbounded = carded),
                         )
                     }

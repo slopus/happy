@@ -291,6 +291,9 @@ private class ShimmerNode(var clock: ShimmerClock, var highlight: Color, var pha
  * [onRenderThread] sweeps there instead ([RenderThreadShimmerText]) and
  * costs the main thread nothing a frame, for text that stays on screen while
  * it works (the conversation's bar), not a list's rows.
+ *
+ * [fade], for a row's title: one that runs out of room is cut and its end
+ * fades ([titleFade]) in place of the ellipsis; one that fits draws as is.
  */
 @Composable
 fun ShimmerText(
@@ -303,18 +306,25 @@ fun ShimmerText(
     stillColor: Color = baseColor,
     phase: Float? = null,
     onRenderThread: Boolean = false,
+    fade: Boolean = false,
 ) {
     val sweeps = shimmering && (phase != null || !rememberReduceMotion())
     if (sweeps && onRenderThread && phase == null && renderThreadMotion() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         RenderThreadShimmerText(text, style, baseColor, highlightColor, modifier)
         return
     }
+    var overflowing by remember { mutableStateOf(false) }
     Text(
         text = text,
         style = style,
         color = if (sweeps) baseColor else stillColor,
         maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier.then(if (sweeps) Modifier.shimmer(highlightColor, phase) else Modifier),
+        // Unwrapped, so a cut title runs on to the box's end and not to its last whole word.
+        softWrap = !fade,
+        overflow = if (fade) TextOverflow.Clip else TextOverflow.Ellipsis,
+        onTextLayout = { layout -> if (fade) overflowing = layout.hasVisualOverflow },
+        modifier = modifier
+            .then(if (fade) Modifier.titleFade { overflowing } else Modifier)
+            .then(if (sweeps) Modifier.shimmer(highlightColor, phase) else Modifier),
     )
 }

@@ -216,6 +216,7 @@ private fun RowScope.AvatarLane(content: @Composable BoxScope.() -> Unit) {
     )
 }
 
+/** A row's name, shimmering while it works, its end fading where it runs out of room ([com.slopus.happy.ui.components.TitleFade]). */
 @Composable
 private fun RowScope.RowName(text: String, working: Boolean, style: TextStyle) {
     val colors = HappyTheme.colors
@@ -226,6 +227,7 @@ private fun RowScope.RowName(text: String, working: Boolean, style: TextStyle) {
             baseColor = colors.text,
             highlightColor = ShimmerSpec.sheen(colors.text, colors.grouped.background),
             shimmering = working,
+            fade = true,
         )
     }
 }

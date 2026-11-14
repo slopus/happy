@@ -511,7 +511,8 @@ private fun titleStart(row: AgentFeedRow): Dp {
 
 /**
  * One conversation, on one line: a bot's or task's 30 mark, the title 17/22
- * (desktop's sheen while it runs, [AgentFeedRow.Conversation.running]),
+ * (desktop's sheen while it runs, [AgentFeedRow.Conversation.running];
+ * cut with its last 12 fading where it runs out of room, [com.slopus.happy.ui.components.TitleFade]),
  * and a 10 dot 12 after it while it waits or is unread. No time. The whole
  * row opens it.
  */
@@ -564,6 +565,7 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
                     baseColor = colors.text,
                     highlightColor = ShimmerSpec.sheen(colors.text, colors.surfaceHigh),
                     shimmering = row.running,
+                    fade = true,
                     modifier = if (row.owner == null) Modifier.wrapContentHeight(unbounded = true).agentTitleBaseline() else Modifier,
                 )
                 // A teammate's task: whose it is, as search's detail line.
@@ -653,8 +655,9 @@ private fun PlaceRow(name: String, mark: @Composable () -> Unit, onClick: () -> 
 }
 
 /**
- * A project or a worktree: its name, shimmering while work runs inside it,
- * and a project's mark before it ([FolderMarkView]). It opens nothing.
+ * A project or a worktree: its name, shimmering while work runs inside it
+ * and fading at its end where it runs out of room ([com.slopus.happy.ui.components.TitleFade]), and a
+ * project's mark before it ([FolderMarkView]). It opens nothing.
  */
 @Composable
 private fun FolderRow(row: AgentFeedRow.Folder) {
@@ -682,6 +685,7 @@ private fun FolderRow(row: AgentFeedRow.Folder) {
                 baseColor = colors.text,
                 highlightColor = ShimmerSpec.sheen(colors.text, colors.surfaceHigh),
                 shimmering = row.running,
+                fade = true,
                 modifier = Modifier.wrapContentHeight(unbounded = true).agentTitleBaseline(),
             )
         }
