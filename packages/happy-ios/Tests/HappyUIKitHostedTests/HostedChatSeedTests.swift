@@ -58,7 +58,9 @@ final class HostedChatSeedTests: XCTestCase {
         let context = AppContext(account: controller, variant: .development, version: "test")
         let chat = LegacyChatViewController(context: context, session: try XCTUnwrap(controller.session), sessionId: "seeded-tab-4")
         chat.loadViewIfNeeded()
-        XCTAssertEqual(chat.navigationItem.title, "Scroll indicator")
+        // The checkout's name from the shell's first frame, never the
+        // chat's own, which its tab says.
+        XCTAssertEqual(chat.navigationItem.title, "chat-nav")
         XCTAssertNil(Self.subview(AgentInputCardView.self, in: chat.view))
         let scene = try await hostedActiveScene()
         let original = scene.keyWindow

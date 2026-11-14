@@ -212,6 +212,30 @@ final class WorktreeTabsTests: XCTestCase {
         XCTAssertEqual(WorktreeCheckout.locate("chat", in: home)?.tabs.map(\.id), ["chat"])
     }
 
+    func testAChatNamesItsCheckoutFromItsOwnRecord() {
+        let worktree = record("b", path: "/src/happy/.dev/worktree/gdansk", createdAt: 3)
+        let home = snapshot([record("own", path: "/src/happy"), record("a", path: "/src/happy/.dev/worktree/gdansk", createdAt: 2), worktree])
+        let named = WorktreeCheckout.named(worktree)
+        let located = WorktreeCheckout.locate("b", in: home)
+        XCTAssertEqual(named?.id, located?.id)
+        XCTAssertEqual(named?.projectName, located?.projectName)
+        XCTAssertEqual(named?.workspaceName, "gdansk")
+        XCTAssertEqual(named?.tabs, [], "no other chat is read")
+        let rig = record("ws", rig: true, project: (id: "p1", name: "Happy"), workspace: (id: "w1", name: "Strip work"))
+        XCTAssertEqual(WorktreeCheckout.named(rig)?.workspaceName, "Strip work")
+        XCTAssertNil(WorktreeCheckout.named(record("side", path: "/src/happy", extra: ["isSideChat": .bool(true)])))
+    }
+
+    func testTheHeaderNamesTheCheckoutNeverTheChat() {
+        let worktree = record("b", path: "/src/happy/.dev/worktree/gdansk", summary: "Fix the strip")
+        XCTAssertEqual(WorktreeCheckout.named(worktree)?.headerTitle(metadata: worktree.metadata, gitStatus: nil), "gdansk")
+        // The project's own checkout goes by the branch, then the project.
+        let main = record("main", path: "/src/happy", summary: "Fix the strip", extra: ["gitBranch": .string("main")])
+        XCTAssertEqual(WorktreeCheckout.named(main)?.headerTitle(metadata: main.metadata, gitStatus: nil), "main")
+        let bare = record("bare", path: "/src/happy", summary: "Fix the strip")
+        XCTAssertEqual(WorktreeCheckout.named(bare)?.headerTitle(metadata: bare.metadata, gitStatus: nil), "happy")
+    }
+
     func testATabSaysWhetherItsAgentWorksOrWaitsOnThePerson() {
         var working = record("working", path: "/src/happy")
         working.thinking = true

@@ -78,6 +78,28 @@ public struct WorktreeCheckout: Equatable, Sendable {
         )
     }
 
+    /// The checkout `session` is in, named from its own record and with no
+    /// tabs: no other chat is read, so a screen can say it before the
+    /// snapshot has been grouped. It names the checkout as `locate` does
+    /// whenever the checkout's chats agree on its name, as they do. Nil
+    /// for a chat in none.
+    public static func named(_ session: SessionRecord) -> WorktreeCheckout? {
+        guard let place = Place(session) else { return nil }
+        return WorktreeCheckout(
+            id: "\(place.projectId)\u{0}\(place.checkoutId)",
+            projectName: place.projectName,
+            workspaceName: place.checkoutId.isEmpty ? nil : place.checkoutName ?? place.checkoutId,
+            tabs: []
+        )
+    }
+
+    /// What the header calls the checkout: the worktree's name, else the
+    /// branch the chat runs on (sessionGitPresentation.ts's subtitle), else
+    /// the project's. Never a chat's own name, which its tab shows.
+    public func headerTitle(metadata: JSONValue?, gitStatus: GitStatus?) -> String {
+        workspaceName ?? ChatHeaderModel.subtitle(metadata, gitStatus: gitStatus) ?? projectName
+    }
+
     /// `sortLive`: live first, then by the last meaningful message.
     private static func listOrder(_ a: SessionRecord, _ b: SessionRecord) -> Bool {
         if a.active != b.active { return a.active }

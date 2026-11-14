@@ -22,10 +22,10 @@ private struct NoSockets: WebSocketConnector {
 
 /// The chat reached as the app reaches it, over a store holding real
 /// sessions (`SeededAccount`): pushed from a list, its worktree strip
-/// switching chats in place. Hosted, so the screens are in a window of a
-/// real scene, under a real navigation bar, and every frame of a
-/// transition is sampled. Navigation starts with a shell; once deferred
-/// content is ready, its geometry remains stable.
+/// switching chats in place, in the same screen. Hosted, so the screens are
+/// in a window of a real scene, under a real navigation bar, and every
+/// frame of a transition is sampled. Navigation starts with a shell; once
+/// deferred content is ready, its geometry remains stable.
 @MainActor
 final class HostedChatNavigationTests: XCTestCase {
     override func setUp() {
@@ -43,7 +43,9 @@ final class HostedChatNavigationTests: XCTestCase {
         let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController,
                                  "navigation must start synchronously, before any readiness callback")
         XCTAssertFalse(chat.contentInstalled)
-        XCTAssertEqual(chat.navigationItem.title, "Scroll indicator")
+        // The checkout's name from the first frame, never the chat's, which
+        // its tab says.
+        XCTAssertEqual(chat.navigationItem.title, "chat-nav")
         XCTAssertNil(Self.subview(ChatListView.self, in: chat.view))
         XCTAssertNil(Self.subview(AgentInputCardView.self, in: chat.view))
         let ready = try await until { chat.contentInstalled && chat.openingReport != nil }
@@ -205,26 +207,37 @@ final class HostedChatNavigationTests: XCTestCase {
 
     // MARK: A tab switch
 
+    /// The same screen shows the other tab: from the tap on, every frame
+    /// has the header, the strip, the list and the dock where they were,
+    /// rows drawn (the tab left's until the new tab's are), the composer
+    /// shown, and nothing animating. Once in, it is the chat a fresh open
+    /// shows.
     func testATabSwitchShowsTheChatAsAFreshOpenWould() async throws {
         let (controller, _) = try await signedIn()
         let context = AppContext(account: controller, variant: .development, version: "test")
         let (_, navigation, root) = try await hosted()
         let first = try await shown(after: { root.push(.session(id: "seeded-tab-4"), context: context) }, in: navigation)
         try await settled(first, in: navigation)
+        let header = first.navigationItem.titleView
 
         let sampler = ChatFrameSampler(navigation: navigation)
         let strip = try XCTUnwrap(Self.subview(ChatWorktreeTabStrip.self, in: first.view))
-        let switched = try await shown(after: { strip.onSelect?("seeded-tab-3") }, in: navigation)
-        try await settled(switched, in: navigation)
-        let sampled = try await until { sampler.frames.filter { $0.chat === switched && $0.inWindow && $0.ready }.count >= 12 }
-        XCTAssertTrue(sampled, "sample the ready tab across enough display frames")
+        let tapped = CACurrentMediaTime()
+        strip.onSelect?("seeded-tab-3")
+        XCTAssertTrue(navigation.topViewController === first, "a switch keeps the screen")
+        XCTAssertEqual(first.sessionId, "seeded-tab-3")
+        let switched = try await until { !first.isHoldingSwitch }
+        XCTAssertTrue(switched, "the tab never came in")
+        let inAfter = CACurrentMediaTime() - tapped
+        try await Task.sleep(for: .milliseconds(200))
         sampler.stop()
-        let report = try XCTUnwrap(switched.openingReport)
-        print(String(format: "OPENING switch ready after %.1f ms, missing %@", report.elapsed * 1000, report.missing.description))
-        XCTAssertEqual(navigation.viewControllers.count, 2, "a switch replaces the chat, it pushes nothing")
-        Self.assertStill(sampler.frames.filter { $0.chat === switched }, report: report, "switch")
-        Self.assertSeeded(switched, report, "switch")
+        print(String(format: "SWITCH in after %.1f ms", inAfter * 1000))
+        XCTAssertEqual(navigation.viewControllers.count, 2, "a switch replaces nothing and pushes nothing")
+        XCTAssertTrue(first.navigationItem.titleView === header, "the header stays")
+        XCTAssertEqual(first.navigationItem.title, "chat-nav")
+        Self.assertSwitchStill(sampler.frames.filter { $0.chat === first }, "switch")
         let afterSwitch = try XCTUnwrap(sampler.frames.last)
+        XCTAssertGreaterThan(afterSwitch.rows, 0)
 
         // The same chat opened afresh from the list.
         navigation.popToRootViewController(animated: false)
@@ -242,7 +255,63 @@ final class HostedChatNavigationTests: XCTestCase {
         XCTAssertEqual(afterSwitch.dock, opened.dock, "dock")
         XCTAssertEqual(afterSwitch.card, opened.card, "composer")
         XCTAssertEqual(afterSwitch.rows, opened.rows, "rows")
+        XCTAssertEqual(afterSwitch.row, opened.row, "the newest row")
         await controller.signOut()
+    }
+
+    /// Each tab's composer is its own: a draft typed in one is not in the
+    /// next, and is there again on coming back, with the keyboard kept up
+    /// across the switches.
+    func testATabSwitchGivesEachTabItsOwnDraft() async throws {
+        let (controller, _) = try await signedIn()
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let (_, navigation, root) = try await hosted()
+        let chat = try await shown(after: { root.push(.session(id: "seeded-tab-4"), context: context) }, in: navigation)
+        try await settled(chat, in: navigation)
+        func card() -> AgentInputCardView? {
+            // The composer shown: the tab left's until the new tab's is in.
+            Self.subviews(SessionComposerView.self, in: chat.view).first { $0.alpha > 0 }.flatMap { Self.subview(AgentInputCardView.self, in: $0) }
+        }
+        func select(_ id: String) async throws {
+            let strip = try XCTUnwrap(Self.subview(ChatWorktreeTabStrip.self, in: chat.view))
+            strip.onSelect?(id)
+            let done = try await until { chat.chatId == id && !chat.isHoldingSwitch }
+            XCTAssertTrue(done, "switch to \(id)")
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let typed = try XCTUnwrap(card())
+        typed.textView.becomeFirstResponder()
+        typed.textView.insertText("only for Scroll indicator")
+        try await select("seeded-tab-3")
+        XCTAssertEqual(card()?.textView.text ?? "", "", "the draft followed into another tab")
+        XCTAssertTrue(card()?.textView.isFirstResponder == true, "the keyboard went down")
+        try await select("seeded-tab-4")
+        XCTAssertEqual(card()?.textView.text, "only for Scroll indicator", "the tab's draft is gone")
+        card()?.textView.resignFirstResponder()
+        await controller.signOut()
+    }
+
+    /// From the tap on, every frame: nothing moves or animates, the rows
+    /// are drawn and the composer shows.
+    private static func assertSwitchStill(_ frames: [ChatFrame], _ label: String, file: StaticString = #filePath, line: UInt = #line) {
+        guard let first = frames.first else {
+            XCTFail("\(label): no frame sampled", file: file, line: line)
+            return
+        }
+        XCTAssertGreaterThan(frames.count, TestTime.sampled(10), "\(label): too few frames sampled", file: file, line: line)
+        for frame in frames {
+            let at = String(format: "%@ at %.0f ms", label, (frame.time - first.time) * 1000)
+            XCTAssertEqual(frame.animating.filter { $0 != "strip" }, [], "\(at): animating", file: file, line: line)
+            XCTAssertEqual(frame.title, first.title, "\(at): header", file: file, line: line)
+            XCTAssertEqual(frame.compose, first.compose, "\(at): Compose", file: file, line: line)
+            XCTAssertEqual(frame.strip, first.strip, "\(at): strip", file: file, line: line)
+            XCTAssertEqual(frame.list, first.list, "\(at): list", file: file, line: line)
+            XCTAssertEqual(frame.dock, first.dock, "\(at): dock", file: file, line: line)
+            XCTAssertEqual(frame.card, first.card, "\(at): composer", file: file, line: line)
+            XCTAssertTrue(frame.composerShown, "\(at): composer hidden", file: file, line: line)
+            XCTAssertGreaterThan(frame.rows, 0, "\(at): no rows", file: file, line: line)
+            XCTAssertTrue(frame.drawn, "\(at): rows not drawn", file: file, line: line)
+        }
     }
 
     // MARK: Rows past the cap
@@ -347,24 +416,26 @@ final class HostedChatNavigationTests: XCTestCase {
             }
             lines.append(Self.summary("push \(name)", times))
         }
-        // Switches between two tabs, back and forth.
+        // Switches between two tabs, back and forth, in the same screen:
+        // from the tap to the new tab's rows drawn.
         let first = try await shown(after: { root.push(.session(id: "seeded-tab-4"), context: context) }, in: navigation)
         try await settled(first, in: navigation)
         var times: [Double] = []
         for index in 0..<10 {
-            let current = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
-            let strip = try XCTUnwrap(Self.subview(ChatWorktreeTabStrip.self, in: current.view))
-            let next = try await shown(after: { strip.onSelect?(index.isMultiple(of: 2) ? "seeded-tab-3" : "seeded-tab-4") }, in: navigation)
-            try await settled(next, in: navigation)
-            let report = try XCTUnwrap(next.openingReport)
-            times.append(report.elapsed * 1000)
-            if report.hitCap {
+            let strip = try XCTUnwrap(Self.subview(ChatWorktreeTabStrip.self, in: first.view))
+            let target = index.isMultiple(of: 2) ? "seeded-tab-3" : "seeded-tab-4"
+            let tapped = CACurrentMediaTime()
+            strip.onSelect?(target)
+            let done = try await until { first.chatId == target && !first.isHoldingSwitch }
+            XCTAssertTrue(done, "switch to \(target)")
+            let elapsed = CACurrentMediaTime() - tapped
+            times.append(elapsed * 1000)
+            if elapsed >= ChatOpening.cap {
                 capHits += 1
-                lines.append("switch: cap hit, missing \(report.missing)")
+                lines.append(String(format: "switch: past the cap, %.0f ms", elapsed * 1000))
             }
-            lines.append("switch arrivals " + Self.arrivals(report))
-            Self.assertSeeded(next, report, "switch")
             tries += 1
+            try await Task.sleep(for: .milliseconds(100))
         }
         lines.append(Self.summary("switch", times))
         lines.append("cap hit \(capHits) of \(tries)")
@@ -416,6 +487,10 @@ final class HostedChatNavigationTests: XCTestCase {
         }
     }
 
+    static func subviews<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {
+        view.subviews.flatMap { child in (child as? T).map { [$0] } ?? subviews(type, in: child) }
+    }
+
     static func subview<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
         for child in view.subviews {
             if let match = child as? T { return match }
@@ -445,6 +520,9 @@ struct ChatFrame {
     var dock: CGRect
     var card: CGRect
     var composerShown: Bool
+    /// The rows on screen are drawn, or covered by the ones drawn before a
+    /// tab switch.
+    var drawn: Bool
     /// What has an animation attached, other than the push's own.
     var animating: [String]
 }
@@ -480,11 +558,15 @@ final class ChatFrameSampler: NSObject {
         let compose = chat.navigationItem.rightBarButtonItems?.map(\.accessibilityIdentifier) == ["compose"]
         let list = HostedChatNavigationTests.subview(ChatListView.self, in: root)
         let dock = HostedChatNavigationTests.subview(ChatDockView.self, in: root)
-        let card = HostedChatNavigationTests.subview(AgentInputCardView.self, in: root)
-        let composer = HostedChatNavigationTests.subview(SessionComposerView.self, in: root)
+        let cards = HostedChatNavigationTests.subviews(AgentInputCardView.self, in: root)
+        // The composer shown: during a tab switch, the tab left's until the
+        // new tab's is in.
+        let composers = HostedChatNavigationTests.subviews(SessionComposerView.self, in: root)
+        let composer = composers.first { $0.alpha > 0 } ?? composers.first
         let strip = HostedChatNavigationTests.subview(ChatWorktreeTabStrip.self, in: root)
         // The newest row drawn, lowest on screen, in the list's own
         // coordinates (it moves only if the conversation does).
+        let card = composer.flatMap { HostedChatNavigationTests.subview(AgentInputCardView.self, in: $0) } ?? cards.first
         let lowest = list?.ultra.list.loadedItemViews
             .filter { $0.isDisplayReady && ($0 as? ChatUltraRowView)?.row.identity.hasPrefix("chat:message:") == true }
             .max { $0.convert($0.bounds, to: root).maxY < $1.convert($1.bounds, to: root).maxY }
@@ -509,6 +591,7 @@ final class ChatFrameSampler: NSObject {
             dock: frame(dock) ?? .zero,
             card: frame(card) ?? .zero,
             composerShown: (card?.alpha ?? 0) > 0 && (composer?.alpha ?? 0) > 0,
+            drawn: list?.isDisplayReady == true || chat.isHoldingSwitch,
             animating: animating
         ))
     }

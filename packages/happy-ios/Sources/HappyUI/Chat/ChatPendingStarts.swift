@@ -20,6 +20,8 @@ import UIKit
 @MainActor
 final class ChatPendingStarts: NSObject {
     private static var current: ChatPendingStarts?
+    /// How the starts are made: the account's own, or a harness's.
+    static var makeStarter: (AccountSession, SpawnRequests) -> SessionStarter = { SessionStarter.make(for: $0, spawnRequests: $1) }
 
     /// Nil when `account` isn't the open account.
     static func of(_ account: AccountSession, context: AppContext) -> ChatPendingStarts? {
@@ -40,7 +42,7 @@ final class ChatPendingStarts: NSObject {
 
     private init(_ account: AccountSession, context: AppContext) {
         self.account = account
-        starter = SessionStarter.make(for: account, spawnRequests: account.spawnRequests.child(.pendingChats))
+        starter = Self.makeStarter(account, account.spawnRequests.child(.pendingChats))
         super.init()
         starter.presenter = self
         let store = account.store
