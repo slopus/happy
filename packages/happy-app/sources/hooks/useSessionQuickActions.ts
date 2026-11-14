@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { isRetiredSession } from '@/sync/retiredSessions';
 import { createSessionContinuation } from '@/sync/sessionContinuation';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -59,10 +60,11 @@ function isRegenerateTitleRpcUnavailable(message: string | undefined): boolean {
 }
 
 function getResumeAvailability(session: Session, machine: Machine | null | undefined, isConnected: boolean): ResumeAvailability {
+    if (isRetiredSession(session)) return { canResume: false, canShowResume: false, subtitle: '', message: '' };
     const availability = resolveSessionResumeAvailability({
         isConnected,
         hasMachineId: Boolean(session.metadata?.machineId),
-        hasBackendResumeId: Boolean(session.metadata?.flavor === 'personal' || session.metadata?.claudeSessionId || session.metadata?.codexThreadId),
+        hasBackendResumeId: Boolean(session.metadata?.claudeSessionId || session.metadata?.codexThreadId),
         hasMachine: Boolean(machine),
         machineOnline: Boolean(machine && isMachineOnline(machine)),
         rpcAvailable: machine?.metadata?.resumeSupport?.rpcAvailable,
@@ -250,7 +252,7 @@ export function useSessionQuickActions(
 
     const [resumingSession, performResume] = useHappyAction(resumeOriginalSession);
 
-    const canContinue = !sessionStatus.isConnected || sessionStatus.state === 'failed' || Boolean(session.metadata?.continuedBySessionId);
+    const canContinue = !isRetiredSession(session) && (!sessionStatus.isConnected || sessionStatus.state === 'failed' || Boolean(session.metadata?.continuedBySessionId));
     const [continuingSession, continueSession] = useHappyAction(async () => {
         try {
             const id = await createSessionContinuation(session.id);

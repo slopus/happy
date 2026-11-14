@@ -41,6 +41,20 @@ function source() {
     return id;
 }
 describe('fresh continuation integration', () => {
+    it('rejects retired history before reading recovery receipts, loading messages, or spawning another engine', async () => {
+        const id = source();
+        state.sessions[id].metadata.flavor = 'personal';
+        state.sessions[id].metadata.codexThreadId = 'misleading-id';
+        state.sessions[id].metadata.continuedBySessionId = 'existing';
+        const before = JSON.stringify(state.sessions);
+        const { continuationSpawnOptions, createSessionContinuation } = await import('./sessionContinuation');
+        expect(() => continuationSpawnOptions(state.sessions[id])).toThrow('personal-agent-retired');
+        await expect(createSessionContinuation(id)).rejects.toThrow('personal-agent-retired');
+        expect(spawn).not.toHaveBeenCalled();
+        expect(load).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+        expect(JSON.stringify(state.sessions)).toBe(before);
+    });
     it('uses ordinary spawn with no old backend identifier, preserves settings, sends nothing', async () => {
         const id = source();
         const { createSessionContinuation } = await import('./sessionContinuation');

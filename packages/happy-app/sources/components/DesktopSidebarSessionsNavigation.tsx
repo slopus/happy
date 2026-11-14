@@ -1,4 +1,3 @@
-import { PersonalAgentEntry } from './personal/PersonalAgentEntry';
 import * as React from 'react';
 import {
     AccessibilityInfo,
@@ -73,9 +72,8 @@ import { SessionHistoryList } from './SessionHistoryList';
 import { SessionListRecovery } from './SessionListRecovery';
 import { isSidebarGroupExpanded, setSidebarGroupExpanded } from '@/utils/sidebarGroupExpansion';
 
-const AGENT_TYPES = ['personal', 'codex', 'claude', 'opencode', 'gemini', 'openclaw'] as const satisfies readonly NewSessionAgentType[];
+const AGENT_TYPES = ['codex', 'claude', 'opencode', 'gemini', 'openclaw'] as const satisfies readonly NewSessionAgentType[];
 const AGENT_LABEL_KEYS = {
-    personal: 'agentInput.agent.personal',
     codex: 'agentInput.agent.codex',
     claude: 'agentInput.agent.claude',
     opencode: 'agentInput.agent.opencode',
@@ -417,7 +415,6 @@ export const DesktopSidebarHeader = React.memo(function DesktopSidebarHeader({ o
             </View>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel={t('sidebar.newSession')} onHoverIn={() => setNewSessionHovered(true)} onHoverOut={() => setNewSessionHovered(false)} onPress={onNewSession} testID="desktop-sidebar-header-new-session" style={({ pressed }) => [styles.desktopNewSession, (pressed || newSessionHovered) && styles.desktopHeaderPressed]}><Feather name="edit" size={17} color={styles.tabTextSelected.color} /><Text style={styles.desktopNewSessionText}>{t('sidebar.newSession')}</Text></Pressable>
-        <PersonalAgentEntry />
 
     </>;
 });
@@ -656,6 +653,7 @@ function SidebarListsView() {
     }, [organization.tags.length, updateOrganization]);
 
     const createSession = React.useCallback((list: SidebarList) => {
+        if (list.defaultAgent === 'personal') { router.navigate('/bots'); return; }
         const draft = useNewSessionDraft.getState();
         if (list.machineId) draft.setMachineId(list.machineId);
         if (list.path) draft.setPath(list.path);
@@ -1064,7 +1062,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
         setColor(list?.color ?? 'blue');
         setMachineId(list?.machineId ?? null);
         setPath(list?.path ?? '');
-        setDefaultAgent(list?.defaultAgent ?? null);
+        setDefaultAgent(list?.defaultAgent === 'personal' ? null : list?.defaultAgent ?? null);
         setOpenSetting(null);
     }, [list, visible]);
 

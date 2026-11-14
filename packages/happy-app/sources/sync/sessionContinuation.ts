@@ -1,4 +1,5 @@
 import { sync } from './sync';
+import { isRetiredSession } from './retiredSessions';
 import { buildContinuationContext } from './continuationContext';
 import { MMKV } from 'react-native-mmkv';
 import { accountStorageId, assertAccountRuntime } from '@/auth/accountRuntime';
@@ -38,10 +39,11 @@ async function prepareContext(id: string): Promise<string> {
 }
 const receipts = new MMKV({ id: accountStorageId('session-continuations') });
 export function continuationSpawnOptions(source: Session): SpawnSessionOptions {
+    if (isRetiredSession(source)) throw new Error('personal-agent-retired');
     const metadata = source.metadata;
     const flavor = metadata?.flavor ?? 'claude';
     if (!metadata?.machineId || !metadata.path) throw new Error('continuation-missing-machine');
-    if (!['claude', 'codex', 'ask', 'gemini', 'opencode', 'openclaw', 'personal'].includes(flavor)) throw new Error('continuation-unsupported-agent');
+    if (!['claude', 'codex', 'ask', 'gemini', 'opencode', 'openclaw'].includes(flavor)) throw new Error('continuation-unsupported-agent');
     return { machineId: metadata.machineId, directory: metadata.path,
         agent: flavor as SpawnSessionOptions['agent'], approvedNewDirectoryCreation: false };
 }
@@ -100,6 +102,7 @@ const continueSession = createContinuationCoordinator({
 });
 
 export async function createSessionContinuation(sourceId: string): Promise<string> {
+    if (isRetiredSession(storage.getState().sessions[sourceId] ?? {})) throw new Error('personal-agent-retired');
     const id = await continueSession(sourceId);
     if (!await ensureSessionHydratedWithRetry(id)) throw new Error('continuation-hydration-failed');
     assertAccountRuntime();

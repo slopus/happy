@@ -56,7 +56,9 @@ export const SidebarNavigator = React.memo(() => {
 const SidebarNavigatorContent = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
-    const projectWorkspace = useDesktopWorkspacePathname() === '/projects';
+    const workspacePath = useDesktopWorkspacePathname();
+    const projectWorkspace = workspacePath === '/projects';
+    const botsWorkspace = workspacePath === '/bots' || workspacePath.startsWith('/bots/');
     const { theme } = useUnistyles();
     const desktopSkinId = useLocalSetting('desktopSkinId');
     const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId !== 'default';
@@ -80,7 +82,7 @@ const SidebarNavigatorContent = React.memo(() => {
         return leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0);
     }, [isDesktopLayout, leftExpandedWidth, windowWidth]);
     const fixedRail = isDesktopLayout && Platform.OS === 'web';
-    const drawerWidth = (fixedRail ? leftPinned : showSidebar) ? fullDrawerWidth : fixedRail ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0;
+    const drawerWidth = fixedRail && botsWorkspace ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : (fixedRail ? leftPinned : showSidebar) ? fullDrawerWidth : fixedRail ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0;
     const hideDrawer = isDesktopLayout && !showSidebar && !fixedRail;
 
     React.useEffect(() => {
@@ -208,12 +210,12 @@ const SidebarNavigatorContent = React.memo(() => {
                     closeDrawerOnNavigate={!isDesktopLayout}
                     desktopDensity={isDesktopLayout}
                     desktopPrimaryNavigation={fixedRail}
-                    desktopSecondaryVisible={showSidebar}
+                    desktopSecondaryVisible={showSidebar && !botsWorkspace}
                     desktopSecondaryWidth={leftExpandedWidth}
                 />
             </View>
         ),
-        [leftExpandedWidth, drawerWidth, fixedRail, hideDrawer, isDesktopLayout, showSidebar, setLeftSidebarHovered, setLeftSidebarFocused, dreamskin, reducedTransparency]
+        [leftExpandedWidth, drawerWidth, fixedRail, hideDrawer, isDesktopLayout, showSidebar, botsWorkspace, setLeftSidebarHovered, setLeftSidebarFocused, dreamskin, reducedTransparency]
     );
 
     return (
@@ -226,7 +228,7 @@ const SidebarNavigatorContent = React.memo(() => {
                     drawerContent={(isDesktopLayout || auth.isAuthenticated) ? drawerContent : undefined}
                 />
                 {isDesktopLayout && Platform.OS !== 'web' && !projectWorkspace && <PersistentHeader />}
-                {isDesktopLayout && showSidebar && (
+                {isDesktopLayout && showSidebar && !botsWorkspace && (
                     <DesktopPanelResizeHandle
                         accessibilityLabel={t('desktopWorkspace.resizePanel', {
                             panel: t('desktopWorkspace.sessions'),
@@ -246,7 +248,9 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const router = useRouter();
-    const projectWorkspace = useDesktopWorkspacePathname() === '/projects';
+    const workspacePath = useDesktopWorkspacePathname();
+    const projectWorkspace = workspacePath === '/projects';
+    const botsWorkspace = workspacePath === '/bots' || workspacePath.startsWith('/bots/');
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const {
         leftPinned: sidebarPinned,
@@ -465,7 +469,7 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
                 testID="desktop-navigation-controls"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
-                {globalBar ? <>{backControl}{forwardControl}{sidebarControl}{zenControl}</> : <>{sidebarControl}{zenControl}{backControl}{forwardControl}</>}
+                {globalBar ? <>{backControl}{forwardControl}{!botsWorkspace && sidebarControl}{zenControl}</> : <>{!botsWorkspace && sidebarControl}{zenControl}{backControl}{forwardControl}</>}
             </View>
         </View>
     );

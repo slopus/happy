@@ -87,7 +87,8 @@ import * as Application from 'expo-application';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { ReadingWidthRail } from '@/components/ReadingWidthRail';
-import { useRouter, useNavigation } from 'expo-router';
+import { Redirect, useRouter, useNavigation } from 'expo-router';
+import { isRetiredSession } from '@/sync/retiredSessions';
 import { SessionRouteCoordinationError, type SessionRouteOwner } from '@/sync/sessionRouteOwnership';
 import { DrawerActions, useIsFocused } from '@react-navigation/native';
 import * as React from 'react';
@@ -110,7 +111,6 @@ import { markSessionCriticalPathAppStage } from '@/sync/sessionCriticalPathProbe
 // Agent display labels for the header chip. Mirrors ComposeHome's map, but keyed
 // off the running session's `flavor` (an active session reports its agent there).
 const AGENT_LABELS: Record<string, string> = {
-    personal: t('agentInput.agent.personal'),
     ask: 'ask',
     claude: 'claude code',
     codex: 'codex',
@@ -541,11 +541,13 @@ function DesktopReadingWidthControl() {
 
 type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string }; embedded?: boolean; projectTaskContext?: boolean; fullWidth?: boolean; emptyState?: React.ReactNode | ((appendDraft: (text: string) => void) => React.ReactNode) };
 
-export const SessionView = React.memo((props: SessionViewProps) => (
-    <SubagentInspectorProvider sessionId={props.id}>
+export const SessionView = React.memo((props: SessionViewProps) => {
+    const session = useSession(props.id);
+    if (session && isRetiredSession(session)) return <Redirect href="/bots" />;
+    return <SubagentInspectorProvider sessionId={props.id}>
         {props.embedded ? <SessionViewContent key={props.id} {...props} /> : <SessionFileWorkspaceProvider sessionId={props.id}><SessionViewContent key={props.id} {...props} /></SessionFileWorkspaceProvider>}
-    </SubagentInspectorProvider>
-));
+    </SubagentInspectorProvider>;
+});
 
 
 const SessionViewContent = React.memo((props: SessionViewProps) => {

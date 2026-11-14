@@ -12,6 +12,26 @@ describe('startDaemonControlServer', () => {
     }
   });
 
+  it('rejects retired Personal spawn requests without dispatching any worker', async () => {
+    const spawnSession = vi.fn();
+    const { port, stop } = await startDaemonControlServer({
+      getChildren: () => [],
+      stopSession: () => false,
+      spawnSession,
+      requestShutdown: () => {},
+      onHappySessionWebhook: () => {},
+    });
+    stopServer = stop;
+
+    const response = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directory: '/repo', agent: 'personal' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(spawnSession).not.toHaveBeenCalled();
+  });
+
   it('forwards resume ids from local spawn requests', async () => {
     const spawnSession = vi.fn().mockResolvedValue({
       type: 'success',

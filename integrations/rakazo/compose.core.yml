@@ -1,0 +1,157 @@
+name: paws-bots-rakazo
+
+x-model-environment: &model-environment
+  NODE_ENV: production
+  DATABASE_URL: postgres://rakazo_app:${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}@postgres:5432/rakazo
+  DATA_DIR: /data
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY}
+  CONTENT_ENCRYPTION: "on"
+  SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET}
+  WAKEUP_DRIVER: graphile
+  AGENT_RUNTIME: pi
+  SANDBOX_PROVIDER: none
+  PI_DEFAULT_PROVIDER: local
+  PI_DEFAULT_CREDENTIALS: host
+  PI_DEFAULT_MODEL: ${RAKAZO_LOCAL_MODEL:?Set RAKAZO_LOCAL_MODEL}
+  RAKAZO_LOCAL_MODELS: ${RAKAZO_LOCAL_MODEL:?Set RAKAZO_LOCAL_MODEL}
+  RAKAZO_LOCAL_MODELS_URL: ${RAKAZO_LOCAL_MODELS_URL:?Set RAKAZO_LOCAL_MODELS_URL}
+  RAKAZO_LOCAL_MODELS_API_KEY: ${RAKAZO_LOCAL_MODELS_API_KEY:-}
+  RAKAZO_LOCAL_CONTEXT_WINDOW: ${RAKAZO_LOCAL_CONTEXT_WINDOW:-32768}
+  RAKAZO_LOCAL_MAX_TOKENS: ${RAKAZO_LOCAL_MAX_TOKENS:-4096}
+  RAKAZO_LIVE_MODEL_CATALOG: "off"
+  API_URL: http://api:3100
+  LOG_LEVEL: info
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rakazo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: rakazo
+    volumes:
+      - database:/var/lib/postgresql/data
+    networks: [data]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 200
+    mem_limit: 2g
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U rakazo -d rakazo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: ${RAKAZO_APP_IMAGE:?Set RAKAZO_APP_IMAGE}
+    working_dir: /app/apps/api
+    command: [pnpm, db:deploy]
+    environment:
+      DATABASE_URL: postgres://rakazo_app:${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}@postgres:5432/rakazo
+      DATABASE_MIGRATION_URL: postgres://rakazo:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/rakazo
+    networks: [data]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 1536m
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    image: ${RAKAZO_APP_IMAGE:?Set RAKAZO_APP_IMAGE}
+    restart: unless-stopped
+    working_dir: /app/apps/api
+    command: [node, --enable-source-maps, dist/index.js]
+    init: true
+    environment:
+      <<: *model-environment
+      API_HOST: 0.0.0.0
+      API_PORT: "3100"
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: http://127.0.0.1:${RAKAZO_WEB_PORT:-15730}
+      WEB_ORIGIN: http://127.0.0.1:${RAKAZO_WEB_PORT:-15730}
+      RAKAZO_EXTRA_AUTH_ORIGINS: ${RAKAZO_EXTRA_AUTH_ORIGINS:-}
+      AUTH_PASSWORD_ENABLED: "true"
+      AUTH_BREACHED_PASSWORD_CHECK_ENABLED: "false"
+      SIGNUPS_ENABLED: "true"
+      WELCOME_EMAIL_ENABLED: "false"
+      COMPUTER_SETTINGS_ENABLED: "false"
+    ports:
+      - 127.0.0.1:${RAKAZO_API_PORT:-15731}:3100
+    extra_hosts: [host.docker.internal:host-gateway]
+    volumes: [homes:/data]
+    networks: [app, data]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 256
+    mem_limit: 2g
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  worker:
+    image: ${RAKAZO_APP_IMAGE:?Set RAKAZO_APP_IMAGE}
+    restart: unless-stopped
+    working_dir: /app/apps/worker
+    command: [node, --enable-source-maps, --max-semi-space-size=64, dist/index.js]
+    init: true
+    environment:
+      <<: *model-environment
+    extra_hosts: [host.docker.internal:host-gateway]
+    volumes: [homes:/data]
+    networks: [app, data]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 512
+    mem_limit: 2g
+    stop_grace_period: 60s
+    healthcheck:
+      test: [CMD, node, dist/health-check.js]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    depends_on:
+      api: {condition: service_healthy}
+
+  web:
+    image: ${RAKAZO_APP_IMAGE:?Set RAKAZO_APP_IMAGE}
+    restart: unless-stopped
+    working_dir: /app/apps/web
+    command: [node_modules/.bin/vite, preview, --host, 0.0.0.0, --port, "5173"]
+    init: true
+    environment:
+      NODE_ENV: production
+      RAYON_NUM_THREADS: "4"
+      API_PROXY_TARGET: http://api:3100
+      RAKAZO_HOST: localhost
+      RAKAZO_ALLOWED_HOSTS: 127.0.0.1,localhost
+      SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET}
+      RAKAZO_IMAGE_TAG: ${RAKAZO_APP_TAG:?Set RAKAZO_APP_TAG}
+    ports:
+      - 127.0.0.1:${RAKAZO_WEB_PORT:-15730}:5173
+    volumes: [webassets:/app/apps/web/asset-archive]
+    networks: [app]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5173/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      api: {condition: service_healthy}
+
+volumes:
+  database:
+  homes:
+  webassets:
+networks:
+  app:
+  data:
+    internal: true

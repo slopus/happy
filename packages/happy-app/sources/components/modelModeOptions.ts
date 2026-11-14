@@ -1,6 +1,7 @@
 import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
+import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
 
 export type ModeOption = {
     key: string;
@@ -137,13 +138,7 @@ export function getOpenCodePermissionModes(translate: Translate): PermissionMode
 }
 
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
-    if (flavor === 'personal') {
-        return [
-            { key: 'default', name: translate('agentInput.taskPermission.confirm'), description: null },
-            { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: null },
-            { key: 'yolo', name: translate('agentInput.taskPermission.fullAccess'), description: null },
-        ];
-    }
+    if (isRetiredAgentFlavor(flavor)) return [];
     if (flavor === 'ask') {
         return getAskPermissionModes(translate);
     }
@@ -180,7 +175,7 @@ export function getOpenCodeModelModes(): ModelMode[] {
 }
 
 export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate): ModelMode[] {
-    if (flavor === 'personal') return [{ key: 'default', name: DEFAULT_MODEL_LABEL, description: null }];
+    if (isRetiredAgentFlavor(flavor)) return [];
     if (flavor === 'ask') {
         return getAskModelModes();
     }
@@ -204,6 +199,7 @@ export function getAvailableModels(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): ModelMode[] {
+    if (isRetiredAgentFlavor(flavor)) return [];
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
         if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
@@ -242,6 +238,7 @@ export function getAvailablePermissionModes(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): PermissionMode[] {
+    if (isRetiredAgentFlavor(flavor)) return [];
     if (flavor === 'claude' || flavor === 'codex' || flavor === 'gemini' || flavor === 'opencode' || flavor === 'openclaw') {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
@@ -367,6 +364,6 @@ export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: strin
 }
 
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {
-    if (flavor === 'ask' || flavor === 'openclaw' || flavor === 'personal') return false;
+    if (isRetiredAgentFlavor(flavor) || flavor === 'ask' || flavor === 'openclaw') return false;
     return true;
 }

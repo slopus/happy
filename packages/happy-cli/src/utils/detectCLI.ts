@@ -4,7 +4,6 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 
 export interface CLIAvailability {
-  personal?: boolean;
   ask: boolean;
   claude: boolean;
   codex: boolean;
@@ -48,7 +47,7 @@ function detectPosix(): CLIAvailability {
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
 
-  return { personal: true, ask: true, claude, codex, gemini, opencode, openclaw, detectedAt: Date.now() };
+  return { ask: true, claude, codex, gemini, opencode, openclaw, detectedAt: Date.now() };
 }
 
 function detectWindows(): CLIAvailability {
@@ -72,5 +71,5 @@ function detectWindows(): CLIAvailability {
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
 
-  return { personal: true, ask: true, claude, codex, gemini, opencode, openclaw, detectedAt: Date.now() };
+  return { ask: true, claude, codex, gemini, opencode, openclaw, detectedAt: Date.now() };
 }

@@ -407,7 +407,7 @@ export async function startEnvironmentServices(
     await startEnvironmentWeb(name, { warmBundle: options?.waitForWebBundle });
 }
 
-export async function startEnvironmentWeb(name: string, options?: { warmBundle?: boolean }): Promise<void> {
+export async function startEnvironmentWeb(name: string, options?: { warmBundle?: boolean; queryAuthOnly?: boolean }): Promise<void> {
     const envDir = getEnvironmentDir(name);
     const config = readEnvironmentConfig(name);
     const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
@@ -416,6 +416,13 @@ export async function startEnvironmentWeb(name: string, options?: { warmBundle?:
     fs.mkdirSync(path.join(envDir, "web"), { recursive: true });
     console.log(`Starting web on port ${config.expoPort}...`);
     const webArgs = ["web", "--port", String(config.expoPort)];
+    // Multi-account fixtures must not silently replace a saved identity on reload.
+    // Authenticate through the private query URL once, then use the account vault.
+    if (options?.queryAuthOnly) {
+        delete mergedEnv.EXPO_PUBLIC_DEV_TOKEN;
+        delete mergedEnv.EXPO_PUBLIC_DEV_SECRET;
+        webArgs.push("--clear");
+    }
     if (process.env.HAPPY_E2E_WEB_NO_DEV === "1") webArgs.push("--no-dev", "--clear");
     const webPid = spawnService("pnpm", webArgs, {
         cwd: path.join(REPO_ROOT, "packages", "happy-app"),

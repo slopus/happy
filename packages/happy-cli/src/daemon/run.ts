@@ -34,6 +34,7 @@ import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTm
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { initialMachineMetadata } from './machineMetadata';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
+import { retiredAgentMessage } from '@/utils/retiredAgent';
 import { isUnusedCodexSession } from './emptyCodexSession';
 import { stopDetachedCodexWorker } from './stopDetachedCodexWorker';
 import { encodeBase64, decodeBase64, decrypt, encrypt } from '@/api/encryption';
@@ -360,6 +361,8 @@ export async function startDaemon(): Promise<void> {
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (options: TracedSpawnSessionOptions): Promise<SpawnSessionResult> => {
+      const retired = retiredAgentMessage(options.agent);
+      if (retired) return { type: 'error', errorMessage: retired };
       const trace = startupIntegration.requestReceived(options);
 
       const { directory, sessionId, approvedNewDirectoryCreation = true } = options;
@@ -514,7 +517,7 @@ export async function startDaemon(): Promise<void> {
           // Construct command for the CLI
           const agent = options.agent ?? 'opencode';
           const cliPath = resolveHappyCLIEntrypoint(startupIntegration.workerEntrypoint(agent));
-          if (!['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw', 'personal'].includes(agent)) {
+          if (!['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw'].includes(agent)) {
             return {
               type: 'error',
               errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
@@ -619,10 +622,6 @@ export async function startDaemon(): Promise<void> {
           let agentCommand: string;
           let args: string[];
           switch (options.agent) {
-            case 'personal':
-              agentCommand = 'personal';
-              args = [agentCommand];
-              break;
             case 'ask':
               agentCommand = 'ask';
               args = [agentCommand];
@@ -880,6 +879,8 @@ export async function startDaemon(): Promise<void> {
           }
           return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon or on another machine.` };
         }
+        const trackedRetired = retiredAgentMessage(tracked.happySessionMetadataFromLocalWebhook?.flavor);
+        if (trackedRetired) return { type: 'error', errorMessage: trackedRetired };
         const recovered = recoveredFailedTurns.get(happySessionId);
         if (options?.expectedFailedTurn && recovered?.key === failedTurnKey(options.expectedFailedTurn)
             && recovered.worker === tracked && pidToTrackedSession.get(tracked.pid) === tracked) {
@@ -901,6 +902,8 @@ export async function startDaemon(): Promise<void> {
           tracked.encryption.encryptionKey,
           tracked.encryption.encryptionVariant,
         );
+        const serverRetired = retiredAgentMessage(serverSnapshot?.metadata.flavor);
+        if (serverRetired) return { type: 'error', errorMessage: serverRetired };
         if (options?.expectedWorkerPid && serverSnapshot
             && (serverSnapshot.metadata.hostPid !== options.expectedWorkerPid
               || serverSnapshot.agentState?.turnStatus?.status === 'running'
@@ -978,7 +981,7 @@ export async function startDaemon(): Promise<void> {
 
         await fs.access(launch.cwd);
 
-        const agent = metadata?.flavor === 'personal' ? 'personal' : metadata?.flavor === 'codex' || metadata?.codexThreadId ? 'codex' : 'claude';
+        const agent = metadata?.flavor === 'codex' || metadata?.codexThreadId ? 'codex' : 'claude';
         let recoverySuperseded = false;
         const resumed = await withCodexAccountLaunch({ agent, codexSessionGrant: options?.codexSessionGrant }, api, machineId, async (codexLaunch) => {
         if (options?.expectedFailedTurn || options?.expectedWorkerPid) {

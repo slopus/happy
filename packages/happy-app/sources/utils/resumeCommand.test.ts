@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { buildResumeCommand, buildResumeCommandBlock } from './resumeCommand';
 
 describe('buildResumeCommand', () => {
+    it('never builds another engine command for retired Personal history with native IDs', () => {
+        const metadata = { flavor: 'personal', claudeSessionId: 'old-claude', codexThreadId: 'old-codex', path: '/saved' };
+        expect(buildResumeCommand(metadata)).toBeNull();
+        expect(buildResumeCommandBlock(metadata)).toBeNull();
+    });
     it('builds a Claude resume command that enters the session directory first', () => {
         expect(buildResumeCommand({
             path: '/tmp/project',

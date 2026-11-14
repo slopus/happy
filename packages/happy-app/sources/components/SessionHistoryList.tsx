@@ -1,4 +1,4 @@
-import { isPersonalAgentConversation } from '@/sync/personalAgent';
+import { isRetiredSession } from '@/sync/retiredSessions';
 import * as React from 'react';
 import { useSidebarScrollState } from './SidebarScrollState';
 import { FlatList, Platform, View } from 'react-native';
@@ -136,7 +136,7 @@ export const SessionHistoryList = React.memo(function SessionHistoryList({
         let cancelled = false;
         const loadUntilArchived = async () => {
             let hasMore = true;
-            while (!cancelled && hasMore && !Object.values(storage.getState().sessions).some(session => !isPersonalAgentConversation(session) && isSessionArchived(session))) {
+            while (!cancelled && hasMore && !Object.values(storage.getState().sessions).some(session => !isRetiredSession(session) && isSessionArchived(session))) {
                 hasMore = await sync.loadNextSessionHistoryPage();
             }
         };

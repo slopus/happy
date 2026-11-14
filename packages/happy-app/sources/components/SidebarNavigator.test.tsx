@@ -299,6 +299,24 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => renderer.unmount());
     });
 
+    it('gives Bots the rail-only workspace and restores the previous pinned sidebar on Home', () => {
+        mocks.pathname = '/bots';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarNavigator />); });
+        const drawer = renderer.root.findByType('Drawer');
+        expect(drawer.props.screenOptions.drawerStyle.width).toBe(60);
+        const sidebar = drawer.props.drawerContent({ navigation: { closeDrawer: vi.fn() } }).props.children;
+        expect(sidebar.props.desktopSecondaryVisible).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-left-panel-resize-handle' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-navigation-sidebar-button' })).toHaveLength(0);
+        act(() => renderer.unmount());
+        mocks.pathname = '/';
+        act(() => { renderer = TestRenderer.create(<SidebarNavigator />); });
+        expect(renderer.root.findByType('Drawer').props.screenOptions.drawerStyle.width).toBe(420);
+        expect(mocks.setDesktopLeftSidebarCollapsed).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
     it('reveals an unpinned overlay without occupying chat width or selecting the pin button', () => {
         mocks.desktopLeftSidebarCollapsed = true;
         mocks.hovered = true;

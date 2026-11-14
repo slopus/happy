@@ -1,3 +1,5 @@
+import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
+
 export type ResumeCommandMetadata = {
     path?: string | null;
     os?: string | null;
@@ -24,6 +26,7 @@ function isWindows(metadata: ResumeCommandMetadata): boolean {
 }
 
 function buildResumeInvocation(metadata: ResumeCommandMetadata): string | null {
+    if (isRetiredAgentFlavor(metadata.flavor)) return null;
     if ((metadata.flavor === 'codex' || metadata.flavor === 'openai' || metadata.flavor === 'gpt') && metadata.codexThreadId) {
         return `happy codex --resume ${metadata.codexThreadId}`;
     }

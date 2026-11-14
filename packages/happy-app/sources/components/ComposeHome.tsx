@@ -76,7 +76,6 @@ import { useGeneratedImagesPlugin } from '@/hooks/useGeneratedImagesPlugin';
 
 // Agent display labels for the compose chip. Mirrors the list used in /new.
 const AGENT_LABELS: Record<string, string> = {
-    personal: t('agentInput.agent.personal'),
     ask: 'ask',
     claude: 'claude code',
     codex: 'codex',
@@ -86,7 +85,6 @@ const AGENT_LABELS: Record<string, string> = {
 };
 
 const HEADER_MODE_AGENT_OPTIONS: { key: NewSessionAgentType; label: string }[] = [
-    { key: 'personal', label: AGENT_LABELS.personal },
     { key: 'opencode', label: AGENT_LABELS.opencode },
     { key: 'claude', label: AGENT_LABELS.claude },
     { key: 'codex', label: AGENT_LABELS.codex },

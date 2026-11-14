@@ -141,7 +141,7 @@ export interface SpawnSessionOptions {
     directory: string;
     sessionId?: string;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'personal';
+    agent?: 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
     /** Codex-only model selection forwarded to the Codex worker. */
     model?: string;
     /** Codex-only reasoning level forwarded to the Codex worker. */

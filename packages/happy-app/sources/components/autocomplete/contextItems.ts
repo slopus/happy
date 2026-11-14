@@ -2,7 +2,7 @@ import type { PluginCatalogItem } from '@slopus/happy-wire';
 import { interactivePreviewEventSchema } from '@slopus/happy-wire';
 import type { Message } from '@/sync/typesMessage';
 import type { Session } from '@/sync/storageTypes';
-import { isPersonalAgentConversation } from '@/sync/personalAgent';
+import { isRetiredSession } from '@/sync/retiredSessions';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { compareSessionActivity } from '@/utils/sessionActivity';
 
@@ -19,7 +19,7 @@ export function contextPlugins(plugins: readonly PluginCatalogItem[], label: (te
 }
 
 export function contextSessions(sessions: Record<string, Session>, currentId: string | undefined, name: (s: Session) => string): ContextItem[] {
-    return Object.values(sessions).filter(s => s.id !== currentId && !isPersonalAgentConversation(s) && !isSessionArchived(s))
+    return Object.values(sessions).filter(s => s.id !== currentId && !isRetiredSession(s) && !isSessionArchived(s))
         .sort(compareSessionActivity).map(s => ({
             id: `session:${s.id}`, category: 'sessions', title: name(s), detail: s.metadata?.path ?? '',
             icon: 'chatbubble-outline', text: `@${name(s).replace(/[\[\]\n]/g, ' ')} [session:${s.id}]`,

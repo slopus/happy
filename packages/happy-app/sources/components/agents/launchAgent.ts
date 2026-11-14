@@ -1,6 +1,7 @@
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import type { NewSessionAgentType, NewSessionSessionType } from '@/sync/persistence';
 import type { Machine } from '@/sync/storageTypes';
+import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
 
 export interface AgentPreset { label: string; prompt: string; }
 export interface AgentLauncher {
@@ -10,7 +11,8 @@ export interface AgentLauncher {
     spaceType: 'default' | 'health';
     imageStyleIds: string[];
     imageVariantsPerStyle: number;
-    agentType?: NewSessionAgentType;
+    /** Legacy saved presets remain readable, but cannot launch the retired engine. */
+    agentType?: NewSessionAgentType | 'personal';
     permissionMode?: PermissionModeKey;
     modelMode?: string;
     effortLevel?: string | null;
@@ -19,7 +21,9 @@ export interface AgentLauncher {
 }
 
 export function resolveAgentTypeForLaunch(agent: AgentLauncher): NewSessionAgentType | undefined {
-    return agent.agentType ?? (agent.kind === 'image-styles' ? 'codex' : undefined);
+    const agentType = agent.agentType;
+    if (isRetiredAgentFlavor(agentType)) throw new Error('personal-agent-retired');
+    return agentType ?? (agent.kind === 'image-styles' ? 'codex' : undefined);
 }
 
 export function getAgentSubtitle(agent: AgentLauncher, machine: Machine | undefined, machineMissing: string): string {
@@ -50,6 +54,10 @@ export function launchAgent(
     navigate: (path: string) => void,
     options?: { initialInput?: string },
 ): void {
+    if (isRetiredAgentFlavor(agent.agentType)) {
+        navigate('/bots');
+        return;
+    }
     if (agent.runtime === 'relationship-advisor') {
         navigate('/relationship-advisor');
         return;

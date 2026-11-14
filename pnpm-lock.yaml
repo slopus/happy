@@ -908,9 +908,6 @@ importers:
 
   packages/happy-cli:
     dependencies:
-      fflate:
-        specifier: ^0.8.3
-        version: 0.8.3
       '@wangjs-jacky/paws-agent':
         specifier: workspace:*
         version: link:../paws-agent
@@ -1497,9 +1494,6 @@ importers:
         version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.39)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
 
 packages:
-
-  fflate@0.8.3:
-    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   '@agentclientprotocol/sdk@0.14.1':
     resolution: {integrity: sha512-b6r3PS3Nly+Wyw9U+0nOr47bV8tfS476EgyEMhoKvJCZLbgqoDFN7DJwkxL88RR0aiOqOYV1ZnESHqb+RmdH8w==}
@@ -13259,8 +13253,6 @@ packages:
       '@types/emscripten': '>=1.39.6'
 
 snapshots:
-
-  fflate@0.8.3: {}
 
   '@agentclientprotocol/sdk@0.14.1(zod@4.4.3)':
     dependencies:

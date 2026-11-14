@@ -1,4 +1,4 @@
-import { isPersonalAgentConversation } from '@/sync/personalAgent';
+import { isRetiredSession } from '@/sync/retiredSessions';
 import type { Router } from "expo-router"
 import { useRouter } from "expo-router"
 import { useCallback } from 'react';
@@ -12,9 +12,8 @@ export function navigateToSession(router: Router, sessionId: string) {
     if (session) {
         trackSessionSwitched(session);
     }
-    if (session && isPersonalAgentConversation(session)) {
-        storage.getState().applyLocalSettings({ personalAgentConversationId: sessionId });
-        router.navigate('/personal');
+    if (session && isRetiredSession(session)) {
+        router.navigate('/bots');
         return;
     }
 

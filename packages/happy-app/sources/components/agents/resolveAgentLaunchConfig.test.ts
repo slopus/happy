@@ -40,6 +40,12 @@ const defaults: AgentDefaultOverrides = {
 };
 
 describe('resolveAgentLaunchConfig', () => {
+    it('rejects retired saved engines and drafts without choosing an active provider', () => {
+        expect(resolveAgentLaunchConfig({ agent: { ...persistedAgent, agentType: 'personal' }, draft, defaults }))
+            .toEqual({ type: 'error', message: 'personal-agent-retired' });
+        expect(resolveAgentLaunchConfig({ agent: persistedAgent, draft: { ...draft, agentType: 'personal' }, defaults }))
+            .toEqual({ type: 'error', message: 'personal-agent-retired' });
+    });
     it('prefers explicit runtime Agent overrides over the current draft', () => {
         const runtimeAgent: AgentLauncher = {
             ...persistedAgent,

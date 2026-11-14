@@ -96,6 +96,7 @@ export default function RootLayout() {
                     headerBackTitle: t('settings.title'),
                 }}
             />
+            <Stack.Screen name="bots" options={{ headerShown: false }} />
             <Stack.Screen name="personal" options={{ headerShown: false }} />
             <Stack.Screen
                 name="session/[id]"

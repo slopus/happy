@@ -36,6 +36,7 @@ import { handleAttachCommand } from './commands/attach'
 import { promptInstallSlashCommandIfNeeded } from './commands/pawsInstallPrompt'
 import { promptCliUpdateIfNeeded } from './commands/cliUpdateCheck'
 import { traceWorkerAuthentication } from './api/sessionStartupTrace'
+import { PERSONAL_AGENT_RETIRED_MESSAGE } from './utils/retiredAgent'
 
 
 export async function runHappyCLI(): Promise<void> {
@@ -151,13 +152,8 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     }
     return;
   } else if (subcommand === 'personal') {
-    try {
-      const { handlePersonalCommand } = await import('@/personal/command');
-      await handlePersonalCommand(args.slice(1));
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Personal agent failed');
-      process.exitCode = 1;
-    }
+    console.error(chalk.red('Error:'), PERSONAL_AGENT_RETIRED_MESSAGE);
+    process.exitCode = 1;
     return;
   } else if (subcommand === 'ask') {
     try {

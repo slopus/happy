@@ -3,6 +3,8 @@ name: Web deployment tests
 on:
   pull_request:
     paths:
+      - 'scripts/configure-production-bots-caddy*'
+      - 'scripts/deploy-bots-ingress.sh'
       - 'scripts/deploy-web*'
       - 'scripts/upload-web-assets*'
       - 'scripts/cleanup-web-assets*'
@@ -28,6 +30,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'scripts/configure-production-bots-caddy*'
+      - 'scripts/deploy-bots-ingress.sh'
       - 'scripts/deploy-web*'
       - 'scripts/upload-web-assets*'
       - 'scripts/cleanup-web-assets*'
@@ -67,4 +71,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter monorepo
       - name: Verify deployment and supersession guards
-        run: node --test scripts/cleanup-web-assets.test.mjs scripts/dreamskin-import-core.test.mjs scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/verify-web-release.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs
+        run: node --test scripts/configure-production-bots-caddy.test.mjs scripts/cleanup-web-assets.test.mjs scripts/dreamskin-import-core.test.mjs scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/verify-web-release.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs

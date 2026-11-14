@@ -5,7 +5,7 @@ import type { ReasoningEffort } from '@/codex/codexAppServerTypes';
 import { logger } from '@/ui/logger';
 import { trimIdent } from '@/utils/trimIdent';
 
-export type TitleWorkerProvider = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'personal' | 'acp';
+export type TitleWorkerProvider = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'acp';
 
 export interface RegenerateSessionTitleRequest {
     transcript: string;

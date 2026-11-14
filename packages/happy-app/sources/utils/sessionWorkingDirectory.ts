@@ -59,7 +59,6 @@ type WorkingDirectoryCapabilityMap = {
 };
 
 const WORKING_DIRECTORY_CAPABILITIES = {
-    personal: { agent: 'personal', strategy: 'new-session', requiresContinuation: false },
     claude: { agent: 'claude', strategy: 'continue-context', requiresContinuation: true },
     codex: { agent: 'codex', strategy: 'continue-context', requiresContinuation: true },
     gemini: { agent: 'gemini', strategy: 'new-session', requiresContinuation: false },

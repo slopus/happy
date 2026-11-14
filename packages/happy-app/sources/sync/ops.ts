@@ -7,6 +7,7 @@ import { asyncQuestionResponseSchema, type AsyncQuestionAction, type AsyncQuesti
 import { apiSocket } from './apiSocket';
 import { ComposerPredictionResponseSchema, type ComposerPredictionRequest, type ComposerPredictionResponse } from '@slopus/happy-wire';
 import { sync } from './sync';
+import { isRetiredAgentFlavor } from './retiredSessions';
 import { ensureSessionHydratedWithRetry } from './ensureSessionHydratedWithRetry';
 import type { MachineMetadata, Metadata, Session } from './storageTypes';
 import { markSessionArchiveRequested, markSessionRestored } from '@/utils/sessionLifecycle';
@@ -236,7 +237,7 @@ export interface SpawnSessionOptions {
     traceId?: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'ask' | 'codex' | 'claude' | 'gemini' | 'opencode' | 'openclaw' | 'personal';
+    agent?: 'ask' | 'codex' | 'claude' | 'gemini' | 'opencode' | 'openclaw';
     environmentVariables?: Record<string, string>;
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
@@ -319,6 +320,7 @@ export interface ResumeSessionOptions {
  * Spawn a new remote session on a specific machine
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
+    if (isRetiredAgentFlavor(options.agent)) return { type: 'error', errorMessage: 'personal-agent-retired' };
     const { machineId, directory, traceId, approvedNewDirectoryCreation = false, token, agent, environmentVariables, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
     return machineStartSession(machineId, 'spawn-happy-session', agent === 'codex', {
         type: 'spawn-in-directory', directory, traceId, approvedNewDirectoryCreation,
@@ -570,6 +572,9 @@ export async function codexListRewindPoints(
 export async function machineResumeSession(
     options: ResumeSessionOptions & { model?: string; permissionMode?: string; effort?: string | null },
 ): Promise<SpawnSessionResult> {
+    if (isRetiredAgentFlavor(options.agent)) {
+        return { type: 'error', errorMessage: 'personal-agent-retired' };
+    }
     const { machineId, sessionId, agent, model, permissionMode, effort, expectedFailedTurn, expectedWorkerPid } = options;
     return machineStartSession(machineId, 'resume-happy-session', agent === 'codex', { sessionId, model, permissionMode, effort, ...(expectedFailedTurn ? { expectedFailedTurn } : {}), ...(expectedWorkerPid ? { expectedWorkerPid } : {}) });
 }

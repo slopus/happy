@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/elie222/rakazo",
+  "commit": "c71c0c6bb6f00e511ece8fa6a919d282c129bbd3",
+  "license": "Apache-2.0",
+  "appImage": "ghcr.io/elie222/rakazo/app@sha256:39f37f6c5576d1665f0fa188f56b4a71ea566b08be282c756fd4f86a12c52188",
+  "appTag": "sha-c71c0c6bb6f00e511ece8fa6a919d282c129bbd3",
+  "postgresImage": "postgres:16@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5"
+}

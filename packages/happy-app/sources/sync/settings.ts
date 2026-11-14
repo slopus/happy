@@ -1,5 +1,4 @@
 import * as z from 'zod';
-import { isPersonalAgentAvatar, PERSONAL_AGENT_NAME_MAX_LENGTH } from './personalAgent';
 import { AgentDefaultOverridesSchema } from './agentDefaults';
 import {
     emptySidebarOrganization,
@@ -94,8 +93,6 @@ export const SettingsSchema = z.object({
     // Schema version for compatibility detection
     schemaVersion: z.number().default(SUPPORTED_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
 
-    personalAgentName: z.string().trim().min(1).max(PERSONAL_AGENT_NAME_MAX_LENGTH).catch('Paws').default('Paws'),
-    personalAgentAvatar: z.string().refine(isPersonalAgentAvatar).nullable().catch(null).default(null),
     customInstructions: z.string().describe('User-defined instructions appended to the system prompt of every message'),
     viewInline: z.boolean().describe('Whether to view inline tool calls'),
     inferenceOpenAIKey: z.string().nullish().describe('OpenAI API key for inference'),
@@ -179,8 +176,6 @@ export type QuickPrompt = z.infer<typeof QuickPromptSchema>;
 
 export const settingsDefaults: Settings = {
     schemaVersion: SUPPORTED_SCHEMA_VERSION,
-    personalAgentName: 'Paws',
-    personalAgentAvatar: null,
     customInstructions: '',
     viewInline: false,
     inferenceOpenAIKey: null,

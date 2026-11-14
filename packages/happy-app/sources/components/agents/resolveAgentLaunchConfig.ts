@@ -1,6 +1,7 @@
 import { agentKeys, resolveAgentDefaultConfig, type AgentDefaultOverrides } from '@/sync/agentDefaults';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { resolveAgentTypeForLaunch, type AgentLauncher } from './launchAgent';
+import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
 
 type DraftLaunchConfig = {
     agentType?: unknown;
@@ -28,6 +29,9 @@ export function resolveAgentLaunchConfig(args: {
     draft: DraftLaunchConfig;
     defaults: AgentDefaultOverrides | null | undefined;
 }): AgentLaunchConfigResult {
+    if (isRetiredAgentFlavor(args.agent.agentType) || isRetiredAgentFlavor(args.draft.agentType)) {
+        return { type: 'error', message: 'personal-agent-retired' };
+    }
     const agentType = resolveAgentTypeForLaunch(args.agent) ?? args.draft.agentType;
     if (!isNewSessionAgentType(agentType)) {
         return { type: 'error', message: 'Invalid Agent type' };

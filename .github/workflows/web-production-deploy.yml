@@ -214,6 +214,11 @@ jobs:
         if: ${{ steps.source.outputs.eligible == 'true' && steps.mcp_rollout.outputs.enabled == 'true' }}
         run: node scripts/verify-production-mcp-app-sandbox.mjs "$PAWS_MCP_APP_SANDBOX_ORIGIN" "$PAWS_WEB_ORIGIN"
 
+      - name: Configure dedicated Bots HTTPS ingress
+        id: bots_caddy
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        run: bash scripts/deploy-bots-ingress.sh
+
       - name: Build and stamp Web from this main revision
         if: ${{ steps.source.outputs.eligible == 'true' }}
         run: |
@@ -388,9 +393,11 @@ jobs:
           rollback_prefix="${{ steps.switch.outputs.rollback_prefix }}"
           caddy_backup="${{ steps.caddy.outputs.backup_path }}"
           mcp_caddy_backup="${{ steps.mcp_caddy.outputs.backup_path }}"
+          bots_caddy_backup="${{ steps.bots_caddy.outputs.backup_path }}"
           oss_rollback_status=0
           caddy_rollback_status=0
           mcp_caddy_rollback_status=0
+          bots_caddy_rollback_status=0
           set +e
           if [ -n "$rollback_prefix" ]; then
             bash scripts/deploy-web.sh --rollback "$rollback_prefix"
@@ -433,6 +440,10 @@ jobs:
               caddy_rollback_status=$?
             fi
           fi
+          if [ -n "$bots_caddy_backup" ]; then
+            bash scripts/deploy-bots-ingress.sh --rollback "$bots_caddy_backup"
+            bots_caddy_rollback_status=$?
+          fi
           if [ -n "$mcp_caddy_backup" ]; then
             ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$mcp_caddy_backup" <<'REMOTE_SCRIPT'
           set -euo pipefail
@@ -467,8 +478,8 @@ jobs:
             mcp_caddy_rollback_status=$?
           fi
           set -e
-          if [ "$oss_rollback_status" -ne 0 ] || [ "$caddy_rollback_status" -ne 0 ] || [ "$mcp_caddy_rollback_status" -ne 0 ]; then
-            echo "错误：Web 回滚未完全成功（OSS=$oss_rollback_status, Caddy=$caddy_rollback_status, MCP_App_Caddy=$mcp_caddy_rollback_status）。" >&2
+          if [ "$oss_rollback_status" -ne 0 ] || [ "$caddy_rollback_status" -ne 0 ] || [ "$mcp_caddy_rollback_status" -ne 0 ] || [ "$bots_caddy_rollback_status" -ne 0 ]; then
+            echo "错误：Web 回滚未完全成功（OSS=$oss_rollback_status, Caddy=$caddy_rollback_status, MCP_App_Caddy=$mcp_caddy_rollback_status, Bots_Caddy=$bots_caddy_rollback_status）。" >&2
             exit 1
           fi
 
@@ -481,6 +492,7 @@ jobs:
             echo '| Field | Value |'
             echo '| --- | --- |'
             echo "| Origin | $PAWS_WEB_ORIGIN |"
+            echo "| Bots runtime | https://47.115.228.20:8445 (computers disabled) |"
             echo "| Commit | \`$GITHUB_SHA\` |"
             echo "| Static storage | \`oss://$PAWS_WEB_OSS_BUCKET/web/releases/$GITHUB_SHA/\` |"
             echo '| Server Web files | Removed after verification |'

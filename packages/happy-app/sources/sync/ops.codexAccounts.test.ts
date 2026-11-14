@@ -27,6 +27,15 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('transparent Codex grants', () => {
+    it('rejects retired Personal launches and resumes before authorization or RPC', async () => {
+        expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'personal' as any, resumeCodexThreadId: 'misleading' }))
+            .toEqual({ type: 'error', errorMessage: 'personal-agent-retired' });
+        expect(await machineResumeSession({ machineId: 'm1', sessionId: 'old', agent: 'personal' }))
+            .toEqual({ type: 'error', errorMessage: 'personal-agent-retired' });
+        expect(machineRPC).not.toHaveBeenCalled();
+        expect(getCredentials).not.toHaveBeenCalled();
+        expect(requests).toEqual([]);
+    });
     it('uses the same machine-bound authorization for a preview empty chat without sending task text', async () => {
         await machineStartGoalPreviewChat('m1', { featurePath: '/archive', taskId: 'task', requestId: 'open-once', agent: 'codex' });
         expect(requests).toEqual([{ url: 'https://test/v1/codex-session-grants', body: { machineId: 'm1' } }]);

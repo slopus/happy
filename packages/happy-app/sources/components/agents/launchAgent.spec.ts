@@ -11,6 +11,13 @@ const agent: AgentLauncher = {
 };
 
 describe('launchAgent', () => {
+    it('opens Bots for a retired preset without mutating the current coding draft', () => {
+        const draft = { setMachineId: vi.fn(), setPath: vi.fn(), setAgentType: vi.fn(), setSessionType: vi.fn(), setInput: vi.fn() };
+        const navigate = vi.fn();
+        launchAgent({ ...agent, agentType: 'personal' }, draft, navigate);
+        expect(navigate).toHaveBeenCalledExactlyOnceWith('/bots');
+        for (const setter of Object.values(draft)) expect(setter).not.toHaveBeenCalled();
+    });
     it('sets machine before path and navigates with agentId', () => {
         const calls: string[] = [];
         const draft = {

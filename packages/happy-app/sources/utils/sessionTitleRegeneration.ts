@@ -1,4 +1,5 @@
 import type { Metadata, Session } from '@/sync/storageTypes';
+import { isRetiredSession } from '@/sync/retiredSessions';
 
 function nonEmpty(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0;
@@ -12,6 +13,7 @@ function isKnownTitleRegenerationProvider(metadata: Metadata): boolean {
 }
 
 export function canRegenerateSessionTitle(session: Session): boolean {
+    if (isRetiredSession(session)) return false;
     if (session.presence !== 'online' || !session.metadata) {
         return false;
     }

@@ -18,7 +18,8 @@ export type SidebarWorkspaceList = {
     color: SidebarListColor;
     machineId: string | null;
     path: string | null;
-    defaultAgent: NewSessionAgentType | null;
+    /** Retain historical preferences without making the retired engine selectable. */
+    defaultAgent: NewSessionAgentType | 'personal' | null;
     createdAt: number;
 };
 

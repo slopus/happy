@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import type { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { readPersistedSessions } from '@/persistence';
+import { PERSONAL_AGENT_RETIRED_MESSAGE, retiredAgentMessage } from '@/utils/retiredAgent';
 
 import { resolveHappySession, type ResumableHappySession } from './resolveHappySession';
 
@@ -51,10 +52,8 @@ function resolveFlavor(metadata: Metadata): 'codex' | 'claude' | null {
 
 export function buildResumeLaunch(session: ResumableHappySession, options: ResumeLaunchOptions = {}): ResumeLaunch {
     const { metadata } = session;
-    if (metadata.flavor === 'personal') {
-        return { cwd: metadata.path, args: ['personal', '--resume', session.id,
-            ...(options.startedBy ? ['--started-by', options.startedBy] : [])] };
-    }
+    const retired = retiredAgentMessage(metadata.flavor);
+    if (retired) throw new Error(retired);
     const flavor = resolveFlavor(metadata);
 
     if (flavor === 'codex') {
@@ -134,15 +133,9 @@ export async function handleResumeCommand(args: string[]): Promise<void> {
         return;
     }
 
-    const personal = Object.entries(readPersistedSessions()).filter(([id, saved]) =>
-        id.startsWith(parsed.sessionId) && saved.metadata.flavor === 'personal');
-    if (personal.length > 1) throw new Error('Ambiguous Personal session prefix; provide the full Paws session ID');
-    if (personal.length === 1) {
-        const [id, saved] = personal[0];
-        const code = await spawnResumeChild({ cwd: saved.metadata.path, args: ['personal', '--resume', id] });
-        if (typeof code === 'number' && code !== 0) process.exitCode = code;
-        return;
-    }
+    const matchesRetiredSession = Object.entries(readPersistedSessions()).some(([id, saved]) =>
+        id.startsWith(parsed.sessionId) && retiredAgentMessage(saved.metadata.flavor));
+    if (matchesRetiredSession) throw new Error(PERSONAL_AGENT_RETIRED_MESSAGE);
 
     const session = await resolveHappySession(parsed.sessionId);
     const launch = buildResumeLaunch(session);

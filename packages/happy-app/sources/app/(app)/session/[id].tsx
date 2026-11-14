@@ -1,6 +1,5 @@
-import { useIsFocused } from '@react-navigation/native';
-import { storage, useSession } from '@/sync/storage';
-import { isPersonalAgentConversation } from '@/sync/personalAgent';
+import { useSession } from '@/sync/storage';
+import { isRetiredSession } from '@/sync/retiredSessions';
 import { Redirect } from 'expo-router';
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
@@ -12,11 +11,7 @@ export default React.memo(() => {
     const route = useRoute();
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId);
-    const focused = useIsFocused();
-    React.useEffect(() => {
-        if (focused && session && isPersonalAgentConversation(session)) storage.getState().applyLocalSettings({ personalAgentConversationId: sessionId });
-    }, [sessionId, session?.metadata?.flavor, focused]);
-    if (session && isPersonalAgentConversation(session)) return <Redirect href="/personal" />;
+    if (session && isRetiredSession(session)) return <Redirect href="/bots" />;
     const params = route.params as { openFile?: string; fileOpenRequest?: string };
     let fileOpenRequest;
     if (params.openFile) {

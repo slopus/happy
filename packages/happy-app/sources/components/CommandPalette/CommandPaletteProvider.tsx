@@ -1,4 +1,4 @@
-import { isPersonalAgentConversation } from '@/sync/personalAgent';
+import { isRetiredSession } from '@/sync/retiredSessions';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -195,7 +195,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             },
         ];
 
-        const recentSessions = Object.values(sessions).filter(session => !isPersonalAgentConversation(session)).sort((a, b) => b.updatedAt - a.updatedAt);
+        const recentSessions = Object.values(sessions).filter(session => !isRetiredSession(session)).sort((a, b) => b.updatedAt - a.updatedAt);
         const currentSession = currentViewingSessionId ? sessions[currentViewingSessionId] : undefined;
         const projectSession = currentSession?.metadata?.path
             ? currentSession

@@ -47,8 +47,6 @@ const mocks = vi.hoisted(() => {
     });
 });
 
-vi.mock('./personal/PersonalAgentEntry', () => ({ PersonalAgentEntry: 'PersonalAgentEntry' }));
-
 vi.mock('@/sync/sync', () => ({ sync: { bootstrapSessions: mocks.bootstrap, loadNextSessionHistoryPage: mocks.history } }));
 
 vi.mock('react-native', async () => {
@@ -705,6 +703,20 @@ describe('DesktopSidebarSessionsNavigation', () => {
         expect(renderer.root.findAllByProps({ testID: 'sidebar-pinned-section' })).toHaveLength(0);
         expect(renderer.root.findAllByType('CompactSessionRow')).toHaveLength(1);
         expect(renderer.root.findByProps({ testID: 'organized-session-session-1' })).toBeDefined();
+        act(() => renderer.unmount());
+    });
+
+    it('routes a retired Personal preset to Bots before changing the ordinary session draft', () => {
+        mocks.organization.lists[0].defaultAgent = 'personal';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'sidebar-new-session-happy' }).props.onPress());
+        expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/bots');
+        expect(mocks.setMachineId).not.toHaveBeenCalled();
+        expect(mocks.setPath).not.toHaveBeenCalled();
+        expect(mocks.setAgentType).not.toHaveBeenCalled();
+        expect(mocks.updateOrganization).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 

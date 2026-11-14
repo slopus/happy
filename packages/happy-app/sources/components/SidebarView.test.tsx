@@ -1,4 +1,3 @@
-vi.mock('./personal/PersonalAgentEntry', () => ({ PersonalAgentEntry: 'PersonalAgentEntry' }));
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -241,6 +240,31 @@ describe('SidebarView Agent space exit', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it('places Bots immediately below Home and opens its independent workspace', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        const rail = renderer.root.findByProps({ testID: 'desktop-navigation-rail' });
+        const ids = rail.findAllByType('Pressable').map((node: any) => node.props.testID);
+        expect(ids.slice(0, 2)).toEqual(['sidebar-session-list-button', 'sidebar-bots-button']);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-bots-button' }).props.onPress());
+        expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/bots');
+        expect(mocks.setDesktopSidebarMode).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('selects only Bots and returns Home without changing the saved sidebar pin', () => {
+        mocks.pathname = '/bots';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible={false} />); });
+        const button = (id: string) => renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === id);
+        expect(button('sidebar-bots-button').props.accessibilityState.selected).toBe(true);
+        expect(button('sidebar-session-list-button').props.accessibilityState.selected).toBe(false);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
+        expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/');
+        expect(mocks.toggleLeftSidebar).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
 
     it('keeps the permanent rail on the live theme when appearance changes without remounting', () => {
         let renderer: any;

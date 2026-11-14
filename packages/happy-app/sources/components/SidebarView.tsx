@@ -1,4 +1,3 @@
-import { PersonalAgentEntry } from './personal/PersonalAgentEntry';
 import { useDesktopWorkspacePathname } from '@/hooks/useDesktopWorkspacePathname';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
@@ -345,6 +344,7 @@ function DesktopRailItem({
                 accessibilityLabel={label}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
+                aria-pressed={selected}
                 onBlur={() => setActive(false)}
                 onFocus={showTooltip}
                 onHoverIn={showTooltip}
@@ -412,6 +412,7 @@ export const SidebarView = React.memo(({
     React.useEffect(() => {
         setMobilePanel(pathname === '/relationship-advisor' ? 'advisor' : 'sessions');
     }, [pathname]);
+    const botsActive = pathname === '/bots' || pathname.startsWith('/bots/');
     const advisorSidebarActive = railNavigation && (mobileNavigation ? mobilePanel === 'advisor' : pathname === '/relationship-advisor');
     const navigation = useNavigation();
     const realtimeStatus = useRealtimeStatus();
@@ -456,7 +457,7 @@ export const SidebarView = React.memo(({
 
     const openDesktopSessionLists = () => {
         setDesktopSidebarMode(desktopSidebarListMode);
-        if (desktopPrimaryNavigation && pathname === '/projects') {
+        if (desktopPrimaryNavigation && (pathname === '/projects' || botsActive)) {
             go('/');
             return;
         }
@@ -528,7 +529,6 @@ export const SidebarView = React.memo(({
                     <NewSessionGlyph />
                     <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
                 </Pressable>
-                <PersonalAgentEntry onNavigate={closeDrawer} />
 
                 <Pressable accessibilityRole="button" onPress={() => go('/agent-profiles')} testID="sidebar-party-agents-button" style={({ pressed }) => [styles.messagesRow, desktopDensity && styles.messagesRowDesktop, pressed && styles.navigationCardPressed]}>
                     <Ionicons name="person-add-outline" size={17} color={stylesheet.messagesText.color}/><Text style={styles.messagesText}>群聊 Agent 管理</Text>
@@ -582,9 +582,17 @@ export const SidebarView = React.memo(({
                 icon="home-outline"
                 label={t('common.home')}
                 onPress={openDesktopSessionLists}
-                selected={pathname !== '/projects' && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
+                selected={pathname !== '/projects' && !advisorSidebarActive && !botsActive && desktopSidebarMode !== 'archive'}
                 testID="sidebar-session-list-button"
             />}
+            <DesktopRailItem
+                icon="hardware-chip-outline"
+                label={t('bots.title')}
+                onPress={() => go('/bots')}
+                selected={botsActive}
+                testID="sidebar-bots-button"
+                showLabel={mobileNavigation}
+            />
             {!desktopPrimaryNavigation && <DesktopRailItem
                 icon="add"
                 iconColor={stylesheet.newSessionIcon.color}
@@ -785,7 +793,6 @@ export const SidebarView = React.memo(({
                                     <Pressable accessibilityRole="button" accessibilityLabel={t('sidebar.newSession')} onPress={() => go('/new')} style={styles.newSessionButton} testID="mobile-sidebar-new-session">
                                         <NewSessionGlyph /><Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
                                     </Pressable>
-                                    <PersonalAgentEntry onNavigate={closeDrawer} />
                                 </>}
                                 <View style={[styles.mobileContent, advisorSidebarActive && styles.hiddenContent]} accessibilityElementsHidden={advisorSidebarActive} importantForAccessibility={advisorSidebarActive ? 'no-hide-descendants' : 'auto'}>
 

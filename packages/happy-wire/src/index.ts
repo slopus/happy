@@ -18,3 +18,4 @@ export * from './goalDelivery';
 export * from './artifacts';
 export * from './composerPrediction';
 export * from './asyncQuestions';
+export * from './bots';

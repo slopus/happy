@@ -725,10 +725,19 @@ describe('message visibility synchronization', () => {
     });
 
     it('renders the latest local tail through Deferred despite a saved historical reading position', async () => {
-        const view = await localHistoryViewHarness({ historical: true });
+        const verification = vi.spyOn(syncForTest, 'loadHistoryBoundary');
+        let view: Awaited<ReturnType<typeof localHistoryViewHarness>> | undefined;
         try {
-            await act(async () => { await expect(view.opening).resolves.toBe('ready'); });
-            await vi.waitFor(() => expect(view.storage.getState().sessionMessages['paint-history'].latestVerifiedOwnerEpoch).not.toBeNull());
+            view = await localHistoryViewHarness({ historical: true });
+            const opening = view.opening;
+            await act(async () => { await expect(opening).resolves.toBe('ready'); });
+            // Await the scheduled IndexedDB/decrypt/network work itself. The default
+            // 1s waitFor budget can expire under the concurrent workspace CI load.
+            await vi.waitFor(() => expect(verification).toHaveBeenCalledWith(
+                'paint-history', 'latest', undefined, true, false,
+            ), { timeout: 3500 });
+            await act(async () => { await verification.mock.results[0].value; });
+            expect(view.storage.getState().sessionMessages['paint-history'].latestVerifiedOwnerEpoch).not.toBeNull();
             await view.paint();
             expect(view.renderer.root.findAllByType('FlatList')).toHaveLength(1);
             expect(view.renderer.root.findByType('FlatList').props.data).toContainEqual(expect.objectContaining({
@@ -742,7 +751,7 @@ describe('message visibility synchronization', () => {
             expect(await view.history.readReadingState('paint-history')).toEqual(view.reading);
             expect(view.marker).toHaveBeenCalledOnce();
             expect(mocks.apiRequest).toHaveBeenCalledWith('/v3/sessions/paint-history/messages?after_seq=400&limit=100');
-        } finally { view.close(); }
+        } finally { view?.close(); verification.mockRestore(); }
     });
 
     it('verifies a complete local tail before enabling failed-turn actions, including a warm reopen', async () => {

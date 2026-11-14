@@ -156,6 +156,35 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('real session writer composition', () => {
+    it('refuses a retired Personal send before encryption, outbox admission, or provider recovery', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const current = storage.getState().sessions['writer-session'];
+        storage.getState().applySessions([{ ...current, metadata: { ...current.metadata!, flavor: 'personal', codexThreadId: 'misleading-id' } }]);
+        const before = JSON.stringify(storage.getState().sessionMessages['writer-session']);
+        const recovery = vi.spyOn(subject.failedCodexRecovery, 'ensure');
+        const enqueue = vi.spyOn(subject, 'sendMessageWithContext');
+        await expect(sync.sendMessage('writer-session', 'must stay local')).rejects.toThrow('personal-agent-retired');
+        expect(recovery).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+        expect(JSON.stringify(storage.getState().sessionMessages['writer-session'])).toBe(before);
+    });
+    it('holds already-pending Personal outbox bytes without sending or deleting them', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const current = storage.getState().sessions['writer-session'];
+        storage.getState().applySessions([{ ...current, metadata: { ...current.metadata!, flavor: 'personal' } }]);
+        const pending = [{ localId: 'saved-request', content: 'saved-encrypted-bytes' }];
+        subject.pendingOutbox.set('writer-session', pending);
+        mocks.apiRequest.mockClear();
+        await subject.flushOutbox('writer-session');
+        expect(mocks.apiRequest).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.get('writer-session')).toBe(pending);
+        expect(pending).toEqual([{ localId: 'saved-request', content: 'saved-encrypted-bytes' }]);
+        expect(subject.hasPendingOutboxMessages()).toBe(false);
+        subject.failPendingOutboxMessages('timeout');
+        expect(subject.pendingOutbox.get('writer-session')).toBe(pending);
+        expect(pending).toHaveLength(1);
+    });
     it.each([{ thinkingAt: 15, expected: false }, { thinkingAt: 35, expected: true }])(
         'lets persisted completion settle only its own activity (%j)', async ({ thinkingAt, expected }) => {
             await sync.ensureSessionHydrated('writer-session');

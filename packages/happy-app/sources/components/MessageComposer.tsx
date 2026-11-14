@@ -94,7 +94,7 @@ interface MessageComposerProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
-    agentType?: 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'personal';
+    agentType?: 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
