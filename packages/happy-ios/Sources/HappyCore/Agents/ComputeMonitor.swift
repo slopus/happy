@@ -98,6 +98,13 @@ public final class ComputeMonitor {
         again = false
     }
 
+    /// A computer as a write answered with it, shown on its own page at once.
+    public func settle(_ computer: Computer) {
+        guard visible, allowed, page == .computer(computer.id) else { return }
+        snapshot = .computer(computer)
+        changed?()
+    }
+
     /// Overlapping polling/event reads become at most one follow-up read.
     public func refresh() {
         guard visible, allowed, failure != .forbidden, failure != .signedOut else { return }
@@ -144,10 +151,7 @@ public final class ComputeMonitor {
     /// The names of the private computers' owners, asked for only while one
     /// isn't known yet. A failed read leaves them unnamed, not the list.
     private nonisolated static func names(_ computers: [Computer], known: [String: String?], client: AgentClient) async -> [String: String?] {
-        let owners = Set(computers.compactMap { computer -> String? in
-            if case .private(let owner?) = computer.mode { return owner }
-            return nil
-        })
+        let owners = Set(computers.compactMap { $0.access == .private ? $0.owner : nil })
         let missing = owners.subtracting(known.keys)
         guard !missing.isEmpty else { return known }
         guard let users = try? await client.teamUsers(missing.sorted()) else { return known }

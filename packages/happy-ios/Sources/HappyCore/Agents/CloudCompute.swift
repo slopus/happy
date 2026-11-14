@@ -1,56 +1,33 @@
 import Foundation
 import HappyWire
 
-/// How a computer takes agents, fixed by the config on the computer itself:
-/// isolated sandboxes, the host shared by every agent, the host held by one
-/// agent at a time, or a member's own computer for their own agents. A
-/// computer's mode carries what only that mode has.
-public enum ComputeMode: Equatable, Sendable {
-    case sandbox
-    case shared
-    /// `holder` is nil while no agent has joined it.
-    case exclusive(holder: ComputeHolder?)
-    /// `owner` is the member's user ID; nil for a computer that joined
-    /// before owners were kept.
-    case `private`(owner: String?)
+/// Who a computer takes agents from, chosen when it is added: the team's,
+/// or one member's own computer for their own agents, each approved.
+public enum ComputeAccess: String, CaseIterable, Codable, Sendable {
+    case shared, `private`
 
-    public enum Kind: String, CaseIterable, Codable, Sendable {
-        case sandbox, shared, exclusive, `private`
-
-        /// Where its supervisor installs: sandbox and shared on Linux only,
-        /// exclusive on Linux and macOS, private on all three.
-        public var platforms: [ComputePlatform] {
-            switch self {
-            case .sandbox, .shared: [.linux]
-            case .exclusive: [.macOS, .linux]
-            case .private: [.macOS, .linux, .windows]
-            }
-        }
-    }
-
-    public var kind: Kind {
+    /// How many agents a new computer runs at once unless asked otherwise.
+    public var defaultConcurrency: Int {
         switch self {
-        case .sandbox: .sandbox
-        case .shared: .shared
-        case .exclusive: .exclusive
-        case .private: .private
+        case .shared: 8
+        case .private: 1
         }
     }
 }
 
-public enum ComputePlatform: String, Equatable, Sendable { case macOS, linux, windows }
+public enum ComputePlatform: String, CaseIterable, Equatable, Sendable {
+    case macOS = "macos", linux, windows
 
-/// The agent holding an exclusive computer; its title is nil when the reader
-/// may not read that agent's conversation.
-public struct ComputeHolder: Decodable, Equatable, Sendable {
-    public let id: String
-    public let title: String?
+    /// The system of a published supervisor build, `<os>-<arch>`.
+    public init?(build: String) {
+        self.init(rawValue: String(build.prefix { $0 != "-" }))
+    }
 }
 
-/// What the reader may do with compute: add a computer in any mode and free
-/// a held one (`pools.manage`), use computers and add a private one of their
-/// own (`compute.use`), or nothing at all.
-public enum ComputeAccess: Equatable, Sendable {
+/// What the reader may do with compute: add a computer of either access and
+/// manage every one (`pools.manage`), use computers and add a private one of
+/// their own (`compute.use`), or nothing at all.
+public enum ComputeRole: Equatable, Sendable {
     case none, use, manage
 
     public init(_ gate: RoleGate) {
@@ -59,34 +36,25 @@ public enum ComputeAccess: Equatable, Sendable {
         self = gate.allows(.poolsManage) ? .manage : .use
     }
 
-    /// The modes it may add a computer in.
-    public var modes: [ComputeMode.Kind] {
+    /// The access it may add a computer with.
+    public var accesses: [ComputeAccess] {
         switch self {
         case .none: []
         case .use: [.private]
-        case .manage: ComputeMode.Kind.allCases
+        case .manage: ComputeAccess.allCases
         }
     }
 }
 
-public struct ComputeCapacity: Decodable, Equatable, Sendable {
-    public let used: Int
-    public let total: Int?
-
-    enum CodingKeys: String, CodingKey { case used, total }
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        used = try c.decode(Int.self, forKey: .used)
-        total = try c.decode(Int?.self, forKey: .total)
-        guard used >= 0, total.map({ $0 >= 0 }) ?? true else {
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Negative sandbox capacity"))
-        }
-    }
+/// The most agents any computer runs at once.
+public enum ComputeConcurrency {
+    public static let limit = 64
+    public static let range = 1...limit
 }
 
-/// One computer from `/v0/computers`. A member reads its identity, mode
-/// and description; host facts, capacity and placements come only to
-/// `pools.manage`, so they stay nil for everyone else.
+/// One computer from `/v0/computers`: who it takes agents from, how many it
+/// runs at once and which are on it now. Host facts and the backend come
+/// only to `pools.manage`, so they stay nil for everyone else.
 public struct Computer: Decodable, Equatable, Sendable {
     public enum Status: String, Decodable, Sendable { case online, offline, draining, enrolling, revoked }
 
@@ -97,11 +65,18 @@ public struct Computer: Decodable, Equatable, Sendable {
         public let totalDiskBytes: Double?
     }
 
-    /// Durable placements, including idle/reserved sandboxes; not processes.
-    public struct Placement: Decodable, Equatable, Sendable {
-        public let sandboxId: String
-        public let agentId: String
-        public let agentTitle: String?
+    /// An agent placed on it; its title is nil when the reader may not read
+    /// that agent's conversation.
+    public struct Agent: Decodable, Equatable, Sendable {
+        public let id: String
+        public let title: String?
+    }
+
+    /// Whether it can run an agent's restricted commands. Where it can't,
+    /// only full-access commands run there.
+    public struct Boundary: Decodable, Equatable, Sendable {
+        public let available: Bool
+        public let reason: String?
     }
 
     public let id: String
@@ -111,36 +86,50 @@ public struct Computer: Decodable, Equatable, Sendable {
     public let arch: String?
     public let version: String?
     public let osVersion: String?
+    public let shell: String?
     public let status: Status
     public let since: Double?
     public let lastSeenAt: Double?
-    public let mode: ComputeMode
     /// What agents read about it in `list_compute`.
     public let description: String?
+    public let access: ComputeAccess
+    /// The member a private computer belongs to.
+    public let owner: String?
+    /// How many agents it runs at once.
+    public let concurrency: Int
+    /// The most it can be set to, where the computer says.
+    public let maxConcurrency: Int?
+    public let agents: [Agent]
+    public let boundary: Boundary
     public let backend: String?
-    public let sandboxError: String?
-    public let sandboxCapacity: ComputeCapacity?
     public let host: Host?
-    public let activeSandboxes: [Placement]?
 
     public var displayName: String {
         [name, hostname].compactMap { $0 }.first { !$0.isEmpty } ?? id
     }
 
-    /// Whether `access` may free it from the agent holding it.
-    public func releasable(by access: ComputeAccess) -> Bool {
-        guard case .exclusive(.some) = mode else { return false }
-        return access == .manage
+    /// It takes no more agents until one leaves; it is still listed.
+    public var full: Bool { agents.count >= concurrency }
+
+    /// What its concurrency may be set to.
+    public var concurrencyRange: ClosedRange<Int> {
+        1...max(1, min(ComputeConcurrency.limit, maxConcurrency ?? ComputeConcurrency.limit))
     }
 
     public func ownedBy(_ userId: String?) -> Bool {
-        guard case .private(let owner?) = mode, let userId else { return false }
+        guard access == .private, let owner, let userId else { return false }
         return owner == userId
     }
 
+    /// Whether the reader may change its concurrency and remove its agents:
+    /// a manager, or the owner of a private computer.
+    public func manageable(by role: ComputeRole, userId: String?) -> Bool {
+        role == .manage || role == .use && ownedBy(userId)
+    }
+
     enum CodingKeys: String, CodingKey {
-        case id, name, hostname, os, arch, version, osVersion, status, since, lastSeenAt, mode, description
-        case owner, exclusiveAgent, backend, sandboxError, sandboxCapacity, host, activeSandboxes
+        case id, name, hostname, os, arch, version, osVersion, shell, status, since, lastSeenAt, description
+        case access, owner, concurrency, maxConcurrency, agents, boundary, backend, host
     }
 
     public init(from decoder: Decoder) throws {
@@ -152,21 +141,22 @@ public struct Computer: Decodable, Equatable, Sendable {
         arch = try c.decodeIfPresent(String.self, forKey: .arch)
         version = try c.decodeIfPresent(String.self, forKey: .version)
         osVersion = try c.decodeIfPresent(String.self, forKey: .osVersion)
+        shell = try c.decodeIfPresent(String.self, forKey: .shell)
         status = try c.decode(Status.self, forKey: .status)
         since = try c.decodeIfPresent(Double.self, forKey: .since)
         lastSeenAt = try c.decodeIfPresent(Double.self, forKey: .lastSeenAt)
         description = try c.decodeIfPresent(String.self, forKey: .description).flatMap { $0.isEmpty ? nil : $0 }
-        switch try c.decode(ComputeMode.Kind.self, forKey: .mode) {
-        case .sandbox: mode = .sandbox
-        case .shared: mode = .shared
-        case .exclusive: mode = .exclusive(holder: try c.decodeIfPresent(ComputeHolder.self, forKey: .exclusiveAgent))
-        case .private: mode = .private(owner: try c.decodeIfPresent(String.self, forKey: .owner))
+        access = try c.decode(ComputeAccess.self, forKey: .access)
+        owner = try c.decodeIfPresent(String.self, forKey: .owner)
+        concurrency = try c.decode(Int.self, forKey: .concurrency)
+        maxConcurrency = try c.decodeIfPresent(Int.self, forKey: .maxConcurrency)
+        guard concurrency >= 1, maxConcurrency.map({ $0 >= 1 }) ?? true else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Concurrency below 1"))
         }
+        agents = try c.decode([Agent].self, forKey: .agents)
+        boundary = try c.decode(Boundary.self, forKey: .boundary)
         backend = try c.decodeIfPresent(String.self, forKey: .backend)
-        sandboxError = try c.decodeIfPresent(String.self, forKey: .sandboxError)
-        sandboxCapacity = try c.decodeIfPresent(ComputeCapacity.self, forKey: .sandboxCapacity)
         host = try c.decodeIfPresent(Host.self, forKey: .host)
-        activeSandboxes = try c.decodeIfPresent([Placement].self, forKey: .activeSandboxes)
     }
 }
 
@@ -198,38 +188,65 @@ public struct ComputeInstall: Decodable, Equatable, Sendable {
         public let text: String
     }
 
-    public let mode: ComputeMode.Kind
+    public let access: ComputeAccess
+    public let concurrency: Int
     public let token: String
     /// Milliseconds.
     public let expiresAt: Double
     public let clusterUrl: String
     /// Nil where the server publishes no installer.
     public let commands: Commands?
+    /// The published supervisor builds, `<os>-<arch>`.
+    public let platforms: [String]
+    /// What the server says about running it, where it says something.
+    public let notice: String?
 
-    /// The commands this mode can run: the shell one for the Unix systems
-    /// it supports, and PowerShell only for a private computer, the one mode
-    /// Windows has.
+    /// The commands the published builds' systems run: the shell one for
+    /// macOS and Linux, and PowerShell for Windows.
     public var shown: [Command] {
         guard let commands else { return [] }
-        let platforms = mode.platforms
-        var shown = [Command(platforms: platforms.filter { $0 != .windows }, text: commands.unix)]
-        if platforms.contains(.windows) { shown.append(Command(platforms: [.windows], text: commands.windows)) }
+        let systems = ComputePlatform.allCases.filter { system in platforms.contains { ComputePlatform(build: $0) == system } }
+        var shown: [Command] = []
+        let unix = systems.filter { $0 != .windows }
+        if !unix.isEmpty { shown.append(Command(platforms: unix, text: commands.unix)) }
+        if systems.contains(.windows) { shown.append(Command(platforms: [.windows], text: commands.windows)) }
         return shown
     }
-}
 
-/// What a new computer will be: its mode. It joins under its hostname.
-public struct ComputerDraft: Equatable, Sendable {
-    public var mode: ComputeMode.Kind
+    enum CodingKeys: String, CodingKey { case access, concurrency, token, expiresAt, clusterUrl, commands, platforms, notice }
 
-    public init(mode: ComputeMode.Kind) {
-        self.mode = mode
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        access = try c.decode(ComputeAccess.self, forKey: .access)
+        concurrency = try c.decode(Int.self, forKey: .concurrency)
+        token = try c.decode(String.self, forKey: .token)
+        expiresAt = try c.decode(Double.self, forKey: .expiresAt)
+        clusterUrl = try c.decode(String.self, forKey: .clusterUrl)
+        commands = try c.decodeIfPresent(Commands.self, forKey: .commands)
+        platforms = try c.decode([String].self, forKey: .platforms)
+        notice = try c.decodeIfPresent(String.self, forKey: .notice).flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 
-/// Adding a computer: choose its mode, then mint the token and show its
-/// install commands. Changes that don't belong to the current step are
-/// ignored.
+/// What a new computer will be: who it takes agents from and how many at
+/// once. It joins under its hostname.
+public struct ComputerDraft: Equatable, Sendable {
+    public var access: ComputeAccess
+    /// Nil for the access's default.
+    public var concurrency: Int?
+
+    public init(access: ComputeAccess, concurrency: Int? = nil) {
+        self.access = access
+        self.concurrency = concurrency
+    }
+
+    /// What it will run at once.
+    public var shownConcurrency: Int { concurrency ?? access.defaultConcurrency }
+}
+
+/// Adding a computer: choose its access and concurrency, then mint the token
+/// and show its install commands. Changes that don't belong to the current
+/// step are ignored.
 public enum ComputerAdd: Equatable, Sendable {
     case choosing(ComputerDraft)
     case creating(ComputerDraft)
@@ -237,10 +254,10 @@ public enum ComputerAdd: Equatable, Sendable {
     /// Shown once; closing the flow forgets it.
     case shown(ComputeInstall)
 
-    /// Nil when the reader may add nothing. A member starts on private,
-    /// the only mode they have.
-    public static func start(_ access: ComputeAccess) -> ComputerAdd? {
-        access.modes.first.map { .choosing(ComputerDraft(mode: $0)) }
+    /// Nil when the reader may add nothing. A manager starts on shared, a
+    /// member on private, the only access they have.
+    public static func start(_ role: ComputeRole) -> ComputerAdd? {
+        role.accesses.first.map { .choosing(ComputerDraft(access: $0)) }
     }
 
     public var draft: ComputerDraft? {
@@ -250,13 +267,23 @@ public enum ComputerAdd: Equatable, Sendable {
         }
     }
 
-    /// A mode the reader may add, which takes back a refusal the earlier
-    /// draft got.
-    public mutating func choose(_ mode: ComputeMode.Kind, access: ComputeAccess) {
+    /// An access the reader may add, which takes back a refusal the earlier
+    /// draft got. A concurrency left at the default follows the new access.
+    public mutating func choose(_ access: ComputeAccess, role: ComputeRole) {
+        guard role.accesses.contains(access) else { return }
+        edit { $0.access = access }
+    }
+
+    /// A concurrency in 1…64; nil goes back to the access's default.
+    public mutating func setConcurrency(_ concurrency: Int?) {
+        guard concurrency.map(ComputeConcurrency.range.contains) ?? true else { return }
+        edit { $0.concurrency = concurrency }
+    }
+
+    private mutating func edit(_ change: (inout ComputerDraft) -> Void) {
         switch self {
         case .choosing(var draft), .failed(var draft, _):
-            guard access.modes.contains(mode) else { return }
-            draft.mode = mode
+            change(&draft)
             self = .choosing(draft)
         default: break
         }
@@ -287,17 +314,21 @@ public struct ComputeFailure: Error, Equatable, Sendable {
     public init(_ message: String) { self.message = message }
 }
 
-/// `POST /v0/computers/join-tokens`: only the mode; the computer joins
-/// under its hostname.
+/// `POST /v0/computers/join-tokens`: the access, and the concurrency only
+/// where it isn't the default; the computer joins under its hostname.
 public struct ComputeJoinTokenRequest: Equatable, Sendable {
-    public let mode: ComputeMode.Kind
+    public let access: ComputeAccess
+    public let concurrency: Int?
 
     public init(_ draft: ComputerDraft) {
-        mode = draft.mode
+        access = draft.access
+        concurrency = draft.concurrency
     }
 
     var json: JSONValue {
-        .object(["mode": .string(mode.rawValue)])
+        var body: [String: JSONValue] = ["access": .string(access.rawValue)]
+        if let concurrency { body["concurrency"] = .number(Double(concurrency)) }
+        return .object(body)
     }
 }
 
@@ -324,11 +355,15 @@ extension AgentClient {
         try await decode(ComputeInstall.self, "POST", "/v0/computers/join-tokens", json: request.json)
     }
 
-    /// Frees an exclusive computer; the agent that held it, if any.
-    @discardableResult
-    public func releaseComputerLock(_ id: String) async throws -> String? {
-        struct Response: Decodable { let previousHolder: String? }
-        return try await decode(Response.self, "POST", "/v0/computers/\(Self.escape(id))/release-lock", json: .object([:])).previousHolder
+    /// Sets how many agents it runs at once; the computer as it is now.
+    public func setComputerConcurrency(_ id: String, _ concurrency: Int) async throws -> Computer {
+        struct Response: Decodable { let computer: Computer }
+        return try await decode(Response.self, "PATCH", "/v0/computers/\(Self.escape(id))", json: .object(["concurrency": .number(Double(concurrency))])).computer
+    }
+
+    /// Takes an agent off it, freeing its place.
+    public func removeComputerAgent(_ id: String, agent: String) async throws {
+        _ = try await send("DELETE", "/v0/computers/\(Self.escape(id))/agents/\(Self.escape(agent))")
     }
 
     public func answerComputerApproval(_ approval: ComputeApproval, approve: Bool) async throws {

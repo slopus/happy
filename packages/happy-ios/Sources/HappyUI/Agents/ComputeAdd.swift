@@ -3,13 +3,14 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Adding a computer, in a sheet of its own: its mode, then the one-time
+/// Adding a computer, in a sheet of its own: shared or private and how many
+/// agents it runs at once, then the one-time
 /// command that installs it. The steps are `ComputerAdd`'s; each page
 /// shows the step it is and sends the person's changes back to it.
 @MainActor
 final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
     private(set) var state: ComputerAdd
-    let access: ComputeAccess
+    let role: ComputeRole
     let navigation = UINavigationController()
     /// The list, read again once a computer may be on its way.
     private let added: () -> Void
@@ -17,23 +18,27 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
     /// The sheet went, however it went.
     var closed: (() -> Void)?
     private var creating: Task<Void, Never>?
-    private weak var modes: ComputeModesViewController?
+    private weak var modes: ComputeAccessViewController?
 
-    init?(access: ComputeAccess, client: AgentClient, added: @escaping () -> Void) {
-        guard let state = ComputerAdd.start(access) else { return nil }
+    init?(role: ComputeRole, client: AgentClient, added: @escaping () -> Void) {
+        guard let state = ComputerAdd.start(role) else { return nil }
         self.state = state
-        self.access = access
+        self.role = role
         self.client = client
         self.added = added
         super.init()
-        let modes = ComputeModesViewController(flow: self)
+        let modes = ComputeAccessViewController(flow: self)
         self.modes = modes
         navigation.setViewControllers([modes], animated: false)
         navigation.presentationController?.delegate = self
     }
 
-    func choose(_ mode: ComputeMode.Kind) {
-        state.choose(mode, access: access)
+    func choose(_ access: ComputeAccess) {
+        state.choose(access, role: role)
+    }
+
+    func setConcurrency(_ concurrency: Int?) {
+        state.setConcurrency(concurrency)
     }
 
     func create() {
@@ -80,10 +85,10 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
     }
 }
 
-/// The only choice: the four modes, each with the sentence that says what
-/// it means. A member may add only a private computer of their own, so the
-/// others are shown, greyed out.
-final class ComputeModesViewController: SettingsPageViewController {
+/// Shared or private, each with the sentence that says what it means, then
+/// how many agents it runs at once. A member may add only a private computer
+/// of their own, so shared is shown, greyed out.
+final class ComputeAccessViewController: SettingsPageViewController {
     private let flow: ComputeAddFlow
 
     init(flow: ComputeAddFlow) {
@@ -93,7 +98,7 @@ final class ComputeModesViewController: SettingsPageViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.accessibilityIdentifier = "compute-modes"
+        view.accessibilityIdentifier = "compute-access"
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.flow.close() })
         render()
     }
@@ -117,23 +122,47 @@ final class ComputeModesViewController: SettingsPageViewController {
 
     override func makeRows() -> [[SettingsRow]] {
         typealias Text = Strings.Compute
-        let chosen = flow.state.draft?.mode
-        return ComputeMode.Kind.allCases.map { kind in
-            let allowed = flow.access.modes.contains(kind)
-            var row = SettingsRow(id: "compute-mode-\(kind.rawValue)", title: Text.mode(kind), icon: ComputeViewController.icon(kind),
-                                  value: allowed ? nil : Text.modeNeedsAdmin, accessory: .none)
-            if kind == chosen {
+        guard let draft = flow.state.draft else { return [] }
+        var cards = ComputeAccess.allCases.map { access in
+            let allowed = flow.role.accesses.contains(access)
+            var row = SettingsRow(id: "compute-access-\(access.rawValue)", title: Text.access(access), icon: ComputeViewController.icon(access),
+                                  value: allowed ? nil : Text.accessNeedsAdmin, accessory: .none)
+            if access == draft.access {
                 let check = UIImageView(image: Glyphs.image("checkmark", size: 20))
                 check.tintColor = UIColor(Palette.textLink)
                 check.sizeToFit()
-                check.accessibilityLabel = Text.mode(kind)
+                check.accessibilityLabel = Text.access(access)
                 row.valueView = check
-                row.spoken = "\(Text.mode(kind)), selected"
+                row.spoken = "\(Text.access(access)), selected"
             }
-            if allowed { row.action = { [weak self] in self?.flow.choose(kind) } }
-            else { row.dimmed = true; row.hint = Text.modeLockedHint }
-            row.footer = Text.modeDescription(kind)
+            if allowed { row.action = { [weak self] in self?.flow.choose(access) } }
+            else { row.dimmed = true; row.hint = Text.accessLockedHint }
+            row.footer = Text.accessDescription(access)
             return [row]
+        }
+        var concurrency = SettingsRow(id: "compute-concurrency", title: Text.concurrency,
+                                      value: Text.concurrencyValue(draft.shownConcurrency, isDefault: draft.concurrency == nil), accessory: .chevron)
+        concurrency.action = { [weak self] in self?.editConcurrency() }
+        concurrency.footer = Text.concurrencyNote
+        cards.append([concurrency])
+        return cards
+    }
+
+    /// A number in 1…64; an empty answer goes back to the default.
+    func editConcurrency() {
+        typealias Text = Strings.Compute
+        guard let draft = flow.state.draft else { return }
+        Task { @MainActor [weak self] in
+            guard let self, let typed = await Alerts.prompt(Text.concurrencyPrompt, Text.concurrencyRange(ComputeConcurrency.range),
+                                                            placeholder: "\(draft.access.defaultConcurrency)", text: draft.concurrency.map(String.init),
+                                                            keyboard: .numberPad, confirmTitle: Text.save, on: self) else { return }
+            let trimmed = typed.trimmingCharacters(in: .whitespaces)
+            let value = Int(trimmed)
+            guard trimmed.isEmpty || value.map(ComputeConcurrency.range.contains) == true else {
+                return Alerts.show(Text.invalidConcurrency, Text.concurrencyRange(ComputeConcurrency.range), on: self)
+            }
+            flow.setConcurrency(value)
+            reload()
         }
     }
 }

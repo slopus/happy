@@ -1,10 +1,12 @@
 #if canImport(UIKit)
 import HappyCore
+import HappyLayout
 import UIKit
 
 /// Settings › Compute on Happy Cloud: the requests to join the reader's
-/// private computers, then every computer agents can join, with its mode,
-/// and adding one; or one computer's own page. Each page owns only its
+/// private computers, then every computer agents can join, shared or
+/// private and how full, and adding one; or one computer's own page, where
+/// its agents are and how many it runs at once. Each page owns only its
 /// visible query, not an account-wide polling loop.
 final class ComputeViewController: SettingsPageViewController {
     private let session: Session
@@ -17,8 +19,10 @@ final class ComputeViewController: SettingsPageViewController {
     private(set) var events: Task<Void, Never>?
     /// Answers sent and not yet settled, approve or not, by request.
     private(set) var answering: [String: Bool] = [:]
-    /// Computers being freed from the agent holding them.
-    private(set) var releasing: Set<String> = []
+    /// Agents being taken off a computer, by `computer/agent`.
+    private(set) var removing: Set<String> = []
+    /// Computers whose concurrency is being saved.
+    private(set) var saving: Set<String> = []
     /// Adding a computer, while its sheet is up.
     private(set) var adding: ComputeAddFlow?
 
@@ -33,10 +37,10 @@ final class ComputeViewController: SettingsPageViewController {
 
     static func offered(_ session: Session) -> Bool {
         guard let context = session.context else { return false }
-        return session.isCloud && HappyCloud.isOffered(in: context.variant) && ComputeAccess(session.gate) != .none
+        return session.isCloud && HappyCloud.isOffered(in: context.variant) && ComputeRole(session.gate) != .none
     }
 
-    private var access: ComputeAccess { ComputeAccess(session.gate) }
+    private var role: ComputeRole { ComputeRole(session.gate) }
     /// Who reads, for which private computers are theirs.
     private var viewer: String? { session.home.userId ?? session.context?.account.agentConnections.userId(for: session.accountID) }
 
@@ -122,11 +126,11 @@ final class ComputeViewController: SettingsPageViewController {
                 none.dimmed = true
                 computers = [none]
             }
-            if access != .none {
+            if role != .none {
                 computers.append(SettingsRow(id: "compute-add", title: Text.addComputer, icon: ("add", .action), accessory: .none, action: { [weak self] in self?.add() }))
             }
             computers[0].header = Text.computers
-            computers[computers.count - 1].footer = Text.computersNote(access)
+            computers[computers.count - 1].footer = Text.computersNote(role)
             cards.append(computers)
         case .computer(let node):
             title = node.displayName
@@ -188,106 +192,96 @@ final class ComputeViewController: SettingsPageViewController {
 
     // MARK: Computers
 
-    static func icon(_ kind: ComputeMode.Kind) -> (glyph: String, tile: SettingsRow.Tile) {
-        switch kind {
-        case .sandbox: ("cube-outline", .teal)
+    static func icon(_ access: ComputeAccess) -> (glyph: String, tile: SettingsRow.Tile) {
+        switch access {
         case .shared: ("people-outline", .blue)
-        case .exclusive: ("lock-closed-outline", .orange)
         case .private: ("person-outline", .indigo)
         }
     }
 
-    /// Its mode, who holds or owns it, and where it runs, then what
-    /// agents read about it: a few lines of that in the list, all of it on
-    /// its own page.
+    /// Shared or whose, how full, and where it runs, then what agents read
+    /// about it: a few lines of that in the list, all of it on its own page.
     private func computerRow(_ node: Computer, owners: [String: String], whole: Bool = false) -> SettingsRow {
         typealias Text = Strings.Compute
-        let who: String?
-        switch node.mode {
-        case .exclusive(let holder?): who = Text.heldBy(holder.title)
-        case .private(let owner?): who = node.ownedBy(viewer) ? Text.yours : Text.owner(owners[owner])
-        default: who = nil
-        }
+        let who: String? = node.access == .private ? (node.ownedBy(viewer) ? Text.yours : Text.owner(node.owner.flatMap { owners[$0] })) : nil
         let platform = [Text.platform(node.os), node.arch].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
-        let line = [Text.mode(node.mode.kind), who, platform.isEmpty ? nil : platform].compactMap { $0 }.joined(separator: " · ")
-        var row = SettingsRow(id: "compute-node-\(node.id)", title: node.displayName, icon: Self.icon(node.mode.kind),
-                              value: releasing.contains(node.id) ? nil : Text.status(node.status, held: node.mode.holder != nil && node.status == .online),
-                              accessory: whole ? .none : .chevron)
+        let line = [Text.access(node.access), who, Text.agents(node.agents.count, of: node.concurrency),
+                    node.boundary.available ? nil : Text.fullAccessOnly, platform.isEmpty ? nil : platform].compactMap { $0 }.joined(separator: " · ")
+        var row = SettingsRow(id: "compute-node-\(node.id)", title: node.displayName, icon: Self.icon(node.access),
+                              value: Text.status(node.status, full: node.full), accessory: whole ? .none : .chevron)
         row.subtitle = node.description.map { "\(line)\n\($0)" } ?? line
         row.subtitleLines = whole ? 0 : 4
-        if releasing.contains(node.id) { row.valueView = Self.spinner() }
-        guard !whole else { return row }
-        let actions = computerActions(node)
-        if actions.isEmpty {
-            row.action = { [weak self] in self?.open(.computer(node.id)) }
-        } else {
-            row.pullDown = { [weak self] in
-                guard let self else { return nil }
-                let details = UIAction(title: Text.details, image: Glyphs.image("server-outline", size: 17)) { [weak self] _ in self?.open(.computer(node.id)) }
-                return UIMenu(children: [details] + computerActions(node).map { item in
-                    UIAction(title: item.title, image: Glyphs.image(item.glyph, size: 17), attributes: item.destructive ? .destructive : []) { _ in item.run() }
-                })
-            }
-            row.menu = actions
-        }
+        if !whole { row.action = { [weak self] in self?.open(.computer(node.id)) } }
         return row
-    }
-
-    /// Release for a manager while an agent holds it.
-    private func computerActions(_ node: Computer) -> [SettingsRow.MenuItem] {
-        typealias Text = Strings.Compute
-        var items: [SettingsRow.MenuItem] = []
-        if node.releasable(by: access), !releasing.contains(node.id) {
-            items.append(.init(title: Text.release, glyph: "exit-outline", destructive: true) { [weak self] in self?.confirmRelease(node) })
-        }
-        return items
     }
 
     private func computerPage(_ node: Computer) -> [[SettingsRow]] {
         typealias Text = Strings.Compute
         var cards = [[computerRow(node, owners: [:], whole: true)]]
+        let manageable = node.manageable(by: role, userId: viewer)
+        if !node.boundary.available {
+            var warning = fact("compute-boundary", Text.boundaryMissing)
+            warning.icon = ("warning-outline", .orange)
+            warning.subtitle = node.boundary.reason
+            warning.subtitleLines = 0
+            warning.footer = Text.boundaryNote
+            cards.append([warning])
+        }
+        var agents = node.agents.map { agent -> SettingsRow in
+            let key = "\(node.id)/\(agent.id)"
+            var row = fact("compute-agent-\(agent.id)", agent.title.flatMap { $0.isEmpty ? nil : $0 } ?? Text.anAgent)
+            row.subtitle = agent.id
+            if removing.contains(key) {
+                row.valueView = Self.spinner()
+                row.dimmed = true
+            } else if manageable {
+                // A tap asks before it takes the agent off.
+                let glyph = UIImageView(image: Glyphs.image("close-circle-outline", size: 22))
+                glyph.tintColor = UIColor(Palette.settingsDestructive)
+                glyph.sizeToFit()
+                glyph.accessibilityLabel = Text.remove
+                row.valueView = glyph
+                row.action = { [weak self] in self?.confirmRemove(agent, from: node) }
+                row.menu = [SettingsRow.MenuItem(title: Text.remove, glyph: "close-circle-outline", destructive: true) { [weak self] in
+                    self?.confirmRemove(agent, from: node)
+                }]
+            }
+            return row
+        }
+        if agents.isEmpty {
+            var none = fact("compute-agents-empty", Text.noAgents)
+            none.dimmed = true
+            agents = [none]
+        }
+        agents[0].header = Text.agentsHeader(node.agents.count, of: node.concurrency)
+        cards.append(agents)
+        var concurrency = fact("compute-concurrency", Text.concurrency, "\(node.concurrency)")
+        if saving.contains(node.id) {
+            concurrency.valueView = Self.spinner()
+            concurrency.dimmed = true
+        } else if manageable {
+            concurrency.accessory = .chevron
+            concurrency.action = { [weak self] in self?.editConcurrency(node) }
+        }
+        concurrency.footer = Text.concurrencyNote(node)
+        cards.append([concurrency])
         let lastSeen = node.lastSeenAt.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? Text.unknown
         let system = [Text.platform(node.os), node.osVersion, node.arch].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         cards.append([
             fact("compute-os", Text.operatingSystem, system.isEmpty ? Text.unknown : system),
+            fact("compute-shell", Text.shell, node.shell.flatMap { $0.isEmpty ? nil : $0 } ?? Text.unknown),
             fact("compute-version", Text.version, node.version ?? Text.unknown),
             fact("compute-last-seen", Text.lastSeen, lastSeen),
         ])
-        var actions: [SettingsRow] = []
-        if node.releasable(by: access) {
-            var release = SettingsRow(id: "compute-release", title: Text.release, accessory: .none, destructive: true)
-            if releasing.contains(node.id) { release.valueView = Self.spinner(); release.dimmed = true }
-            else { release.action = { [weak self] in self?.confirmRelease(node) } }
-            release.footer = Text.releaseNote
-            actions.append(release)
-        }
-        if !actions.isEmpty { cards.append(actions) }
-        if let error = node.sandboxError, !error.isEmpty {
-            var row = fact("compute-sandbox-error", Text.sandboxError(error))
-            row.destructive = true
-            cards.append([row])
-        }
-        // Host facts and placements come only to managers.
-        if let capacityValue = node.sandboxCapacity {
-            var capacity = fact("compute-capacity", Text.capacity, Text.capacity(capacityValue))
-            capacity.footer = Text.placementNote
-            cards.append([fact("compute-backend", Text.backend, node.backend ?? Text.unknown), capacity])
-        }
-        if node.host != nil || node.sandboxCapacity != nil {
+        // Host facts and the backend come only to managers.
+        if node.host != nil || node.backend != nil {
             var disk = fact("compute-host-disk", Text.disk, Self.bytes(node.host?.totalDiskBytes))
             disk.footer = Text.hostNote
             cards.append([
+                fact("compute-backend", Text.backend, node.backend ?? Text.unknown),
                 fact("compute-host-cpu", Text.cpu, node.host?.cpuCores.map { $0.formatted() } ?? Text.unknown),
                 fact("compute-host-memory", Text.memory, Self.bytes(node.host?.totalMemoryBytes)), disk,
             ])
-        }
-        if let placements = node.activeSandboxes {
-            let rows = placements.map {
-                var row = fact("compute-placement-\($0.sandboxId)", $0.agentTitle.flatMap { $0.isEmpty ? nil : $0 } ?? $0.agentId)
-                row.subtitle = $0.sandboxId
-                return row
-            }
-            cards.append(rows.isEmpty ? [fact("compute-placements-empty", Text.emptyPlacements)] : rows)
         }
         return cards
     }
@@ -297,28 +291,60 @@ final class ComputeViewController: SettingsPageViewController {
         navigationController?.pushViewController(ComputeViewController(session: session, page: page), animated: true)
     }
 
-    func confirmRelease(_ node: Computer) {
+    func confirmRemove(_ agent: Computer.Agent, from node: Computer) {
         typealias Text = Strings.Compute
-        guard case .exclusive(let holder?) = node.mode else { return }
         Task { @MainActor [weak self] in
-            guard let self, await Alerts.confirm(Text.releaseTitle(node.displayName), Text.releaseMessage(holder.title ?? Text.anAgent),
-                                                 confirmTitle: Text.release, destructive: true, on: self) else { return }
-            release(node)
+            guard let self, await Alerts.confirm(Text.removeTitle(agent.title ?? Text.anAgent), Text.removeMessage(node.displayName),
+                                                 confirmTitle: Text.remove, destructive: true, on: self) else { return }
+            remove(agent, from: node)
         }
     }
 
-    func release(_ node: Computer) {
-        guard node.releasable(by: access), releasing.insert(node.id).inserted else { return }
+    func remove(_ agent: Computer.Agent, from node: Computer) {
+        let key = "\(node.id)/\(agent.id)"
+        guard node.manageable(by: role, userId: viewer), removing.insert(key).inserted else { return }
         reload()
         let client = session.client
         Task { @MainActor [weak self] in
             do {
-                try await client.releaseComputerLock(node.id)
-                self?.releasing.remove(node.id)
+                try await client.removeComputerAgent(node.id, agent: agent.id)
+                self?.removing.remove(key)
                 self?.monitor.refresh()
             } catch {
                 guard let self else { return }
-                releasing.remove(node.id)
+                removing.remove(key)
+                reload()
+                Alerts.show(Strings.Compute.actionFailed, Self.words(error), on: self)
+            }
+        }
+    }
+
+    func editConcurrency(_ node: Computer) {
+        typealias Text = Strings.Compute
+        Task { @MainActor [weak self] in
+            guard let self, let typed = await Alerts.prompt(Text.concurrencyPrompt, Text.concurrencyRange(node.concurrencyRange),
+                                                            text: "\(node.concurrency)", keyboard: .numberPad, confirmTitle: Text.save, on: self) else { return }
+            guard let value = Int(typed.trimmingCharacters(in: .whitespaces)), node.concurrencyRange.contains(value) else {
+                return Alerts.show(Text.invalidConcurrency, Text.concurrencyRange(node.concurrencyRange), on: self)
+            }
+            setConcurrency(value, of: node)
+        }
+    }
+
+    func setConcurrency(_ value: Int, of node: Computer) {
+        guard value != node.concurrency, node.manageable(by: role, userId: viewer), saving.insert(node.id).inserted else { return }
+        reload()
+        let client = session.client
+        Task { @MainActor [weak self] in
+            do {
+                let saved = try await client.setComputerConcurrency(node.id, value)
+                guard let self else { return }
+                saving.remove(node.id)
+                monitor.settle(saved)
+                monitor.refresh()
+            } catch {
+                guard let self else { return }
+                saving.remove(node.id)
                 reload()
                 Alerts.show(Strings.Compute.actionFailed, Self.words(error), on: self)
             }
@@ -326,7 +352,7 @@ final class ComputeViewController: SettingsPageViewController {
     }
 
     func add() {
-        guard let flow = ComputeAddFlow(access: access, client: session.client, added: { [weak self] in self?.monitor.refresh() }) else { return }
+        guard let flow = ComputeAddFlow(role: role, client: session.client, added: { [weak self] in self?.monitor.refresh() }) else { return }
         adding = flow
         flow.closed = { [weak self] in self?.adding = nil }
         present(flow.navigation, animated: true)
@@ -353,14 +379,6 @@ final class ComputeViewController: SettingsPageViewController {
     static func words(_ error: any Error) -> String {
         if case AgentClientError.status(_, _, let message?) = error { return message }
         return error.localizedDescription
-    }
-}
-
-extension ComputeMode {
-    /// The agent holding an exclusive computer.
-    var holder: ComputeHolder? {
-        if case .exclusive(let holder) = self { return holder }
-        return nil
     }
 }
 #endif

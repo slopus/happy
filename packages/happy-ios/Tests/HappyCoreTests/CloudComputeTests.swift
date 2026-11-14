@@ -29,70 +29,87 @@ private actor ComputeTransport: AgentTransport {
 
 @MainActor
 final class CloudComputeTests: XCTestCase {
-    /// What a member reads of a node (`MEMBER_FIELDS`): no host, capacity or placements.
-    private static let member = #"{"id":"node-1","name":null,"hostname":"worker","status":"online","os":"linux","arch":"x86_64","version":"linux.9","lastSeenAt":1730000000000,"since":1729990000000,"mode":"sandbox","description":"GPU box, CUDA 12.4","owner":null,"exclusiveAgent":null}"#
-    /// What a manager reads of the same node.
-    private static let managed = #"{"id":"node-1","name":null,"hostname":"worker","status":"online","version":"linux.9","lastSeenAt":1730000000000,"mode":"sandbox","description":null,"owner":null,"exclusiveAgent":null,"sandboxCapacity":{"used":3,"total":null},"host":null,"activeSandboxes":[{"sandboxId":"s1","agentId":"a1","agentTitle":null}]}"#
-    private static let held = #"{"id":"node-2","name":"build-01","hostname":"build-01.acme","status":"online","mode":"exclusive","description":null,"owner":null,"exclusiveAgent":{"id":"agent-7","title":"Fix login test"}}"#
-    private static let mine = #"{"id":"node-3","name":null,"hostname":"kirills-mbp","status":"offline","os":"macos","mode":"private","description":null,"owner":"user-me","exclusiveAgent":null}"#
+    /// What a member reads of a computer: no host facts or backend.
+    private static let member = #"{"id":"node-1","name":null,"hostname":"worker","status":"online","os":"linux","arch":"x86_64","version":"linux.9","osVersion":"6.8","shell":"/bin/bash","lastSeenAt":1730000000000,"since":1729990000000,"description":"GPU box, CUDA 12.4","access":"shared","owner":null,"concurrency":8,"maxConcurrency":16,"agents":[{"id":"a1","title":"Fix login test"},{"id":"a2","title":null}],"boundary":{"available":true,"reason":null}}"#
+    /// What a manager reads of the same computer.
+    private static let managed = #"{"id":"node-1","name":null,"hostname":"worker","status":"online","version":"linux.9","shell":null,"lastSeenAt":null,"since":1729990000000,"description":null,"access":"shared","owner":null,"concurrency":2,"maxConcurrency":null,"agents":[{"id":"a1","title":null},{"id":"a2","title":null}],"boundary":{"available":false,"reason":"bubblewrap is not installed"},"backend":"bwrap","host":null,"features":{"webSocketTunnels":true,"mcpStdio":true,"releases":true},"enrolledAt":1}"#
+    private static let mine = #"{"id":"node-3","name":null,"hostname":"kirills-mbp","status":"offline","os":"macos","since":1,"description":null,"access":"private","owner":"user-me","concurrency":1,"maxConcurrency":null,"agents":[],"boundary":{"available":true,"reason":null}}"#
     private static let approval = #"{"computerId":"node-3","computerName":"kirills-mbp","agentId":"agent-9","agentTitle":null,"createdAt":1730000000000}"#
+    private static let install = #"{"access":"private","concurrency":1,"token":"jt","expiresAt":1730003600000,"clusterUrl":"https://acme.happy-clusters.com","commands":{"unix":"curl -fsSL https://get/install.sh | sh","windows":"irm https://get/install.ps1 | iex"},"platforms":["linux-x86_64","linux-aarch64"],"notice":"macOS and Windows computers are not available yet."}"#
     private var computers: HTTP1Response { response("{\"computers\":[\(Self.member)]}") }
     private var approvals: HTTP1Response { response(#"{"approvals":[]}"#) }
     private func response(_ json: String, status: Int = 200) -> HTTP1Response { HTTP1Response(status: status, body: Data(json.utf8)) }
     private func node(_ json: String) throws -> Computer { try JSONDecoder().decode(Computer.self, from: Data(json.utf8)) }
+    private func install(_ json: String) throws -> ComputeInstall { try JSONDecoder().decode(ComputeInstall.self, from: Data(json.utf8)) }
 
-    func testAMembersNodeDecodesItsModeAndDescriptionWithoutMonitoringFacts() throws {
+    func testAMembersComputerDecodesAccessConcurrencyAgentsAndBoundary() throws {
         let node = try node(Self.member)
-        XCTAssertEqual(node.mode, .sandbox)
+        XCTAssertEqual(node.access, .shared)
+        XCTAssertNil(node.owner)
+        XCTAssertEqual(node.concurrency, 8)
+        XCTAssertEqual(node.maxConcurrency, 16)
+        XCTAssertEqual(node.agents, [Computer.Agent(id: "a1", title: "Fix login test"), Computer.Agent(id: "a2", title: nil)])
+        XCTAssertEqual(node.boundary, Computer.Boundary(available: true, reason: nil))
+        XCTAssertFalse(node.full)
+        XCTAssertEqual(node.concurrencyRange, 1...16)
         XCTAssertEqual(node.description, "GPU box, CUDA 12.4")
         XCTAssertEqual(node.status, .online)
         XCTAssertEqual(node.displayName, "worker")
         XCTAssertEqual(node.os, "linux")
-        XCTAssertEqual(node.arch, "x86_64")
-        XCTAssertNil(node.sandboxCapacity)
+        XCTAssertEqual(node.shell, "/bin/bash")
         XCTAssertNil(node.host)
-        XCTAssertNil(node.activeSandboxes)
+        XCTAssertNil(node.backend)
     }
 
-    func testAManagersNodeKeepsUnknownFactsUnknown() throws {
+    func testAManagersComputerKeepsUnknownFactsUnknown() throws {
         let node = try node(Self.managed)
         XCTAssertNil(node.description)
         XCTAssertNil(node.host)
-        XCTAssertNil(node.sandboxCapacity?.total)
-        XCTAssertEqual(node.sandboxCapacity?.used, 3)
-        XCTAssertNil(node.activeSandboxes?[0].agentTitle)
+        XCTAssertNil(node.shell)
+        XCTAssertEqual(node.backend, "bwrap")
+        XCTAssertTrue(node.full, "two agents fill a concurrency of two")
+        XCTAssertEqual(node.boundary, Computer.Boundary(available: false, reason: "bubblewrap is not installed"))
+        XCTAssertEqual(node.concurrencyRange, 1...64, "no known maximum leaves the server's limit")
         let reported = try self.node(Self.managed.replacingOccurrences(of: #""host":null"#, with: #""host":{"cpuCores":4,"totalMemoryBytes":8326934528,"totalDiskBytes":null}"#))
         XCTAssertEqual(reported.host?.cpuCores, 4)
         XCTAssertEqual(reported.host?.totalMemoryBytes, 8326934528)
         XCTAssertNil(reported.host?.totalDiskBytes)
     }
 
-    func testTheModeCarriesItsHolderOrOwner() throws {
-        XCTAssertEqual(try node(Self.held).mode, .exclusive(holder: ComputeHolder(id: "agent-7", title: "Fix login test")))
-        XCTAssertEqual(try node(Self.held.replacingOccurrences(of: #""title":"Fix login test""#, with: #""title":null"#)).mode,
-                       .exclusive(holder: ComputeHolder(id: "agent-7", title: nil)))
-        XCTAssertEqual(try node(Self.held.replacingOccurrences(of: #"{"id":"agent-7","title":"Fix login test"}"#, with: "null")).mode, .exclusive(holder: nil))
-        XCTAssertEqual(try node(Self.mine).mode, .private(owner: "user-me"))
-        XCTAssertEqual(try node(Self.mine.replacingOccurrences(of: #""owner":"user-me""#, with: #""owner":null"#)).mode, .private(owner: nil))
-        XCTAssertEqual(try node(Self.member.replacingOccurrences(of: #""mode":"sandbox""#, with: #""mode":"shared""#)).mode, .shared)
-        XCTAssertThrowsError(try node(Self.member.replacingOccurrences(of: #""mode":"sandbox""#, with: #""mode":"pool""#)))
+    /// The old modes are gone: a computer without access, concurrency,
+    /// agents or boundary isn't one this app reads.
+    func testAComputerNeedsTheNewShape() throws {
+        XCTAssertEqual(try node(Self.mine).access, .private)
+        XCTAssertEqual(try node(Self.mine).owner, "user-me")
+        XCTAssertThrowsError(try node(Self.member.replacingOccurrences(of: #""access":"shared""#, with: #""mode":"shared""#)))
+        XCTAssertThrowsError(try node(Self.member.replacingOccurrences(of: #""access":"shared""#, with: #""access":"exclusive""#)))
+        XCTAssertThrowsError(try node(Self.member.replacingOccurrences(of: #""concurrency":8,"#, with: "")))
+        XCTAssertThrowsError(try node(Self.member.replacingOccurrences(of: #""concurrency":8"#, with: #""concurrency":0"#)))
+        XCTAssertThrowsError(try node(Self.member.replacingOccurrences(of: #","boundary":{"available":true,"reason":null}"#, with: "")))
     }
 
-    func testWhoMayRelease() throws {
-        let held = try node(Self.held), sandbox = try node(Self.member)
-        XCTAssertTrue(held.releasable(by: .manage))
-        XCTAssertFalse(held.releasable(by: .use))
-        XCTAssertFalse(sandbox.releasable(by: .manage))
+    func testWhoMayManageAComputer() throws {
+        let shared = try node(Self.member), mine = try node(Self.mine)
+        XCTAssertTrue(shared.manageable(by: .manage, userId: "user-me"))
+        XCTAssertFalse(shared.manageable(by: .use, userId: "user-me"))
+        XCTAssertTrue(mine.manageable(by: .use, userId: "user-me"), "the owner of a private computer")
+        XCTAssertFalse(mine.manageable(by: .use, userId: "user-alex"))
+        XCTAssertFalse(mine.manageable(by: .none, userId: "user-me"))
+        XCTAssertFalse(mine.manageable(by: .use, userId: nil))
+        XCTAssertTrue(mine.ownedBy("user-me"))
+        XCTAssertFalse(shared.ownedBy(nil))
     }
 
-    func testAccessFollowsComputeUseThenPoolsManage() {
-        XCTAssertEqual(ComputeAccess(.cloud(Permissions(granted: ["compute.use"]))), .use)
-        XCTAssertEqual(ComputeAccess(.cloud(Permissions(granted: ["compute.use", "pools.manage"]))), .manage)
-        XCTAssertEqual(ComputeAccess(.cloud(Permissions(granted: ["pools.manage"]))), .none)
-        XCTAssertEqual(ComputeAccess(.cloud(nil)), .none)
-        XCTAssertEqual(ComputeAccess.use.modes, [.private])
-        XCTAssertEqual(ComputeAccess.manage.modes, [.sandbox, .shared, .exclusive, .private])
-        XCTAssertEqual(ComputeAccess.none.modes, [])
+    func testRoleFollowsComputeUseThenPoolsManage() {
+        XCTAssertEqual(ComputeRole(.cloud(Permissions(granted: ["compute.use"]))), .use)
+        XCTAssertEqual(ComputeRole(.cloud(Permissions(granted: ["compute.use", "pools.manage"]))), .manage)
+        XCTAssertEqual(ComputeRole(.cloud(Permissions(granted: ["pools.manage"]))), .none)
+        XCTAssertEqual(ComputeRole(.cloud(nil)), .none)
+        XCTAssertEqual(ComputeRole.use.accesses, [.private])
+        XCTAssertEqual(ComputeRole.manage.accesses, [.shared, .private])
+        XCTAssertEqual(ComputeRole.none.accesses, [])
+        XCTAssertEqual(ComputeAccess.shared.defaultConcurrency, 8)
+        XCTAssertEqual(ComputeAccess.private.defaultConcurrency, 1)
         XCTAssertEqual(SettingsLinkPlace.place(.computes, server: nil), nil)
     }
 
@@ -102,98 +119,121 @@ final class CloudComputeTests: XCTestCase {
         XCTAssertEqual(approval.computerName, "kirills-mbp")
         XCTAssertNil(approval.agentTitle)
         XCTAssertEqual(approval.createdAt, 1730000000000)
-        let json = #"{"mode":"private","token":"jt","expiresAt":1730003600000,"clusterUrl":"https://acme.happy-clusters.com","commands":{"unix":"curl -fsSL https://get/install.sh | HAPPY_COMPUTE_MODE='private' sh","windows":"irm https://get/install.ps1 | iex"}}"#
-        let install = try JSONDecoder().decode(ComputeInstall.self, from: Data(json.utf8))
-        XCTAssertEqual(install.mode, .private)
+        let install = try install(Self.install)
+        XCTAssertEqual(install.access, .private)
+        XCTAssertEqual(install.concurrency, 1)
         XCTAssertEqual(install.expiresAt, 1730003600000)
         XCTAssertEqual(install.clusterUrl, "https://acme.happy-clusters.com")
-        XCTAssertEqual(install.shown, [
-            ComputeInstall.Command(platforms: [.macOS, .linux], text: "curl -fsSL https://get/install.sh | HAPPY_COMPUTE_MODE='private' sh"),
-            ComputeInstall.Command(platforms: [.windows], text: "irm https://get/install.ps1 | iex"),
-        ])
-        let none = try JSONDecoder().decode(ComputeInstall.self, from: Data(#"{"mode":"sandbox","token":"jt","expiresAt":1,"clusterUrl":"https://c","commands":null}"#.utf8))
+        XCTAssertEqual(install.notice, "macOS and Windows computers are not available yet.")
+        XCTAssertEqual(install.shown, [ComputeInstall.Command(platforms: [.linux], text: "curl -fsSL https://get/install.sh | sh")],
+                       "only the systems with a published build")
+        let none = try self.install(Self.install.replacingOccurrences(of: #""commands":{"unix":"curl -fsSL https://get/install.sh | sh","windows":"irm https://get/install.ps1 | iex"}"#, with: #""commands":null"#)
+            .replacingOccurrences(of: #""notice":"macOS and Windows computers are not available yet.""#, with: #""notice":null"#))
         XCTAssertNil(none.commands)
+        XCTAssertNil(none.notice)
         XCTAssertEqual(none.shown, [])
+        XCTAssertThrowsError(try self.install(Self.install.replacingOccurrences(of: #""access":"private""#, with: #""mode":"private""#)))
     }
 
-    /// Windows runs only private computers, macOS no sandbox or shared one.
-    func testEachModeShowsOnlyTheCommandsItsSystemsRun() throws {
-        func shown(_ mode: String) throws -> [[ComputePlatform]] {
-            let json = #"{"mode":"\#(mode)","token":"t","expiresAt":1,"clusterUrl":"c","commands":{"unix":"u","windows":"w"}}"#
-            return try JSONDecoder().decode(ComputeInstall.self, from: Data(json.utf8)).shown.map(\.platforms)
+    /// The commands follow the published builds: one shell command for macOS
+    /// and Linux, PowerShell for Windows.
+    func testEachPublishedSystemGetsItsCommand() throws {
+        func shown(_ platforms: [String]) throws -> [[ComputePlatform]] {
+            let list = platforms.map { "\"\($0)\"" }.joined(separator: ",")
+            let json = #"{"access":"shared","concurrency":8,"token":"t","expiresAt":1,"clusterUrl":"c","commands":{"unix":"u","windows":"w"},"platforms":[\#(list)],"notice":null}"#
+            return try install(json).shown.map(\.platforms)
         }
-        XCTAssertEqual(try shown("sandbox"), [[.linux]])
-        XCTAssertEqual(try shown("shared"), [[.linux]])
-        XCTAssertEqual(try shown("exclusive"), [[.macOS, .linux]])
-        XCTAssertEqual(try shown("private"), [[.macOS, .linux], [.windows]])
+        XCTAssertEqual(try shown(["linux-x86_64", "linux-aarch64"]), [[.linux]])
+        XCTAssertEqual(try shown(["linux-x86_64", "macos-arm64"]), [[.macOS, .linux]])
+        XCTAssertEqual(try shown(["linux-x86_64", "macos-arm64", "windows-x86_64"]), [[.macOS, .linux], [.windows]])
+        XCTAssertEqual(try shown(["windows-x86_64", "plan9-mips"]), [[.windows]], "a system this app doesn't know is left out")
+        XCTAssertEqual(try shown([]), [])
     }
 
-    func testAddingAComputerStepsThroughModeAndInstall() throws {
+    func testAddingAComputerStepsThroughAccessConcurrencyAndInstall() throws {
         XCTAssertNil(ComputerAdd.start(.none))
         var member = try XCTUnwrap(ComputerAdd.start(.use))
-        XCTAssertEqual(member, .choosing(ComputerDraft(mode: .private)))
-        member.choose(.sandbox, access: .use)
-        XCTAssertEqual(member, .choosing(ComputerDraft(mode: .private)), "a member can't pick a team mode")
+        XCTAssertEqual(member, .choosing(ComputerDraft(access: .private)))
+        member.choose(.shared, role: .use)
+        XCTAssertEqual(member, .choosing(ComputerDraft(access: .private)), "a member can't add a shared computer")
+        XCTAssertEqual(member.draft?.shownConcurrency, 1)
+        XCTAssertEqual(try XCTUnwrap(member.create()).json, .object(["access": .string("private")]), "the default concurrency isn't sent")
 
         var add = try XCTUnwrap(ComputerAdd.start(.manage))
-        XCTAssertEqual(add, .choosing(ComputerDraft(mode: .sandbox)))
-        add.choose(.exclusive, access: .manage)
+        XCTAssertEqual(add, .choosing(ComputerDraft(access: .shared)))
+        XCTAssertEqual(add.draft?.shownConcurrency, 8)
+        add.setConcurrency(0)
+        add.setConcurrency(65)
+        XCTAssertEqual(add.draft?.concurrency, nil, "outside 1…64 is ignored")
+        add.setConcurrency(4)
+        add.choose(.private, role: .manage)
+        XCTAssertEqual(add, .choosing(ComputerDraft(access: .private, concurrency: 4)), "a chosen concurrency stays")
+        add.setConcurrency(nil)
+        XCTAssertEqual(add.draft?.shownConcurrency, 1, "back to the default, which follows the access")
+        add.choose(.shared, role: .manage)
+        add.setConcurrency(12)
         let request = try XCTUnwrap(add.create())
-        XCTAssertEqual(request, ComputeJoinTokenRequest(ComputerDraft(mode: .exclusive)))
-        XCTAssertEqual(request.json, .object(["mode": .string("exclusive")]), "only the mode; it joins under its hostname")
+        XCTAssertEqual(request, ComputeJoinTokenRequest(ComputerDraft(access: .shared, concurrency: 12)))
+        XCTAssertEqual(request.json, .object(["access": .string("shared"), "concurrency": .number(12)]), "no mode, name or description")
         XCTAssertNil(add.create(), "one request at a time")
-        add.choose(.shared, access: .manage)
-        XCTAssertEqual(add, .creating(ComputerDraft(mode: .exclusive)), "no change while the token is minted")
+        add.choose(.private, role: .manage)
+        add.setConcurrency(2)
+        XCTAssertEqual(add, .creating(ComputerDraft(access: .shared, concurrency: 12)), "no change while the token is minted")
         add.finish(.failure(ComputeFailure("This needs the pools.manage permission.")))
-        XCTAssertEqual(add, .failed(ComputerDraft(mode: .exclusive), message: "This needs the pools.manage permission."))
-        add.choose(.shared, access: .manage)
-        XCTAssertEqual(add, .choosing(ComputerDraft(mode: .shared)), "a choice takes the refusal back")
+        XCTAssertEqual(add, .failed(ComputerDraft(access: .shared, concurrency: 12), message: "This needs the pools.manage permission."))
+        add.choose(.private, role: .manage)
+        XCTAssertEqual(add, .choosing(ComputerDraft(access: .private, concurrency: 12)), "a choice takes the refusal back")
         _ = add.create()
-        let install = try JSONDecoder().decode(ComputeInstall.self, from: Data(#"{"mode":"shared","token":"t","expiresAt":1,"clusterUrl":"c","commands":null}"#.utf8))
+        let install = try install(Self.install)
         add.finish(.success(install))
         XCTAssertEqual(add, .shown(install))
         XCTAssertNil(add.draft)
-        add.choose(.sandbox, access: .manage)
+        add.choose(.shared, role: .manage)
         XCTAssertEqual(add, .shown(install), "a shown install has no way back")
     }
 
     func testEndpointsAndEscapedIdentifiers() async throws {
         let revoked = Self.member.replacingOccurrences(of: #""id":"node-1""#, with: #""id":"gone""#).replacingOccurrences(of: #""status":"online""#, with: #""status":"revoked""#)
+        let old = #"{"id":"old","status":"online","mode":"exclusive","exclusiveAgent":null}"#
         let transport = ComputeTransport([
-            response("{\"computers\":[\(Self.member),\(revoked),{\"id\":\"broken\"}]}"),
-            response("{\"computer\":\(Self.held)}"),
+            response("{\"computers\":[\(Self.member),\(revoked),\(old),{\"id\":\"broken\"}]}"),
+            response("{\"computer\":\(Self.mine)}"),
             response("{\"approvals\":[\(Self.approval)]}"),
-            response(#"{"mode":"private","token":"t","expiresAt":1,"clusterUrl":"c","commands":null}"#, status: 201),
-            response(#"{"previousHolder":"agent-7"}"#),
+            response(Self.install, status: 201),
+            response("{\"computer\":\(Self.member.replacingOccurrences(of: #""concurrency":8"#, with: #""concurrency":3"#))}"),
+            response(#"{"released":"a/1"}"#),
             response(#"{"approval":{}}"#),
         ])
         let client = AgentClient(transport: transport, token: "test")
         let listed = try await client.computers()
-        XCTAssertEqual(listed.map(\.id), ["node-1"], "revoked and unreadable computers are left out")
+        XCTAssertEqual(listed.map(\.id), ["node-1"], "revoked, old-shaped and unreadable computers are left out")
         let node = try await client.computer("n/?")
-        XCTAssertEqual(node.id, "node-2")
+        XCTAssertEqual(node.id, "node-3")
         let approvals = try await client.computerApprovals()
         XCTAssertEqual(approvals.map(\.id), ["node-3/agent-9"])
-        _ = try await client.createComputerJoinToken(ComputeJoinTokenRequest(ComputerDraft(mode: .private)))
-        let holder = try await client.releaseComputerLock("node-2")
-        XCTAssertEqual(holder, "agent-7")
+        _ = try await client.createComputerJoinToken(ComputeJoinTokenRequest(ComputerDraft(access: .private)))
+        let saved = try await client.setComputerConcurrency("node-1", 3)
+        XCTAssertEqual(saved.concurrency, 3)
+        try await client.removeComputerAgent("node-1", agent: "a/1")
         try await client.answerComputerApproval(approvals[0], approve: false)
         let requests = await transport.requests
-        XCTAssertEqual(requests.map(\.0), ["GET", "GET", "GET", "POST", "POST", "POST"])
+        XCTAssertEqual(requests.map(\.0), ["GET", "GET", "GET", "POST", "PATCH", "DELETE", "POST"])
         XCTAssertEqual(requests.map(\.1), [
             "/v0/computers", "/v0/computers/n%2F%3F", "/v0/computers/approvals", "/v0/computers/join-tokens",
-            "/v0/computers/node-2/release-lock", "/v0/computers/approvals/node-3/agent-9",
+            "/v0/computers/node-1", "/v0/computers/node-1/agents/a%2F1", "/v0/computers/approvals/node-3/agent-9",
         ])
         let bodies = await transport.bodies
-        XCTAssertEqual(try JSONValue.decode(Data(bodies[3].utf8)), .object(["mode": .string("private")]))
-        XCTAssertEqual(try JSONValue.decode(Data(bodies[5].utf8)), .object(["approve": .bool(false)]))
-        XCTAssertFalse(requests.contains { $0.1.hasPrefix("/v0/compute/") }, "neither a pool nor an old node route is called")
+        XCTAssertEqual(try JSONValue.decode(Data(bodies[3].utf8)), .object(["access": .string("private")]))
+        XCTAssertEqual(try JSONValue.decode(Data(bodies[4].utf8)), .object(["concurrency": .number(3)]))
+        XCTAssertEqual(try JSONValue.decode(Data(bodies[6].utf8)), .object(["approve": .bool(false)]))
+        XCTAssertFalse(requests.contains { $0.1.hasPrefix("/v0/compute/") || $0.1.hasSuffix("/release-lock") }, "no pool, node or release-lock route is called")
     }
 
     func testTheListReadsComputersAndRequestsOnlineFirstAndNamesOwners() async throws {
         let other = Self.mine.replacingOccurrences(of: #""owner":"user-me""#, with: #""owner":"user-alex""#).replacingOccurrences(of: #""node-3""#, with: #""node-4""#)
+        let build = Self.member.replacingOccurrences(of: #""id":"node-1","name":null"#, with: #""id":"node-2","name":"build-01""#)
         let transport = ComputeTransport([
-            response("{\"computers\":[\(Self.mine),\(other),\(Self.held),\(Self.member)]}"),
+            response("{\"computers\":[\(Self.mine),\(other),\(build),\(Self.member)]}"),
             response("{\"approvals\":[\(Self.approval)]}"),
             response(#"{"users":[{"id":"user-alex","name":"Alex"}]}"#),
         ])
