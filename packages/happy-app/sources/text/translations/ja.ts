@@ -20,6 +20,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const ja: TranslationStructure = {
     composerContext: {
+        referenceLimit: "追加できる参照は8件までです。",
+        addGroup: "追加",
+        conversationsGroup: "会話",
+        openReference: "参照を開く",
+        removeReference: "参照を削除",
+        loadContextFailed: "選択した会話を読み取れませんでした。もう一度お試しください。",
+        contextUnavailable: "このコンテンツは現在利用できません。",
         title: "コンテンツを追加",
         all: "すべて",
         files: "ファイルとフォルダー",

@@ -1,3 +1,4 @@
+vi.mock('./ComposerReferenceChips', () => ({ ComposerReferenceChips: 'ComposerReferenceChips' }));
 vi.mock('./ComposerContextPicker', () => ({ ComposerContextPicker: 'ComposerContextPicker' }));
 vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path', Rect: 'Rect', Circle: 'Circle' }));
 import * as React from 'react';
@@ -143,15 +144,45 @@ describe('MessageComposer unified context entry', () => {
     });
     it('replaces only the active @ query and preserves following text', () => {
         mount(); type('Before @sess after', 12);
-        act(() => menu().props.onSelect('@Review [session:other]'));
+        act(() => menu().props.onSelect({ text: '@Review [session:other]' }));
         expect(mocks.write.mock.calls[0][0]).toBe('Before @Review [session:other] after');
     });
     it('upload selection removes only its @ query and preserves surrounding draft', () => {
         mount(); type('Before @up after', 10);
-        act(() => menu().props.onSelect(''));
+        act(() => menu().props.onSelect({ text: '', action: 'upload' }));
         expect(mocks.write.mock.calls[0][0]).toBe('Before  after');
     });
     it('does not intercept an email address', () => {
         mount(); type('hello@example.com'); expect(renderer.root.findAllByType('ComposerContextPicker')).toHaveLength(0);
     });
+    it('renders restored context as a removable chip and keeps the textarea free of metadata', () => {
+        const raw = 'Question\n<paws-context>{"version":1,"references":[{"kind":"session","id":"source","title":"Earlier discussion"}]}</paws-context>';
+        const change = vi.fn();
+        mount({ initialValue: raw, onChangeText: change });
+        expect(input().props.defaultValue).toBe('Question');
+        const chips = renderer.root.findByType('ComposerReferenceChips');
+        expect(chips.props.references[0]).toMatchObject({ kind: 'session', id: 'source' });
+        mocks.liveText = 'Question';
+        act(() => chips.props.onRemove(chips.props.references[0]));
+        expect(change).toHaveBeenLastCalledWith('Question');
+    });
+    it('selects a conversation chip instead of inserting its raw ID into visible text', () => {
+        const change = vi.fn(); mount({ onChangeText: change });type('@design');
+        act(() => menu().props.onSelect({ text: '', reference: { kind: 'session', id: 'source', title: 'Design discussion' } }));
+        expect(mocks.write.mock.calls.at(-1)![0]).toBe('');
+        expect(renderer.root.findByType('ComposerReferenceChips').props.references[0].title).toBe('Design discussion');
+        act(() => input().props.onChangeText('Use that'));
+        expect(change.mock.calls.at(-1)![0]).toContain('<paws-context>');
+        expect(change.mock.calls.at(-1)![0]).toContain('source');
+    });
+
+    it('keeps the native popup after and outside the clipped input panel on an initial @ draft', () => {
+        mount({ initialValue: '@', mode: 'session' });
+        const panel = renderer.root.findByProps({ testID: 'composer-input-panel' });
+        let ancestor = menu().parent;
+        while (ancestor) { expect(ancestor.props.testID).not.toBe('composer-input-panel'); ancestor = ancestor.parent; }
+        expect(panel.parent.props.style.overflow).toBe('visible');
+        expect(panel.parent.children[0]).toBe(panel);
+    });
+
 });

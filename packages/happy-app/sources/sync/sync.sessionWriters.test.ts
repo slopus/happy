@@ -1073,3 +1073,40 @@ it('drains a fourth confirmed user send arriving during the third metadata write
     expect(storage.getState().sessions['writer-session']).toMatchObject({ lastUserMessageAt: 400, metadata: { lastUserMessageAt: 400 } });
     expect(subject.userActivityWrites.has('writer-session')).toBe(false);
 });
+
+describe('selected composer context reaches the real encrypted writer', () => {
+    it('expands selected history before encryption while keeping a clean display prompt', async () => {
+        const { serializeComposerDraft } = await import('./composerReferences');
+        await sync.ensureSessionHydrated('writer-session');
+        const encrypted = vi.spyOn(subject.encryption.getSessionEncryption('writer-session'), 'encryptRawRecord');
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        const read = vi.spyOn(sync, 'readComposerSessionContext').mockResolvedValue('User: UNIQUE_SELECTED_HISTORY');
+        await sync.sendMessage('writer-session', serializeComposerDraft('Use this', [{ kind: 'session', id: 'source', title: 'Earlier discussion' }]));
+        expect(read).toHaveBeenCalledWith('source');
+        const record = encrypted.mock.calls.at(-1)![0] as any;
+        expect(record.content.text).toContain('UNIQUE_SELECTED_HISTORY');
+        expect(record.content.text).not.toContain('<paws-context>');
+        expect(record.meta.displayText).toBe('@Earlier discussion\nUse this');
+    });
+    it('does not enqueue or encrypt an ID-only message when its context load fails', async () => {
+        const { serializeComposerDraft } = await import('./composerReferences');
+        await sync.ensureSessionHydrated('writer-session');
+        const encrypted = vi.spyOn(subject.encryption.getSessionEncryption('writer-session'), 'encryptRawRecord');
+        vi.spyOn(sync, 'readComposerSessionContext').mockRejectedValue(new Error('history unavailable'));
+        await expect(sync.sendMessage('writer-session', serializeComposerDraft('Use this', [{ kind: 'session', id: 'source', title: 'Earlier discussion' }]))).rejects.toThrow();
+        expect(encrypted).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+    it('reads the selected latest wire page without moving the existing visible history', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const sessionEncryption = subject.encryption.getSessionEncryption('writer-session');
+        vi.spyOn(sessionEncryption, 'createDetached').mockReturnValue({ decryptMessages: async (rows: any[]) => rows.map(row => ({ ...row, content: { role: 'user', content: { type: 'text', text: 'actual source request' } } })) } as any);
+        const visible = { messages: [], isLoaded: true, isAtLatest: false, hasMoreNewer: true } as any;
+        storage.setState({ sessionMessages: { 'writer-session': visible } });
+        mocks.apiRequest.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ messages: [{ id: 'source-message', seq: 10, createdAt: 10, localId: null, content: { t: 'encrypted', c: 'fake' } }], hasMore: false }) });
+        const excerpt = await sync.readComposerSessionContext('writer-session');
+        expect(excerpt).toContain('actual source request');
+        expect(storage.getState().sessionMessages['writer-session']).toBe(visible);
+        expect(storage.getState().currentViewingSessionId).toBeNull();
+    });
+});

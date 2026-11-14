@@ -1,3 +1,4 @@
+import { parseComposerDraft, composerReferenceDisplay } from './composerReferences';
 import { v4 as uuid } from 'uuid';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
 import { resolveSessionState } from '@/utils/sessionUtils';
@@ -27,6 +28,13 @@ export const messageStagingQueue = createMessageStagingQueue({
             terminal: ['completed', 'cancelled', 'failed'].includes(session.agentState?.turnStatus?.status ?? ''),
             supportsSteer: session.metadata?.capabilities?.codexSteer === true,
         };
+    },
+    async prepare(message) {
+        const draft = parseComposerDraft(message.text);
+        if (!draft.references.length) return undefined;
+        const credentials = sync.getCredentials();
+        const prepared = await sync.prepareComposerMessage(message.text, () => accountRuntimeCurrent() && sync.getCredentials() === credentials);
+        return { ...prepared, ...(message.displayText !== undefined ? { displayText: composerReferenceDisplay(parseComposerDraft(message.displayText).text, draft.references) } : {}) };
     },
     async send(message) {
         const credentials = sync.getCredentials();

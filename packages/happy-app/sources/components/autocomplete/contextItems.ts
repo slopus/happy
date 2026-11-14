@@ -1,3 +1,4 @@
+import type { ComposerReference } from '@/sync/composerReferences';
 import type { PluginCatalogItem } from '@slopus/happy-wire';
 import { interactivePreviewEventSchema } from '@slopus/happy-wire';
 import type { Message } from '@/sync/typesMessage';
@@ -7,14 +8,14 @@ import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { compareSessionActivity } from '@/utils/sessionActivity';
 
 export type ContextCategory = 'all' | 'files' | 'plugins' | 'sites' | 'sessions';
-export type ContextItem = { id: string; category: Exclude<ContextCategory, 'all'>; title: string; detail: string; text: string; icon: 'document-text-outline' | 'folder-outline' | 'extension-puzzle-outline' | 'globe-outline' | 'chatbubble-outline' | 'attach-outline'; action?: 'upload' };
+export type ContextItem = { id: string; category: Exclude<ContextCategory, 'all'>; title: string; detail: string; text: string; icon: 'document-text-outline' | 'folder-outline' | 'extension-puzzle-outline' | 'globe-outline' | 'chatbubble-outline' | 'attach-outline'; reference?: ComposerReference; action?: 'upload' };
 
 export function contextPlugins(plugins: readonly PluginCatalogItem[], label: (text: PluginCatalogItem['manifest']['title']) => string): ContextItem[] {
     return plugins.filter(p => p.status.installed).map(({ manifest }) => ({
         id: `plugin:${manifest.id}`, category: 'plugins', title: label(manifest.title),
         detail: label(manifest.description), icon: 'extension-puzzle-outline',
         // Explicit, portable reference; never include configuration or secrets.
-        text: `@${label(manifest.title)} [plugin:${manifest.id}]`,
+        text: '', reference: { kind: 'plugin', id: manifest.id, title: label(manifest.title).slice(0, 500) },
     }));
 }
 
@@ -22,7 +23,7 @@ export function contextSessions(sessions: Record<string, Session>, currentId: st
     return Object.values(sessions).filter(s => s.id !== currentId && !isRetiredSession(s) && !isSessionArchived(s))
         .sort(compareSessionActivity).map(s => ({
             id: `session:${s.id}`, category: 'sessions', title: name(s), detail: s.metadata?.path ?? '',
-            icon: 'chatbubble-outline', text: `@${name(s).replace(/[\[\]\n]/g, ' ')} [session:${s.id}]`,
+            icon: 'chatbubble-outline', text: '', reference: { kind: 'session', id: s.id, title: name(s).slice(0, 500) },
         }));
 }
 
@@ -41,9 +42,10 @@ export function contextSites(histories: Record<string, { messages: Message[] }>,
                         let url: URL | null = null;
                         try { url = p.url ? new URL(p.url) : null; } catch { /* invalid source */ }
                         const ready = p.state === 'ready' && (!p.expiresAt || p.expiresAt > now)
-                            && url && ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password;
+                            && url && url.href.length <= 2048 && ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password;
                         previews.set(p.id, { at: message.createdAt, item: {
                             id: `site:${p.id}`, category: 'sites', title: p.title, detail: url?.host ?? '',
+                            reference: ready ? { kind: 'site', id: p.id, title: p.title, url: url!.href } : undefined,
                             icon: 'globe-outline', text: ready ? `[${p.title.replace(/[\[\]\n]/g, ' ')}](${url!.href})` : '',
                         } });
                     }

@@ -1,3 +1,4 @@
+import { resolveComposerReferences, parseComposerDraft, composerReferenceDisplay, buildComposerReferenceExcerpt } from './composerReferences';
 import { saveSessionWarmMessageTime } from './sessionWarmCache';
 import { getConversationMessageTime } from './sessionConversationTime';
 import { getUserMessageTime } from './sessionUserActivity';
@@ -1877,6 +1878,60 @@ class Sync {
         return { uploaded, failed };
     }
 
+    /** Read an explicitly selected conversation without replacing its visible history window. */
+    public readComposerSessionContext = async (id: string): Promise<string> => {
+        const owner = this.encryption;
+        const generation = this.sessionDeletionMutationGenerations.get(id);
+        const assertCurrent = () => {
+            if (this.encryption !== owner || !accountRuntimeCurrent() || generation !== this.sessionDeletionMutationGenerations.get(id)
+                || !storage.getState().sessions[id] || isRetiredSession(storage.getState().sessions[id])) throw new Error('composer-context-unavailable');
+        };
+        if (!await this.ensureSessionHydrated(id)) throw new Error('composer-context-unavailable');
+        assertCurrent();
+        const encryption = owner.getSessionEncryption(id);
+        if (!encryption) throw new Error('composer-context-unavailable');
+        const detached = encryption.createDetached();
+        let before = SEQ_BACKWARD_INITIAL_SENTINEL;
+        const lines: Array<{ at: number; role: string; text: string }> = [];
+        for (let page = 0; page < 5; page++) {
+            const result = await fetchMessagePageWithDeadline(`/v3/sessions/${encodeURIComponent(id)}/messages?before_seq=${before}&limit=100`);
+            assertCurrent();
+            if (!result.ok || !result.data || !Array.isArray(result.data.messages)) throw new Error('composer-context-unavailable');
+            const rows = result.data.messages;
+            const decrypted = await detached.decryptMessages(rows);
+            assertCurrent();
+            if (owner.getSessionEncryption(id) !== encryption || decrypted.length !== rows.length || decrypted.some(row => !row?.content)) throw new Error('composer-context-unavailable');
+            for (const row of decrypted) {
+                if (!row) continue;
+                const message = normalizeRawMessage(row.id, row.localId, row.createdAt, row.content);
+                if (!message || message.isSidechain) continue;
+                if (message.role === 'user') lines.push({ at: message.createdAt, role: 'User', text: message.meta?.displayText ?? message.content.text });
+                if (message.role === 'agent') for (const part of message.content) if (part.type === 'text') lines.push({ at: message.createdAt, role: 'Assistant', text: part.text });
+            }
+            if (!result.data.hasMore || lines.some(line => line.role === 'User')) break;
+            const next = Math.min(...rows.map(row => row.seq));
+            if (!Number.isFinite(next) || next >= before) throw new Error('composer-context-unavailable');
+            before = next;
+        }
+        assertCurrent();
+        if (!lines.some(line => line.text.trim())) throw new Error('composer-context-unavailable');
+        return buildComposerReferenceExcerpt(lines);
+    };
+
+    public prepareComposerMessage = async (text: string, isCurrent: () => boolean = () => true) => {
+        const owner = this.encryption;
+        return resolveComposerReferences(text, {
+            isCurrent: () => isCurrent() && this.encryption === owner && accountRuntimeCurrent(),
+            session: this.readComposerSessionContext,
+            plugin: async id => {
+                if (this.getPluginCatalogSnapshot().status !== 'ready') await this.refreshPluginCatalog();
+                const plugin = this.getPluginCatalogSnapshot().plugins.find(p => p.manifest.id === id && p.status.installed);
+                if (!plugin) throw new Error('composer-context-unavailable');
+                return { title: plugin.manifest.title.default, description: plugin.manifest.description.default };
+            },
+        });
+    };
+
     private failedCodexRecovery = new FailedCodexSessionRecovery();
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<LocalMessageQueueReceipt> {
@@ -1981,7 +2036,15 @@ class Sync {
         const stagedMessages: NormalizedMessage[] = [];
 
         const modeMeta = options?.modeMeta ?? resolveMessageModeMeta(modeSessionSnapshot ?? session, modeSettingsSnapshot);
-        const { displayText, editedFromMessageId, source = 'chat', attachments } = options ?? {};
+        const { editedFromMessageId, source = 'chat', attachments } = options ?? {};
+        let displayText = options?.displayText;
+        if (parseComposerDraft(text).references.length) {
+            const parsed = parseComposerDraft(text);
+            const prepared = await this.prepareComposerMessage(text, () => isCurrent() && this.encryption === encryptionOwner);
+            if (!isCurrent() || this.encryption !== encryptionOwner) throw new Error('local-message-session-unavailable');
+            displayText = displayText ? composerReferenceDisplay(parseComposerDraft(displayText).text, parsed.references) : prepared.displayText;
+            text = prepared.text;
+        }
         const contextSource = session.metadata?.continuationOfSessionId;
         const savedContext = session.metadata?.continuationContext;
         const contextAlreadySent = contextSource && savedContext

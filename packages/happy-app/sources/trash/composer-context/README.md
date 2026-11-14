@@ -1,31 +1,30 @@
-# 输入框分类浮层验收
+# @／加号内容选择与可操作引用验收
 
-运行 `node sources/trash/composer-context/build.mjs`，使用 Ego 浏览器打开其本地入口。
-这是实际 MessageComposer、MultiTextInput.web、ComposerContextPicker、ComposerContextHost.web 和 RN Web 的受控集成：插件、会话、站点卡片、文件查询及文件选择器使用合成数据/替身，不接真实账号或执行器。图标与主题边界由 boundaries.tsx 提供。完整 App 的 Unistyles、生产数据和原生端未在此证明。
+运行 `node sources/trash/composer-context/build.mjs`，在 Ego 中打开脚本打印的本机地址。
+使用真实 MessageComposer、MultiTextInput.web、RN Web、分组浮层、定位 Host 与引用 chips；插件目录／会话／站点／文件来源、图片条、路由与最终接收边界为合成替身。不会发送生产消息或复制账号凭据。
 
-## Case 与通过标准
+## 当前 Case
 
-| Case | 路径 | 通过标准 |
+| Case | 通过标准 | 本轮证据 |
 | --- | --- | --- |
-| C1 | 首页／会话输入 @ | 即使没有文件也立即显示全部、文件、插件、站点、最近对话分类 |
-| C2 | 空草稿或已有草稿点击 + | 打开同一浮层，不更改草稿，不直接调用文件选择器 |
-| C3 | 插件、站点、最近会话 | 各类型筛选后可选；插入可读引用或站点链接，保留原草稿两侧内容 |
-| C4 | 上传文件／工作区文件 | 仅点击上传后调用选择器一次；文件路径插入原有 @path 语法 |
-| C5 | 搜索与键盘 | 普通 Enter/Tab 选中、方向键移动、Escape 关闭并还原焦点；IME composing/229 不选中 |
-| C6 | 小桌面窗口与裁切祖先 | 900×700 下浮层在视口内；外层 overflow:hidden 不裁切 portal 浮层；外部点击关闭且不抢焦点 |
+| C1 贴合与同宽 | 浮层底边与输入框顶边重合，宽度一致，越过裁切祖先 | 1280×900：gap=0px，widthDifference=0px；初始 @ 草稿挂载亦可见 |
+| C2 附件变化跟随 | 附件改变实际输入框高度时实时更新菜单位置 | 合成图片条使输入框增高120px，前后gap及宽差均为0；真实DOM observer驱动，无几何查询循环 |
+| C3 用户控制滚动 | Hover只改变高亮，方向键才可将不可见项滚入视区 | 无滚轮时200→200；手动滚轮完成后400→400，移动鼠标不改变位置 |
+| C4 简洁分组 | 无独立搜索框、顶部Tab、关闭X；按添加／插件／站点／对话平铺 | 实际DOM中搜索框及Tab数量0，四分组存在；输入框 @ 后文字仍可筛选 |
+| C5 可点击引用 | 显示蓝色图标和名称，可打开、删除、恢复草稿 | 会话路由、插件入口、站点URL三个边界均接收到正确目标；恢复后名称及问题保留，输入框无原始JSON |
+| C6 Agent正文与重试 | 正常发送／插话包含实际引用内容，读取失败不发纯ID，重试正文稳定 | 实际加密writer、真实queue-runtime调用边界与ACK丢失后恢复测试通过；合成浏览器接收端包含所选源正文与新问题 |
 
-2026-11-14：上述真实组件/合成数据路径已由 Ego 实测，包含插件/站点点击、搜索会话后 Enter、IME、上传一次、文件点击与键盘选择。桌面菜单行高34px，最多400px高；原生触控行高44px。首页没有工作目录时保留上传，不伪造工作区文件。
+浏览器使用同一独立任务空间与run绑定关键步骤帧并报告到Skills。第一次滚动观测仍处于滚轮惯性中；最终测试先确认滚轮到达目标，再验证鼠标悬停不滚动。
 
-## 数据与能力边界
+## 引用与能力边界
 
-- 插件只显示账号目录中已安装项；插入名称及公共 plugin ID，不附带配置/密钥，也不自动安装或执行插件。
-- 最近对话排除当前、归档及 Personal 独立会话，按实际会话消息时间排序。搜索覆盖全部已加载的候选，再限制显示数量；引用不自动复制会话正文。
-- Happy 目前没有独立的已收藏站点库；站点来自已加载会话中的 ready 预览卡片，排除过期、失败、非HTTP(S)和URL自带凭据项。不会扫描浏览器历史或创建站点。
-- 文件查询按用户打开文件分类或输入搜索触发，异步返回使用 effect 清理拒绝过期请求。插件目录复用中央事件订阅，不新增轮询。
-- 前后对照截图已询问，用户尚未回复；未制作 PR 对照图。浏览器操作的必需关键步骤帧已通过当前 Happy 会话的 Skills 入口报告。未要求视频，本次无视频产物。
+- 草稿用有版本和长度限制的元数据保存引用；输入框只显示可点击名称。队列仍保留原始草稿用于编辑，显示预览隐藏元数据。
+- 普通发送在本机读取所选会话的有限近期加密历史、解密并生成有大小限制的摘录；不切换源会话阅读窗口。最新用户请求优先保留，包含历史数据说明，不把工具输出或思考链作为正文。
+- 发送前读取失败则保留失败队列，用户可重试；首次RPC前持久化准备好的正文，ACK丢失、重载后复用同一正文。账号与源会话删除的异步边界有防护。
+- 插件引用点击调用现有可信客户端adapter打开实际功能页面，或进入配置；站点引用打开真实URL。插件发送只包含已安装插件的公开说明，当前图片库插件不具备新的Agent生图工具，不宣称自动调用不存在的能力。
+- 没有完整生产账号/原生设备或外部模型交互验收；原生菜单在独立overflow:visible容器内，避免被输入框overflow:hidden裁掉。首次@的ref附着顺序由后序菜单兄弟与浏览器回归保护。
 
-## 自动回归
+## 自动验证
 
-`pnpm exec vitest run sources/components/MessageComposer.context.test.tsx sources/components/MessageComposer.paste.test.tsx sources/components/MessageComposer.screenshot.test.tsx sources/components/autocomplete`
-
-91项通过。完整 `pnpm exec tsc --noEmit --incremental false` 通过；Expo Web export 通过。独立代码评审及组件静态图评审通过，生产账号、完整App视觉及原生端留待后续验收。
+相关测试包含 MessageComposer.context/paste/screenshot、ComposerReferenceChips、autocomplete、composerReferences、sync.sessionWriters、messageStagingQueue及Runtime/Persistence等。另运行完整TypeScript检查和Expo Web export。
+前后截图此前已询问尚未回复，未制作PR对照图；关键操作帧按当前Happy浏览器规则报告。用户未要求视频，未录制视频。

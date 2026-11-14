@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     state: {} as any,
     credentials: { token: 'owner' },
     send: vi.fn(async () => undefined),
+    prepare: vi.fn(),
     activeAccount: true,
 }));
 vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => mocks.activeAccount }));
@@ -17,7 +18,7 @@ vi.mock('./messageStagingQueuePersistence', () => ({
     getMessageStagingNamespace: () => 'account-a-tab',
 }));
 vi.mock('./storage', () => ({ storage: { getState: () => mocks.state } }));
-vi.mock('./sync', () => ({ sync: { getCredentials: () => mocks.credentials, sendMessage: mocks.send } }));
+vi.mock('./sync', () => ({ sync: { getCredentials: () => mocks.credentials, sendMessage: mocks.send, prepareComposerMessage: mocks.prepare } }));
 vi.mock('./ops', () => ({ sessionSteer: vi.fn() }));
 vi.mock('./messageMeta', () => ({ resolveMessageModeMeta: () => ({}) }));
 
@@ -117,4 +118,35 @@ it('preserves editable file annotations in the queue and sends a clean display s
     mocks.state.sessions.annotated.agentState.turnStatus = { status: 'idle' };
     messageStagingQueue.refresh();
     await vi.waitFor(() => expect(mocks.send).toHaveBeenCalledWith('annotated', 'model payload baseline', expect.objectContaining({ displayText: 'doc.md: Original — Make this concrete' })));
+});
+
+
+describe('wired selected-reference delivery', () => {
+    it('expands a queued reference before the real send boundary and keeps draft identity', async () => {
+        const { serializeComposerDraft } = await import('./composerReferences');
+        mocks.activeAccount = true; mocks.send.mockClear();
+        mocks.state = { socketStatus: 'connected', applyPendingMessageSessions: () => {}, settings: {}, sessions: { selected: { presence: 'online', metadata: {}, agentState: { turnStatus: { status: 'idle' } } } } };
+        messageStagingQueue.clear();
+        mocks.prepare.mockResolvedValue({ text: 'ACTUAL SELECTED CONTEXT\nQuestion', displayText: '@Earlier\nQuestion' });
+        const raw = serializeComposerDraft('Question', [{ kind: 'session', id: 'source', title: 'Earlier' }]);
+        messageStagingQueue.enqueue({ id: 'ref-send', sessionId: 'selected', text: raw, modeMeta: {} });
+        await vi.waitFor(() => expect(mocks.send).toHaveBeenCalled());
+        expect(mocks.send).toHaveBeenLastCalledWith('selected', 'ACTUAL SELECTED CONTEXT\nQuestion', expect.objectContaining({ displayText: '@Earlier\nQuestion' }));
+        await vi.waitFor(() => expect(messageStagingQueue.getSnapshot().messages).toHaveLength(0));
+    });
+    it('reuses one expanded text at the steer RPC boundary after ACK loss', async () => {
+        const { serializeComposerDraft } = await import('./composerReferences');
+        const { sessionSteer } = await import('./ops');
+        mocks.activeAccount = true; mocks.prepare.mockClear();
+        mocks.state = { socketStatus: 'connected', applyPendingMessageSessions: () => {}, settings: {}, sessions: { selected: { presence: 'online', metadata: { capabilities: { codexSteer: true } }, agentState: { turnStatus: { status: 'running', turnId: 'turn-a' } } } } };
+        messageStagingQueue.clear();
+        mocks.prepare.mockResolvedValueOnce({ text: 'FROZEN SOURCE', displayText: '@Earlier' }).mockResolvedValue({ text: 'CHANGED SOURCE' });
+        vi.mocked(sessionSteer).mockReset();vi.mocked(sessionSteer).mockRejectedValueOnce(new Error('ACK lost')).mockResolvedValue({ accepted: true, turnId: 'turn-a', clientMessageId: 'ref-steer' });
+        messageStagingQueue.enqueue({ id: 'ref-steer', sessionId: 'selected', text: serializeComposerDraft('Question', [{ kind: 'session', id: 'source', title: 'Earlier' }]), modeMeta: {} });
+        await messageStagingQueue.steer('ref-steer');
+        expect(messageStagingQueue.getSnapshot().messages[0].preparedText).toBe('FROZEN SOURCE');
+        await messageStagingQueue.steer('ref-steer');
+        expect(mocks.prepare).toHaveBeenCalledOnce();
+        expect(vi.mocked(sessionSteer).mock.calls.map(call => call[1].text)).toEqual(['FROZEN SOURCE', 'FROZEN SOURCE']);
+    });
 });

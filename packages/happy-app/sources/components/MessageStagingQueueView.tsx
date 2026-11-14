@@ -1,3 +1,4 @@
+import { parseComposerDraft, composerReferenceDisplay } from '@/sync/composerReferences';
 import * as React from 'react';
 import { View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +25,7 @@ export function MessageStagingQueueView(props: {
         <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             {props.messages.map(message => <View key={message.id} style={styles.row} testID={`queued-message-${message.id}`}>
                 <View style={styles.content}>
-                    <Text numberOfLines={2} style={styles.text}>{(message.displayText ?? message.draftText ?? message.text) || t('messageQueue.attachments')}</Text>
+                    <Text numberOfLines={2} style={styles.text}>{(() => { const draft = parseComposerDraft(message.displayText ?? message.draftText ?? message.text); return composerReferenceDisplay(draft.text, draft.references) || t('messageQueue.attachments'); })()}</Text>
                     {!!availableStagedAttachments(message).length && <SubmittedAttachmentPreview images={availableStagedAttachments(message)} testID={`queued-attachments-${message.id}`} />}
                     {message.status === 'failed' && (!message.attachmentsExpired || message.deliveryUncertain) && <Text style={styles.secondary}>{t('messageQueue.failed')}</Text>}
                     {message.attachmentsExpired && <Text style={styles.secondary}>{t('messageQueue.attachmentsExpired')}{'\n'}{expiredStagedAttachments(message).map(attachment => attachment.name).join('、')}</Text>}

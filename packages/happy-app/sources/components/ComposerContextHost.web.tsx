@@ -1,12 +1,11 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { View } from 'react-native';
+import type { View } from 'react-native';
 
-/** Anchor to the composer while escaping the work area's clipped ancestors. */
-export function ComposerContextHost({ children }: { children: React.ReactNode }) {
-    const anchorRef = React.useRef<View>(null);
+/** Follow the actual input panel, including attachment growth, before paint. */
+export function ComposerContextHost({ children, anchorRef }: { children: React.ReactNode; anchorRef: React.RefObject<View | null> }) {
     const overlayRef = React.useRef<HTMLDivElement>(null);
-    const [position, setPosition] = React.useState<React.CSSProperties>({ visibility: 'hidden' });
+    const updateRef = React.useRef<() => void>(() => {});
     React.useLayoutEffect(() => {
         const anchor = anchorRef.current as unknown as HTMLElement | null;
         const overlay = overlayRef.current;
@@ -14,33 +13,43 @@ export function ComposerContextHost({ children }: { children: React.ReactNode })
         const update = () => {
             const rect = anchor.getBoundingClientRect();
             const viewport = window.visualViewport;
-            const leftEdge = viewport?.offsetLeft ?? 0;
-            const topEdge = viewport?.offsetTop ?? 0;
+            const top = viewport?.offsetTop ?? 0;
+            const left = viewport?.offsetLeft ?? 0;
             const width = viewport?.width ?? window.innerWidth;
-            const height = viewport?.height ?? window.innerHeight;
-            const availableAbove = Math.max(80, rect.top - topEdge - 8);
-            const maxHeight = Math.min(400, availableAbove, height - 16);
-            const overlayHeight = Math.min(overlay.firstElementChild?.getBoundingClientRect().height ?? maxHeight, maxHeight);
-            setPosition({ visibility: 'visible', left: Math.max(leftEdge + 8, Math.min(rect.left, leftEdge + width - Math.min(rect.width, 580) - 8)), top: Math.max(topEdge + 8, rect.top - overlayHeight - 8), width: Math.min(rect.width, 580, width - 16), maxHeight });
+            Object.assign(overlay.style, {
+                visibility: 'visible',
+                left: `${Math.max(left, Math.min(rect.left, left + width - Math.min(rect.width, width)))}px`,
+                bottom: `${window.innerHeight - rect.top}px`,
+                width: `${Math.min(rect.width, width)}px`,
+                maxHeight: `${Math.max(80, Math.min(400, rect.top - top))}px`,
+            });
         };
-        update();
-        const observer = new ResizeObserver(update);
-        observer.observe(anchor);
-        if (overlay.firstElementChild) observer.observe(overlay.firstElementChild);
+        updateRef.current = update;
+        // Size changes cover textarea wrapping and attachment thumbnails. Style
+        // mutations on ancestors cover layout transitions that only move it.
+        const resize = new ResizeObserver(update);
+        const mutation = new MutationObserver(update);
+        let node: HTMLElement | null = anchor;
+        for (let depth = 0; node && node !== document.body && depth < 6; depth++, node = node.parentElement) {
+            resize.observe(node);
+            mutation.observe(node, { attributes: true, attributeFilter: ['style', 'class'] });
+        }
         window.addEventListener('resize', update);
         window.addEventListener('scroll', update, true);
         window.visualViewport?.addEventListener('resize', update);
         window.visualViewport?.addEventListener('scroll', update);
+        update();
         return () => {
-            observer.disconnect();
+            updateRef.current = () => {};
+            resize.disconnect(); mutation.disconnect();
             window.removeEventListener('resize', update);
             window.removeEventListener('scroll', update, true);
             window.visualViewport?.removeEventListener('resize', update);
             window.visualViewport?.removeEventListener('scroll', update);
         };
-    }, []);
-    return <>
-        <View ref={anchorRef} style={{ height: 0, width: '100%' }} />
-        {typeof document !== 'undefined' && createPortal(<div ref={overlayRef} style={{ position: 'fixed', zIndex: 100000, display: 'flex', flexDirection: 'column', ...position }}>{children}</div>, document.body)}
-    </>;
+    }, [anchorRef]);
+    React.useLayoutEffect(() => updateRef.current());
+    return typeof document === 'undefined' ? null : createPortal(
+        <div ref={overlayRef} style={{ position: 'fixed', zIndex: 100000, display: 'flex', flexDirection: 'column', visibility: 'hidden' }}>{children}</div>, document.body,
+    );
 }

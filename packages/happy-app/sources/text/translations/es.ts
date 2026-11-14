@@ -17,6 +17,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  */
 export const es: TranslationStructure = {
     composerContext: {
+        referenceLimit: "Puedes añadir hasta 8 referencias.",
+        addGroup: "Añadir",
+        conversationsGroup: "Conversaciones",
+        openReference: "Abrir referencia",
+        removeReference: "Eliminar referencia",
+        loadContextFailed: "No se pudo leer la conversación seleccionada. Vuelve a intentarlo.",
+        contextUnavailable: "Este contenido no está disponible en este momento.",
         title: "Añadir contenido",
         all: "Todo",
         files: "Archivos y carpetas",

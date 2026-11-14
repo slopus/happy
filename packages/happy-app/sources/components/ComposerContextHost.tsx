@@ -1,2 +1,3 @@
 import * as React from 'react';
-export function ComposerContextHost({ children }: { children: React.ReactNode }) { return <>{children}</>; }
+import type { View } from 'react-native';
+export function ComposerContextHost({ children }: { children: React.ReactNode; anchorRef: React.RefObject<View | null> }) { return <>{children}</>; }

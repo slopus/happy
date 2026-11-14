@@ -28,6 +28,13 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  */
 export const ru: TranslationStructure = {
     composerContext: {
+        referenceLimit: "Можно добавить не более 8 ссылок.",
+        addGroup: "Добавить",
+        conversationsGroup: "Разговоры",
+        openReference: "Открыть ссылку",
+        removeReference: "Удалить ссылку",
+        loadContextFailed: "Не удалось прочитать выбранный разговор. Попробуйте ещё раз.",
+        contextUnavailable: "Этот контент сейчас недоступен.",
         title: "Добавить содержимое",
         all: "Всё",
         files: "Файлы и папки",

@@ -17,6 +17,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  */
 export const ca: TranslationStructure = {
     composerContext: {
+        referenceLimit: "Pots afegir fins a 8 referències.",
+        addGroup: "Afegeix",
+        conversationsGroup: "Converses",
+        openReference: "Obre la referència",
+        removeReference: "Elimina la referència",
+        loadContextFailed: "No s’ha pogut llegir la conversa seleccionada. Torna-ho a provar.",
+        contextUnavailable: "Aquest contingut no està disponible ara mateix.",
         title: "Afegeix contingut",
         all: "Tot",
         files: "Fitxers i carpetes",

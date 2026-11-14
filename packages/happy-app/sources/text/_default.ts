@@ -16,6 +16,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     composerContext: {
+        referenceLimit: "You can add up to 8 references.",
+        addGroup: "Add",
+        conversationsGroup: "Conversations",
+        openReference: "Open reference",
+        removeReference: "Remove reference",
+        loadContextFailed: "Could not read the selected conversation. Please retry.",
+        contextUnavailable: "This content is currently unavailable.",
         title: "Add content",
         all: "All",
         files: "Files and folders",

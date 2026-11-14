@@ -19,6 +19,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHant: TranslationStructure = {
     composerContext: {
+        referenceLimit: "最多新增 8 項引用",
+        addGroup: "新增",
+        conversationsGroup: "對話",
+        openReference: "開啟引用",
+        removeReference: "移除引用",
+        loadContextFailed: "無法讀取所選對話，請重試",
+        contextUnavailable: "此內容目前無法使用",
         title: "新增內容",
         all: "全部",
         files: "檔案和資料夾",

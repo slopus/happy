@@ -12,6 +12,8 @@ export type StagedMessage = {
     text: string;
     draftText?: string;
     displayText?: string;
+    /** Frozen before the first transport attempt, including ACK-loss retries. */
+    preparedText?: string;
     annotations?: readonly MessageAnnotation[];
     fileReference?: { path: string; hash: string; quote?: string };
     attachments?: AttachmentPreview[];
@@ -77,6 +79,7 @@ export function createMessageStagingQueue(deps: {
     load: () => StagingSnapshot;
     save: (snapshot: StagingSnapshot) => void;
     session: (id: string) => StagingSession | undefined;
+    prepare?: (message: StagedMessage) => Promise<{ text: string; displayText?: string } | undefined>;
     send: (message: StagedMessage) => Promise<unknown>;
     steer: (message: StagedMessage, expectedTurnId: string) => Promise<unknown>;
 }) {
@@ -109,14 +112,23 @@ export function createMessageStagingQueue(deps: {
         try {
             commit({ ...snapshot, messages: snapshot.messages.map(m => m.id === message.id ? { ...m, status: 'sending' } : m) });
             if (owner !== generation) return;
+            if (message.preparedText === undefined && deps.prepare) {
+                const prepared = await deps.prepare(message);
+                if (owner !== generation) return;
+                if (prepared) {
+                    message = { ...message, preparedText: prepared.text, displayText: prepared.displayText ?? message.displayText };
+                    commit({ ...snapshot, messages: snapshot.messages.map(m => m.id === message.id ? { ...m, preparedText: message.preparedText, displayText: message.displayText } : m) });
+                }
+            }
+            const delivery = message.preparedText === undefined ? message : { ...message, text: message.preparedText };
             const active = deps.session(sid);
             if (guide && (!active?.supportsSteer || !active.turnId)) throw new Error('Native steering unavailable');
             // Native steering joins the existing turn. Its completion releases
             // the barrier; it does not produce another turn/started event.
             commit({ ...snapshot, barriers: { ...snapshot.barriers, [sid]: { turnId: active?.turnId, sawRunning: guide } } });
             barrierCreated = true;
-            if (guide) await deps.steer(message, active!.turnId!);
-            else await deps.send(message);
+            if (guide) await deps.steer(delivery, active!.turnId!);
+            else await deps.send(delivery);
             submitted = true;
             if (owner !== generation) return;
             commit({ ...snapshot, messages: snapshot.messages.filter(m => m.id !== message.id) });

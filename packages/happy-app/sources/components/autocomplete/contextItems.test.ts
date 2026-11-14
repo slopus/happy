@@ -18,7 +18,7 @@ describe('context source selection', () => {
         const manifest = { id: 'demo', title: { default: 'Demo' }, description: { default: 'Tool' } };
         const plugins = [{ manifest, status: { installed: true, configuration: { token: 'private-secret' } } }, { manifest: { ...manifest, id: 'other' }, status: { installed: false } }] as any;
         const result = contextPlugins(plugins, text => text.default);
-        expect(result).toHaveLength(1); expect(JSON.stringify(result)).not.toContain('private-secret'); expect(result[0].text).toContain('plugin:demo');
+        expect(result).toHaveLength(1); expect(JSON.stringify(result)).not.toContain('private-secret'); expect(result[0].reference).toMatchObject({ kind: 'plugin', id: 'demo' });
     });
     it('keeps fuzzy file results instead of applying a second strict search', () => {
         const item = { id: 'file', category: 'files', title: 'MessageComposer.tsx', detail: '', text: '@MessageComposer.tsx', icon: 'document-text-outline' } as const;

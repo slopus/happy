@@ -17,6 +17,9 @@ import { StatusDot } from './StatusDot';
 import { useActiveWord } from './autocomplete/useActiveWord';
 import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { AgentInputAutocomplete } from './AgentInputAutocomplete';
+import { parseComposerDraft, serializeComposerDraft, type ComposerReference } from '@/sync/composerReferences';
+import type { ContextItem } from './autocomplete/contextItems';
+import { ComposerReferenceChips } from './ComposerReferenceChips';
 import { ComposerContextHost } from './ComposerContextHost';
 import { ComposerContextPicker, type ComposerContextPickerHandle } from './ComposerContextPicker';
 import { findActiveWord } from './autocomplete/findActiveWord';
@@ -132,8 +135,7 @@ const MAX_CONTEXT_SIZE = 190000;
 
 // Stable fallbacks so home mode can omit session autocomplete providers.
 // The shared context picker handles @ independently of those providers.
-// Keep these
-// props without handing MessageComposer.memo a fresh ref on every render.
+// Keep fallback props stable across MessageComposer renders.
 const EMPTY_AUTOCOMPLETE_PREFIXES: string[] = ['@'];
 const EMPTY_AUTOCOMPLETE_SUGGESTIONS = async () => [];
 
@@ -192,6 +194,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginBottom: 8,
         zIndex: 1000,
     },
+
+    composerPanelContainer: { position: 'relative', overflow: 'visible' },
+    contextOverlay: { position: 'absolute', bottom: '100%', left: 0, right: 0, zIndex: 1000 },
 
     // Button styles
     actionButtonsContainer: {
@@ -516,6 +521,10 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     // `hasText` drives only the send-button appearance/enabled state. It's
     // updated via startTransition from the keystroke handler so a busy reducer
     // never blocks the next character from landing in the textarea.
+    const initialDraft = React.useRef(parseComposerDraft(props.initialValue)).current;
+    const [references, setReferences] = React.useState<ComposerReference[]>(initialDraft.references);
+    const referencesRef = React.useRef(references);
+    referencesRef.current = references;
     const [hasText, setHasText] = React.useState(() => props.initialValue.trim().length > 0);
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
     const hasPayload = hasText || hasImages || !!props.hasContext;
@@ -545,13 +554,21 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     const sendBlockShakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
     const composerContentRef = React.useRef<View>(null);
+    const composerPanelRef = React.useRef<View>(null);
 
     // The input refreshes its imperative handle whenever its callbacks change.
     // Forward each operation to the live handle rather than retaining the first
     // render's callbacks (or a handle whose input has since been replaced).
     React.useImperativeHandle(ref, () => ({
-        getText: () => inputRef.current?.getText() ?? '',
-        setTextAndSelection: (text, selection) => inputRef.current?.setTextAndSelection(text, selection),
+        getText: () => serializeComposerDraft(inputRef.current?.getText() ?? '', referencesRef.current),
+        setTextAndSelection: (text, selection) => {
+            const parsed = parseComposerDraft(text);
+            referencesRef.current = parsed.references;
+            setReferences(parsed.references);
+            inputRef.current?.setTextAndSelection(parsed.text, {
+                start: Math.min(selection.start, parsed.text.length), end: Math.min(selection.end, parsed.text.length),
+            });
+        },
         focus: () => inputRef.current?.focus(),
         blur: () => inputRef.current?.blur(),
     }), []);
@@ -686,16 +703,16 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     // typing renders the character immediately and the autocomplete pipeline
     // catches up on the next idle frame instead of blocking input.
     const [inputState, setInputState] = React.useState<TextInputState>(() => ({
-        text: props.initialValue,
-        selection: { start: props.initialValue.length, end: props.initialValue.length }
+        text: initialDraft.text,
+        selection: { start: initialDraft.text.length, end: initialDraft.text.length }
     }));
 
     const onChangeTextProp = props.onChangeText;
     const handleTextChange = React.useCallback((text: string) => {
         React.startTransition(() => {
-            setHasText(text.trim().length > 0);
+            setHasText(text.trim().length > 0 || referencesRef.current.length > 0);
         });
-        onChangeTextProp?.(text);
+        onChangeTextProp?.(serializeComposerDraft(text, referencesRef.current));
     }, [onChangeTextProp]);
 
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
@@ -715,7 +732,13 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         setDismissedContext(contextIdentity);
         if (restoreFocus) inputRef.current?.focus();
     }, [contextIdentity]);
-    const selectContext = React.useCallback((text: string) => {
+    const selectContext = React.useCallback((item: ContextItem) => {
+        const text = item.reference ? '' : item.text;
+        if (item.reference && !referencesRef.current.some(r => r.kind === item.reference!.kind && r.id === item.reference!.id)) {
+            if (referencesRef.current.length >= 8) { Modal.alert(t('composerContext.referenceLimit')); return; }
+            referencesRef.current = [...referencesRef.current, item.reference];
+            setReferences(referencesRef.current);
+        }
         const input = inputRef.current;
         if (!input) return;
         const liveText = input.getText();
@@ -734,12 +757,20 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         hapticsLight();
     }, [inputState.selection]);
 
+    const removeReference = React.useCallback((reference: ComposerReference) => {
+        referencesRef.current = referencesRef.current.filter(r => r.kind !== reference.kind || r.id !== reference.id);
+        setReferences(referencesRef.current);
+        const text = inputRef.current?.getText() ?? '';
+        setHasText(!!text.trim() || referencesRef.current.length > 0);
+        onChangeTextProp?.(serializeComposerDraft(text, referencesRef.current));
+    }, [onChangeTextProp]);
+
     // Use the tracked selection from inputState
     const activeWord = useActiveWord(inputState.text, inputState.selection, autocompletePrefixes);
     // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
     const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord?.startsWith('@') || contextOpen ? null : activeWord, autocompleteSuggestions, { clampSelection: true, wrapAround: true });
 
-    const predictionText = !hasText && !hasImages && !props.hasContext && !isSendBlocked
+    const predictionText = !hasText && references.length === 0 && !hasImages && !props.hasContext && !isSendBlocked
         && !props.isSending && !props.showAbortButton ? props.predictionText : null;
     const acceptPrediction = React.useCallback(() => {
         if (!predictionText || inputRef.current?.getText() !== '') return;
@@ -824,7 +855,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
         hapticsLight();
         // Live read avoids stalling behind the transitioned `hasText`.
-        const liveHasText = (inputRef.current?.getText() ?? '').trim().length > 0;
+        const liveHasText = (inputRef.current?.getText() ?? '').trim().length > 0 || referencesRef.current.length > 0;
         if (liveHasText || hasImages || props.hasContext) {
             props.onSend();
         }
@@ -892,7 +923,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             // to avoid false positives on Windows touch-screen laptops with keyboards.
             const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
             if (event.key === 'Tab' && !event.shiftKey && props.onQueue && !isTouchDevice
-                && (inputRef.current?.getText().trim() || hasImages || props.hasContext)) {
+                && (inputRef.current?.getText().trim() || referencesRef.current.length || hasImages || props.hasContext)) {
                 if (!isSendBlocked && !props.isSendDisabled && !props.isSending) props.onQueue();
                 return true;
             }
@@ -900,7 +931,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 // Read live text from the textarea — `hasText` is debounced via
                 // startTransition and would lag behind a quick type-then-Enter.
                 const liveText = inputRef.current?.getText() ?? '';
-                if (liveText.trim() || props.hasContext) {
+                if (liveText.trim() || referencesRef.current.length || props.hasContext) {
                     if (isSendBlocked) {
                         handleBlockedSendAttempt();
                     } else if (!props.isSendDisabled && !props.isSending) {
@@ -925,18 +956,6 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 styles.innerContainer,
                 { maxWidth: readingWidth }
             ]} ref={composerContentRef} testID="message-composer-content">
-                {contextOpen && <View style={[styles.autocompleteOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}>
-                    <ComposerContextHost>
-                        <ComposerContextPicker
-                            ref={contextPickerRef}
-                            query={mentionWord?.activeWord.slice(1) ?? ''}
-                            sessionId={props.sessionId}
-                            onSelect={selectContext}
-                            onPickFiles={props.onPickImages}
-                            onClose={closeContext}
-                        />
-                    </ComposerContextHost>
-                </View>}
                 {/* Autocomplete suggestions overlay */}
                 {!contextOpen && suggestions.length > 0 && (
                     <View style={[
@@ -967,7 +986,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
-                <View style={styles.unifiedPanel}>
+                <View style={styles.composerPanelContainer}>
+                <View ref={composerPanelRef} style={styles.unifiedPanel} testID="composer-input-panel">
                     {props.contextContent}
                     {/* Attachment preview strip */}
                     {props.selectedImages && props.selectedImages.length > 0 && (
@@ -977,13 +997,14 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             presentation={props.selectedImagesPresentation}
                         />
                     )}
+                    {references.length > 0 && <ComposerReferenceChips references={references} onRemove={removeReference} />}
                     {/* Input field */}
                     <View style={[styles.inputContainer, !isSession && { minHeight: Platform.OS === 'web' ? 68 : 48 }, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <View style={predictionText ? styles.predictionEditor : styles.inputEditor}>
                             <MultiTextInput
                                 testID={isSession ? 'session-message-input' : 'new-session-message-input'}
                                 ref={inputRef}
-                                defaultValue={props.initialValue}
+                                defaultValue={initialDraft.text}
                                 paddingTop={Platform.OS === 'web' ? 10 : 8}
                                 paddingBottom={Platform.OS === 'web' ? 10 : 8}
                                 onChangeText={handleTextChange}
@@ -1128,6 +1149,20 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             </View>
                         </View>
                     </View>
+
+                </View>
+                {contextOpen && <View style={styles.contextOverlay}>
+                    <ComposerContextHost anchorRef={composerPanelRef}>
+                        <ComposerContextPicker
+                            ref={contextPickerRef}
+                            query={mentionWord?.activeWord.slice(1) ?? ''}
+                            sessionId={props.sessionId}
+                            onSelect={selectContext}
+                            onPickFiles={props.onPickImages}
+                            onClose={closeContext}
+                        />
+                    </ComposerContextHost>
+                </View>}
 
                 </View>
                 </Shaker>

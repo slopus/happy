@@ -260,3 +260,25 @@ describe('send-now availability', () => {
         expect(canSendStagedMessageNow({ text: 'retry' }, { ...busy, state: 'idle', connected: false })).toBe(false);
     });
 });
+
+describe('prepared context payload retry identity', () => {
+    it('persists the first expanded payload before steer and reuses it after an ACK-loss reload', async () => {
+        let persisted: any = { messages: [], barriers: {} };
+        const prepare = vi.fn(async () => ({ text: 'FIRST SOURCE SNAPSHOT', displayText: '@Earlier\nQuestion' }));
+        const session = () => ({ connected: true, state: 'running' as const, turnId: 'turn', supportsSteer: true });
+        const received: string[] = [];
+        const steer = vi.fn(async (message: any) => {
+            expect(persisted.messages[0].preparedText).toBe('FIRST SOURCE SNAPSHOT');
+            received.push(message.text); throw new Error('accepted but ACK lost');
+        });
+        const queue = createMessageStagingQueue({ load: () => persisted, save: snapshot => { persisted = structuredClone(snapshot); }, session, prepare, send: vi.fn(), steer });
+        queue.enqueue({ id: 'same-client-id', sessionId: 's', text: 'raw references', modeMeta: {} });
+        await queue.steer('same-client-id');
+        prepare.mockImplementation(async () => ({ text: 'CHANGED SOURCE SNAPSHOT', displayText: 'later' }));
+        const restored = createMessageStagingQueue({ load: () => persisted, save: snapshot => { persisted = structuredClone(snapshot); }, session, prepare, send: vi.fn(), steer });
+        await restored.steer('same-client-id');
+        expect(prepare).toHaveBeenCalledOnce();
+        expect(received).toEqual(['FIRST SOURCE SNAPSHOT', 'FIRST SOURCE SNAPSHOT']);
+        expect(restored.getSnapshot().messages[0].text).toBe('raw references');
+    });
+});

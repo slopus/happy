@@ -70,7 +70,7 @@ export const messageStagingPersistence = {
                 && !Array.isArray(value.barriers)
                 && Object.values(value.barriers).every((b: any) => b && typeof b.sawRunning === 'boolean' && (b.turnId === undefined || typeof b.turnId === 'string'))
                 && value.messages.every((m: any) => m && typeof m.id === 'string' && typeof m.sessionId === 'string'
-                    && typeof m.text === 'string' && (m.draftText === undefined || typeof m.draftText === 'string')
+                    && (m.preparedText === undefined || typeof m.preparedText === 'string') && typeof m.text === 'string' && (m.draftText === undefined || typeof m.draftText === 'string')
                     && (m.displayText === undefined || typeof m.displayText === 'string')
                     && (m.expiredAttachmentIds === undefined || (Array.isArray(m.expiredAttachmentIds) && m.expiredAttachmentIds.every((id: unknown) => typeof id === 'string')))
                     && (m.annotations === undefined || (Array.isArray(m.annotations) && m.annotations.every(isAnnotation)))
