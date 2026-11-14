@@ -505,6 +505,8 @@ extension AgentWire {
         case text(String)
         case reasoning(String)
         case image(mimeType: String, data: String)
+        /// A file a person attached, by its attachment; never its bytes.
+        case file(FileBlock)
         /// A tool call: its row, and what it showed the person. A question
         /// (`request_user_input`) keeps its raw `arguments` and result
         /// `output`, which say what was asked and answered. A call whose
@@ -528,6 +530,7 @@ extension AgentWire {
                 if let mimeType = try? container.decode(String.self, forKey: .mimeType), let data = try? container.decode(String.self, forKey: .data) {
                     self = .image(mimeType: mimeType, data: data)
                 } else { self = .unknown(type) }
+            case "file": self = (try? FileBlock(from: decoder)).map(Block.file) ?? .unknown(type)
             case "tool_call":
                 let name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
                 let asks = name == Question.toolName
@@ -560,6 +563,9 @@ extension AgentWire {
             case .reasoning(let text): try container.encode("reasoning", forKey: .type); try container.encode(text, forKey: .text)
             case .image(let mimeType, let data):
                 try container.encode("image", forKey: .type); try container.encode(mimeType, forKey: .mimeType); try container.encode(data, forKey: .data)
+            case .file(let file):
+                try container.encode("file", forKey: .type)
+                try file.encode(to: encoder)
             case .toolCall(let id, let name, let status, let presentation, let arguments, let output, let result, let review):
                 try container.encode("tool_call", forKey: .type); try container.encode(id, forKey: .id); try container.encode(name, forKey: .name)
                 try container.encode(status, forKey: .status); try container.encodeIfPresent(presentation, forKey: .presentation)

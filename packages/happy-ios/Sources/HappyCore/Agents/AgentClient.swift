@@ -28,6 +28,8 @@ public final class AgentClient: Sendable {
     public let pageModes = ArtifactPageModes()
     /// Whether the computer takes this device's environment, and what it was last told.
     public let environment = UserEnvironmentReports()
+    /// Whether the computer was lately found without attachments.
+    public let attachmentSupport = AttachmentSupport()
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport
@@ -404,7 +406,8 @@ public final class AgentClient: Sendable {
     /// Always steering, as desktop sends: mid-turn it is taken at the next
     /// boundary rather than waiting behind the run; idle, it starts one.
     /// `progress` hears each image's share written, in order, as the body goes out.
-    public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], toolRequest: AgentWire.ToolCallRequest? = nil,
+    /// `files` are `file` blocks naming attachments already uploaded.
+    public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], files: [JSONValue] = [], toolRequest: AgentWire.ToolCallRequest? = nil,
         mode: AgentWire.Mode, progress: (@Sendable ([Double]) -> Void)? = nil) async throws {
         guard images.allSatisfy({ $0.data.count <= AttachmentRules.maxInlineImageBytes }),
               images.reduce(0, { $0 + $1.data.count }) <= AttachmentRules.maxInlineImageTotalBytes else {
@@ -416,11 +419,11 @@ public final class AgentClient: Sendable {
             "clientMetadata": .object(["composer": .string("mobile")]),
         ]
         let encoded = images.map { $0.data.base64EncodedString() }
-        if !images.isEmpty || toolRequest != nil {
+        if !images.isEmpty || !files.isEmpty || toolRequest != nil {
             // /send prepends its required top-level text to these rich blocks.
             object["content"] = .array(zip(images, encoded).map {
                 .object(["type": .string("image"), "mimeType": .string($0.0.mimeType), "data": .string($0.1)])
-            } + (toolRequest.map { [$0.json] } ?? []))
+            } + files + (toolRequest.map { [$0.json] } ?? []))
         }
         object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode))
         // Only to a computer that takes it: an older one refuses the whole send.

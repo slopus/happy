@@ -126,6 +126,8 @@ public struct Shared: Equatable, Sendable {
                 case .toolCall(let id, _, _, let presentation, _, _, _, _):
                     guard let presentation, presentation.type == "media" else { continue }
                     media += (presentation.items ?? []).enumerated().map { .tool(HappyCore.Media(toolCallId: id, index: $0.offset, item: $0.element)) }
+                case .file(let file):
+                    media.append(.tool(HappyCore.Media(file: file)))
                 case .reasoning, .compaction, .unknown:
                     continue
                 }

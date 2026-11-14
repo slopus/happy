@@ -223,8 +223,11 @@ actor ChatPlanner {
             // tapped open.
             // A file that is no picture or video is named under the words.
             let named = item.pieces.compactMap { piece -> String? in
-                guard case .sentFile(let file) = piece, !file.isVisual else { return nil }
-                return "📎 \(file.name)"
+                switch piece {
+                case .sentFile(let file) where !file.isVisual: return "📎 \(file.name)"
+                case .file(let media) where media.attachment != nil: return "📎 \(media.item.name)"
+                default: return nil
+                }
             }
             let written = ([text] + named).filter { !$0.isEmpty }.joined(separator: "\n\n")
             let string = ChatTextStyles.text.string(written, color: Palette.userMessageText, in: environment)
@@ -232,11 +235,14 @@ actor ChatPlanner {
             let preview = MeasuredText(string, maxLines: M.foldLines)
             let toggles = opened ? Strings.showLess : Strings.showFull
             let control = MeasuredText(ChatTextStyles.fold.string(toggles, color: Palette.textSecondary, in: environment))
-            let pictures: [(id: String, image: MediaFlow.Image, isVideo: Bool)] = item.pieces.compactMap {
-                switch $0 {
-                case .picture(let id, _, let data): return (id, Self.pictureSize(data), false)
-                case .sentFile(let file) where file.isVisual: return (file.id, Self.fileSize(file), file.isVideo)
-                default: return nil
+            // An attachment the computer holds is read as a tool's media is,
+            // its thumbhash first; the sender's own is already here.
+            let pictures: [(id: String, image: MediaFlow.Image, isVideo: Bool, attached: Media?)] = item.pieces.flatMap { piece -> [(id: String, image: MediaFlow.Image, isVideo: Bool, attached: Media?)] in
+                switch piece {
+                case .picture(let id, _, let data): return [(id, Self.pictureSize(data), false, nil)]
+                case .sentFile(let file) where file.isVisual: return [(file.id, Self.fileSize(file), file.isVideo, nil)]
+                case .gallery(let media, _): return media.filter { $0.attachment != nil }.map { ($0.key, Self.layoutItem($0).image, $0.isVideo, $0) }
+                default: return []
                 }
             }
             var failure = false
@@ -280,6 +286,13 @@ actor ChatPlanner {
             }
             if let frame = layout.foldControl { items.append(.text(control.layout(for: frame), frame)) }
             for (picture, frame) in zip(pictures, layout.pictures) {
+                if let media = picture.attached {
+                    items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
+                    hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
+                    let ring = media.isVideo ? MediaStatusLayout.badgeHit(in: frame) : ChatUpload.ring(in: frame).insetBy(dx: -8, dy: -8)
+                    hits.insert(ChatHit(frame: ring, action: .toggleDownload(media.key)), at: 0)
+                    continue
+                }
                 let key = MediaLoader.sentKey(picture.id)
                 let upload = uploading ? ChatUpload(key: picture.id, failed: failure) : nil
                 items.append(.media(ChatMedia(key: key, isVideo: picture.isVideo, thumbhash: nil, label: picture.isVideo ? Strings.video : Strings.picture, upload: upload), frame: frame))

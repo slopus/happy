@@ -35,6 +35,9 @@ public actor SyncEngine {
     public nonisolated let spaces: Store
     public nonisolated let offline: OfflineFile?
     public nonisolated let attachmentDirectory: URL
+    /// The account's media library's files (`MediaLibrary.agent`), where
+    /// what it attached is kept as sent.
+    nonisolated let media: MediaStore?
     /// The person's actions on their way: chats read, tasks archived, names
     /// given (docs/offline-first.md). Shown at once over what the computer
     /// last said, kept in `direct.sqlite`, sent once the account is live.
@@ -197,6 +200,7 @@ public actor SyncEngine {
         offline = directory.map(OfflineFile.init(directory:))
         attachmentDirectory = (directory ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
             .appendingPathComponent("outbox-files", isDirectory: true)
+        media = directory.map { MediaStore(directory: $0.appendingPathComponent("media", isDirectory: true)) }
         let forward = EngineIntentStorage()
         let todoDelivery = TodoDelivery()
         let feedDelivery = FeedDelivery()
@@ -1482,7 +1486,7 @@ public actor SyncEngine {
                     try await database.updateMessage(message)
                 }
                 guard current(generation), message.mode != nil else { return }
-                try await client.deliverMessage(message) { updated in try await database.updateMessage(updated) }
+                try await client.deliverMessage(message, media: media) { updated in try await database.updateMessage(updated) }
                 guard current(generation) else { return }
                 try await database.acknowledgeMessage(message.id)
                 // A conversation checkpoint may still restore this send as

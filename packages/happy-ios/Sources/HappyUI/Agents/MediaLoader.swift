@@ -98,16 +98,22 @@ final class MediaLoader: NSObject, ChatMediaSource {
     // MARK: Kept files
 
     /// The file's ID in the library: a tool call's media is never another's.
-    func resourceID(_ media: Media) -> String { "tool/\(agentId)/\(media.toolCallId)/\(media.index)" }
+    /// One the person sent is kept there as it went (`deliverMessage`).
+    func resourceID(_ media: Media) -> String {
+        media.attachment.map { Media.attachmentResource(agentId: agentId, id: $0) } ?? "tool/\(agentId)/\(media.toolCallId)/\(media.index)"
+    }
 
-    /// Where its bytes come from: the computer's media route, a range at a time.
+    /// Where its bytes come from: the computer's media or attachment
+    /// route, a range at a time. A 404 is a file no longer there.
     func source(_ media: Media) -> MediaSource {
         let client = client
         let agentId = agentId
-        let (toolCallId, index) = (media.toolCallId, media.index)
+        let (toolCallId, index, attachment) = (media.toolCallId, media.index, media.attachment)
         return MediaSource(length: media.item.size.map { Int($0) }) { range in
             do {
-                let response = try await client.media(agentId, toolCallId: toolCallId, index: index, range: range.lowerBound...(range.upperBound - 1))
+                let bytes = range.lowerBound...(range.upperBound - 1)
+                let response = if let attachment { try await client.attachment(agentId, id: attachment, range: bytes) }
+                    else { try await client.media(agentId, toolCallId: toolCallId, index: index, range: bytes) }
                 return try MediaPiece.http(status: response.status, headers: response.headers, body: response.body)
             } catch AgentClientError.status(let status, _, _) where (400..<500).contains(status) && status != 408 && status != 429 {
                 throw MediaError.status(status)
@@ -190,7 +196,9 @@ final class MediaLoader: NSObject, ChatMediaSource {
         let id = resourceID(media)
         let source = source(media)
         guard let library else {
-            guard let response = try? await client.media(agentId, toolCallId: media.toolCallId, index: media.index) else { return nil }
+            let read = if let attachment = media.attachment { try? await client.attachment(agentId, id: attachment) }
+                else { try? await client.media(agentId, toolCallId: media.toolCallId, index: media.index) }
+            guard let response = read else { return nil }
             return await Task.detached(priority: .userInitiated) { Images.decode(response.body, maxPixels: pixels) }.value
         }
         let allowed = requested.contains(media.key) || rules.allows(.photos, size: media.item.size.map { Int($0) })

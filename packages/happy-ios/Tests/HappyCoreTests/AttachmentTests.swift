@@ -30,6 +30,8 @@ private actor AttachmentServer: AgentTransport {
     func close() { streams.forEach { $0.finish() }; streams.removeAll() }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
+        // A computer from before attachments: files go to the workspace.
+        if path.contains("/attachments/") { return .init(status: 404, body: Data(#"{"code":"not_found"}"#.utf8)) }
         let value = try body.map { try JSONDecoder().decode(JSONValue.self, from: $0) }
         requests.append((method, path, value))
         XCTAssertEqual(credential, "paired-device-token")

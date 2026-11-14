@@ -154,11 +154,15 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
 }
 
 /// One picture or video a tool call presented: its bytes are
-/// `GET /v0/agents/:agentId/tool-calls/:toolCallId/media/:index`.
+/// `GET /v0/agents/:agentId/tool-calls/:toolCallId/media/:index`. Or a
+/// file a person attached to their message, `attachment`: its bytes are
+/// `GET /v0/agents/:agentId/attachments/:attachment`.
 public struct Media: Equatable, Sendable {
     public var toolCallId: String
     public var index: Int
     public var item: AgentWire.MediaItem
+    /// The attachment's ID; nil for a tool's media.
+    public var attachment: String?
 
     public init(toolCallId: String, index: Int, item: AgentWire.MediaItem) {
         self.toolCallId = toolCallId
@@ -166,13 +170,22 @@ public struct Media: Equatable, Sendable {
         self.item = item
     }
 
+    public init(file: AgentWire.FileBlock) {
+        self.init(toolCallId: "", index: 0, item: file.item)
+        attachment = file.attachment
+    }
+
+    /// Where an account's media library keeps an attachment: the same bytes
+    /// in one conversation are one attachment.
+    public static func attachmentResource(agentId: String, id: String) -> String { "attachment/\(agentId)/\(id)" }
+
     public var isVideo: Bool { item.kind == "video" }
     /// A picture or recording; anything else is a document or file, and an
     /// unknown kind is a file.
     public var isVisual: Bool { item.kind == "image" || item.kind == "video" }
 
     /// What a screen knows it by.
-    public var key: String { "tool/\(toolCallId)/\(index)" }
+    public var key: String { attachment.map { "attachment/\($0)" } ?? "tool/\(toolCallId)/\(index)" }
 
     /// The shape a thumbhash's header carries, width over height
     /// (`thumbHashToApproximateAspectRatio`); nil when there is none.
@@ -2362,6 +2375,15 @@ public actor Conversation {
                 let key = "\(message.id):\(index)"
                 if pictures[key] == nil { pictures[key] = Data(base64Encoded: data) }
                 if let bytes = pictures[key] { pieces.append(.picture(id: key, mimeType: mimeType, data: bytes)) }
+            case .file(let file):
+                segmentBlocks.append(revision)
+                let one = Media(file: file)
+                // A message's pictures and videos are one gallery, its other files cards.
+                if one.isVisual, case .gallery(let media, let columns) = pieces.last, media.allSatisfy({ $0.attachment != nil }) {
+                    pieces[pieces.count - 1] = .gallery(media + [one], columns: columns)
+                } else {
+                    pieces.append(one.isVisual ? .gallery([one], columns: 0) : .file(one))
+                }
             case .toolCall(let id, let name, let status, let presentation, let arguments, let output, let result, let review):
                 var call = kept ?? MadeBlock(revision: revision, streaming: false, context: itemContext, agentRole: agentRole, callId: id, pieces: [])
                 if kept == nil {

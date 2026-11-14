@@ -116,11 +116,16 @@ public enum AttachmentRules {
 }
 
 extension AgentClient {
+    /// Pictures and files go to the conversation's attachments and the
+    /// message names them (`deliverAttached`). A computer without
+    /// attachments gets the pictures inline and the files written to its
+    /// workspace, named in the text; so does a message that began that way.
     /// Sequential uploads keep only one file's encoded request in memory.
     /// Progress is durable before moving to the next file or sending the text.
     /// Each picture's and file's bytes as they go out are on `board`, by
-    /// the piece's key: waiting its turn, then how much is written.
-    public func deliverMessage(_ queued: QueuedMessage, board: UploadProgressBoard = .shared,
+    /// the piece's key: waiting its turn, then how much is written. `media`
+    /// keeps what was attached, as the computer will name it.
+    public func deliverMessage(_ queued: QueuedMessage, board: UploadProgressBoard = .shared, media: MediaStore? = nil, retryDelay: Duration = .seconds(1),
         persist: @Sendable (QueuedMessage) async throws -> Void) async throws {
         var message = queued
         let pictureKeys = message.pictures.indices.map { UploadProgressBoard.pictureKey(message.id, $0) }
@@ -128,6 +133,14 @@ extension AgentClient {
         for (key, file) in zip(fileKeys, message.files ?? []) { board.set(key, file.uploaded ? .done : .preparing) }
         for key in pictureKeys { board.set(key, .preparing) }
         do {
+            if !(message.pictures.isEmpty && (message.files ?? []).isEmpty), !(message.files ?? []).contains(where: \.uploaded), attachmentSupport.worthTrying {
+                do {
+                    try await deliverAttached(message, pictureKeys: pictureKeys, fileKeys: fileKeys, board: board, media: media, retryDelay: retryDelay)
+                    return
+                } catch is AttachmentsUnsupported {
+                    for key in pictureKeys + fileKeys { board.set(key, .preparing) }
+                }
+            }
             if !(message.files ?? []).isEmpty {
                 if message.workspaceID == nil {
                     message.workspaceID = try await agent(message.agentID).workspaceId

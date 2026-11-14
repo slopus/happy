@@ -55,6 +55,8 @@ private actor UploadComputer: AgentTransport {
     func close() { streams.forEach { $0.finish() }; streams.removeAll() }
 
     private func answer(method: String, path: String, body: Data?) throws -> HTTP1Response {
+        // A computer from before attachments: pictures go inline, files to the workspace.
+        if path.contains("/attachments/") { return .init(status: 404, body: Data(#"{"code":"not_found"}"#.utf8)) }
         let value = try body.map { try JSONDecoder().decode(JSONValue.self, from: $0) }
         if path == "/v0/bootstrap/desktop" {
             return try response(200, .object(["cursor": .string("c"), "projects": .array([]), "workspaces": .array([])]))
