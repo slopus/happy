@@ -121,7 +121,7 @@ class ComposeJourneyTest {
         rule.node(NewWorkTags.KIND).assertDoesNotExist()
         rule.node(NewWorkTags.NOTE).assertTextEquals(ApplicationProvider.getApplicationContext<android.content.Context>().getString(com.slopus.happy.R.string.compose_session_note))
         rule.waitUntil(5_000) { newSession.draft.value.selectedPath == "/h/repo" }
-        rule.node(NewWorkTags.FOLDER).assertContentDescriptionEquals("Folder: ~/repo")
+        rule.node(NewWorkTags.FOLDER).assertContentDescriptionEquals("Project: ~/repo")
         rule.node(NewWorkTags.FOLDER).performClick()
         rule.waitFor(ComposeChatTags.FOLDER_MENU)
         rule.node(ComposeChatTags.CUSTOM_PATH).assertExists()

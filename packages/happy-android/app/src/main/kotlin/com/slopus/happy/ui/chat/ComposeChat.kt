@@ -17,7 +17,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.model.BotRequest
 import com.slopus.happy.model.ComposeKind
@@ -28,9 +32,7 @@ import com.slopus.happy.ui.components.MenuSpec
 import com.slopus.happy.ui.home.HARNESS_SETUP_HELP_URL
 import com.slopus.happy.ui.theme.HappyTheme
 import java.util.Locale
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -385,17 +387,20 @@ fun ComposeChat.Dialogs() {
  *   no choice shows. A kind no computer's Happy Agent makes shows dimmed.
  *   Picking Bot or Task moves the draft to a computer whose Happy Agent
  *   makes it and answers ([NewSessionServices.setKind]).
- * - Each row says what it picks ("Machine", "Folder", "Harness", secondary)
- *   before what is picked.
+ * - Top to bottom: the kind's picture, the choice, what the kind is
+ *   ([ComposeKindNote]), then the rows. While the kind is a choice the block
+ *   keeps the room of the tallest kind, so the choice holds still as it
+ *   changes.
+ * - Each row is two columns lined up across the rows: what it picks
+ *   ("Machine", "Project", "Harness", secondary) and what is picked, a
+ *   project's path cut from its start so its folder shows.
  * - The computer, always, with whether it answers in a chip on its corner
  *   ("Online", "Offline · 3d", "Happy Agent offline", "…" while arriving);
  *   its menu lists, for a bot or a task, only computers whose Happy Agent
  *   makes it, those that answer first, and leads with why the chosen one
  *   can't take the send while it can't.
  * - A session's folder and harness; a bot's name ("Name your bot", its
- *   refusal said inside the field); a task asks nothing more, and keeps
- *   that room empty, so Bot | Task moves nothing.
- * - Under them, what the kind is ([ComposeKindNote]).
+ *   refusal said inside the field); a task asks nothing more.
  *
  * Fixed while the start runs; it fades once the session has started. Its
  * menus leave the keyboard up for the composer.
@@ -434,13 +439,21 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
     val choosesKind = kind != ComposeKind.Session || current?.offersBots == true || current?.offersTasks == true
 
     val machineLabel = stringResource(R.string.home_dock_picker_machine)
+    val projectLabel = stringResource(R.string.home_dock_picker_project)
+    val harnessLabel = stringResource(R.string.home_dock_picker_harness)
+    // The labels' column is as wide as the widest of them, the rows' picks lined up after it.
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val widest = listOf(machineLabel, projectLabel, harnessLabel).maxOf { measurer.measure(it, NewWorkSpec.field, maxLines = 1).size.width }
+    val labelWidth = with(density) { widest.toDp() } + NewWorkSpec.rowIcon + NewWorkSpec.rowIconGap
     val machineTitle = if (awaits) stringResource(R.string.compose_loading_computers) else current.machine?.name ?: stringResource(R.string.home_dock_select_machine)
     val machineStatus = composeMachineStatus(current, awaits)
     val machineRow: @Composable () -> Unit = {
         NewWorkMenuRow(
             Ionicon.DesktopOutline, machineTitle, enabled,
             onClick = { open = NewSessionPage.Machine },
-            label = machineLabel.takeUnless { awaits },
+            labelWidth = labelWidth,
+            label = machineLabel,
             status = machineStatus,
             modifier = Modifier.testTag(NewWorkTags.MACHINE).semantics { contentDescription = listOfNotNull(machineLabel + ": " + machineTitle, machineStatus?.text).joinToString(", ") },
         ) {
@@ -454,13 +467,15 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
         when (kind) {
             ComposeKind.Session -> {
                 val folder = current?.project?.name ?: "~"
-                val folderLabel = stringResource(R.string.workspace_folder)
                 add {
                     NewWorkMenuRow(
                         Ionicon.FolderOutline, folder, enabled && current != null,
                         onClick = { open = NewSessionPage.Project },
-                        label = folderLabel,
-                        modifier = Modifier.testTag(NewWorkTags.FOLDER).semantics { contentDescription = "$folderLabel: $folder" },
+                        labelWidth = labelWidth,
+                        label = projectLabel,
+                        // A path is cut from its start, so its folder shows (Kirill).
+                        overflow = TextOverflow.StartEllipsis,
+                        modifier = Modifier.testTag(NewWorkTags.FOLDER).semantics { contentDescription = "$projectLabel: $folder" },
                     ) {
                         if (current != null) {
                             HappyDropdownMenu(expanded = open == NewSessionPage.Project, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.FOLDER_MENU), keepsKeyboard = true) {
@@ -469,11 +484,11 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
                         }
                     }
                 }
-                add { HarnessRow(compose, current, awaits, enabled, open == NewSessionPage.Agent, onOpen = { open = NewSessionPage.Agent }, onClose = { open = null }) }
+                add { HarnessRow(compose, current, awaits, enabled, open == NewSessionPage.Agent, labelWidth, onOpen = { open = NewSessionPage.Agent }, onClose = { open = null }) }
             }
             ComposeKind.Bot -> add { BotNameRow(compose, bot.name, enabled, onReturn) }
-            // A task asks only the computer, but keeps a bot's room empty, so Bot | Task moves nothing.
-            ComposeKind.Task -> add { Spacer(Modifier.fillMaxWidth().height(NewWorkSpec.rowHeight)) }
+            // A task asks only the computer.
+            ComposeKind.Task -> Unit
         }
     }
     NewWorkGivingWay(
@@ -499,6 +514,9 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
             ComposeKind.Bot -> StateArt.Ready
             ComposeKind.Task -> StateArt.Action
         },
+        // While the kind is a choice the block keeps its tallest kind's room, so the choice holds still.
+        reserveArt = choosesKind,
+        reserveRows = if (choosesKind) 3 else 0,
     )
 }
 
@@ -676,6 +694,7 @@ private fun HarnessRow(
     awaits: Boolean,
     enabled: Boolean,
     expanded: Boolean,
+    labelWidth: Dp,
     onOpen: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -690,7 +709,8 @@ private fun HarnessRow(
     NewWorkMenuRow(
         if (help) Ionicon.HelpCircleOutline else Ionicon.HardwareChipOutline, title, enabled && options != null,
         onClick = { if (help) uriHandler.openUri(HARNESS_SETUP_HELP_URL) else onOpen() },
-        label = stringResource(R.string.home_dock_picker_harness).takeUnless { help },
+        labelWidth = labelWidth,
+        label = stringResource(R.string.home_dock_picker_harness),
         modifier = Modifier.testTag(NewWorkTags.HARNESS).semantics { contentDescription = description },
     ) {
         if (options != null && !help) {

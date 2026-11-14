@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -34,11 +36,16 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * A Happy account's new work (happy-ios NewWorkLayout(givingWay:),
- * NewWorkStatusLayout): the kind 220 wide, 16 over 44 rows 8 apart, 10 over
- * the note, centred in its room; short of room the gaps close to 14 and 6,
- * the note stays, and with less still the block runs up under the bar. The computer row's chip is 18 high, ends 16
- * from the row's end and rises 9 over its top, as wide as its words and at
- * most 150, taking no part in the row's layout.
+ * NewWorkStatusLayout), at most 256 wide, top to bottom: the picture 16
+ * over the kind 220 wide, 16 over the note, 16 over 44 rows 8 apart,
+ * centred in its room;
+ * short of room the gaps close to 14 and 6, the picture shrinks to the
+ * room left, down to 48, the note stays, and with less still the block
+ * runs up under the bar. Laid out with a picture's and
+ * three rows' room kept, the kind holds still whatever the kind shows. The
+ * computer row's chip is 18 high, ends 16 from the row's end and rises 9
+ * over its top, as wide as its words and at most 150, taking no part in the
+ * row's layout.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -47,7 +54,18 @@ class ComposeTargetLayoutTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private fun show(room: Dp, status: NewWorkStatus? = NewWorkStatus("● Online", Color.Green), note: Boolean = true, art: StateArt? = null) = rule.setHappyContent {
+    /** What a kind shows: its picture and how many rows. */
+    private data class Shown(val art: StateArt?, val rows: Int)
+
+    private fun show(
+        room: Dp,
+        status: NewWorkStatus? = NewWorkStatus("● Online", Color.Green),
+        note: Boolean = true,
+        art: StateArt? = null,
+        shown: MutableState<Shown> = mutableStateOf(Shown(art, 2)),
+        reserve: Boolean = false,
+    ) = rule.setHappyContent {
+        val (picture, count) = shown.value
         Box(Modifier.fillMaxWidth().height(room).testTag(ROOM)) {
             NewWorkGivingWay(
                 shown = true,
@@ -62,16 +80,19 @@ class ComposeTargetLayoutTest {
                     )
                 },
                 rows = listOf<@Composable () -> Unit>(
-                    { NewWorkMenuRow(Ionicon.DesktopOutline, "MacBook-Pro.local", true, {}, Modifier.testTag(NewWorkTags.MACHINE), status = status) },
-                    { NewWorkMenuRow(Ionicon.FolderOutline, "~/repo", true, {}, Modifier.testTag(NewWorkTags.FOLDER)) },
-                ),
-                note = if (note) { { Text("What a bot is, on one line.", Modifier.testTag(NewWorkTags.NOTE)) } } else null,
-                art = art,
+                    { NewWorkMenuRow(Ionicon.DesktopOutline, "MacBook-Pro.local", true, {}, 90.dp, Modifier.testTag(NewWorkTags.MACHINE), status = status) },
+                    { NewWorkMenuRow(Ionicon.FolderOutline, "~/repo", true, {}, 90.dp, Modifier.testTag(NewWorkTags.FOLDER)) },
+                    { NewWorkMenuRow(Ionicon.HardwareChipOutline, "Claude", true, {}, 90.dp, Modifier.testTag(NewWorkTags.HARNESS)) },
+                ).take(count),
+                note = if (note) { { Text("What a bot is.", Modifier.fillMaxWidth().height(18.dp).testTag(NewWorkTags.NOTE)) } } else null,
+                art = picture,
+                reserveArt = reserve,
+                reserveRows = if (reserve) 3 else 0,
             )
         }
     }
 
-    @Test fun `with room the block stands centred, 24 in and 320 wide`() {
+    @Test fun `with room the block stands centred, 24 in and 256 wide`() {
         show(600.dp)
         val room = rule.node(ROOM).bounds
         val kind = rule.node(NewWorkTags.KIND).bounds
@@ -79,13 +100,35 @@ class ComposeTargetLayoutTest {
         val folder = rule.node(NewWorkTags.FOLDER).bounds
         val note = rule.node(NewWorkTags.NOTE).bounds
         assertDp("kind 220", 220, kind.width)
-        assertDp("row 320", 320, machine.width)
-        assertDp("centred across", ((411 - 320) / 2f).dp, machine.left)
+        assertDp("row 256", 256, machine.width)
+        assertDp("centred across", ((411 - 256) / 2f).dp, machine.left)
+        assertDp("the note as wide", 256, note.width)
         assertDp("row 44", 44, machine.height)
-        assertDp("16 under the kind", kind.bottom + 16.dp, machine.top)
+        assertDp("16 under the kind", kind.bottom + 16.dp, note.top)
+        assertDp("16 over the rows", note.bottom + 16.dp, machine.top)
         assertDp("8 between rows", machine.bottom + 8.dp, folder.top)
-        assertDp("10 over the note", folder.bottom + 10.dp, note.top)
-        assertEquals("centred in its room", ((room.top + room.bottom) / 2).value, ((kind.top + note.bottom) / 2).value, 1f)
+        assertEquals("centred in its room", ((room.top + room.bottom) / 2).value, ((kind.top + folder.bottom) / 2).value, 1f)
+    }
+
+    @Test fun `the kind holds still as the picture and the rows come and go`() {
+        val shown = mutableStateOf(Shown(null, 3))
+        show(600.dp, shown = shown, reserve = true)
+        val session = rule.node(NewWorkTags.KIND).bounds
+        val note = rule.node(NewWorkTags.NOTE).bounds
+        val machine = rule.node(NewWorkTags.MACHINE).bounds
+        for (each in listOf(Shown(StateArt.Ready, 2), Shown(StateArt.Action, 1), Shown(null, 3))) {
+            shown.value = each
+            rule.waitForIdle()
+            assertEquals("kind at $each", session, rule.node(NewWorkTags.KIND).bounds)
+            assertEquals("note at $each", note, rule.node(NewWorkTags.NOTE).bounds)
+            assertEquals("computer at $each", machine, rule.node(NewWorkTags.MACHINE).bounds)
+        }
+        shown.value = Shown(StateArt.Ready, 2)
+        rule.waitForIdle()
+        val room = rule.node(ROOM).bounds
+        val art = rule.node(NewWorkTags.art(StateArt.Ready)).bounds
+        // The picture's room and three rows': 144 + 32 + 16 + 18 + 16 + 3 × 44 + 2 × 8 = 374, centred.
+        assertEquals("centred at its tallest", ((room.top + room.bottom) / 2).value, (art.top + 187.dp).value, 1f)
     }
 
     @Test fun `the chip rides the computer row's top-right corner`() {
@@ -121,42 +164,45 @@ class ComposeTargetLayoutTest {
         val room = rule.node(ROOM).bounds
         val art = rule.node(NewWorkTags.art(StateArt.Ready)).bounds
         val kind = rule.node(NewWorkTags.KIND).bounds
-        val note = rule.node(NewWorkTags.NOTE).bounds
+        val folder = rule.node(NewWorkTags.FOLDER).bounds
         assertDp("an empty state's 128", 128, art.width)
         assertDp("square", art.width, art.height)
         assertDp("centred across", ((411 - 128) / 2f).dp, art.left)
         assertDp("16 over the kind", art.bottom + 16.dp, kind.top)
-        assertEquals("centred in its room", ((room.top + room.bottom) / 2).value, ((art.top + note.bottom) / 2).value, 1f)
+        assertEquals("centred in its room", ((room.top + room.bottom) / 2).value, ((art.top + folder.bottom) / 2).value, 1f)
     }
 
-    @Test fun `short of room the picture keeps its size, and the note stays as the block runs up`() {
-        // The picture and its gap, 144, over kind 32 + 16 + 44 + 8 + 44 = 144; margins 12 each; the note's line won't fit.
-        show(144.dp + 144.dp + 24.dp + 10.dp, art = StateArt.Action)
+    @Test fun `short of room the picture shrinks to the room left, and the note stays`() {
+        // The picture's gap, 16, over kind 32 + 14 + 18 + 14 + 44 + 6 + 44 = 172; margins 12 each: 112 left of 128.
+        show(16.dp + 172.dp + 24.dp + 112.dp, art = StateArt.Action)
         val room = rule.node(ROOM).bounds
         val art = rule.node(NewWorkTags.art(StateArt.Action)).bounds
-        assertDp("never smaller", 128, art.width)
-        assertDp("the gaps close", rule.node(NewWorkTags.KIND).bounds.bottom + 14.dp, rule.node(NewWorkTags.MACHINE).bounds.top)
-        assertDp("the note 12 over the composer", room.bottom - 12.dp, rule.node(NewWorkTags.NOTE).bounds.bottom)
-        assertTrue("above the room: $art, $room", art.top < room.top)
+        assertDp("the room left", 112, art.width)
+        assertDp("square", art.width, art.height)
+        assertDp("12 under the bar", room.top + 12.dp, art.top)
+        assertDp("the gaps close", rule.node(NewWorkTags.KIND).bounds.bottom + 14.dp, rule.node(NewWorkTags.NOTE).bounds.top)
+        assertDp("12 over the composer", room.bottom - 12.dp, rule.node(NewWorkTags.FOLDER).bounds.bottom)
     }
 
-    @Test fun `with no room the block stands on the composer and runs up, picture and all`() {
+    @Test fun `with no room the picture is at its least and the block runs up from the composer`() {
         show(200.dp, art = StateArt.Action)
         val room = rule.node(ROOM).bounds
         val art = rule.node(NewWorkTags.art(StateArt.Action)).bounds
-        assertDp("never smaller", 128, art.width)
-        assertDp("12 over the composer, note and all", room.bottom - 12.dp, rule.node(NewWorkTags.NOTE).bounds.bottom)
+        assertDp("its least", 48, art.width)
+        assertDp("12 over the composer", room.bottom - 12.dp, rule.node(NewWorkTags.FOLDER).bounds.bottom)
         assertDp("16 over the kind", art.bottom + 16.dp, rule.node(NewWorkTags.KIND).bounds.top)
         assertTrue("above the room: $art, $room", art.top < room.top)
     }
 
     @Test fun `short of room the gaps close and the note stays`() {
-        // kind 32 + 14 + 44 + 6 + 44 = 140, the note's 10 and its line on top; margins 12 each.
-        show(140.dp + 10.dp + 24.dp + 24.dp)
+        // kind 32 + 14 + 18 + 14 + 44 + 6 + 44 = 172; margins 12 each.
+        show(172.dp + 24.dp)
         val kind = rule.node(NewWorkTags.KIND).bounds
+        val note = rule.node(NewWorkTags.NOTE).bounds
         val machine = rule.node(NewWorkTags.MACHINE).bounds
-        assertDp("14 under the kind", kind.bottom + 14.dp, machine.top)
-        assertTrue("the note shows", rule.node(NewWorkTags.NOTE).bounds.top >= rule.node(NewWorkTags.FOLDER).bounds.bottom)
+        assertDp("14 under the kind", kind.bottom + 14.dp, note.top)
+        assertDp("14 over the rows", note.bottom + 14.dp, machine.top)
+        assertDp("6 between rows", machine.bottom + 6.dp, rule.node(NewWorkTags.FOLDER).bounds.top)
     }
 
     @Test fun `with less room still the gaps close`() {
