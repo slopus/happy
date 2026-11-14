@@ -574,7 +574,10 @@ ported from happy-agent-client's `happyLinks.ts`.
   link stays tappable and goes through instance-link routing ("not
   connected"); an unresolved `happy://` link is plain words. As on desktop,
   a file link shows its path and a settings link "Settings" when written
-  without words. A `<happy-KIND/>` tag reads the same way.
+  without words. A `<happy-KIND/>` tag reads the same way. An artifact's
+  Markdown document is the exception: a link written with words keeps
+  them, resolved or not (`keepingLabels`), and still opens and shimmers
+  where it resolves; only an empty `[]` reads as the name or placeholder.
   Links and code inside bold or italic keep that style. The bots, tasks
   and Surfaces come from the account's bootstrap (`SyncEngine` →
   `Store.externalDirectory`).

@@ -55,14 +55,41 @@ final class HappyMarkdownLinksTests: XCTestCase {
         XCTAssertEqual(markdown("[Happy](happy://projects/p1)", references), "[an unavailable project](happy://projects/p1)")
         // A button stays one.
         XCTAssertEqual(markdown("[Open](happy://agents/ab \"button\")", references), "[Chef](happy://agents/ab \"button\")")
-        // Malformed, a picture, a web link, a bare address: as written.
-        for text in ["[x](happy://agents/)", "![](happy://workspaces/w1/files/a.png)", "[docs](https://a.io)", "See \(share) now"] {
+        // A picture, a web link, a bare address: as written.
+        for text in ["![](happy://workspaces/w1/files/a.png)", "[docs](https://a.io)", "See \(share) now"] {
             XCTAssertEqual(markdown(text, references), text)
         }
+        // A malformed one names nothing, whatever its words (desktop's rule).
+        XCTAssertEqual(markdown("[x](happy://agents/)", references), "[an unavailable reference](happy://agents/)")
         // A file or settings link keeps its words, else its path or "Settings".
         XCTAssertEqual(markdown("[main](happy://agents/a1/files/src/main.ts#L4)", references), "[main](happy://agents/a1/files/src/main.ts#L4)")
         XCTAssertEqual(markdown("[](happy-file://workspaces/w1/a%20b.md)", references), "[a b.md](happy-file://workspaces/w1/a%20b.md)")
         XCTAssertEqual(markdown("[](happy://settings/general)", references), "[Settings](happy://settings/general)")
+    }
+
+    func testAnArtifactsDocumentKeepsTheWordsItsLinksWereWrittenWith() {
+        let references = references
+        let share = "https://link.happy.page/#1/\(Self.here)/agents/ab?as=bot"
+        func document(_ text: String) -> String {
+            HappyReferences.markdown(text, instanceId: references.instanceId, keepingLabels: true, view: references.view)
+        }
+        // Written words stand, resolved or not.
+        XCTAssertEqual(document("Ask [the bot](\(share))."), "Ask [the bot](\(share)).")
+        XCTAssertEqual(document("Ask [the bot](happy://agents/ab)."), "Ask [the bot](happy://agents/ab).")
+        XCTAssertEqual(document("Ask [Researcher](happy://agents/zz)."), "Ask [Researcher](happy://agents/zz).")
+        XCTAssertEqual(document("[Their plan](https://link.happy.page/#1/\(Self.there)/agents/ab)"), "[Their plan](https://link.happy.page/#1/\(Self.there)/agents/ab)")
+        XCTAssertEqual(document("[x](happy://agents/)"), "[x](happy://agents/)")
+        // An empty `[]`: the live name, or the placeholder.
+        XCTAssertEqual(document("Ask [](\(share))."), "Ask [Chef](\(share)).")
+        XCTAssertEqual(document("Ask [ ](happy://agents/zz)."), "Ask [an unavailable agent](happy://agents/zz).")
+        // A bare address stays as written.
+        XCTAssertEqual(document("See \(share) now"), "See \(share) now")
+        // Where it goes is read from the address, not the words: it still opens, and shimmers while at work.
+        var busy = references
+        busy.busy = ["ab"]
+        XCTAssertEqual(kind(share, busy), .here(HappyLink("happy://\(Self.here)/agents/ab")!, busy: true))
+        let spans = LegacyMarkdown.parseSpans(document("**[the bot](\(share))**"), header: false)
+        XCTAssertEqual(spans.first, MarkdownSpan(styles: [.bold], text: "the bot", url: share))
     }
 
     func testATagReadsAsALinkUnderItsLiveName() {

@@ -141,7 +141,8 @@ private actor GroupedHomeTransport: AgentTransport {
     /// this phone doesn't hold and another server's task, each read as what
     /// it names now whatever words it was written with, and a task by a
     /// bare share link; the person's message links one task, and the
-    /// artifact is a Markdown brief whose links read the same way.
+    /// artifact is a Markdown brief whose links keep the words they were
+    /// written with, an empty `[]` reading as the name or the placeholder.
     var linkChips = false
     func setLinkChips(_ on: Bool) { linkChips = on }
     private static var linkChipsRuns: Data {
@@ -163,9 +164,11 @@ private actor GroupedHomeTransport: AgentTransport {
     static let brief = """
         # Launch brief
 
-        Owner: https://link.happy.page/#1/\(instanceId)/agents/crash-agent?as=task
+        Owner: [](https://link.happy.page/#1/\(instanceId)/agents/crash-agent?as=task)
 
         Ask [the researcher](happy://agents/research-agent) for sources, and tick off [the list](happy://\(instanceId)/surfaces/groceries).
+
+        Before: [the old plan](https://link.happy.page/#1/\(instanceId)/agents/gone-agent?as=task), [](https://link.happy.page/#1/\(instanceId)/agents/gone-agent?as=task)
 
         Their plan: https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task
         """
@@ -421,6 +424,14 @@ final class GroupedHomeHarness {
                 try? await Task.sleep(for: .seconds(2))
                 if let session = Session.session(for: connection.id, context: context) {
                     navigation.pushViewController(ChatViewController(session: session, agentId: arguments[index + 1], title: "Landing page copy", spaceId: nil, intro: nil), animated: false)
+                }
+            }
+            // `-openArtifact <id>`: that Markdown artifact over home, the same way.
+            if let index = arguments.firstIndex(of: "-openArtifact"), arguments.indices.contains(index + 1) {
+                try? await Task.sleep(for: .seconds(2))
+                if let session = Session.session(for: connection.id, context: context) {
+                    let artifact = Artifact(id: arguments[index + 1], version: 1, type: "markdown", title: "Launch brief", followsLatest: true)
+                    navigation.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: false)
                 }
             }
         } catch {

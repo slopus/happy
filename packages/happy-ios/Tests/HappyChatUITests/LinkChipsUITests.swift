@@ -6,7 +6,7 @@ import XCTest
 /// names, an agent this phone doesn't hold and another server's task by
 /// the placeholder, and a task by its bare address; the person's message
 /// names its task too. Tapping the artifact's name opens it, and its
-/// Markdown document reads its own links the same way.
+/// Markdown document keeps the words its links were written with.
 @MainActor
 final class LinkChipsUITests: XCTestCase {
     private let app = XCUIApplication()
@@ -44,9 +44,14 @@ final class LinkChipsUITests: XCTestCase {
         tapLine(3, at: 130, in: reply)
         let document = app.descendants(matching: .any)["artifact-document"]
         XCTAssertTrue(document.waitForExistence(timeout: 15), "the artifact's link opened nothing")
-        let named = NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "[Research Assistant]", "[Groceries]")
+        // The document keeps the words its links were written with; an
+        // empty `[]` reads as the name or the placeholder.
+        let named = NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "[Fix login crash]", "[the researcher]")
         expectation(for: named, evaluatedWith: document)
         waitForExpectations(timeout: 10)
+        for words in ["[the list]", "[the old plan]", "[an unavailable agent]", "Their plan: https://link.happy.page/#1/"] {
+            XCTAssertTrue(document.label.contains(words), "\(words) not in \(document.label)")
+        }
         pause(1.5)
         keep("links-02-document")
     }

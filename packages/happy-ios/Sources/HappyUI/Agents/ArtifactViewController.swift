@@ -66,7 +66,12 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     /// conversation one opens is found in (`openReference`).
     private var references = References()
     private var rows: [Row] = []
+    /// The references as the store has them, and the agents home's rows
+    /// show at work: a link to one the document names shimmers.
+    private var known = References()
+    private var homeBusy: Set<String> = []
     private var watch: Watch?
+    private var homeWatch: Watch?
     /// How long the first drawing waits for the pictures' sizes, so it
     /// doesn't jump as they arrive.
     static let sizeWait: Duration = .seconds(1)
@@ -132,6 +137,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         scrollView.addGestureRecognizer(documentTap)
         self.documentTap = documentTap
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
+        homeWatch = session.watchHome { [weak self] home in self?.follow(home) }
         // The artifact, at the version it was pinned to; a file a link
         // opened inside it has no link of its own.
         if opened == nil, vault == nil {
@@ -233,11 +239,26 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     /// as a conversation's do.
     private func follow(_ snapshot: Snapshot) {
         rows = snapshot.allRows
-        var known = snapshot.references
+        known = snapshot.references
         known.instanceId = session.instanceId
-        guard known != references else { return }
-        references = known
-        readNamed()
+        referencesChanged()
+    }
+
+    private func follow(_ home: HomeSnapshot) {
+        let busy = References.busy(in: home.allRows)
+        guard busy != homeBusy else { return }
+        homeBusy = busy
+        referencesChanged()
+    }
+
+    /// Only the work of what the document links shows: another agent
+    /// starting or stopping plans nothing again.
+    private func referencesChanged(reading: Bool = true) {
+        var next = known
+        next.busy = documentText.map { known.busy.union(homeBusy).intersection(known.agents(in: $0)) } ?? []
+        guard next != references else { return }
+        references = next
+        if reading { readNamed() }
         guard documentPlan != nil else { return }
         plannedWidth = nil
         Task { [weak self] in await self?.plan() }
@@ -280,6 +301,8 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             if let shown { pictures[raw] = MarkdownDocument.Picture(media: shown, size: nil) }
         }
         documentText = prepared.0
+        // Its links' work, before its first plan.
+        referencesChanged(reading: false)
         readNamed()
         let keys = Array(Set(pictures.values.map(\.media.key)))
         let sizes = Task { [weak self] in
@@ -339,8 +362,9 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         let id = "artifact:\(artifact.id):\(documentPath)"
         let references = references
         let plan = await Task.detached(priority: .userInitiated) {
-            // Its Happy links read as a message's: by their live names.
-            let resolved = HappyReferences.markdown(text, instanceId: references.instanceId, view: references.view)
+            // Its Happy links read as a message's, but keep the words they
+            // were written with: only an empty `[]` reads as the live name.
+            let resolved = HappyReferences.markdown(text, instanceId: references.instanceId, keepingLabels: true, view: references.view)
             return Self.plan(resolved, id: id, key: key, syntax: syntax, document: MarkdownDocument(pictures: shown), references: references)
         }.value
         // Only the newest plan is drawn.

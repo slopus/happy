@@ -115,12 +115,14 @@ public enum HappyReferences {
     /// where it has none. A tag becomes a link the same way, or its words
     /// where it opens nothing; a kind this build doesn't know is never
     /// asked about. A bare address stays as written. `instanceId` is the
-    /// conversation's installation.
-    public static func markdown(_ text: String, instanceId: String? = nil, view: (Reference) -> References.View) -> String {
+    /// conversation's installation. An artifact's document keeps the words
+    /// a link was written with (`keepingLabels`): only an empty `[]` reads
+    /// as the name or the placeholder.
+    public static func markdown(_ text: String, instanceId: String? = nil, keepingLabels: Bool = false, view: (Reference) -> References.View) -> String {
         let linked = HappyMarkdownLinks.replace(text) { match in
-            guard match.link != nil, !match.source.hasPrefix("!") else { return nil }
+            guard !match.source.hasPrefix("!") else { return nil }
             let title = match.button ? " \"button\"" : ""
-            return "[\(label(words(match, instanceId: instanceId, view: view)))](\(match.url)\(title))"
+            return "[\(label(words(match, instanceId: instanceId, keepingLabels: keepingLabels, view: view)))](\(match.url)\(title))"
         }
         return replace(linked) { reference in
             let shown = knownKinds.contains(reference.kind) ? view(reference) : .text(placeholder(reference))
@@ -198,9 +200,11 @@ public enum HappyReferences {
 
     /// The words a Happy link reads as (desktop's `linkPlainWords`): what
     /// it names now, or the placeholder; a file or settings link its own
-    /// words, else its path or "Settings"; a malformed one its words.
-    static func words(_ match: HappyMarkdownLinks.Match, instanceId: String?, view: (Reference) -> References.View) -> String {
+    /// words, else its path or "Settings"; a malformed one the
+    /// placeholder. With `keepingLabels`, any words it was written with.
+    static func words(_ match: HappyMarkdownLinks.Match, instanceId: String?, keepingLabels: Bool = false, view: (Reference) -> References.View) -> String {
         let written = label(match.label)
+        if keepingLabels, !written.trimmingCharacters(in: .whitespaces).isEmpty { return written }
         // A malformed one names nothing, whatever its words (desktop's rule).
         guard let link = match.link else { return "an unavailable reference" }
         switch link.target {
