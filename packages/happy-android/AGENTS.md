@@ -322,10 +322,11 @@ win:
   keyboard coming or going moves nothing. Bot and Task
   go to a computer whose Happy Agent makes them and answers
   (`MachineTarget`, `NewSessionServices.setKind`), moved off an offline
-  one unless the person picked it. Short of room the block tightens, then
-  its picture shrinks (to 48 at least), and keeps its note; with less still it runs up under the bar.
-  Nothing of it shows until the account's computers are known (stored, or
-  the first sync's), so the choice never flashes in or out. Its first send starts the session, bot or task (Happy
+  one unless the person picked it. Short of room (the keyboard up, the
+  composer grown) it moves as Happy Agent's new work does: nothing closes
+  or shrinks; it stands 12 over the composer and runs up under the bar,
+  picture first. Nothing of it shows until the account's computers are
+  known (stored, or the first sync's), so the choice never flashes in or out. Its first send starts the session, bot or task (Happy
   Agent's `target: {kind: "task"}`) with that text and images, and the
   screen then shows it. A send to a computer that doesn't answer, or
   before the computers are in, is refused in full before anything starts;
