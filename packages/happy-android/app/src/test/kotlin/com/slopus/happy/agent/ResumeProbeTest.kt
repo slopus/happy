@@ -184,6 +184,7 @@ class ResumeProbeTest {
         live(session, first)
         val seen = java.util.Collections.synchronizedList(mutableListOf<AgentLinkStatus>())
         val watching = scope.launch { session.status.collect { seen += it } }
+        eventually({ seen.toList() }) { it == listOf(AgentLinkStatus.Connected) }
         first.calls += "moved"
         network.value = 2
         eventually({ after("moved", first) }) { calls -> calls.any { it.startsWith("STREAM") } }
@@ -197,6 +198,7 @@ class ResumeProbeTest {
         assertEquals(AgentLinkStatus.Connecting, session.status.value)
         first.frames.send(Wire.hello("c0"))
         eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        eventually({ seen.toList() }) { it == listOf(AgentLinkStatus.Connected, AgentLinkStatus.Connecting, AgentLinkStatus.Connected) }
         watching.cancel()
         assertEquals(listOf(AgentLinkStatus.Connected, AgentLinkStatus.Connecting, AgentLinkStatus.Connected), seen.toList())
     }
