@@ -451,17 +451,6 @@ public actor Store {
     private func read() async {
         sidebarReadSucceeded = false
         do {
-            // Spaces were removed from happy-agent (API.md): a daemon
-            // without `sidebarOperations` answers 404 there, so nothing of
-            // the sidebar document is asked before health says it exists.
-            let capabilities = (try? await client.health())?.capabilities ?? AgentWire.Health.Capabilities()
-            self.capabilities = capabilities
-            guard capabilities.sidebarOperations == true else {
-                snapshot.availability = .unsupported
-                heldEvents = nil
-                publish()
-                return
-            }
             async let sidebar = client.sidebar(widgets: true)
             async let bots = client.bots()
             async let tasks = client.tasks()

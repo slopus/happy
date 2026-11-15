@@ -119,7 +119,6 @@ extension AgentWire {
 
     public struct Health: Equatable, Sendable, Codable {
         public struct Capabilities: Equatable, Sendable, Codable {
-            public var sidebarOperations: Bool?
             public var sidebarProposals: Bool?
             public var sidebarAttachments: Bool?
             /// `PUT /v0/environment` and `deviceId` on sends (API.md, "User environment").

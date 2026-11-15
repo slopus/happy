@@ -268,8 +268,6 @@ private actor Computer: AgentTransport {
             return HTTP1Response(status: status, body: body)
         }
         switch path.split(separator: "?").first.map(String.init) ?? path {
-        case "/v0/health":
-            return json(["ready": true, "capabilities": ["sidebarOperations": true]])
         case "/v0/spaces/sidebar":
             sidebarReads += 1
             let html = "<nav><happy-search/><happy-create/>" + spaces.map { space in
