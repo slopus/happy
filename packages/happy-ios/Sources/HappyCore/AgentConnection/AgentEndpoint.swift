@@ -143,7 +143,9 @@ actor AgentEndpointTransport: AgentTransport {
     func reset() async { await selected?.0.reset() }
     func reset(_ category: RequestCategory) async { await selected?.0.reset(category) }
     func resumed() async { await selected?.0.resumed() }
-    func warm(_ count: Int) async { await selected?.0.warm(count) }
+    /// On the way it will go, chosen now if nothing has asked yet: a
+    /// connect warms before its stream or bootstrap picked one.
+    func warm(_ count: Int) async { try? await current().0.warm(count) }
     func close() async {
         closed = true
         await endpoint.removeObserver(id)
