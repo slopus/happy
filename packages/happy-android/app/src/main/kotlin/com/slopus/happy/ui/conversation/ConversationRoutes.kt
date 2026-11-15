@@ -215,9 +215,12 @@ internal fun NavHostController.heldConversation(agentId: String): Conversation? 
 }
 
 /** The agent connection's client as a conversation asks it: refusals become [ConversationApiException]. */
-internal fun AgentSession.conversationRequest(): AgentRequest = { method, path, body, category ->
+internal fun AgentSession.conversationRequest(agentId: String? = null): AgentRequest = { method, path, body, category ->
     try {
         if (method == "GET" && path == "/v0/config") configuration()
+        else if (method == "GET" && agentId != null && (path.endsWith("/bootstrap") || "/messages?" in path)) {
+            readChat(agentId) { client.send(method, path, body, category = category) }
+        }
         else client.send(method, path, body, category = category)
     } catch (e: AgentApiException) {
         throw ConversationApiException(e.status, e.code, e.message, e.body as? kotlinx.serialization.json.JsonObject)
@@ -257,7 +260,7 @@ internal fun AgentSession.makeConversation(
     created: () -> Unit = {},
 ): Conversation = Conversation(
     api = ConversationApi(
-        bytesRequest = conversationBytesRequest(), request = conversationRequest(), cloud = client.cloud, fileRequest = conversationFileRequest(),
+        bytesRequest = conversationBytesRequest(), request = conversationRequest(agentId), cloud = client.cloud, fileRequest = conversationFileRequest(),
         sendingDevice = { client.environment.sendingDeviceId },
     ),
     signals = events.signalsFor(agentId, { chatNeedsResync(agentId) }),

@@ -692,6 +692,12 @@ A chat's “Updating…” uses only its own history read; home bootstrap and P2
 cannot keep it updating. Hello sets connection status to Connected; before
 hello the header says “Connecting…”. Delivery and P2 still wait for Verified.
 The header debounce keeps its existing behavior.
+At Verified, intent delivery is allowed immediately. `AgentSession` then
+awaits Feed connect/read, artifact catalog, and the first git watch in that
+order before opening documents. Before each stage it waits for the open
+chat's in-flight reads to finish. Delivery remains independent; there is no
+transport scheduler or connection reservation. Existing git renewals continue
+after startup.
 
 **Store merges** (`HappyStore`). Writes merge instead of overwrite: each
 versioned document (metadata, agentState, daemonState) keeps the higher
