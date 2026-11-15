@@ -173,6 +173,12 @@ private fun CloudComputePage(graph: AppGraph, connectionId: String, onOpen: (Com
         ComputeScreen(ComputeSource.State.Loading, ComputeRole.None, ComputePending(), null, ComputeActions(), onBack)
         return
     }
+    ComputePage(role, source, onOpen, onBack)
+}
+
+/** Settings › Compute over [source], which the caller keeps read: its answers, adding and the install. */
+@Composable
+internal fun ComputePage(role: ComputeRole, source: ComputeSource, onOpen: (Computer) -> Unit, onBack: () -> Unit) {
     val state by source.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var add by remember(source) { mutableStateOf<ComputerAdd?>(null) }
@@ -460,6 +466,12 @@ private fun CloudComputerPage(graph: AppGraph, connectionId: String, computerId:
         ComputerScreen(ComputeSource.State.Loading, computerId, ComputeRole.None, ComputerPending(), null, ComputerActions(), onBack)
         return
     }
+    ComputerPage(role, source, computerId, onBack)
+}
+
+/** One computer over [source], which the caller keeps read: removing its agents and changing its concurrency. */
+@Composable
+internal fun ComputerPage(role: ComputeRole, source: ComputeSource, computerId: String, onBack: () -> Unit) {
     val state by source.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var pending by remember(source) { mutableStateOf(ComputerPending()) }
