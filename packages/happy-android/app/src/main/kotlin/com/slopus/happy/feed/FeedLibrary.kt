@@ -169,10 +169,10 @@ class FeedLibrary(
     }
 
     /** The event stream opened: health says whether there is a feed and whether it filters, and the newest page is read. */
-    fun connected() {
+    fun connected(): Job {
         live = true
         connecting?.cancel()
-        connecting = scope.launch {
+        return scope.launch {
             val capabilities = try {
                 routes.capabilities()
             } catch (e: CancellationException) {
@@ -189,8 +189,8 @@ class FeedLibrary(
                 settle()
                 commit()
             }
-            if (stateFlow.value.available == true) refresh()
-        }
+            if (stateFlow.value.available == true) refresh()?.join()
+        }.also { connecting = it }
     }
 
     /** The stream went away: reads under way stop. */
@@ -246,20 +246,20 @@ class FeedLibrary(
      * daemon that filters read their own page too. One under way is
      * followed by one more.
      */
-    fun refresh() {
-        if (!live || stateFlow.value.available != true) return
+    fun refresh(): Job? {
+        if (!live || stateFlow.value.available != true) return null
         if (reading?.isActive == true) {
             again = true
-            return
+            return reading
         }
-        reading = scope.launch {
+        return scope.launch {
             do {
                 again = false
                 stateFlow.value = stateFlow.value.copy(refreshing = true)
                 if (readFirst(everything) && stateFlow.value.filter == FeedFilter.Highlights && filtering == true) readFirst(highlights)
                 stateFlow.value = stateFlow.value.copy(refreshing = false)
             } while (again)
-        }
+        }.also { reading = it }
     }
 
     /** [lane]'s newest page, laid over what it holds; false when it couldn't be read. */

@@ -197,6 +197,90 @@ class AgentSessionTest {
     }
 
     @Test
+    fun secondaryStagesAreOrderedAndWaitForChatReadsAtEveryBoundary(): Unit = runBlocking {
+        agent.bootstrap = agent.bootstrap.with("health", buildJsonObject {
+            put("ready", true); put("version", buildJsonObject { put("protocol", 30) })
+            put("capabilities", buildJsonObject { put("feed", true) })
+        }).with("feedUnread", 0)
+        val homeStarted = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val outboxStarted = CompletableDeferred<Unit>()
+        val releaseOutbox = CompletableDeferred<Unit>()
+        val stages = listOf("GET /v0/feed?limit=50", "GET /v0/artifacts?limit=100", "POST /v0/git/watch", "GET /v0/surfaces/document/d1/state")
+        val stageStarted = stages.map { CompletableDeferred<Unit>() }
+        val stageEnded = stages.map { CompletableDeferred<Unit>() }
+        val releaseStage = stages.map { CompletableDeferred<Unit>() }
+        val chatStarted = stages.map { CompletableDeferred<Unit>() }
+        val releaseChat = stages.map { CompletableDeferred<Unit>() }
+        val chatRequests = java.util.concurrent.atomic.AtomicIntegerArray(stages.size)
+        val activeChats = java.util.concurrent.atomic.AtomicInteger()
+        val activeStages = java.util.concurrent.atomic.AtomicInteger()
+        val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val violations = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val manager = sessions { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                fun answer(text: String) = TransportResponse(200, body = text.toByteArray())
+                if (path == "/v0/bootstrap/desktop") { homeStarted.complete(Unit); releaseHome.await() }
+                if (path == "/outbox-probe") { outboxStarted.complete(Unit); releaseOutbox.await(); return answer("{}") }
+                if (path.startsWith("/v0/agents/read")) {
+                    val index = path.substringAfter("/v0/agents/read").substringBefore('/').toInt()
+                    activeChats.incrementAndGet()
+                    if (chatRequests.incrementAndGet(index) == 2) chatStarted[index].complete(Unit)
+                    try {
+                        releaseChat[index].await()
+                        return answer(if (path.endsWith("/bootstrap")) """{"agent":{"id":"read$index","status":"idle"},"pending":[]}""" else """{"runs":[],"hasMore":false}""")
+                    } finally { activeChats.decrementAndGet() }
+                }
+                val key = "$method $path"
+                val index = stages.indexOf(key)
+                if (index >= 0) {
+                    asked += key
+                    if (activeStages.incrementAndGet() != 1) violations += "overlapping P2: $key"
+                    if (activeChats.get() != 0) violations += "P2 during chat: $key"
+                    stageStarted[index].complete(Unit)
+                    try {
+                        releaseStage[index].await()
+                        return when (index) {
+                            0 -> answer("""{"items":[],"unread":0,"hasMore":false}""")
+                            1 -> answer("""{"artifacts":[],"nextPageCursor":null}""")
+                            2 -> answer("""{"snapshots":{}}""")
+                            else -> TransportResponse(404, body = """{"error":"No document","code":"not_found"}""".toByteArray())
+                        }
+                    } finally { activeStages.decrementAndGet(); stageEnded[index].complete(Unit) }
+                }
+                return agent.request(method, path, credential, body, headers, category)
+            }
+        } }
+        val session = manager.session(id)!!
+        withTimeout(10_000) { homeStarted.await() }
+        session.intents.handle(setOf("probe")) { session.client.send("POST", "/outbox-probe") }
+        session.intents.enqueue("probe", "one")
+        val document = async { session.documents.document("d1").start() }
+        // Navigation and the verified transition share this boundary; the hint records the pending reads synchronously.
+        manager.setOpenChat(id, "read0")
+        agent.frames.send(Wire.hello("c0"))
+        releaseHome.complete(Unit)
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        withTimeout(10_000) { chatStarted[0].await(); outboxStarted.await() }
+        assertTrue(asked.toString(), asked.isEmpty())
+        releaseChat[0].complete(Unit)
+        for (index in stages.indices) {
+            withTimeout(10_000) { stageStarted[index].await() }
+            if (index < stages.lastIndex) {
+                manager.setOpenChat(id, "read${index + 1}")
+                withTimeout(10_000) { chatStarted[index + 1].await() }
+            }
+            releaseStage[index].complete(Unit)
+            withTimeout(10_000) { stageEnded[index].await() }
+            if (index < stages.lastIndex) releaseChat[index + 1].complete(Unit)
+        }
+        withTimeout(10_000) { document.await() }
+        assertEquals(stages, asked.toList())
+        assertTrue(violations.toString(), violations.isEmpty())
+        releaseOutbox.complete(Unit)
+    }
+
+    @Test
     fun homeHoldsSecondaryReadsUntilBootstrapIsVerified() = runBlocking {
         val requested = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()

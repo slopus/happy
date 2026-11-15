@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -163,6 +164,7 @@ class AgentSession internal constructor(
 
     private fun prepareChat(agentId: String, owner: CoroutineScope): ChatRead {
         chatRead?.takeIf { it.agentId == agentId }?.let { return it }
+        chatReads.update { it + 1 }
         val result = owner.async {
             try {
                 val api = com.slopus.happy.conversation.ConversationApi { method, path, body, category -> client.send(method, path, body, category = category) }
@@ -174,6 +176,7 @@ class AgentSession internal constructor(
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { Result.failure(e) }
         }
+        result.invokeOnCompletion { chatReads.update { it - 1 } }
         return ChatRead(agentId, result).also { chatRead = it }
     }
 
@@ -226,7 +229,17 @@ class AgentSession internal constructor(
         }
 
     private val gitSnapshots = MutableStateFlow<Map<String, WorkspaceLineChanges>>(emptyMap())
-    private val gitRenewal = MutableStateFlow(0)
+    private val chatReads = MutableStateFlow(0)
+    private val documentsReady = MutableStateFlow(false)
+
+    /** Only bookkeeping: chat reads are never held behind secondary work. */
+    suspend fun <T> readChat(agentId: String, read: suspend () -> T): T {
+        if (agentId != openChat()) return read()
+        chatReads.update { it + 1 }
+        try { return read() } finally { chatReads.update { it - 1 } }
+    }
+
+    private suspend fun awaitChatReads() { chatReads.first { it == 0 } }
 
     /**
      * What the person did here that the computer has yet to hear: reads,
@@ -438,7 +451,7 @@ class AgentSession internal constructor(
      * (iOS's `SyncEngine.documents`), kept beside the catalog in
      * `<connection>.documents/`; their live frames come off this session's stream.
      */
-    val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope, ::awaitVerified)
+    val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope) { documentsReady.first { it } }
 
     val artifacts = com.slopus.happy.artifacts.ArtifactCatalogFeed(
         scope, fetch = { cursor -> awaitVerified(); ArtifactClient(client).catalog(cursor) },
@@ -698,9 +711,8 @@ class AgentSession internal constructor(
     init {
         intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, SURFACE_JOIN), ::deliver)
         feedLibrary.start()
-        // Sent while the link is up; every connect sends what waits at once.
-        scope.launch { phaseState.collect { intents.setOnline(it == SyncPhase.Verified) } }
-        artifacts.start(events, phase.map { it == SyncPhase.Verified }.distinctUntilChanged())
+        // Disk and journal here; startSecondary owns the once-per-connect catalog read.
+        artifacts.start(events, verified = flowOf(false))
         scope.launch {
             intents.rejections.collectLatest { rejection ->
                 if (rejection.intent.kind == SURFACE_JOIN) {
@@ -732,7 +744,6 @@ class AgentSession internal constructor(
                             // Kept through a background: its tunnels check every way to the
                             // agent before the stream asks them for anything.
                             if (suspended.getAndSet(false)) linkLock.withLock { route?.second }?.resumed()
-                            launch { watchGit() }
                             live()
                         }
                     } } finally { phaseState.value = SyncPhase.Offline }
@@ -863,6 +874,7 @@ class AgentSession internal constructor(
             } catch (_: Exception) {
                 reconnecting()
             } finally {
+                intents.setOnline(false)
                 synchronized(chatLock) { chatScope = null }
                 phaseState.value = SyncPhase.Offline
             }
@@ -924,7 +936,8 @@ class AgentSession internal constructor(
     private val completions = CompletionWatch()
 
     /** The journal from the catalog's cursor until the stream ends or fails. */
-    private suspend fun follow(stream: com.slopus.happy.connection.TransportStream, snapshot: Deferred<Unit>, resumed: Boolean, onConnected: () -> Unit) {
+    private suspend fun follow(stream: com.slopus.happy.connection.TransportStream, snapshot: Deferred<Unit>, resumed: Boolean, onConnected: () -> Unit): Unit = coroutineScope {
+        var secondary: Job? = null
         try {
             val parser = ServerSentEventParser()
             while (true) {
@@ -946,7 +959,10 @@ class AgentSession internal constructor(
                         if (hello.gap && (resumed || wasVerified)) readSnapshot()
                         resumeAllowed = true
                         phaseState.value = SyncPhase.Verified
-                        documents.opened(event.data)
+                        intents.setOnline(true)
+                        if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)
+                        secondary?.cancel()
+                        secondary = launch { startSecondary(event.data) }
                         avatarHash?.let { hash ->
                             avatarHash = null
                             scope.launch {
@@ -954,12 +970,7 @@ class AgentSession internal constructor(
                                 connections.update(connectionId, avatar) { it.copy(thumbhash = hash) }
                             }
                         }
-                        // Reads the Feed's newest page each time, so a gap loses nothing.
-                        feedLibrary.connected()
-                        gitRenewal.update { it + 1 }
                         onConnected()
-                        // Every connect sends what was changed while offline.
-                        if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)
                     } else {
                         snapshot.await()
                         if (event.type == "config.updated") bootstrapConfig = null
@@ -978,10 +989,27 @@ class AgentSession internal constructor(
                 }
             }
         } finally {
+            secondary?.cancel()
+            documentsReady.value = false
             documents.closed()
             feedLibrary.disconnected()
             stream.close()
         }
+    }
+
+    /** Delivery is already allowed at Verified. Each read stage follows the previous one. */
+    private suspend fun startSecondary(hello: JsonObject) {
+        awaitChatReads()
+        feedLibrary.connected().join()
+        awaitChatReads()
+        artifacts.refresh().join()
+        awaitChatReads()
+        val ids = gitWorkspaceIds(feed.value)
+        readGit(ids)
+        awaitChatReads()
+        documentsReady.value = true
+        documents.opened(hello)
+        watchGit(ids)
     }
 
     /**
@@ -1017,27 +1045,36 @@ class AgentSession internal constructor(
     }.toSet()
 
     /** One renewing subscription per foreground account; rows never start network work. */
-    private suspend fun watchGit() {
+    private suspend fun readGit(ids: Set<String>) {
+        if (client.cloud) return
+        gitSnapshots.update { it.filterKeys(ids::contains) }
+        try {
+            val response = client.send("POST", "/v0/git/watch", buildJsonObject {
+                put("workspaceIds", JsonArray(ids.sorted().map(::JsonPrimitive)))
+            })
+            val body = AgentClient.json.parseToJsonElement(response.text) as? JsonObject
+            val snapshots = body?.get("snapshots") as? JsonObject
+            receiveGit(snapshots.orEmpty().mapNotNull { (id, value) ->
+                WorkspaceLineChanges.parse(value)?.takeIf { id in ids }?.let { id to it }
+            }.toMap())
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { /* Git is optional; never block the home feed. */ }
+    }
+
+    private suspend fun watchGit(initialIds: Set<String>) {
         // Happy Cloud has no folders, so no git.
         if (client.cloud) return
-        combine(feed.map(::gitWorkspaceIds).distinctUntilChanged(), gitRenewal, phase) { ids, renewal, phase ->
-            Triple(ids, renewal, phase == SyncPhase.Verified)
-        }.distinctUntilChanged().collectLatest { (ids, _, connected) ->
+        var previous = initialIds
+        combine(feed.map(::gitWorkspaceIds).distinctUntilChanged(), phase) { ids, phase ->
+            ids to (phase == SyncPhase.Verified)
+        }.distinctUntilChanged().collectLatest { (ids, connected) ->
             if (!connected) return@collectLatest
-            gitSnapshots.update { it.filterKeys(ids::contains) }
+            if (ids != previous) { awaitChatReads(); readGit(ids) }
+            previous = ids
             while (true) {
-                try {
-                    val response = client.send("POST", "/v0/git/watch", buildJsonObject {
-                        put("workspaceIds", JsonArray(ids.sorted().map(::JsonPrimitive)))
-                    })
-                    val body = AgentClient.json.parseToJsonElement(response.text) as? JsonObject
-                    val snapshots = body?.get("snapshots") as? JsonObject
-                    receiveGit(snapshots.orEmpty().mapNotNull { (id, value) ->
-                        WorkspaceLineChanges.parse(value)?.takeIf { id in ids }?.let { id to it }
-                    }.toMap())
-                } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { /* Git is optional; never block the home feed. */ }
                 delay(30_000)
+                awaitChatReads()
+                readGit(ids)
             }
         }
     }
