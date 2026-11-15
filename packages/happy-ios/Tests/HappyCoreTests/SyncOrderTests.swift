@@ -33,6 +33,9 @@ private actor OrderServer: AgentTransport {
     /// Home's bootstrap answers 500.
     var failsBootstrap = false
     func failBootstrap() { failsBootstrap = true }
+    /// Every request and stream answers 401: the pairing was revoked.
+    var revokes = false
+    func revoke() { revokes = true }
     func answerFeed() { holdingFeed = false; heldFeed.forEach { $0.resume() }; heldFeed = [] }
     func holdChat() { holdingChat = true }
     func answerChat() { holdingChat = false; heldChat.forEach { $0.resume() }; heldChat = [] }
@@ -53,6 +56,7 @@ private actor OrderServer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String], category: RequestCategory) async throws -> HTTP1Response {
         let route = method + " " + (path.split(separator: "?").first.map(String.init) ?? path)
         log.append(category == .file ? route + " (file)" : route)
+        if revokes { return .init(status: 401, body: Data("{}".utf8)) }
         let value: JSONValue
         switch route {
         case "GET /v0/bootstrap/desktop" where failsBootstrap:
@@ -111,6 +115,7 @@ private actor OrderServer: AgentTransport {
     func stream(path: String, credential: String, headers: [String: String]) throws -> HTTP1Stream {
         log.append("GET " + path)
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        if revokes { continuation.finish(); return .init(status: 401, body: body) }
         streams.append(continuation)
         continuation.yield(Data("event: hello\ndata: {\"cursor\":\"\(cursor)\",\"resumed\":false,\"gap\":false,\"daemonId\":\"d1\",\"streamId\":\"s1\"}\n\n".utf8))
         return .init(status: 200, body: body)
@@ -397,25 +402,49 @@ final class SyncOrderTests: XCTestCase {
     }
 
     /// Stopped (signed out) as it opens: the chat isn't left waiting, and
-    /// asks a signed-out computer nothing.
+    /// asks a signed-out computer nothing; its read fails, as a closed
+    /// client's did, rather than loading on.
     func testAChatOpenedAsItsEngineStopsAsksNothing() async throws {
         let server = OrderServer()
         let client = AgentClient(transport: server, token: "t")
         let engine = SyncEngine(client: client, directory: folder())
-        let (conversation, _) = await chat(client, engine)
+        let (conversation, shown) = await chat(client, engine)
         await engine.start()
         await conversation.start()
         await engine.stop()
+        try await eventually("the chat loaded") { shown.snapshot.loaded }
         try await Task.sleep(for: .milliseconds(200))
         let before = await server.requests().filter { $0.hasPrefix("GET /v0/agents/s/") }
-        // Opened after the stop, too.
-        let (later, _) = await chat(client, engine)
+        // Opened after the stop, too: its engine's storage is closed, and
+        // one kept nowhere fails its read.
+        let (later, shownLater) = await chat(client, engine)
         await later.start()
+        try await eventually("the later chat failed") { shownLater.snapshot.error == "Could not open this conversation on this device." }
+        let (unkept, shownUnkept) = await chat(client, engine, persistence: .some(nil))
+        await unkept.start()
+        try await eventually("the unkept chat failed") { shownUnkept.snapshot.loaded && !shownUnkept.snapshot.synced }
         try await Task.sleep(for: .milliseconds(200))
         let after = await server.requests().filter { $0.hasPrefix("GET /v0/agents/s/") }
         XCTAssertEqual(after, before, "nothing asked after the stop")
         await conversation.stop()
         await later.stop()
+        await unkept.stop()
+    }
+
+    /// Revoked (its stream answers 401) as a chat opens: the chat's read
+    /// fails rather than loading on, and home says to pair again.
+    func testAChatOpenedAsItsPairingIsRevokedFails() async throws {
+        let server = OrderServer()
+        await server.revoke()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        let (conversation, shown) = await chat(client, engine)
+        await engine.start()
+        await conversation.start()
+        try await eventually("the chat failed") { shown.snapshot.loaded && !shown.snapshot.synced }
+        try await eventually("home said so") { await Self.home(engine).error == "This device was disconnected. Pair it again." }
+        await conversation.stop()
+        await engine.stop()
     }
 
     /// What this phone keeps can't be read: no stream is asked for.

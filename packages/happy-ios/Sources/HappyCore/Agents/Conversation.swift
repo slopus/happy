@@ -783,8 +783,9 @@ public actor Conversation {
                 if heldEvents == nil { heldEvents = [] }
                 let after = anchored ? anchor() : nil
                 let resets = await store.carrierResets
-                // Its engine stopped (signed out): nothing is asked.
-                guard await store.chatsFirst.wait() else { letHomeAsk(); return }
+                // Its engine stopped (signed out): nothing is asked, and the
+                // read fails as one on its closed client did.
+                guard await store.chatsFirst.wait() else { letHomeAsk(); failed(CancellationError()); return }
                 let opening = holdsHome ? openings : nil
                 client.chatReads.began()
                 do {
@@ -805,22 +806,25 @@ public actor Conversation {
                     // A message the computer no longer holds: the newest runs instead, at once.
                     if after != nil, case AgentClientError.status = error { anchored = false; continue }
                     // Let go with its client (a network change): asked again, unsaid.
-                    if await store.carrierResets == resets {
-                        reads += 1
-                        snapshot.synced = false
-                        snapshot.error = Store.describe(error)
-                        Happenings.errorShown(.conversationLoad, error)
-                        snapshot.loaded = true
-                        let held = heldEvents ?? []
-                        heldEvents = nil
-                        for event in held { receive(event, publishes: false) }
-                        publish()
-                    }
+                    if await store.carrierResets == resets { failed(error) }
                 }
                 do { try await Task.sleep(for: .seconds(min(30, 1 << min(failures, 5)))) } catch { return }
                 failures += 1
             }
         }
+    }
+
+    /// A read that didn't land: shown with what came meanwhile.
+    private func failed(_ error: Error) {
+        reads += 1
+        snapshot.synced = false
+        snapshot.error = Store.describe(error)
+        Happenings.errorShown(.conversationLoad, error)
+        snapshot.loaded = true
+        let held = heldEvents ?? []
+        heldEvents = nil
+        for event in held { receive(event, publishes: false) }
+        publish()
     }
 
     /// The newest run held here that has finished, and its last message,
