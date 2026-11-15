@@ -123,6 +123,9 @@ class BrowserTest {
         // A daemon without the agent network route has only the workspace's.
         val older = AgentClient(Routing(mapOf("/v0/agents/chat1" to """{"agent":{"id":"chat1","workspaceId":"hostworkspace","status":"idle"}}""")), "test")
         assertEquals("/v0/workspaces/hostworkspace/proxy", older.browserNetwork(agentId = "chat1").path)
+        // A team server signed in to has no workspace proxy: no network named is none at all.
+        val team = AgentClient.lazy { AgentClient.Link(Routing(mapOf("/v0/agents/chat1" to """{"agent":{"id":"chat1","workspaceId":"teamworkspace","status":"idle"}}""")), "test", renew = { it }) }
+        assertEquals(BrowserException.Kind.Unavailable, (runCatching { team.browserNetwork(agentId = "chat1") }.exceptionOrNull() as? BrowserException)?.kind)
         for (id in listOf("", "-a", "Host", "a/b", "a..b", "a".repeat(129))) {
             assertEquals(id, BrowserException.Kind.Forbidden, (runCatching { BrowserNetwork.network(id) }.exceptionOrNull() as? BrowserException)?.kind)
         }

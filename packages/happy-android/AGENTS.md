@@ -2278,8 +2278,8 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
   network, the one its commands run in (`agentNetwork`: `GET
   /v0/workspaces/:ws/agents/:id/proxy` names it, then every tunnel is
   `CONNECT /v0/networks/:networkId/proxy`, on a computer and on Happy Cloud
-  alike; a computer that names none has its workspace's proxy, Happy Cloud
-  nothing). Other schemes go to the system. On a Happy (relay) account a
+  alike; a paired computer that names none has its workspace's proxy, a
+  server signed in to nothing). Other schemes go to the system. On a Happy (relay) account a
   tap does exactly what it did before (the system handler). A long press
   on a link gives a haptic and a bottom sheet: Open in Happy browser
   (through the agent; on a relay account a Custom Tab on the phone's

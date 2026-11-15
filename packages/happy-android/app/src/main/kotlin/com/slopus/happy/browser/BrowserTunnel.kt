@@ -177,8 +177,9 @@ suspend fun AgentClient.browserNetwork(agentId: String? = null, artifactId: Stri
  * The network [agentId]'s commands run in, as desktop finds it:
  * `GET /v0/workspaces/:ws/agents/:id/proxy` names it, on a computer and on
  * Happy Cloud alike. A workspace whose agents run in containers has no
- * network of its own, so its proxy can't reach them. A computer too old to
- * name one (404) has only the workspace's; Happy Cloud has no workspace's.
+ * network of its own, so its proxy can't reach them. A paired computer too
+ * old to name one (404) has only the workspace's; a server signed in to
+ * (Happy Cloud, a team server) has no workspace proxy, so there it is none.
  */
 internal suspend fun AgentClient.agentNetwork(agentId: String): BrowserNetwork {
     val workspaceId = decode<JsonObject>("GET", "/v0/agents/${AgentClient.escape(agentId)}")["agent"].obj?.get("workspaceId").str
@@ -186,7 +187,7 @@ internal suspend fun AgentClient.agentNetwork(agentId: String): BrowserNetwork {
     val answer = try {
         decode<JsonObject>("GET", "/v0/workspaces/${AgentClient.escape(workspaceId)}/agents/${AgentClient.escape(agentId)}/proxy")
     } catch (e: AgentApiException) {
-        if (e.status == 404) return if (cloud) throw BrowserException(BrowserException.Kind.Unavailable) else BrowserNetwork.workspace(workspaceId)
+        if (e.status == 404) return if (cloud || isOAuth()) throw BrowserException(BrowserException.Kind.Unavailable) else BrowserNetwork.workspace(workspaceId)
         throw BrowserException(BrowserException.Kind.Upstream, e.status)
     }
     return answer["networkId"].str?.takeIf(BrowserPolicy::validNetworkId)?.let(BrowserNetwork::network)
