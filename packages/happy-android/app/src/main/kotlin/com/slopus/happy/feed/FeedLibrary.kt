@@ -11,6 +11,7 @@ import com.slopus.happy.chat.num
 import com.slopus.happy.chat.str
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -157,7 +158,7 @@ class FeedLibrary(
     }
 
     /** The bootstrap was read: its `feedUnread` (null from a daemon without a feed), as of its event [cursor]. */
-    fun bootstrap(unread: Int?, cursor: String?, capabilities: FeedCapabilities? = null) {
+    fun bootstrap(unread: Int?, cursor: String?, capabilities: FeedCapabilities? = null): Job =
         scope.launch {
             lock.withLock {
                 if (capabilities != null) {
@@ -169,17 +170,22 @@ class FeedLibrary(
                 if (unread != null) setUnread(unread, cursor)
                 settle()
                 commit()
+                readInitialLocked()
             }
-            readInitial()
+        }
+
+    /** The stream's hello allows screen reads; later connects' automatic refresh stays in [connected]. */
+    fun hello(): Job = scope.launch {
+        lock.withLock {
+            live = true
+            readInitialLocked()
         }
     }
 
-    /** The stream's hello allows screen reads; later connects' automatic refresh stays in [connected]. */
-    fun hello() { live = true; readInitial() }
-
     /** First launch needs a page once both conditions hold, whichever arrived last. */
-    private fun readInitial() {
-        if (live && !stateFlow.value.loaded && reading?.isActive != true) refresh()
+    private fun readInitialLocked() {
+        // Publish the read job before another hello/bootstrap can make the same decision.
+        if (live && stateFlow.value.available == true && !stateFlow.value.loaded && reading?.isActive != true) refresh()
     }
 
     /** The event stream opened: health says whether there is a feed and whether it filters, and the newest page is read. */
@@ -266,14 +272,14 @@ class FeedLibrary(
             again = true
             return reading
         }
-        return scope.launch {
+        return scope.launch(start = CoroutineStart.LAZY) {
             do {
                 again = false
                 stateFlow.value = stateFlow.value.copy(refreshing = true)
                 if (readFirst(everything) && stateFlow.value.filter == FeedFilter.Highlights && filtering == true) readFirst(highlights)
                 stateFlow.value = stateFlow.value.copy(refreshing = false)
             } while (again)
-        }.also { reading = it }
+        }.also { reading = it; it.start() }
     }
 
     /** [lane]'s newest page, laid over what it holds; false when it couldn't be read. */
