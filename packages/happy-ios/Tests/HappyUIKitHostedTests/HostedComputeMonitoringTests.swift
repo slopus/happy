@@ -269,7 +269,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertEqual(install.shownHeaders, ["LINUX"])
         XCTAssertTrue(install.shownFooters.last?.hasPrefix("Run this on your own computer, signed in as yourself.") == true)
         XCTAssertTrue(install.shownFooters.last?.contains("macOS and Windows computers are not available yet.") == true)
-        XCTAssertTrue(install.shownFooters.last?.hasSuffix("The command works once. It expires in 1 hour.") == true)
+        XCTAssertTrue(install.shownFooters.last?.contains("The command works once and holds a secret, so keep it private. It expires at ") == true)
         install.tapRow("compute-copy-unix")
         XCTAssertEqual(UIPasteboard.general.string, install.install.commands?.unix)
         XCTAssertEqual(install.shownRow("compute-copy-unix")?.value, "Copied")
@@ -311,7 +311,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         _ = try await host(page)
         try await until { page.shownRow("compute-concurrency") != nil }
         XCTAssertNotNil(page.shownRow("compute-concurrency")?.action)
-        XCTAssertEqual(page.shownRow("compute-agents-empty")?.title, "No agents on it")
+        XCTAssertEqual(page.shownRow("compute-agents-empty")?.title, "No agents are working here.")
         XCTAssertNil(page.shownRow("compute-host-cpu"), "a member reads no host facts")
         XCTAssertNil(page.shownRow("compute-boundary"))
         XCTAssertEqual(page.shownRow("compute-shell")?.value, "/bin/zsh")
@@ -333,7 +333,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertNil(page.shownRow("compute-concurrency")?.action)
         XCTAssertEqual(page.shownRow("compute-agent-agent-1")?.menu.map(\.title), [])
         XCTAssertNil(page.shownRow("compute-agent-agent-1")?.action)
-        XCTAssertEqual(page.shownHeaders.first { $0.hasPrefix("AGENTS") }, "AGENTS · 2 OF 8")
+        XCTAssertTrue(page.shownHeaders.contains("2 OF 8 AGENTS"), "\(page.shownHeaders)")
         XCTAssertEqual(page.shownRow("compute-agent-agent-2")?.title, "An agent", "an agent the reader can't read is unnamed")
         guard case .computer(let node)? = page.monitor.snapshot else { return XCTFail("no computer") }
         page.setConcurrency(2, of: node)
@@ -351,10 +351,10 @@ final class HostedComputeMonitoringTests: XCTestCase {
         try await until { page.shownRow("compute-agent-agent-7") != nil }
         XCTAssertEqual(page.shownRow("compute-boundary")?.title, "Restricted commands can’t run here")
         XCTAssertEqual(page.shownRow("compute-boundary")?.subtitle, "sandbox-exec is unavailable on this macOS version")
-        XCTAssertEqual(page.shownRow("compute-boundary")?.footer, "Only an agent’s full-access commands run on this computer. Restricted ones are refused.")
-        XCTAssertEqual(page.shownRow("compute-agent-agent-7")?.menu.map(\.title), ["Remove from Computer"])
+        XCTAssertEqual(page.shownRow("compute-boundary")?.footer, "Only full-access commands run on this computer.")
+        XCTAssertEqual(page.shownRow("compute-agent-agent-7")?.menu.map(\.title), ["Remove"])
         XCTAssertNotNil(page.shownRow("compute-agent-agent-7")?.action, "a tap asks to remove it")
-        XCTAssertEqual(page.shownRow("compute-concurrency")?.footer, "It runs up to 1 agent at once; once full, it takes no more until one leaves.")
+        XCTAssertEqual(page.shownRow("compute-concurrency")?.footer, "How many agents can work on this computer at the same time, from 1 to 64.")
         XCTAssertEqual(page.shownRow("compute-node-build-01")?.value, "Full")
         XCTAssertEqual(page.shownRow("compute-host-cpu")?.value, "16")
         XCTAssertNotNil(page.shownRow("compute-concurrency")?.action)
@@ -367,6 +367,33 @@ final class HostedComputeMonitoringTests: XCTestCase {
         let remove = await server.requests.first { $0.method == "DELETE" }
         XCTAssertEqual(remove?.path, "/v0/computers/build-01/agents/agent-7")
         try screenshot(page, name: "compute-manager-agent-removed")
+    }
+
+    /// The screen speaks the screens' language: Russian here, with the
+    /// agent count in the form the concurrency asks for.
+    func testComputeSpeaksTheScreensLanguage() async throws {
+        AppLocalization.use(await TranslationCatalog.load("ru"))
+        addTeardownBlock { @MainActor in AppLocalization.use(nil) }
+        let (_, session, _) = try await rig()
+        let page = ComputeViewController(session: session)
+        let navigation = try await host(page)
+        try await until { page.shownRow("compute-node-alex-pc")?.subtitle?.contains("Alex") == true }
+        try await settled(navigation)
+        XCTAssertEqual(page.title, "Вычисления")
+        XCTAssertEqual(page.shownRow("compute-node-gpu-01")?.subtitle?.components(separatedBy: "\n").first, "Общий · 2 из 8 агентов · Linux x86_64")
+        XCTAssertEqual(page.shownRow("compute-node-build-01")?.subtitle?.components(separatedBy: "\n").first, "Общий · 1 из 1 агента · Только полный доступ · macOS arm64")
+        XCTAssertEqual(page.shownRow("compute-node-alex-pc")?.subtitle, "Личный · Владелец: Alex · 0 из 1 агента · Windows x86_64")
+        XCTAssertEqual(page.shownRow("compute-node-build-01")?.value, "Заполнен")
+        XCTAssertEqual(page.shownRow("compute-add")?.title, "Добавить компьютер")
+        try screenshot(page, name: "compute-list-ru")
+        let computer = ComputeViewController(session: session, page: .computer("build-01"))
+        navigation.pushViewController(computer, animated: false)
+        try await until { computer.shownRow("compute-agent-agent-7") != nil }
+        try await settled(navigation)
+        XCTAssertEqual(computer.shownRow("compute-boundary")?.title, "Ограниченные команды недоступны")
+        XCTAssertEqual(computer.shownRow("compute-concurrency")?.title, "Агентов одновременно")
+        XCTAssertEqual(computer.shownRow("compute-agent-agent-7")?.menu.map(\.title), ["Убрать"])
+        try screenshot(computer, name: "compute-computer-ru")
     }
 
     func testForbiddenResponseRemovesProtectedRows() async throws {

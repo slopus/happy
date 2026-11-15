@@ -2,69 +2,90 @@ import Foundation
 import HappyCore
 
 extension Strings {
-    /// Settings › Compute on Happy Cloud, in desktop's words; no shared
-    /// mobile catalog yet.
+    /// Settings › Compute on Happy Cloud. Not in happy-app's catalogs: every
+    /// language's are in `TranslationCatalog.nativeSources`
+    /// (`computeSources`), worded as Android's Compute screen where both say
+    /// the same thing.
     enum Compute {
-        static let title = "Compute"
-        static let loading = "Loading…"
-        static let unknown = "Unknown"
-        static let denied = "Your role can't use compute on this server."
-        static let missing = "This computer is no longer available."
-        static let failed = "Couldn’t refresh. Tap to retry."
-        static let stale = "Showing the last reading."
+        private static func word(_ key: String, _ english: String) -> String {
+            localized("native.compute.\(key)", english)
+        }
 
-        static let computers = "Computers"
-        static let noComputers = "No computer has joined yet."
-        static func computersNote(_ access: ComputeRole) -> String {
-            switch access {
-            case .manage: "Agents choose a computer and join it. A shared computer takes the team’s agents, a private one only its owner’s, each approved."
-            case .use: "Agents choose a computer and join it. You can add a private computer of your own."
-            case .none: "Agents choose a computer and join it. Your role can see them but not add one."
+        private static func word(_ key: String, _ values: [String: TranslationValue], _ english: String) -> String {
+            localized("native.compute.\(key)", values, english)
+        }
+
+        static var title: String { word("title", "Compute") }
+        static var loading: String { word("loading", "Loading…") }
+        static var unknown: String { word("unknown", "Unknown") }
+        static var denied: String { word("denied", "Your role can’t use compute on this server.") }
+        static var missing: String { word("missing", "This computer is no longer listed.") }
+        static var failed: String { word("failed", "Couldn’t refresh. Tap to retry.") }
+        static var stale: String { word("stale", "Showing the last reading.") }
+
+        static var computers: String { word("computers", "Computers") }
+        static var noComputers: String { word("noComputers", "No computer has joined yet.") }
+        static func computersNote(_ role: ComputeRole) -> String {
+            switch role {
+            case .manage: word("computersNoteManage", "Agents choose a computer and join it. Any member’s agents can use a shared computer; only its owner’s can use a private one.")
+            case .use: word("computersNoteUse", "Agents choose a computer and join it. You can add a private computer of your own.")
+            case .none: word("computersNoteNone", "Agents choose a computer and join it. Your role can see them but not add one.")
             }
         }
-        static let addComputer = "Add Computer"
-        static let remove = "Remove from Computer"
-        static func removeTitle(_ agent: String) -> String { "Remove \(agent)?" }
-        static func removeMessage(_ computer: String) -> String {
-            "It runs nothing more on \(computer) until it joins again, and its place goes to another agent."
-        }
-        static let actionFailed = "That didn’t go through"
+        static var addComputer: String { word("addComputer", "Add Computer") }
+        static var remove: String { word("remove", "Remove") }
+        static func removeTitle(_ agent: String) -> String { word("removeTitle", ["name": .text(agent)], "Remove \(agent)?") }
+        static var removeMessage: String { word("removeMessage", "The agent stops working on this computer, and its place is freed.") }
+        static var actionFailed: String { word("actionFailed", "That didn’t go through") }
 
-        static let joinRequests = "Join requests"
-        static let joinRequestsNote = "Your agents are asking to join your private computers. An approved agent can use the computer until it leaves."
-        static let approve = "Approve"
-        static let deny = "Deny"
-        static let anAgent = "An agent"
-        static let yourComputer = "your computer"
-        static func wantsToJoin(_ computer: String, _ when: String) -> String { "Wants to join \(computer) · \(when)" }
+        static var joinRequests: String { word("joinRequests", "Join requests") }
+        static var joinRequestsNote: String {
+            word("joinRequestsNote", "Your agents are asking to join your private computers. An approved agent can use the computer until it leaves.")
+        }
+        static var approve: String { word("approve", "Approve") }
+        static var deny: String { word("deny", "Deny") }
+        static var anAgent: String { word("anAgent", "An agent") }
+        /// `computer` nil for one of the reader's computers the list doesn't name.
+        static func wantsToJoin(_ computer: String?, _ when: String) -> String {
+            guard let computer else { return word("wantsToJoinYours", ["when": .text(when)], "Wants to join your computer · \(when)") }
+            return word("wantsToJoin", ["computer": .text(computer), "when": .text(when)], "Wants to join \(computer) · \(when)")
+        }
 
         static func access(_ access: ComputeAccess) -> String {
             switch access {
-            case .shared: "Shared"
-            case .private: "Private"
+            case .shared: word("shared", "Shared")
+            case .private: word("private", "Private")
             }
         }
         static func accessDescription(_ access: ComputeAccess) -> String {
             switch access {
-            case .shared: "For the team. Any agent on this server can join it."
-            case .private: "Just for you. Only your agents can join, and you approve each one."
+            case .shared: word("sharedDescription", "For your team. Any member’s agents can work on it.")
+            case .private: word("privateDescription", "Just for you. Only your agents can join, and you approve each one.")
             }
         }
-        static let yours = "Yours"
-        static func owner(_ name: String?) -> String { name.map { "\($0)’s" } ?? "A member’s" }
-        static func agentCount(_ count: Int) -> String { count == 1 ? "1 agent" : "\(count) agents" }
-        static func agents(_ count: Int, of concurrency: Int) -> String { "\(count) of \(agentCount(concurrency))" }
-        static let fullAccessOnly = "Full access only"
+        static var yours: String { word("yours", "Yours") }
+        static func owner(_ name: String?) -> String {
+            guard let name else { return word("ownerUnknown", "A member’s") }
+            return word("owner", ["name": .text(name)], "\(name)’s")
+        }
+        /// "2 of 8 agents": the noun agrees with `concurrency`.
+        static func agents(_ count: Int, of concurrency: Int) -> String {
+            let form = TranslationCatalog.pluralCategory(language: AppLocalization.language, count: concurrency)
+            return word("agents.\(form)", ["count": .number(count), "total": .number(concurrency)],
+                        concurrency == 1 ? "\(count) of 1 agent" : "\(count) of \(concurrency) agents")
+        }
+        static var fullAccessOnly: String { word("fullAccessOnly", "Full access only") }
 
         static func status(_ status: Computer.Status, full: Bool) -> String {
             switch status {
-            case .online: full ? "Full" : "Online"
-            case .offline: "Offline"
-            case .draining: "Draining"
-            case .enrolling: "Joining"
-            case .revoked: "Removed"
+            case .online: full ? word("status.full", "Full") : word("status.online", "Online")
+            case .offline: word("status.offline", "Offline")
+            case .draining: word("status.draining", "Draining")
+            case .enrolling: word("status.joining", "Joining")
+            case .revoked: word("status.removed", "Removed")
             }
         }
+        /// Systems keep their names in every language.
         static func platform(_ os: String?) -> String? {
             switch os {
             case "macos": "macOS"
@@ -75,71 +96,78 @@ extension Strings {
         }
 
         // Adding a computer.
-        static let create = "Create"
-        static let accessNeedsAdmin = "Admin only"
-        static let accessLockedHint = "Adding a shared computer needs admin permission."
-        static let noInstall = "No install command"
-        static let installTitle = "Install"
+        static var create: String { word("create", "Create") }
+        static var accessNeedsAdmin: String { word("accessNeedsAdmin", "Admin only") }
+        static var accessLockedHint: String { word("accessLockedHint", "Adding a shared computer needs admin permission.") }
+        static var noInstall: String { word("noInstall", "No install command") }
+        static var installTitle: String { word("installTitle", "Install") }
         static func installNote(_ access: ComputeAccess) -> String {
             switch access {
-            case .shared: "Run this on the computer. It installs the Happy supervisor and joins the computer for the team."
-            case .private: "Run this on your own computer, signed in as yourself. The Happy supervisor runs on your own account, and the computer joins as yours."
+            case .shared: word("installShared", "Run this on the computer your team’s agents will use. It installs the Happy supervisor and joins the computer as a shared one.")
+            case .private: word("installPrivate", "Run this on your own computer, signed in as yourself. It installs the Happy supervisor and joins the computer as yours.")
             }
         }
         static func expires(_ at: Date, now: Date = Date()) -> String {
-            let minutes = Int((at.timeIntervalSince(now) / 60).rounded())
-            if minutes <= 0 { return "It has expired." }
-            if minutes < 60 { return "It expires in \(minutes) min." }
-            let hours = (Double(minutes) / 60).rounded()
-            return hours == 1 ? "It expires in 1 hour." : "It expires in \(Int(hours)) hours."
+            guard at > now else { return word("expired", "It has expired.") }
+            let time = at.formatted(date: .omitted, time: .shortened)
+            return word("expiresAt", ["time": .text(time)], "It expires at \(time).")
         }
         static func installFooter(_ install: ComputeInstall, now: Date = Date()) -> String {
-            [installNote(install.access), install.notice, "The command works once. \(expires(Date(timeIntervalSince1970: install.expiresAt / 1000), now: now))"]
+            [installNote(install.access), install.notice, word("commandNote", "The command works once and holds a secret, so keep it private."),
+             expires(Date(timeIntervalSince1970: install.expiresAt / 1000), now: now)]
                 .compactMap { $0 }.joined(separator: " ")
         }
+        /// A command's systems: the shell one's are macOS, Linux or both.
         static func platforms(_ platforms: [ComputePlatform]) -> String {
             switch platforms {
-            case [.linux]: "Linux"
             case [.windows]: "Windows (PowerShell)"
-            default: platforms.map { $0 == .macOS ? "macOS" : $0 == .linux ? "Linux" : "Windows" }.joined(separator: " and ")
+            case [.macOS]: "macOS"
+            case [.linux]: "Linux"
+            default: word("macOSAndLinux", "macOS and Linux")
             }
         }
-        static let server = "Server"
-        static let joinToken = "Join token"
-        static let copy = "Copy"
-        static let copied = "Copied"
-        static let invalidInstall = "Happy Cloud didn’t send an install command."
+        static var server: String { word("server", "Server") }
+        static var joinToken: String { word("joinToken", "Join token") }
+        static var copy: String { word("copy", "Copy") }
+        static var copied: String { word("copied", "Copied") }
+        static var invalidInstall: String { word("invalidInstall", "Happy Cloud didn’t send an install command.") }
 
         // How many agents run at once.
-        static let concurrency = "Concurrency"
-        static let concurrencyPrompt = "How many agents can work on it at once?"
-        static func concurrencyRange(_ range: ClosedRange<Int>) -> String { "A number from \(range.lowerBound) to \(range.upperBound)." }
-        static func concurrencyValue(_ value: Int, isDefault: Bool) -> String { isDefault ? "\(value) (default)" : "\(value)" }
-        static let concurrencyNote = "How many agents work on it at once, 1 to 64. A shared computer runs 8 unless you choose, a private one 1."
-        static func concurrencyNote(_ node: Computer) -> String {
-            let most = node.maxConcurrency.map { " It can run at most \($0)." } ?? ""
-            return "It runs up to \(agentCount(node.concurrency)) at once; once full, it takes no more until one leaves.\(most)"
+        static var concurrency: String { word("concurrency", "Agents at once") }
+        static var concurrencyPrompt: String { word("concurrencyPrompt", "How many agents can work on it at once?") }
+        static func concurrencyRange(_ range: ClosedRange<Int>) -> String {
+            word("concurrencyRange", ["min": .number(range.lowerBound), "max": .number(range.upperBound)], "A number from \(range.lowerBound) to \(range.upperBound).")
         }
-        static let save = "Save"
-        static let invalidConcurrency = "That isn’t a number it can run"
+        static func concurrencyValue(_ value: Int, isDefault: Bool) -> String {
+            isDefault ? word("concurrencyDefault", ["count": .number(value)], "\(value) (default)") : "\(value)"
+        }
+        /// What the number means, up to `most`.
+        static func concurrencyNote(most: Int) -> String {
+            word("concurrencyNote", ["max": .number(most)], "How many agents can work on this computer at the same time, from 1 to \(most).")
+        }
+        /// Adding a computer: the note, and what it runs unless chosen.
+        static var concurrencyAddNote: String {
+            "\(concurrencyNote(most: ComputeConcurrency.limit)) \(word("concurrencyDefaults", "A shared computer runs 8 unless you choose, a private one 1."))"
+        }
+        static var save: String { Strings.Common.save }
+        static var invalidConcurrency: String { word("invalidConcurrency", "That isn’t a number it can run") }
 
         // The agents on a computer.
-        static func agentsHeader(_ count: Int, of concurrency: Int) -> String { "Agents · \(count) of \(concurrency)" }
-        static let noAgents = "No agents on it"
+        static var noAgents: String { word("noAgents", "No agents are working here.") }
 
         // A computer that can't keep an agent's restricted commands in.
-        static let boundaryMissing = "Restricted commands can’t run here"
-        static let boundaryNote = "Only an agent’s full-access commands run on this computer. Restricted ones are refused."
+        static var boundaryMissing: String { word("boundaryMissing", "Restricted commands can’t run here") }
+        static var boundaryNote: String { word("boundaryNote", "Only full-access commands run on this computer.") }
 
         // A computer's facts.
-        static let cpu = "Logical CPU cores"
-        static let memory = "Physical RAM"
-        static let disk = "Workspace volume"
-        static let lastSeen = "Last seen"
-        static let version = "Supervisor version"
-        static let operatingSystem = "Operating system"
-        static let shell = "Shell"
-        static let backend = "Backend"
-        static let hostNote = "Startup host totals, not current usage. Disk is the total workspace volume size."
+        static var cpu: String { word("cpu", "Logical CPU cores") }
+        static var memory: String { word("memory", "Physical RAM") }
+        static var disk: String { word("disk", "Workspace volume") }
+        static var lastSeen: String { word("lastSeen", "Last seen") }
+        static var version: String { word("version", "Supervisor version") }
+        static var operatingSystem: String { word("operatingSystem", "Operating system") }
+        static var shell: String { word("shell", "Shell") }
+        static var backend: String { word("backend", "Backend") }
+        static var hostNote: String { word("hostNote", "Startup host totals, not current usage. Disk is the total workspace volume size.") }
     }
 }

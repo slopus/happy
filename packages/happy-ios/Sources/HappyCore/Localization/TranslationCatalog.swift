@@ -146,6 +146,18 @@ public final class TranslationCatalog: Sendable {
 
     public static var english: TranslationCatalog { catalog(for: "en") }
 
+    /// The plural form a native key carries for `count` in `language`:
+    /// `one`/`other`, and `few`/`many` where Russian and Polish have them;
+    /// Chinese and Japanese say one form.
+    public static func pluralCategory(language: String, count: Int) -> String {
+        switch language {
+        case "ru": PluralRule.russian.category(count)
+        case "pl": PluralRule.polish.category(count)
+        case "ja", "zh-Hans", "zh-Hant": "other"
+        default: PluralRule.oneOther.category(count)
+        }
+    }
+
     /// `t(key)` and `t(key, params)` (text/index.ts): the language's words,
     /// and the key itself when the language lacks it; index.ts doesn't fall
     /// back to English, and neither does this. Every catalog has the same

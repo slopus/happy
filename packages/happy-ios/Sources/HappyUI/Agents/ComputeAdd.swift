@@ -143,7 +143,7 @@ final class ComputeAccessViewController: SettingsPageViewController {
         var concurrency = SettingsRow(id: "compute-concurrency", title: Text.concurrency,
                                       value: Text.concurrencyValue(draft.shownConcurrency, isDefault: draft.concurrency == nil), accessory: .chevron)
         concurrency.action = { [weak self] in self?.editConcurrency() }
-        concurrency.footer = Text.concurrencyNote
+        concurrency.footer = Text.concurrencyAddNote
         cards.append([concurrency])
         return cards
     }

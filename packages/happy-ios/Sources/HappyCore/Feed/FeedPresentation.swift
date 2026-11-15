@@ -74,16 +74,9 @@ public struct FeedWords: Equatable, Sendable {
         return word("\(key).\(category)", ["count": .number(count)], count == 1 ? "\(count) \(one)" : "\(count) \(other)")
     }
 
-    /// The plural forms the native keys carry: `one`/`other`, and
-    /// `few`/`many` where Russian and Polish have them; Chinese and
-    /// Japanese say one form.
+    /// The plural form the native keys carry (`TranslationCatalog.pluralCategory`).
     static func pluralCategory(language: String, count: Int) -> String {
-        switch language {
-        case "ru": TranslationCatalog.PluralRule.russian.category(count)
-        case "pl": TranslationCatalog.PluralRule.polish.category(count)
-        case "ja", "zh-Hans", "zh-Hant": "other"
-        default: TranslationCatalog.PluralRule.oneOther.category(count)
-        }
+        TranslationCatalog.pluralCategory(language: language, count: count)
     }
 
     public var activity: String { word("activity", "Activity") }

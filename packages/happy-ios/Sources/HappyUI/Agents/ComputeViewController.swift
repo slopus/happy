@@ -148,7 +148,7 @@ final class ComputeViewController: SettingsPageViewController {
         let now = Date().timeIntervalSince1970 * 1000
         var cards = list.approvals.map { approval -> [SettingsRow] in
             let answer = answering[approval.id]
-            let computer = approval.computerName ?? list.computers.first { $0.id == approval.computerId }?.displayName ?? Text.yourComputer
+            let computer = approval.computerName ?? list.computers.first { $0.id == approval.computerId }?.displayName
             var request = SettingsRow(id: "compute-request-\(approval.id)", title: approval.agentTitle ?? Text.anAgent, icon: ("shield-checkmark-outline", .purple), accessory: .none)
             request.subtitle = Text.wantsToJoin(computer, Strings.UserProfile.ago(DetailFormat.age(since: approval.createdAt, now: now)).lowercased())
             func choice(_ approve: Bool) -> SettingsRow {
@@ -253,7 +253,7 @@ final class ComputeViewController: SettingsPageViewController {
             none.dimmed = true
             agents = [none]
         }
-        agents[0].header = Text.agentsHeader(node.agents.count, of: node.concurrency)
+        agents[0].header = Text.agents(node.agents.count, of: node.concurrency)
         cards.append(agents)
         var concurrency = fact("compute-concurrency", Text.concurrency, "\(node.concurrency)")
         if saving.contains(node.id) {
@@ -263,7 +263,7 @@ final class ComputeViewController: SettingsPageViewController {
             concurrency.accessory = .chevron
             concurrency.action = { [weak self] in self?.editConcurrency(node) }
         }
-        concurrency.footer = Text.concurrencyNote(node)
+        concurrency.footer = Text.concurrencyNote(most: node.concurrencyRange.upperBound)
         cards.append([concurrency])
         let lastSeen = node.lastSeenAt.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? Text.unknown
         let system = [Text.platform(node.os), node.osVersion, node.arch].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
@@ -294,7 +294,7 @@ final class ComputeViewController: SettingsPageViewController {
     func confirmRemove(_ agent: Computer.Agent, from node: Computer) {
         typealias Text = Strings.Compute
         Task { @MainActor [weak self] in
-            guard let self, await Alerts.confirm(Text.removeTitle(agent.title ?? Text.anAgent), Text.removeMessage(node.displayName),
+            guard let self, await Alerts.confirm(Text.removeTitle(agent.title ?? Text.anAgent), Text.removeMessage,
                                                  confirmTitle: Text.remove, destructive: true, on: self) else { return }
             remove(agent, from: node)
         }
