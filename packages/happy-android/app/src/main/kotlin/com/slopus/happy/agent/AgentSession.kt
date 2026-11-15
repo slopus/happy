@@ -211,6 +211,18 @@ class AgentSession internal constructor(
         }
     }
 
+    private fun checkChatAllowed() {
+        try { checkSessionAllowed() }
+        catch (_: CancellationException) {
+            throw AgentConnectionException(when {
+                statusState.value == AgentLinkStatus.Revoked -> AgentConnectionException.Reason.Revoked
+                statusState.value == AgentLinkStatus.UpdateRequired -> AgentConnectionException.Reason.UpdateRequired
+                connections.accounts.value.any { it.id == connectionId && it.signInRequired } -> AgentConnectionException.Reason.SignInRequired
+                else -> AgentConnectionException.Reason.Unavailable
+            })
+        }
+    }
+
     /** A screen shares a running bootstrap, but can ask for itself when no bootstrap can answer. */
     private suspend fun usesBootstrapHealth(): Boolean {
         val waiting = synchronized(healthLock) { checkSessionAllowed(); healthReady }
@@ -239,9 +251,9 @@ class AgentSession internal constructor(
     }
 
     suspend fun takeChatRead(agentId: String): Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>? {
-        checkSessionAllowed()
+        checkChatAllowed()
         chatStarting.first { !it }
-        checkSessionAllowed()
+        checkChatAllowed()
         val read = synchronized(chatLock) { chatRead?.takeIf { it.agentId == agentId && !it.taken }?.also { it.taken = true } } ?: return null
         return try { read.result.await().getOrThrow().also { (bootstrap, messages) ->
             synchronized(chatLock) { read.cursor = if (bootstrap.cursor != null && messages.cursor != null) minOf(bootstrap.cursor, messages.cursor) else null }
@@ -249,7 +261,7 @@ class AgentSession internal constructor(
         catch (error: CancellationException) {
             // The engine can pause while this independently held conversation still wants history.
             currentCoroutineContext().ensureActive()
-            checkSessionAllowed()
+            checkChatAllowed()
             null
         }
     }
