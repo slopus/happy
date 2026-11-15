@@ -21,6 +21,7 @@ import com.slopus.happy.feed.FeedLibrary
 import com.slopus.happy.feed.FeedCovers
 import com.slopus.happy.feed.FeedLookups
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +34,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +104,7 @@ class AgentSession internal constructor(
     private val chime: () -> Unit = {},
     private val openChat: () -> String? = { null },
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
+    initiallyActive: Boolean = false,
 ) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
     private val linkLock = Mutex()
@@ -151,10 +155,16 @@ class AgentSession internal constructor(
     private var resumeAllowed = false
     private var bootstrapConfig: JsonObject? = null
     private val configLock = Mutex()
-    private class ChatRead(val agentId: String, val result: Deferred<Result<Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>>>, var taken: Boolean = false)
+    private class ChatRead(val agentId: String, val result: Deferred<Result<Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>>>, val asked: List<Deferred<Unit>>, var taken: Boolean = false) {
+        var cursor: String? = null
+        var helloSeen = false
+    }
     private val chatLock = Any()
     private var chatRead: ChatRead? = null
     private var chatScope: CoroutineScope? = null
+    // Ordering only. An inactive session must never hold a conversation's own reads.
+    private val chatStarting = MutableStateFlow(initiallyActive)
+    private var chatStartUsed = false
 
     /** A navigation hint received after stream startup starts immediately, without holding home. */
     fun hintOpenChat(agentId: String) = synchronized(chatLock) {
@@ -165,30 +175,50 @@ class AgentSession internal constructor(
     private fun prepareChat(agentId: String, owner: CoroutineScope): ChatRead {
         chatRead?.takeIf { it.agentId == agentId }?.let { return it }
         chatReads.update { it + 1 }
+        val bootstrapAsked = CompletableDeferred<Unit>()
+        val messagesAsked = CompletableDeferred<Unit>()
+        val asked = listOf(bootstrapAsked, messagesAsked)
         val result = owner.async {
             try {
-                val api = com.slopus.happy.conversation.ConversationApi { method, path, body, category -> client.send(method, path, body, category = category) }
+                val api = com.slopus.happy.conversation.ConversationApi { method, path, body, category ->
+                    val signal = if (path.endsWith("/bootstrap")) bootstrapAsked else messagesAsked
+                    try { client.send(method, path, body, category = category, onAsked = { signal.complete(Unit) }) }
+                    finally { signal.complete(Unit) }
+                }
                 Result.success(coroutineScope {
-                    val bootstrap = async(start = CoroutineStart.UNDISPATCHED) { api.bootstrap(agentId) }
-                    val messages = async(start = CoroutineStart.UNDISPATCHED) { api.messages(agentId) }
+                    val bootstrap = async { api.bootstrap(agentId) }
+                    val messages = async { api.messages(agentId) }
                     bootstrap.await() to messages.await()
                 })
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { Result.failure(e) }
         }
-        result.invokeOnCompletion { chatReads.update { it - 1 } }
-        return ChatRead(agentId, result).also { chatRead = it }
+        result.invokeOnCompletion { bootstrapAsked.complete(Unit); messagesAsked.complete(Unit); chatReads.update { it - 1 } }
+        return ChatRead(agentId, result, asked).also { chatRead = it }
     }
 
     suspend fun awaitVerified() { phase.first { it == SyncPhase.Verified } }
 
     suspend fun takeChatRead(agentId: String): Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>? {
-        phase.first { it >= SyncPhase.P0Connecting }
-        val read = synchronized(chatLock) { chatRead?.takeIf { it.agentId == agentId && !it.taken }?.also { it.taken = true } }
-        return read?.result?.await()?.getOrThrow()
+        chatStarting.first { !it }
+        val read = synchronized(chatLock) { chatRead?.takeIf { it.agentId == agentId && !it.taken }?.also { it.taken = true } } ?: return null
+        return try { read.result.await().getOrThrow().also { (bootstrap, messages) ->
+            synchronized(chatLock) { read.cursor = if (bootstrap.cursor != null && messages.cursor != null) minOf(bootstrap.cursor, messages.cursor) else null }
+        } }
+        catch (error: CancellationException) {
+            // The engine can pause while this independently held conversation still wants history.
+            currentCoroutineContext().ensureActive()
+            null
+        }
     }
 
-    fun chatNeedsResync(agentId: String): Boolean = synchronized(chatLock) { chatRead?.let { it.agentId != agentId || !it.taken } ?: true }
+    fun chatNeedsResync(agentId: String, streamStart: String?): Boolean = synchronized(chatLock) {
+        val read = chatRead?.takeIf { it.agentId == agentId } ?: return@synchronized true
+        val firstHello = !read.helloSeen
+        read.helloSeen = true
+        // Only this opening's successfully delivered read can suppress its hello, with proven coverage.
+        !(firstHello && streamStart != null && read.cursor?.let { streamStart <= it } == true)
+    }
 
     suspend fun configuration(): com.slopus.happy.connection.TransportResponse {
         awaitVerified()
@@ -709,6 +739,7 @@ class AgentSession internal constructor(
     val conversations = HeldConversations(scope)
 
     init {
+        scope.coroutineContext[Job]?.invokeOnCompletion { chatStarting.value = false }
         intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, SURFACE_JOIN), ::deliver)
         feedLibrary.start()
         // Disk and journal here; startSecondary owns the once-per-connect catalog read.
@@ -735,6 +766,7 @@ class AgentSession internal constructor(
             // A redial ([networkReturned], [networkMoved]) starts the link over, as iOS's `SyncEngine.reconnect` pauses and starts it.
             combine(active.distinctUntilChanged(), signedIn, redials, ::Triple).collectLatest { (on, signedIn) ->
                 linking = on && signedIn
+                if (!linking) chatStarting.value = false
                 when {
                     !signedIn -> statusState.value = AgentLinkStatus.SignInRequired
                     // Off the collector: Tailcat's reads block their thread, and on the collector's
@@ -750,7 +782,7 @@ class AgentSession internal constructor(
                     statusState.value == AgentLinkStatus.SignInRequired -> statusState.value = AgentLinkStatus.Connecting
                 }
             }
-        }
+        }.invokeOnCompletion { chatStarting.value = false }
         scope.launch {
             settingsQueued.receiveAsFlow().collect { deliverSettings() }
         }
@@ -811,6 +843,7 @@ class AgentSession internal constructor(
 
     /** Stops the link and lets go of the tunnel. */
     suspend fun close() {
+        chatStarting.value = false
         // Open documents keep what they hold and say goodbye, briefly: a lost link must not hold the close up.
         withContext(kotlinx.coroutines.NonCancellable) { kotlinx.coroutines.withTimeoutOrNull(2_000) { documents.stop() } }
         scope.cancel()
@@ -827,23 +860,31 @@ class AgentSession internal constructor(
             if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
             // The sign-in this attempt runs under: a refusal it meets signs out only that one.
             val grant = connections.grant(connectionId)
+            if (!chatStartUsed) { chatStartUsed = true; chatStarting.value = true }
             try {
                 coroutineScope {
                     val cursor = catalogState.value.cursor?.takeIf {
                         resumeAllowed && catalogState.value.loaded && lastHeard?.let { clock() - it in 0 until 30_000L } == true
                     }
                     if (cursor == null) resumeAllowed = false
-                    val opening = async(start = CoroutineStart.UNDISPATCHED) { client.events(cursor) }
-                    launch { client.warm(2) }
-                    val stream = opening.await()
+                    val owner = this
+                    val streamAsked = CompletableDeferred<Unit>()
+                    val opening = async {
+                        try { client.events(cursor) { streamAsked.complete(Unit) } }
+                        finally { streamAsked.complete(Unit) }
+                    }
+                    streamAsked.await()
                     val chat = synchronized(chatLock) {
                         chatRead = null
-                        chatScope = this
-                        openChat()?.let { prepareChat(it, this) }
+                        chatScope = owner
+                        openChat()?.let { prepareChat(it, owner) }
                     }
+                    chatStarting.value = false
+                    launch { client.warm(2) }
+                    val stream = opening.await()
                     phaseState.value = SyncPhase.P0Connecting
                     val snapshot = async {
-                        chat?.result?.await()
+                        chat?.asked?.forEach { it.await() }
                         if (cursor == null) readSnapshot()
                     }
                     follow(stream, snapshot, resumed = cursor != null) { backoff = INITIAL_BACKOFF }
@@ -876,6 +917,7 @@ class AgentSession internal constructor(
             } catch (_: Exception) {
                 reconnecting()
             } finally {
+                chatStarting.value = false
                 intents.setOnline(false)
                 synchronized(chatLock) { chatScope = null }
                 phaseState.value = SyncPhase.Offline

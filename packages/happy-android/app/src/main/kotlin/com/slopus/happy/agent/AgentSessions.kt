@@ -178,6 +178,7 @@ class AgentSessions(
                     chime = chime,
                     openChat = { openChat?.takeIf { it.first == connectionId }?.second },
                     clock = clock,
+                    initiallyActive = openId.value == connectionId && foreground.value && connections.accounts.value.none { it.id == connectionId && it.signInRequired },
                 )
             }
         }

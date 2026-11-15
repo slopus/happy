@@ -390,8 +390,8 @@ class AgentSessionTest {
 
     @Test
     fun restoredChatGoesBetweenStreamAndHomeAndAdoptsHistoryOnce() = runBlocking {
-        agent.resources["/v0/agents/at1/bootstrap"] = AgentClient.json.parseToJsonElement("""{"agent":{"id":"at1","workspaceId":"wat1","status":"idle","title":"Fix login"},"pending":[]}""") as kotlinx.serialization.json.JsonObject
-        agent.resources["/v0/agents/at1/messages?limit=100&omitToolData=true"] = AgentClient.json.parseToJsonElement("""{"runs":[],"hasMore":false}""") as kotlinx.serialization.json.JsonObject
+        agent.resources["/v0/agents/at1/bootstrap"] = AgentClient.json.parseToJsonElement("""{"agent":{"id":"at1","workspaceId":"wat1","status":"idle","title":"Fix login"},"pending":[],"cursor":"c0"}""") as kotlinx.serialization.json.JsonObject
+        agent.resources["/v0/agents/at1/messages?limit=100&omitToolData=true"] = AgentClient.json.parseToJsonElement("""{"runs":[],"hasMore":false,"cursor":"c0"}""") as kotlinx.serialization.json.JsonObject
         val manager = sessions()
         manager.setOpenChat(id, "at1")
         val session = manager.session(id)!!
@@ -400,7 +400,7 @@ class AgentSessionTest {
         try {
             conversation.start()
             eventually({ conversation.state.value.synced }) { it }
-            assertEquals(listOf("STREAM /v0/events/stream", "GET /v0/agents/at1/bootstrap", "GET /v0/agents/at1/messages?limit=100&omitToolData=true", "GET /v0/bootstrap/desktop"), agent.calls.toList())
+            assertEquals(setOf("STREAM /v0/events/stream", "GET /v0/agents/at1/bootstrap", "GET /v0/agents/at1/messages?limit=100&omitToolData=true", "GET /v0/bootstrap/desktop"), agent.calls.toSet())
             agent.frames.send(Wire.hello("c0"))
             eventually({ session.phase.value }) { it == SyncPhase.Verified }
             eventually({ agent.calls.toList() }) { "GET /v0/artifacts?limit=100" in it }

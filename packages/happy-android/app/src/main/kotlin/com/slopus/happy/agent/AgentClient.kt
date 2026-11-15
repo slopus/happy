@@ -97,6 +97,7 @@ class AgentClient private constructor(
      * Sends a request as [category]. A 401 is [AgentConnectionException.Reason.Revoked];
      * an unreachable agent [AgentConnectionException.Reason.Unavailable];
      * any other status but 2xx and 304 an [AgentApiException].
+     * [onAsked] marks handoff to the transport, before its reply or socket writes.
      */
     suspend fun send(
         method: String,
@@ -104,10 +105,15 @@ class AgentClient private constructor(
         body: JsonElement? = null,
         headers: Map<String, String> = emptyMap(),
         category: RequestCategory = RequestCategory.Query,
+        onAsked: () -> Unit = {},
     ): TransportResponse {
         val link = link()
         val bytes = body?.let { json.encodeToString(JsonElement.serializer(), it).toByteArray(Charsets.UTF_8) }
-        return check(link, authorized(link) { token -> link.transport.request(method, path, token, bytes, headers, category) })
+        return check(link, authorized(link) { token ->
+            observeAsk?.invoke(method, path)
+            onAsked()
+            link.transport.request(method, path, token, bytes, headers, category)
+        })
     }
 
     /** Sends [bytes] as they are (an image), with their Content-Type in [headers]: a [RequestCategory.File]. */
@@ -181,10 +187,15 @@ class AgentClient private constructor(
     /** Opens ordinary query connections without delaying bootstrap or delivery. */
     suspend fun warm(count: Int) = link().transport.warm(count)
 
+    /** Observes the handoff boundary, independently of a transport's scheduling or socket writes. */
+    @Volatile internal var observeAsk: ((method: String, path: String) -> Unit)? = null
+
     /** `GET /v0/events/stream` from [after]; the stream's status is checked. */
-    suspend fun events(after: String?): TransportStream {
+    suspend fun events(after: String?, onAsked: () -> Unit = {}): TransportStream {
         val link = link()
         val headers = after?.let { mapOf("Last-Event-ID" to it) } ?: emptyMap()
+        observeAsk?.invoke("STREAM", "/v0/events/stream")
+        onAsked()
         var stream = link.transport.stream("/v0/events/stream", link.token, headers)
         if (stream.status == 401 && link.renew != null) {
             val refused = try {
