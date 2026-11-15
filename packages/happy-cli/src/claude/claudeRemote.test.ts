@@ -24,6 +24,37 @@ describe('claudeRemote', () => {
         vi.mocked(query).mockReset();
     });
 
+    it.each([false, true])('reads the active query catalog and keeps observed metadata when catalog lookup fails=%s', async fails => {
+        const models = [{ value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus', description: 'Opus 5.5' }];
+        const supportedModels = fails
+            ? vi.fn().mockRejectedValue(new Error('catalog unavailable'))
+            : vi.fn().mockResolvedValue(models);
+        const received: unknown[] = [];
+        vi.mocked(query).mockImplementation(({ prompt }) => ({
+            supportedModels,
+            async *[Symbol.asyncIterator]() {
+                const input = (prompt as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+                received.push((await input.next()).value);
+                yield { type: 'system', subtype: 'init', model: 'claude-opus-5-5', tools: ['Read'], slash_commands: [] };
+                yield { type: 'result', subtype: 'success', is_error: false, result: 'Done' };
+                expect((await input.next()).done).toBe(true);
+            },
+        } as any));
+        const onSDKMetadata = vi.fn();
+        await claudeRemote({
+            sessionId: null, path: '/fixture/project', allowedTools: [], hookSettingsPath: '/fixture/settings.json',
+            nextMessage: vi.fn().mockResolvedValueOnce({ message: 'Probe', mode: { ...mode, model: 'claude-opus-5-5[1m]' } }).mockResolvedValue(null),
+            onReady: vi.fn(), onMessage: vi.fn(), onSessionFound: vi.fn(), onSDKMetadata,
+            canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }), isAborted: () => false,
+        });
+        expect(query).toHaveBeenCalledOnce();
+        expect(supportedModels).toHaveBeenCalledOnce();
+        expect(onSDKMetadata).toHaveBeenCalledWith(expect.objectContaining({
+            models: fails ? undefined : models, model: 'claude-opus-5-5', requestedModel: 'claude-opus-5-5[1m]', tools: ['Read'],
+        }));
+        expect(received).toEqual([expect.objectContaining({ message: { role: 'user', content: 'Probe' } })]);
+    });
+
     const expired = 'Failed to authenticate: OAuth session expired and could not be refreshed';
     const authAssistant = {
         type: 'assistant',

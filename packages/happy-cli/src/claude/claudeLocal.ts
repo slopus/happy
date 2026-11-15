@@ -39,6 +39,7 @@ export async function claudeLocal(opts: {
     sessionId: string | null,
     mcpServers?: Record<string, any>,
     path: string,
+    model?: string,
     onSessionFound: (id: string) => void,
     onThinkingChange?: (thinking: boolean) => void,
     claudeEnvVars?: Record<string, string>,
@@ -242,6 +243,10 @@ export async function claudeLocal(opts: {
             // Add custom Claude arguments
             if (opts.claudeArgs) {
                 args.push(...opts.claudeArgs)
+            }
+
+            if (opts.model) {
+                args.push('--model', opts.model);
             }
 
             // Add hook settings for session tracking (when available)

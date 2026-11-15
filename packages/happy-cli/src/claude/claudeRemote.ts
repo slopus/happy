@@ -16,6 +16,7 @@ import { fromRateLimitEvent, windowsFromGetUsage, type UnboundRateLimit, type Us
 import type { UsageLimitWindow } from "@/api/types";
 import { pluginsFromArgs } from './utils/pluginsFromArgs';
 import { claudeProviderAuthMessage } from './utils/providerAuth';
+import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk';
 
 export async function claudeRemote(opts: {
 
@@ -46,7 +47,15 @@ export async function claudeRemote(opts: {
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
-    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void,
+    onSDKMetadata?: (metadata: {
+        tools?: string[];
+        slashCommands?: string[];
+        mcpServers?: { name: string; status: string }[];
+        skills?: string[];
+        models?: ModelInfo[];
+        model?: string;
+        requestedModel?: string;
+    }) => void,
     /** Per-turn plan rate-limit delta; the launcher merges it into agent state. */
     onUsageLimits?: (patch: UsageLimitsPatch) => void
 }) {
@@ -290,11 +299,22 @@ export async function claudeRemote(opts: {
                 // Start a watcher for to detect the session id
                 // Emit SDK metadata (tools, slash commands) from init message
                 if (opts.onSDKMetadata) {
+                    let models: ModelInfo[] | undefined;
+                    try {
+                        // Initialization is already complete here; this reads
+                        // the active runtime's catalog, not another process.
+                        models = await response.supportedModels();
+                    } catch (error) {
+                        logger.debug('[claudeRemote] Model catalog unavailable', error);
+                    }
                     opts.onSDKMetadata({
                         tools: systemInit.tools,
                         slashCommands: systemInit.slash_commands,
                         mcpServers: systemInit.mcp_servers?.map(s => ({ name: s.name, status: s.status })),
                         skills: systemInit.skills,
+                        models,
+                        model: systemInit.model,
+                        requestedModel: mode.model,
                     });
                 }
 

@@ -58,6 +58,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         api: opts.api,
         client: opts.session,
         path: opts.path,
+        model: opts.model,
         sessionId: null,
         claudeEnvVars: opts.claudeEnvVars,
         claudeArgs: opts.claudeArgs,

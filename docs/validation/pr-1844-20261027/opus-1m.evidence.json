@@ -1,0 +1,646 @@
+{
+  "startedAt": "2026-10-26T17:08:14.216Z",
+  "node": "v26.11.1",
+  "scope": "live-native-local-to-Happy-remote-via-real-relay; native local print/stream mode; headless app transport; no visual app verification",
+  "requested": "claude-opus-5-5[1m]",
+  "expected": "claude-opus-5-5[1m]",
+  "head": "5b1c917a5e232093aec0ee443ae93a333d0e6574",
+  "sdk": "0.3.295",
+  "claude": "2.1.310 (Claude Code)",
+  "remote": [
+    {
+      "turn": 1,
+      "initModel": "claude-opus-5-5[1m]",
+      "sessionId": "a2f6e2a2-9ed6-4cb0-8586-b21acc665160",
+      "assistants": [
+        {
+          "model": "claude-opus-5-5",
+          "text": "PR1844_REMOTE_1"
+        }
+      ],
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "result": "PR1844_REMOTE_1",
+        "modelUsage": {
+          "claude-opus-5-5[1m]": {
+            "inputTokens": 4,
+            "outputTokens": 110,
+            "thinkingTokens": 84,
+            "cacheReadInputTokens": 31394,
+            "cacheCreationInputTokens": 49696,
+            "webSearchRequests": 0,
+            "costUSD": 0.40606279999999995,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        }
+      }
+    },
+    {
+      "turn": 2,
+      "initModel": "claude-opus-5-5[1m]",
+      "sessionId": "a2f6e2a2-9ed6-4cb0-8586-b21acc665160",
+      "assistants": [
+        {
+          "model": "claude-opus-5-5",
+          "text": "PR1844_REMOTE_2"
+        }
+      ],
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "result": "PR1844_REMOTE_2",
+        "modelUsage": {
+          "claude-opus-5-5[1m]": {
+            "inputTokens": 6,
+            "outputTokens": 124,
+            "thinkingTokens": 84,
+            "cacheReadInputTokens": 54232,
+            "cacheCreationInputTokens": 85967,
+            "webSearchRequests": 0,
+            "costUSD": 0.7010863999999999,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        }
+      }
+    }
+  ],
+  "metadata": [
+    {
+      "at": "2026-10-26T17:08:18.908Z",
+      "version": 1,
+      "currentModelCode": "claude-opus-5-5[1m]",
+      "models": [
+        {
+          "code": "default",
+          "value": "Default (recommended)",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5",
+          "value": "Opus 5.5",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-fable-5-1[1m]",
+          "value": "Fable",
+          "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks",
+          "id": "claude-fable-5-1",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-sonnet-5-5",
+          "value": "Sonnet 5.5",
+          "description": "Sonnet 5.5 · Efficient for routine tasks",
+          "id": "claude-sonnet-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-haiku-5-5",
+          "value": "Haiku 5.5",
+          "description": "Haiku 5.5 · Fastest for quick answers",
+          "id": "claude-haiku-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5[1m]",
+          "value": "claude-opus-5-5[1m]",
+          "description": null
+        }
+      ]
+    },
+    {
+      "at": "2026-10-26T17:08:19.484Z",
+      "version": 2,
+      "currentModelCode": "claude-opus-5-5[1m]",
+      "models": [
+        {
+          "code": "default",
+          "value": "Default (recommended)",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5",
+          "value": "Opus 5.5",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-fable-5-1[1m]",
+          "value": "Fable",
+          "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks",
+          "id": "claude-fable-5-1",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-sonnet-5-5",
+          "value": "Sonnet 5.5",
+          "description": "Sonnet 5.5 · Efficient for routine tasks",
+          "id": "claude-sonnet-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-haiku-5-5",
+          "value": "Haiku 5.5",
+          "description": "Haiku 5.5 · Fastest for quick answers",
+          "id": "claude-haiku-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5[1m]",
+          "value": "claude-opus-5-5[1m]",
+          "description": null
+        }
+      ],
+      "claudeSessionId": "a2f6e2a2-9ed6-4cb0-8586-b21acc665160"
+    },
+    {
+      "at": "2026-10-26T17:08:33.172Z",
+      "version": 3,
+      "currentModelCode": "claude-opus-5-5[1m]",
+      "models": [
+        {
+          "code": "default",
+          "value": "Default (recommended)",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5",
+          "value": "Opus 5.5",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-fable-5-1[1m]",
+          "value": "Fable",
+          "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks",
+          "id": "claude-fable-5-1",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-sonnet-5-5",
+          "value": "Sonnet 5.5",
+          "description": "Sonnet 5.5 · Efficient for routine tasks",
+          "id": "claude-sonnet-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-haiku-5-5",
+          "value": "Haiku 5.5",
+          "description": "Haiku 5.5 · Fastest for quick answers",
+          "id": "claude-haiku-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5[1m]",
+          "value": "claude-opus-5-5[1m]",
+          "description": null
+        }
+      ],
+      "claudeSessionId": "a2f6e2a2-9ed6-4cb0-8586-b21acc665160"
+    },
+    {
+      "at": "2026-10-26T17:08:33.547Z",
+      "version": 4,
+      "currentModelCode": "claude-opus-5-5[1m]",
+      "models": [
+        {
+          "code": "default",
+          "value": "Default (recommended)",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5",
+          "value": "Opus 5.5",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-fable-5-1[1m]",
+          "value": "Fable",
+          "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks",
+          "id": "claude-fable-5-1",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-sonnet-5-5",
+          "value": "Sonnet 5.5",
+          "description": "Sonnet 5.5 · Efficient for routine tasks",
+          "id": "claude-sonnet-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-haiku-5-5",
+          "value": "Haiku 5.5",
+          "description": "Haiku 5.5 · Fastest for quick answers",
+          "id": "claude-haiku-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5[1m]",
+          "value": "claude-opus-5-5[1m]",
+          "description": null
+        }
+      ],
+      "claudeSessionId": "a2f6e2a2-9ed6-4cb0-8586-b21acc665160"
+    },
+    {
+      "at": "2026-10-26T17:08:38.468Z",
+      "version": 5,
+      "currentModelCode": "claude-opus-5-5[1m]",
+      "models": [
+        {
+          "code": "default",
+          "value": "Default (recommended)",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5",
+          "value": "Opus 5.5",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-fable-5-1[1m]",
+          "value": "Fable",
+          "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks",
+          "id": "claude-fable-5-1",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-sonnet-5-5",
+          "value": "Sonnet 5.5",
+          "description": "Sonnet 5.5 · Efficient for routine tasks",
+          "id": "claude-sonnet-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-haiku-5-5",
+          "value": "Haiku 5.5",
+          "description": "Haiku 5.5 · Fastest for quick answers",
+          "id": "claude-haiku-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5[1m]",
+          "value": "claude-opus-5-5[1m]",
+          "description": null
+        }
+      ],
+      "claudeSessionId": "a2f6e2a2-9ed6-4cb0-8586-b21acc665160"
+    },
+    {
+      "at": "2026-10-26T17:08:38.719Z",
+      "version": 6,
+      "currentModelCode": "claude-opus-5-5[1m]",
+      "models": [
+        {
+          "code": "default",
+          "value": "Default (recommended)",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5",
+          "value": "Opus 5.5",
+          "description": "Opus 5.5 · Best for everyday, complex tasks",
+          "id": "claude-opus-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-fable-5-1[1m]",
+          "value": "Fable",
+          "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks",
+          "id": "claude-fable-5-1",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-sonnet-5-5",
+          "value": "Sonnet 5.5",
+          "description": "Sonnet 5.5 · Efficient for routine tasks",
+          "id": "claude-sonnet-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-haiku-5-5",
+          "value": "Haiku 5.5",
+          "description": "Haiku 5.5 · Fastest for quick answers",
+          "id": "claude-haiku-5-5",
+          "thinkingLevels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "code": "claude-opus-5-5[1m]",
+          "value": "claude-opus-5-5[1m]",
+          "description": null
+        }
+      ],
+      "claudeSessionId": "a2f6e2a2-9ed6-4cb0-8586-b21acc665160"
+    }
+  ],
+  "relayEvents": [
+    {
+      "kind": "independent-user-socket-connected"
+    },
+    {
+      "kind": "message-echo",
+      "seq": 1
+    },
+    {
+      "kind": "message-echo",
+      "seq": 2
+    },
+    {
+      "kind": "message-echo",
+      "seq": 3
+    },
+    {
+      "kind": "message-echo",
+      "seq": 4
+    },
+    {
+      "kind": "remote-prompt-accepted",
+      "turn": 1,
+      "omittedModelOverride": true,
+      "at": "2026-10-26T17:08:28.295Z"
+    },
+    {
+      "kind": "message-echo",
+      "seq": 5
+    },
+    {
+      "kind": "message-echo",
+      "seq": 6
+    },
+    {
+      "kind": "message-echo",
+      "seq": 7
+    },
+    {
+      "kind": "message-echo",
+      "seq": 8
+    },
+    {
+      "kind": "message-echo",
+      "seq": 9
+    },
+    {
+      "kind": "message-echo",
+      "seq": 10
+    },
+    {
+      "kind": "remote-prompt-accepted",
+      "turn": 2,
+      "omittedModelOverride": true,
+      "at": "2026-10-26T17:08:37.984Z"
+    },
+    {
+      "kind": "message-echo",
+      "seq": 11
+    },
+    {
+      "kind": "message-echo",
+      "seq": 12
+    },
+    {
+      "kind": "message-echo",
+      "seq": 13
+    }
+  ],
+  "status": "passed-headless-live-takeover",
+  "happySessionId": "cmvpifzpyqc3o0q0vfq3d88z5",
+  "local": {
+    "session_id": "a2f6e2a2-9ed6-4cb0-8586-b21acc665160",
+    "subtype": "success",
+    "is_error": false,
+    "result": "PR1844_LOCAL",
+    "modelUsage": {
+      "claude-opus-5-5[1m]": {
+        "inputTokens": 2,
+        "outputTokens": 96,
+        "cacheReadInputTokens": 18552,
+        "cacheCreationInputTokens": 3496,
+        "webSearchRequests": 0,
+        "costUSD": 0.0336064,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 84,
+        "canonicalModel": "claude-opus-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    }
+  },
+  "checks": {
+    "modelsAgree": true,
+    "sameSession": true,
+    "publishedCatalogAndSelection": true,
+    "explicitContextSuffix": true
+  },
+  "reason": "Visual app picker and actual 1M effective capacity require separate observation",
+  "finishedAt": "2026-10-26T17:08:40.953Z"
+}
