@@ -768,8 +768,8 @@ extension AgentConnections {
 /// What a computer serves (`GET /v0/health`'s answer) as the bootstrap its
 /// account's engine reads carries it: everyone who asks what it serves is
 /// answered from there, after the first bootstrap lands. A bootstrap
-/// without `health` serves nothing optional. A client no engine follows
-/// asks the computer.
+/// without `health` serves nothing optional. A client no running engine
+/// follows asks the computer, as does one waiting when a bootstrap fails.
 final class ServedHealth: @unchecked Sendable {
     private let lock = NSLock()
     private var followed = false
@@ -788,10 +788,20 @@ final class ServedHealth: @unchecked Sendable {
         for waiter in waiters { waiter.resume(returning: health) }
     }
 
-    /// The engine stopped: nobody waits for a bootstrap that won't come.
+    /// The engine paused or stopped: nobody waits for a bootstrap that
+    /// won't come.
     func close() {
         let waiters = lock.withLock {
             followed = false
+            defer { waiting = [] }
+            return waiting
+        }
+        for waiter in waiters { waiter.resume(returning: nil) }
+    }
+
+    /// A bootstrap failed: those waiting ask the computer themselves.
+    func missed() {
+        let waiters = lock.withLock {
             defer { waiting = [] }
             return waiting
         }
@@ -807,8 +817,8 @@ final class ServedHealth: @unchecked Sendable {
                 if let health { waiter.resume(returning: health) } else if followed { waiting.append(waiter) } else { waiter.resume(returning: nil) }
             }
         }
-        guard let taken else { throw CancellationError() }
-        return taken
+        if let taken { return taken }
+        return try await ask()
     }
 }
 
