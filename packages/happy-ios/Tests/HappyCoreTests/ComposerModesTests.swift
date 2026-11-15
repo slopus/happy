@@ -225,7 +225,7 @@ final class ModelModeOptionsTests: XCTestCase {
     func testEveryCodexModelGetsTheLevelsItsRegistryPublishes() {
         let full = ["low", "medium", "high", "xhigh", "max", "ultra"]
         let luna = ["low", "medium", "high", "xhigh", "max"]
-        for model in ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra"] {
+        for model in ["gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra"] {
             XCTAssertEqual(keys(Options.effortLevelsForModel(flavor: "codex", modelKey: model)), full, model)
         }
         for model in ["gpt-6-luna", "gpt-5.6-luna"] {
