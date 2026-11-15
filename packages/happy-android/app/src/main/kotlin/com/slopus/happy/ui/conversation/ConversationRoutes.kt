@@ -44,6 +44,7 @@ import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.string
 import com.slopus.happy.agent.chiefOfStaffName
 import com.slopus.happy.chat.obj
 import com.slopus.happy.connection.RequestCategory
@@ -263,7 +264,7 @@ internal fun AgentSession.makeConversation(
         bytesRequest = conversationBytesRequest(), request = conversationRequest(agentId), cloud = client.cloud, fileRequest = conversationFileRequest(),
         sendingDevice = { client.environment.sendingDeviceId },
     ),
-    signals = events.signalsFor(agentId, { chatNeedsResync(agentId) }),
+    signals = events.signalsFor(agentId, { event -> chatNeedsResync(agentId, event.data.string("cursor")) }),
     initialRead = { takeChatRead(agentId) },
     // No screen's or call's: a send or draft save in flight finishes after they go.
     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -306,9 +307,9 @@ internal fun AgentSession.conversationKeeper(agentId: String): ConversationKeepe
 }
 
 /** The connection's journal as one conversation hears it: its own events, configuration and skill changes, and a resync on every (re)connect. */
-internal fun Flow<AgentEvent>.signalsFor(agentId: String, needsResync: () -> Boolean = { true }): Flow<ConversationSignal> = mapNotNull { event ->
+internal fun Flow<AgentEvent>.signalsFor(agentId: String, needsResync: (AgentEvent) -> Boolean = { true }): Flow<ConversationSignal> = mapNotNull { event ->
     when {
-        event.type == AgentEvent.HELLO -> if (needsResync()) ConversationSignal.Resync else null
+        event.type == AgentEvent.HELLO -> if (needsResync(event)) ConversationSignal.Resync else null
         event.agentId == agentId -> ConversationSignal.Event(event.type, event.data)
         // The computer's configuration (its models) changed: every conversation's pickers follow.
         event.type == "config.updated" -> ConversationSignal.Event(event.type, event.data)

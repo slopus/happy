@@ -467,11 +467,11 @@ data class Run(
 }
 
 /** `GET /v0/agents/:id/messages`: whole runs, oldest first. */
-data class MessagesPage(val runs: List<Run>, val hasMore: Boolean) {
+data class MessagesPage(val runs: List<Run>, val hasMore: Boolean, val cursor: String? = null) {
     companion object {
         fun parse(value: JsonElement?): MessagesPage? {
             val o = value.obj ?: return null
-            return MessagesPage(o["runs"].arr?.mapNotNull(Run::parse) ?: return null, o["hasMore"].bool ?: false)
+            return MessagesPage(o["runs"].arr?.mapNotNull(Run::parse) ?: return null, o["hasMore"].bool ?: false, o["cursor"].str)
         }
     }
 }
