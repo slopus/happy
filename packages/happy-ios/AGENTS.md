@@ -458,6 +458,13 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
       account, or "Happy account" (rule 10).
     - A registry rebuilt from the Keychain after corruption loses the
       origin, so those accounts come back as legacy.
+  - **A computer's code goes to an account already here.** Opened as a
+    link or scanned to connect, a `happy://terminal?` code goes to the
+    Happy account in use; with an agent connection shown, to the one used
+    last (the registry's active one), which is shown first
+    (`accountForComputer`, `ScanRoute.connectComputerSwitching`).
+    Authenticate Terminal names that account. Only with none here is a new
+    one made; Add account always makes one.
   - **Account id.** The account's anonymous id, derived from its secret,
     so it is known offline and the same account is never listed twice.
   - **Separate caches.** Each account has its own directory,

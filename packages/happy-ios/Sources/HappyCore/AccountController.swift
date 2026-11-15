@@ -140,6 +140,16 @@ public final class AccountController {
         return registry.entries.first { $0.id == id }?.origin != .madeForComputer
     }
 
+    /// The Happy account a computer's code goes to when it doesn't ask for
+    /// a new one: the one in use, else the one used last (the registry's
+    /// active one, kept while an agent connection is shown), else the one
+    /// added last. Nil with none signed in, or none whose server is
+    /// confirmed: then a computer's code makes one.
+    public var accountForComputer: AccountSummary? {
+        let ready = accounts.filter { !$0.isAgentConnection && $0.serverConfirmed }
+        return ready.first(where: \.isActive) ?? ready.first { $0.id == registry.activeID } ?? ready.last
+    }
+
     public var accounts: [AccountSummary] {
         let legacy = registry.entries.sorted { $0.addedOrder < $1.addedOrder }.map { entry in
             let display = entry.display

@@ -25,6 +25,20 @@ final class ScanRouteTests: XCTestCase {
         XCTAssertEqual(route("happy:///account?" + keyText, .connect, account: true), .linkDevice(publicKey: key))
     }
 
+    /// A link opened or a code scanned to connect while an agent connection
+    /// is shown: the Happy account used last takes the computer, shown
+    /// first; with none here, a new one is made. Add account still makes
+    /// one, and the migration screen's scan is unchanged.
+    func testWithAnAgentConnectionShownTheAccountUsedLastTakesAComputer() {
+        let code = HappyCode("happy://terminal?" + keyText)
+        XCTAssertEqual(ScanRoute.route(code, intent: .connect, hasAccount: false, lastAccount: "a1"), .connectComputerSwitching(account: "a1", publicKey: key))
+        XCTAssertEqual(ScanRoute.route(code, intent: .connect, hasAccount: false, lastAccount: nil), .newAccountForComputer(publicKey: key))
+        XCTAssertEqual(ScanRoute.route(code, intent: .addAccount, hasAccount: false, lastAccount: "a1"), .newAccountForComputer(publicKey: key))
+        XCTAssertEqual(ScanRoute.route(code, intent: .migrate, hasAccount: false, lastAccount: "a1"), .newAccountForComputer(publicKey: key))
+        // Another device's code still needs the account in use.
+        XCTAssertEqual(ScanRoute.route(HappyCode("happy:///account?" + keyText), intent: .connect, hasAccount: false, lastAccount: "a1"), .problem(.deviceNeedsAccount))
+    }
+
     /// Add account with a computer's code: a new account for that computer,
     /// beside the one in use.
     func testAddingAnAccountMakesOneForTheComputer() {

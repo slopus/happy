@@ -108,5 +108,18 @@ final class HappyScanTests: XCTestCase {
         XCTAssertEqual(broken, "\(Strings.Common.error) | \(Strings.Modals.invalidAuthUrl)")
         await controller.signOut()
     }
+
+    /// Authenticate Terminal names the Happy account the computer gets;
+    /// a new account has no name yet, so nothing is said.
+    func testAskingBeforeAComputersLinkNamesTheAccount() async throws {
+        let controller = try await signedIn()
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let name = try XCTUnwrap(controller.accountForComputer?.shownName)
+        XCTAssertEqual(name, Strings.AccountKind.cli)
+        XCTAssertEqual(HappyScan.confirmation(for: .connectComputer(publicKey: key), context: context), "Connect this terminal to Happy CLI?")
+        XCTAssertNil(HappyScan.confirmation(for: .newAccountForComputer(publicKey: key), context: context))
+        XCTAssertNil(HappyScan.confirmation(for: .linkDevice(publicKey: key), context: context))
+        await controller.signOut()
+    }
 }
 #endif

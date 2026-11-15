@@ -26,6 +26,10 @@ public enum ScanRoute: Equatable, Sendable {
     /// Ask first, since a direct code was wanted, then hand the computer
     /// the Happy account in use as `connectComputer` does.
     case confirmConnectComputer(publicKey: Data)
+    /// With an agent connection shown, hand the computer the Happy
+    /// account here that was used last, shown first, rather than make
+    /// another.
+    case connectComputerSwitching(account: String, publicKey: Data)
     /// Make a Happy account, add it beside the others, and hand it to the
     /// computer: when adding an account, or when there is none here yet.
     case newAccountForComputer(publicKey: Data)
@@ -38,15 +42,22 @@ public enum ScanRoute: Equatable, Sendable {
     /// `hasAccount`: a Happy (relay) account is in use, not only a
     /// directly paired computer. `canShareAccount`: that account is a legacy
     /// one, whose secret may go to another device; one made for a computer
-    /// never leaves it and this phone.
-    public static func route(_ code: HappyCode, intent: ScanIntent, hasAccount: Bool, canShareAccount: Bool = true) -> ScanRoute {
+    /// never leaves it and this phone. `lastAccount`: with none in use, the
+    /// Happy account signed in here that was used last, if any.
+    public static func route(_ code: HappyCode, intent: ScanIntent, hasAccount: Bool, canShareAccount: Bool = true, lastAccount: String? = nil) -> ScanRoute {
         switch code {
         case .agentConnection(let link):
             return .connectAgent(link)
         case .server(let link):
             return .signInToServer(link)
         case .terminal(let key):
-            guard hasAccount else { return .newAccountForComputer(publicKey: key) }
+            guard hasAccount else {
+                // A link opened or a code scanned to connect, over an agent
+                // connection: the Happy account there already takes it. A
+                // new one is made only when there is none.
+                if intent == .connect, let lastAccount { return .connectComputerSwitching(account: lastAccount, publicKey: key) }
+                return .newAccountForComputer(publicKey: key)
+            }
             switch intent {
             case .connect: return .connectComputer(publicKey: key)
             case .migrate: return .confirmConnectComputer(publicKey: key)
