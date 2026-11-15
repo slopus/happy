@@ -80,9 +80,10 @@ private actor FlakyCloudServer: AgentTransport {
 
 /// An agent connection's link in its headers (docs/offline-first.md,
 /// "The title while away"), a Happy Cloud server's and a paired
-/// computer's: "Updating…" while its home is read, "Connecting…" while it
-/// is away and asked again, never offline and with no notice; home's title
-/// and a chat's subtitle say the same. Stills go to the repository's
+/// computer's: "Connecting…" until its stream's hello and while it is away
+/// and asked again, never offline and with no notice; then home's title
+/// says "Updating…" until home's bootstrap lands, and a chat's subtitle
+/// until that chat's own history does, whatever home is at. Stills go to the repository's
 /// `.context/cloud-link` when that folder's parent exists, and are
 /// attached to the result either way, for a run on a phone.
 @MainActor
@@ -170,9 +171,11 @@ final class HostedCloudLinkTests: XCTestCase {
         capture(window, "1-cloud-home-updating")
         let catchingUp = ChatViewController(session: session, agentId: "old-agent", title: "Old notes", spaceId: nil, intro: nil)
         navigation.pushViewController(catchingUp, animated: false)
-        try await until("the chat says updating…") { self.chatStatus(catchingUp) == "updating…" }
+        // Its own history landed: online, with home still updating.
+        try await until("the chat says online") { self.chatStatus(catchingUp) == "online" }
+        XCTAssertEqual(home.headerState, .syncing)
         try await Task.sleep(for: .milliseconds(400))
-        capture(window, "2-cloud-chat-updating")
+        capture(window, "2-cloud-chat-online-while-home-updates")
         navigation.popViewController(animated: false)
 
         await server.release()
