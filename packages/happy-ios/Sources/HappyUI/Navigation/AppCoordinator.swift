@@ -295,14 +295,15 @@ public final class AppCoordinator {
         guard clearedForLink(then: { [weak self] in self?.openPendingLink() }),
               let text = pendingLink, let top = linkHost else { return }
         pendingLink = nil
-        let route = ScanRoute.route(HappyCode(text), intent: .connect, hasAccount: context.account.session != nil, canShareAccount: context.account.sessionIsLegacy)
+        let route = HappyScan.route(text, intent: .connect, context: context)
         Task { @MainActor in
             switch route {
-            case .connectComputer, .confirmConnectComputer, .newAccountForComputer, .linkDevice:
+            case .connectComputer, .confirmConnectComputer, .connectComputerSwitching, .newAccountForComputer, .linkDevice:
                 let terminal = if case .linkDevice = route { false } else { true }
+                // Names the account the computer gets, when one here takes it.
                 guard await Alerts.confirm(
                     terminal ? Strings.Modals.authenticateTerminal : Strings.SettingsAccount.linkNewDevice,
-                    nil,
+                    HappyScan.confirmation(for: route, context: context),
                     confirmTitle: Strings.Common.continueAction,
                     on: top
                 ) else { return }
