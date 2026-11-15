@@ -46,6 +46,11 @@ final class StartViewController: UIViewController {
     /// ?, Get help, where ⋯ was: the other ways in are on the next screens.
     private let help = UIButton(type: .system)
     private var offersCloud: Bool { HappyCloud.isOffered(in: context.variant) }
+    /// The stack whose bar this screen hid. Replaced rather than pushed
+    /// over (an account made from a link opened here), it has left the
+    /// stack by the time it disappears, with no navigationController to
+    /// give the bar back to, and the new home came without it.
+    private weak var hidingBar: UINavigationController?
 
     init(context: AppContext) {
         self.context = context
@@ -96,7 +101,8 @@ final class StartViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: animated)
+        hidingBar = navigationController
+        hidingBar?.setNavigationBarHidden(true, animated: animated)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -109,9 +115,10 @@ final class StartViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         gallery.isRunning = false
-        // The screens it opens have their bar.
-        if navigationController?.topViewController !== self {
-            navigationController?.setNavigationBarHidden(false, animated: animated)
+        // The screens it opens have their bar, and so does one that
+        // takes its place.
+        if let stack = hidingBar, stack.topViewController !== self {
+            stack.setNavigationBarHidden(false, animated: animated)
         }
     }
 
