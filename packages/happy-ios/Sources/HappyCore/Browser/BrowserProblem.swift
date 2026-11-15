@@ -28,6 +28,9 @@ public enum BrowserProblem: Equatable, Sendable {
     case crashed
     /// A link to an app or scheme this phone has nothing to open with.
     case unsupported(scheme: String)
+    /// The agent's compute went away (detached or offline): the page
+    /// opens again by itself when it is back.
+    case computeDisconnected
     /// The team server's network allows neither CONNECT nor WebSocket
     /// tunnels, so pages can't open through it.
     case tunnelsBlocked
@@ -55,6 +58,7 @@ public enum BrowserProblem: Equatable, Sendable {
         let error = error as NSError
         // The daemon itself refused the live artifact's route: the computer answered.
         if refusal?.problem == .liveUnavailable { return .liveUnavailable }
+        if refusal?.problem == .computeDisconnected { return .computeDisconnected }
         if link == .waitingForNetwork { return .noNetwork }
         if error.domain == NSURLErrorDomain, isSecurity(error.code) { return .insecure }
         if error.domain == NSURLErrorDomain, error.code == NSURLErrorUnsupportedURL
@@ -84,7 +88,8 @@ public enum BrowserProblem: Equatable, Sendable {
     public static func response(status: Int, proxyError: String?, hasBody: Bool, link: LinkState?) -> BrowserProblem? {
         guard status >= 400 else { return nil }
         if let proxyError {
-            if BrowserProxyRefusal(status: status, code: proxyError).problem == .liveUnavailable { return .liveUnavailable }
+            let problem = BrowserProxyRefusal(status: status, code: proxyError).problem
+            if problem == .liveUnavailable || problem == .computeDisconnected { return problem }
             if (502...504).contains(status) { return .serverNotResponding }
         }
         return hasBody && proxyError == nil ? nil : .http(status: status)
@@ -97,6 +102,7 @@ public enum BrowserProblem: Equatable, Sendable {
         switch error {
         case BrowserError.tunnelsBlocked: return .tunnelsBlocked
         case BrowserError.liveUnavailable: return .liveUnavailable
+        case BrowserError.computeGone: return .computeDisconnected
         case AgentClientError.revoked, is TunnelRefusal: return .signInRequired
         case is BrowserError, is AgentClientError: return .unavailable
         default: return .computerUnreachable
@@ -130,6 +136,9 @@ public struct BrowserProxyRefusal: Equatable, Sendable {
         self.code = code
     }
 
+    /// The code of a tunnel refused because the agent's compute is gone.
+    public static let computeGone = "browser_proxy_compute_gone"
+
     public var problem: BrowserProblem {
         switch code {
         case "browser_proxy_upstream_transport", "browser_proxy_socket_transport", "browser_proxy_upstream_capacity":
@@ -139,6 +148,7 @@ public struct BrowserProxyRefusal: Equatable, Sendable {
         case "browser_proxy_upstream_refused" where (502...504).contains(status): return .serverNotResponding
         case "browser_proxy_tunnels_blocked": return .tunnelsBlocked
         case "browser_proxy_live_unavailable": return .liveUnavailable
+        case BrowserProxyRefusal.computeGone: return .computeDisconnected
         case "browser_proxy_sign_in_required": return .signInRequired
         default: return .unavailable
         }
@@ -151,12 +161,23 @@ public struct BrowserProxyRefusal: Equatable, Sendable {
 public final class BrowserRefusals: @unchecked Sendable {
     private let lock = NSLock()
     private var byAuthority: [String: BrowserProxyRefusal] = [:]
+    private var computeGone: (@Sendable () -> Void)?
 
     public init() {}
 
     func record(_ refusal: BrowserProxyRefusal, for authority: BrowserPolicy.Authority) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
         byAuthority[authority.text] = refusal
+        let gone = refusal.code == BrowserProxyRefusal.computeGone ? computeGone : nil
+        lock.unlock()
+        gone?()
+    }
+
+    /// Told whenever a tunnel of the page's, its own or a subresource's,
+    /// is refused because the agent's compute is gone.
+    public func onComputeGone(_ handler: (@Sendable () -> Void)?) {
+        lock.lock(); defer { lock.unlock() }
+        computeGone = handler
     }
 
     /// The last refusal for `url`'s host, if any since it was last cleared.

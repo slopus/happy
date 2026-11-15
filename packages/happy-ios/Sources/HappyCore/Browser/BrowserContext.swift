@@ -48,7 +48,8 @@ extension AgentClient {
         } catch AgentClientError.status(404, _, _) {
             if signsIn { throw BrowserError.unavailable }
             return .workspace(workspaceID)
-        } catch AgentClientError.status(let status, _, _) {
+        } catch AgentClientError.status(let status, let code, _) {
+            if BrowserCompute.gone(status: status, code: code) { throw BrowserError.computeGone }
             throw BrowserError.upstream(status)
         }
     }
@@ -77,5 +78,24 @@ public actor BrowserAgentNetwork {
     /// Forgets `network` if it is still the one known, so the next tunnel reads it again.
     public func forget(_ network: BrowserNetwork) {
         if known == network { known = nil }
+    }
+
+    /// Whether the agent's compute answers a tunnel to `url`'s server now:
+    /// it opens, or something other than the compute refuses it. A
+    /// compute back within its grace says nothing of having gone, so a
+    /// page closed for it asks this.
+    public func answers(_ url: URL) async -> Bool {
+        guard let authority = BrowserPolicy.Authority(url: url) else { return false }
+        do {
+            let network = try await current()
+            do {
+                let stream = try await client.browserTunnel(network, target: BrowserPolicy.Loopback.target(authority) ?? authority)
+                await stream.abort()
+                return true
+            } catch BrowserError.upstream(let status) {
+                if status == 404 { forget(network) }
+                return status != 429
+            }
+        } catch { return false }
     }
 }

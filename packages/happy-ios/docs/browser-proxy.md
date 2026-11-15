@@ -184,12 +184,32 @@ address that failed, not the last one that worked (`BrowserProblem`):
 | The proxy's tunnel to the computer failed (`browser_proxy_upstream_transport`) | Can't Reach <computer>; retried by itself when the link is back |
 | No session or route (`BrowserError.unavailable`) | Can't Open This Page |
 | A live artifact's own proxy refused (`BrowserError.liveUnavailable`, `browser_proxy_live_unavailable`) | This Page's Computer Isn't Available |
+| The agent's compute is gone (`BrowserError.computeGone`, `browser_proxy_compute_gone`) | Compute Disconnected; opens again by itself when it is back |
 | The computer refused the target (502/503/504 on CONNECT), connection refused or lost | Server Isn't Responding, naming host:port |
 | The proxy's own 502/503/504 response (`X-Happy-Proxy-Error`), whatever its body | Server Isn't Responding |
 | An error status with no body | Page Error <status>; one with a body shows as the page |
 | Timeout, DNS, TLS | Page Took Too Long, Can't Find the Server, Can't Open Securely |
 | The web process stopped | Reloaded once quietly; a second stop shows This Page Stopped Working |
 | A link to an app nothing opens | An alert over the page, or the error page when nothing was shown |
+
+**Compute disconnected.** On Happy Cloud an agent's compute can detach or go
+offline under an open page. The agent's `compute`, read with the agent and
+then from its `agent.updated` events (and read again after a resync), is
+authoritative (`BrowserAgentCompute`): `type: "none"` or `status: "offline"`
+closes the page, `status: "online"` opens it again at the address it was on
+(`BrowserComputeGate`). It is followed only once it has said online or
+offline: a computer's own agents report `type: "none"`, and their pages
+never close for it. A tunnel refused for the compute closes the page as the
+news does, before the news arrives: `409 no_compute`, or `503`
+`compute_offline`, `runner_unavailable` or `draining` (`BrowserCompute.gone`),
+on the agent's network read, the network route or the nested CONNECT, whose
+JSON body names the code. `1000 idle`, `429` and the dev server's own
+refusal (`502 proxy_target_unavailable`) are not the compute. Closing tears
+down the web view and the proxy, so nothing in the page keeps knocking. A
+compute back within its grace sends no news either way, so while the
+compute last said it was there, the page asks every 3 s, doubling to 30 s,
+whether a tunnel opens (`BrowserAgentNetwork.answers`). Try Again opens it
+at once, and it closes again if the compute is still gone.
 
 WebKit only says the proxy refused a tunnel, so `BrowserProxy` keeps the last
 refusal per host (`BrowserRefusals`) and the screen reads it. Cancelled and

@@ -167,6 +167,9 @@ public enum BrowserError: Error, Equatable, Sendable {
     /// A live artifact's own proxy refused to open: the artifact is gone or
     /// no longer live, or the network it was made on isn't served now.
     case liveUnavailable
+    /// The agent's compute is gone (detached, offline or draining): a
+    /// tunnel refused with one of `BrowserCompute.gone`'s codes.
+    case computeGone
 }
 
 /// A bounded HTTP head, preserving duplicate response fields (notably Set-Cookie).

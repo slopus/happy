@@ -104,6 +104,7 @@ extension AgentClient {
             await stream.close()
             if error is CancellationError { throw error }
             if case BrowserError.upstream = error { throw error }
+            if error as? BrowserError == .computeGone { throw error }
             throw BrowserProxyFailure.upstream(error)
         }
     }
@@ -122,8 +123,15 @@ extension AgentClient {
         if let credential { head += "Authorization: Bearer \(credential)\r\n" }
         try await stream.write(Data((head + "\r\n").utf8))
         let (response, rest) = try await BrowserRelay.head(stream)
-        guard response.line.split(separator: " ").dropFirst().first == "200", rest.isEmpty else {
-            throw BrowserError.upstream(Int(response.line.split(separator: " ").dropFirst().first ?? "") ?? 502)
+        let status = Int(response.line.split(separator: " ").dropFirst().first ?? "") ?? 502
+        guard status == 200, rest.isEmpty else {
+            // Happy Cloud answers a stopped compute's CONNECT with a JSON code.
+            var body = rest
+            if status != 200, let length = response.value("content-length").flatMap(Int.init), length <= 65536 {
+                while body.count < length, let bytes = try? await stream.read(maximumBytes: length - body.count), !bytes.isEmpty { body.append(bytes) }
+            }
+            if BrowserCompute.gone(status: status, body: body) { throw BrowserError.computeGone }
+            throw BrowserError.upstream(status)
         }
     }
 }
