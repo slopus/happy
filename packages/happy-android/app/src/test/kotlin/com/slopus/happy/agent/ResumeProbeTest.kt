@@ -189,12 +189,11 @@ class ResumeProbeTest {
         eventually({ after("moved", first) }) { calls -> calls.any { it.startsWith("STREAM") } }
         val moved = after("moved", first)
         val stream = moved.indexOfFirst { it.startsWith("STREAM") }
-        // Both before the link asks anything again: its health read goes over the queries' tunnel.
-        assertTrue(moved.toString(), moved.indexOf("reset Realtime") in 0 until moved.indexOf("GET /v0/health").coerceAtMost(stream))
-        assertTrue(moved.toString(), moved.indexOf("reset Query") in 0 until moved.indexOf("GET /v0/health").coerceAtMost(stream))
+        assertTrue(moved.toString(), moved.indexOf("reset Realtime") in 0 until stream)
+        assertTrue(moved.toString(), moved.indexOf("reset Query") in 0 until stream)
         assertEquals(moved.toString(), listOf("reset Realtime", "reset Query"), moved.filter { it.startsWith("reset") })
         eventually({ first.calls }) { it.contains("network changed") }
-        assertEquals("from where it was", listOf("c0", "c0"), first.streamCursors.toList())
+        assertEquals("from where it was", listOf(null, "c0"), first.streamCursors.toList())
         assertEquals(AgentLinkStatus.Connecting, session.status.value)
         first.frames.send(Wire.hello("c0"))
         eventually({ session.status.value }) { it == AgentLinkStatus.Connected }

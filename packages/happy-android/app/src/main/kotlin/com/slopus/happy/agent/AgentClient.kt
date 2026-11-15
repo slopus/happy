@@ -220,7 +220,7 @@ class AgentClient private constructor(
     /** The transport and token, the credentials read and the link made on the first call. */
     internal suspend fun resolve(): Link = link()
 
-    /** Health's `capabilities.webSocketTunnels`, once known ([noteHealth], or read by [webSocketTunnel]). */
+    /** Bootstrap health's `capabilities.webSocketTunnels`, once known through [noteHealth]. */
     @Volatile private var webSocketTunnels: Boolean? = null
     @Volatile private var bootstrapHealth = JsonObject(emptyMap())
 

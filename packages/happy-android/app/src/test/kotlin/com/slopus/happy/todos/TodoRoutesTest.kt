@@ -60,16 +60,12 @@ class TodoRoutesTest {
     }
 
     @Test
-    fun authorsAreResolvedInBatchesOfAtMostOneHundred() = runBlocking {
+    fun authorsUseTheBootstrapDirectoryWithoutRequests() = runBlocking {
         val daemon = Daemon()
-        daemon.reply = { request ->
-            val users = request.path.substringAfter("?ids=").split(',').joinToString(",") { """{"id":"$it","name":"Person $it"}""" }
-            """{"users":[$users]}"""
-        }
+        val people = mapOf("u1" to "Person One", "u101" to "Person Last")
         val ids = (1..101).map { "u$it" }
-        val names = AgentTodoRoutes(AgentClient(daemon, "test")).names(ids + "u1")
-        assertEquals(101, names.size)
-        assertEquals("Person u101", names["u101"])
-        assertEquals(listOf(100, 1), daemon.requests.map { it.path.substringAfter("?ids=").split(',').size })
+        val names = AgentTodoRoutes(AgentClient(daemon, "test")) { wanted -> people.filterKeys { it in wanted } }.names(ids + "u1")
+        assertEquals(people, names)
+        assertEquals(emptyList<Request>(), daemon.requests)
     }
 }

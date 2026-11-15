@@ -668,9 +668,25 @@ first frame (research/cold-start.md, `ColdStartTest`). An agent
 connection keeps, beside its catalog, each opened
 conversation's newest 100 runs (`KeptConversation`, iOS's
 `conversation:<agentId>`), its Surfaces' last read, and bots' and
-projects' pictures; a chat shows its kept runs, then asks only
-`messages?after=` the newest finished run's last message. The journal
-resumes from the kept cursor; only a gap reads the snapshot again.
+projects' pictures; a chat shows its kept runs, then normally asks only
+`messages?after=` the newest finished run's last message. A chat restored for
+connection startup adopts the session's prefetched latest page instead. The journal
+resumes from the kept cursor only while the in-memory stream last-heard time
+is less than 30 seconds old (heartbeats count). A cold process or an older
+stream opens without a cursor and reads a new home bootstrap.
+
+**Tailcat startup order.** `AgentSession.phase` is `Offline`, `P0Connecting`,
+`P0Live` (hello), then `Verified` (home bootstrap landed and owner checked).
+Open the stream first, then a restored visible chat's bootstrap and latest
+messages, then `/v0/bootstrap/desktop`; the conversation adopts that chat read
+once. Saved navigation supplies the chat ID before foreground startup. A
+late navigation starts the chat immediately without cancelling the home read.
+Only `Verified` starts outbox replay, Feed, the session-owned artifact catalog,
+git watches, and open document work. Pictures use file clients. Bootstrap
+`health` is shared by capability readers; missing health disables capabilities.
+Bootstrap `config.node` updates identity when present. Neither needs a separate
+startup health/config request. People come only from bootstrap teammates (or
+the standalone profile), never per-author lookups.
 
 **Store merges** (`HappyStore`). Writes merge instead of overwrite: each
 versioned document (metadata, agentState, daemonState) keeps the higher
@@ -2200,8 +2216,8 @@ is `packages/happy-ios`. The wire keeps its own names
   stream to `server.tailcat:<port>` per HTTP/1.1 request, framed by
   `HttpResponseParser`. Each request says its `RequestCategory`, which
   picks its client in the connection's `TailcatClients` (iOS's, same names):
-  one for `Realtime` (the event stream), one for `Query` (the default) and up
-  to eight for `File` (pictures and avatars, attachments, messages with
+  one shared main client for `Realtime` (the event stream) and `Query`
+  (the default), and up to three for `File` (pictures and avatars, attachments, messages with
   images, tool-call media, artifact files, and the in-app browser's
   sockets). Each client is made on first use with a node key of its own,
   fresh on every connect: the agent and the DERP relay tell clients apart by
@@ -2240,8 +2256,8 @@ is `packages/happy-ios`. The wire keeps its own names
   default network that moves to another one with no loss between (Wi-Fi to
   cellular, `NetworkChange.Moved` from `defaultNetwork().changes()`, iOS's
   4760daf0c) is different: what was open went out the old way and can hang
-  there silently, so a running link resets its realtime and query clients,
-  says connecting and starts over from its cursor at once
+  there silently, so a running link resets its shared main client,
+  says connecting and reconnects, using its cursor only within the 30-second window
   (`AgentSession.networkMoved`); the rest get the check. It uses
   tailcat-kotlin's default DERP map (`https://tailcat.dev/derpmap.json`),
   cached in `noBackupFilesDir/tailcat/derpmap.json` (`FileDerpMapCache`):

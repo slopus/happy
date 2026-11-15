@@ -83,10 +83,10 @@ enum class SyncPhase { Offline, P0Connecting, P0Live, Verified }
  * [status]. The live link runs while [active] is true (the connection is
  * open and the app in the foreground): `/v0/events/stream`, then the snapshot
  * unless resuming a recent cursor, reconnecting with backoff (1 to 5 s, jitter 0.5)
- * and resuming from the last cursor. A `hello` with `gap` reads the
- * snapshot again. The catalog is kept in [cacheFile] and read off the main
+ * and resuming from the last cursor within 30 seconds of stream bytes.
+ * A resumed `hello` with `gap` reads the snapshot again. The catalog is kept in [cacheFile] and read off the main
  * thread as the session starts, so home shows from disk, offline too, and
- * the next start resumes the journal where this one left it.
+ * a cold process reads a fresh bootstrap before verifying the new stream.
  */
 class AgentSession internal constructor(
     val connectionId: String,
@@ -99,6 +99,7 @@ class AgentSession internal constructor(
     /** Plays desktop's completion chime ([CompletionWatch] decides when). */
     private val chime: () -> Unit = {},
     private val openChat: () -> String? = { null },
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
     private val linkLock = Mutex()
@@ -142,11 +143,36 @@ class AgentSession internal constructor(
     private val phaseState = MutableStateFlow(SyncPhase.Offline)
     val phase: StateFlow<SyncPhase> = phaseState.asStateFlow()
     private var avatarHash: String? = null
+    @Volatile private var lastHeard: Long? = null
+    private var resumeAllowed = false
     private var bootstrapConfig: JsonObject? = null
     private val configLock = Mutex()
     private class ChatRead(val agentId: String, val result: Deferred<Result<Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>>>, var taken: Boolean = false)
     private val chatLock = Any()
     private var chatRead: ChatRead? = null
+    private var chatScope: CoroutineScope? = null
+
+    /** A navigation hint received after stream startup starts immediately, without holding home. */
+    fun hintOpenChat(agentId: String) = synchronized(chatLock) {
+        chatScope?.let { prepareChat(agentId, it) }
+        Unit
+    }
+
+    private fun prepareChat(agentId: String, owner: CoroutineScope): ChatRead {
+        chatRead?.takeIf { it.agentId == agentId }?.let { return it }
+        val result = owner.async {
+            try {
+                val api = com.slopus.happy.conversation.ConversationApi { method, path, body, category -> client.send(method, path, body, category = category) }
+                Result.success(coroutineScope {
+                    val bootstrap = async(start = CoroutineStart.UNDISPATCHED) { api.bootstrap(agentId) }
+                    val messages = async(start = CoroutineStart.UNDISPATCHED) { api.messages(agentId) }
+                    bootstrap.await() to messages.await()
+                })
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { Result.failure(e) }
+        }
+        return ChatRead(agentId, result).also { chatRead = it }
+    }
 
     suspend fun awaitVerified() { phase.first { it == SyncPhase.Verified } }
 
@@ -223,7 +249,7 @@ class AgentSession internal constructor(
         keep = { value -> withContext(Dispatchers.IO) { keepResource(FeedLibrary.RESOURCE, value) } },
     )
 
-    /** Whether home lists Plugins: health's `capabilities.plugins`, with a probe for Happy Cloud servers deployed before it. */
+    /** Whether home lists Plugins: bootstrap health's `capabilities.plugins`. */
     private val pluginsAvailability = com.slopus.happy.plugins.PluginsAvailability(
         probe = null,
         kept = { withContext(Dispatchers.IO) { (cachedResource(com.slopus.happy.plugins.PluginsAvailability.RESOURCE)?.get("available") as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() } },
@@ -741,7 +767,7 @@ class AgentSession internal constructor(
      * (iOS's `SyncEngine.moved`): the stream went out the old way, where it
      * can hang with nothing said until its 40-second silence while home
      * says connected. A running link lets go of the stream's tunnel and the
-     * queries' one, which starting over reads health from first, and starts
+     * queries' shared main client, and starts
      * over at once, from its cursor, saying connecting until the stream
      * answers; every other tunnel is checked as on a return. A check passes
      * while the old way still answers, and that read then hung with it
@@ -782,9 +808,6 @@ class AgentSession internal constructor(
 
     private suspend fun live() {
         var backoff = INITIAL_BACKOFF
-        // A catalog with a cursor (kept, or read before the app went behind) resumes the journal from
-        // there; only a gap or a refused cursor reads the whole snapshot again.
-        var snapshotRead = catalogState.value.let { it.loaded && it.cursor != null }
         while (true) {
             awaitSignedIn()
             if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
@@ -792,31 +815,22 @@ class AgentSession internal constructor(
             val grant = connections.grant(connectionId)
             try {
                 coroutineScope {
-                    val stream = client.events(catalogState.value.cursor.takeIf { snapshotRead })
-                    val chat = openChat()?.let { agentId ->
-                        val result = async {
-                            try {
-                                val api = com.slopus.happy.conversation.ConversationApi { method, path, body, category -> client.send(method, path, body, category = category) }
-                                Result.success(coroutineScope {
-                                    val bootstrap = async(start = CoroutineStart.UNDISPATCHED) { api.bootstrap(agentId) }
-                                    val messages = async(start = CoroutineStart.UNDISPATCHED) { api.messages(agentId) }
-                                    bootstrap.await() to messages.await()
-                                })
-                            } catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { Result.failure(e) }
-                        }
-                        ChatRead(agentId, result)
+                    val cursor = catalogState.value.cursor?.takeIf {
+                        resumeAllowed && catalogState.value.loaded && lastHeard?.let { clock() - it in 0 until 30_000L } == true
                     }
-                    synchronized(chatLock) { chatRead = chat }
+                    if (cursor == null) resumeAllowed = false
+                    val stream = client.events(cursor)
+                    val chat = synchronized(chatLock) {
+                        chatRead = null
+                        chatScope = this
+                        openChat()?.let { prepareChat(it, this) }
+                    }
                     phaseState.value = SyncPhase.P0Connecting
                     val snapshot = async {
                         chat?.result?.await()
-                        if (!snapshotRead) {
-                            readSnapshot()
-                            snapshotRead = true
-                        }
+                        if (cursor == null) readSnapshot()
                     }
-                    follow(stream, snapshot) { backoff = INITIAL_BACKOFF }
+                    follow(stream, snapshot, resumed = cursor != null) { backoff = INITIAL_BACKOFF }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -841,11 +855,12 @@ class AgentSession internal constructor(
                 }
             } catch (e: AgentApiException) {
                 // A 409 cursor_unavailable or any refused read: read the snapshot again.
-                snapshotRead = false
+                lastHeard = null
                 reconnecting()
             } catch (_: Exception) {
                 reconnecting()
             } finally {
+                synchronized(chatLock) { chatScope = null }
                 phaseState.value = SyncPhase.Offline
             }
             delay(backoff + (backoff * JITTER * (random.nextDouble() * 2 - 1)).toLong())
@@ -906,11 +921,12 @@ class AgentSession internal constructor(
     private val completions = CompletionWatch()
 
     /** The journal from the catalog's cursor until the stream ends or fails. */
-    private suspend fun follow(stream: com.slopus.happy.connection.TransportStream, snapshot: Deferred<Unit>, onConnected: () -> Unit) {
+    private suspend fun follow(stream: com.slopus.happy.connection.TransportStream, snapshot: Deferred<Unit>, resumed: Boolean, onConnected: () -> Unit) {
         try {
             val parser = ServerSentEventParser()
             while (true) {
                 val bytes = stream.read() ?: throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+                lastHeard = clock()
                 for (frame in parser.append(bytes)) {
                     // Live document frames go to their documents, never to the journal.
                     if (DocumentStreams.isDocumentFrame(frame.event)) {
@@ -919,10 +935,12 @@ class AgentSession internal constructor(
                     }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
+                        val wasVerified = phaseState.value == SyncPhase.Verified
                         phaseState.value = SyncPhase.P0Live
                         snapshot.await()
                         val hello = AgentHello.of(event)
-                        if (hello.gap) readSnapshot()
+                        if (hello.gap && (resumed || wasVerified)) readSnapshot()
+                        resumeAllowed = true
                         phaseState.value = SyncPhase.Verified
                         documents.opened(event.data)
                         avatarHash?.let { hash ->

@@ -114,6 +114,7 @@ object Wire {
 class FakeAgent(var bootstrap: JsonObject = Wire.bootstrap(), var name: String = "Studio") : Transport {
     val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
     val streamCursors = java.util.concurrent.CopyOnWriteArrayList<String?>()
+    val streamReads = java.util.concurrent.atomic.AtomicInteger()
     var frames = Channel<String>(Channel.UNLIMITED)
     var revoked = false
     var resources = mutableMapOf<String, JsonObject>()
@@ -137,6 +138,7 @@ class FakeAgent(var bootstrap: JsonObject = Wire.bootstrap(), var name: String =
         var headSent = false
         return TransportStream.open(object : ByteSource {
             override suspend fun read(): ByteArray {
+                streamReads.incrementAndGet()
                 if (!headSent) {
                     headSent = true
                     return "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n".toByteArray()
