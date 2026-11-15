@@ -663,7 +663,8 @@ class AgentSessionTest {
     fun signInRequiredStopsAnOpenStreamAndSigningInResumesIt() = runBlocking {
         val session = sessions().session(id)!!
         agent.frames.send(Wire.hello("c0"))
-        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        // A resume cursor is usable after bootstrap verification, later than stream hello.
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
         // A refused refresh elsewhere (git watch, a request) while the stream stays open.
         connections.update(id) { it.copy(signInRequired = true) }
         eventually({ session.status.value }) { it == AgentLinkStatus.SignInRequired }
@@ -672,6 +673,35 @@ class AgentSessionTest {
         eventually({ agent.streamCursors.size }) { it == 2 }
         assertEquals("c0", agent.streamCursors[1])
         assertEquals(1, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
+    }
+
+    @Test
+    fun signingInAfterRevocationDuringInitialBootstrapStartsFreshAndVerifies() = runBlocking {
+        val reads = java.util.concurrent.atomic.AtomicInteger()
+        val firstRead = CompletableDeferred<Unit>()
+        val session = sessions { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (path == "/v0/bootstrap/desktop" && reads.incrementAndGet() == 1) {
+                    firstRead.complete(Unit)
+                    kotlinx.coroutines.awaitCancellation()
+                }
+                return agent.request(method, path, credential, body, headers, category)
+            }
+        } }.session(id)!!
+        firstRead.await()
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.P0Live }
+        assertEquals(AgentLinkStatus.Connected, session.status.value)
+        connections.update(id) { it.copy(signInRequired = true) }
+        eventually({ session.status.value }) { it == AgentLinkStatus.SignInRequired }
+        agent.frames = Channel(Channel.UNLIMITED)
+        connections.update(id) { it.copy(signInRequired = false) }
+        eventually({ agent.streamCursors.size }) { it == 2 }
+        assertEquals(listOf(null, null), agent.streamCursors.toList())
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        assertEquals(2, reads.get())
+        assertEquals("c0", session.catalog.value.cursor)
     }
 
     /** A stream whose reads block their thread, as Tailcat's do: going to the background stops it at once, and coming back opens another. */
