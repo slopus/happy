@@ -9,7 +9,7 @@ import HappyWire
 /// else is a 404, written down all the same.
 private actor OrderServer: AgentTransport {
     static let health: JSONValue = ["ready": .bool(true), "version": ["protocol": 37], "instanceId": "k3x9q2m7p0a4b8c1d5e6f7g2",
-                                    "capabilities": ["feed": .bool(true), "sidebarOperations": .bool(false)]]
+                                    "capabilities": ["feed": .bool(true)]]
     var log: [String] = []
     /// Whether the bootstrap carries `health` and `config`.
     var carries = true

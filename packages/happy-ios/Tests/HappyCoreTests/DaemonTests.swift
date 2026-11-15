@@ -61,8 +61,6 @@ final class DaemonTests: XCTestCase {
     func testSidebarReadsAndStreamsOverTailcat() async throws {
         let client = client(try await credentials())
         defer { Task { await client.close() } }
-        let health = try await client.health()
-        XCTAssertEqual(health.capabilities?.sidebarOperations, true)
         let sidebar = try await client.sidebar(widgets: true)
         let document = try SpaceSidebar.parse(sidebar.html)
         XCTAssertTrue(document.items.contains(.search))
