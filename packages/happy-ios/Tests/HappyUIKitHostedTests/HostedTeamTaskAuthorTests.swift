@@ -25,6 +25,9 @@ private actor TeamDaemon: AgentTransport {
        {"id":"bos","name":"Plan the offsite","ownerUserId":"bo","agent":{"id":"bos-agent","workspaceId":"w3","status":"idle"}},
        {"id":"nobodys","name":"Tidy the backlog","ownerUserId":null,"agent":{"id":"nobodys-agent","workspaceId":"w4","status":"idle"}}],
      "taskMemberships":[{"taskId":"mine"},{"taskId":"adas"},{"taskId":"bos"},{"taskId":"nobodys"}],
+     "teammates":[
+      {"id":"ada","name":"Ada","photo":{"thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"},"version":"1","updatedAt":1},
+      {"id":"bo","name":"Bo","photo":null,"version":"1","updatedAt":1}],
      "surfaces":[]}
     """#
     static let users = #"""
@@ -42,7 +45,9 @@ private actor TeamDaemon: AgentTransport {
     private var continuations: [AsyncThrowingStream<Data, Error>.Continuation] = []
 
     init(team: Bool) {
+        // Outside a team the bootstrap names no teammates.
         bootstrap = team ? Self.fixture : Self.fixture.replacingOccurrences(of: #""userId":"alex""#, with: #""userId":null"#)
+            .replacing(#/"teammates":\[[^\]]*\],/#, with: "")
         func solid(_ color: RGB) -> Data {
             UIGraphicsImageRenderer(size: CGSize(width: 96, height: 96)).image { context in
                 UIColor(red: color.r, green: color.g, blue: color.b, alpha: 1).setFill()
@@ -55,7 +60,6 @@ private actor TeamDaemon: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         requested.append(path)
         if path == "/v0/bootstrap/desktop" { return HTTP1Response(status: 200, body: Data(bootstrap.utf8)) }
-        if path.hasPrefix("/v0/users?ids=") { return HTTP1Response(status: 200, body: Data(Self.users.utf8)) }
         if let photo = photos[path] { return HTTP1Response(status: 200, headers: ["content-type": "image/png"], body: photo) }
         return HTTP1Response(status: 404, body: Data(#"{"error":"Not here.","code":"not_found"}"#.utf8))
     }
