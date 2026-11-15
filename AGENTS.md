@@ -22,6 +22,12 @@ Why: an OTA channel serves whatever was published last, not whatever is on
 `main`. On 2026-09-20 a preview OTA from a stale worktree silently rolled four
 shipped fixes off every preview phone for hours. Git looked fine the whole time.
 
+## GitHub Actions
+
+Never create or add GitHub Actions workflows, or add automatic triggers
+(`push`, `pull_request`, `schedule`) to existing ones, without an explicit user
+instruction. Actions minutes cost real money.
+
 ## Sync To Main
 
 When the user says `sync to main` or `synt to main`, they mean:
