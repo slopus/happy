@@ -1,5 +1,6 @@
 import Foundation
 @testable import HappyCore
+import Network
 import XCTest
 
 final class BrowserTests: XCTestCase {
@@ -252,6 +253,16 @@ final class BrowserTests: XCTestCase {
         do { _ = try await refusing.browserTunnel(.network("c-chat1"), target: cdn); XCTFail() }
         catch { XCTAssertEqual(error as? BrowserError, .outsideNetwork) }
         XCTAssertEqual(BrowserFailure(BrowserError.outsideNetwork).status, 403)
+
+        // The phone never dials itself: only the computer's loopback is the page's.
+        for host in ["0.0.0.0", "127.0.0.1", "::1", "::", "::ffff:127.0.0.1"] {
+            XCTAssertTrue(BrowserDirect.isPhone(NWEndpoint.Host(host)), host)
+        }
+        for host in ["93.184.215.14", "2606:2800:21f:cb07:6820:80da:af6b:8b2c", "example.com"] {
+            XCTAssertFalse(BrowserDirect.isPhone(NWEndpoint.Host(host)), host)
+        }
+        do { _ = try await BrowserDirect.open(authority("http://0.0.0.0:5173")); XCTFail() }
+        catch { XCTAssertEqual(error as? BrowserError, .forbidden) }
     }
 
     func testAStoppedComputesRefusalIsTheComputeGoneNotTheServer() async throws {

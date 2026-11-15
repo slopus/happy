@@ -68,7 +68,9 @@ append a second HTTP error response to its bytes.
   phone dials everything else itself over plain TCP (`BrowserDirect`), TLS
   still the page's own. The trade-off: a page's public requests (fonts, CDNs,
   APIs) leave from the phone's network, not the agent's, so they see the
-  phone's address and reach what the phone can reach, its LAN included. A
+  phone's address and reach what the phone can reach, its LAN included, but
+  never the phone itself: a host that is or resolves to the phone's loopback
+  or `0.0.0.0` is refused (`BrowserDirect.isPhone`). A
   network that didn't say so but refuses a destination past its loopback
   (`403 destination_not_allowed` on the nested CONNECT) is treated the same
   from then on; a refused loopback port (a reserved one) is never dialed

@@ -282,7 +282,9 @@ public actor BrowserProxy {
 enum BrowserDirect {
     static func open(_ authority: BrowserPolicy.Authority, timeout: Duration = .seconds(20)) async throws -> any BrowserStream {
         guard let port = NWEndpoint.Port(rawValue: authority.port) else { throw BrowserError.forbidden }
-        let connection = NWConnection(host: NWEndpoint.Host(authority.host), port: port, using: .tcp)
+        let host = NWEndpoint.Host(authority.host)
+        if isPhone(host) { throw BrowserError.forbidden }
+        let connection = NWConnection(host: host, port: port, using: .tcp)
         let opened = Opening()
         connection.stateUpdateHandler = { state in
             switch state {
@@ -307,7 +309,22 @@ enum BrowserDirect {
             throw BrowserError.upstream(502)
         }
         connection.stateUpdateHandler = nil
+        // A name that resolved to the phone itself.
+        if case .hostPort(let remote, _)? = connection.currentPath?.remoteEndpoint, isPhone(remote) {
+            connection.cancel()
+            throw BrowserError.forbidden
+        }
         return NetworkBrowserStream(connection)
+    }
+
+    /// The phone's own machine (its loopback, `0.0.0.0`): never a page's, whose loopback is the computer's.
+    static func isPhone(_ host: NWEndpoint.Host) -> Bool {
+        func own(_ address: IPv4Address) -> Bool { address.isLoopback || address == .any }
+        switch host {
+        case .ipv4(let address): return own(address)
+        case .ipv6(let address): return address.isLoopback || address == .any || address.asIPv4.map(own) == true
+        default: return false
+        }
     }
 
     private final class Opening: @unchecked Sendable {
