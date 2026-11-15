@@ -61,6 +61,17 @@ class ConnectLayoutTest {
     }
 
     @Test
+    fun terminalConfirmNamesTheAccountFirstInItsDetails() {
+        rule.setHappyContent { TerminalConfirmScreen(publicKey = "abcdefghijklmnop", connecting = false, onAccept = {}, onReject = {}, account = "@kirill") }
+        val details = rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true)[1].bounds
+        val account = rule.node(TerminalScreenTags.ACCOUNT).bounds
+        assertBox("account row", account, details.left + hairline, details.top + hairline, details.right - details.left - hairline * 2, account.bottom - account.top)
+        rule.onNodeWithText("Account").assertExists()
+        rule.onNodeWithText("@kirill").assertExists()
+        rule.onNodeWithText("abcdefghijkl...").assertExists()
+    }
+
+    @Test
     fun terminalConfirmWhileConnecting() {
         rule.setHappyContent { TerminalConfirmScreen(publicKey = "abc", connecting = true, onAccept = {}, onReject = {}) }
         rule.node(TerminalScreenTags.ACCEPT).assertIsNotEnabled()

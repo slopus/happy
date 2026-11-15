@@ -177,12 +177,24 @@ class OnboardingFlowTest {
         assertNull(DeepLinks.pending.value)
     }
 
+    /** Signed out, a terminal link isn't dropped: its confirm screen says a new account is made, and Accept makes it. */
     @Test
-    fun aTerminalLinkWhileSignedOutIsDropped() {
-        DeepLinks.offer(DeepLink.Terminal("abc"))
-        rule.waitForIdle()
+    fun aTerminalLinkWhileSignedOutIsConfirmedForANewAccount() {
+        val terminal = Sodium.boxKeypair()
+        server.addTerminalRequest(terminal.publicKey, supportsV2 = false)
+        DeepLinks.offer(DeepLink.Terminal(encodeBase64(terminal.publicKey, Base64Variant.Url)))
+        rule.waitUntilAtLeastOneExists(hasText("Accept Connection"), 5_000)
+        rule.onNodeWithText("New Happy CLI account").assertExists()
         assertNull(DeepLinks.pending.value)
-        rule.onNodeWithText("Start").assertExists()
-        rule.onNodeWithText("Accept Connection").assertDoesNotExist()
+        assertEquals(AuthState.SignedOut, graph.auth.state.value)
+
+        rule.onNodeWithText("Accept Connection").performClick()
+        val key = encodeBase64(terminal.publicKey)
+        rule.waitUntil(5_000) { synchronized(server) { server.terminalRequests.getValue(key).response != null } }
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
+        val account = graph.auth.state.value as AuthState.SignedIn
+        val response = synchronized(server) { server.terminalRequests.getValue(key).response!! }
+        assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
+        assertEquals(1, graph.accountStore.registry.value.entries.size)
     }
 }

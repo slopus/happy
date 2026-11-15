@@ -6,6 +6,7 @@
 -->
 <resources>
     <string name="account_kind_add_cli_account">Happy CLI アカウントを追加</string>
+    <string name="account_kind_new_cli_account">新しい Happy CLI アカウント</string>
     <string name="account_kind_connect_agent">Happy Agent を接続</string>
     <string name="account_kind_restore_cli_account">Happy CLI アカウントを復元</string>
     <string name="account_kind_cli_server">Happy CLI サーバー</string>

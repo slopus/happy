@@ -237,7 +237,11 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                     }
                 }
                 }
-                DeepLinkEffect(nav, signedIn = signedIn, onOpenSession = { id -> nav.navigate(SessionRoute(id)) }, openConnection = agent, onHappyLink = happyLinks::take)
+                DeepLinkEffect(
+                    nav, signedIn = signedIn, onOpenSession = { id -> nav.navigate(SessionRoute(id)) }, openConnection = agent, onHappyLink = happyLinks::take,
+                    // A terminal link while no Happy account is open: the one it goes to opens, as from home's account menu.
+                    openHappyAccount = { graph.accountStore.registry.value.forTerminal()?.id?.also(switcher::fromHome) != null },
+                )
               }
             }
             PushRegistrationEffect(graph)

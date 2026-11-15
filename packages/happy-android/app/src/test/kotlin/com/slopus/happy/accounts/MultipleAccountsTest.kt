@@ -171,6 +171,28 @@ class MultipleAccountsTest {
     }
 
     @Test
+    fun aTerminalLinkGoesToTheHappyAccountOpenLastEvenAfterARestart() {
+        val graph = graph(defaultServer = first.url)
+        assertNull(graph.accountStore.registry.value.forTerminal())
+        runBlocking { graph.auth.restore(backup(first)) }
+        val a = graph.accountStore.registry.value.activeId!!
+        graph.accountStore.select("agent-connection-1")
+        runBlocking { graph.auth.reload() }
+        graph.serverConfig.set(second.url)
+        runBlocking { graph.auth.restore(backup(second)) }
+        val b = graph.accountStore.registry.value.activeId!!
+        // The open one while it is open, then the one open last while an agent connection is.
+        assertEquals(b, graph.accountStore.registry.value.forTerminal()?.id)
+        runBlocking { graph.open(a).join() }
+        graph.accountStore.select("agent-connection-1")
+        assertEquals(a, graph.accountStore.registry.value.forTerminal()?.id)
+        assertEquals(a, graph(defaultServer = first.url).accountStore.registry.value.forTerminal()?.id)
+        // Signed out of it, the other.
+        graph.accountStore.remove(a)
+        assertEquals(b, graph.accountStore.registry.value.forTerminal()?.id)
+    }
+
+    @Test
     fun removingAnInactiveAccountLeavesTheOpenAccountsSyncFilesAndPreferencesAlone() {
         val graph = graph(defaultServer = first.url)
         runBlocking { graph.auth.restore(backup(first)) }
