@@ -1,0 +1,532 @@
+@import "@rakazo/ui-tokens/css";
+
+.rakazo-logo-avatar {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.logo-avatar-plate {
+  fill: var(--sidebar);
+}
+.logo-avatar-outline {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.logo-avatar-body {
+  transform-origin: 50px 84px;
+}
+.logo-avatar-gaze {
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.logo-avatar-glint {
+  fill: var(--logo-eye-light);
+  opacity: 0.15;
+}
+.logo-avatar-eye-lid {
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Separate clocks keep a bot's two eyes paired without synchronising the fleet. */
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-eye {
+  animation: var(--logo-blink-name) var(--logo-blink-duration) ease-in-out var(--logo-blink-delay)
+    infinite;
+}
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-body,
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-scan,
+.rakazo-logo-avatar:where([data-motion="true"]) .logo-avatar-eye-lid,
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-action {
+  animation-duration: var(--logo-move-duration);
+  animation-delay: var(--logo-move-delay);
+  animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1);
+  animation-iteration-count: infinite;
+}
+.rakazo-logo-avatar[data-motion="true"]
+  .logo-avatar-layer:where([data-activity="working"])
+  .logo-avatar-body {
+  animation-name: logo-avatar-breathe;
+}
+
+.logo-avatar-layer:where([data-activity="reading"]) .logo-avatar-gaze {
+  transform: translate(-10px, -5px);
+}
+.logo-avatar-layer:where([data-activity="reading"]) .logo-avatar-eye-lid {
+  transform: scaleY(0.76);
+}
+.logo-avatar-layer:where([data-activity="writing"]) .logo-avatar-gaze {
+  transform: translate(0, 10px);
+}
+.logo-avatar-layer:where([data-activity="writing"]) .logo-avatar-eye-lid {
+  transform: scaleY(0.62);
+}
+.logo-avatar-layer:where([data-activity="thinking"]) .logo-avatar-gaze {
+  transform: translate(calc(-3px * var(--logo-side)), -4px);
+}
+.logo-avatar-layer:where([data-activity="thinking"]) .logo-avatar-eye-lid {
+  transform: scaleY(0.8);
+}
+.logo-avatar-layer:where([data-activity="computer"]) .logo-avatar-eye-lid {
+  transform: scaleY(1.12);
+}
+.logo-avatar-layer:where([data-activity="error"]) .logo-avatar-eye-lid {
+  transform: scaleY(0.68);
+}
+.logo-avatar-layer:where([data-activity="waiting"]) .logo-avatar-eye-lid {
+  transform: scaleY(0.9);
+}
+
+.rakazo-logo-avatar[data-motion="true"]
+  .logo-avatar-layer:where([data-activity="reading"])
+  .logo-avatar-scan {
+  animation-name: logo-avatar-read;
+}
+.rakazo-logo-avatar[data-motion="true"]
+  .logo-avatar-layer:where([data-activity="writing"])
+  .logo-avatar-scan {
+  animation-name: logo-avatar-write;
+}
+.rakazo-logo-avatar[data-motion="true"]
+  .logo-avatar-layer:where([data-activity="writing"])
+  .logo-avatar-body {
+  animation-name: logo-avatar-write-body;
+}
+.rakazo-logo-avatar[data-motion="true"]
+  .logo-avatar-layer:where([data-activity="thinking"])
+  .logo-avatar-scan {
+  animation-name: logo-avatar-think;
+}
+.rakazo-logo-avatar[data-motion="true"]
+  .logo-avatar-layer:where([data-activity="computer"])
+  .logo-avatar-scan {
+  animation-name: logo-avatar-computer;
+}
+/* Idle avatars hold still: SVG motion repaints on the main thread. */
+.rakazo-logo-avatar .logo-avatar-layer:where([data-activity="idle"]) .logo-avatar-eye,
+.rakazo-logo-avatar .logo-avatar-layer:where([data-activity="error"]) .logo-avatar-eye,
+.rakazo-logo-avatar .logo-avatar-layer:where([data-activity="waiting"]) .logo-avatar-eye {
+  animation: none;
+}
+
+/* Pausing preserves phase; no timers, animation frames or React updates drive motion. */
+.rakazo-logo-avatar[data-paused="true"][data-motion] .logo-avatar-body,
+.rakazo-logo-avatar[data-paused="true"][data-motion] .logo-avatar-scan,
+.rakazo-logo-avatar[data-paused="true"][data-motion] .logo-avatar-eye,
+.rakazo-logo-avatar[data-paused="true"][data-motion] .logo-avatar-eye-lid,
+.rakazo-logo-avatar[data-paused="true"][data-motion] .logo-avatar-action {
+  animation-play-state: paused;
+}
+
+@keyframes logo-avatar-blink-three {
+  0.000000% {
+    transform: scaleY(1);
+  }
+  17.083333% {
+    transform: scaleY(1);
+  }
+  17.291667% {
+    transform: scaleY(0.06);
+  }
+  17.375000% {
+    transform: scaleY(0.06);
+  }
+  17.750000% {
+    transform: scaleY(1);
+  }
+  47.916667% {
+    transform: scaleY(1);
+  }
+  48.125000% {
+    transform: scaleY(0.06);
+  }
+  48.208333% {
+    transform: scaleY(0.06);
+  }
+  48.583333% {
+    transform: scaleY(1);
+  }
+  83.333333% {
+    transform: scaleY(1);
+  }
+  83.541667% {
+    transform: scaleY(0.06);
+  }
+  83.625000% {
+    transform: scaleY(0.06);
+  }
+  84.000000% {
+    transform: scaleY(1);
+  }
+  100.000000% {
+    transform: scaleY(1);
+  }
+}
+@keyframes logo-avatar-blink-four {
+  0.000000% {
+    transform: scaleY(1);
+  }
+  13.333333% {
+    transform: scaleY(1);
+  }
+  13.541667% {
+    transform: scaleY(0.06);
+  }
+  13.625000% {
+    transform: scaleY(0.06);
+  }
+  14.000000% {
+    transform: scaleY(1);
+  }
+  37.083333% {
+    transform: scaleY(1);
+  }
+  37.291667% {
+    transform: scaleY(0.06);
+  }
+  37.375000% {
+    transform: scaleY(0.06);
+  }
+  37.750000% {
+    transform: scaleY(1);
+  }
+  59.166667% {
+    transform: scaleY(1);
+  }
+  59.375000% {
+    transform: scaleY(0.06);
+  }
+  59.458333% {
+    transform: scaleY(0.06);
+  }
+  59.833333% {
+    transform: scaleY(1);
+  }
+  87.916667% {
+    transform: scaleY(1);
+  }
+  88.125000% {
+    transform: scaleY(0.06);
+  }
+  88.208333% {
+    transform: scaleY(0.06);
+  }
+  88.583333% {
+    transform: scaleY(1);
+  }
+  100.000000% {
+    transform: scaleY(1);
+  }
+}
+@keyframes logo-avatar-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.005);
+  }
+}
+@keyframes logo-avatar-read {
+  0%,
+  6%,
+  96%,
+  100% {
+    transform: translate(0, 0);
+  }
+  24%,
+  28% {
+    transform: translate(20px, 0);
+  }
+  34%,
+  38% {
+    transform: translate(0, 5px);
+  }
+  54%,
+  58% {
+    transform: translate(20px, 5px);
+  }
+  64%,
+  68% {
+    transform: translate(0, 10px);
+  }
+  84%,
+  88% {
+    transform: translate(20px, 10px);
+  }
+}
+@keyframes logo-avatar-write {
+  0%,
+  10%,
+  26%,
+  56%,
+  74%,
+  100% {
+    transform: translateY(0);
+  }
+  18% {
+    transform: translateY(3px);
+  }
+  64% {
+    transform: translateY(6px);
+  }
+}
+@keyframes logo-avatar-write-body {
+  0%,
+  10%,
+  26%,
+  56%,
+  74%,
+  100% {
+    transform: translateY(0);
+  }
+  18% {
+    transform: translateY(0.9px);
+  }
+  64% {
+    transform: translateY(1.4px);
+  }
+}
+/* Soft thinking gaze is an original Rakazo pose study, not a runtime reasoning signal. */
+@keyframes logo-avatar-think {
+  0%,
+  8%,
+  100% {
+    transform: translate(0, -2px);
+  }
+  24%,
+  40% {
+    transform: translate(calc(-9px * var(--logo-side)), -8px);
+  }
+  56%,
+  65% {
+    transform: translate(calc(-5px * var(--logo-side)), -11px);
+  }
+  82%,
+  90% {
+    transform: translate(0, -3px);
+  }
+}
+@keyframes logo-avatar-think-lids {
+  0%,
+  8%,
+  100% {
+    transform: scaleY(1);
+  }
+  24%,
+  40% {
+    transform: scaleY(0.8);
+  }
+  56%,
+  65% {
+    transform: scaleY(0.68);
+  }
+  82%,
+  90% {
+    transform: scaleY(0.9);
+  }
+}
+@keyframes logo-avatar-computer {
+  0%,
+  8%,
+  92%,
+  100% {
+    transform: translate(-10px, -3px);
+  }
+  18%,
+  34% {
+    transform: translate(10px, -3px);
+  }
+  48%,
+  76% {
+    transform: translate(-8px, 6px);
+  }
+}
+
+/* Cues illustrate a task; pointer/key positions are not live telemetry. */
+.logo-avatar-task {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: var(--logo-task-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.logo-avatar-task-surface {
+  fill: var(--background);
+}
+.logo-avatar-pointer-fill {
+  fill: var(--foreground);
+  stroke: none;
+}
+.logo-avatar-key-left,
+.logo-avatar-key-right {
+  opacity: 0.7;
+}
+.logo-avatar-selection {
+  opacity: 0;
+}
+.rakazo-logo-avatar[data-compact="true"] .logo-avatar-task-detail {
+  display: none;
+}
+.rakazo-logo-avatar[data-small="true"] .logo-avatar-task {
+  display: none;
+}
+.rakazo-logo-avatar[data-motion="true"]
+  .logo-avatar-layer:where([data-activity="reading"])
+  .logo-avatar-eye-lid {
+  animation-name: logo-avatar-read-lids;
+}
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-page-cursor {
+  animation-name: logo-avatar-page-line;
+}
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-key-left {
+  animation-name: logo-avatar-type-left;
+}
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-key-right {
+  animation-name: logo-avatar-type-right;
+}
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-pointer {
+  animation-name: logo-avatar-pointer;
+}
+.rakazo-logo-avatar[data-motion="true"] .logo-avatar-selection {
+  animation-name: logo-avatar-select;
+}
+.rakazo-logo-avatar[data-motion="true"]
+  .logo-avatar-layer:where([data-activity="thinking"])
+  .logo-avatar-eye-lid {
+  animation-name: logo-avatar-think-lids;
+}
+@keyframes logo-avatar-read-lids {
+  0%,
+  88%,
+  98%,
+  100% {
+    transform: scaleY(0.76);
+  }
+  92%,
+  94% {
+    transform: scaleY(0.06);
+  }
+}
+@keyframes logo-avatar-page-line {
+  0%,
+  6%,
+  96%,
+  100% {
+    transform: translate(0, 0);
+  }
+  24%,
+  28% {
+    transform: translate(37px, 0);
+  }
+  34%,
+  38% {
+    transform: translate(0, 3px);
+  }
+  54%,
+  58% {
+    transform: translate(37px, 3px);
+  }
+  64%,
+  68% {
+    transform: translate(0, 6px);
+  }
+  84%,
+  88% {
+    transform: translate(37px, 6px);
+  }
+}
+@keyframes logo-avatar-type-left {
+  0%,
+  10%,
+  26%,
+  100% {
+    opacity: 0.7;
+    transform: translateY(0);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(1px);
+  }
+}
+@keyframes logo-avatar-type-right {
+  0%,
+  56%,
+  74%,
+  100% {
+    opacity: 0.7;
+    transform: translateY(0);
+  }
+  64% {
+    opacity: 1;
+    transform: translateY(1px);
+  }
+}
+@keyframes logo-avatar-pointer {
+  0%,
+  8%,
+  92%,
+  100% {
+    transform: translate(0, 0);
+  }
+  18%,
+  34% {
+    transform: translate(18px, 0);
+  }
+  48%,
+  76% {
+    transform: translate(7px, 2px);
+  }
+}
+@keyframes logo-avatar-select {
+  0%,
+  50%,
+  84%,
+  100% {
+    opacity: 0;
+  }
+  56%,
+  76% {
+    opacity: 0.85;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rakazo-logo-avatar[data-motion][data-activity] .logo-avatar-body,
+  .rakazo-logo-avatar[data-motion][data-activity] .logo-avatar-eye,
+  .rakazo-logo-avatar[data-motion][data-activity] .logo-avatar-scan,
+  .rakazo-logo-avatar[data-motion][data-activity] .logo-avatar-action,
+  .rakazo-logo-avatar[data-motion][data-activity] .logo-avatar-eye-lid {
+    animation: none;
+  }
+  .rakazo-logo-avatar[data-motion][data-activity] .logo-avatar-gaze,
+  .rakazo-logo-avatar[data-motion][data-activity] .logo-avatar-eye-lid {
+    transition: none;
+  }
+}
+
+/* Native fades temporarily overlap continuing poses; their clocks do not restart. */
+.logo-avatar-layer[data-entering="true"] {
+  animation: logo-avatar-layer-in 180ms ease-in-out both;
+}
+.logo-avatar-layer[data-outgoing="true"] {
+  animation: logo-avatar-layer-out 180ms ease-in-out both;
+}
+@keyframes logo-avatar-layer-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes logo-avatar-layer-out {
+  from {
+    opacity: var(--logo-exit-from);
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rakazo-logo-avatar[data-motion] .logo-avatar-layer {
+    animation: none;
+  }
+}

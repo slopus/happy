@@ -1,0 +1,195 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: rakazo
+      POSTGRES_PASSWORD: topology-only-password
+      POSTGRES_DB: rakazo
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rakazo -d rakazo"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  computer-image:
+    image: ${TOPOLOGY_COMPUTER_IMAGE:-rakazo/computer:topology}
+    build:
+      context: ../sandboxes/computer
+    command: ["true"]
+    restart: "no"
+
+  app-image:
+    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.topology
+    command: ["true"]
+    restart: "no"
+
+  supervisor:
+    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
+    command: ["pnpm", "--filter", "@rakazo/sandbox-supervisor", "start"]
+    user: root
+    environment:
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
+      NODE_ENV: production
+      DATA_DIR: /data
+      SUPERVISOR_HOST: "0.0.0.0"
+      SUPERVISOR_PORT: "7091"
+      SANDBOX_SUPERVISOR_TOKEN: topology-only-supervisor-token-at-least-32-characters
+      DOCKER_SOCKET: /var/run/docker.sock
+      RAKAZO_COMPUTER_IMAGE: ${TOPOLOGY_COMPUTER_IMAGE:-rakazo/computer:topology}
+      RAKAZO_COMPUTER_MEMORY: ${RAKAZO_COMPUTER_MEMORY:-2g}
+      RAKAZO_COMPUTER_CPUS: ${RAKAZO_COMPUTER_CPUS:-2}
+      RAKAZO_COMPUTER_PIDS_LIMIT: ${RAKAZO_COMPUTER_PIDS_LIMIT:-2048}
+      SANDBOX_SCREEN_NETWORK: isolated
+      # Test stack: CI runners do not install the host egress ruleset.
+      SANDBOX_COMPUTER_EGRESS: ${SANDBOX_COMPUTER_EGRESS:-open}
+      SANDBOX_COMPUTER_DNS: ${SANDBOX_COMPUTER_DNS:-}
+      SANDBOX_COMPUTER_MOUNTS: ${SANDBOX_COMPUTER_MOUNTS:-}
+      LOG_LEVEL: info
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - appdata:/data
+    depends_on:
+      app-image:
+        condition: service_completed_successfully
+      computer-image:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:7091/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  api:
+    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
+    # Node runs directly, not through pnpm: pnpm does not pass SIGTERM on, so a stop would kill the
+    # process before its graceful shutdown finishes in-flight requests and jobs.
+    working_dir: /app/apps/api
+    command:
+      - bash
+      - -lc
+      # The owner URL lives only in this command, so neither process environment holds it.
+      - DATABASE_MIGRATION_URL=postgres://rakazo:topology-only-password@postgres:5432/rakazo pnpm db:deploy && exec node --enable-source-maps dist/index.js
+    environment: &app-environment
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
+      MAX_ATTACHMENTS_PER_MESSAGE: ${MAX_ATTACHMENTS_PER_MESSAGE:-4}
+      NODE_ENV: production
+      DATABASE_URL: postgres://rakazo_app:topology-only-runtime-password@postgres:5432/rakazo
+      DATA_DIR: /data
+      BETTER_AUTH_SECRET: topology-only-auth-secret-at-least-32-characters
+      SCREEN_PROXY_SECRET: topology-only-screen-proxy-secret-at-least-32-characters
+      BETTER_AUTH_URL: http://127.0.0.1:${TOPOLOGY_API_PORT:-3199}
+      WEB_ORIGIN: http://127.0.0.1:${TOPOLOGY_API_PORT:-3199}
+      ENCRYPTION_KEY: topology-only-encryption-key-at-least-32-characters
+      CONTENT_ENCRYPTION: "on"
+      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
+      SANDBOX_SUPERVISOR_TOKEN: topology-only-supervisor-token-at-least-32-characters
+      SIGNUPS_ENABLED: "true"
+      WAKEUP_DRIVER: graphile
+      SANDBOX_PROVIDER: docker
+      CLOUD_AGENT_PROVIDER: ${CLOUD_AGENT_PROVIDER:-none}
+      CLOUD_AGENT_SPACE_ID: ${CLOUD_AGENT_SPACE_ID:-}
+      PAYMENT_WALLET_PROVIDER: ${PAYMENT_WALLET_PROVIDER:-none}
+      PAYMENT_WALLET_CLIENT_ID: ${PAYMENT_WALLET_CLIENT_ID:-}
+      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+      AGENT_RUNTIME: scripted
+      # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
+      HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+      HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+      NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
+      http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
+      https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
+      no_proxy: ${no_proxy:-${NO_PROXY:-}}
+      API_PORT: "3100"
+      API_HOST: "0.0.0.0"
+      # Proxies whose X-Forwarded-For is believed. Unset trusts this stack's own networks: the web
+      # proxy and a reverse proxy on the host. See docs/self-host-production.md#client-addresses.
+      TRUSTED_PROXIES:
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_NAME: ${OIDC_NAME:-SSO}
+      OIDC_SCOPES: ${OIDC_SCOPES:-openid email profile}
+      OIDC_ALLOW_SIGNUP_BYPASS: ${OIDC_ALLOW_SIGNUP_BYPASS:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+      APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+      APPLE_PRIVATE_KEY_FILE: ${APPLE_PRIVATE_KEY_FILE:-}
+      AUTH_PASSWORD_ENABLED: ${AUTH_PASSWORD_ENABLED:-true}
+      AUTH_BREACHED_PASSWORD_CHECK_ENABLED: ${AUTH_BREACHED_PASSWORD_CHECK_ENABLED:-false}
+    ports:
+      - "127.0.0.1:${TOPOLOGY_API_PORT:-3199}:3100"
+    volumes:
+      - appdata:/data
+    depends_on:
+      app-image:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      supervisor:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 2s
+      timeout: 5s
+      retries: 45
+
+  web:
+    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
+    # Directly, not through pnpm, so a stop reaches it (see the api command).
+    working_dir: /app/apps/web
+    command: ["node_modules/.bin/vite", "preview", "--host", "0.0.0.0", "--port", "5173"]
+    environment:
+      NODE_ENV: production
+      API_PROXY_TARGET: http://api:3100
+      RAKAZO_HOST: localhost
+      SCREEN_PROXY_SECRET: topology-only-screen-proxy-secret-at-least-32-characters
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:5173').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  worker:
+    image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
+    # Directly, not through pnpm, so a stop reaches it (see the api command).
+    working_dir: /app/apps/worker
+    command: ["node", "--enable-source-maps", "dist/index.js"]
+    healthcheck:
+      test: ["CMD", "node", "dist/health-check.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 2m
+    environment: *app-environment
+    volumes:
+      - appdata:/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  appdata:

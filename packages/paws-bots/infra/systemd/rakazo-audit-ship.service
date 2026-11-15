@@ -1,0 +1,27 @@
+[Unit]
+Description=Ship the host audit trail to an off-host sink
+After=network-online.target auditd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/rakazo/audit-ship.env
+ExecStart=/usr/local/sbin/rakazo-audit-ship
+Restart=always
+RestartSec=10
+StateDirectory=rakazo/audit-ship
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

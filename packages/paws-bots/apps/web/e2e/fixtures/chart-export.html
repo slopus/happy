@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chart export</title>
+  </head>
+  <body>
+    <script type="module">
+      import { renderPlotSpecToSvg } from "@rakazo/core/plot";
+
+      const params = new URLSearchParams(location.search);
+      const long = params.has("long");
+      const labels = params.has("graphemes")
+        ? ["👨‍👩‍👧‍👦", "🇨🇦", "👍🏽", "1️⃣", "é", "👨‍👩‍👧‍👦".repeat(20)]
+        : long
+        ? ["A very long category label without losing any text", "W".repeat(80), "类别😀".repeat(16), "iiiiii", "<&\" export"]
+        : Array.from({ length: 10 }, (_, i) => `Category ${i + 1}`);
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        renderPlotSpecToSvg(
+          {
+            width: Number(params.get("width") ?? 640),
+            height: 200,
+            title: long ? undefined : "Categories",
+            marks: [{ type: "dot", options: { x: "x", y: "y", fill: "category" } }],
+          },
+          labels.map((category, x) => ({ category, x, y: x + 1 })),
+          document,
+        ),
+      );
+    </script>
+  </body>
+</html>

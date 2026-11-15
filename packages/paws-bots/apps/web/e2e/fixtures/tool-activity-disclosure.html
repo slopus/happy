@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tool activity disclosure</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import { createElement as h } from "react";
+      import { createRoot } from "react-dom/client";
+      import "../../src/styles.css";
+
+      const live = new URLSearchParams(location.search).get("live") === "1";
+      const response = h(
+        "div",
+        { "data-testid": "response" },
+        live ? "Opening the terminal now…" : "Terminal is open and ready.",
+      );
+      const bubble = h(
+        "div",
+        {
+          className:
+            "max-w-[74%] space-y-2.5 rounded-[20px] bg-[#1A1A1D] px-[18px] py-3 text-[15.5px] leading-[1.5] text-[#DFDFE2]",
+        },
+        response,
+      );
+      createRoot(document.getElementById("root")).render(
+        h(
+          "main",
+          {
+            className:
+              "flex min-h-screen items-end bg-[#101012] px-4 py-6 md:px-8 md:py-8",
+          },
+          h("div", { className: "flex w-full justify-start" }, bubble),
+        ),
+      );
+    </script>
+  </body>
+</html>

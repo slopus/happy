@@ -37,7 +37,8 @@
         "env:up": "tsx environments/environments.ts up",
         "env:up:authenticated": "pnpm env:up --template authenticated-empty",
         "env:down": "tsx environments/environments.ts down",
-        "env:tailscale": "tsx environments/environments.ts tailscale"
+        "env:tailscale": "tsx environments/environments.ts tailscale",
+        "bots:build": "pnpm --filter @paws/bots build"
     },
     "workspaces": {
         "packages": [
@@ -51,7 +52,12 @@
             "packages/image-gateway",
             "packages/codium",
             "packages/paws-agent-chrome",
-            "packages/paws-agent-party"
+            "packages/paws-agent-party",
+            "packages/paws-bots",
+            "packages/paws-bots/apps/*",
+            "packages/paws-bots/packages/*",
+            "packages/paws-bots/infra/sandboxes/supervisor",
+            "packages/paws-bots/infra/updater"
         ]
     },
     "pnpm": {
@@ -72,7 +78,15 @@
             "node-pty",
             "prisma",
             "sharp"
-        ]
+        ],
+        "patchedDependencies": {
+            "dockerode@5.0.1": "packages/paws-bots/patches/dockerode@5.0.1.patch",
+            "fflate@0.8.3": "packages/paws-bots/patches/fflate@0.8.3.patch"
+        }
     },
-    "packageManager": "pnpm@10.11.0"
+    "packageManager": "pnpm@10.11.0",
+    "devDependencies": {
+        "@prisma/client": "6.19.2",
+        "prisma": "6.19.2"
+    }
 }

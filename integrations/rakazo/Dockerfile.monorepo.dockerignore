@@ -1,0 +1,17 @@
+**
+!packages/
+!packages/paws-bots/
+!packages/paws-bots/**
+**/node_modules
+**/dist
+**/dist-embedded
+**/src/generated
+**/.env
+**/.env.*
+**/test-results
+**/asset-archive
+
+!integrations/
+!integrations/rakazo/
+!integrations/rakazo/egress/
+!integrations/rakazo/egress/public-proxy.mjs

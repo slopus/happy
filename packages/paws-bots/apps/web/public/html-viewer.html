@@ -1,0 +1,55 @@
+<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; frame-src about:; child-src 'none'; form-action 'none'; base-uri 'none'"><meta name="referrer" content="no-referrer"><style>html,body{height:100%;margin:0;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0;background:transparent}</style><iframe id="preview" title="Preview" sandbox="allow-scripts" referrerpolicy="no-referrer" csp="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'"></iframe><script>
+// Loaded from the network (not srcdoc) so the app's CSP is not inherited. The srcdoc inherits this
+// policy too, so it allows the same embedded pictures and media as the preview's. frame-src about: allows
+// the nested srcdoc and rejects navigations the sandbox and inner CSP do not block.
+// Each document the shell shows gets a fresh key. Only the guard placed first in the document knows
+// it: the guard removes its own script before the page's run and keeps the key in a closure, so a
+// page can report no click or key it did not get from the person. It reads a held key's repeat
+// through what it captured first, which the page cannot redefine. Every such gesture lets the page
+// ask the app for one action, right after it.
+let key = "";
+let gesture = 0;
+let gestureAt = 0;
+const GESTURE_WINDOW_MS = 1000;
+function guard() {
+  key = Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(36)).join("");
+  return `<script>(() => { const up = parent, key = "${key}"; document.currentScript.remove(); const apply = Reflect.apply, repeat = Object.getOwnPropertyDescriptor(KeyboardEvent.prototype, "repeat").get; const tell = () => up.postMessage({ type: "rakazo-page:gesture", key }, "*"); addEventListener("pointerup", (event) => { if (event.isTrusted) tell(); }, true); addEventListener("keydown", (event) => { if (event.isTrusted && !apply(repeat, event, [])) tell(); }, true); })();</${"script"}>`;
+}
+addEventListener("message", (event) => {
+  const preview = document.getElementById("preview");
+  // A page asks the app to open a link, offer a reply, copy text or make room for its height; only those pass up.
+  if (event.source === preview.contentWindow && parent !== window) {
+    const data = event.data;
+    // A click or key in the page also activates this shell, which the page cannot fake; the guard
+    // says which click or key it was, so the app acts once for it and not again for the same one.
+    const active = navigator.userActivation ? navigator.userActivation.isActive : false;
+    if (data && data.type === "rakazo-page:gesture") {
+      if (key && data.key === key && active) {
+        gesture += 1;
+        gestureAt = Date.now();
+      }
+      return;
+    }
+    const fresh = active && gesture > 0 && Date.now() - gestureAt <= GESTURE_WINDOW_MS ? `${key}:${gesture}` : null;
+    if (data && data.type === "rakazo-page:open-link" && typeof data.url === "string") {
+      parent.postMessage({ type: data.type, url: data.url, gesture: fresh }, "*");
+    } else if (data && data.type === "rakazo-page:reply" && typeof data.text === "string") {
+      parent.postMessage({ type: data.type, text: data.text.slice(0, 300), gesture: fresh }, "*");
+    } else if (data && data.type === "rakazo-page:copy" && typeof data.id === "string" && typeof data.text === "string") {
+      parent.postMessage({ type: data.type, id: data.id, text: data.text, gesture: fresh }, "*");
+    } else if (data && data.type === "rakazo-page:height" && Number.isFinite(data.height)) {
+      parent.postMessage({ type: data.type, height: data.height }, "*");
+    }
+    return;
+  }
+  if (event.source !== parent || parent === window) return;
+  // The app's answer to a copy: only whether it worked comes back down, never clipboard contents.
+  if (event.data && event.data.type === "rakazo-page:copied") {
+    preview.contentWindow.postMessage({ type: event.data.type, id: String(event.data.id), ok: event.data.ok === true }, "*");
+    return;
+  }
+  if (typeof event.data !== "string") return;
+  gesture = 0;
+  preview.srcdoc = guard() + event.data;
+});
+</script>

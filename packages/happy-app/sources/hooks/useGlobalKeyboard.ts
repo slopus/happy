@@ -16,6 +16,11 @@ export function useGlobalKeyboard(
         }
 
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Directly mounted applications own keys that originate in their root.
+            // Do not mutate hidden Paws panels before their bubble handlers run.
+            const localPath = e.composedPath?.().some(node => (node as Element)?.getAttribute?.('data-paws-shortcuts') === 'local');
+            const localCanvas = typeof document !== 'undefined' && e.target === document.body && document.querySelector('[data-paws-shortcuts="local"]');
+            if (localPath || localCanvas) return;
             if (e.isComposing || e.repeat) {
                 return;
             }

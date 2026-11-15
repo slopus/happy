@@ -9,7 +9,7 @@
     "ios:connected-device": "pnpm ios -d",
     "submit": "eas submit --platform ios",
     "web": "expo start --web",
-    "export:web": "expo export --platform web && tsx sources/scripts/injectWebLoading.ts",
+    "export:web": "expo export --platform web && tsx sources/scripts/injectWebLoading.ts && node ../../scripts/build-bots-web.mjs",
     "test": "vitest",
     "test:android-media-permissions": "expo config --type introspect --json | node scripts/check-android-media-permissions.js",
     "test:image-batch-native-config": "expo config --type introspect --json | node scripts/check-android-media-permissions.js",

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Rakazo production backup nightly
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,18 @@
+# Optional overlay: publish Postgres on loopback for host-side clients
+# (pnpm db:migrate, GUI tools, `pnpm dev` with API on the host).
+# Default source-checkout compose keeps Postgres network-internal only, matching
+# the images compose, so bot containers cannot reach it via host.docker.internal.
+#
+#   docker compose --env-file .env \
+#     -f infra/compose/docker-compose.yml \
+#     -f infra/compose/docker-compose.postgres-host.yml \
+#     up postgres -d
+#
+# Prefer `docker compose exec` when you only need a one-off psql session:
+#   docker compose --env-file .env -f infra/compose/docker-compose.yml exec postgres \
+#     sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"

@@ -1,0 +1,483 @@
+@import "tw-animate-css";
+@import "./shadcn.css";
+@import "@rakazo/ui-tokens/css";
+
+@source "./**/*.{ts,tsx}";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Web type: the system font and one type scale, so sizes stay consistent and a theme can change
+   them in one place. Tailwind's default sizes are switched off; use these. A size off the scale
+   needs an `off-scale:` comment saying why (see type-scale.test.ts). Mobile sets its own type. */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  --text-*: initial;
+  --text-caption: 11px;
+  --text-caption--line-height: 16px;
+  --text-caption--letter-spacing: 0.005em;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 18px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-body-lg: 15px;
+  --text-body-lg--line-height: 22px;
+  --text-heading3: 17px;
+  --text-heading3--line-height: 24px;
+  --text-heading3--letter-spacing: -0.008em;
+  --text-heading2: 22px;
+  --text-heading2--line-height: 28px;
+  --text-heading2--letter-spacing: -0.012em;
+  --text-heading1: 26px;
+  --text-heading1--line-height: 32px;
+  --text-heading1--letter-spacing: -0.015em;
+  --text-display: 32px;
+  --text-display--line-height: 40px;
+  --text-display--letter-spacing: -0.02em;
+}
+
+/* The system font reads light at 400 on macOS; regular text uses 420 there. Medium and semibold stay. */
+:root[data-os="mac"] {
+  --font-weight-normal: 420;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-dialog: var(--dialog);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-disabled: var(--primary-disabled);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-chat-user: var(--chat-user);
+  --color-chat-user-foreground: var(--chat-user-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-fill: var(--destructive-fill);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-link: var(--link);
+  --color-favicon-plate: var(--favicon-plate);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-status-working: var(--status-working);
+  --color-unread: var(--unread);
+  --color-overlay: var(--overlay);
+  --color-scrollbar: var(--scrollbar);
+  --color-scrollbar-hover: var(--scrollbar-hover);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --animate-caret-blink: caret-blink 1.25s ease-out infinite;
+
+  @keyframes caret-blink {
+    0%,
+    70%,
+    100% {
+      opacity: 1;
+    }
+    20%,
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* Native <details> fold-outs slide open and closed instead of snapping. */
+@media (prefers-reduced-motion: no-preference) {
+  :root {
+    interpolate-size: allow-keywords;
+  }
+  details::details-content {
+    block-size: 0;
+    overflow: clip;
+    /* Keep focus rings of full-width controls visible. */
+    overflow-clip-margin: 4px;
+    transition:
+      block-size 150ms ease-out,
+      content-visibility 150ms allow-discrete;
+  }
+  details[open]::details-content {
+    block-size: auto;
+  }
+}
+
+@keyframes rakazo-avatar-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.rakazo-bot-avatar-ring {
+  animation: rakazo-avatar-spin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  opacity: 0;
+  transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rakazo-bot-avatar {
+  transition: box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rakazo-bot-avatar[data-working="true"] .rakazo-bot-avatar-ring {
+  opacity: 1;
+}
+
+/* Hidden idle rings would otherwise keep the compositor drawing every frame. */
+.rakazo-bot-avatar[data-working="false"] .rakazo-bot-avatar-ring {
+  animation-play-state: paused;
+}
+
+@keyframes rakazo-avatar-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.07);
+    filter: brightness(1.12);
+  }
+}
+
+.rakazo-bot-avatar-picture {
+  box-shadow: 0 2px 5px rgb(0 0 0 / 0.5);
+}
+
+.rakazo-bot-avatar-ring-working {
+  filter: drop-shadow(0 0 4px var(--status-working));
+}
+
+.rakazo-bot-avatar[data-working="true"] .rakazo-bot-avatar-picture {
+  animation: rakazo-avatar-breathe 1.6s ease-in-out infinite;
+  box-shadow:
+    0 0 0 2px var(--status-working),
+    0 0 10px color-mix(in srgb, var(--status-working) 60%, transparent);
+}
+
+.rakazo-organic-avatar-body {
+  transform-origin: center;
+  transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rakazo-organic-avatar-body-working {
+  opacity: 0;
+}
+
+.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-body-idle {
+  opacity: 0;
+}
+
+.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-body-working {
+  opacity: 1;
+}
+
+.rakazo-organic-avatar-eyes {
+  transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rakazo-organic-avatar-eyes-working {
+  opacity: 0;
+}
+
+.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-eyes-idle {
+  opacity: 0;
+}
+
+.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-eyes-working {
+  opacity: 1;
+}
+
+.rakazo-organic-avatar[data-eye-pattern="0"] .rakazo-organic-avatar-eyes-working {
+  animation: rakazo-organic-eyes-loop-0 6.6s ease-in-out infinite;
+}
+
+.rakazo-organic-avatar[data-eye-pattern="1"] .rakazo-organic-avatar-eyes-working {
+  animation: rakazo-organic-eyes-loop-1 7.2s ease-in-out -1.4s infinite;
+}
+
+.rakazo-organic-avatar[data-eye-pattern="2"] .rakazo-organic-avatar-eyes-working {
+  animation: rakazo-organic-eyes-loop-2 6.1s ease-in-out -3.2s infinite;
+}
+
+.rakazo-organic-avatar[data-eye-pattern="3"] .rakazo-organic-avatar-eyes-working {
+  animation: rakazo-organic-eyes-loop-3 7.8s ease-in-out -2.1s infinite;
+}
+
+/* Durations mirror @rakazo/core WORKING_AVATAR_DURATIONS_MS (avatar-motion). */
+.rakazo-organic-avatar[data-shape-family="0"] .rakazo-organic-avatar-body-working {
+  animation: rakazo-organic-float 1.8s ease-in-out infinite;
+}
+
+.rakazo-organic-avatar[data-shape-family="1"] .rakazo-organic-avatar-body-working {
+  animation: rakazo-organic-stretch 1.35s ease-in-out infinite;
+}
+
+.rakazo-organic-avatar[data-shape-family="2"] .rakazo-organic-avatar-body-working,
+.rakazo-organic-avatar[data-shape-family="8"] .rakazo-organic-avatar-body-working {
+  animation: rakazo-organic-sway 1.6s ease-in-out infinite;
+}
+
+.rakazo-organic-avatar[data-shape-family="3"] .rakazo-organic-avatar-body-working,
+.rakazo-organic-avatar[data-shape-family="4"] .rakazo-organic-avatar-body-working {
+  animation: rakazo-organic-turn 2.4s ease-in-out infinite;
+}
+
+.rakazo-organic-avatar[data-shape-family="5"] .rakazo-organic-avatar-body-working,
+.rakazo-organic-avatar[data-shape-family="9"] .rakazo-organic-avatar-body-working {
+  animation: rakazo-organic-squash 1.35s ease-in-out infinite;
+}
+
+.rakazo-organic-avatar[data-shape-family="6"] .rakazo-organic-avatar-body-working {
+  animation: rakazo-organic-pulse 1.1s ease-in-out infinite;
+}
+
+.rakazo-organic-avatar[data-shape-family="7"] .rakazo-organic-avatar-body-working {
+  transform-origin: center 20%;
+  animation: rakazo-organic-ring 1.35s ease-in-out infinite;
+}
+
+/* Idle, offscreen and hidden avatars hold still: SVG motion repaints on the main thread. */
+.rakazo-organic-avatar[data-paused="true"] .rakazo-organic-avatar-body,
+.rakazo-organic-avatar[data-paused="true"] .rakazo-organic-avatar-eyes,
+.rakazo-organic-avatar[data-working="false"] .rakazo-organic-avatar-body-working,
+.rakazo-organic-avatar[data-working="false"] .rakazo-organic-avatar-eyes-working {
+  animation-play-state: paused;
+}
+
+@keyframes rakazo-organic-float {
+  0%,
+  100% {
+    transform: translateY(2px) scaleX(1.02);
+  }
+  50% {
+    transform: translateY(-3px) scaleX(0.98);
+  }
+}
+
+@keyframes rakazo-organic-stretch {
+  0%,
+  100% {
+    transform: translateY(2px) scale(1.04, 0.96);
+  }
+  50% {
+    transform: translateY(-3px) scale(0.96, 1.05);
+  }
+}
+
+@keyframes rakazo-organic-sway {
+  0%,
+  100% {
+    transform: rotate(-3deg) translateX(-1px);
+  }
+  50% {
+    transform: rotate(3deg) translateX(1px);
+  }
+}
+
+@keyframes rakazo-organic-turn {
+  0%,
+  100% {
+    transform: rotate(-4deg) scale(0.98);
+  }
+  50% {
+    transform: rotate(4deg) scale(1.04);
+  }
+}
+
+@keyframes rakazo-organic-squash {
+  0%,
+  100% {
+    transform: scale(1.04, 0.96);
+  }
+  50% {
+    transform: scale(0.96, 1.04);
+  }
+}
+
+@keyframes rakazo-organic-pulse {
+  0%,
+  100% {
+    transform: scale(0.96);
+  }
+  45% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes rakazo-organic-ring {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  35% {
+    transform: rotate(5deg);
+  }
+  65% {
+    transform: rotate(-3deg);
+  }
+}
+
+@keyframes rakazo-organic-eyes-loop-0 {
+  0%,
+  100% {
+    transform: translate(-9%, 1%) scaleY(0.94);
+  }
+  18% {
+    transform: translate(9%, -2%) scaleY(1.04);
+  }
+  34% {
+    transform: translate(0, -8%) scale(1.08);
+  }
+  48% {
+    transform: scale(1.12, 0.82);
+  }
+  51% {
+    transform: scale(1.05, 0.08);
+  }
+  54% {
+    transform: scale(1.12, 0.9);
+  }
+  72% {
+    transform: translate(-5%, 7%) scaleY(0.9);
+  }
+  86% {
+    transform: translate(7%, 3%);
+  }
+}
+
+@keyframes rakazo-organic-eyes-loop-1 {
+  0%,
+  100% {
+    transform: translate(0, -8%) scale(1.06);
+  }
+  16% {
+    transform: translate(8%, 2%);
+  }
+  31% {
+    transform: translate(0, 8%) scaleY(0.9);
+  }
+  46% {
+    transform: translate(-8%, 2%);
+  }
+  61% {
+    transform: scale(0.88, 1.1);
+  }
+  76% {
+    transform: translateY(-7%) scaleY(1.08);
+  }
+  88% {
+    transform: translateY(6%) scale(1.08, 0.86);
+  }
+}
+
+@keyframes rakazo-organic-eyes-loop-2 {
+  0%,
+  100% {
+    transform: scale(0.9, 1.08);
+  }
+  20% {
+    transform: scale(1.14, 0.84);
+  }
+  24% {
+    transform: scale(1.08, 0.08);
+  }
+  28% {
+    transform: scale(1.02);
+  }
+  45% {
+    transform: translate(-9%, -3%) scaleY(0.94);
+  }
+  62% {
+    transform: translate(9%, 2%) scaleY(1.05);
+  }
+  80% {
+    transform: translate(0, -8%) scale(1.06);
+  }
+}
+
+@keyframes rakazo-organic-eyes-loop-3 {
+  0%,
+  100% {
+    transform: translateY(7%) scaleY(0.9);
+  }
+  14% {
+    transform: translateY(-9%) scaleY(1.08);
+  }
+  30% {
+    transform: translate(8%, -2%);
+  }
+  47% {
+    transform: translate(-8%, 3%) scaleY(0.94);
+  }
+  63% {
+    transform: scale(1.12, 0.82);
+  }
+  78% {
+    transform: translate(0, -7%) scale(0.9, 1.08);
+  }
+  91% {
+    transform: translate(0, 5%) scale(1.06, 0.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rakazo-bot-avatar-ring,
+  .rakazo-bot-avatar[data-working="true"] .rakazo-bot-avatar-picture {
+    animation: none;
+    transition: none;
+  }
+
+  .rakazo-bot-avatar {
+    transition: none;
+  }
+
+  .rakazo-organic-avatar[data-shape-family] .rakazo-organic-avatar-body {
+    animation: none;
+    d: var(--rakazo-organic-path);
+    transition: none;
+  }
+
+  .rakazo-organic-avatar[data-eye-pattern] .rakazo-organic-avatar-eyes {
+    animation: none;
+    transition: none;
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "name": "@rakazo/contracts",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./local-settings": "./src/local-settings.js",
+    "./client-build": {
+      "types": "./src/client-build.ts",
+      "development": "./src/client-build.ts",
+      "default": "./src/client-build.ts"
+    },
+    "./network-host": {
+      "types": "./src/network-host.ts",
+      "development": "./src/network-host.ts",
+      "default": "./src/network-host.ts"
+    },
+    "./user-devices": {
+      "types": "./src/user-devices.ts",
+      "development": "./src/user-devices.ts",
+      "default": "./src/user-devices.ts"
+    },
+    "./content-security-policy": {
+      "types": "./src/content-security-policy.ts",
+      "development": "./src/content-security-policy.ts",
+      "default": "./src/content-security-policy.ts"
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/contracts/src"
+  },
+  "dependencies": {
+    "@orpc/contract": "1.16.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

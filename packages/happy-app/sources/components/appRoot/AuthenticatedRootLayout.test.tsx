@@ -15,6 +15,9 @@ const bootStages = vi.hoisted(() => {
 });
 
 const accountMocks = vi.hoisted(() => ({
+    activeKey: null as string | null,
+    saveAccountCredentials: vi.fn(async () => ({ key: 'account-B' })),
+    selectSavedAccount: vi.fn(async () => undefined),
     migrateLegacyAccount: vi.fn(async () => undefined),
     recoverAccountSelection: vi.fn(async (_generation?: string) => undefined),
     freezeAccountRuntime: vi.fn(),
@@ -48,10 +51,10 @@ vi.mock('expo-notifications', () => ({
 vi.mock('expo-application', () => ({ applicationId: 'build.paws' }));
 vi.mock('expo-updates', () => ({ channel: 'production', reloadAsync: accountMocks.reload }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
-vi.mock('@/auth/accounts', () => ({ migrateLegacyAccount: accountMocks.migrateLegacyAccount, recoverAccountSelection: accountMocks.recoverAccountSelection }));
+vi.mock('@/auth/accounts', () => ({ migrateLegacyAccount: accountMocks.migrateLegacyAccount, recoverAccountSelection: accountMocks.recoverAccountSelection, saveAccountCredentials: accountMocks.saveAccountCredentials, selectSavedAccount: accountMocks.selectSavedAccount }));
 vi.mock('@/auth/accountRuntime', () => ({
     accountIndex: { getString: vi.fn(), delete: vi.fn(), set: accountMocks.indexSet },
-    getActiveAccountKey: () => null,
+    getActiveAccountKey: () => accountMocks.activeKey,
     getRuntimeAccountSelection: () => ({ generation: 'generation-A' }),
     freezeAccountRuntime: accountMocks.freezeAccountRuntime,
 }));
@@ -174,11 +177,26 @@ describe('AuthenticatedRootLayout scanner provider topology', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        accountMocks.activeKey = null;
         vi.mocked(loadAppRootFonts).mockResolvedValue(undefined);
         vi.mocked(TokenStorage.getCredentials).mockResolvedValue(null);
         vi.mocked(syncRestore).mockClear();
         Platform.OS = 'web';
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    });
+
+    it('persists query login selection before restoring account data', async () => {
+        vi.stubGlobal('__DEV__', true);
+        accountMocks.activeKey = 'account-A';
+        vi.mocked(TokenStorage.getCredentials).mockResolvedValue({ token: 'token-A', secret: 'secret-A' });
+        vi.stubGlobal('window', { location: { search: '?dev_token=token-B&dev_secret=secret-B', pathname: '/bots', replace: accountMocks.replace } });
+        await act(async () => { renderer = TestRenderer.create(<AuthenticatedRootLayout />); });
+        expect(accountMocks.saveAccountCredentials).toHaveBeenCalledWith({ token: 'token-B', secret: 'secret-B' }, 'https://paws.example');
+        expect(accountMocks.selectSavedAccount).toHaveBeenCalledWith('account-B');
+        expect(accountMocks.freezeAccountRuntime).toHaveBeenCalledOnce();
+        expect(accountMocks.replace).toHaveBeenCalledWith('/bots');
+        expect(syncRestore).not.toHaveBeenCalled();
+        expect(TokenStorage.setCredentials).not.toHaveBeenCalled();
     });
 
     it.each(['web', 'ios'] as const)('keeps pending fonts off the Web boot path while retaining the %s prerequisite', async (platform) => {

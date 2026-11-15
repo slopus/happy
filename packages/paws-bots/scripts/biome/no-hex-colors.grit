@@ -1,0 +1,10 @@
+language js
+
+or {
+  JsStringLiteralExpression(),
+  JsxString(),
+  JsTemplateChunkElement()
+} as $text where {
+  $text <: r"(?s).*#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?:[^0-9a-zA-Z-].*)?",
+  register_diagnostic(span=$text, message="Use a semantic color from @rakazo/ui-tokens instead of a hex color.")
+}

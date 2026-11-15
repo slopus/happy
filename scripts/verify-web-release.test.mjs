@@ -64,8 +64,13 @@ async function runVerifier({
     skinContentMatches = true,
     includeSkin = true,
     includeWarmSkin = true,
+    botsAssetFailure = null,
 } = {}) {
     const directory = await createDist(includeSkin, includeWarmSkin);
+    const botsJs = '/assets/bots/bots-' + 'b'.repeat(20) + '.js';
+    const botsCss = '/assets/bots/bots-' + 'c'.repeat(20) + '.css';
+    const html = await readFile(join(directory, 'index.html'), 'utf8');
+    await writeFile(join(directory, 'index.html'), html.replace('</head>', `<meta name="paws-bots-entry" content="${botsJs}"><meta name="paws-bots-style" content="${botsCss}"></head>`));
     let healthRequests = 0;
     const server = http.createServer(async (request, response) => {
         const origin = `http://127.0.0.1:${server.address().port}`;
@@ -123,6 +128,12 @@ async function runVerifier({
             }
             response.end(`<html><head><meta name="paws-release-revision" content="${liveRevision}"></head></html>`);
             return;
+        }
+        if (request.url === botsJs || request.url === botsCss) {
+            response.statusCode = botsAssetFailure === 'missing' ? 404 : 200;
+            response.setHeader('Content-Type', botsAssetFailure === 'html' ? 'text/html' : request.url.endsWith('.css') ? 'text/css' : 'application/javascript');
+            response.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
+            response.end('bots source build'); return;
         }
         if (request.url === '/_expo/app.js') {
             response.statusCode = 200;
@@ -352,4 +363,19 @@ test('accepts a complete immutable release before activation', async () => {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /immutable release entry/i);
     assert.match(result.stdout, /\.well-known\/assetlinks\.json/);
+});
+
+
+test('verifies lazy Bots JS and CSS declared in release metadata', async () => {
+    const result = await runVerifier();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /assets\/bots\/bots-b+\.js/);
+    assert.match(result.stdout, /assets\/bots\/bots-c+\.css/);
+});
+test('refuses activation when a lazy Bots asset is absent or falls back to HTML', async () => {
+    for (const failure of ['missing', 'html']) {
+        const result = await runVerifier({ botsAssetFailure: failure });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /assets\/bots|invalid MIME/);
+    }
 });

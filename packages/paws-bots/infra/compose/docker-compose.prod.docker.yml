@@ -1,0 +1,182 @@
+# Optional overlay: local Docker computers on the production HTTPS stack.
+# Layer it after docker-compose.prod.yml in every Compose invocation:
+#
+#   docker compose --env-file .env \
+#     -f infra/compose/docker-compose.prod.yml \
+#     -f infra/compose/docker-compose.prod.docker.yml \
+#     up -d --build --wait --pull never
+#
+# The base file alone keeps the remote-provider (E2B) topology. Adding this file
+# flips the default SANDBOX_PROVIDER to docker and adds the in-stack supervisor,
+# matching docker-compose.images.yml. When the `updater` profile is enabled too,
+# mirror the file list into RAKAZO_COMPOSE_FILE and add supervisor to
+# RAKAZO_UPDATE_SERVICES (see docs/self-host-upgrading.md).
+
+services:
+  # One-shot stub whose build produces the image the supervisor launches bot
+  # computers from. pull_policy build means Compose builds it and a registry is
+  # never contacted for the `local` tag.
+  computer:
+    image: ${RAKAZO_COMPUTER_IMAGE:-rakazo/computer}:${RAKAZO_COMPUTER_IMAGE_TAG:-local}
+    build:
+      context: ../sandboxes/computer
+    pull_policy: build
+    command: ["true"]
+    network_mode: none
+    restart: "no"
+
+  data-init:
+    image: ${BUSYBOX_IMAGE:-busybox:1}
+    # Chown only entries with the wrong owner, so recreating the app does not rewrite every inode
+    # in the volume; -h changes a symlink itself, never its target.
+    command:
+      [
+        "find",
+        "/data",
+        "!",
+        "(",
+        "-user",
+        "1000",
+        "-group",
+        "1000",
+        ")",
+        "-exec",
+        "chown",
+        "-h",
+        "1000:1000",
+        "{}",
+        "+",
+      ]
+    network_mode: none
+    restart: "no"
+    volumes:
+      - appdata:/data
+
+  # Runs from the app image and holds the Docker socket, which is root-equivalent
+  # on the host, so it is scoped like the updater: no `ports`, no `env_file`, and
+  # only the internal `app` network. Caddy has no route to it. Compose labels the
+  # container with the project, which is how it finds the `web` screen proxy to
+  # join each bot network.
+  supervisor:
+    image: ${RAKAZO_IMAGE:-ghcr.io/elie222/rakazo/app}:${RAKAZO_IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-}
+    restart: unless-stopped
+    command: ["pnpm", "--filter", "@rakazo/sandbox-supervisor", "start"]
+    init: true
+    user: root
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
+      NODE_ENV: production
+      DATA_DIR: /data
+      SUPERVISOR_HOST: "0.0.0.0"
+      SUPERVISOR_PORT: "7091"
+      DOCKER_SOCKET: /var/run/docker.sock
+      RAKAZO_COMPUTER_IMAGE: ${RAKAZO_COMPUTER_IMAGE:-rakazo/computer}:${RAKAZO_COMPUTER_IMAGE_TAG:-local}
+      RAKAZO_COMPUTER_MEMORY: ${RAKAZO_COMPUTER_MEMORY:-2g}
+      RAKAZO_COMPUTER_CPUS: ${RAKAZO_COMPUTER_CPUS:-2}
+      RAKAZO_COMPUTER_PIDS_LIMIT: ${RAKAZO_COMPUTER_PIDS_LIMIT:-2048}
+      SANDBOX_COMMAND_TIMEOUT_MS: ${SANDBOX_COMMAND_TIMEOUT_MS:-300000}
+      SANDBOX_TEAM_SCREEN_LIMIT: ${SANDBOX_TEAM_SCREEN_LIMIT:-0}
+      SANDBOX_MAX_COMPUTERS_PER_SPACE: ${SANDBOX_MAX_COMPUTERS_PER_SPACE:-0}
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
+      SANDBOX_SCREEN_NETWORK: isolated
+      SANDBOX_COMPUTER_EGRESS: ${SANDBOX_COMPUTER_EGRESS:-auto}
+      SANDBOX_COMPUTER_DNS: ${SANDBOX_COMPUTER_DNS:-}
+      SANDBOX_COMPUTER_MOUNTS: ${SANDBOX_COMPUTER_MOUNTS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-}
+      AXIOM_TOKEN: ${AXIOM_TOKEN:-}
+      AXIOM_DATASET: ${AXIOM_DATASET:-}
+      AXIOM_EDGE: ${AXIOM_EDGE:-}
+      AXIOM_EDGE_URL: ${AXIOM_EDGE_URL:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - appdata:/data
+    networks:
+      - app
+    depends_on:
+      computer:
+        condition: service_completed_successfully
+      data-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:7091/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    environment:
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_BROWSER_DSN: ${SENTRY_BROWSER_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SECRET_STORE: ${SECRET_STORE:-encrypted}
+      INFISICAL_URL: ${INFISICAL_URL:-}
+      INFISICAL_ALLOW_INSECURE_HTTP: ${INFISICAL_ALLOW_INSECURE_HTTP:-false}
+      INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID:-}
+      INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET:-}
+      INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID:-}
+      INFISICAL_ENVIRONMENT: ${INFISICAL_ENVIRONMENT:-}
+      INFISICAL_FOLDER: ${INFISICAL_FOLDER:-}
+      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+      # In this topology the supervisor is always the sibling compose service;
+      # hardcoded like docker-compose.images.yml so a copied dev .env
+      # (127.0.0.1) cannot point containers at their own loopback.
+      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
+      SANDBOX_MAX_COMPUTERS_PER_USER: ${SANDBOX_MAX_COMPUTERS_PER_USER:-0}
+      SANDBOX_IDLE_MS: ${SANDBOX_IDLE_MS:-600000}
+      COMPUTER_MAX_ACTIVE_MS: ${COMPUTER_MAX_ACTIVE_MS:-7200000}
+      COMPUTER_MAX_ACTIVE_UNBILLED_MS: ${COMPUTER_MAX_ACTIVE_UNBILLED_MS:-0}
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy
+
+  worker:
+    environment:
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SECRET_STORE: ${SECRET_STORE:-encrypted}
+      INFISICAL_URL: ${INFISICAL_URL:-}
+      INFISICAL_ALLOW_INSECURE_HTTP: ${INFISICAL_ALLOW_INSECURE_HTTP:-false}
+      INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID:-}
+      INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET:-}
+      INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID:-}
+      INFISICAL_ENVIRONMENT: ${INFISICAL_ENVIRONMENT:-}
+      INFISICAL_FOLDER: ${INFISICAL_FOLDER:-}
+      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
+      SANDBOX_MAX_COMPUTERS_PER_USER: ${SANDBOX_MAX_COMPUTERS_PER_USER:-0}
+      SANDBOX_IDLE_MS: ${SANDBOX_IDLE_MS:-600000}
+      COMPUTER_MAX_ACTIVE_MS: ${COMPUTER_MAX_ACTIVE_MS:-7200000}
+      COMPUTER_MAX_ACTIVE_UNBILLED_MS: ${COMPUTER_MAX_ACTIVE_UNBILLED_MS:-0}
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy

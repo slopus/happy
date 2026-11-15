@@ -1,0 +1,101 @@
+{
+	order abort first
+	# The CDN edge is the TCP peer, so the client address comes from the header it sets, and only
+	# when the peer is in its ranges. For another CDN, put its ranges and header here and in
+	# cloudflare_only.
+	servers {
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP
+		trusted_proxies_strict
+	}
+}
+
+(cloudflare_only) {
+	# Keep in sync with https://www.cloudflare.com/ips/.
+	@direct_origin not remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	abort @direct_origin
+}
+
+# JSON access logs on stdout. Caddy already masks Authorization and Cookie; these filters also
+# drop them, Set-Cookie, Referer (a page URL can hold a reset token), and the one-time tokens
+# and screen capabilities the app carries in URLs.
+(access_log) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>headers>Authorization delete
+			request>headers>Proxy-Authorization delete
+			request>headers>Cookie delete
+			request>headers>Referer delete
+			resp_headers>Set-Cookie delete
+			# Native sign-in redirects carry the session cookie in the app callback URL.
+			resp_headers>Location delete
+			request>uri regexp "(/reset-password/|/novnc/session/[a-z]+/|/api/v1/pages/shared/|^/p/)[^/?#&]*|([?&](?:token|_token|code|state|ticket|access_token|id_token|hub\.verify_token|path)=)[^&#]*" "${1}${2}REDACTED"
+		}
+	}
+}
+
+(deploy_retry) {
+	lb_try_duration 10s
+	lb_try_interval 250ms
+}
+
+# Every running API container, looked up again each second, so requests spread across all of them
+# and a stopped one drops out instead of Caddy reusing connections to whichever answered first. A
+# container starting up or shutting down refuses connections while it is still listed; one refusal
+# sets it aside briefly, or least_conn would keep choosing it, since it never has a request open.
+# Keep that shorter than lb_try_duration: a new container set aside while starting must be back
+# before the old ones stop and a waiting request runs out of retries.
+(api) {
+	reverse_proxy {
+		dynamic a api 3100 {
+			refresh 1s
+		}
+		lb_policy least_conn
+		fail_duration 2s
+		import deploy_retry
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
+http://{$RAKAZO_HOST:app.example.com} {
+	import cloudflare_only
+	redir https://{$RAKAZO_HOST:app.example.com}{uri} 308
+}
+
+:80 {
+	abort
+}
+
+{$RAKAZO_HOST:app.example.com} {
+	import cloudflare_only
+	import access_log
+	encode zstd gzip
+
+	# A localhost trial must not pin HTTPS onto every local dev server.
+	@hsts not host localhost 127.0.0.1
+	header @hsts Strict-Transport-Security "max-age=31536000"
+	# SAMEORIGIN still lets the app frame its own /novnc/ screen. The embedded screen frames its runtime
+	# from an opaque sandboxed page, which SAMEORIGIN rejects; only that exact runtime path omits ancestor restrictions.
+	header X-Content-Type-Options nosniff
+	@framed not path /computer-screen/sdk/ASP/container.html
+	header @framed X-Frame-Options SAMEORIGIN
+	# A shared page's link is its only key: keep it out of search results and Referer headers.
+	@sharedPage path /p/*
+	header @sharedPage {
+		X-Robots-Tag "noindex, nofollow"
+		Referrer-Policy no-referrer
+	}
+
+	@api path /health /api/* /rpc/*
+	handle @api {
+		import api
+	}
+
+	handle {
+		reverse_proxy web:5173 {
+			import deploy_retry
+		}
+	}
+}

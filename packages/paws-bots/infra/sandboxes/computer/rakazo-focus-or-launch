@@ -1,0 +1,173 @@
+#!/usr/bin/python3 -I
+"""Raise an app's existing window by WM_CLASS, else spawn its launcher.
+
+The control daemon only forwards allowlisted launchers here. A matched window
+is raised instead of spawning a duplicate. Arguments still reach the launcher
+first (rakazo-browser forwards a URL into its live window) but that launch is
+not waited out: a GUI that stays up must not block the raise. The wrapper then
+exits, so a slow wmctrl listing is not reported as success before focus runs.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+
+
+def browser_wm_class(which=shutil.which):
+    """WM_CLASS of the browser rakazo-browser starts, checked in its search order."""
+    if which("chromium") or which("chromium-browser"):
+        return "chromium"
+    if which("google-chrome") or which("google-chrome-stable"):
+        return "google-chrome"
+    if which("brave-browser"):
+        return "brave-browser"
+    return "chromium"
+
+
+# Launchers whose process WM_CLASS differs from the launcher name. The image
+# holds one browser, chosen by its BROWSER build argument.
+WM_CLASS = {"rakazo-browser": browser_wm_class()}
+WMCTRL_TIMEOUT_SEC = 5
+# control.py uses the same bounds: a browser may still be forwarding a URL
+# after its profile scan, and other apps only need an immediate-failure window.
+LAUNCH_WAIT_SEC = {"rakazo-browser": 2.4}
+DEFAULT_LAUNCH_WAIT_SEC = 0.2
+
+
+def wm_class(launcher):
+    """WM_CLASS component for a launcher; X11 instance defaults to the binary basename."""
+    return WM_CLASS.get(launcher, launcher.rsplit("/", 1)[-1]).lower()
+
+
+def class_matches(field, wanted):
+    """True when wanted equals one complete instance or class component."""
+    return wanted.lower() in field.lower().split(".")
+
+
+def window_profile(pid):
+    """Chromium --user-data-dir for a window PID, or None when it cannot be read."""
+    if not str(pid).isdigit():
+        return None
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        return None
+    args = [arg for arg in raw.split(b"\0") if arg]
+    for index, arg in enumerate(args):
+        if arg.startswith(b"--user-data-dir="):
+            return arg.split(b"=", 1)[1].decode("utf-8", "surrogateescape")
+        if arg == b"--user-data-dir" and index + 1 < len(args):
+            return args[index + 1].decode("utf-8", "surrogateescape")
+    return None
+
+
+def browser_profile():
+    """Profile rakazo-browser would use for this display."""
+    explicit = os.environ.get("RAKAZO_BROWSER_PROFILE", "")
+    if explicit:
+        return explicit
+    display = os.environ.get("DISPLAY", ":1")
+    number = display[1:] if display.startswith(":") else display
+    number = number.split(".", 1)[0]
+    if not number.isdigit():
+        number = "1"
+    number = number.lstrip("0") or "0"
+    recorded = f"/tmp/rakazo/browser-profile-{number}"
+    try:
+        with open(recorded, encoding="utf-8") as handle:
+            profile = handle.read().strip()
+        if profile:
+            return profile
+    except OSError:
+        pass
+    home = os.environ.get("HOME") or "/home/rakazo"
+    if number == "1":
+        return f"{home}/.browser-profiles/chromium"
+    return f"{home}/.browser-profiles/chromium-screen-{number}"
+
+
+def matching_window(listing, wanted, profile=None):
+    """First `wmctrl -lxp` row (id desktop pid wm_class host title) for the class.
+
+    When a browser profile is requested and any candidate exposes one, only that
+    profile matches. Windows whose profile cannot be read stay eligible only if
+    no candidate exposes a profile.
+    """
+    candidates = []
+    for line in listing.splitlines():
+        fields = line.split(None, 5)
+        if len(fields) < 4 or not class_matches(fields[3], wanted):
+            continue
+        candidates.append((fields[0], fields[2]))
+    if not candidates:
+        return ""
+    if not profile:
+        return candidates[0][0]
+    saw_profile = False
+    for window_id, pid in candidates:
+        owner = window_profile(pid)
+        if owner is None:
+            continue
+        saw_profile = True
+        if owner == profile:
+            return window_id
+    if saw_profile:
+        return ""
+    return candidates[0][0]
+
+
+def run_launcher(launcher, args):
+    """Start a launcher without adopting its lifetime.
+
+    The exit code is returned when the process ends within the launch bound.
+    None means it is still running, which is a live GUI rather than a failure.
+    """
+    name = launcher.rsplit("/", 1)[-1]
+    # Detach stdio so a GUI that stays up cannot hold the caller's pipes open.
+    child = subprocess.Popen(
+        [launcher, *args],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        return child.wait(timeout=LAUNCH_WAIT_SEC.get(name, DEFAULT_LAUNCH_WAIT_SEC))
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def activate(window):
+    try:
+        result = subprocess.run(["wmctrl", "-ia", window], timeout=WMCTRL_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired:
+        raise SystemExit(1) from None
+    raise SystemExit(result.returncode)
+
+
+def main(argv):
+    if not argv:
+        raise SystemExit("usage: rakazo-focus-or-launch <launcher> [args...]")
+    launcher, args = argv[0], argv[1:]
+    try:
+        listing = subprocess.run(
+            ["wmctrl", "-lxp"], capture_output=True, text=True, timeout=WMCTRL_TIMEOUT_SEC
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        listing = ""
+    profile = browser_profile() if launcher.rsplit("/", 1)[-1] == "rakazo-browser" else None
+    window = matching_window(listing, wm_class(launcher), profile)
+    if not window:
+        code = run_launcher(launcher, args)
+        raise SystemExit(0 if code is None else code)
+    if args:
+        code = run_launcher(launcher, args)
+        if code:
+            raise SystemExit(code)
+    activate(window)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -11,3 +11,8 @@ packages:
   - "packages/codium"
   - "packages/paws-agent-chrome"
   - "packages/paws-agent-party"
+  - "packages/paws-bots"
+  - "packages/paws-bots/apps/*"
+  - "packages/paws-bots/packages/*"
+  - "packages/paws-bots/infra/sandboxes/supervisor"
+  - "packages/paws-bots/infra/updater"

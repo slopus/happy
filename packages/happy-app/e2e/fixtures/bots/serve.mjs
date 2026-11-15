@@ -14,6 +14,10 @@ const { createEnvironment, getEnvironmentConfig, setEnvironmentTemplate, startEn
 const gatewayFile = process.env.PAWS_BOTS_QA_GATEWAY_ENV;
 if (!gatewayFile) throw new Error('Provide the private runtime gateway.env using PAWS_BOTS_QA_GATEWAY_ENV');
 const privateEnv = parseEnv(await fs.readFile(gatewayFile, 'utf8'));
+const sandboxProvider = process.env.PAWS_BOTS_QA_SANDBOX_PROVIDER ?? 'none';
+if (!['none', 'docker'].includes(sandboxProvider)) throw new Error('Unsupported QA sandbox provider');
+if (process.env.PAWS_BOTS_QA_API_URL) privateEnv.RAKAZO_API_URL = process.env.PAWS_BOTS_QA_API_URL;
+if (process.env.PAWS_BOTS_QA_WEB_URL) { privateEnv.RAKAZO_WEB_URL = process.env.PAWS_BOTS_QA_WEB_URL; privateEnv.RAKAZO_AUTH_ORIGIN = process.env.PAWS_BOTS_QA_WEB_URL; }
 delete process.env.TSX_TSCONFIG_PATH;
 process.env.HAPPY_E2E_DISABLE_WATCHMAN = '1';
 process.env.S3_HOST = '';
@@ -36,10 +40,12 @@ async function main() {
     const serverUrl = `http://localhost:${config.serverPort}`;
     const envDirectory = path.join(root, 'environments/data/envs', environment);
     await fs.chmod(envDirectory, 0o700);
-    const runtimeOrigin = 'http://127.0.0.1:3490';
+    const gatewayPort = Number(process.env.PAWS_BOTS_QA_GATEWAY_PORT ?? 3492);
+    if (![3492, 3493, 3494].includes(gatewayPort)) throw new Error('Use a dedicated QA gateway port');
+    const runtimeOrigin = `http://127.0.0.1:${gatewayPort}`;
     const parentOrigins = `${webUrl},http://127.0.0.1:${config.expoPort},${serverUrl}`;
     gateway = createGateway(configFromEnv({ ...privateEnv, PAWS_BOTS_PUBLIC_ORIGIN: runtimeOrigin, PAWS_BOTS_ALLOWED_PARENT_ORIGINS: parentOrigins })).server;
-    await new Promise((resolve, reject) => { gateway.once('error', reject); gateway.listen(3490, '127.0.0.1', resolve); });
+    await new Promise((resolve, reject) => { gateway.once('error', reject); gateway.listen(gatewayPort, '127.0.0.1', resolve); });
     process.env.PAWS_BOTS_GATEWAY_BOOTSTRAP_URL = runtimeOrigin + '/__paws/bootstrap';
     process.env.PAWS_BOTS_BRIDGE_SECRET = privateEnv.PAWS_BOTS_BRIDGE_SECRET;
     process.env.PAWS_BOTS_ALLOWED_PARENT_ORIGINS = parentOrigins;
@@ -66,7 +72,7 @@ async function main() {
     const runtime = { environment, pid: process.pid, webUrl, serverUrl, runtimeOrigin, accounts,
         boundaries: { app: 'full Paws App', server: 'isolated PGlite and synthetic accounts',
             bots: 'pinned native Rakazo Web/API/worker/PostgreSQL', model: 'real local GPT gateway',
-            sandboxProvider: 'none', productionDeployment: false } };
+            sandboxProvider, productionDeployment: false } };
     controller = createServer((request, response) => {
         response.setHeader('Content-Type', 'application/json');
         if (request.method === 'GET' && request.url === '/runtime') return response.end(JSON.stringify(runtime));

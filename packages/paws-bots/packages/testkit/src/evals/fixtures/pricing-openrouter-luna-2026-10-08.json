@@ -1,0 +1,15 @@
+{
+  "source": "OpenRouter public model catalog",
+  "version": "2026-10-08",
+  "input": 0.1,
+  "output": 0.5,
+  "cacheRead": 0.01,
+  "cacheWrite": 0.125,
+  "longContext": {
+    "thresholdTokens": 272000,
+    "input": 0.2,
+    "output": 0.75,
+    "cacheRead": 0.02,
+    "cacheWrite": 0.25
+  }
+}

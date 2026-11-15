@@ -1,0 +1,38 @@
+<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; media-src data: blob: https:; connect-src https: wss:; frame-src about:; child-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;background:transparent}iframe{display:block;width:100%;height:100%;border:0;background:transparent}html,body{height:100%}</style><iframe id="app" title="App" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe><!--rakazo-app-boot--><script>
+(() => {
+  const frame = document.getElementById("app");
+  const native = Boolean(window.ReactNativeWebView);
+  const up = (message) => native ? window.ReactNativeWebView.postMessage(JSON.stringify(message)) : parent.postMessage(message, "*");
+  const GESTURE_WINDOW_MS = 1000;
+  let key = "", gesture = 0, gestureAt = 0;
+  const guard = () => {
+    key = Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(36)).join("");
+    return `<script>(() => { const up = parent, key = "${key}"; document.currentScript.remove(); const apply = Reflect.apply, repeat = Object.getOwnPropertyDescriptor(KeyboardEvent.prototype, "repeat").get; const tell = () => up.postMessage({ type: "rakazo-app:gesture", key }, "*"); addEventListener("pointerup", (event) => { if (event.isTrusted) tell(); }, true); addEventListener("keydown", (event) => { if (event.isTrusted && !apply(repeat, event, [])) tell(); }, true); })();</${"script"}>`;
+  };
+  const load = (app) => {
+    if (!app || typeof app.head !== "string" || typeof app.body !== "string") return;
+    gesture = 0;
+    frame.srcdoc = app.head + guard() + app.body;
+  };
+  const rpc = (data) => Boolean(data) && typeof data === "object" && data.jsonrpc === "2.0";
+  addEventListener("message", (event) => {
+    const data = event.data;
+    if (event.source === frame.contentWindow) {
+      const active = navigator.userActivation ? navigator.userActivation.isActive : false;
+      if (data && data.type === "rakazo-app:gesture") {
+        if (key && data.key === key && active) { gesture += 1; gestureAt = Date.now(); }
+        return;
+      }
+      if (!rpc(data)) return;
+      const fresh = active && gesture > 0 && Date.now() - gestureAt <= GESTURE_WINDOW_MS ? key + ":" + gesture : null;
+      up({ type: "rakazo-app:view", message: data, gesture: fresh });
+      return;
+    }
+    const fromHost = native ? event.source === window : event.source === parent && parent !== window;
+    if (!fromHost || !data || typeof data !== "object") return;
+    if (data.type === "rakazo-app:load") load(data);
+    else if (data.type === "rakazo-app:host" && rpc(data.message)) frame.contentWindow.postMessage(data.message, "*");
+  });
+  if (window.__rakazoApp) load(window.__rakazoApp);
+})();
+</script>

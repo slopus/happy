@@ -1,0 +1,23 @@
+# Pull request previews (infra/preview/README.md). The deploy workflow passes the app, region
+# and image. The proxy suspends the machine when nobody is visiting and resumes it on the next request,
+# whatever the app inside does.
+kill_signal = "SIGTERM"
+kill_timeout = 30
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[mounts]]
+  source = "preview_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

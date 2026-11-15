@@ -88,7 +88,7 @@ jobs:
         if: ${{ steps.source.outputs.eligible == 'true' }}
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -234,6 +234,7 @@ jobs:
             HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
             pnpm --filter happy-app exec expo export --platform web --clear
           pnpm --filter happy-app exec tsx sources/scripts/injectWebLoading.ts
+          node scripts/build-bots-web.mjs
           node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html
           node scripts/stamp-web-release.mjs \
             packages/happy-app/dist/index.html \
@@ -492,7 +493,7 @@ jobs:
             echo '| Field | Value |'
             echo '| --- | --- |'
             echo "| Origin | $PAWS_WEB_ORIGIN |"
-            echo "| Bots runtime | https://47.115.228.20:8445 (computers disabled) |"
+            echo "| Bots runtime | https://47.115.228.20:8445 (native gateway; provider managed by runtime overlay) |"
             echo "| Commit | \`$GITHUB_SHA\` |"
             echo "| Static storage | \`oss://$PAWS_WEB_OSS_BUCKET/web/releases/$GITHUB_SHA/\` |"
             echo '| Server Web files | Removed after verification |'

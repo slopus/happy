@@ -1,0 +1,46 @@
+/* Beautiful UI primitives — hand-ported from beautifului.dev
+   (github.com/TurboKach/ai-native-react-components, MIT © 2026 Turbo).
+   Colours come from the shared semantic tokens; keyframes are ported
+   verbatim with a bui- prefix to avoid collisions. */
+
+@keyframes bui-shimmer-text {
+  0% {
+    background-position: 150%;
+  }
+  100% {
+    background-position: -50%;
+  }
+}
+@keyframes bui-pixel-on {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  18%,
+  42% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 0.15;
+  }
+}
+@keyframes bui-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes bui-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

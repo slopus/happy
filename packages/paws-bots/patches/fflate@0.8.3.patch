@@ -1,0 +1,195 @@
+diff --git a/esm/browser.js b/esm/browser.js
+index 82af0fdb655f00655d2da3354c4533744edcde6e..bdca5cd83e7bd5cdaa156500800fd845feb7afb4 100644
+--- a/esm/browser.js
++++ b/esm/browser.js
+@@ -670,7 +670,7 @@ var dflt = function (dat, lvl, plvl, pre, post, st) {
+                 var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+                 if (rem > 2 && hv == hsh(i - dif)) {
+                     var maxn = Math.min(n, rem) - 1;
+-                    var maxd = Math.min(32767, i);
++                    var maxd = Math.min(32767, i - (st.f || 0));
+                     // max possible length
+                     // not capped at dif because decompressors implement "rolling" index population
+                     var ml = Math.min(258, rem);
+@@ -1029,7 +1029,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             cb = opts, opts = {};
+         this.ondata = cb;
+         this.o = opts || {};
+-        this.s = { l: 0, i: 32768, w: 32768, z: 32768 };
++        this.s = { l: 0, i: 32768, w: 32768, z: 32768, f: 32768 };
+         // Buffer length must always be 0 mod 32768 for index calculations to be correct when modifying head and prev
+         // 98304 = 32768 (lookback) + 65536 (common chunk size)
+         this.b = new u8(98304);
+@@ -1037,6 +1037,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             var dict = this.o.dictionary.subarray(-32768);
+             this.b.set(dict, 32768 - dict.length);
+             this.s.i = 32768 - dict.length;
++            this.s.f = 32768 - dict.length;
+         }
+     }
+     Deflate.prototype.p = function (c, f) {
+@@ -1066,7 +1067,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             this.b.set(this.b.subarray(-32768));
+             this.b.set(chunk.subarray(split), 32768);
+             this.s.z = chunk.length - split + 32768;
+-            this.s.i = 32766, this.s.w = 32768;
++            this.s.i = 32766, this.s.w = 32768, this.s.f = 0;
+         }
+         else {
+             this.b.set(chunk, this.s.z);
+diff --git a/esm/index.mjs b/esm/index.mjs
+index 4c057eef8a9932d1eb80325c2f08f2975afe23bd..c6cb542f41c67346330207a40224399366a9c1e2 100644
+--- a/esm/index.mjs
++++ b/esm/index.mjs
+@@ -688,7 +688,7 @@ var dflt = function (dat, lvl, plvl, pre, post, st) {
+                 var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+                 if (rem > 2 && hv == hsh(i - dif)) {
+                     var maxn = Math.min(n, rem) - 1;
+-                    var maxd = Math.min(32767, i);
++                    var maxd = Math.min(32767, i - (st.f || 0));
+                     // max possible length
+                     // not capped at dif because decompressors implement "rolling" index population
+                     var ml = Math.min(258, rem);
+@@ -1047,7 +1047,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             cb = opts, opts = {};
+         this.ondata = cb;
+         this.o = opts || {};
+-        this.s = { l: 0, i: 32768, w: 32768, z: 32768 };
++        this.s = { l: 0, i: 32768, w: 32768, z: 32768, f: 32768 };
+         // Buffer length must always be 0 mod 32768 for index calculations to be correct when modifying head and prev
+         // 98304 = 32768 (lookback) + 65536 (common chunk size)
+         this.b = new u8(98304);
+@@ -1055,6 +1055,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             var dict = this.o.dictionary.subarray(-32768);
+             this.b.set(dict, 32768 - dict.length);
+             this.s.i = 32768 - dict.length;
++            this.s.f = 32768 - dict.length;
+         }
+     }
+     Deflate.prototype.p = function (c, f) {
+@@ -1084,7 +1085,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             this.b.set(this.b.subarray(-32768));
+             this.b.set(chunk.subarray(split), 32768);
+             this.s.z = chunk.length - split + 32768;
+-            this.s.i = 32766, this.s.w = 32768;
++            this.s.i = 32766, this.s.w = 32768, this.s.f = 0;
+         }
+         else {
+             this.b.set(chunk, this.s.z);
+diff --git a/lib/browser.cjs b/lib/browser.cjs
+index d3427caca233f968e8b3dc9c1a2d96e81abe42d3..4c922b32c9102989fc8e20aee02539a3f6f40333 100644
+--- a/lib/browser.cjs
++++ b/lib/browser.cjs
+@@ -696,7 +696,7 @@ var dflt = function (dat, lvl, plvl, pre, post, st) {
+                 var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+                 if (rem > 2 && hv == hsh(i - dif)) {
+                     var maxn = Math.min(n, rem) - 1;
+-                    var maxd = Math.min(32767, i);
++                    var maxd = Math.min(32767, i - (st.f || 0));
+                     // max possible length
+                     // not capped at dif because decompressors implement "rolling" index population
+                     var ml = Math.min(258, rem);
+@@ -1055,7 +1055,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             cb = opts, opts = {};
+         this.ondata = cb;
+         this.o = opts || {};
+-        this.s = { l: 0, i: 32768, w: 32768, z: 32768 };
++        this.s = { l: 0, i: 32768, w: 32768, z: 32768, f: 32768 };
+         // Buffer length must always be 0 mod 32768 for index calculations to be correct when modifying head and prev
+         // 98304 = 32768 (lookback) + 65536 (common chunk size)
+         this.b = new u8(98304);
+@@ -1063,6 +1063,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             var dict = this.o.dictionary.subarray(-32768);
+             this.b.set(dict, 32768 - dict.length);
+             this.s.i = 32768 - dict.length;
++            this.s.f = 32768 - dict.length;
+         }
+     }
+     Deflate.prototype.p = function (c, f) {
+@@ -1092,7 +1093,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             this.b.set(this.b.subarray(-32768));
+             this.b.set(chunk.subarray(split), 32768);
+             this.s.z = chunk.length - split + 32768;
+-            this.s.i = 32766, this.s.w = 32768;
++            this.s.i = 32766, this.s.w = 32768, this.s.f = 0;
+         }
+         else {
+             this.b.set(chunk, this.s.z);
+diff --git a/lib/index.cjs b/lib/index.cjs
+index ea4da56d93b2462ca17e4220840416d561b4a645..ec4b4bb4c1aa1e0d6c58497207931e427410829d 100644
+--- a/lib/index.cjs
++++ b/lib/index.cjs
+@@ -676,7 +676,7 @@ var dflt = function (dat, lvl, plvl, pre, post, st) {
+                 var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+                 if (rem > 2 && hv == hsh(i - dif)) {
+                     var maxn = Math.min(n, rem) - 1;
+-                    var maxd = Math.min(32767, i);
++                    var maxd = Math.min(32767, i - (st.f || 0));
+                     // max possible length
+                     // not capped at dif because decompressors implement "rolling" index population
+                     var ml = Math.min(258, rem);
+@@ -1035,7 +1035,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             cb = opts, opts = {};
+         this.ondata = cb;
+         this.o = opts || {};
+-        this.s = { l: 0, i: 32768, w: 32768, z: 32768 };
++        this.s = { l: 0, i: 32768, w: 32768, z: 32768, f: 32768 };
+         // Buffer length must always be 0 mod 32768 for index calculations to be correct when modifying head and prev
+         // 98304 = 32768 (lookback) + 65536 (common chunk size)
+         this.b = new u8(98304);
+@@ -1043,6 +1043,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             var dict = this.o.dictionary.subarray(-32768);
+             this.b.set(dict, 32768 - dict.length);
+             this.s.i = 32768 - dict.length;
++            this.s.f = 32768 - dict.length;
+         }
+     }
+     Deflate.prototype.p = function (c, f) {
+@@ -1072,7 +1073,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             this.b.set(this.b.subarray(-32768));
+             this.b.set(chunk.subarray(split), 32768);
+             this.s.z = chunk.length - split + 32768;
+-            this.s.i = 32766, this.s.w = 32768;
++            this.s.i = 32766, this.s.w = 32768, this.s.f = 0;
+         }
+         else {
+             this.b.set(chunk, this.s.z);
+diff --git a/lib/node.cjs b/lib/node.cjs
+index 2af184ee06114ac0939176ed868915d2d48a903a..627cc4687dbfab33fe31400d1013ec70d93e231b 100644
+--- a/lib/node.cjs
++++ b/lib/node.cjs
+@@ -712,7 +712,7 @@ var dflt = function (dat, lvl, plvl, pre, post, st) {
+                 var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+                 if (rem > 2 && hv == hsh(i - dif)) {
+                     var maxn = Math.min(n, rem) - 1;
+-                    var maxd = Math.min(32767, i);
++                    var maxd = Math.min(32767, i - (st.f || 0));
+                     // max possible length
+                     // not capped at dif because decompressors implement "rolling" index population
+                     var ml = Math.min(258, rem);
+@@ -1071,7 +1071,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             cb = opts, opts = {};
+         this.ondata = cb;
+         this.o = opts || {};
+-        this.s = { l: 0, i: 32768, w: 32768, z: 32768 };
++        this.s = { l: 0, i: 32768, w: 32768, z: 32768, f: 32768 };
+         // Buffer length must always be 0 mod 32768 for index calculations to be correct when modifying head and prev
+         // 98304 = 32768 (lookback) + 65536 (common chunk size)
+         this.b = new u8(98304);
+@@ -1079,6 +1079,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             var dict = this.o.dictionary.subarray(-32768);
+             this.b.set(dict, 32768 - dict.length);
+             this.s.i = 32768 - dict.length;
++            this.s.f = 32768 - dict.length;
+         }
+     }
+     Deflate.prototype.p = function (c, f) {
+@@ -1108,7 +1109,7 @@ var Deflate = /*#__PURE__*/ (function () {
+             this.b.set(this.b.subarray(-32768));
+             this.b.set(chunk.subarray(split), 32768);
+             this.s.z = chunk.length - split + 32768;
+-            this.s.i = 32766, this.s.w = 32768;
++            this.s.i = 32766, this.s.w = 32768, this.s.f = 0;
+         }
+         else {
+             this.b.set(chunk, this.s.z);

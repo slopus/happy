@@ -1,0 +1,10 @@
+language js
+
+or {
+  JsStringLiteralExpression(),
+  JsxString(),
+  JsTemplateChunkElement()
+} as $text where {
+  $text <: r"(?s).*\[var\(--.*",
+  register_diagnostic(span=$text, message="Use a semantic Tailwind color from @rakazo/ui-tokens instead of a [var(--…)] arbitrary value.")
+}

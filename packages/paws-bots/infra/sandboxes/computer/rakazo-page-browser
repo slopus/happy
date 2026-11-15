@@ -1,0 +1,2696 @@
+#!/usr/bin/python3 -I
+"""Serve the page-browser commands on the Chromium showing on this computer's DISPLAY.
+
+agent-browser (pinned in the image) attaches to that Chromium over CDP and browses. This wrapper
+keeps Rakazo's contract and policy on top: which tab, refs that must still name the element the
+bot saw, the snapshot's size, masked secrets, upload confinement, and the computer_act fallback.
+Saved logins, cards and pay tokens go through page_secrets instead.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import math
+import mimetypes
+import os
+import re
+import socket
+import stat
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unicodedata
+import urllib.request
+from typing import Any, Callable
+from urllib.parse import unquote, urljoin, urlsplit
+
+sys.path[:0] = [os.path.dirname(os.path.realpath(__file__)), "/usr/local/lib/rakazo"]
+import page_secrets  # noqa: E402
+from page_secrets import CardFieldUncertain, Refused, payment_frame_origin  # noqa: E402
+
+discover_ws_url = page_secrets.discover_ws_url
+
+AGENT_BROWSER = "/usr/local/bin/chrome-use"
+
+NO_ANSWER = "The page did not answer in time."
+STALE_REF = "Stale element ref: the page has changed since that snapshot. Use a ref from the page below."
+NOT_KEPT = "The page did not keep every character typed. Check the field in this snapshot before trying again."
+DISABLED = "That control is disabled, so nothing happened. Pick another control from this snapshot."
+PAYMENT_FRAME_HINT = "Card fields are in a payment frame: use fill_card without ref."
+
+# The snapshot goes to the model whole, in one piece of at most 12,000 characters, or the tool result
+# shortener cuts out its middle. So the control list and the page text share a budget, measured as
+# they will be sent (with their line breaks escaped).
+TREE_BUDGET = 10000
+CONTROLS_BUDGET = 5500
+MAX_CONTROLS = 80
+MIN_TEXT = 1500
+MAX_OPTIONS = 100
+OPTIONS_CHARS = 2000
+MAX_OPTION_TEXT = 80
+# A long page's controls are sampled this many times to find the ones in view.
+VIEW_PROBES = 48
+# How much of the text before a control a query also looks in, such as its heading.
+NEARBY_CHARS = 300
+# A match brings the rest of its form, unless the form is this big.
+MAX_FORM_CONTROLS = 30
+CUT_CONTROLS = "Snapshot with a query to find the rest."
+
+SETTLE_SECONDS = 3.0
+# The most an action's result waits for its requests and the snapshot after them together.
+ACTION_WAIT_SECONDS = 2.0
+# A page is quiet once none of its requests has begun or finished for this long, none is still waiting
+# for its answer, and, after an action, this long has passed since its last step. Reading the page
+# runs on its main thread, so it already waits for scripts that are still running.
+QUIET_SECONDS = 0.15
+# How often a wait reads the page again.
+POLL_SECONDS = 0.05
+# A search box or autocomplete sends its request a moment after typing stops (a debounce), so an act
+# that ends by typing starts its quiet wait this long after the last key.
+TYPING_PAUSE_SECONDS = 0.35
+# A request still unanswered after this long is a stream or a lost request, not the page loading.
+REQUEST_PATIENCE_SECONDS = 10.0
+# browser_navigate returns the page as an action does when the navigation took less than
+# NAVIGATE_SNAPSHOT_BY; the snapshot then ends by NAVIGATE_SNAPSHOT_UNTIL or is left out, inside
+# the supervisor's limit on one call.
+NAVIGATE_SECONDS = 15.0
+NAVIGATE_SNAPSHOT_BY = 12.0
+NAVIGATE_SNAPSHOT_UNTIL = 20.0
+# Typing presses each key after checking the page is still the same one with focus in the field.
+# Longer text is typed in one go and checked after.
+CHECKED_KEYS = 32
+
+MAX_UPLOAD_FILES = 10
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
+# agent-browser errors raised before anything reached the page: the step is settled.
+SETTLED_ERRORS = ("Unknown ref", "is stale", "cannot be recovered", "Could not locate element", "is covered by",
+                  "so the click would not reach it", "No option matched", "Element not found")
+
+
+class Settled(RuntimeError):
+    """A step the page cannot take as asked (stale ref, covered or disabled element, no such option).
+
+    Nothing changed, and the result carries the page as it is, so the bot can choose again.
+    """
+
+
+class TypingStopped(RuntimeError):
+    """Typing ended before the last key. The message never repeats any of the text."""
+
+
+class PageLeft(TypingStopped):
+    """Typing ended because the page began to leave, so its result waits for the next one."""
+
+
+class KeysNotKept(RuntimeError):
+    """Every key was pressed, but the field did not keep them all: the step ran, its result is wrong."""
+
+
+class AbError(RuntimeError):
+    def __init__(self, message: str, index: int = 0) -> None:
+        super().__init__(message)
+        self.index = index
+
+
+def display_num() -> int:
+    raw = os.environ.get("DISPLAY", ":1")
+    try:
+        return int(str(raw).lstrip(":").split(".")[0] or "1")
+    except ValueError:
+        return 1
+
+
+def cdp_port() -> int:
+    override = os.environ.get("RAKAZO_CDP_PORT")
+    if override:
+        return int(override)
+    # rakazo-browser uses 9221 + display number (:1 -> 9222).
+    return 9221 + display_num()
+
+
+def http_get_json(url: str, timeout: float = 5.0) -> Any:
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        data = resp.read(1024 * 1024 + 1)
+        if len(data) > 1024 * 1024:
+            raise RuntimeError("CDP discovery response too large")
+        return json.loads(data.decode("utf-8"))
+
+
+def browser_closed(port: int) -> bool:
+    """Whether nothing listens on the browser's debugging port: no browser is running."""
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=0.3).close()
+    except ConnectionRefusedError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
+def wait_for_cdp(port: int, timeout_s: float = 3.0) -> Any:
+    """The browser's version answer, once it answers."""
+    deadline = time.time() + timeout_s
+    last_error = "unreachable"
+    while time.time() < deadline:
+        try:
+            return http_get_json(f"http://127.0.0.1:{port}/json/version", timeout=1.0)
+        except Exception as exc:  # noqa: BLE001
+            last_error = str(exc)
+            time.sleep(0.25)
+    raise RuntimeError(f"CDP not ready on port {port}: {last_error}")
+
+
+# Chromium's own pages, such as the new tab page, which agent-browser leaves alone.
+INTERNAL_SCHEMES = ("chrome", "chrome-extension", "chrome-untrusted", "chrome-search", "devtools")
+INTERNAL_PAGE = "The browser is showing one of its own pages, which the page tools cannot read. Open a site with browser_navigate."
+
+
+def page_tabs(port: int) -> list[dict[str, Any]]:
+    """The browser's tabs: Chromium lists them by when they were last brought to the front."""
+    return [target for target in http_get_json(f"http://127.0.0.1:{port}/json/list")
+            if isinstance(target, dict) and target.get("type") == "page"]
+
+
+NO_TAB = "No browser tab is open. Use desktop tools to open one."
+
+
+def front_tab(port: int) -> tuple[str, str]:
+    """The tab the person sees, and its address."""
+    for target in page_tabs(port):
+        return str(target["id"]), str(target.get("url") or "")
+    raise RuntimeError(NO_TAB)
+
+
+# A page may open tabs: a pop-up, a link to a new tab, or a report it opens once it has made it.
+# agent-browser follows a tab that opens in front, so the bot is told. More than MAX_NEW_TABS at once
+# is a flood, not a report: they are closed, and the bot's own tab is in front again. Of the tabs pages
+# opened, at most MAX_OPENED_TABS stay open; the ones longest out of sight are closed first.
+MAX_NEW_TABS = 3
+MAX_OPENED_TABS = 8
+# agent-browser stops answering for good when the tab its session reads is closed under it, so the
+# session moves to a tab that stays before any is closed. Closing tabs, moving the session and reading
+# the bot's tab again share one deadline per step, so a flood never holds a call much longer.
+TAB_WORK_SECONDS = 8.0
+# Tab work ends by then, after the helper started, so the call still fits the supervisor's 25 seconds.
+TABS_DONE_BY = 20.0
+REREAD_FAILED = ("The page opened tabs that were closed, and this tab could not be read again in time. "
+                 "Take a snapshot to read it.")
+
+
+def left(deadline: float | None, most: float) -> float:
+    """A wait of at most `most` seconds that ends by the deadline, and a short one once it has passed."""
+    return most if deadline is None else max(0.2, min(most, deadline - time.monotonic()))
+
+
+class Tabs:
+    """The browser's tabs at the end of the last call, kept in the page browser's own folder."""
+
+    def __init__(self, home: str, port: int, browser_id: Any, select: Callable[[Any], None]) -> None:
+        self.path, self.port, self.browser_id = os.path.join(home, f"tabs-{port}.json"), port, browser_id
+        # Points agent-browser's session at a tab, before tabs are closed.
+        self.select = select
+        try:
+            with open(self.path, encoding="utf-8") as file:
+                last = json.load(file)
+            # A browser started again has new tabs only, and may have restored the person's own.
+            self.known: set[Any] | None = set(last["tabs"]) if last["browser"] == browser_id else None
+            self.opened: list[Any] = list(last.get("opened") or []) if self.known is not None else []
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            self.known, self.opened = None, []
+        self.closed = self.trimmed = 0
+        self.start: set[Any] = set()
+        self.deadline: float | None = None
+
+    def begin(self) -> None:
+        """Close a flood of tabs opened since the last call, before the call picks its tab."""
+        tabs = page_tabs(self.port)
+        if self.known is not None:
+            # The tab in front of those the last call left, or else the tab in front, which stays.
+            keep = next((tab.get("id") for tab in tabs if tab.get("id") in self.known),
+                        tabs[0].get("id") if tabs else None)
+            # Kept as known, so it is not counted as page-opened and trimmed later.
+            self.known.add(keep)
+            tabs = self.close_flood(tabs, self.known, keep)
+        self.start = {tab.get("id") for tab in tabs}
+
+    def end(self, own: str, ours: str | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
+        """The tabs now, the ones opened since the last call (or, for a browser started again, every
+        tab but this call's own), and whether tabs opened during the call were closed. The call's own
+        tab is never closed."""
+        tabs = page_tabs(self.port)
+        closed = self.closed
+        tabs = self.close_flood(tabs, self.start | {own}, own)
+        before = self.known if self.known is not None else {own}
+        opened = [tab for tab in tabs if tab.get("id") not in before and tab.get("id") != ours]
+        if self.known is not None:
+            ids = {tab.get("id") for tab in tabs}
+            self.opened = [tab for tab in self.opened if tab in ids] + [tab.get("id") for tab in opened]
+            tabs = self.trim(tabs, own)
+        flooded = self.closed > closed
+        if flooded:
+            with contextlib.suppress(OSError):
+                urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json/activate/{own}",
+                                       timeout=left(self.deadline, 5.0)).close()
+                tabs = page_tabs(self.port)
+        # By id, as the tabs listed again: tab_note tells the one in front by identity.
+        current = {tab.get("id"): tab for tab in tabs}
+        opened = [current[tab.get("id")] for tab in opened if tab.get("id") in current]
+        # Written whole, then moved into place: a reader never sees half of it.
+        temporary = f"{self.path}.{os.getpid()}"
+        with open(temporary, "w", encoding="utf-8") as file:
+            json.dump({"browser": self.browser_id, "tabs": [tab.get("id") for tab in tabs], "opened": self.opened}, file)
+        os.replace(temporary, self.path)
+        return tabs, opened, flooded
+
+    def close(self, ids: list[Any], keep: Any) -> list[Any]:
+        """The tabs it closed, by the deadline: the rest are left for the next call."""
+        if keep is not None:
+            # Best effort: if the session does not move, the tab it reads is read again or refused after.
+            with contextlib.suppress(Exception):
+                self.select(keep)
+        closed = []
+        for tab in ids:
+            if self.deadline is not None and time.monotonic() >= self.deadline:
+                break
+            with contextlib.suppress(OSError):
+                urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json/close/{tab}",
+                                       timeout=left(self.deadline, 5.0)).close()
+                closed.append(tab)
+        return closed
+
+    def close_flood(self, tabs: list[dict[str, Any]], before: set[Any], own: Any) -> list[dict[str, Any]]:
+        new = [tab.get("id") for tab in tabs if tab.get("id") not in before and tab.get("id") != own]
+        if len(new) <= MAX_NEW_TABS:
+            return tabs
+        self.closed += len(self.close(new, own))
+        return page_tabs(self.port)
+
+    def trim(self, tabs: list[dict[str, Any]], own: str) -> list[dict[str, Any]]:
+        """Close the tabs pages opened beyond MAX_OPENED_TABS, longest out of sight first. Tabs no page
+        opened, such as the person's own, are left alone."""
+        by_sight = [tab.get("id") for tab in tabs if tab.get("id") in self.opened and tab.get("id") != own]
+        extra = by_sight[MAX_OPENED_TABS:]
+        if not extra:
+            return tabs
+        # The tab in front stays, as the oldest out of sight go: the session stays on it.
+        closed = self.close(extra, tabs[0].get("id"))
+        self.trimmed += len(closed)
+        self.opened = [tab for tab in self.opened if tab not in closed]
+        return page_tabs(self.port)
+
+    def note(self, tabs: list[dict[str, Any]], opened: list[dict[str, Any]], shown_url: Any) -> str | None:
+        closed = (f"The page opened {self.closed} tabs at once, more than {MAX_NEW_TABS}, so they were closed."
+                  if self.closed else None)
+        trimmed = None if not self.trimmed else (
+            f"Closed the oldest tab a page had opened, to keep at most {MAX_OPENED_TABS}." if self.trimmed == 1
+            else f"Closed the {self.trimmed} oldest tabs pages had opened, to keep at most {MAX_OPENED_TABS}.")
+        return " ".join(filter(None, [closed, trimmed, tab_note(opened, tabs, shown_url)])) or None
+
+
+def tab_named(tab: dict[str, Any]) -> str:
+    return f"{json.dumps(str(tab.get('title') or '')[:200], ensure_ascii=False)} at {str(tab.get('url') or '')[:500]}"
+
+
+def tab_note(opened: list[dict[str, Any]], tabs: list[dict[str, Any]], shown_url: Any) -> str | None:
+    """Tells the bot which tabs opened: agent-browser follows a tab that opens in front, so the page tools read it."""
+    if not opened:
+        return None
+    front = tabs[0]
+    others = [tab for tab in opened if tab is not front]
+    listed = "; ".join(tab_named(tab) for tab in others[:3]) + (f"; and {len(others) - 3} more" if len(others) > 3 else "")
+    if front not in opened:
+        return f"{'A new tab' if len(opened) == 1 else f'{len(opened)} new tabs'} opened behind this one: {listed}."
+    if not others:
+        return (f"A new tab opened, and page tools now read it: {tab_named(front)}; the tab before it is still open."
+                + ("" if shown_url == front.get("url") else " Take a snapshot to read it."))
+    return (f"{len(opened)} new tabs opened, and page tools now read the one in front: {tab_named(front)}; "
+            f"the others are {listed}; the tabs before them are still open."
+            + ("" if shown_url == front.get("url") else " Take a snapshot to read it."))
+
+
+def internal(url: str) -> bool:
+    return urlsplit(url).scheme in INTERNAL_SCHEMES
+
+
+def check_url(url: str) -> None:
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or parsed.username or parsed.password:
+        raise RuntimeError("Only HTTP(S) URLs without embedded credentials are supported")
+
+
+class AgentBrowser:
+    """agent-browser's session for this display: one daemon, kept attached between calls."""
+
+    def __init__(self, port: int) -> None:
+        self.port = port
+        self.home = os.path.join(tempfile.gettempdir(), f"rakazo-ab-{os.getuid()}")
+        os.makedirs(self.home, mode=0o700, exist_ok=True)
+        info = os.lstat(self.home)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+            raise RuntimeError("The page browser's own folder is not this user's")
+        # Its own configuration, never one from the bot's home or working folder. Replaced whole, never
+        # rewritten in place: a call for another screen may be starting agent-browser on it right now.
+        self.config = os.path.join(self.home, "config.json")
+        fd, staged = tempfile.mkstemp(dir=self.home, prefix=".config-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as config:
+                config.write("{}")
+            os.replace(staged, self.config)
+        except BaseException:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(staged)
+            raise
+        self.session = f"display-{port}"
+        # When set, every command answers by then or is given up.
+        self.deadline: float | None = None
+        self.env = {key: value for key, value in os.environ.items()
+                    if key in ("LANG", "LD_PRELOAD", "NSS_WRAPPER_PASSWD", "NSS_WRAPPER_GROUP")}
+        self.env.update({
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "HOME": self.home,
+            "AGENT_BROWSER_CONFIG": self.config,
+            "AGENT_BROWSER_SOCKET_DIR": self.home,
+            "AGENT_BROWSER_SESSION": self.session,
+            # Always the Chromium on this display: without it, agent-browser would start a browser of its own.
+            "AGENT_BROWSER_CDP": str(port),
+            "AGENT_BROWSER_IDLE_TIMEOUT_MS": "900000",
+            # Dialogs are the person's and the page's to answer, as on the screen; see PageBrowser.dialog_result.
+            "AGENT_BROWSER_NO_AUTO_DIALOG": "1",
+            "AGENT_BROWSER_NO_WEBMCP": "1",
+            "CHROME_USE_NO_UPDATE_CHECK": "1",
+            "USE_NO_UPDATE_CHECK": "1",
+            "NO_PROXY": "127.0.0.1,localhost,::1",
+        })
+
+    def batch(self, commands: list[list[str]], *, timeout: float = 20.0, bail: bool = True) -> list[Any]:
+        """Each command's result, in one agent-browser call. Commands and their text go over stdin, not argv."""
+        try:
+            proc = subprocess.run(
+                [AGENT_BROWSER, "--session", self.session, "--cdp", str(self.port), "batch", "--json", *(["--bail"] if bail else [])],
+                input=json.dumps(commands), capture_output=True, text=True, env=self.env, cwd=self.home,
+                timeout=left(self.deadline, timeout))
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(NO_ANSWER) from None
+        try:
+            items = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            raise AbError((proc.stderr or proc.stdout).strip()[:500] or "agent-browser gave no answer") from None
+        if not isinstance(items, list):
+            raise AbError(str((items or {}).get("error") if isinstance(items, dict) else items)[:500])
+        results: list[Any] = []
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise AbError("agent-browser gave no answer", index)
+            data = item.get("result") if isinstance(item.get("result"), dict) else {}
+            # Only ever the browser on the screen: a page agent-browser opened itself is not the bot's.
+            if (data.get("lifecycle") or {}).get("launched") is True:
+                raise RuntimeError("Page browser is not attached to this computer's Chrome.")
+            if not item.get("success"):
+                if bail:
+                    raise AbError(str(item.get("error") or "agent-browser failed"), index)
+                results.append(None)
+                continue
+            results.append(data)
+        if len(results) < len(commands):
+            raise AbError("agent-browser stopped early", len(results))
+        return results
+
+    def session_tab(self) -> str | None:
+        """The tab the session reads now; it also follows tabs opened while it was attached."""
+        # One answer or none: a probe that hangs must leave the call's short budget to the work after it.
+        try:
+            proc = subprocess.run(
+                [AGENT_BROWSER, "--session", self.session, "--cdp", str(self.port), "tab", "list", "--full", "--json"], capture_output=True, text=True,
+                env=self.env, cwd=self.home, timeout=left(self.deadline, 1.0))
+            envelope = json.loads(proc.stdout)
+            data = envelope.get("data") if isinstance(envelope, dict) else None
+            tabs = data.get("tabs") if isinstance(data, dict) else None
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            return None
+        for tab in tabs if isinstance(tabs, list) else []:
+            if isinstance(tab, dict) and tab.get("active") and tab.get("type") == "page":
+                return str(tab.get("targetId"))
+        return None
+
+    def use_tab(self, target_id: str) -> None:
+        """Bind and activate this computer's exact tab before every operation.
+
+        chrome-use selects tabs in the background unless --activate is explicit.
+        Paws holds the computer control lease before this helper may be called,
+        so the agent's page must also be the page its remote viewer can see.
+        """
+        self.batch([["tab", "adopt", target_id, "--activate"]])
+
+
+# A navigation as from the address bar: no referrer leaves for the next site.
+NAVIGATE = r"""(() => {
+  const timeOrigin = performance.timeOrigin;
+  const policy = document.createElement("meta");
+  policy.name = "referrer";
+  policy.content = "no-referrer";
+  (document.head || document.documentElement).append(policy);
+  // After this script has answered: a page being replaced answers late.
+  setTimeout(() => location.assign(URL), 0);
+  return { timeOrigin, href: location.href };
+})()"""
+
+# Whether the page has loaded, when its document began, and the requests it has finished (failed ones
+# included) with when each ended.
+PAGE_LOAD = r"""({ href: location.href, ready: document.readyState, began: performance.timeOrigin,
+  done: performance.getEntriesByType("resource").slice(-500)
+    .map((entry) => [entry.name, performance.timeOrigin + entry.responseEnd]) })"""
+
+# The page's address, title and text, the values a snapshot must not show (password fields, fields
+# holding a saved login or card, and fields drawn as dots), and the merchant account a pay token checkout names in the page itself.
+PAGE_STATE = r"""(() => {
+  const masked = [...document.querySelectorAll("input, textarea")]
+    .filter((el) => el.value && (el.type === "password" || el.hasAttribute("data-rakazo-filled")
+      || getComputedStyle(el).webkitTextSecurity !== "none"))
+    .map((el) => el.value);
+  const blocks = [...document.querySelectorAll(".AiAgentPaymentSteering")]
+    .filter((block) => block.querySelector('input[name="link_pay_token"]'));
+  const holder = blocks.length !== 1 ? null : blocks[0].matches("[data-stripe-merchant-account]") ? blocks[0]
+    : blocks[0].querySelector("[data-stripe-merchant-account]");
+  const account = holder?.getAttribute("data-stripe-merchant-account") || "";
+  return {
+    url: location.href,
+    title: (document.title || "").slice(0, 200),
+    ready: document.readyState,
+    text: (document.body?.innerText || "").slice(0, 200000),
+    masked,
+    payToken: /^acct_[A-Za-z0-9]{1,64}$/.test(account) ? account : null,
+    frames: [...document.querySelectorAll("iframe")].slice(0, 50).map((frame) => frame.src),
+  };
+})()"""
+
+
+class Node:
+    """One line of agent-browser's snapshot: role, name, [attributes], what follows, and its value."""
+
+    def __init__(self, depth: int, role: str, name: str = "", attrs: str = "", extra: str = "",
+                 value: str | None = None) -> None:
+        self.depth, self.role, self.name, self.attrs, self.extra, self.value = depth, role, name, attrs, extra, value
+        self.children: list[Node] = []
+        self.parent: Node | None = None
+
+    @property
+    def frame(self) -> Node | None:
+        """The frame element this element's page is in, when it is inside one."""
+        at = self.parent
+        while at is not None and not (at.role == "Iframe" and at.ref):
+            at = at.parent
+        return at
+
+    @property
+    def ref(self) -> str | None:
+        found = re.search(r"\bref=(e\d+)\b", self.attrs)
+        return found.group(1) if found else None
+
+
+LINE = re.compile(r"^(?P<indent> *)- (?P<role>[^\s\"\[]+)(?P<rest>.*)$")
+
+
+def parse_line(text: str) -> Node | None:
+    match = LINE.match(text)
+    if not match:
+        return None
+    rest, name = match["rest"], ""
+    if rest.startswith(' "'):
+        try:
+            name, end = json.JSONDecoder().raw_decode(rest, 1)
+            rest = rest[end:]
+        except json.JSONDecodeError:
+            end = rest.rfind('" [')
+            name, rest = (rest[2:end], rest[end + 1:]) if end > 1 else (rest[2:].rstrip('"'), "")
+    attrs = ""
+    if rest.startswith(" ["):
+        close = rest.find("]")
+        if close > 0:
+            attrs, rest = rest[2:close], rest[close + 1:]
+    value = None
+    if ": " in rest:
+        rest, value = rest.split(": ", 1)
+    return Node(len(match["indent"]) // 2, match["role"], " ".join(str(name).split()), attrs, rest, value)
+
+
+def parse_tree(text: str) -> list[Node]:
+    roots: list[Node] = []
+    stack: list[Node] = []
+    for line in str(text or "").splitlines():
+        node = parse_line(line)
+        if node is None:
+            continue
+        while stack and stack[-1].depth >= node.depth:
+            stack.pop()
+        if stack:
+            node.parent = stack[-1]
+        (stack[-1].children if stack else roots).append(node)
+        stack.append(node)
+    return roots
+
+
+def walk(nodes: list[Node]):  # type: ignore[no-untyped-def]
+    for node in nodes:
+        yield node
+        yield from walk(node.children)
+
+
+def find_ref(nodes: list[Node], ref: str) -> Node | None:
+    return next((node for node in walk(nodes) if node.ref == ref), None)
+
+
+def native_options(node: Node) -> list[Node]:
+    """A native dropdown's options, which the snapshot lists under it."""
+    if node.role != "combobox":
+        return []
+    return [child for child in walk(node.children) if child.role == "option"]
+
+
+def sent(text: str) -> int:
+    """A text's length as the bot receives it, line breaks escaped."""
+    return len(json.dumps(text, ensure_ascii=False)) - 2
+
+
+def cut_option(text: str) -> str:
+    # A long option keeps its start and its end, which is where long options usually differ.
+    return f"{text[:50]}…{text[-(MAX_OPTION_TEXT - 51):]}" if len(text) > MAX_OPTION_TEXT else text
+
+
+def options_of(node: Node) -> tuple[list[dict[str, Any]], int]:
+    """A dropdown's options as the page shows them: the first MAX_OPTIONS and the chosen one."""
+    every = native_options(node)
+    shown = every[:MAX_OPTIONS]
+    chosen = next((option for option in every if "selected" in option.attrs.split(", ")), None)
+    if chosen is not None and chosen not in shown:
+        shown.append(chosen)
+    options = []
+    for option in shown:
+        label = cut_option(" ".join(option.name.split()))
+        attrs = option.attrs.split(", ")
+        options.append({"label": label, "value": label, **({"selected": True} if "selected" in attrs else {}),
+                        **({"disabled": True} if "disabled" in attrs else {})})
+    return options, len(every)
+
+
+def describe_options(options: list[dict[str, Any]], total: int) -> str:
+    """The options a model reads, as many as fit; the chosen one is always shown."""
+    def describe(option: dict[str, Any]) -> str:
+        return (json.dumps(option["label"], ensure_ascii=False) + (" (selected)" if option.get("selected") else "")
+                + (" (disabled)" if option.get("disabled") else ""))
+    parts: list[str] = []
+    used = 0
+    for option in options:
+        part = describe(option)
+        if parts and used + len(part) > OPTIONS_CHARS:
+            break
+        parts.append(part)
+        used += len(part) + 2
+    chosen = next((option for option in options if option.get("selected")), None)
+    if chosen is not None and describe(chosen) not in parts:
+        parts.append(describe(chosen))
+    return ", ".join(parts) + (f", and {total - len(parts)} more" if total > len(parts) else "")
+
+
+CONTROL_ROLES = frozenset({"button", "link", "textbox", "searchbox", "checkbox", "radio", "combobox", "listbox",
+                           "option", "menuitem", "menuitemcheckbox", "menuitemradio", "tab", "switch", "slider",
+                           "spinbutton", "treeitem", "Iframe"})
+
+
+class Control:
+    """A control as the snapshot lists it, with the text a query can find it by."""
+
+    def __init__(self, index: int, line: str, entry: dict[str, Any], node: Node, own: str, nearby: str) -> None:
+        self.index, self.line, self.entry, self.node, self.own, self.nearby = index, line, entry, node, own, nearby
+        self.cost = sent(line) + 1
+
+
+def words(text: str) -> list[str]:
+    plain = unicodedata.normalize("NFKD", text.casefold())
+    return re.sub(r"[^\w]+", " ", "".join(char for char in plain if not unicodedata.combining(char))).split()
+
+
+def found(word: str, among: list[str]) -> bool:
+    """A query word is a word of the text, or the start of one once it is long enough to mean something."""
+    return any(have == word or (len(word) >= 3 and have.startswith(word)) for have in among)
+
+
+# The containers a control's form is: a match brings the rest of it, such as the form's submit button.
+FORM_ROLES = frozenset({"form", "group", "search", "dialog", "alertdialog", "radiogroup"})
+
+
+def matching(controls: list[Control], query: str) -> list[Control]:
+    """The controls a query names, best first: those with every word in their own name, label, value or
+    options, then those that need the text before them or their form's name, then the rest of their forms.
+
+    When none has every word, those with the most do.
+    """
+    wanted = list(dict.fromkeys(words(query)))
+    if not wanted:
+        return []
+    position = {id(control.node): index for index, control in enumerate(controls)}
+    scored: list[tuple[int, int, int]] = []
+    for index, control in enumerate(controls):
+        own = words(control.own)
+        around = own + words(control.nearby)
+        at = control.node.parent
+        while at is not None:
+            around += words(at.name)
+            at = at.parent
+        hits = sum(found(word, around) for word in wanted)
+        if hits:
+            scored.append((hits, sum(found(word, own) for word in wanted), index))
+    if not scored:
+        return []
+    best = max(hits for hits, _, _ in scored)
+    ranked = [index for hits, _, index in sorted(scored, key=lambda s: (-s[1], s[2])) if hits == best]
+    chosen = dict.fromkeys(ranked)
+    for index in ranked:
+        form = form_of(controls[index].node)
+        if form is not None:
+            mates = [position[id(node)] for node in walk(form.children) if id(node) in position]
+            if len(mates) <= MAX_FORM_CONTROLS:
+                chosen.update(dict.fromkeys(mates))
+    listed: dict[int, None] = {}
+    for index in chosen:
+        # A control in a frame comes after the frame's line, which names its site, so a cut never parts them.
+        frames: list[int] = []
+        frame = controls[index].node.frame
+        while frame is not None:
+            if id(frame) in position:
+                frames.append(position[id(frame)])
+            frame = frame.frame
+        listed.update(dict.fromkeys([*reversed(frames), index]))
+    return [controls[index] for index in listed]
+
+
+def form_of(node: Node) -> Node | None:
+    """The form a control is in, or else the nearest group-like container."""
+    nearest = None
+    at = node.parent
+    while at is not None:
+        if at.role == "form":
+            return at
+        if nearest is None and at.role in FORM_ROLES:
+            nearest = at
+        at = at.parent
+    return nearest
+
+
+def fit(candidates: list[Control], budget: int) -> list[Control]:
+    """The candidates that fit, taken in order until one does not, then put back in page order."""
+    shown: list[Control] = []
+    used = 0
+    for control in candidates:
+        if len(shown) >= MAX_CONTROLS or (shown and used + control.cost > budget):
+            break
+        shown.append(control)
+        used += control.cost
+    return sorted(shown, key=lambda control: control.index)
+
+
+def same_site(url: Any) -> str:
+    """The site a URL is on, as its host's last two labels; close enough to tell a page's own requests apart."""
+    try:
+        host = urlsplit(str(url or "")).hostname or ""
+    except ValueError:
+        return ""
+    return ".".join(host.split(".")[-2:])
+
+
+def unframed(text: str) -> str:
+    """Page text with anything that reads like a frame's header line set apart, so a page cannot name a site."""
+    return text.replace("[frame ", "[ frame ")
+
+
+def frame_site(src: Any) -> str:
+    try:
+        parts = urlsplit(str(src or ""))
+        return f"{parts.scheme}://{parts.netloc.rpartition('@')[2]}" if parts.scheme in ("http", "https") else ""
+    except ValueError:
+        return ""
+
+
+# A PDF a tab shows, such as a report a page opened in a new tab, is in the browser's viewer, which the
+# page tools cannot read. It is saved as a download of the tab's own address, once per document, so
+# the bot reads the file instead.
+SAVE_PDF = r"""(() => {
+  if (document.contentType !== "application/pdf" || window.__rakazoPdfSaved) return false;
+  window.__rakazoPdfSaved = true;
+  const link = document.createElement("a");
+  link.href = location.href;
+  link.download = NAME;
+  document.documentElement.append(link);
+  link.click();
+  link.remove();
+  return true;
+})()"""
+
+
+class PageBrowser:
+    def __init__(self, port: int, target_id: str, browser: AgentBrowser) -> None:
+        self.port, self.target, self.ab = port, target_id, browser
+        self.downloads: Downloads | None = None
+        # Set by a step whose input opened a JavaScript dialog. Reading a page that a dialog blocks
+        # times out, and agent-browser then stops answering for the tab, dialog commands included.
+        self.dialog_opened = False
+        self._purchases: Purchases | None = None
+
+    # -- reading the page -------------------------------------------------------------------------
+
+    def pending_requests(self) -> tuple[bool, float, bool]:
+        """Whether the page is waiting on a request of its current document, when its latest began or
+        ended, and whether the page may be waiting on requests the log never saw.
+
+        agent-browser logs requests only from when its session attached, which can be after the page
+        began loading: the person opened it, or the session started or moved to this tab since.
+        """
+        state, log = self.ab.batch([["eval", PAGE_LOAD], ["network", "requests"]])
+        page = state.get("result") or {}
+        # agent-browser logs a response but never a failure; the page lists failed requests as done.
+        done = {str(name): float(ended or 0) for name, ended in page.get("done") or []}
+        requests = [r for r in log.get("requests") or [] if isinstance(r, dict)]
+        documents = [r for r in requests if r.get("resourceType") == "Document"]
+        current = [r for r in documents if r.get("url") == page.get("href")] or documents
+        since = float(current[-1].get("timestamp") or 0) if current else 0.0
+        now = time.time() * 1000
+        # The page's own requests: a third-party widget or beacon that hangs does not hold the page back.
+        site = same_site(page.get("href"))
+        recent = [r for r in requests if float(r.get("timestamp") or 0) >= since and same_site(r.get("url")) == site]
+        waiting = [r for r in recent if r.get("status") is None and r.get("url") not in done
+                   and r.get("resourceType") not in ("EventSource", "WebSocket")
+                   and now - float(r.get("timestamp") or 0) < REQUEST_PATIENCE_SECONDS * 1000]
+        started = [float(r.get("timestamp") or 0) for r in recent]
+        ended = [at for name, at in done.items() if at >= since and same_site(name) == site]
+        latest = max(started + ended, default=0.0)
+        unseen = (not any(r.get("url") == page.get("href") for r in documents)
+                  and now - float(page.get("began") or 0) < REQUEST_PATIENCE_SECONDS * 1000)
+        return bool(waiting) or page.get("ready") != "complete", latest / 1000, unseen
+
+    def settle(self, seconds: float, quiet_from: float = 0.0) -> bool:
+        """Wait until the page has loaded and its requests are answered, then QUIET_SECONDS more.
+
+        Many sites draw a signed-out shell first and replace it once their own requests return,
+        so a page captured earlier can show "Sign in" to an account that is signed in.
+        """
+        deadline = time.monotonic() + seconds
+        load: PageLoad | None = None
+        try:
+            while True:
+                busy, latest, unseen = self.pending_requests()
+                if not busy and unseen:
+                    load = load or PageLoad(self.port, self.target)
+                    busy = not load.idle()
+                quiet_in = QUIET_SECONDS - (time.time() - max(latest, quiet_from))
+                if not busy and quiet_in <= 0:
+                    # agent-browser keeps every request it sees; once none is waiting, the log can start over.
+                    self.ab.batch([["network", "requests", "--clear"]])
+                    return True
+                if time.monotonic() >= deadline:
+                    return not busy
+                # A quiet page is read again just as it has been quiet long enough.
+                wait = POLL_SECONDS if busy else min(POLL_SECONDS, quiet_in)
+                time.sleep(max(0.0, min(wait, deadline - time.monotonic())))
+        finally:
+            if load:
+                load.close()
+
+    def snapshot(self, settle: float | None = None, query: str | None = None) -> dict[str, Any]:
+        settled = self.settle(SETTLE_SECONDS if settle is None else settle)
+        state_result, snap = self.ab.batch([["eval", PAGE_STATE], ["snapshot"]])
+        state = state_result.get("result") or {}
+        roots = parse_tree(snap.get("snapshot") or "")
+        frames = [node for node in walk(roots) if node.role == "Iframe" and node.ref]
+        sources = self.ab.batch([["get", "attr", f"@{node.ref}", "src"] for node in frames], bail=False) if frames else []
+        sites = {id(node): frame_site(urljoin(str(state.get("url") or ""), str((found or {}).get("value") or "")))
+                 for node, found in zip(frames, sources)}
+        masked = {str(value) for value in state.get("masked") or [] if value}
+        # Found in the page, not in agent-browser's tree: a session that attached after a frame loaded never sees inside it.
+        payment = any(payment_frame_origin(frame_site(src)) for src in state.get("frames") or [])
+        try:
+            card_shown, account = page_secrets.payment_frame_hints(self.port, self.target) if payment else (False, None)
+        except Exception:  # noqa: BLE001
+            card_shown, account = False, None
+        hints: list[str] = []
+        frame_text: list[str] = []
+        controls: list[Control] = []
+        # Text read since the last control, such as a heading or a field's label: what a query can find it by.
+        recent: list[str] = []
+
+        def render(nodes: list[Node], depth: int, inside: str | None) -> None:
+            for node in nodes:
+                if node.role == "Iframe":
+                    site = sites.get(id(node), "")
+                    if payment_frame_origin(site):
+                        # Card details reach a payment provider's frame only through fill_card.
+                        continue
+                    text = " ".join(n.name for n in walk(node.children) if n.role == "StaticText").strip()
+                    if text:
+                        frame_text.append(f"[frame {site or 'unknown'}]\n{unframed(text)}")
+                if node.role == "option" and inside == "select":
+                    continue
+                ref = node.ref
+                # agent-browser also hands refs to named text such as headings and table cells; the
+                # list is of what a click or a fill can mean something for.
+                if ref is None or not (node.role in CONTROL_ROLES or "clickable" in node.extra):
+                    if node.name:
+                        recent.append(node.name)
+                    render(node.children, depth, inside)
+                    continue
+                value = node.value
+                if value is not None and (value in masked or set(value) <= {"•"}):
+                    value = None
+                entry: dict[str, Any] = {"ref": ref, "role": node.role, "name": node.name[:200]}
+                checked = re.search(r"\bchecked=(true|false)\b", node.attrs)
+                if value is not None and value != "":
+                    entry["value"] = value[:2000]
+                elif checked:
+                    entry["value"] = "checked" if checked.group(1) == "true" else "unchecked"
+                line = f"{'  ' * depth}- {node.role}"
+                if node.name:
+                    line += " " + json.dumps(node.name[:100], ensure_ascii=False)
+                line += f" [{node.attrs}]{node.extra}"
+                if node.role == "Iframe" and sites.get(id(node)):
+                    line += f" {sites[id(node)]}"
+                if value is not None and value != "":
+                    line += ": " + value[:100]
+                options, total = options_of(node)
+                if options:
+                    entry["options"] = options
+                    if total > len(options):
+                        entry["optionsTotal"] = total
+                    line += " options: " + describe_options(options, total)
+                own = " ".join([node.name, entry.get("value") or "", *(option["label"] for option in options)])
+                controls.append(Control(len(controls), line, entry, node, own, " ".join(recent)[-NEARBY_CHARS:]))
+                recent.clear()
+                render(node.children, depth + 1, "select" if options else inside)
+
+        render(roots, 0, None)
+        if card_shown:
+            hints.append(PAYMENT_FRAME_HINT)
+        account = state.get("payToken") or account
+        if account:
+            hints.append(f'This checkout accepts a pay token: merchantAccountId "{account}".')
+        page = {"ok": True, "url": str(state.get("url") or snap.get("origin") or ""),
+                "title": str(state.get("title") or ""), **({} if settled else {"loading": True})}
+        if query:
+            ranked = matching(controls, query)
+            shown = fit(ranked, TREE_BUDGET - sum(sent(h) + 1 for h in hints) - 200)
+            label = json.dumps(query, ensure_ascii=False)
+            if not ranked:
+                notice = f"[no controls match {label}]"
+            elif len(shown) < len(ranked):
+                notice = f"[controls matching {label}: showing {len(shown)} of {len(ranked)}]"
+            else:
+                notice = f"[controls matching {label}]"
+            tree = "\n".join([notice, *(c.line for c in shown), *hints])
+            return {**page, "tree": tree, "elements": [c.entry for c in shown]}
+        shown = fit(controls, CONTROLS_BUDGET)
+        start = self.view_start(controls) if len(shown) < len(controls) else 0
+        if start:
+            # From the first control in view on, then back up the page with the room left.
+            shown = fit(controls[start:] + controls[start - 1::-1], CONTROLS_BUDGET)
+        listing = "\n".join(c.line for c in shown) or "(no interactive elements)"
+        notices = (f"[controls: showing {len(shown)} of {len(controls)}. {CUT_CONTROLS}]\n"
+                   if len(shown) < len(controls) else "")
+        text = "\n".join([unframed(str(state.get("text") or "")), *frame_text])
+        room = max(MIN_TEXT, TREE_BUDGET - sent(listing) - sent(notices) - sum(sent(h) + 1 for h in hints) - 200)
+        cut = len(text)
+        while cut > 0 and sent(text[:cut]) > room:
+            cut = int(cut * 0.9)
+        if cut < len(text):
+            notices += f"[page text: showing first {cut} of {len(text)} characters]\n"
+        tree = notices + text[:cut] + "\n" + listing + "".join("\n" + hint for hint in hints)
+        return {**page, "tree": tree, "elements": [c.entry for c in shown]}
+
+    def view_start(self, controls: list[Control]) -> int:
+        """Where the controls in view begin: just after the last one above the visible part of the page.
+
+        Controls come in page order, which is mostly top to bottom, so a sample of them is enough.
+        Ones in frames are placed by their frame, and a header that stays on screen does not count.
+        """
+        top = [index for index, control in enumerate(controls) if control.node.frame is None]
+        sampled = range(0, len(top), max(1, math.ceil(len(top) / VIEW_PROBES)))
+        if not sampled:
+            return 0
+        try:
+            boxes = self.ab.batch([["get", "box", f"@{controls[top[at]].entry['ref']}"] for at in sampled], bail=False)
+        except Exception:  # noqa: BLE001
+            return 0
+        start = 0
+        for at, box in zip(sampled, boxes):
+            if box and box.get("height") and float(box.get("y") or 0) + float(box["height"]) <= 0:
+                # The next control outside any frame: a frame above the view takes its own controls with it.
+                start = top[at + 1] if at + 1 < len(top) else len(controls)
+        return min(start, len(controls) - 1)
+
+    def control(self, ref: str, *, check_disabled: bool = False) -> Node:
+        """The element a ref names in the page as it is now; a ref that names nothing now is stale.
+
+        agent-browser keeps a ref while its element lives, but would hand an action a replacement
+        with the same role and name, even on another page. Checking right before the step stops that.
+        """
+        commands = [["snapshot", "-i"]]
+        if check_disabled:
+            # `is enabled` includes disabled fieldsets (and their first-legend exception),
+            # but agent-browser does not include aria-disabled in that check.
+            commands += [["is", "enabled", f"@{ref}"], ["get", "attr", f"@{ref}", "aria-disabled"]]
+        snap, *state = self.step(commands)
+        node = find_ref(parse_tree(snap.get("snapshot") or ""), ref)
+        if node is None or ref not in (snap.get("refs") or {}):
+            raise Settled(STALE_REF)
+        if check_disabled and (state[0].get("enabled") is False or str(state[1].get("value")).lower() == "true"):
+            raise Settled(DISABLED)
+        return node
+
+    def purchases(self) -> Purchases:
+        if self._purchases is None:
+            self._purchases = Purchases(self.port, self.target)
+        return self._purchases
+
+    def close(self) -> None:
+        if self._purchases:
+            self._purchases.close()
+
+    def click_purchase(self, ref: str, node: Node) -> tuple[str, dict[str, Any] | None]:
+        """The top page's host, the site the user sees, and what a click on ref would buy, or None.
+        A page that cannot be read asks."""
+        try:
+            purchases = self.purchases()
+            site = purchases.site()
+        except Exception:  # noqa: BLE001
+            return "", dict(UNREADABLE_PURCHASE)
+        if node.frame is not None:
+            # A control inside a frame is not placed on the page: the click asks whenever the page or any of
+            # its frames shows a payment.
+            try:
+                return site, purchases.signals(False, time.monotonic() + DESKTOP_DEADLINE_SECONDS)
+            except Exception:  # noqa: BLE001
+                return site, purchases.signals_or_ask(False)
+        for scrolled in (False, True):
+            try:
+                if scrolled:
+                    self.ab.batch([["scrollintoview", f"@{ref}"]])
+                (box,) = self.ab.batch([["get", "box", f"@{ref}"]])
+            except Exception:  # noqa: BLE001
+                box = None
+            try:
+                return site, purchases.click(box, scrolled)
+            except Offscreen:
+                continue
+        return site, None
+
+    def purchase_check(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Which of these clicks would complete a purchase, or whether a click or key on the screen would.
+
+        Nothing is pressed. A ref that no longer names an element on the page counts as none: act asks again.
+        """
+        actions = args.get("actions") or []
+        if not isinstance(actions, list) or len(actions) > 24:
+            raise RuntimeError("Expected up to 24 actions")
+        site = self.purchases().site()
+        steps: list[int] = []
+        first: dict[str, Any] | None = None
+        for index, step in enumerate(actions):
+            if not isinstance(step, dict) or step.get("kind") != "click" or not isinstance(step.get("ref"), str):
+                continue
+            try:
+                node = self.control(step["ref"])
+            except Settled:
+                continue
+            site, found = self.click_purchase(step["ref"], node)
+            if found:
+                # One card approves one click: a later purchase click in the batch is refused, and asks.
+                steps, first = [index], found
+                break
+        if args.get("desktop") is True and not steps:
+            first = self.purchases().desktop(args)
+        purchase = {"steps": steps, "label": first.get("label", ""), "amount": first.get("amount", ""),
+                    "amountFrom": first.get("amountFrom", "page"), "reason": first.get("reason"),
+                    **({"total": first["total"]} if first and first.get("total") else {}),
+                    **({"items": first["items"]} if first and first.get("items") else {})} if first else None
+        return {"ok": True, "url": "", "title": "", **self.purchases().where(), "site": site, "purchase": purchase}
+
+    # -- commands ---------------------------------------------------------------------------------
+
+    def navigate(self, url: str, opened: bool = False) -> dict[str, Any]:
+        """Go to url, or, when `opened`, read the tab that was just opened on it."""
+        check_url(url)
+        started = time.monotonic()
+        before: dict[str, Any] = {}
+        same_document = opened
+        if not opened:
+            # agent-browser's own `open` holds its session until the load event, up to 25 seconds; the
+            # page is read while it is still loading instead, as the person would see it.
+            _, before = self.ab.batch([["network", "requests", "--clear"],
+                                       ["eval", NAVIGATE.replace("URL", json.dumps(url))]])
+            before = before.get("result") or {}
+            # Scripts run in a page that is being replaced answer late, so the new document's response is
+            # awaited in the request log first. A new fragment of the same page loads no document.
+            same_document = str(before.get("href") or "").split("#")[0] == url.split("#")[0] and "#" in url
+        while not same_document:
+            if self.downloads:
+                self.downloads.client.listen(0.01)
+                if self.downloads.client.downloads:
+                    return {"ok": True, **self.snapshot(0.0)}
+            (log,) = self.ab.batch([["network", "requests"]])
+            if any(r.get("resourceType") == "Document" and r.get("status") is not None
+                   for r in log.get("requests") or [] if isinstance(r, dict)):
+                break
+            if time.monotonic() - started > NAVIGATE_SECONDS:
+                raise RuntimeError("Navigation did not settle; inspect the screen before continuing")
+            time.sleep(POLL_SECONDS)
+        while True:
+            (now,) = self.ab.batch([["eval", "({ timeOrigin: performance.timeOrigin, href: location.href, "
+                                              "ready: document.readyState })"]])
+            now = now.get("result") or {}
+            if self.downloads:
+                self.downloads.client.listen(0.01)
+                if self.downloads.client.downloads:
+                    return {"ok": True, **self.snapshot(0.0)}
+            moved = opened or now.get("timeOrigin") != before.get("timeOrigin") or (same_document and now.get("href") == url)
+            if moved and now.get("ready") in ("interactive", "complete"):
+                break
+            if time.monotonic() - started > NAVIGATE_SECONDS:
+                raise RuntimeError("Navigation did not settle; inspect the screen before continuing")
+            time.sleep(POLL_SECONDS)
+        page: dict[str, Any] = {}
+        left = NAVIGATE_SNAPSHOT_BY - (time.monotonic() - started)
+        if left > 0:
+            try:
+                page = self.snapshot(min(SETTLE_SECONDS, left))
+            except Exception:  # noqa: BLE001
+                page = {}
+            if time.monotonic() - started > NAVIGATE_SNAPSHOT_UNTIL:
+                page = {}
+        if not page:
+            url_result, title_result = self.ab.batch([["get", "url"], ["get", "title"]])
+            page = {"url": url_result.get("url"), "title": str(title_result.get("title") or "")[:200]}
+        return {"ok": True, **{key: page[key] for key in ("url", "title", "tree", "elements", "loading") if key in page}}
+
+    def save_pdf(self, tab: dict[str, Any]) -> None:
+        """Save the PDF the tab shows, if it shows one, with the call's downloads.
+
+        It is named after the tab's title, which the viewer takes from the PDF, unless that is only a
+        piece of its address, such as a blob: URL's id; the name is made safe as any download's is.
+        """
+        if not self.downloads:
+            return
+        title, url = str(tab.get("title") or "").strip(), str(tab.get("url") or "")
+        # The viewer titles a PDF without one by the last piece of its address, such as a blob: URL's id.
+        last = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
+        name = "" if not title or title in (last, unquote(last)) else download_name(title if title.lower().endswith(".pdf") else f"{title}.pdf")
+        with contextlib.suppress(Exception):
+            (saved,) = self.ab.batch([["eval", SAVE_PDF.replace("NAME", json.dumps(name))]], timeout=3.0)
+            if saved.get("result") is True:
+                # Waited for until its download begins, as a click on a download link is.
+                self.downloads.client.download_links.append(time.monotonic())
+
+    def dialog(self) -> dict[str, Any] | None:
+        """The JavaScript dialog (alert, confirm, prompt or beforeunload) the page has open, if any."""
+        try:
+            # Short: it can follow a step that already used most of the caller's time limit.
+            (status,) = self.ab.batch([["dialog", "status"]], timeout=3.0)
+        except Exception:  # noqa: BLE001
+            return None
+        return status if status.get("hasDialog") else None
+
+    def dialog_result(self, dialog: dict[str, Any], progress: dict[str, Any], remaining: bool = False) -> dict[str, Any]:
+        """An alert only informs and OK is its one answer, so it is closed and its message reported.
+        Any other dialog asks something: it stays open on the screen for computer_act or the person."""
+        kind = str(dialog.get("type") or "")
+        message = str(dialog.get("message") or "")[:300]
+        quoted = f": {json.dumps(message, ensure_ascii=False)}" if message else ""
+        if kind != "alert":
+            name = '"Leave site?"' if kind == "beforeunload" else kind
+            return {"ok": False, **progress, "error": f"A {name} dialog is open on the screen{quoted}",
+                    "dialog": kind, "fallback": "computer_act"}
+        note = f"The page showed an alert, now closed{quoted}."
+        try:
+            self.ab.batch([["dialog", "dismiss"]])
+            snap = self.snapshot(ACTION_WAIT_SECONDS)
+        except Exception:  # noqa: BLE001
+            return {"ok": False, **progress, "error": f"The page showed an alert{quoted}.", "fallback": "computer_act"}
+        # A step that was still running when the alert came may or may not have taken effect.
+        unsure = " Check whether the last step took effect." if progress.get("uncertain") else ""
+        if remaining or unsure:
+            after = " The remaining steps did not run." if remaining else ""
+            return {**snap, **progress, "ok": False, "error": f"{note}{unsure}{after}"}
+        return {**snap, **progress, "note": note}
+
+    def step(self, commands: list[list[str]]) -> list[Any]:
+        try:
+            results = self.ab.batch(commands)
+        except AbError as error:
+            if re.search(r"Element\b.*\bis disabled", str(error)):
+                raise Settled(DISABLED) from None
+            if any(marker in str(error) for marker in SETTLED_ERRORS):
+                raise Settled(str(error)) from None
+            raise
+        self.dialog_opened = any(result.get("dialogOpened") is True for result in results)
+        return results
+
+    def fill(self, ref: str, text: str) -> None:
+        _, kept = self.step([["fill", f"@{ref}", text], ["get", "value", f"@{ref}"]])
+        value = kept.get("value")
+        if isinstance(value, str) and value and value != text:
+            raise RuntimeError("Input did not accept the requested value")
+
+    def type(self, ref: str, text: str) -> None:
+        """Real key presses into whatever has focus, as a person types: a code widget that moves
+        focus from box to box gets each key in its own box. Before each key the page must still be
+        the same document, with focus in the field or a box next to it."""
+        token = os.urandom(8).hex()
+        _, start = self.step([["focus", f"@{ref}"], ["eval", TYPE_START.replace("TOKEN", token)
+                                                     .replace("WHOLE", json.dumps(len(text) > 1))]])
+        info = start.get("result") or {}
+        multiline = info.get("multiline") is True
+        # Enter in a one-line field would submit its form; Shift+Enter breaks the line elsewhere.
+        chars = [char for char in text.replace("\r\n", "\n").replace("\r", "\n") if multiline or char != "\n"]
+        check = ["eval", TYPE_CHECK.replace("TOKEN", token)]
+        commands: list[list[str]] = []
+        if info.get("frame") or len(chars) > CHECKED_KEYS:
+            for index, line in enumerate("".join(chars).split("\n")):
+                if index:
+                    commands.append(["press", "Shift+Enter"])
+                if line:
+                    commands.append(["keyboard", "type", line])
+            keys_per_command = 0
+        else:
+            for char in chars:
+                commands += [check, key_command(char)]
+            keys_per_command = 2
+        try:
+            if commands:
+                self.ab.batch(commands, timeout=60.0)
+        except AbError as error:
+            if keys_per_command and error.index % keys_per_command == 0 and "Typing stopped" in str(error):
+                done, total = error.index // keys_per_command, len(chars)
+                if "Typing stopped: page" in str(error):
+                    raise PageLeft(f"The page changed while typing, after {done} of {total} characters, "
+                                   "so the rest was not typed. Take a fresh snapshot before continuing.") from None
+                raise TypingStopped(f"Focus left the field while typing, after {done} of {total} characters, "
+                                    "so the rest was not typed. Check the page in this snapshot before trying again.") from None
+            raise
+        # A page that moved on after the last key, as auto-submitting codes do, has taken the step.
+        (done,) = self.ab.batch([["eval", TYPE_DONE.replace("TOKEN", token)
+                                  .replace("TEXT", json.dumps(text))]])
+        if (done.get("result") or {}).get("kept") is False:
+            raise KeysNotKept(NOT_KEPT)
+
+    def act(self, actions: list[dict[str, Any]]) -> dict[str, Any]:
+        validate_actions(actions)
+        completed = 0
+        uncertain = False
+        typed = False
+        try:
+            for step in actions:
+                kind, ref = step["kind"], step.get("ref")
+                node = self.control(ref, check_disabled=kind in ("fill", "type")) if ref is not None else None
+                typed = kind == "type" or (kind == "fill" and not (node and native_options(node)))
+                uncertain = True
+                if kind == "pay_token" or step.get("origin"):
+                    if ref is not None:
+                        self.step([["focus", f"@{ref}"]])
+                    page_secrets.run_step(self.port, self.target, step)
+                elif kind == "click":
+                    refused = purchase_refusal(step, *self.click_purchase(ref, node), completed)  # type: ignore[arg-type]
+                    if refused:
+                        return refused
+                    # agent-browser scrolls an element into view inside its frame, not the frame into view
+                    # on the page, so a click on a frame below the fold would land on whatever is there.
+                    frame = node.frame  # type: ignore[union-attr]
+                    # A native dropdown takes its option from fill; a click would open a list the page cannot see.
+                    if self.downloads:
+                        with contextlib.suppress(Exception):
+                            self.step([["focus", f"@{ref}"]])
+                            (link,) = self.ab.batch([["eval", "Boolean(document.activeElement?.closest('a[download]'))"]])
+                            if link.get("result"):
+                                self.downloads.client.download_links.append(time.monotonic())
+                    self.step([*([["scrollintoview", f"@{frame.ref}"]] if frame else []),
+                               ["focus" if native_options(node) else "click", f"@{ref}"]])  # type: ignore[arg-type]
+                elif kind == "upload":
+                    self.step([["upload", f"@{ref}", *step["files"]]])
+                elif kind == "fill" and native_options(node):  # type: ignore[arg-type]
+                    self.step([["select", f"@{ref}", step["text"]]])
+                elif kind == "fill":
+                    self.fill(ref, step["text"])
+                else:
+                    try:
+                        self.type(ref, step["text"])
+                    except KeysNotKept:
+                        completed += 1
+                        raise
+                completed += 1
+                uncertain = False
+                dialog = self.dialog() if self.dialog_opened else None
+                if dialog:
+                    return self.dialog_result(dialog, {"completed": completed, "uncertain": False},
+                                              remaining=completed < len(actions))
+            started = time.monotonic()
+            quiet_from = time.time() + (TYPING_PAUSE_SECONDS if typed else 0.0)
+            busy = not self.settle(ACTION_WAIT_SECONDS, quiet_from=quiet_from)
+            left = ACTION_WAIT_SECONDS - (time.monotonic() - started)
+            snap = self.snapshot(0.0 if busy else max(0.0, left))
+            return {**snap, "completed": completed, **({"loading": True} if busy else {})}
+        except (Settled, TypingStopped, KeysNotKept) as exc:
+            # Nothing changed for this step, or typing stopped where it says. The page as it is goes with the reason.
+            try:
+                snap = self.snapshot(ACTION_WAIT_SECONDS if isinstance(exc, PageLeft) else 0.0)
+            except Exception:  # noqa: BLE001
+                snap = {}
+            error = NOT_KEPT if isinstance(exc, KeysNotKept) else str(exc)
+            return {"uncertain": False, **snap, "ok": False, "completed": completed, "error": error}
+        except Refused as exc:
+            # Settled, and fixable in the page browser: no desktop fallback.
+            return {"ok": False, "completed": completed, "uncertain": False, "error": str(exc)}
+        except CardFieldUncertain as exc:
+            return {"ok": False, "completed": completed, "uncertain": True, "error": str(exc)}
+        except Exception as exc:  # noqa: BLE001
+            dialog = self.dialog()
+            if dialog:
+                return self.dialog_result(dialog, {"completed": completed, "uncertain": uncertain},
+                                          remaining=completed + uncertain < len(actions))
+            return {"ok": False, "completed": completed, "uncertain": uncertain, "error": str(exc),
+                    "fallback": "computer_act"}
+
+
+# Typing runs in the page's own world: it reads and checks only what the page could change anyway.
+# A code is typed into its boxes: like-named one- or two-character inputs around the field, up to
+# where their numbering starts again, so a second code or a middle-initial field next to it is left alone.
+CODE_BOXES = r"""
+  // Boxes cap their own length at one or two characters. Number boxes ignore a cap, and some pages
+  // set none: those must be narrow and say they take one digit, so card or date fields never count.
+  const box = (input) => {
+    if (!(input instanceof HTMLInputElement)) return false;
+    if (input.maxLength > 0) return input.maxLength <= 2;
+    const width = input.getBoundingClientRect().width;
+    return ["text", "tel", "number", "password"].includes(input.type) && width > 0 && width <= 72
+      && (input.autocomplete === "one-time-code"
+        || (input.type === "number" && input.max !== "" && Number(input.max) <= 9));
+  };
+  const naming = (field) => [field.getAttribute("aria-label"), field.name, field.id,
+    ...Array.from(field.labels || [], (label) => label.textContent)].join("|").replace(/[\d\s]+/g, "").toLowerCase();
+  // Pages often label only the first box, with the prompt, and leave the rest unnamed. Unnamed boxes
+  // straight after a named one, with no other field between, are its code, if the whole run is a code's size.
+  const unnamed = (field) => /^\|*$/.test(naming(field));
+  const cache = new WeakMap();
+  const led = new WeakMap();
+  const named = (field, container) => {
+    let names = cache.get(container);
+    if (!names) {
+      names = new Map();
+      const members = new Set();
+      led.set(container, members);
+      const inputs = [...container.querySelectorAll("input")].filter((input) => input.type !== "hidden");
+      const bare = (input) => input && box(input) && unnamed(input);
+      inputs.forEach((input, at) => {
+        if (names.has(input)) return;
+        names.set(input, naming(input));
+        if (!bare(input)) return;
+        let from = at;
+        let to = at;
+        while (bare(inputs[from - 1])) from--;
+        while (bare(inputs[to + 1])) to++;
+        const lead = inputs[from - 1];
+        const name = lead && box(lead) && to - from >= 2 && to - from <= 6 ? naming(lead) : naming(input);
+        if (name === naming(input)) return;
+        for (let i = from - 1; i <= to; i++) members.add(inputs[i]);
+        for (let i = from; i <= to; i++) names.set(inputs[i], name);
+      });
+      cache.set(container, names);
+    }
+    return names.get(field) ?? naming(field);
+  };
+  // Boxes with no length cap only count as a code when a named box leads them.
+  const joined = (input, container) => input.maxLength > 0 || (named(input, container), led.get(container).has(input));
+  const numberOf = (field) => {
+    const found = /\d+/.exec(field.getAttribute("aria-label")
+      || Array.from(field.labels || [], (label) => label.textContent).join(" ") || field.name || "");
+    return found ? Number(found[0]) : null;
+  };
+  const like = (container, name) => [...container.querySelectorAll("input")].filter((input) => box(input)
+    && joined(input, container) && named(input, container) === name);
+  function codeOf(el) {
+    if (!box(el)) return null;
+    for (let node = el.parentElement, up = 0; node && up < 3; node = node.parentElement, up++) {
+      if ([...node.querySelectorAll("input")].filter(box).length < 4 || !joined(el, node)) continue;
+      const boxes = like(node, named(el, node));
+      const restarts = (a, b) => numberOf(a) !== null && numberOf(b) !== null && numberOf(b) <= numberOf(a);
+      let from = boxes.indexOf(el);
+      let to = from;
+      while (from > 0 && !restarts(boxes[from - 1], boxes[from])) from--;
+      while (to < boxes.length - 1 && !restarts(boxes[to], boxes[to + 1])) to++;
+      return { container: node, name: named(el, node), from, size: to - from + 1, at: boxes.indexOf(el) };
+    }
+    return null;
+  }
+  const empty = (field) => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, "");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  const focused = () => {
+    let active = document.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    return active;
+  };
+"""
+
+TYPE_START = "(() => {" + CODE_BOXES + r"""
+  const el = focused();
+  if (el instanceof HTMLIFrameElement || el instanceof HTMLFrameElement) return { frame: true };
+  if (!el || el === document.body) throw new Error("The field did not take keyboard focus. Click it, then type again.");
+  // A page that starts to leave keeps its document until the next one loads; no key goes to it then.
+  // A page that asks to stay before leaving may stay, so only an unasked leave counts.
+  let leaving = false;
+  addEventListener("beforeunload", (event) => {
+    if (!event.defaultPrevented && !event.returnValue) leaving = true;
+  });
+  const code = codeOf(el);
+  let start = code ? code.at : 0;
+  if (code && code.size > 1 && WHOLE) {
+    // A whole code replaces the code: every box is emptied and typing starts at the first. Widgets
+    // that draw their boxes again on each input are found again in the same place each time.
+    const boxes = () => {
+      cache.delete(code.container);
+      return like(code.container, code.name).slice(code.from, code.from + code.size);
+    };
+    for (let i = 0; i < 24; i++) {
+      const filled = boxes().find((field) => field.value);
+      if (!filled) break;
+      empty(filled);
+    }
+    start = code.from;
+    boxes()[0]?.focus();
+  } else if (el.isContentEditable) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+  } else if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.value) {
+    empty(el);
+  }
+  window.__rakazoTyping = { token: "TOKEN", el, code, start, leaving: () => leaving };
+  return { multiline: !(el instanceof HTMLInputElement) };
+})()"""
+
+# Focus may move on by itself to the next box of the code, and nowhere else.
+TYPE_CHECK = "(() => {" + CODE_BOXES + r"""
+  const typing = window.__rakazoTyping;
+  if (typing?.token !== "TOKEN" || typing.leaving()) throw new Error("Typing stopped: page");
+  const active = focused();
+  const { el, code } = typing;
+  const holds = active === el || el.contains(active) || (code !== null && code.container.isConnected
+    && code.container.contains(active) && box(active) && named(active, code.container) === code.name);
+  if (!holds) throw new Error("Typing stopped: focus");
+  return true;
+})()"""
+
+TYPE_DONE = "(() => {" + CODE_BOXES + r"""
+  const typing = window.__rakazoTyping;
+  if (typing?.token !== "TOKEN") return { kept: true };
+  const { el, code, start } = typing;
+  const letters = (value) => String(value).replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
+  const wanted = letters(TEXT);
+  if (code) {
+    if (!code.container.isConnected) return { kept: true };
+    const shown = like(code.container, code.name).slice(start).map((field) => field.value).join("");
+    return { kept: letters(shown).slice(0, wanted.length) === wanted };
+  }
+  if (!el.isConnected) return { kept: true };
+  return { kept: letters(el.isContentEditable ? el.innerText : el.value) === wanted };
+})()"""
+
+
+def key_command(char: str) -> list[str]:
+    """One character as a real key press, or as inserted text where a key cannot name it."""
+    if char == "\n":
+        return ["press", "Shift+Enter"]
+    if char.isascii() and char.isalnum():
+        return ["press", char]
+    return ["keyboard", "inserttext", char]
+
+
+class CdpClient(page_secrets.CdpClient):
+    """The shared CDP transport with events for this call's downloads and its page's load."""
+
+    def __init__(self, ws_url: str) -> None:
+        super().__init__(ws_url)
+        # The load milestones each document has reached, by frame and document.
+        self.lifecycle: dict[tuple[Any, Any], set[str]] = {}
+        # Downloads Chromium began since download events were turned on, by guid, in the order they began.
+        self.downloads: dict[str, dict[str, Any]] = {}
+        # The MIME type each document response was sent with, by URL, for the type of a download.
+        self._mime_types: dict[str, str] = {}
+        # The page's top frame while its downloads are saved, and the documents it requested since then
+        # that have not loaded: when each was requested and when its answer came. A download's answer
+        # ends its request just before the download begins.
+        self.download_frame: str | None = None
+        self._documents: dict[str, list[float | None]] = {}
+        # When the bot clicked links that download (`<a download>`) whose downloads have not begun: the
+        # browser makes their requests, so the page has no document for them.
+        self.download_links: list[float] = []
+
+    def _skipped_event(self, head: bytes) -> None:
+        super()._skipped_event(head)
+        # A download of a huge data: URL still begins: Chromium sends its guid before the url.
+        begun = re.match(rb'\{"method":"Browser.downloadWillBegin","params":\{"frameId":"[^"]*","guid":"([0-9A-Fa-f-]+)"', head)
+        if begun:
+            self._handle_event({"method": "Browser.downloadWillBegin", "params": {"guid": begun.group(1).decode()}})
+
+    def _handle_event(self, message: dict[str, Any]) -> None:
+        super()._handle_event(message)
+        method = message.get("method")
+        params = message.get("params") or {}
+        if method == "Browser.downloadWillBegin":
+            if self.download_links:
+                self.download_links.pop(0)
+            guid = params.get("guid")
+            if isinstance(guid, str):
+                self.downloads.setdefault(guid, {"name": params.get("suggestedFilename"), "url": params.get("url"),
+                                                 "state": "inProgress", "received": 0, "total": 0})
+        elif method == "Page.lifecycleEvent":
+            self.lifecycle.setdefault((params.get("frameId"), params.get("loaderId")), set()).add(str(params.get("name")))
+        elif method == "Browser.downloadProgress":
+            download = self.downloads.get(params.get("guid"))
+            if download is not None:
+                download.update(state=params.get("state"), received=params.get("receivedBytes") or 0,
+                                total=params.get("totalBytes") or 0)
+        elif method == "Network.responseReceived":
+            response = params.get("response") or {}
+            if params.get("type") == "Document" and isinstance(response.get("mimeType"), str):
+                self._mime_types[str(response.get("url"))] = response["mimeType"]
+            if params.get("requestId") in self._documents:
+                self._documents[params["requestId"]][1] = time.monotonic()
+        elif method == "Network.requestWillBeSent":
+            request_id = params.get("requestId")
+            if (self.download_frame and params.get("frameId") == self.download_frame
+                    and params.get("type") == "Document" and isinstance(request_id, str)):
+                self._documents.setdefault(request_id, [time.monotonic(), None])
+        elif method in ("Network.loadingFinished", "Network.loadingFailed"):
+            if method == "Network.loadingFinished":
+                self._documents.pop(params.get("requestId"), None)
+            elif params.get("requestId") in self._documents:
+                self._documents[params["requestId"]][1] = time.monotonic()
+
+    def mime_type(self, url: Any) -> str | None:
+        kind = self._mime_types.get(str(url), "")
+        # A server's text that reaches the bot, so only a plain type/subtype is kept.
+        return kind if len(kind) <= 100 and re.fullmatch(r"[\w.+-]+/[\w.+-]+", kind, re.ASCII) else None
+
+    def documents_pending(self, grace: float, wait: float) -> bool:
+        """Whether a document the page requested may still turn out to be a download."""
+        now = time.monotonic()
+        return any(now - clicked < wait for clicked in self.download_links) or any(
+            now - requested < wait if answered is None else now - answered < grace
+            for requested, answered in self._documents.values())
+
+    def listen(self, seconds: float) -> None:
+        """Handle the events that arrive within `seconds`, as they arrive, so their times are true."""
+        assert self._sock is not None
+        deadline = time.monotonic() + seconds
+        while (left := deadline - time.monotonic()) > 0:
+            self._sock.settimeout(left)
+            try:
+                frame = self._read_frame()
+            except socket.timeout:
+                return
+            message = json.loads(frame.decode("utf-8"))
+            if isinstance(message, dict) and message.get("method"):
+                self._handle_event(message)
+
+
+class PageLoad:
+    """Chromium's own record of the page's load, which covers requests made before agent-browser attached."""
+
+    def __init__(self, port: int, target: str) -> None:
+        self.client: CdpClient | None = None
+        self.session: str | None = None
+        try:
+            self.client = CdpClient(discover_ws_url(port))
+            self.client.connect()
+            self.session = self.client.call("Target.attachToTarget", {"targetId": target, "flatten": True},
+                                            timeout_s=2.0)["sessionId"]
+            self.client.call("Page.enable", session_id=self.session, timeout_s=2.0)
+            # Enabling lifecycle events replays the ones the current document has already reached.
+            self.client.call("Page.setLifecycleEventsEnabled", {"enabled": True}, session_id=self.session, timeout_s=2.0)
+        except Exception:  # noqa: BLE001
+            self.session = None
+
+    def idle(self) -> bool:
+        """Whether the page has loaded and Chromium has seen no request for 500 ms (its networkIdle).
+
+        A browser that cannot say leaves the wait to agent-browser's log.
+        """
+        if self.client is None or self.session is None:
+            return True
+        try:
+            frame = self.client.call("Page.getFrameTree", session_id=self.session, timeout_s=2.0)["frameTree"]["frame"]
+        except Exception:  # noqa: BLE001
+            return True
+        return {"load", "networkIdle"} <= self.client.lifecycle.get((frame.get("id"), frame.get("loaderId")), set())
+
+    def close(self) -> None:
+        if self.client:
+            self.client.close()
+
+
+def max_file_bytes() -> int:
+    """The most bytes a file moved between this computer and a page may have, uploaded or downloaded."""
+    try:
+        override = int(os.environ.get("RAKAZO_BROWSER_UPLOAD_MAX_BYTES", ""))
+    except ValueError:
+        return MAX_UPLOAD_BYTES
+    return override if override > 0 else MAX_UPLOAD_BYTES
+
+
+# A navigate or act that the host gives the bot's download folder saves the files its page downloads
+# there, under the name the site gave (made safe), and lists them in its result.
+MAX_DOWNLOADS = MAX_UPLOAD_FILES
+# Downloads are waited for until this long after the helper started, inside the supervisor's limit on
+# one call. One still running then is listed as downloading and given its name when it finishes.
+DOWNLOAD_WAIT_UNTIL = 15.0
+# A document whose answer is a download ends its request a moment before the download begins. A
+# document still unanswered this long after it was requested is a slow page, not waited for longer.
+DOWNLOAD_BEGIN_SECONDS = 0.5
+DOCUMENT_WAIT_SECONDS = 5.0
+FINISH_LATER_SECONDS = 15 * 60
+STARTED = time.monotonic()
+DOWNLOAD_FAILED = "The download failed."
+DOWNLOADS_UNUSABLE = "Downloads cannot be saved on this computer: its Downloads folder is not usable."
+TOO_MANY_DOWNLOADS = f"downloads not saved: a call saves at most {MAX_DOWNLOADS} files."
+
+
+def download_folder(folder: Any, home: str) -> str:
+    """The bot's download folder, made inside the home folder without passing through a symlink.
+
+    A folder reached through a symlink (bots/b1 -> bots/b2) could put files in another bot's folder.
+    """
+    if not isinstance(folder, str) or not folder or "\0" in folder or os.path.isabs(folder):
+        raise RuntimeError(DOWNLOADS_UNUSABLE)
+    expected = os.path.normpath(os.path.join(home, folder))
+    if expected == home or os.path.commonpath([home, expected]) != home:
+        raise RuntimeError(DOWNLOADS_UNUSABLE)
+    path = home
+    for part in os.path.relpath(expected, home).split(os.sep):
+        path = os.path.join(path, part)
+        with contextlib.suppress(FileExistsError):
+            os.mkdir(path, 0o755)
+        if os.path.islink(path) or not os.path.isdir(path):
+            raise RuntimeError(DOWNLOADS_UNUSABLE)
+    return expected
+
+
+def download_name(name: Any) -> str:
+    """A site's name for a file as one short, plain path segment: it is untrusted text the bot reads and
+    puts in its shell, so shell characters such as `$`, backticks, quotes and `;` become `_` too."""
+    text = "".join(
+        "_" if char in "/\\$`;|&<>!\"'" else " " if unicodedata.category(char)[0] in "CZ" else char
+        for char in unicodedata.normalize("NFC", str(name or ""))
+    )
+    stem, ext = os.path.splitext(" ".join(text.split()).strip(". "))
+    if len(ext) > 12 or " " in ext:
+        stem, ext = stem + ext, ""
+    while stem and (len(stem) + len(ext) > 80 or len((stem + ext).encode()) > 200):
+        stem = stem[:-1]
+    stem = stem.rstrip(". ")
+    return stem + ext if stem else "download" + ext
+
+
+def free_name(folder: str, name: str, taken: set[str]) -> str:
+    """`name`, or `name (1)` and so on, that nothing in the folder or `taken` already has."""
+    stem, ext = os.path.splitext(name)
+    for number in range(1000):
+        candidate = name if number == 0 else f"{stem} ({number}){ext}"
+        if candidate not in taken and not os.path.lexists(os.path.join(folder, candidate)):
+            return candidate
+    raise RuntimeError(DOWNLOAD_FAILED)
+
+
+def place_download(staged: str, folder: str, name: str, taken: set[str]) -> str:
+    """Give a finished download its name. A link never replaces an existing entry or writes through a symlink."""
+    info = os.lstat(staged)
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > max_file_bytes():
+        raise RuntimeError(DOWNLOAD_FAILED)
+    while True:
+        chosen = free_name(folder, name, taken)
+        try:
+            os.link(staged, os.path.join(folder, chosen))
+        except FileExistsError:
+            taken.add(chosen)
+            continue
+        os.unlink(staged)
+        return chosen
+
+
+def remove_partial(staged: str) -> None:
+    for path in (staged, staged + ".crdownload"):
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+
+
+class Downloads:
+    """Saves the files a call's page downloads into the bot's folder, from when it is made until `finish`.
+
+    Chromium's download setting covers the whole browser and goes back to its default when the CDP
+    connection that made it closes, so the person's own downloads afterwards are unaffected.
+    """
+
+    def __init__(self, client: CdpClient, folder: Any, session_id: str | None = None, home: str | None = None) -> None:
+        self.client = client
+        self.home = os.path.realpath(home or os.environ.get("HOME") or "/home/rakazo")
+        try:
+            self.folder: str | None = download_folder(folder, self.home)
+        except (RuntimeError, OSError):
+            # Fail closed: the call's downloads are refused rather than saved anywhere else.
+            self.folder = None
+        try:
+            client.call("Browser.setDownloadBehavior", {
+                "behavior": "allowAndName" if self.folder else "deny",
+                **({"downloadPath": self.folder} if self.folder else {}),
+                "eventsEnabled": True,
+            })
+        except Exception:  # noqa: BLE001
+            # A browser that cannot be told downloads as it would without a folder; the call goes on.
+            self.folder = None
+        self.max_bytes = max_file_bytes()
+        self.stopped: dict[str, str] = {}
+        # Only the page's own navigations can turn into downloads; a frame's slow document is not waited for.
+        with contextlib.suppress(Exception):
+            if session_id:
+                frame = client.call("Page.getFrameTree", session_id=session_id)["frameTree"]["frame"]
+                client.download_frame = frame["id"]
+
+    def check_limits(self) -> None:
+        """Cancel a download past the call's count or over the size limit; Chromium deletes what it wrote."""
+        for index, (guid, download) in enumerate(self.client.downloads.items()):
+            if guid in self.stopped or download["state"] not in ("inProgress", "completed"):
+                continue
+            if index >= MAX_DOWNLOADS:
+                self.stopped[guid] = TOO_MANY_DOWNLOADS
+            elif max(download["total"], download["received"]) > self.max_bytes:
+                self.stopped[guid] = f"Not saved: larger than {self.max_bytes / (1024 * 1024):g} MB."
+            else:
+                continue
+            with contextlib.suppress(Exception):
+                self.client.call("Browser.cancelDownload", {"guid": guid})
+
+    def finish(self) -> list[dict[str, Any]]:
+        """Wait for the call's downloads within its time, then list each one as the bot will find it."""
+        while True:
+            self.check_limits()
+            running = any(download["state"] == "inProgress" and guid not in self.stopped
+                          for guid, download in self.client.downloads.items())
+            left = STARTED + DOWNLOAD_WAIT_UNTIL - time.monotonic()
+            documents = self.client.documents_pending(DOWNLOAD_BEGIN_SECONDS, DOCUMENT_WAIT_SECONDS)
+            if left <= 0 or not (running or documents):
+                break
+            self.client.listen(min(0.05, left))
+        taken: set[str] = set()
+        later: list[dict[str, str]] = []
+        found = [self.entry(guid, download, taken, later) for guid, download in self.client.downloads.items()]
+        if later:
+            # Detached and holding none of this call's files or connections, so the call ends now. Each
+            # call that leaves a download running starts one; it ends with them or after FINISH_LATER_SECONDS.
+            env = {key: value for key, value in os.environ.items()
+                   if key not in ("RAKAZO_BROWSER_ARGS_STDIN", "RAKAZO_BROWSER_WATCH_STDIN")}
+            subprocess.Popen([sys.executable, os.path.abspath(__file__), "finish", json.dumps({"downloads": later})],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True, close_fds=True, env=env)
+        if len(found) > MAX_DOWNLOADS:
+            found = found[:MAX_DOWNLOADS] + [{"error": f"{len(found) - MAX_DOWNLOADS} more {TOO_MANY_DOWNLOADS}"}]
+        return found
+
+    def entry(self, guid: str, download: dict[str, Any], taken: set[str],
+              later: list[dict[str, str]]) -> dict[str, Any]:
+        name = download_name(download["name"])
+        if self.folder is None:
+            return {"name": name, "error": DOWNLOADS_UNUSABLE}
+        staged = os.path.join(self.folder, guid)
+        if guid in self.stopped or download["state"] not in ("completed", "inProgress"):
+            remove_partial(staged)
+            return {"name": name, "error": self.stopped.get(guid, DOWNLOAD_FAILED)}
+        shown = os.path.relpath(self.folder, self.home)
+        if download["state"] == "inProgress":
+            # Not held on disk until it finishes: a file given this name meanwhile makes it `name (1)`.
+            name = free_name(self.folder, name, taken)
+            taken.add(name)
+            later.append({"guid": guid, "staged": staged, "folder": self.folder, "name": name})
+            return {"name": name, "path": f"{shown}/{name}", "state": "downloading", "size": download["received"]}
+        try:
+            name = place_download(staged, self.folder, name, taken)
+            size = os.stat(os.path.join(self.folder, name)).st_size
+        except (OSError, RuntimeError):
+            remove_partial(staged)
+            return {"name": name, "error": DOWNLOAD_FAILED}
+        taken.add(name)
+        kind = self.client.mime_type(download["url"]) or mimetypes.guess_type(name)[0]
+        return {"name": name, "path": f"{shown}/{name}", "size": size, **({"type": kind} if kind else {})}
+
+
+def finish_later(pending: list[dict[str, str]], seconds: float = FINISH_LATER_SECONDS) -> None:
+    """Name the downloads still running when their call ended once Chromium finishes them.
+
+    Chromium writes `<guid>.crdownload` and renames it `<guid>` when complete. Over the size limit,
+    the download is cancelled.
+    """
+    until = time.monotonic() + seconds
+    max_bytes = max_file_bytes()
+    begun: set[str] = set()
+    placement_failed: set[str] = set()
+    while pending and time.monotonic() < until:
+        time.sleep(0.5)
+        for item in list(pending):
+            staged = item["staged"]
+            try:
+                size = os.path.getsize(staged + ".crdownload")
+            except OSError:
+                if os.path.exists(staged):
+                    try:
+                        place_download(staged, item["folder"], item["name"], set())
+                    except (OSError, RuntimeError):
+                        placement_failed.add(staged)
+                    else:
+                        pending.remove(item)
+                        placement_failed.discard(staged)
+                elif staged in begun:
+                    # Cancelled or failed: Chromium removed what it wrote.
+                    pending.remove(item)
+                continue
+            begun.add(staged)
+            if size > max_bytes:
+                pending.remove(item)
+                with contextlib.suppress(Exception):
+                    client = CdpClient(discover_ws_url(cdp_port()))
+                    client.connect()
+                    try:
+                        client.call("Browser.cancelDownload", {"guid": item["guid"]})
+                    finally:
+                        client.close()
+                remove_partial(staged)
+
+    if any(item["staged"] in placement_failed for item in pending):
+        # Keep completed files available for retries until the deadline, then fail like entry().
+        for item in pending:
+            if item["staged"] in placement_failed:
+                remove_partial(item["staged"])
+        raise RuntimeError(DOWNLOAD_FAILED)
+
+
+# -- purchases ----------------------------------------------------------------------------------------
+
+PURCHASE_CHANGED = ("The page changed since the user approved this purchase, so the click was not made. "
+                    "Call browser_act again with only this click; that asks the user again.")
+PURCHASE_REFUSED = ("This click would complete a purchase, so the user must approve it. "
+                    "Call browser_act again with only this click; that asks the user.")
+
+# The click that pays, books or orders is the one the user must approve. Read in page_secrets' isolated
+# world, so the page cannot hide a button or fake an approval; it can only word its own text.
+PURCHASE_HELPERS = r"""
+(() => {
+  if (window.__rakazoPurchase) return true;
+  function visible(el) {
+    if (!(el instanceof Element)) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+  const clean = (text) => String(text).replace(/\s+/g, " ").trim();
+  // What a click at (x, y) reaches, looking into shadow trees.
+  function elementAtPoint(x, y) {
+    let hit = document.elementFromPoint(x, y);
+    while (hit?.shadowRoot && typeof hit.shadowRoot.elementFromPoint === "function") {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
+    return hit;
+  }
+  const CONTROL_ROLES = ["button", "link", "textbox", "checkbox", "radio", "menuitem", "menuitemcheckbox",
+    "menuitemradio", "tab", "option", "switch", "combobox", "treeitem"];
+  function isInteractive(el) {
+    const tag = el.tagName.toLowerCase();
+    if (["a", "button", "input", "textarea", "select", "summary"].includes(tag)) return true;
+    if (el.isContentEditable || CONTROL_ROLES.includes(el.getAttribute("role"))) return true;
+    if (el.hasAttribute("onclick") || Number(el.getAttribute("tabindex") ?? NaN) >= 0) return true;
+    // Only the outermost element styled as clickable counts: its children inherit the pointer.
+    return window.getComputedStyle(el).cursor === "pointer"
+      && (!el.parentElement || window.getComputedStyle(el.parentElement).cursor !== "pointer");
+  }
+  const SURROUNDINGS = "header, nav, footer, aside, [role=banner], [role=navigation], [role=contentinfo], [role=complementary]";
+  const NOTICE = /cookie|consent|gdpr|onetrust/i;
+  const CARD_TOKENS = ["cc-number", "cc-csc", "cc-exp", "cc-exp-month", "cc-exp-year"];
+  // What only a payment card's field is called. "Card number" alone is not: membership, frequent-flyer and ID
+  // cards have numbers too, and a payment card's form also asks for its security code.
+  const CARD_NAMING = /(?<![a-z])(?:cvv2?|cvc2?|cvn2?|csc)(?![a-z])|card[\s_-]*(?:security|verification)|(?:credit|debit)[\s_-]*card|(?:^|[^\d•*x])(?:\d|•|\*|x){4}[\s-]+(?:\d|•|\*|x){4}[\s-]+(?:\d|•|\*|x){4}|כרטיס[\s_-]*אשראי/i;
+  // A gift card, voucher or coupon number is not the card that pays.
+  const NOT_A_CARD = /gift|voucher|coupon|promo|loyalty|rewards?\b|שובר|קופון|מתנה|הטבה/i;
+  const CARD_NUMBER = /card[\s_-]*(?:number|no\b|num\b)|cardnumber|cc[\s_-]*(?:num|number)|ccnum|מספר[\s_-]*כרטיס/i;
+  const CARD_COMPANION = /(?<![a-z])(?:cvv2?|cvc2?|cvn2?|csc)(?![a-z])|security[\s_-]*code|(?<![a-z])mm\s*\/\s*yy(?!yy)|קוד[\s_-]*(?:אבטחה|ביטחון)/i;
+  const namingOf = (el) => [el.name, el.id, el.placeholder, el.getAttribute("aria-label"),
+    ...Array.from(el.labels || [], (label) => label.textContent)].join(" ");
+  function cardLike(el) {
+    if (!(el instanceof HTMLInputElement) || !["text", "tel", "number", "password"].includes(el.type) || !visible(el)) return false;
+    const tokens = (el.getAttribute("autocomplete") || "").toLowerCase().split(/\s+/);
+    if (CARD_TOKENS.some((token) => tokens.includes(token))) return true;
+    const naming = namingOf(el);
+    if (NOT_A_CARD.test(naming)) return false;
+    if (CARD_NAMING.test(naming)) return true;
+    // A card number counts beside a security code or a month/year expiry, which an ID or membership card
+    // form does not ask for.
+    if (!CARD_NUMBER.test(naming)) return false;
+    const around = el.form ? [...el.form.elements] : [...el.getRootNode().querySelectorAll("input")];
+    return around.some((other) => other !== el && other instanceof HTMLInputElement && visible(other)
+      && CARD_COMPANION.test(namingOf(other)));
+  }
+  // Inputs of the page and of its open shadow trees, where some checkouts draw their card fields.
+  function deepInputs(root = document, found = []) {
+    for (const el of root.querySelectorAll("*")) {
+      if (el instanceof HTMLInputElement) found.push(el);
+      if (el.shadowRoot && found.length < 2000) deepInputs(el.shadowRoot, found);
+    }
+    return found;
+  }
+  const pageCards = () => deepInputs().filter(cardLike);
+  // What the control says, in each way it can say it: its own text or value, its aria label, its title.
+  // Direction marks and no-break spaces read as spaces; zero-width characters, which split a word without
+  // showing, are dropped.
+  const tidy = (text) => clean(String(text ?? "").replace(/[‎‏‪-‮ ]/g, " ")
+    .replace(/[\u200B-\u200D\u2060-\u2064\uFEFF]/g, ""));
+  function wordsOf(el) {
+    const root = el.getRootNode();
+    const named = (el.getAttribute("aria-labelledby") || "").trim().split(/\s+/).filter(Boolean)
+      .map((id) => root.getElementById?.(id)?.textContent || "").join(" ");
+    return [el instanceof HTMLInputElement ? el.value || el.getAttribute("alt") : el.innerText || el.textContent,
+      named, el.getAttribute("aria-label"), el.getAttribute("title")].map(tidy).filter(Boolean);
+  }
+  // A phrase compares without its case, outer punctuation or icons.
+  const phrase = (text) => text.toLowerCase().replace(/^[^\p{L}\p{N}$€£₪¥]+|[^\p{L}\p{N})]+$/gu, "");
+  const CURRENCY = "[$€£₪¥]|usd|eur|gbp|ils|nis";
+  const SPENDS = `${CURRENCY}|\\d`;
+  // The last step of an order. Each starts the phrase, so "to checkout", "continue to payment", "add to
+  // cart", "pay later" and a lone "confirm" or "continue" are not final steps.
+  const FINAL_STEP = [
+    new RegExp(`^(?:pay(?: securely)?(?: now)?|pay now securely|pay (?:with|using|by|via) .+|pay (?:${SPENDS}).*)$`),
+    /^make (?:a |the |my )?payment\b/,
+    new RegExp(`^send (?:money|payment|funds|(?:${CURRENCY})\\s?\\d.*)`),
+    /^confirm (?:the |your |my )?(?:transfer|payment|bid|purchase)\b/,
+    /^commit to buy\b/,
+    /^request to book\b/,
+    /^place (?:a |the |your |my )?bid\b/,
+    // "Buy", "Buy now", "Buy it", "Buy this", "Buy $5"; not "Buy gift cards".
+    new RegExp(`^buy(?: now| it| this| it now)?$|^buy (?:${SPENDS})`),
+    /^purchase\b(?! (?:history|orders?|details|options|agreement|terms))/,
+    /^place (?:your |my |the )?order\b/,
+    /^(?:complete|finish|finalize|confirm|submit|review and place) (?:your |my |the )?(?:order|purchase|booking|reservation|payment|checkout)\b/,
+    /^(?:confirm|agree|accept|authori[sz]e) (?:and|&) (?:pay|book|purchase|order)\b/,
+    /^authori[sz]e payment\b/,
+    /^(?:book|order|reserve) and pay\b/,
+    // "Book now" and "Order now" often only open a checkout: a final step when the label has an amount.
+    new RegExp(`^(?:book|order|reserve) now\\b.*(?:${SPENDS})`),
+    new RegExp(`^(?:subscribe|donate|upgrade|start (?:my )?(?:free )?(?:trial|subscription)).*(?:${SPENDS})`),
+    /^(?:שלם|שלמו|תשלום עכשיו|אישור (?:והזמנה|הזמנה|תשלום|רכישה|ותשלום)|ביצוע (?:הזמנה|תשלום|רכישה)|קנה|קנו|רכוש|רכשו)(?:\s|$)/,
+    // "הזמן" and "להזמנה" also open a booking page or a meeting: a final step with an amount.
+    new RegExp(`^(?:הזמן|הזמינו|להזמנה)(?:\\s|$).*(?:${SPENDS})`),
+  ];
+  // "Pay bill", "Pay invoice": a final step only for a control that submits a form or sits in a card form,
+  // so a plan toggle such as "Pay monthly" asks nothing.
+  const PAY_WORD = /^pay (?!later\b|in\b|over\b|with\b)\S+$/;
+  function submittedForm(el) {
+    if (el instanceof HTMLButtonElement) return el.type === "submit" ? el.form : null;
+    if (el instanceof HTMLInputElement) return ["submit", "image"].includes(el.type) ? el.form : null;
+    return null;
+  }
+  const inPaymentForm = (el) => {
+    const form = el.form || el.closest("form");
+    return Boolean(form) && (submittedForm(el) !== null || [...form.elements].some(cardLike));
+  };
+  const isFinalStep = (words, el) => words.some((word) => FINAL_STEP.some((pattern) => pattern.test(phrase(word)))
+    || (el && PAY_WORD.test(phrase(word)) && inPaymentForm(el)));
+  // Controls on a payment page that never pay.
+  const NOT_PAYING = /^(?:back|go back|previous|cancel|edit|change|remove|delete|clear|apply|redeem|coupon|promo|discount|gift card|show|hide|help|close|dismiss|terms|privacy|learn more|view|select (?:a )?seat|choose (?:a )?seat|sign in|log in|login|sign up|register|forgot|add (?:a )?(?:promo|coupon|code|gift|note)|add to (?:cart|basket|bag))\b|^(?:חזרה|ביטול|עריכה|שינוי|הסרה|קופון|סגירה|סגור|עזרה|תנאי|פרטיות|התחבר|כניסה|החל|הוסף לסל|הוספה לסל)(?:\s|$)/;
+  // A number may group its thousands with spaces, as in "1 234,56 €". Separators before its first digit
+  // are kept, so ".99 USD" is not read as 99 dollars.
+  const NUMBER = "[.,]*\\d(?:[\\d.,]|[ \\u00a0\\u202f](?=\\d{3}))*";
+  const MONEY = new RegExp(`(?:[$€£₪¥]\\s?${NUMBER}|${NUMBER}\\s?(?:[$€£₪¥]|USD|EUR|GBP|ILS|NIS|ש"ח|ש״ח)|(?:USD|EUR|GBP|ILS|NIS)\\s?${NUMBER})`, "gi");
+  const TOTAL = /(?<!sub)total|amount due|balance due|to pay|you pay|סה[״"'׳]?כ|סך[\s-]*הכל|לתשלום/i;
+  const moneyIn = (text) => {
+    const value = String(text);
+    if (value.length > 1000) return "?";
+    const found = value.match(MONEY);
+    if (found?.length > 1) return "?";
+    return found ? found[0].replace(/[.,\s]+$/, "").slice(0, 40) : "";
+  };
+  // The amount next to the last total line; multiple prices on one line are ambiguous.
+  function totalShown() {
+    const lines = String(document.body?.innerText || "").split("\n").slice(0, 400);
+    let found = "";
+    lines.forEach((line, i) => {
+      if (!TOTAL.test(line.slice(0, 200))) return;
+      found = moneyIn(line) || moneyIn(lines[i + 1] || "") || found;
+    });
+    return found;
+  }
+  // Cookie notices and site menus come around every page; they are not the checkout.
+  function inSurroundings(el) {
+    if (el.closest(SURROUNDINGS) && !el.closest("main, [role=main], form")) return true;
+    for (let node = el; node && node !== document.body; node = node.parentElement) {
+      if (NOTICE.test(`${node.id} ${typeof node.className === "string" ? node.className : ""}`)) return true;
+    }
+    return false;
+  }
+  const isPlainLink = (el) => el.tagName.toLowerCase() === "a" && el.getAttribute("role") !== "button"
+    && !el.hasAttribute("onclick") && !["", "#"].includes((el.getAttribute("href") || "").trim())
+    && !/^javascript:/i.test(el.getAttribute("href") || "");
+  // A control that presses something, as opposed to a field, a choice or a link to another page.
+  function pressable(el) {
+    const tag = el.tagName.toLowerCase();
+    if (tag === "button") return true;
+    if (tag === "input") return ["submit", "button", "image"].includes(el.type);
+    if (["select", "textarea", "summary", "label"].includes(tag) || el.isContentEditable) return false;
+    if (tag === "a") return !isPlainLink(el);
+    const role = el.getAttribute("role");
+    return role === "button" || (!role && isInteractive(el));
+  }
+  // Page text is cut by characters, not code units, so a cut never leaves half an emoji.
+  const cut = (text, max) => Array.from(text).slice(0, max).join("");
+  // An order line ends with its one amount: "Oat milk 1L × 2 $8.40", "Delivery 6,00 €", "Discount -$5.00". A
+  // minus sign right before the amount is kept, so a credit never reads as a charge.
+  const LINE_AMOUNT = new RegExp(`[-−]?(?:${MONEY.source})$`, "i");
+  // Between two parts of a line that end and start with a digit: "2" and "150,00 €" in two cells are not "2 150,00 €".
+  const APART = "\u001f";
+  const ANY_AMOUNT = new RegExp(MONEY.source, "i");
+  const SUBTOTAL = /sub-?\s?total|סכום ביניים/i;
+  // A line that is itself a total says so in whole words: "Totally Oats" is an item.
+  const TOTAL_LINE = new RegExp(`(?<!\\p{L})(?:${TOTAL.source})(?!\\p{L})`, "iu");
+  // What the shopper sees: an element hidden by its own style, or by a transparent or hidden ancestor, is not.
+  const seen = (el) => visible(el) && (el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true }) ?? true);
+  // Text drawn in a transparent color, or at no size, is on the page but not in front of the shopper.
+  const inkless = (el) => {
+    const style = window.getComputedStyle(el);
+    return parseFloat(style.fontSize) === 0 || /^(?:transparent|rgba\([^)]*,\s*0\))$/.test(style.color.trim());
+  };
+  // A choice is not an order line, and nor is an offer to add something: a delivery option or an extra names
+  // its price too. Other controls, such as a quantity picker or Remove, may sit in a line; their words are not read.
+  const CHOICES = "label, input[type=radio], input[type=checkbox], [role=radio], [role=checkbox], [role=switch], "
+    + "[role=option]";
+  const CONTROLS = `input:not([type=hidden]), select, textarea, button, [role=button], [role=spinbutton], [contenteditable], ${CHOICES}`;
+  const OFFER = /^(?:add|select|choose|include|upgrade|הוסף|הוספה|בחר)(?:\s|$)/;
+  const offers = (el) => [...el.querySelectorAll("button, a, [role=button]")]
+    .some((control) => wordsOf(control).some((word) => OFFER.test(phrase(word))));
+  const PAGE_EDGES = "header, nav, footer, [role=banner], [role=navigation], [role=contentinfo]";
+  // What an element shows, with a space between its parts so "6" and "$3.00" in two cells stay apart.
+  function shownText(el) {
+    let text = "";
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(), parts = 0; node && parts < 40; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      const part = tidy(node.data);
+      if (part && parent && !["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT"].includes(parent.tagName) && seen(parent) && !inkless(parent)
+          && !parent.closest(CONTROLS)) {
+        // A price split over tags ("$", "3", ".", "00") is one amount; two numbers side by side are not.
+        const within = (/\d$/.test(text) && /^[.,]/.test(part)) || (/[$€£₪¥.,]$/.test(text) && /^\d/.test(part));
+        text += (!text || within ? "" : /\d$/.test(text) && /^\d/.test(part) ? APART : " ") + part;
+        parts += 1;
+      }
+    }
+    return text;
+  }
+  // The order lines the checkout lists above its total, as the page words them: each a name and the amount
+  // at its end, such as an item with its quantity and price, delivery or tax. Read back from the total no further
+  // than a card field, so a summary beside the card form is not mixed with the page above it. None without a total.
+  // Order lines are a courtesy on the card: past this many milliseconds the page lists none, so a huge page never
+  // slows the purchase check itself.
+  const ITEMS_BUDGET_MS = 200;
+  function orderItems() {
+    const until = performance.now() + ITEMS_BUDGET_MS;
+    const all = [...(document.body?.querySelectorAll("*") || [])];
+    const small = (el, max) => (el.textContent || "").length <= max && !el.closest(CONTROLS) && !el.closest(PAGE_EDGES);
+    // The last totals of the page, found from its end, and the stretch of the page just above them.
+    const totals = [];
+    let last = -1;
+    for (let i = all.length - 1; i >= Math.max(0, all.length - 20000) && totals.length < 5; i--) {
+      if (performance.now() > until) return [];
+      const el = all[i];
+      if (small(el, 200) && TOTAL.test(el.textContent) && !SUBTOTAL.test(el.textContent) && visible(el)) {
+        totals.push(el);
+        if (last < 0) last = i;
+      }
+    }
+    if (!totals.length) return [];
+    const rows = [];
+    for (const el of all.slice(Math.max(0, last - 3000), last + 1).reverse()) {
+      if (rows.length >= 400) break;
+      if (performance.now() > until) return [];
+      if (!small(el, 400) || !ANY_AMOUNT.test(el.textContent) || el.querySelector(CHOICES)
+          || !seen(el) || offers(el)) continue;
+      const text = shownText(el);
+      const amount = text.length <= 160 ? text.match(LINE_AMOUNT)?.[0] : "";
+      const name = amount ? text.slice(0, -amount.length).replaceAll(APART, " ").replace(/[\s:·•–—-]+$/u, "") : "";
+      // A name with an amount of its own may be several lines read as one, which would put one line's price on
+      // another's name: left out. Whole, so the bot's secrets are found and hidden before the card cuts it.
+      if (/\p{L}/u.test(name) && !ANY_AMOUNT.test(name)) rows.unshift({ el, name, amount });
+    }
+    // The line itself, not the list or row group around it.
+    const lines = rows.filter((row) => !rows.some((other) => other !== row && row.el.contains(other.el)));
+    const cards = pageCards();
+    const before = (a, b) => Boolean(b.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_PRECEDING);
+    // The last total first; an earlier one when the last has nothing listed above it.
+    for (const total of totals) {
+      const found = [];
+      for (const line of [...lines].reverse()) {
+        if (!before(line.el, total) || line.el.contains(total)) continue;
+        if (cards.some((card) => before(line.el, card) && before(card, total))) break;
+        if (!TOTAL_LINE.test(line.name) && !SUBTOTAL.test(line.name)) found.unshift({ name: line.name, amount: line.amount });
+      }
+      if (found.length) return found.slice(0, 30);
+    }
+    return [];
+  }
+  // What the card shows: the button's text, and the amount the button names or else the page's total.
+  // `words`: everything the control says, so an amount only its aria label names is the one shown.
+  // A button that names another amount than the page's total also reports the total, which the spending
+  // limit counts if larger. `items`: the order lines the page lists, when it lists any.
+  function shownPurchase(reason, label, words = [label]) {
+    const prices = [...new Set(words.map((word) => moneyIn(word)).filter(Boolean))];
+    const named = prices.length > 1 ? "?" : prices[0] || "";
+    const total = totalShown();
+    const items = orderItems();
+    return { reason, label: cut(label, 80), amount: named || total, amountFrom: named ? "button" : "page",
+      ...(named && total && total !== named ? { total } : {}), ...(items.length ? { items } : {}) };
+  }
+  // `frame`: the page shows a payment provider's card frame, which only the caller can vouch for.
+  function purchaseOf(el, frame) {
+    const words = wordsOf(el);
+    const form = submittedForm(el);
+    let reason = null;
+    if (form && ([...form.elements].some(cardLike) || (frame && form.querySelector("iframe,frame")))) reason = "card_form";
+    else if ((el instanceof HTMLButtonElement || el instanceof HTMLInputElement || el instanceof HTMLAnchorElement
+        || el.getAttribute("role") === "button" || pressable(el)) && isFinalStep(words, el)) reason = "final_step";
+    else if ((frame || pageCards().length) && pressable(el) && !inSurroundings(el)
+        && !words.some((word) => NOT_PAYING.test(phrase(word)))) reason = "payment_page";
+    return reason ? shownPurchase(reason, words[0] || "", words) : null;
+  }
+  // The control a click at this spot of the page presses, unless it lands on a field, label or nothing.
+  function pressedControl(hit) {
+    const field = "input:not([type=submit]):not([type=button]):not([type=image]):not([type=reset]), textarea, select, label, [contenteditable]";
+    for (let node = hit; node && node !== document.documentElement; node = node.parentElement || node.getRootNode().host) {
+      // A click on a label presses its control: a submit button pays, a field or anything else does not.
+      if (node instanceof HTMLLabelElement && node.control) {
+        const control = node.control;
+        return !control.matches?.(field) && (pressable(control) || control.matches?.("a, button, input, [role=button]"))
+          ? control : null;
+      }
+      if (node.matches?.(field)) return null;
+      if (pressable(node) || node.matches?.("a, button, input, [role=button]")) return node;
+    }
+    return null;
+  }
+  const FRAMES = ["iframe", "frame", "object", "embed"];
+  const hasFrames = () => Boolean(document.querySelector("iframe,frame"));
+  // The window's page starts below its toolbar. Calibrated for a window with the plain toolbar and no side
+  // panel or docked tools: anything else moves the page, so a spot cannot be placed.
+  const TOOLBAR_HEIGHT = 87;
+  window.__rakazoPurchase = {
+    // Where a point of the screen (x, y) is in this page, or null when that cannot be told (a zoomed page,
+    // a scaled screen, a window with more than the toolbar).
+    pagePoint(x, y) {
+      if (window.devicePixelRatio !== 1 || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+      if (window.outerWidth !== window.innerWidth
+          || Math.abs(window.outerHeight - window.innerHeight - TOOLBAR_HEIGHT) > 2) return null;
+      const side = (window.outerWidth - window.innerWidth) / 2;
+      const at = [x - (window.screenX + side), y - (window.screenY + window.outerHeight - window.innerHeight - side)];
+      return { x: at[0], y: at[1], inside: at[0] >= 0 && at[1] >= 0 && at[0] < window.innerWidth && at[1] < window.innerHeight };
+    },
+    // What a click at a spot of this page (in viewport coordinates) would press: the purchase it completes, or
+    // `inFrame` when the spot is inside a frame, whose own page must be asked.
+    purchaseAt(x, y, frame = false) {
+      if (!(x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight)) return { offscreen: true };
+      const hit = elementAtPoint(x, y);
+      const inFrame = Boolean(hit) && FRAMES.includes(hit.tagName.toLowerCase());
+      const control = hit && !inFrame ? pressedControl(hit) : null;
+      return { purchase: control && !control.matches(":disabled") ? purchaseOf(control, frame) : null,
+        inFrame, scroll: [window.pageXOffset, window.pageYOffset], frames: hasFrames() };
+    },
+    // The same for a node the browser found at a spot inside a frame of this process.
+    purchaseOfNode(node, frame = false) {
+      const control = node instanceof Element ? pressedControl(node) : null;
+      return control && !control.matches(":disabled") ? purchaseOf(control, frame) : null;
+    },
+    // A click or key whose spot is not known: the page shows a card form or a payment frame, or a control
+    // worded as a final step. For a key (`enter`), the control with focus first.
+    paymentPage(frame = false, enter = false) {
+      const active = enter ? document.activeElement : null;
+      const typingIn = active?.form && [...active.form.elements].some(cardLike) ? active.form : null;
+      const submit = typingIn && [...typingIn.elements].find((el) => submittedForm(el) === typingIn);
+      const focused = typingIn ? shownPurchase("card_form", submit ? wordsOf(submit)[0] || "" : "")
+        : active && active !== document.body ? purchaseOf(pressedControl(active) || active, frame) : null;
+      if (focused) return { purchase: focused, frames: hasFrames() };
+      // Enter in a field submits only that field's form.
+      if (active?.matches?.("input, textarea, select")) {
+        const own = active.form && [...active.form.elements].find((el) => submittedForm(el) === active.form);
+        return { purchase: own ? purchaseOf(own, frame) : null, frames: hasFrames() };
+      }
+      const final = [...document.querySelectorAll("button, input, a, [role=button]")].find((el) =>
+        pressable(el) && visible(el) && !el.matches(":disabled") && isFinalStep(wordsOf(el), el));
+      const shown = Boolean(frame || pageCards().length || final);
+      return { purchase: shown ? shownPurchase("payment_page", final ? wordsOf(final)[0] || "" : "") : null,
+        frames: hasFrames() };
+    },
+  };
+  return true;
+})()
+"""
+
+# Zero-width, bidirectional and tag characters, which the card does not show.
+INVISIBLE = re.compile("[\U000E0000-\U000E007F​-‏⁠-⁤‪-‮⁦-⁩﻿]")
+# What the card shows when not even the page's own signals can be read: the check asks rather than allows.
+UNREADABLE_PURCHASE = {"reason": "unreadable", "label": "", "amount": "", "amountFrom": "page"}
+DESKTOP_DEADLINE_SECONDS = 8.0
+# Chromium's answer for a world whose document the tab has just replaced, and how long the check waits
+# for the new one.
+DOCUMENT_GONE = "Cannot find context with specified id"
+DOCUMENT_GONE_TRIES = 5
+DOCUMENT_GONE_WAIT_SECONDS = 0.2
+# Elements that hold another document.
+FRAME_ELEMENTS = ("IFRAME", "FRAME", "OBJECT", "EMBED")
+
+
+def shown(text: Any) -> str:
+    """Page text as the card shows it: no invisible characters, one space between words."""
+    return " ".join(INVISIBLE.sub("", str(text or "")).split())
+
+
+class Offscreen(RuntimeError):
+    """The control is out of view, so no spot of the page shows it."""
+
+
+class Deadline(RuntimeError):
+    """The desktop check ran out of time."""
+
+
+def check_deadline(deadline: float) -> None:
+    if time.monotonic() > deadline:
+        raise Deadline()
+
+
+class Purchases:
+    """The tab's purchase checks, in page_secrets' isolated world of each frame."""
+
+    def __init__(self, port: int, target: str) -> None:
+        self.client = page_secrets.connect(port)
+        try:
+            self.session = page_secrets.attach(self.client, target)
+        except Exception:
+            self.client.close()
+            raise
+
+    def close(self) -> None:
+        self.client.close()
+
+    def ask(self, session: str, world: int | None, call: str) -> Any:
+        return page_secrets.eval_json(self.client, session, f"{PURCHASE_HELPERS}, window.__rakazoPurchase.{call}",
+                                      context_id=world)
+
+    def where(self) -> dict[str, str]:
+        found = page_secrets.eval_json(self.client, self.session,
+                                       "({url: location.href, title: (document.title || '').slice(0, 200)})")
+        return {key: str(found.get(key) or "") for key in ("url", "title")} if isinstance(found, dict) else {}
+
+    def site(self) -> str:
+        """The top page's host. Each check starts here, in the world of the document the tab shows now: an
+        earlier step may have navigated."""
+        tries = DOCUMENT_GONE_TRIES
+        while True:
+            try:
+                top = page_secrets.main_frame(self.client, self.session)["id"]
+                self.client.context_id = page_secrets.world_in(self.client, self.session, top)
+                host = page_secrets.eval_json(self.client, self.session, "location.host")
+                return host if isinstance(host, str) else ""
+            except RuntimeError as error:
+                # The tab replaced its document between finding the world and reading it, as a login's
+                # redirect does: read the new one. A page that keeps doing it still fails, and asks.
+                tries -= 1
+                if DOCUMENT_GONE not in str(error) or not tries:
+                    raise
+                time.sleep(DOCUMENT_GONE_WAIT_SECONDS)
+
+    def asked_with_frames(self, session: str, world: int | None, call: str) -> dict[str, Any] | None:
+        """`call` (with a %s for whether the page shows a payment provider's frame), asked again with one."""
+        found = self.ask(session, world, call % "false")
+        if not isinstance(found, dict):
+            return None
+        if found.get("purchase") is None and found.get("frames"):
+            try:
+                frame = bool(page_secrets.payment_frames(self.client, session))
+            except Exception:  # noqa: BLE001
+                frame = False
+            if frame:
+                found = self.ask(session, world, call % "true")
+        return found if isinstance(found, dict) else None
+
+    def frames(self, deadline: float) -> list[tuple[str, int]]:
+        """Every frame of the page, of any origin, as (session, world): at most 32."""
+        sessions = [(self.session, False)]
+        try:
+            sessions += [(child, True) for child in page_secrets.auto_attach(self.client, self.session)]
+        except Exception:  # noqa: BLE001
+            pass
+        found: list[tuple[str, int]] = []
+        for session, own in sessions:
+            check_deadline(deadline)
+            try:
+                if own:
+                    self.client.call("Page.enable", session_id=session)
+                tree = self.client.call("Page.getFrameTree", session_id=session)["frameTree"]
+            except Exception:  # noqa: BLE001
+                continue
+            stack = [tree] if own else list(tree.get("childFrames") or [])
+            while stack and len(found) < 32:
+                node = stack.pop(0)
+                stack += node.get("childFrames") or []
+                check_deadline(deadline)
+                try:
+                    found.append((session, page_secrets.world_in(self.client, session, node["frame"]["id"])))
+                except Exception:  # noqa: BLE001
+                    continue
+        return found
+
+    def signals(self, enter: bool, deadline: float = float("inf"), frames: bool = True) -> dict[str, Any] | None:
+        """The purchase the page shows without a spot to look at: in the page itself, else in any of its frames."""
+        call = "paymentPage(%s, " + json.dumps(enter) + ")"
+        found = self.asked_with_frames(self.session, None, call)
+        if found and isinstance(found.get("purchase"), dict):
+            return found["purchase"]
+        for session, world in self.frames(deadline) if frames else []:
+            try:
+                inside = self.ask(session, world, call % "false")
+            except Exception:  # noqa: BLE001
+                continue
+            if isinstance(inside, dict) and isinstance(inside.get("purchase"), dict):
+                return inside["purchase"]
+        return None
+
+    def signals_or_ask(self, enter: bool) -> dict[str, Any] | None:
+        """After a failed check: the payment the page itself shows, and a page that cannot be read asks."""
+        try:
+            return self.signals(enter, frames=False)
+        except Exception:  # noqa: BLE001
+            return dict(UNREADABLE_PURCHASE)
+
+    def at_point(self, session: str, world: int | None, x: float, y: float, deadline: float,
+                 depth: int = 0) -> tuple[str, dict[str, Any] | None]:
+        """What a click at (x, y) of this page's viewport presses: ("buy", purchase), ("none", None) when it
+        lands on nothing that pays, or ("unknown", None) when a frame it lands in cannot be looked into."""
+        check_deadline(deadline)
+        client = self.client
+        try:
+            found = self.asked_with_frames(session, world, f"purchaseAt({json.dumps(x)}, {json.dumps(y)}, %s)")
+        except Exception:  # noqa: BLE001
+            return "unknown", None
+        if not found:
+            return "unknown", None
+        if found.get("offscreen"):
+            return ("offscreen" if depth == 0 else "unknown"), None
+        if isinstance(found.get("purchase"), dict):
+            return "buy", found["purchase"]
+        if not found.get("inFrame"):
+            return "none", None
+        if depth >= 3:
+            return "unknown", None
+        scroll_x, scroll_y = found.get("scroll") or [0, 0]
+        try:
+            # The browser's own hit-test, which counts from the top of the page and goes into frames of this process.
+            hit = client.call("DOM.getNodeForLocation", {"x": x + scroll_x, "y": y + scroll_y,
+                                                         "includeUserAgentShadowDOM": True}, session_id=session)
+            top = page_secrets.main_frame(client, session)["id"]
+            node = client.call("DOM.describeNode", {"backendNodeId": hit["backendNodeId"]}, session_id=session)["node"]
+            is_frame = str(node.get("nodeName", "")).upper() in FRAME_ELEMENTS
+            if hit.get("frameId") != top and not is_frame:
+                inner = page_secrets.world_in(client, session, hit["frameId"])
+                page_secrets.eval_json(client, session, PURCHASE_HELPERS, context_id=inner)
+                resolved = client.call("DOM.resolveNode", {"backendNodeId": hit["backendNodeId"],
+                                                           "executionContextId": inner}, session_id=session)
+                value = page_secrets.page_value(client.call("Runtime.callFunctionOn", {
+                    "objectId": resolved["object"]["objectId"], "returnByValue": True,
+                    "functionDeclaration": "function () { return window.__rakazoPurchase.purchaseOfNode(this, false); }",
+                }, session_id=session))
+                # Nothing paying in the frame itself: the page around it may still be the checkout.
+                return ("buy", value) if isinstance(value, dict) else ("unknown", None)
+            if not is_frame:
+                return "unknown", None
+            # A frame of another process: its own session answers, for the spot as that frame's page sees it.
+            for child in page_secrets.auto_attach(client, session):
+                check_deadline(deadline)
+                frame = page_secrets.main_frame(client, child)
+                owner = client.call("DOM.getFrameOwner", {"frameId": frame["id"]}, session_id=session)
+                if owner.get("backendNodeId") != hit["backendNodeId"]:
+                    continue
+                box = client.call("DOM.getBoxModel", {"backendNodeId": hit["backendNodeId"]},
+                                  session_id=session)["model"]["content"]
+                client.call("Page.enable", session_id=child)
+                inner = page_secrets.world_in(client, child, frame["id"])
+                # The box is where the frame is in the viewport, scroll included.
+                return self.at_point(child, inner, x - box[0], y - box[1], deadline, depth + 1)
+        except Deadline:
+            raise
+        except Exception:  # noqa: BLE001
+            return "unknown", None
+        return "unknown", None
+
+    def click(self, box: dict[str, Any] | None, scrolled: bool) -> dict[str, Any] | None:
+        """What a click on a control of the top page, at the middle of its box in the viewport, would buy.
+        Raises Offscreen for a control out of view the first time; one that cannot be looked at answers
+        with what the page itself shows."""
+        deadline = time.monotonic() + DESKTOP_DEADLINE_SECONDS
+        try:
+            x = float(box["x"]) + float(box["width"]) / 2  # type: ignore[index]
+            y = float(box["y"]) + float(box["height"]) / 2  # type: ignore[index]
+            verdict, found = self.at_point(self.session, None, x, y, deadline)
+        except Exception:  # noqa: BLE001
+            verdict, found = "unknown", None
+        if verdict == "offscreen" and not scrolled:
+            raise Offscreen()
+        if verdict in ("buy", "none"):
+            return found if verdict == "buy" else None
+        # The spot could not be looked into, perhaps a frame, or the control is still out of view: what the
+        # page or any of its frames shows decides, within the same time.
+        try:
+            return self.signals(False, deadline)
+        except Exception:  # noqa: BLE001
+            return dict(UNREADABLE_PURCHASE)
+
+    def desktop(self, args: dict[str, Any]) -> dict[str, Any] | None:
+        """The purchase a click or key on the screen would complete, or None.
+
+        Each click is looked up on the page at its spot and asks only when it lands on a control that pays; a
+        spot outside the browser window asks nothing. A key, or a spot that cannot be placed or looked into,
+        asks when the page shows a payment by itself.
+        """
+        deadline = time.monotonic() + DESKTOP_DEADLINE_SECONDS
+        enter = args.get("enter") is True
+        points = [(p["x"], p["y"]) for p in (args.get("points") or [])[:24]
+                  if isinstance(p, dict) and all(isinstance(p.get(k), (int, float)) for k in ("x", "y"))]
+        unknown = enter or not points or args.get("unplaced") is True
+        try:
+            for x, y in points:
+                placed = self.ask(self.session, None, f"pagePoint({json.dumps(x)}, {json.dumps(y)})")
+                if not isinstance(placed, dict):
+                    unknown = True
+                elif placed.get("inside"):
+                    verdict, found = self.at_point(self.session, None, placed["x"], placed["y"], deadline)
+                    if verdict == "buy":
+                        return found
+                    unknown = unknown or verdict != "none"
+            return self.signals(enter, deadline) if unknown else None
+        except Exception:  # noqa: BLE001
+            # Out of time, or a lookup failed: what the page itself already shows still asks.
+            return self.signals_or_ask(enter)
+
+
+def purchase_refusal(step: dict[str, Any], site: str, buying: dict[str, Any] | None, completed: int) -> dict[str, Any] | None:
+    """Why a click that buys is not made: bought only on the user's word, for this site, while the button
+    and total still say what the card showed. An earlier step may have changed the page since the caller asked."""
+    if not buying:
+        return None
+    if buying.get("amount") == "?" or buying.get("total") == "?":
+        return {"ok": False, "completed": completed, "uncertain": False,
+                "error": "The checkout total is ambiguous. Ask the user to verify the price and complete the payment manually."}
+    approved = step.get("approved") is True and step.get("site") == site
+    # A total the card showed beside the button (empty when it showed none) must still be the page's.
+    changed = approved and any(key in step and shown(step[key]) != shown(buying.get(key, ""))
+                               for key in ("label", "amount", "total"))
+    if approved and not changed:
+        return None
+    return {"ok": False, "completed": completed, "uncertain": False, "purchase": {**buying, "site": site},
+            "error": PURCHASE_CHANGED if changed else PURCHASE_REFUSED}
+
+
+def resolve_upload_paths(paths: Any, home: str | None = None, roots: list[str] | None = None) -> list[str]:
+    """Resolve regular files within trusted roots before handing them to Chromium."""
+    if not isinstance(paths, list) or not 1 <= len(paths) <= MAX_UPLOAD_FILES:
+        raise RuntimeError(f"upload needs 1 to {MAX_UPLOAD_FILES} file paths")
+    home = os.path.realpath(home or os.environ.get("HOME") or "/home/rakazo")
+    location = "your folder or shared/" if roots is not None else "this computer's home folder"
+    allowed = [home]
+    if roots is not None:
+        allowed = []
+        for root in roots:
+            expected = os.path.normpath(os.path.join(home, root))
+            full = os.path.realpath(expected)
+            # A root redirected by a symlink (bots/b1 -> bots/b2) could reach another bot's files.
+            if os.path.isabs(root) or full != expected or os.path.commonpath([home, full]) != home:
+                raise RuntimeError(f"Upload files must be inside {location}")
+            # A folder that does not exist yet holds no files; the other root still applies.
+            if os.path.isdir(full):
+                allowed.append(full)
+    max_bytes = max_file_bytes()
+    resolved = []
+    total = 0
+    for path in paths:
+        if not isinstance(path, str) or not path.strip():
+            raise RuntimeError("upload paths must be non-empty strings")
+        full = os.path.realpath(os.path.join(home, path))
+        # Check confinement before existence to avoid revealing outside targets.
+        if not any(os.path.commonpath([root, full]) == root for root in allowed):
+            raise RuntimeError(f"Upload files must be inside {location}: {path}")
+        try:
+            info = os.stat(full)
+        except OSError:
+            raise RuntimeError(f"File not found: {path}") from None
+        if not stat.S_ISREG(info.st_mode):
+            raise RuntimeError(f"Not a regular file: {path}")
+        total += info.st_size
+        if total > max_bytes:
+            raise RuntimeError(f"upload files are larger than {max_bytes / (1024 * 1024):g} MB in total")
+        resolved.append(full)
+    return resolved
+
+
+def validate_actions(actions: Any) -> None:
+    """Every step is checked before any runs, so a bad one cannot leave a half-done form."""
+    if not isinstance(actions, list) or not actions or len(actions) > 24:
+        raise RuntimeError("Expected 1 to 24 actions")
+    for step in actions:
+        if not isinstance(step, dict) or step.get("kind") not in ("click", "fill", "type", "upload", "pay_token"):
+            raise RuntimeError("Invalid browser action")
+        if step["kind"] == "pay_token":
+            if (step.get("ref") is not None or not isinstance(step.get("text"), str) or not step["text"]
+                    or not isinstance(step.get("origin"), str) or not isinstance(step.get("merchantAccountId"), str)):
+                raise RuntimeError("A pay token needs its text, origin and merchant account, and no ref")
+            continue
+        if step.get("ref") is None and step["kind"] == "fill" and step.get("field") == "card":
+            if step.get("cardField") not in page_secrets.CARD_AUTOCOMPLETE:
+                raise RuntimeError("A card fill without a ref needs its card field")
+        elif not isinstance(step.get("ref"), str) or not re.fullmatch(r"e\d+", step["ref"]):
+            raise RuntimeError("Element ref is required")
+        if step["kind"] == "upload":
+            step["files"] = resolve_upload_paths(step.get("paths"), roots=step.get("roots"))
+        elif step["kind"] != "click" and not isinstance(step.get("text"), str):
+            raise RuntimeError("Text is required")
+        if step.get("origin") is not None and (step["kind"] != "fill" or not isinstance(step["origin"], str)):
+            raise RuntimeError("An origin applies only to fill")
+        if ("approved" in step or "site" in step) and (
+                step["kind"] != "click" or not isinstance(step.get("approved"), bool)
+                or not isinstance(step.get("site"), str)):
+            raise RuntimeError("An approval applies only to click, with the site it was given for")
+        if ("label" in step or "amount" in step or "total" in step) and (
+                step["kind"] != "click" or not isinstance(step.get("approved"), bool)
+                or not all(isinstance(step.get(key, ""), str) for key in ("label", "amount", "total"))):
+            raise RuntimeError("An approved label and amount apply only to an approved click")
+        # A card detail is hidden and checked only on an origin-bound fill.
+        if step.get("field") == "card" and not step.get("origin"):
+            raise RuntimeError("A card fill needs its origin")
+        if step.get("origin") and not step.get("field"):
+            raise RuntimeError("A saved login fill needs its field")
+
+
+def exit_when_stdin_closes() -> None:
+    """The supervisor owns this pipe; losing it cancels this helper, not Chromium."""
+    try:
+        while os.read(0, 1024):
+            pass
+    finally:
+        os._exit(130)
+
+
+def read_stdin_line() -> str:
+    """Read one line from fd 0 unbuffered, leaving the rest of stdin for the EOF watcher."""
+    data = bytearray()
+    while len(data) < 1_048_576:
+        chunk = os.read(0, 1)
+        if not chunk or chunk == b"\n":
+            break
+        data += chunk
+    return data.decode("utf-8")
+
+
+def tab_deadline() -> float:
+    return min(time.monotonic() + TAB_WORK_SECONDS, STARTED + TABS_DONE_BY)
+
+
+def run(argv: list[str]) -> int:
+    stdin_args = read_stdin_line() if os.environ.get("RAKAZO_BROWSER_ARGS_STDIN") == "1" else None
+    if os.environ.get("RAKAZO_BROWSER_WATCH_STDIN") == "1":
+        threading.Thread(target=exit_when_stdin_closes, daemon=True).start()
+    if len(argv) < 2:
+        print(json.dumps({"ok": False, "error": "usage: rakazo-page-browser <command> [json-args]",
+                          "fallback": "computer_act"}))
+        return 2
+    command = argv[1]
+    if command not in ("navigate", "snapshot", "act", "finish", "purchase_check"):
+        print(json.dumps({"ok": False, "error": f"unknown command: {command}", "fallback": "computer_act"}))
+        return 2
+    raw_args = stdin_args if stdin_args is not None else (argv[2] if len(argv) >= 3 else "")
+    args: dict[str, Any] = json.loads(raw_args) if raw_args.strip() else {}
+    if command == "finish":
+        try:
+            finish_later(args.get("downloads") or [])
+        except (OSError, RuntimeError):
+            print(json.dumps({"downloads": [{"error": DOWNLOAD_FAILED}]}))
+            return 1
+        return 0
+    port = cdp_port()
+    downloads: Downloads | None = None
+    client: CdpClient | None = None
+    saved: list[dict[str, Any]] = []
+    # Set once the browser answers: before that, no action can have reached the page.
+    connected = False
+    opened = False
+    page: PageBrowser | None = None
+    try:
+        if command == "purchase_check":
+            # No browser running, no tab open, or one of Chromium's own pages: nothing on it can be bought.
+            # Any other failure is a failed check, which asks.
+            try:
+                # A closed browser has nothing to buy, and a desktop press waits on this check, so it is
+                # told apart at once; a browser that is only slow is waited for, and failing still asks.
+                address = ""
+                if not browser_closed(port):
+                    wait_for_cdp(port)
+                    address = front_tab(port)[1]
+            except RuntimeError as error:
+                if str(error) != NO_TAB:
+                    raise
+                address = ""
+            if not address or internal(address):
+                print(json.dumps({"ok": True, "site": "", "purchase": None, "url": address, "title": ""}))
+                return 0
+        version = wait_for_cdp(port)
+        connected = True
+        browser = AgentBrowser(port)
+        tabs: Tabs | None = None
+        # Best effort here and below: a tab list that fails leaves the call as it was. A purchase check
+        # presses nothing, so it leaves the tabs and what they have opened to the next call.
+        if command != "purchase_check":
+            with contextlib.suppress(Exception):
+                started = Tabs(browser.home, port, (version or {}).get("webSocketDebuggerUrl"), browser.use_tab)
+                browser.deadline = started.deadline = tab_deadline()
+                try:
+                    started.begin()
+                finally:
+                    browser.deadline = None
+                # Only once it knows the tabs the call began with: without them, every tab would look new.
+                tabs = started
+        target, address = front_tab(port)
+        if args.get("downloads") is not None:
+            client = CdpClient(discover_ws_url(port))
+            client.connect()
+            downloads = Downloads(client, args["downloads"])
+        if internal(address):
+            if command != "navigate":
+                raise RuntimeError(INTERNAL_PAGE)
+            # agent-browser cannot drive Chromium's own pages, so the site opens in a tab of its own,
+            # in front, and an empty new tab page it replaces is closed.
+            url = str(args.get("url") or "")
+            check_url(url)
+            (tab,) = browser.batch([["tab", "new", url, "--activate"]], timeout=NAVIGATE_SECONDS)
+            if urlsplit(address).netloc in ("newtab", "new-tab-page"):
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/json/close/{target}", timeout=5.0).close()
+            # The tab it opened, by its id: a pop-up the site opens as it loads may already be in front.
+            target = str(tab.get("targetId") or "") or front_tab(port)[0]
+            # The new tab is already on the site: navigating it again would go unseen by the request log
+            # it has only just started.
+            opened = True
+        browser.use_tab(target)
+        page = PageBrowser(port, target, browser)
+        if downloads:
+            session = client.call("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
+            frame = client.call("Page.getFrameTree", session_id=session)["frameTree"]["frame"]
+            client.download_frame = frame["id"]
+            client.call("Network.enable", {"maxPostDataSize": 1}, session_id=session)
+            page.downloads = downloads
+        if command == "navigate":
+            result = page.navigate(str(args.get("url") or ""), opened=opened)
+        elif command == "purchase_check":
+            result = page.purchase_check(args)
+        elif command == "snapshot":
+            query = args.get("query")
+            result = page.snapshot(query=query.strip()[:200] if isinstance(query, str) and query.strip() else None)
+        else:
+            actions = args.get("actions")
+            if not isinstance(actions, list):
+                raise RuntimeError("actions must be an array")
+            result = page.act(actions)
+        note = None
+        if tabs is not None:
+            closed = tabs.closed
+            now: list[dict[str, Any]] = []
+            new: list[dict[str, Any]] = []
+            browser.deadline = tabs.deadline = tab_deadline()
+            try:
+                now, new, _ = tabs.end(target, ours=target if opened else None)
+            except Exception:  # noqa: BLE001
+                pass  # The tabs it closed before failing are still counted below.
+            try:
+                if tabs.closed > closed and any(key in result for key in ("url", "tree")):
+                    # What the bot read may have been one of the closed tabs: its own tab is read again, and
+                    # nothing read from a closed tab, a dialog's text included, is ever returned.
+                    for key in ("url", "title", "tree", "elements", "loading", "note", "dialog"):
+                        result.pop(key, None)
+                    try:
+                        browser.use_tab(target)
+                        result.update(page.snapshot(0.0))
+                    except Exception:  # noqa: BLE001
+                        result.update(ok=False, error=REREAD_FAILED,
+                                      **({"uncertain": False} if command == "act" else {}))
+            finally:
+                browser.deadline = None
+            note = tabs.note(now, new, result.get("url"))
+        if downloads:
+            front: dict[str, Any] = {}
+            with contextlib.suppress(Exception):
+                front = page_tabs(port)[0]
+            page.save_pdf(front)
+            client.listen(0.01)
+            saved = downloads.finish()
+            downloads = None
+        if note:
+            result["note"] = " ".join(filter(None, [result.get("note"), note]))
+        print(json.dumps({**result, **({"downloads": saved} if saved else {})}))
+        return 0  # Structured failures preserve partial action progress.
+    except Exception as exc:  # noqa: BLE001
+        if downloads:
+            try:
+                client.listen(0.01)
+                saved = downloads.finish()
+            except Exception:
+                saved = [{"error": DOWNLOAD_FAILED}]
+        dialog = page.dialog() if page else None
+        failure = page.dialog_result(dialog, {}) if page and dialog else {
+            "ok": False, "error": str(exc), "fallback": "computer_act", "uncertain": command == "act" and connected}
+        print(json.dumps({**failure, **({"downloads": saved} if saved else {})}))
+        return 0
+    finally:
+        if page:
+            page.close()
+        if client:
+            client.close()
+
+
+if __name__ == "__main__":
+    sys.exit(run(sys.argv))

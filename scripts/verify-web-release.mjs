@@ -31,6 +31,18 @@ for (const match of html.matchAll(attributePattern)) {
     }
 }
 
+// Bots is loaded on demand from immutable metadata, not a script tag in the
+// initial document. Verify both assets before activating this release as well.
+const botsReferences = [...html.matchAll(/<meta\s+name=["']paws-bots-(entry|style)["']\s+content=["']([^"']+)["'][^>]*>/gi)];
+if (botsReferences.length) {
+    if (botsReferences.length !== 2 || new Set(botsReferences.map(match => match[1])).size !== 2) throw new Error('incomplete Bots asset metadata');
+    for (const match of botsReferences) {
+        const extension = match[1] === 'entry' ? 'js' : 'css';
+        if (!new RegExp(`^/assets/bots/bots-[a-f0-9]{20}\\.${extension}$`).test(match[2])) throw new Error('invalid immutable Bots asset path');
+        references.add(match[2]);
+    }
+}
+
 for (const requiredPath of [
     '/metadata.json',
     '/canvaskit.wasm',

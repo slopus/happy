@@ -1,0 +1,639 @@
+# Pull-based self-host: published GHCR images + Postgres + local Docker computers.
+# Drop this file and .env into any directory, then:
+#   docker compose --env-file .env -f docker-compose.images.yml up -d
+#
+# Tag contract matches docs/self-host-upgrading.md (edge from main; release tags when published).
+# Default is edge because that tag is published on every main build (linux/amd64 + linux/arm64).
+# Pin a published vX.Y.Z tag for a fixed version; `latest` moves to each new stable release.
+# Default SANDBOX_PROVIDER=docker boots a local computer via the in-stack supervisor (no E2B key).
+# Optional: set e2b / daytona / boat plus the matching API key for remote computers.
+name: rakazo
+
+# What the api and worker both read. Each service adds the keys only it reads, so a process
+# only sees what it uses instead of the whole .env. A key with no value is passed through
+# when .env (or the shell) sets it and left unset otherwise. Keep in sync with the code:
+# infra/updater/src/compose-env.test.ts fails when a read is missing here or a key is unused.
+x-app-environment: &app-environment # Runtime
+  NODE_ENV: production
+  # The app's own login, subject to row-level security (docs/self-host-configuration.md#database-roles).
+  DATABASE_URL: postgres://rakazo_app:${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-rakazo}
+  REALTIME_DATABASE_URL:
+  DB_POOL_MAX:
+  DATA_DIR: /data
+  ENCRYPTION_KEY:
+  ENCRYPTION_MASTER_KEYS:
+  MASTER_KEY_PROVIDER:
+  AWS_KMS_KEY_ARN:
+  AWS_KMS_ACCESS_KEY_ID:
+  AWS_KMS_SECRET_ACCESS_KEY:
+  # on encrypts new content at rest; off stores it readable (docs/self-host-storage.md#content-encryption).
+  CONTENT_ENCRYPTION: ${CONTENT_ENCRYPTION:-on}
+  # Optional: keep computer homes and artifacts in S3-compatible storage (docs/self-host-storage.md#shared-storage-migration).
+  OBJECT_STORAGE_BUCKET:
+  OBJECT_STORAGE_ENDPOINT:
+  OBJECT_STORAGE_REGION:
+  OBJECT_STORAGE_ACCESS_KEY_ID:
+  OBJECT_STORAGE_SECRET_ACCESS_KEY:
+  OBJECT_STORAGE_PREFIX:
+  OBJECT_STORAGE_PATH_STYLE:
+  WAKEUP_DRIVER: graphile
+  AGENT_RUNTIME: pi
+  API_URL: ${API_URL:-http://127.0.0.1:5173}
+  MAX_UPLOAD_SIZE_MB:
+  MAX_ATTACHMENTS_PER_MESSAGE:
+  RAKAZO_UPDATE_RESTART_SUPERVISOR:
+  TICKET_BOARD_ENABLED:
+  USER_DEVICES_ENABLED:
+  BOT_MESSAGE_MAX_HOPS:
+  RAKAZO_MESSAGE_USER_MAX_CHARS:
+  TEACH_RECORDING_TTL_MS:
+  STUCK_WORK_NOTIFY_AFTER_MS:
+  STUCK_WORK_EXPIRE_AFTER_MS:
+  PHONE_CALLS_ENABLED:
+  PHONE_CALL_RING_SECONDS:
+  PHONE_CALL_COOLDOWN_MINUTES:
+  # The worker names each bot's address to it and sends its email; the API receives the mail.
+  INBOUND_EMAIL_DOMAIN:
+  BOT_EMAIL_SMTP_URL:
+  RAKAZO_SECRETS_ALLOW_PRIVATE_HTTP:
+  EXPO_ACCESS_TOKEN:
+  APNS_VOIP_KEY_ID:
+  APNS_VOIP_TEAM_ID:
+  APNS_VOIP_PRIVATE_KEY:
+  APNS_VOIP_ENVIRONMENT:
+  APNS_VOIP_BUNDLE_ID:
+  # Secret storage
+  SECRET_STORE: ${SECRET_STORE:-encrypted}
+  INFISICAL_URL: ${INFISICAL_URL:-}
+  INFISICAL_ALLOW_INSECURE_HTTP: ${INFISICAL_ALLOW_INSECURE_HTTP:-false}
+  INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID:-}
+  INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET:-}
+  INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID:-}
+  INFISICAL_ENVIRONMENT: ${INFISICAL_ENVIRONMENT:-}
+  INFISICAL_FOLDER: ${INFISICAL_FOLDER:-}
+  # Logs, errors, traces and analytics
+  LOG_LEVEL:
+  SECURITY_EVENT_RETENTION_DAYS:
+  AUDIT_EVENT_RETENTION_DAYS:
+  AUDIT_LOG_WEBHOOK_URL:
+  AUDIT_LOG_WEBHOOK_AUTHORIZATION:
+  LOG_FORMAT:
+  AXIOM_TOKEN:
+  AXIOM_DATASET:
+  AXIOM_EDGE:
+  AXIOM_EDGE_URL:
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+  SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+  OTEL_EXPORTER_OTLP_ENDPOINT:
+  OTEL_EXPORTER_OTLP_HEADERS:
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:
+  OTEL_EXPORTER_OTLP_TRACES_HEADERS:
+  OTEL_SERVICE_NAME:
+  OTEL_CAPTURE_CONTENT:
+  ANALYTICS_PROVIDER:
+  ANALYTICS_HOST:
+  ANALYTICS_KEY:
+  ANALYTICS_PSEUDONYM_SECRET:
+  # Models
+  PI_DEFAULT_PROVIDER:
+  PI_DEFAULT_MODEL:
+  PI_DEFAULT_CREDENTIALS:
+  PI_SESSION_RECORDING:
+  RAKAZO_LIVE_MODEL_CATALOG:
+  OPENROUTER_API_KEY:
+  ANTHROPIC_API_KEY:
+  TYPESAFE_API_KEY:
+  MAX_TOOL_CALLS_PER_TURN:
+  MODEL_STREAM_MAX_RETRIES:
+  MODEL_STREAM_TIMEOUT_MS:
+  MODEL_CONNECT_TIMEOUT_MS:
+  MODEL_STREAM_IDLE_TIMEOUT_MS:
+  RAKAZO_LOCAL_MODELS:
+  RAKAZO_LOCAL_MODELS_URL:
+  RAKAZO_LOCAL_MODELS_API_KEY:
+  # Where a localhost model or speech URL goes: the computer running Docker.
+  RAKAZO_LOOPBACK_HOST: host.docker.internal
+  RAKAZO_LOCAL_VISION_MODELS:
+  RAKAZO_LOCAL_REASONING_MODELS:
+  RAKAZO_LOCAL_CONTEXT_WINDOW:
+  RAKAZO_LOCAL_MAX_TOKENS:
+  RAKAZO_LOCAL_TOKENS_PER_MINUTE:
+  RAKAZO_LOCAL_PROMPT_CACHE:
+  RAKAZO_OPENAI_COMPATIBLE_VISION_MODELS:
+  RAKAZO_OPENAI_COMPAT_ALLOW_PUBLIC:
+  RAKAZO_OPENAI_COMPAT_PRIVATE_HOSTS:
+  RAKAZO_AUTO_REVIEW_PROVIDER:
+  RAKAZO_AUTO_REVIEW_MODEL:
+  RAKAZO_AUTO_REVIEW_MIN_CONFIDENCE:
+  RAKAZO_AUTO_REVIEW_TIMEOUT_MS:
+  RELEASE_WATCH_EVAL_MODEL:
+  FISH_TTS_MODEL:
+  FISH_ASR_MODEL:
+  MEDIA_GENERATION_PROVIDER:
+  MEDIA_GENERATION_BASE_URL:
+  MEDIA_GENERATION_API_KEY:
+  MEDIA_GENERATION_IMAGE_MODEL:
+  MEDIA_GENERATION_VIDEO_MODEL:
+  PAID_SERVICES_PROVIDER:
+  PAID_SERVICES_API_KEY:
+  PAID_SERVICES_BASE_URL:
+  # Provider keys Pi reads itself when a model has no stored credential
+  AI_GATEWAY_API_KEY:
+  ANTHROPIC_AUTH_TOKEN:
+  ANTHROPIC_FEDERATION_RULE_ID:
+  ANTHROPIC_IDENTITY_TOKEN_FILE:
+  ANTHROPIC_OAUTH_TOKEN:
+  ANTHROPIC_ORGANIZATION_ID:
+  ANTHROPIC_SERVICE_ACCOUNT_ID:
+  ANTHROPIC_WORKSPACE_ID:
+  ANT_LING_API_KEY:
+  AZURE_OPENAI_API_KEY:
+  BASETEN_API_KEY:
+  CEREBRAS_API_KEY:
+  CLOUDFLARE_API_KEY:
+  COPILOT_GITHUB_TOKEN:
+  DEEPSEEK_API_KEY:
+  FIREWORKS_API_KEY:
+  GEMINI_API_KEY:
+  GOOGLE_CLOUD_API_KEY:
+  GROQ_API_KEY:
+  HF_TOKEN:
+  KIMI_API_KEY:
+  META_API_KEY:
+  MINIMAX_API_KEY:
+  MINIMAX_CN_API_KEY:
+  MISTRAL_API_KEY:
+  MOONSHOT_API_KEY:
+  NVIDIA_API_KEY:
+  OPENAI_API_KEY:
+  OPENCODE_API_KEY:
+  QWEN_TOKEN_PLAN_API_KEY:
+  QWEN_TOKEN_PLAN_CN_API_KEY:
+  RADIUS_API_KEY:
+  TOGETHER_API_KEY:
+  XAI_API_KEY:
+  XIAOMI_API_KEY:
+  XIAOMI_TOKEN_PLAN_AMS_API_KEY:
+  XIAOMI_TOKEN_PLAN_CN_API_KEY:
+  XIAOMI_TOKEN_PLAN_SGP_API_KEY:
+  ZAI_API_KEY:
+  ZAI_CODING_CN_API_KEY:
+  # Host credentials for PI_DEFAULT_CREDENTIALS=host (Bedrock, Vertex)
+  AWS_ACCESS_KEY_ID:
+  AWS_SECRET_ACCESS_KEY:
+  AWS_SESSION_TOKEN:
+  AWS_REGION:
+  AWS_DEFAULT_REGION:
+  AWS_PROFILE:
+  AWS_BEARER_TOKEN_BEDROCK:
+  AWS_CONTAINER_CREDENTIALS_FULL_URI:
+  AWS_CONTAINER_CREDENTIALS_RELATIVE_URI:
+  AWS_WEB_IDENTITY_TOKEN_FILE:
+  AWS_ROLE_ARN:
+  GOOGLE_APPLICATION_CREDENTIALS:
+  GOOGLE_CLOUD_PROJECT:
+  GCLOUD_PROJECT:
+  GOOGLE_CLOUD_LOCATION:
+  # Computers and cloud agents
+  SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+  SANDBOX_SUPERVISOR_URL: http://supervisor:7091
+  SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
+  SANDBOX_HOST_URL: ${SANDBOX_HOST_URL:-}
+  SANDBOX_HOST_TOKEN: ${SANDBOX_HOST_TOKEN:-}
+  SANDBOX_COMMAND_TIMEOUT_MS:
+  SANDBOX_IDLE_MS:
+  SANDBOX_MAX_COMPUTERS_PER_USER:
+  COMPUTER_MAX_ACTIVE_MS:
+  COMPUTER_MAX_ACTIVE_UNBILLED_MS:
+  BROWSER_PROVIDER:
+  NOVITA_API_KEY:
+  SANDBOX_TEMPLATE:
+  E2B_API_KEY:
+  DAYTONA_API_KEY:
+  DAYTONA_API_URL:
+  DAYTONA_TARGET:
+  DAYTONA_SNAPSHOT:
+  BOAT_API_KEY:
+  BOAT_API_URL:
+  BOXD_API_KEY:
+  BOXD_ORG:
+  INSTABOX_API_KEY:
+  RAILWAY_API_TOKEN:
+  RAILWAY_ENVIRONMENT_ID:
+  RAILWAY_SANDBOX_REGION:
+  RAILWAY_MAX_WORKSPACE_FILE_BYTES:
+  WUYING_ACCESS_KEY_ID:
+  WUYING_ACCESS_KEY_SECRET:
+  WUYING_DESKTOP_ID:
+  WUYING_END_USER_ID:
+  WUYING_MCP_TOKEN:
+  WUYING_MCP_URL:
+  WUYING_REGION_ID:
+  INCUS_SANDBOX_URL:
+  INCUS_SANDBOX_CLIENT_CERT:
+  INCUS_SANDBOX_CLIENT_KEY:
+  INCUS_SANDBOX_SERVER_CERT:
+  INCUS_SANDBOX_PROJECT:
+  INCUS_SANDBOX_COMPUTER_IMAGE:
+  INCUS_SANDBOX_CPU_LIMIT:
+  INCUS_SANDBOX_MEMORY_LIMIT:
+  INCUS_SANDBOX_PROCESS_LIMIT:
+  CREATEOS_SANDBOX_API_KEY:
+  CREATEOS_SANDBOX_BASE_URL:
+  CREATEOS_SANDBOX_ROOTFS:
+  CREATEOS_SANDBOX_SHAPE:
+  CLOUD_AGENT_PROVIDER: ${CLOUD_AGENT_PROVIDER:-none}
+  CLOUD_AGENT_SPACE_ID: ${CLOUD_AGENT_SPACE_ID:-}
+  PAYMENT_WALLET_PROVIDER: ${PAYMENT_WALLET_PROVIDER:-none}
+  PAYMENT_WALLET_CLIENT_ID: ${PAYMENT_WALLET_CLIENT_ID:-}
+  CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+  # Tools and integrations
+  WEB_PROVIDER:
+  KEENABLE_API_KEY:
+  COMPOSIO_API_KEY:
+  PIPEDREAM_CLIENT_ID:
+  PIPEDREAM_CLIENT_SECRET:
+  PIPEDREAM_PROJECT_ID:
+  PIPEDREAM_ENVIRONMENT:
+  MCP_STDIO_ENABLED:
+  MCP_STDIO_ALLOWED_COMMANDS:
+  MCP_STDIO_INSTALL_TIMEOUT_MS:
+  MCP_STDIO_STARTUP_TIMEOUT_MS:
+  MCP_STDIO_IDLE_MS:
+  MCP_DISCOVERY_TIMEOUT_MS:
+  MCP_MAX_TOOLS:
+  MCP_MAX_PAGES:
+  MCP_PACKAGES_DIR:
+  MCP_ALLOW_PRIVATE_ENDPOINT:
+  # Messaging (outbound delivery runs in the worker)
+  MESSAGING_OPEN_SIGNUP:
+  SENDBLUE_API_KEY_ID:
+  SENDBLUE_API_SECRET:
+  SENDBLUE_SIGNING_SECRET:
+  SENDBLUE_PHONE_NUMBER:
+  SLACK_CLIENT_ID:
+  SLACK_CLIENT_SECRET:
+  TEAMS_APP_ID:
+  TEAMS_APP_PASSWORD:
+  TEAMS_APP_TENANT_ID:
+  SLACK_BOT_TOKEN:
+  SLACK_SIGNING_SECRET:
+  TEAM_CHAT_JUDGE_PROVIDER:
+  TEAM_CHAT_JUDGE_MODEL:
+  WHATSAPP_ACCESS_TOKEN:
+  WHATSAPP_PHONE_NUMBER_ID:
+  WHATSAPP_APP_SECRET:
+  WHATSAPP_VERIFY_TOKEN:
+  TELEGRAM_BOT_TOKEN:
+  TELEGRAM_WEBHOOK_SECRET_TOKEN:
+  LARK_APP_ID:
+  LARK_APP_SECRET:
+  LARK_VERIFICATION_TOKEN:
+  LARK_ENCRYPT_KEY:
+  LARK_DOMAIN:
+  PHOTON_PROJECT_ID:
+  PHOTON_PROJECT_SECRET:
+  PHOTON_WEBHOOK_SECRET:
+  # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
+  HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+  HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+  NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
+  http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
+  https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
+  no_proxy: ${no_proxy:-${NO_PROXY:-}}
+
+services:
+  postgres:
+    # Optional Hub override; unset keeps the digest-pinned official image.
+    image: ${POSTGRES_IMAGE:-postgres:16@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    mem_limit: 2g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rakazo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rakazo}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rakazo} -d ${POSTGRES_DB:-rakazo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Pull-only stub so `compose up` fetches the published desktop image without a checkout.
+  computer:
+    image: ${RAKAZO_COMPUTER_IMAGE:-ghcr.io/elie222/rakazo/computer}:${RAKAZO_COMPUTER_IMAGE_TAG:-edge}
+    command: ["true"]
+    network_mode: none
+    restart: "no"
+
+  data-init:
+    # Optional Hub override; unset keeps busybox:1.
+    image: ${BUSYBOX_IMAGE:-busybox:1}
+    # Chown only entries with the wrong owner, so recreating the app does not rewrite every inode
+    # in the volume; -h changes a symlink itself, never its target.
+    command:
+      [
+        "find",
+        "/data",
+        "!",
+        "(",
+        "-user",
+        "1000",
+        "-group",
+        "1000",
+        ")",
+        "-exec",
+        "chown",
+        "-h",
+        "1000:1000",
+        "{}",
+        "+",
+      ]
+    network_mode: none
+    restart: "no"
+    volumes:
+      - appdata:/data
+
+  # Runs from the app image. Not published as its own image and not exposed on the host:
+  # access to the supervisor is equivalent to control of the Docker host.
+  supervisor:
+    image: ${RAKAZO_IMAGE:-ghcr.io/elie222/rakazo/app}:${RAKAZO_IMAGE_TAG:-edge}
+    restart: unless-stopped
+    command: ["pnpm", "--filter", "@rakazo/sandbox-supervisor", "start"]
+    init: true
+    user: root
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    environment:
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-10}
+      NODE_ENV: production
+      DATA_DIR: /data
+      SUPERVISOR_HOST: "0.0.0.0"
+      SUPERVISOR_PORT: "7091"
+      DOCKER_SOCKET: /var/run/docker.sock
+      RAKAZO_COMPUTER_IMAGE: ${RAKAZO_COMPUTER_IMAGE:-ghcr.io/elie222/rakazo/computer}:${RAKAZO_COMPUTER_IMAGE_TAG:-edge}
+      RAKAZO_COMPUTER_MEMORY: ${RAKAZO_COMPUTER_MEMORY:-2g}
+      RAKAZO_COMPUTER_CPUS: ${RAKAZO_COMPUTER_CPUS:-2}
+      RAKAZO_COMPUTER_PIDS_LIMIT: ${RAKAZO_COMPUTER_PIDS_LIMIT:-2048}
+      SANDBOX_COMMAND_TIMEOUT_MS: ${SANDBOX_COMMAND_TIMEOUT_MS:-300000}
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
+      SANDBOX_SCREEN_NETWORK: isolated
+      SANDBOX_COMPUTER_EGRESS: ${SANDBOX_COMPUTER_EGRESS:-auto}
+      SANDBOX_COMPUTER_DNS: ${SANDBOX_COMPUTER_DNS:-}
+      SANDBOX_COMPUTER_MOUNTS: ${SANDBOX_COMPUTER_MOUNTS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-}
+      AXIOM_TOKEN: ${AXIOM_TOKEN:-}
+      AXIOM_DATASET: ${AXIOM_DATASET:-}
+      AXIOM_EDGE: ${AXIOM_EDGE:-}
+      AXIOM_EDGE_URL: ${AXIOM_EDGE_URL:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - appdata:/data
+    networks:
+      - app
+    depends_on:
+      computer:
+        condition: service_completed_successfully
+      data-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:7091/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Applies migrations as the database owner, creates the runtime login, and exits. Only this
+  # container gets the owner login: the API and worker connect as rakazo_app, which row-level
+  # security binds, so code running in either cannot find a login that bypasses it.
+  migrate:
+    image: ${RAKAZO_IMAGE:-ghcr.io/elie222/rakazo/app}:${RAKAZO_IMAGE_TAG:-edge}
+    working_dir: /app/apps/api
+    command: ["pnpm", "db:deploy"]
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 1536m
+    environment:
+      DATABASE_URL: postgres://rakazo_app:${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-rakazo}
+      DATABASE_MIGRATION_URL: postgres://${POSTGRES_USER:-rakazo}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-rakazo}
+    networks:
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: ${RAKAZO_IMAGE:-ghcr.io/elie222/rakazo/app}:${RAKAZO_IMAGE_TAG:-edge}
+    restart: unless-stopped
+    # Node runs directly, not through pnpm: pnpm does not pass SIGTERM on, so a stop would kill the
+    # process before its graceful shutdown finishes in-flight requests and jobs.
+    working_dir: /app/apps/api
+    command: ["node", "--enable-source-maps", "dist/index.js"]
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 1536m
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *app-environment
+      # Sign-in, sessions, billing and inbound webhooks: API only.
+      API_HOST: "0.0.0.0"
+      API_PORT:
+      BETTER_AUTH_SECRET:
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://127.0.0.1:5173}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://127.0.0.1:5173}
+      RAKAZO_EXTRA_AUTH_ORIGINS:
+      AUTH_PASSWORD_ENABLED: ${AUTH_PASSWORD_ENABLED:-true}
+      AUTH_BREACHED_PASSWORD_CHECK_ENABLED: ${AUTH_BREACHED_PASSWORD_CHECK_ENABLED:-false}
+      PASSKEY_APPLE_APP_IDS:
+      PASSKEY_ANDROID_CERT_SHA256:
+      COMPUTER_SETTINGS_ENABLED:
+      # Proxies whose X-Forwarded-For is believed. Unset trusts this stack's own networks: the web
+      # proxy and a reverse proxy on the host. See docs/self-host-production.md#client-addresses.
+      TRUSTED_PROXIES:
+      CLIENT_IP_HEADER:
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_NAME: ${OIDC_NAME:-SSO}
+      OIDC_SCOPES: ${OIDC_SCOPES:-openid email profile}
+      OIDC_ALLOW_SIGNUP_BYPASS: ${OIDC_ALLOW_SIGNUP_BYPASS:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+      APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+      APPLE_PRIVATE_KEY_FILE: ${APPLE_PRIVATE_KEY_FILE:-}
+      SCIM_BEARER_TOKEN: ${SCIM_BEARER_TOKEN:-}
+      SIGNUPS_ENABLED:
+      SIGNUP_ALLOWLIST:
+      SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET in .env}
+      RAKAZO_DESKTOP_STACK_TOKEN: ${RAKAZO_DESKTOP_STACK_TOKEN:-}
+      RAKAZO_GIT_SHA:
+      SENTRY_BROWSER_DSN: ${SENTRY_BROWSER_DSN:-}
+      PRIVACY_POLICY_URL:
+      INBOUND_EMAIL_SECRET:
+      WELCOME_EMAIL_ENABLED:
+      EXPERIMENTS:
+      EMAIL_PROVIDER:
+      EMAIL_API_KEY:
+      SMTP_URL:
+      EMAIL_FROM:
+      EMAIL_REPLY_TO:
+      STRIPE_SECRET_KEY:
+      STRIPE_WEBHOOK_SECRET:
+      STRIPE_PRICE_ID:
+      CRISP_WEBSITE_ID:
+      INTEGRATIONS_CATALOG_URL:
+      TEAM_CHAT_BOT_ID:
+      SLACK_RAKAZO_BOT_ID:
+      SPACE_TEARDOWN_TIMEOUT_MS:
+      RAKAZO_MIN_CLIENT_BUILD:
+      RAKAZO_NAV_LINKS:
+      RAKAZO_ADMIN_EMAILS:
+      VOICE_SUMMARY_MIN_CHARS:
+    ports:
+      - "127.0.0.1:${RAKAZO_API_PORT:-3100}:3100"
+    volumes:
+      - appdata:/data
+    networks:
+      - app
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    image: ${RAKAZO_IMAGE:-ghcr.io/elie222/rakazo/app}:${RAKAZO_IMAGE_TAG:-edge}
+    restart: unless-stopped
+    # Directly, not through pnpm, so a stop reaches it (see the api command).
+    working_dir: /app/apps/worker
+    # Busy runs allocate fast; a larger young generation cuts the garbage collection that otherwise
+    # takes most of the worker's CPU.
+    command: ["node", "--enable-source-maps", "--max-semi-space-size=64", "dist/index.js"]
+    # A stop lets the running jobs finish rather than killing them mid-way, which would leave each
+    # locked for hours. Above JOB_DRAIN_TIMEOUT_MS in packages/adapters/src/wakeup.ts.
+    stop_grace_period: 50m
+    healthcheck:
+      test: ["CMD", "node", "dist/health-check.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 2m
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 2g
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *app-environment
+      GRAPHILE_WORKER_CONCURRENCY:
+    volumes:
+      - appdata:/data
+    networks:
+      - app
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  web:
+    image: ${RAKAZO_IMAGE:-ghcr.io/elie222/rakazo/app}:${RAKAZO_IMAGE_TAG:-edge}
+    restart: unless-stopped
+    # Directly, not through pnpm, so a stop reaches it (see the api command).
+    working_dir: /app/apps/web
+    command: ["node_modules/.bin/vite", "preview", "--host", "0.0.0.0", "--port", "5173"]
+    # Recent builds' hashed assets, so tabs still running one keep loading chunks after a deploy.
+    volumes:
+      - webassets:/app/apps/web/asset-archive
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 512m
+    environment:
+      NODE_ENV: production
+      # vite preview bundles its config with Rolldown, which starts one thread per host CPU.
+      # Keep that fixed so pids_limit holds on many-core hosts (#2430).
+      RAYON_NUM_THREADS: "4"
+      API_PROXY_TARGET: http://api:3100
+      RAKAZO_HOST: ${RAKAZO_HOST:-localhost}
+      RAKAZO_ALLOWED_HOSTS: ${RAKAZO_ALLOWED_HOSTS:-}
+      # Set only by the packaged desktop app. Its authenticated probe prevents a
+      # source dev server on the same host port from impersonating this stack.
+      RAKAZO_DESKTOP_STACK_TOKEN: ${RAKAZO_DESKTOP_STACK_TOKEN:-}
+      RAKAZO_IMAGE_TAG: ${RAKAZO_IMAGE_TAG:-edge}
+      SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET in .env}
+      RAKAZO_CSP_SCRIPT_SRC: ${RAKAZO_CSP_SCRIPT_SRC:-}
+      RAKAZO_CSP_CONNECT_SRC: ${RAKAZO_CSP_CONNECT_SRC:-}
+      RAKAZO_THEME: ${RAKAZO_THEME:-}
+      CRISP_WEBSITE_ID:
+    ports:
+      - "${RAKAZO_WEB_BIND:-127.0.0.1}:${RAKAZO_WEB_PORT:-5173}:5173"
+    networks:
+      - app
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  appdata:
+  webassets:
+
+networks:
+  app:
+  data:
+    internal: true

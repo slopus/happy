@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
-// @ts-expect-error jsdom is a test-only runtime without optional declarations.
-import { JSDOM } from 'jsdom';
+import { JSDOM as Jsdom } from 'jsdom';
+// These fixtures intentionally replace DOM methods and evaluate generated scripts.
+const JSDOM: any = Jsdom;
 import { createMermaidRuntime, type MermaidEngine } from './mermaidRuntime';
 import { createMermaidThemeConfig } from './mermaidRendererModel';
 

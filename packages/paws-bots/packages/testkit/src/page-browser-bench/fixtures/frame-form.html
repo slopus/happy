@@ -1,0 +1,12 @@
+<!doctype html>
+<title>Frame form</title>
+<form method="post" action="/submit">
+  <label><span id="label">Code</span> <input name="code"></label>
+  <button id="save" type="submit">Save</button>
+</form>
+<script>
+  // Each frame names its controls after its own site, so the two frames' controls differ.
+  const partner = location.hostname === "127.0.0.1";
+  document.getElementById("label").textContent = partner ? "Partner code" : "Local code";
+  document.getElementById("save").textContent = partner ? "Save partner code" : "Save local code";
+</script>

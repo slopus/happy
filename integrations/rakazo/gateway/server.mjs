@@ -132,6 +132,32 @@ export function createGateway(config, dependencies = {}) {
       // Absolute-form proxy requests must not turn this into a generic forward proxy.
       if (!requestPath?.startsWith('/') || requestPath.startsWith('//') || url.pathname.startsWith('//') || url.origin !== config.publicOrigin || /%2f|%5c/i.test(url.pathname) || url.pathname.includes('\\')) return json(res, 400, { error: 'Invalid path' });
       const pathname = decodeURIComponent(url.pathname);
+      // Embedded source builds call the gateway directly. Only configured Paws origins
+      // can read replies; each private request must still carry its own bound lease.
+      const caller = req.headers.origin;
+      const embeddedCaller = config.parentOrigins.includes(caller);
+      const screenProbe = ['GET', 'HEAD', 'OPTIONS'].includes(req.method) && Boolean(sealedScreenPath(requestPath));
+      const browserRoute = screenProbe || url.pathname === '/__paws/redeem' || /^\/(api|rpc)(?:\/|$)/.test(pathname);
+      // Sandboxed screen modules use an opaque origin. Limit their CORS to
+      // sealed read-only screen paths; native capability validation still applies.
+      if (screenProbe && caller === 'null' && ['GET', 'HEAD'].includes(req.method)) {
+        res.setHeader('access-control-allow-origin', 'null');
+        res.setHeader('vary', 'Origin');
+      }
+      if (embeddedCaller && browserRoute) {
+        res.setHeader('access-control-allow-origin', caller);
+        res.setHeader('vary', 'Origin');
+        res.setHeader('access-control-expose-headers', 'x-rakazo-build,x-request-id');
+      }
+      if (req.method === 'OPTIONS') {
+        if (!embeddedCaller || !browserRoute) return json(res, 403, { error: 'Invalid origin' });
+        const allowedHeaders = new Set(['content-type', 'x-paws-rakazo-session', 'x-rakazo-space-id', 'x-rakazo-client-build', 'x-request-id', 'x-rakazo-correlation-id', 'x-rakazo-signup-surface', 'last-event-id', 'traceparent']);
+        const requested = String(req.headers['access-control-request-headers'] ?? '').toLowerCase().split(',').map(value => value.trim()).filter(Boolean);
+        const allowedMethods = screenProbe ? ['GET', 'HEAD'] : ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+        if (!allowedMethods.includes(req.headers['access-control-request-method']) || requested.some(value => !allowedHeaders.has(value))) return json(res, 403, { error: 'Invalid preflight' });
+        res.writeHead(204, { 'access-control-allow-methods': allowedMethods.join(','), 'access-control-allow-headers': requested.join(', '), 'cache-control': 'no-store' });
+        return res.end();
+      }
       if (url.pathname === '/__paws/bootstrap') {
         if (req.method !== 'POST' || !sameSecret(req.headers['x-paws-bridge-secret'], config.bridgeSecret)) return json(res, 404, { error: 'Not found' });
         const input = await readJson(req);
@@ -142,10 +168,11 @@ export function createGateway(config, dependencies = {}) {
         return json(res, 200, { runtimeUrl: `${config.publicOrigin}/`, ...state.issue(identity, { subject: input.subject, parentOrigin, platform: input.platform ?? 'web', locale: input.locale, appearance: input.appearance }) });
       }
       if (url.pathname === '/__paws/redeem') {
-        if (req.method !== 'POST' || req.headers.origin !== config.publicOrigin) return json(res, 403, { error: 'Invalid origin' });
+        if (req.method !== 'POST' || (caller !== config.publicOrigin && !embeddedCaller)) return json(res, 403, { error: 'Invalid origin' });
         const input = await readJson(req);
         if (typeof input.ticket !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(input.ticket)) return json(res, 401, { error: 'Invalid ticket' });
         let parentOrigin = input.parentOrigin;
+        if (embeddedCaller && (input.platform !== 'web' || parentOrigin !== caller)) return json(res, 403, { error: 'Invalid embedded origin' });
         if (input.platform === 'native') {
           if (parentOrigin !== config.publicOrigin) return json(res, 403, { error: 'Invalid native origin' });
           parentOrigin = state.tickets.get(input.ticket)?.parentOrigin;
@@ -161,7 +188,7 @@ export function createGateway(config, dependencies = {}) {
       if (url.pathname.startsWith('/__paws/')) return json(res, 404, { error: 'Not found' });
       const privateRoute = /^\/(?:api|rpc)(?:\/|$)/.test(pathname);
       const lease = state.lease(req.headers['x-paws-rakazo-session']);
-      if (privateRoute && !lease) return json(res, 401, { error: 'A Paws Bots client lease is required' });
+      if (privateRoute && (!lease || (embeddedCaller && lease.parentOrigin !== caller) || (caller && caller !== config.publicOrigin && !embeddedCaller))) return json(res, 401, { error: 'A Paws Bots client lease is required' });
       if (pathname.startsWith('/api/auth/') && !AUTH_READ.has(pathname)) {
         if (pathname === '/api/auth/sign-out' && req.method === 'POST') {
           state.revoke(req.headers['x-paws-rakazo-session']);
@@ -184,6 +211,22 @@ export function createGateway(config, dependencies = {}) {
       if (privateRoute) unwatchLease = state.watchLease(req.headers['x-paws-rakazo-session'], () => { upstream.destroy(); res.destroy(); });
       upstream.once('response', (response) => {
         const headers = responseHeaders(response);
+        // These static viewer shells accept content only from their embedding parent.
+        // Allow configured Paws hosts while retaining their native script/network CSP.
+        if (['GET', 'HEAD'].includes(req.method) && ['/html-viewer.html', '/mcp-app-viewer.html'].includes(url.pathname)) {
+          const ancestors = `frame-ancestors 'self' ${config.parentOrigins.join(' ')}`;
+          const rewrite = value => {
+            const policy = String(value ?? '');
+            let replaced = false;
+            const result = policy.replace(/(^|[;,])\s*frame-ancestors(?:\s+[^;,]*)?(?=[;,]|$)/gi, (_match, prefix) => {
+              replaced = true; return `${prefix} ${ancestors}`;
+            });
+            return replaced ? result : `${policy}${policy ? '; ' : ''}${ancestors}`;
+          };
+          const policy = headers['content-security-policy'];
+          headers['content-security-policy'] = Array.isArray(policy) ? policy.map(rewrite) : rewrite(policy);
+          delete headers['x-frame-options'];
+        }
         if (privateRoute || pathname.startsWith('/novnc/')) headers['cache-control'] = 'no-store';
         const html = String(headers['content-type'] ?? '').includes('text/html');
         if (!html || req.method === 'HEAD') {
@@ -208,6 +251,11 @@ export function createGateway(config, dependencies = {}) {
             let text = body.toString('utf8');
             if (/<div\b[^>]*\bid=["']root["']/.test(text)) {
               text = transformShell(text);
+              delete headers['x-frame-options'];
+              const csp = String(headers['content-security-policy'] ?? "default-src 'self'; script-src 'self'; connect-src 'self'");
+              headers['content-security-policy'] = `${csp.replace(/(?:^|;)\s*frame-ancestors\s+[^;]*/gi, '')}; frame-ancestors 'self' ${config.parentOrigins.join(' ')}`;
+            }
+            if (pathname.startsWith('/novnc/')) {
               delete headers['x-frame-options'];
               const csp = String(headers['content-security-policy'] ?? "default-src 'self'; script-src 'self'; connect-src 'self'");
               headers['content-security-policy'] = `${csp.replace(/(?:^|;)\s*frame-ancestors\s+[^;]*/gi, '')}; frame-ancestors 'self' ${config.parentOrigins.join(' ')}`;

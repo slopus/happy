@@ -1,0 +1,4 @@
+ALTER TABLE "chat_groups"
+ADD COLUMN "pinned" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "sectionId" TEXT,
+ADD COLUMN "archivedAt" TIMESTAMP(3);

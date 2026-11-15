@@ -1,0 +1,25 @@
+{
+  "name": "@rakazo/worker",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node ../../scripts/dev-watch.mjs src/index.ts",
+    "build": "node ../../scripts/build-server.mjs src/index.ts src/health-check.ts",
+    "start": "node --enable-source-maps dist/index.js",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. apps/worker/src"
+  },
+  "dependencies": {
+    "@rakazo/adapter-kit": "workspace:*",
+    "@rakazo/adapters": "workspace:*",
+    "@rakazo/core": "workspace:*",
+    "@rakazo/db": "workspace:*",
+    "@rakazo/logging": "workspace:*",
+    "@rakazo/memory": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

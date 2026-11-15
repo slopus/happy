@@ -1,0 +1,13 @@
+<!doctype html>
+<title>Checkout step</title>
+<h1>Checkout step</h1>
+<div id="slot">
+  <form method="post" action="/submit"><input type="hidden" name="version" value="1"><button type="submit">Continue</button></form>
+</div>
+<script>
+  // The page swaps in a new form with the same button a moment after load, as client-side apps do.
+  setTimeout(() => {
+    document.getElementById("slot").innerHTML =
+      '<form method="post" action="/submit"><input type="hidden" name="version" value="2"><button type="submit">Continue</button></form>';
+  }, 1000);
+</script>

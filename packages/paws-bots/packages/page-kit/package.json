@@ -1,0 +1,30 @@
+{
+  "name": "@rakazo/page-kit",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./compile": "./src/compile.ts",
+    "./runtime": "./src/runtime.tsx",
+    "./runtime-build": "./src/runtime-build.ts",
+    "./validate": "./src/validate.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/page-kit/src"
+  },
+  "dependencies": {
+    "@rakazo/contracts": "workspace:*",
+    "@rakazo/ui-tokens": "workspace:*",
+    "esbuild": "0.28.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sucrase": "3.35.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

@@ -1,0 +1,1 @@
+ALTER TABLE "bots" ADD COLUMN "dailyCheckIns" BOOLEAN NOT NULL DEFAULT true;

@@ -202,4 +202,25 @@ describe('useGlobalKeyboard', () => {
             expect(event.stopPropagation).not.toHaveBeenCalled();
         }
     });
+    it('leaves shortcuts originating in a mounted local application for its bubble handlers', () => {
+        const root = { getAttribute: (name: string) => name === 'data-paws-shortcuts' ? 'local' : null };
+        for (const key of ['b', ',', '/', 'p']) {
+            const event = keydown({ key, composedPath: () => [root] as unknown as EventTarget[] });
+            expect(event.preventDefault).not.toHaveBeenCalled();
+            expect(event.stopPropagation).not.toHaveBeenCalled();
+        }
+        expect(onToggleLeftSidebar).not.toHaveBeenCalled();
+        expect(onOpenSettings).not.toHaveBeenCalled();
+        expect(onOpenKeyboardShortcuts).not.toHaveBeenCalled();
+        expect(onCommandPalette).not.toHaveBeenCalled();
+    });
+
+    it('leaves the mounted application canvas shortcut alone when body owns focus', () => {
+        const body = {};
+        vi.stubGlobal('document', { body, querySelector: () => ({}) });
+        const event = keydown({ key: 'b', target: body as EventTarget });
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(onToggleLeftSidebar).not.toHaveBeenCalled();
+    });
+
 });

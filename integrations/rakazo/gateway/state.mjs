@@ -64,7 +64,7 @@ export class GatewayState {
     const sessionKey = randomBytes(32).toString('base64url');
     const expiresAt = this.now() + this.leaseTtl;
     this.leases.set(sessionKey, { ...entry, expiresAt });
-    return { sessionKey, expiresAt, spaceId: entry.spaceId, locale: entry.locale, appearance: entry.appearance };
+    return { sessionKey, expiresAt, spaceId: entry.spaceId, accountKey: entry.accountKey, locale: entry.locale, appearance: entry.appearance };
   }
   lease(key) {
     if (typeof key !== 'string') return null;
@@ -200,5 +200,5 @@ export async function bootstrapNative({ apiUrl, authOrigin, subject, secret, rea
   }, spaceId);
   if (chief.id !== identity.chiefId) throw new Error('Unexpected native chief bot identity');
   if (!chief.pinned) await rpc('bots/update', { botId: chief.id, pinned: true }, spaceId);
-  return { cookie, spaceId };
+  return { cookie, spaceId, accountKey: identity.chiefId };
 }

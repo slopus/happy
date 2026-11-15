@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "thumbsUp" BOOLEAN NOT NULL DEFAULT false;

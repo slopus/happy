@@ -1,0 +1,123 @@
+@import "tailwindcss";
+@import "@rakazo/ui-web/styles.css";
+
+@source "../../../packages/ui-web/src/**/*.{ts,tsx}";
+@source "./**/*.{ts,tsx}";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* viewport-fit=cover lets the shell reach the screen edges; keep it clear of notches and the home indicator. */
+#root {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+/* Switching spaces in place (lib/space-switch.ts): the sidebar holds still while the
+   conversation crossfades, instead of the whole screen redrawing. */
+.rk-space-switching [data-space-switch="sidebar"] {
+  view-transition-name: rk-space-sidebar;
+}
+.rk-space-switching [data-space-switch="main"] {
+  view-transition-name: rk-space-main;
+}
+::view-transition-group(root),
+::view-transition-group(rk-space-sidebar),
+::view-transition-group(rk-space-main) {
+  animation-duration: 0s;
+}
+::view-transition-old(root),
+::view-transition-new(root),
+::view-transition-old(rk-space-sidebar),
+::view-transition-new(rk-space-sidebar) {
+  animation-duration: 120ms;
+  animation-timing-function: ease;
+}
+::view-transition-old(rk-space-main) {
+  animation: rk-space-out 120ms ease both;
+}
+::view-transition-new(rk-space-main) {
+  animation: rk-space-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1) 60ms both;
+}
+@keyframes rk-space-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes rk-space-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.rk-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.rk-scroll {
+  scrollbar-color: var(--scrollbar) transparent;
+  scrollbar-width: thin;
+}
+.rk-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rk-scroll::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 3px;
+}
+.rk-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
+.app-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@keyframes rkPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* A page prints alone and light: the app under an open page, its popups and its backdrop stay
+   off the paper, and the paper stays white past the page's end, whatever the app's theme. */
+@media print {
+  html:has([data-page-print]),
+  html:has([data-page-print]) body,
+  html:has([data-page-print]) #root {
+    height: auto;
+    background: #fff;
+  }
+  body:has([data-page-print]) > :not(:has([data-page-print])),
+  [data-slot="dialog-overlay"]:has(~ [data-page-print]) {
+    display: none;
+  }
+}
+
+/* Find in chat (pages/shell/chat-find-bar.tsx) paints its matches without touching the transcript. */
+::highlight(rk-find) {
+  background-color: color-mix(in oklab, var(--foreground) 18%, transparent);
+}
+::highlight(rk-find-current) {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}

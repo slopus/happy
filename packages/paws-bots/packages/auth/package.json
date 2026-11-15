@@ -1,0 +1,37 @@
+{
+  "name": "@rakazo/auth",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/auth/src"
+  },
+  "dependencies": {
+    "@better-auth/expo": "1.7.18",
+    "@better-auth/passkey": "1.7.18",
+    "@better-auth/scim": "1.7.18",
+    "@rakazo/adapter-kit": "workspace:*",
+    "@rakazo/contracts": "workspace:*",
+    "@rakazo/core": "workspace:*",
+    "@rakazo/db": "workspace:*",
+    "@rakazo/ui-tokens": "workspace:*",
+    "better-auth": "1.7.18",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-email": "6.11.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

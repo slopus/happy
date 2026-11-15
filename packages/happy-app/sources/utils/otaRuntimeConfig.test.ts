@@ -173,7 +173,7 @@ describe('OTA native runtime isolation', () => {
 
         expect(previewWorkflow).not.toContain('github.event.inputs.channel');
         expect(previewWorkflow).toContain('--variant preview --channel preview');
-        const { classifyOtaImpact } = require('../../../../scripts/classify-ota-impact.cjs');
+        const { classifyOtaImpact } = require(fileURLToPath(new URL('../../../../scripts/classify-ota-impact.cjs', import.meta.url)));
         for (const workflow of [previewWorkflow, productionWorkflow]) {
             expect(workflow).toContain('run: node scripts/classify-ota-impact.cjs');
             expect(workflow).toContain("needs.classify-ota-compatibility.outputs.ota-compatible == 'true'");
@@ -186,6 +186,7 @@ describe('OTA native runtime isolation', () => {
             expect(classifyOtaImpact([path], 'push')).toMatchObject({
                 otaCompatible: false, reason: 'native-sensitive', native: [path],
             });
+
         }
         expect(previewWorkflow).toContain('patches/fix-expo-camera-scanner-transitions.cjs');
         expect(previewWorkflow).toContain('scripts/postinstall.cjs');

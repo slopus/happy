@@ -89,3 +89,12 @@ happy-workspaces/
 # third party tools
 .supervibe/
 .superpowers/
+
+# Bundled Bots workspace build output
+packages/paws-bots/**/dist-embedded/
+packages/happy-app/public/assets/bots/
+packages/paws-bots/packages/db/src/generated/
+packages/paws-bots/**/asset-archive/
+packages/happy-app/public/bots-assets/
+packages/paws-bots/**/__pycache__/
+packages/paws-bots/**/.pytest_cache/

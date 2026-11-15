@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Computer screen</title>
+    <style>
+      html,
+      body,
+      #session {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        border: 0;
+        background: #000;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="session" title="Computer screen" allow="clipboard-read; clipboard-write"></iframe>
+    <script src="./storage.js"></script>
+    <script src="./WuyingWebSDK.js"></script>
+    <script src="./screen.js"></script>
+  </body>
+</html>

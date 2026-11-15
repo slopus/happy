@@ -1,0 +1,30 @@
+{
+  "name": "@rakazo/sandbox-supervisor",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./computer-spec": "./src/computer-spec.ts"
+  },
+  "scripts": {
+    "dev": "node ../../../scripts/dev-watch.mjs src/index.ts",
+    "start": "tsx src/index.ts",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../../.. infra/sandboxes/supervisor/src"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.6",
+    "@rakazo/core": "workspace:*",
+    "@rakazo/logging": "workspace:*",
+    "dockerode": "5.0.1",
+    "hono": "4.13.17",
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/dockerode": "4.0.2",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

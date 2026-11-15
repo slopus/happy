@@ -1,0 +1,20 @@
+# Keep the pinned upstream's Linux dependencies, but build API/worker from the
+# source checked into this Happy revision. Web Bots is built with Paws Web.
+ARG RAKAZO_BASE_IMAGE=ghcr.io/elie222/rakazo/app:sha-c71c0c6bb6f00e511ece8fa6a919d282c129bbd3
+FROM ${RAKAZO_BASE_IMAGE}
+USER root
+COPY --chown=node:node integrations/rakazo/egress/public-proxy.mjs /opt/paws/public-proxy.mjs
+COPY --chown=node:node packages/paws-bots/ /app/
+# Preserve the dependency layer's baked Corepack version; startup is offline.
+RUN node -e 'const fs=require("node:fs");const p=require("/app/package.json");p.packageManager="pnpm@12.18.0";fs.writeFileSync("/app/package.json",JSON.stringify(p));'
+ENV COREPACK_ENABLE_NETWORK=0
+# tsx's transitive esbuild is already in the verified Linux dependency layer.
+# Expose only that package to the retained source build script.
+RUN node --input-type=module -e 'import {createRequire} from "node:module";import {dirname} from "node:path";import {symlinkSync} from "node:fs";const r=createRequire("/app/apps/api/package.json");const e=r.resolve("esbuild/package.json",{paths:[dirname(r.resolve("tsx"))]});symlinkSync(dirname(e),"/app/node_modules/esbuild");'
+WORKDIR /app/apps/api
+RUN node ../../scripts/build-server.mjs src/index.ts src/cli/migrate-database.ts src/cli/bootstrap-owner.ts src/cli/shared-storage.ts src/cli/diagnostics.ts src/cli/account-status.ts src/cli/model-credit-cap.ts src/cli/bot-email-policy.ts src/cli/wrap-env.ts
+WORKDIR /app/apps/worker
+RUN node ../../scripts/build-server.mjs src/index.ts src/health-check.ts
+USER node
+WORKDIR /app/apps/api
+CMD ["node", "--enable-source-maps", "dist/index.js"]

@@ -1,0 +1,55 @@
+{
+  "name": "@rakazo/chat-ui",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./mermaid": "./src/mermaid.ts",
+    "./native": "./src/markdown.native.tsx",
+    "./web": "./src/markdown.web.tsx"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/chat-ui/src"
+  },
+  "dependencies": {
+    "@rakazo/contracts": "workspace:*",
+    "@rakazo/core": "workspace:*",
+    "@rakazo/ui-tokens": "workspace:*",
+    "@rakazo/ui-web": "workspace:*",
+    "linkify-it": "5.0.2",
+    "mermaid": "11.17.2",
+    "prism-react-renderer": "2.4.1",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5"
+  },
+  "peerDependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-native": ">=0.79",
+    "@ronradtke/react-native-markdown-display": "9.0.3"
+  },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    },
+    "@ronradtke/react-native-markdown-display": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-native": "0.88.1",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0",
+    "@ronradtke/react-native-markdown-display": "9.0.3"
+  }
+}

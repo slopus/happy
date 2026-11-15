@@ -13,7 +13,7 @@ import { PostHogProvider } from 'posthog-react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
-import { migrateLegacyAccount, recoverAccountSelection } from '@/auth/accounts';
+import { migrateLegacyAccount, recoverAccountSelection, saveAccountCredentials, selectSavedAccount } from '@/auth/accounts';
 import { accountIndex, getActiveAccountKey, getRuntimeAccountSelection, freezeAccountRuntime } from '@/auth/accountRuntime';
 import { installAccountNetworkGuard } from '@/auth/accountNetwork';
 import { AccountTransitionScreen } from '@/components/accounts/AccountTransitionScreen';
@@ -164,6 +164,14 @@ export default function AuthenticatedRootLayout() {
                 const devCredentials = getDevWebQueryCredentials() ?? getDevEnvironmentCredentials();
                 if (devCredentials) {
                     const changed = credentials?.token !== devCredentials.token || credentials?.secret !== devCredentials.secret;
+                    // Persist query login selection before loading any account data.
+                    if (changed && Platform.OS === 'web' && getActiveAccountKey()) {
+                        const account = await saveAccountCredentials(devCredentials, getServerUrl());
+                        await selectSavedAccount(account.key);
+                        freezeAccountRuntime();
+                        window.location.replace(window.location.pathname);
+                        return;
+                    }
                     if (changed && await TokenStorage.setCredentials(devCredentials)) credentials = devCredentials;
                     if (Platform.OS === 'web' && typeof window !== 'undefined') {
                         window.history.replaceState({}, '', window.location.pathname);

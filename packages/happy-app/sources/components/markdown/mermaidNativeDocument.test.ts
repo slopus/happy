@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-// @ts-expect-error jsdom is the test DOM, not a browser/device verification.
-import { JSDOM } from 'jsdom';
+import { JSDOM as Jsdom } from 'jsdom';
+// These fixtures intentionally replace DOM methods and evaluate generated scripts.
+const JSDOM: any = Jsdom;
 import { buildNativeDocument } from './mermaidNativeDocument';
 import { createMermaidThemeConfig } from './mermaidRendererModel';
 import { MERMAID_RUNTIME_SOURCE } from './mermaidRuntimeSource.generated';

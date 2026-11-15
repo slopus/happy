@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freshcart</title>
+<style>
+  * { box-sizing: border-box; }
+  .links:not([hidden]) { display: flex; align-items: center; gap: 12px; }
+  body { margin: 0; font: 18px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #111; background: #f6f7f4; }
+  header { background: #1f5f3a; color: #fff; }
+  .bar { max-width: 1180px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+  .brand { font-size: 26px; font-weight: 800; color: #fff; text-decoration: none; margin-right: auto; }
+  header a.nav { color: #fff; font-weight: 600; padding: 8px 12px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 30px; margin: 0 0 16px; }
+  a { color: #1f5f3a; }
+  button, .btn { min-height: 44px; padding: 8px 18px; font: inherit; font-weight: 600; border-radius: 8px; border: 2px solid #1f5f3a; background: #1f5f3a; color: #fff; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+  button.secondary, .btn.secondary { background: #fff; color: #1f5f3a; }
+  header button { background: transparent; color: #fff; border: 2px solid #fff; }
+  button:disabled { background: #d6d6d6; border-color: #d6d6d6; color: #555; cursor: not-allowed; }
+  input[type=text], input[type=email], input[type=password], input[type=search] { font: inherit; min-height: 48px; padding: 8px 12px; border: 2px solid #777; border-radius: 8px; width: 100%; background: #fff; }
+  label { font-weight: 600; display: block; margin: 12px 0 6px; }
+  .card { background: #fff; border: 1px solid #ccc; border-radius: 12px; padding: 20px; }
+  .narrow { max-width: 440px; margin: 40px auto; }
+  .error { color: #a00000; font-weight: 600; margin: 12px 0 0; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 20px; }
+  .filters button[aria-pressed=false] { background: #fff; color: #1f5f3a; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+  .product { display: flex; flex-direction: column; gap: 4px; }
+  .emoji { font-size: 48px; line-height: 1; }
+  .name { font-weight: 700; }
+  .muted { color: #444; }
+  .buy { margin-top: auto; display: grid; gap: 8px; }
+  .price { font-weight: 700; font-size: 20px; }
+  .oos { color: #a00000; font-weight: 700; margin: 0; }
+  .qty { display: flex; align-items: center; gap: 10px; }
+  .qty button { min-width: 44px; padding: 0; }
+  .qty output { min-width: 28px; text-align: center; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: 10px 8px; border-bottom: 1px solid #ddd; text-align: left; vertical-align: middle; }
+  .num { text-align: right; }
+  .totals { max-width: 360px; margin: 16px 0 16px auto; }
+  .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+  .totals .total { font-weight: 800; font-size: 22px; border-top: 2px solid #111; margin-top: 6px; padding-top: 8px; }
+  .slots { display: grid; gap: 10px; border: 0; padding: 0; margin: 0 0 16px; }
+  .slot { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px 16px; border: 2px solid #999; border-radius: 8px; background: #fff; font-weight: 600; cursor: pointer; }
+  .slot input { width: 22px; height: 22px; }
+  .slot.full { color: #666; background: #eee; cursor: not-allowed; }
+  .actions { display: flex; gap: 12px; justify-content: flex-end; }
+  .order { margin-bottom: 16px; }
+  .order h2 { font-size: 22px; margin: 0 0 4px; }
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <a class="brand" href="#/shop">🥕 Freshcart</a>
+  <nav id="nav" class="links" aria-label="Main" hidden>
+    <a class="nav" href="#/shop">Shop</a>
+    <a class="nav" href="#/orders">Orders</a>
+    <a class="nav" id="cart-link" href="#/cart">Cart</a>
+    <button type="button" id="logout">Sign out</button>
+  </nav>
+</div></header>
+<main id="app"></main>
+<script>
+const app = document.getElementById("app");
+const state = { me: null, products: [], slots: null, category: "All", query: "", lastOrder: null };
+const CATEGORIES = ["All", "Produce", "Dairy & eggs", "Bakery", "Pantry", "Household"];
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const money = (cents) => `$${(cents / 100).toFixed(2)}`;
+const cart = () => JSON.parse(localStorage.getItem("freshcart-cart") || "{}");
+const saveCart = (c) => { localStorage.setItem("freshcart-cart", JSON.stringify(c)); updateCartLink(); };
+const bySku = (sku) => state.products.find((p) => p.sku === sku);
+const label = (p) => `${p.name} ${p.size}`;
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !path.startsWith("/api/login") && !path.startsWith("/api/verify")) { state.me = null; location.hash = "#/login"; }
+  return { ok: res.ok, data };
+}
+
+function cartLines() {
+  return Object.entries(cart()).map(([sku, qty]) => ({ product: bySku(sku), qty })).filter((l) => l.product);
+}
+function subtotal() { return cartLines().reduce((sum, l) => sum + l.product.price * l.qty, 0); }
+function updateCartLink() {
+  const count = Object.values(cart()).reduce((a, b) => a + b, 0);
+  document.getElementById("cart-link").textContent = `Cart (${count})`;
+}
+function setQty(sku, qty) {
+  const c = cart();
+  if (qty <= 0) delete c[sku]; else c[sku] = Math.min(qty, 20);
+  saveCart(c);
+}
+
+function qtyControl(p, qty) {
+  return `<div class="qty">
+    <button type="button" class="secondary" data-qty="${p.sku}" data-delta="-1" aria-label="Decrease ${esc(label(p))}">−</button>
+    <output aria-label="Quantity of ${esc(label(p))}">${qty}</output>
+    <button type="button" class="secondary" data-qty="${p.sku}" data-delta="1" aria-label="Increase ${esc(label(p))}">+</button>
+  </div>`;
+}
+
+function errorBox(msg) { return msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ""; }
+
+function renderLogin(error = "") {
+  app.innerHTML = `<div class="card narrow"><h1>Sign in</h1>
+    <form id="login">
+      <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
+      ${errorBox(error)}
+      <p><button type="submit">Sign in</button></p>
+    </form></div>`;
+  document.getElementById("login").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const { ok, data } = await api("/api/login", { email: f.email.value, password: f.password.value });
+    if (ok) location.hash = "#/verify"; else renderLogin(data.error);
+  };
+}
+
+function renderVerify(error = "") {
+  app.innerHTML = `<div class="card narrow"><h1>Enter verification code</h1>
+    <p>We sent a 6-digit code to your phone.</p>
+    <form id="verify">
+      <label for="code">Verification code</label><input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+      ${errorBox(error)}
+      <p><button type="submit">Verify</button></p>
+    </form></div>`;
+  document.getElementById("verify").onsubmit = async (e) => {
+    e.preventDefault();
+    const { ok, data } = await api("/api/verify", { code: e.target.code.value });
+    if (!ok) return renderVerify(data.error);
+    state.me = data;
+    location.hash = "#/shop";
+  };
+}
+
+function productCard(p) {
+  const qty = cart()[p.sku] || 0;
+  const control = !p.inStock
+    ? `<p class="oos">Out of stock</p><button type="button" disabled aria-label="Add ${esc(label(p))} to cart">Add</button>`
+    : qty ? qtyControl(p, qty)
+    : `<button type="button" data-add="${p.sku}" aria-label="Add ${esc(label(p))} to cart">Add</button>`;
+  return `<article class="card product" aria-label="${esc(label(p))}">
+    <div class="emoji" aria-hidden="true">${p.emoji}</div>
+    <div class="name">${esc(p.name)}</div><div class="muted">${esc(p.size)}</div>
+    <div class="buy"><div class="price">${money(p.price)}</div>${control}</div></article>`;
+}
+
+function renderGrid() {
+  const q = state.query.trim().toLowerCase();
+  const list = state.products.filter((p) => (state.category === "All" || p.category === state.category) && (!q || `${p.name} ${p.size} ${p.category}`.toLowerCase().includes(q)));
+  document.getElementById("grid").innerHTML = list.length ? list.map(productCard).join("") : `<p>No products found.</p>`;
+}
+
+function renderShop() {
+  app.innerHTML = `<h1>Shop</h1>
+    <label for="search">Search products</label>
+    <input id="search" type="search" value="${esc(state.query)}" autocomplete="off">
+    <div class="filters" role="group" aria-label="Category">${CATEGORIES.map((c) => `<button type="button" data-category="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}</button>`).join("")}</div>
+    <div class="grid" id="grid"></div>`;
+  document.getElementById("search").oninput = (e) => { state.query = e.target.value; renderGrid(); };
+  renderGrid();
+}
+
+function renderCart() {
+  const lines = cartLines();
+  if (!lines.length) { app.innerHTML = `<h1>Cart</h1><p>Your cart is empty.</p><a class="btn" href="#/shop">Shop</a>`; return; }
+  app.innerHTML = `<h1>Cart</h1><div class="card"><table>
+    <thead><tr><th>Item</th><th>Quantity</th><th class="num">Price</th><th><span hidden>Remove</span></th></tr></thead>
+    <tbody>${lines.map(({ product: p, qty }) => `<tr>
+      <td><span aria-hidden="true">${p.emoji}</span> <strong>${esc(p.name)}</strong> <span class="muted">${esc(p.size)}</span></td>
+      <td>${qtyControl(p, qty)}</td><td class="num">${money(p.price * qty)}</td>
+      <td class="num"><button type="button" class="secondary" data-remove="${p.sku}" aria-label="Remove ${esc(label(p))}">Remove</button></td></tr>`).join("")}</tbody>
+    </table>
+    <div class="totals"><div class="total"><span>Subtotal</span><span>${money(subtotal())}</span></div></div>
+    <div class="actions"><a class="btn" href="#/checkout">Checkout</a></div></div>`;
+}
+
+async function renderCheckout(error = "") {
+  const lines = cartLines();
+  if (!lines.length) { location.hash = "#/cart"; return; }
+  if (!state.slots) { const { ok, data } = await api("/api/slots"); if (!ok) return; state.slots = data; }
+  const { slots, deliveryFee, freeDeliveryFrom } = state.slots;
+  const sub = subtotal();
+  const fee = sub >= freeDeliveryFrom ? 0 : deliveryFee;
+  app.innerHTML = `<h1>Checkout</h1><form id="checkout" class="card">
+    <fieldset class="slots"><legend><h2 style="margin:0 0 8px">Delivery slot</h2></legend>
+    ${slots.map((s) => `<label class="slot${s.full ? " full" : ""}"><input type="radio" name="slot" value="${s.id}"${s.full ? " disabled" : ""}> ${esc(s.label)}${s.full ? " — Full" : ""}</label>`).join("")}
+    </fieldset>
+    <ul>${lines.map(({ product: p, qty }) => `<li>${qty} × ${esc(p.name)} ${esc(p.size)}</li>`).join("")}</ul>
+    <div class="totals">
+      <div><span>Subtotal</span><span>${money(sub)}</span></div>
+      <div><span>Delivery</span><span>${fee ? money(fee) : "Free"}</span></div>
+      <div class="total"><span>Total</span><span>${money(sub + fee)}</span></div>
+    </div>
+    ${errorBox(error)}
+    <div class="actions"><a class="btn secondary" href="#/cart">Back to cart</a><button type="submit">Place order</button></div>
+  </form>`;
+  document.getElementById("checkout").onsubmit = async (e) => {
+    e.preventDefault();
+    const slot = e.target.slot.value;
+    if (!slot) return renderCheckout("Choose a delivery slot.");
+    const items = cartLines().map(({ product, qty }) => ({ sku: product.sku, qty }));
+    const { ok, data } = await api("/api/order", { items, slot });
+    if (!ok) return renderCheckout(data.error);
+    saveCart({});
+    state.lastOrder = data;
+    location.hash = `#/order/${data.id}`;
+  };
+}
+
+function orderItems(o) {
+  return `<ul>${o.items.map((i) => `<li>${i.qty} × ${esc(i.name)} ${esc(i.size)} — ${money(i.unitPrice * i.qty)}</li>`).join("")}</ul>`;
+}
+
+async function renderConfirmation(id) {
+  let o = state.lastOrder;
+  if (!o || o.id !== id) { const { data } = await api("/api/orders"); o = (data.orders || []).find((x) => x.id === id); }
+  if (!o) { app.innerHTML = `<h1>Order not found</h1>`; return; }
+  app.innerHTML = `<div class="card"><h1>Order placed</h1>
+    <p>Order number <strong>${esc(o.id)}</strong></p><p>Delivery: <strong>${esc(o.slot.label)}</strong></p>
+    ${orderItems(o)}<p><strong>Total ${money(o.total)}</strong></p>
+    <a class="btn" href="#/orders">View orders</a></div>`;
+}
+
+async function renderOrders() {
+  const { data } = await api("/api/orders");
+  const orders = data.orders || [];
+  app.innerHTML = `<h1>Orders</h1>${orders.length ? orders.map((o) => `<section class="card order">
+    <h2>${esc(o.id)}</h2><p class="muted">Delivery: ${esc(o.slot.label)} · Total ${money(o.total)}</p>${orderItems(o)}</section>`).join("") : "<p>No orders yet.</p>"}`;
+}
+
+async function route() {
+  scrollTo(0, 0);
+  const hash = location.hash || "#/shop";
+  if (hash === "#/login") { document.getElementById("nav").hidden = true; return renderLogin(); }
+  if (hash === "#/verify") { document.getElementById("nav").hidden = true; return renderVerify(); }
+  if (!state.me) {
+    const { ok, data } = await api("/api/me");
+    if (!ok) return;
+    state.me = data;
+  }
+  if (!state.products.length) state.products = (await api("/api/products")).data.products || [];
+  document.getElementById("nav").hidden = false;
+  updateCartLink();
+  if (hash === "#/cart") return renderCart();
+  if (hash === "#/checkout") return renderCheckout();
+  if (hash === "#/orders") return renderOrders();
+  if (hash.startsWith("#/order/")) return renderConfirmation(decodeURIComponent(hash.slice(8)));
+  renderShop();
+}
+
+app.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.add) setQty(b.dataset.add, 1);
+  else if (b.dataset.qty) setQty(b.dataset.qty, (cart()[b.dataset.qty] || 0) + Number(b.dataset.delta));
+  else if (b.dataset.remove) setQty(b.dataset.remove, 0);
+  else if (b.dataset.category) { state.category = b.dataset.category; return renderShop(); }
+  else return;
+  if (location.hash === "#/cart") renderCart(); else renderGrid();
+});
+document.getElementById("logout").onclick = async () => {
+  await api("/api/logout", {});
+  state.me = null;
+  location.hash = "#/login";
+};
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+ALTER TABLE "bots" ADD COLUMN "fleetManagement" BOOLEAN NOT NULL DEFAULT false;

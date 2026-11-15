@@ -1,0 +1,52 @@
+name: Bots source workspace
+on:
+  pull_request:
+    paths:
+      - 'packages/paws-bots/**'
+      - 'integrations/rakazo/**'
+      - 'packages/happy-app/sources/components/bots/**'
+      - 'scripts/*bots*'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/bots-monorepo-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/paws-bots/**'
+      - 'integrations/rakazo/**'
+      - 'scripts/*bots*'
+      - '.github/workflows/bots-monorepo-test.yml'
+permissions:
+  contents: read
+jobs:
+  source-workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install workspace dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: pnpm install --frozen-lockfile
+      - name: Generate source database types
+        run: pnpm --filter @rakazo/db generate
+      - name: Check source Web application
+        run: pnpm --filter @rakazo/web exec tsc --noEmit -p tsconfig.json
+      - name: Build same-document Web bundle
+        run: pnpm --filter @rakazo/web build:embedded
+      - name: Check gateway, account lifecycle and immutable release assets
+        run: node --test scripts/bots-runtime.test.mjs scripts/build-bots-web.test.mjs integrations/rakazo/gateway/*.test.mjs integrations/rakazo/stack.test.mjs
+      - name: Check public egress filtering and fail-closed network topology
+        run: |
+          node --test integrations/rakazo/egress/public-proxy.test.mjs
+          pnpm --filter @rakazo/sandbox-supervisor check
+          pnpm --filter @rakazo/sandbox-supervisor exec vitest run --root ../../.. infra/sandboxes/supervisor/src/proxy-egress.test.ts infra/sandboxes/supervisor/src/computer-spec.test.ts
+      - name: Check embedded viewers and account/media cleanup
+        run: pnpm --filter @rakazo/web exec vitest run --root ../.. apps/web/src/lib/session-change.test.tsx apps/web/src/components/SandboxedHtmlViewer.test.tsx apps/web/src/components/McpAppCard.test.ts
+      - name: Check isolated chrome-use compatibility offline
+        run: python3 packages/paws-bots/infra/sandboxes/computer/test_page_browser.py

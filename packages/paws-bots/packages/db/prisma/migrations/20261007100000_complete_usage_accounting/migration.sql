@@ -1,0 +1,20 @@
+ALTER TABLE "usage_records"
+  ALTER COLUMN "inputTokens" DROP NOT NULL,
+  ALTER COLUMN "outputTokens" DROP NOT NULL,
+  ALTER COLUMN "cacheReadTokens" DROP NOT NULL,
+  ALTER COLUMN "cacheReadTokens" DROP DEFAULT,
+  ALTER COLUMN "cacheWriteTokens" DROP NOT NULL,
+  ALTER COLUMN "cacheWriteTokens" DROP DEFAULT,
+  ADD COLUMN "cacheWrite1hTokens" INTEGER,
+  ADD COLUMN "reasoningTokens" INTEGER,
+  ADD COLUMN "totalTokens" INTEGER,
+  ADD COLUMN "costUsd" DOUBLE PRECISION,
+  ADD COLUMN "costSource" TEXT,
+  ADD COLUMN "pricingVersion" TEXT,
+  ADD COLUMN "usageSource" TEXT,
+  ADD COLUMN "callId" TEXT,
+  ADD COLUMN "operationId" TEXT,
+  ADD COLUMN "operationKind" TEXT NOT NULL DEFAULT 'answer',
+  ADD COLUMN "parentRunId" TEXT,
+  ADD COLUMN "agentId" TEXT;
+CREATE UNIQUE INDEX "usage_records_callId_key" ON "usage_records"("callId");

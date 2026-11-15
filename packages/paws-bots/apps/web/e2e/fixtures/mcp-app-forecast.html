@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forecast</title>
+    <!-- A stand-in MCP app: plain JSON-RPC over postMessage, as the MCP Apps spec describes. -->
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #16181d;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --accent: #2563eb;
+        --chip: #f3f4f6;
+        color-scheme: light;
+      }
+      :root[data-theme="dark"] {
+        --bg: #17181c;
+        --fg: #f3f4f6;
+        --muted: #9ca3af;
+        --line: #2a2d34;
+        --accent: #60a5fa;
+        --chip: #22252b;
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14px/1.4 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      main {
+        padding: 16px;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .days {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 6px;
+        margin: 14px 0 6px;
+      }
+      .day {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 8px 4px;
+        text-align: center;
+        background: var(--bg);
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      .day[aria-pressed="true"] {
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 1px var(--accent);
+      }
+      .day svg {
+        display: block;
+        margin: 4px auto;
+      }
+      .temp {
+        font-weight: 600;
+      }
+      .low {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .chart {
+        width: 100%;
+        height: 72px;
+        display: block;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      button.action {
+        border: 1px solid var(--line);
+        background: var(--chip);
+        color: var(--fg);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+      a {
+        color: var(--accent);
+        align-self: center;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1 id="title">Forecast</h1>
+        <span class="sub" id="unit"></span>
+      </header>
+      <div class="days" id="days"></div>
+      <svg class="chart" id="chart" viewBox="0 0 500 72" preserveAspectRatio="none"></svg>
+      <div class="actions">
+        <button class="action" id="plan" type="button">Plan around this day</button>
+        <a href="https://example.com/forecast" id="more">Full forecast</a>
+      </div>
+    </main>
+    <script>
+      (() => {
+        let nextId = 1;
+        const pending = new Map();
+        const post = (message) => window.parent.postMessage({ jsonrpc: "2.0", ...message }, "*");
+        const request = (method, params) =>
+          new Promise((resolve, reject) => {
+            const id = nextId++;
+            pending.set(id, { resolve, reject });
+            post({ id, method, params });
+          });
+        const notify = (method, params) => post({ method, params });
+
+        let forecast = null;
+        let selected = 0;
+        const icons = {
+          sun: '<circle cx="14" cy="14" r="6" fill="#f59e0b"/>',
+          cloud:
+            '<path d="M8 19h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.5A3.5 3.5 0 0 0 8 19z" fill="#9ca3af"/>',
+          rain: '<path d="M8 15h12a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.5A3.5 3.5 0 0 0 8 15z" fill="#9ca3af"/><path d="M10 18l-1 4M15 18l-1 4M20 18l-1 4" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>',
+        };
+
+        function render() {
+          if (!forecast) return;
+          document.getElementById("title").textContent = `${forecast.city} · next ${forecast.days.length} days`;
+          document.getElementById("unit").textContent = forecast.unit;
+          const days = document.getElementById("days");
+          days.replaceChildren(
+            ...forecast.days.map((day, index) => {
+              const tile = document.createElement("button");
+              tile.type = "button";
+              tile.className = "day";
+              tile.setAttribute("aria-pressed", String(index === selected));
+              tile.innerHTML = `<div>${day.day}</div><svg width="28" height="26" viewBox="0 0 28 26">${icons[day.sky] ?? icons.cloud}</svg><div class="temp">${day.high}°</div><div class="low">${day.low}°</div>`;
+              tile.addEventListener("click", () => {
+                selected = index;
+                render();
+              });
+              return tile;
+            }),
+          );
+          const highs = forecast.days.map((day) => day.high);
+          const min = Math.min(...highs) - 2;
+          const max = Math.max(...highs) + 2;
+          const step = 500 / (highs.length - 1);
+          const points = highs.map((high, index) => [index * step, 64 - ((high - min) / (max - min)) * 56]);
+          const path = points.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+          const [sx, sy] = points[selected];
+          document.getElementById("chart").innerHTML =
+            `<path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>` +
+            `<circle cx="${sx}" cy="${sy}" r="4" fill="var(--accent)" vector-effect="non-scaling-stroke"/>`;
+          document.getElementById("plan").textContent = `Plan around ${forecast.days[selected].day}`;
+        }
+
+        function applyTheme(context) {
+          if (context?.theme) document.documentElement.dataset.theme = context.theme;
+        }
+
+        window.addEventListener("message", (event) => {
+          if (event.source !== window.parent) return;
+          const message = event.data;
+          if (message?.jsonrpc !== "2.0") return;
+          if (message.id !== undefined && pending.has(message.id)) {
+            const { resolve, reject } = pending.get(message.id);
+            pending.delete(message.id);
+            if (message.error) reject(message.error);
+            else resolve(message.result);
+            return;
+          }
+          if (message.method === "ui/notifications/tool-result") {
+            forecast = message.params?.structuredContent ?? null;
+            render();
+          } else if (message.method === "ui/notifications/host-context-changed") {
+            applyTheme(message.params);
+          } else if (message.method === "ui/resource-teardown") {
+            post({ id: message.id, result: {} });
+          }
+        });
+
+        document.getElementById("plan").addEventListener("click", () => {
+          const day = forecast?.days[selected]?.day ?? "the weekend";
+          void request("ui/message", {
+            role: "user",
+            content: [{ type: "text", text: `Plan an outdoor lunch in ${forecast?.city ?? "town"} on ${day}.` }],
+          }).catch(() => {});
+        });
+        document.getElementById("more").addEventListener("click", (event) => {
+          event.preventDefault();
+          void request("ui/open-link", { url: event.currentTarget.href }).catch(() => {});
+        });
+
+        new ResizeObserver(() =>
+          notify("ui/notifications/size-changed", {
+            width: document.documentElement.scrollWidth,
+            height: document.documentElement.scrollHeight,
+          }),
+        ).observe(document.documentElement);
+
+        request("ui/initialize", {
+          appInfo: { name: "forecast", version: "1.0.0" },
+          appCapabilities: { availableDisplayModes: ["inline"] },
+          protocolVersion: "2026-01-26",
+        }).then((result) => {
+          applyTheme(result?.hostContext);
+          window.__initialized = result;
+          notify("ui/notifications/initialized", {});
+        });
+      })();
+    </script>
+  </body>
+</html>

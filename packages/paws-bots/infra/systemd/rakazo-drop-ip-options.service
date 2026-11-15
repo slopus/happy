@@ -1,0 +1,16 @@
+[Unit]
+Description=Drop inbound IPv4 TCP packets that carry IP options
+Wants=network-pre.target
+Before=network-pre.target shutdown.target
+Conflicts=shutdown.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStartPre=-/usr/sbin/nft delete table ip rakazo_ip_options
+ExecStart=/usr/sbin/nft 'table ip rakazo_ip_options { chain prerouting { type filter hook prerouting priority raw; policy accept; meta l4proto tcp ip hdrlength gt 5 counter drop; }; }'
+ExecStop=/usr/sbin/nft delete table ip rakazo_ip_options
+
+[Install]
+WantedBy=sysinit.target

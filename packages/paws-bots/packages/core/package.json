@@ -1,0 +1,116 @@
+{
+  "name": "@rakazo/core",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./user-error": {
+      "types": "./src/user-error.ts",
+      "development": "./src/user-error.ts",
+      "default": "./src/user-error.ts"
+    },
+    "./message-quote": {
+      "types": "./src/message-quote.ts",
+      "development": "./src/message-quote.ts",
+      "default": "./src/message-quote.ts"
+    },
+    "./screen-reconnect": {
+      "types": "./src/screen-reconnect.ts",
+      "development": "./src/screen-reconnect.ts",
+      "default": "./src/screen-reconnect.ts"
+    },
+    "./node/load-root-env": {
+      "types": "./src/node/load-root-env.ts",
+      "development": "./src/node/load-root-env.ts",
+      "default": "./src/node/load-root-env.ts"
+    },
+    "./node/shutdown-signals": {
+      "types": "./src/node/shutdown-signals.ts",
+      "development": "./src/node/shutdown-signals.ts",
+      "default": "./src/node/shutdown-signals.ts"
+    },
+    "./node/approval-effect-key": {
+      "types": "./src/approval-effect-key.ts",
+      "development": "./src/approval-effect-key.ts",
+      "default": "./src/approval-effect-key.ts"
+    },
+    "./node/screen-proxy-response": {
+      "types": "./src/node/screen-proxy-response.ts",
+      "development": "./src/node/screen-proxy-response.ts",
+      "default": "./src/node/screen-proxy-response.ts"
+    },
+    "./secrets-guard": {
+      "types": "./src/secrets-guard.ts",
+      "development": "./src/secrets-guard.ts",
+      "default": "./src/secrets-guard.ts"
+    },
+    "./plot": {
+      "types": "./src/plot/plot-spec.ts",
+      "development": "./src/plot/plot-spec.ts",
+      "default": "./src/plot/plot-spec.ts"
+    },
+    "./plot-catalog": {
+      "types": "./src/plot/plot-catalog.ts",
+      "development": "./src/plot/plot-catalog.ts",
+      "default": "./src/plot/plot-catalog.ts"
+    },
+    "./node/desktop-runtime": {
+      "types": "./src/node/desktop-runtime.ts",
+      "development": "./src/node/desktop-runtime.ts",
+      "default": "./src/node/desktop-runtime.ts"
+    },
+    "./node/screen-capability": {
+      "types": "./src/node/screen-capability.ts",
+      "development": "./src/node/screen-capability.ts",
+      "default": "./src/node/screen-capability.ts"
+    },
+    "./egress": {
+      "types": "./src/egress.ts",
+      "development": "./src/egress.ts",
+      "default": "./src/egress.ts"
+    },
+    "./signup-attribution": {
+      "types": "./src/browser-signup-attribution.ts",
+      "development": "./src/browser-signup-attribution.ts",
+      "default": "./src/browser-signup-attribution.ts"
+    },
+    "./query": {
+      "types": "./src/query.ts",
+      "development": "./src/query.ts",
+      "default": "./src/query.ts"
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/core/src"
+  },
+  "dependencies": {
+    "@observablehq/plot": "0.6.19",
+    "@rakazo/contracts": "workspace:*",
+    "@rakazo/ui-tokens": "workspace:*",
+    "@tanstack/query-core": "5.107.1",
+    "croner": "10.0.1",
+    "d3-dsv": "3.0.2",
+    "dotenv": "17.4.2",
+    "fflate": "0.8.3",
+    "hast-util-to-text": "4.0.3",
+    "json5": "2.2.3",
+    "mdast-util-to-hast": "13.2.1",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "tldts": "7.4.19",
+    "unified": "11.0.5",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/d3-dsv": "3.0.7",
+    "fast-check": "4.10.2",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

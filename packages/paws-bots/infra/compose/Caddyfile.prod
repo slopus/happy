@@ -1,0 +1,73 @@
+# JSON access logs on stdout. Caddy already masks Authorization and Cookie; these filters also
+# drop them, Set-Cookie, Referer (a page URL can hold a reset token), and the one-time tokens
+# and screen capabilities the app carries in URLs.
+(access_log) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>headers>Authorization delete
+			request>headers>Proxy-Authorization delete
+			request>headers>Cookie delete
+			request>headers>Referer delete
+			resp_headers>Set-Cookie delete
+			# Native sign-in redirects carry the session cookie in the app callback URL.
+			resp_headers>Location delete
+			request>uri regexp "(/reset-password/|/novnc/session/[a-z]+/|/api/v1/pages/shared/|^/p/)[^/?#&]*|([?&](?:token|_token|code|state|ticket|access_token|id_token|hub\.verify_token|path)=)[^&#]*" "${1}${2}REDACTED"
+		}
+	}
+}
+
+(deploy_retry) {
+	lb_try_duration 10s
+	lb_try_interval 250ms
+}
+
+# Every running API container, looked up again each second, so requests spread across all of them
+# and a stopped one drops out instead of Caddy reusing connections to whichever answered first. A
+# container starting up or shutting down refuses connections while it is still listed; one refusal
+# sets it aside briefly, or least_conn would keep choosing it, since it never has a request open.
+# Keep that shorter than lb_try_duration: a new container set aside while starting must be back
+# before the old ones stop and a waiting request runs out of retries.
+(api) {
+	reverse_proxy {
+		dynamic a api 3100 {
+			refresh 1s
+		}
+		lb_policy least_conn
+		fail_duration 2s
+		import deploy_retry
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
+{$RAKAZO_HOST:app.example.com} {
+	import access_log
+	encode zstd gzip
+
+	# A localhost trial must not pin HTTPS onto every local dev server.
+	@hsts not host localhost 127.0.0.1
+	header @hsts Strict-Transport-Security "max-age=31536000"
+	# SAMEORIGIN still lets the app frame its own /novnc/ screen. The embedded screen frames its runtime
+	# from an opaque sandboxed page, which SAMEORIGIN rejects; only that exact runtime path omits ancestor restrictions.
+	header X-Content-Type-Options nosniff
+	@framed not path /computer-screen/sdk/ASP/container.html
+	header @framed X-Frame-Options SAMEORIGIN
+	# A shared page's link is its only key: keep it out of search results and Referer headers.
+	@sharedPage path /p/*
+	header @sharedPage {
+		X-Robots-Tag "noindex, nofollow"
+		Referrer-Policy no-referrer
+	}
+
+	@api path /health /api/* /rpc/*
+	handle @api {
+		import api
+	}
+
+	handle {
+		reverse_proxy web:5173 {
+			import deploy_retry
+		}
+	}
+}

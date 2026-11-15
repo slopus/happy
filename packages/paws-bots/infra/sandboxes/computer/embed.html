@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Rakazo computer</title>
+    <style>
+      html,
+      body,
+      #screen {
+        margin: 0;
+        height: 100%;
+        width: 100%;
+        background: #0e0e10;
+        overflow: hidden;
+      }
+      #mobile-controls {
+        position: fixed;
+        right: max(12px, env(safe-area-inset-right));
+        top: calc(
+          var(--mobile-visual-top, 0px) + var(--mobile-visual-height, 100dvh) - 60px -
+            env(safe-area-inset-bottom)
+        );
+        z-index: 2;
+        display: flex;
+        gap: 8px;
+      }
+      #mobile-paste,
+      #mobile-keyboard,
+      #mobile-trackpad {
+        box-sizing: border-box;
+        width: 48px;
+        height: 48px;
+        padding: 11px;
+        border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 12px;
+        background: Canvas;
+        color: CanvasText;
+        box-shadow: 0 2px 10px color-mix(in srgb, CanvasText 25%, transparent);
+      }
+      #mobile-keyboard.active,
+      #mobile-trackpad.active {
+        outline: 3px solid Highlight;
+        outline-offset: 1px;
+      }
+      #mobile-paste svg,
+      #mobile-keyboard svg,
+      #mobile-trackpad svg {
+        width: 100%;
+        height: 100%;
+      }
+      #screen.trackpad-active {
+        touch-action: none;
+      }
+      #mobile-key-bar {
+        position: fixed;
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        top: calc(
+          var(--mobile-visual-top, 0px) + var(--mobile-visual-height, 100dvh) - 108px -
+            env(safe-area-inset-bottom)
+        );
+        z-index: 2;
+        display: flex;
+        gap: 6px;
+      }
+      #mobile-key-bar[hidden] {
+        display: none;
+      }
+      #mobile-key-bar button {
+        flex: 1;
+        min-width: 0;
+        height: 40px;
+        padding: 0 4px;
+        border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 10px;
+        background: Canvas;
+        color: CanvasText;
+        font: 600 13px/1 system-ui, sans-serif;
+        box-shadow: 0 2px 10px color-mix(in srgb, CanvasText 25%, transparent);
+      }
+      #mobile-key-bar button.active {
+        outline: 3px solid Highlight;
+        outline-offset: 1px;
+      }
+      #mobile-keyboard-input {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 1px;
+        height: 1px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        outline: none;
+        resize: none;
+        opacity: 0.02;
+        font-size: 16px;
+        color: transparent;
+        background: transparent;
+        caret-color: transparent;
+        z-index: 1;
+      }
+      .mobile-keyboard-open #screen {
+        position: fixed;
+        top: var(--mobile-visual-top, 0px);
+        left: 0;
+        height: var(--mobile-visual-height, 100dvh);
+      }
+    </style>
+    <script type="module">
+      import {
+        attachHostClipboardPaste,
+        attachMobilePaste,
+        attachRemoteClipboardCopy,
+        pasteHostText,
+      } from "./clipboard-bridge.js";
+      import Keyboard from "./core/input/keyboard.js";
+      import KeyTable from "./core/input/keysym.js";
+      import keysyms from "./core/input/keysymdef.js";
+      import RFB from "./core/rfb.js";
+      import { attachMobileKeyboard, attachMobileTrackpad, isTouchBrowser } from "./mobile-keyboard.js";
+
+      function query(name, fallback) {
+        const match = `${document.location.href}${window.location.hash}`.match(
+          new RegExp(`.*[?&]${name}=([^&#]*)`),
+        );
+        return match ? decodeURIComponent(match[1]) : fallback;
+      }
+
+      function flag(name) {
+        const value = String(query(name, "false")).toLowerCase();
+        return value === "1" || value === "true" || value === "yes";
+      }
+
+      const path = String(query("path", "websockify")).replace(/^\//, "");
+      const prefix = window.location.pathname.replace(/[^/]+$/, "");
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const url = `${protocol}://${window.location.host}${prefix}${path}`;
+      const rfb = new RFB(document.getElementById("screen"), url);
+      // The web proxy's page shim reports these to the app, as it does for stock noVNC.
+      const root = document.documentElement;
+      root.classList.add("noVNC_connecting");
+      rfb.addEventListener("connect", () => {
+        root.classList.remove("noVNC_connecting");
+        root.classList.add("noVNC_connected");
+      });
+      rfb.addEventListener("securityfailure", (event) => {
+        root.setAttribute("data-rakazo-screen-error", event.detail?.reason ?? "");
+      });
+      rfb.addEventListener("disconnect", (event) => {
+        root.classList.remove("noVNC_connecting", "noVNC_connected");
+        if (!event.detail?.clean && !root.hasAttribute("data-rakazo-screen-error")) {
+          root.setAttribute("data-rakazo-screen-error", "");
+        }
+      });
+      rfb.viewOnly = flag("view_only");
+      rfb.scaleViewport = true;
+      rfb.clipViewport = false;
+      attachRemoteClipboardCopy(rfb);
+      if (!rfb.viewOnly) attachHostClipboardPaste(rfb);
+      if (!rfb.viewOnly && (isTouchBrowser() || window.__rakazoNativeKeys)) {
+        const keyboardInput = document.getElementById("mobile-keyboard-input");
+        attachMobilePaste(rfb, {
+          button: document.getElementById("mobile-paste"),
+          fallbackFocus: keyboardInput,
+        });
+        attachMobileKeyboard(rfb, {
+          button: document.getElementById("mobile-keyboard"),
+          input: keyboardInput,
+          keyBar: document.getElementById("mobile-key-bar"),
+          Keyboard,
+          backspaceKeysym: KeyTable.XK_BackSpace,
+          lookupKeysym: keysyms.lookup,
+          pasteText: (text) => pasteHostText(rfb, text),
+        });
+        attachMobileTrackpad(rfb, {
+          button: document.getElementById("mobile-trackpad"),
+          surface: document.getElementById("screen"),
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="screen"></div>
+    <div id="mobile-key-bar" hidden>
+      <button type="button" data-key="Escape" aria-label="Escape">Esc</button>
+      <button type="button" data-key="Tab" aria-label="Tab">Tab</button>
+      <button type="button" data-key="Control" aria-label="Ctrl" aria-pressed="false">Ctrl</button>
+      <button type="button" data-key="ArrowLeft" aria-label="Left">←</button>
+      <button type="button" data-key="ArrowDown" aria-label="Down">↓</button>
+      <button type="button" data-key="ArrowUp" aria-label="Up">↑</button>
+      <button type="button" data-key="ArrowRight" aria-label="Right">→</button>
+    </div>
+    <div id="mobile-controls">
+      <button id="mobile-paste" type="button" aria-label="Paste" title="Paste" hidden>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="8" y="2" width="8" height="4" rx="1" />
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+        </svg>
+      </button>
+      <button
+        id="mobile-keyboard"
+        type="button"
+        aria-label="Show keyboard"
+        aria-pressed="false"
+        title="Show keyboard"
+        hidden
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="16" rx="2" />
+          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M6 16h12" />
+        </svg>
+      </button>
+      <button
+        id="mobile-trackpad"
+        type="button"
+        aria-label="Use trackpad"
+        aria-pressed="false"
+        title="Use trackpad"
+        hidden
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 11V5a2 2 0 0 1 4 0v5" />
+          <path d="M13 10V4a2 2 0 0 1 4 0v7" />
+          <path d="M17 10V6a2 2 0 0 1 4 0v7c0 5-3 8-8 8h-1c-3 0-5-1-7-4l-2-3a2 2 0 0 1 3-2l3 2" />
+        </svg>
+      </button>
+    </div>
+    <textarea
+      id="mobile-keyboard-input"
+      aria-label="Remote computer keyboard input"
+      aria-hidden="true"
+      autocapitalize="off"
+      autocomplete="off"
+      spellcheck="false"
+      tabindex="-1"
+    ></textarea>
+  </body>
+</html>

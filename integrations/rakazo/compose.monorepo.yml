@@ -1,0 +1,94 @@
+# Overlay on compose.core.yml. Build from this Happy checkout, not a remote UI.
+x-source-build: &source-build
+  context: ../..
+  dockerfile: integrations/rakazo/Dockerfile.monorepo
+
+services:
+  migrate:
+    image: ${PAWS_BOTS_SOURCE_IMAGE:-paws-bots-app:monorepo}
+    build: *source-build
+  api:
+    image: ${PAWS_BOTS_SOURCE_IMAGE:-paws-bots-app:monorepo}
+    build: *source-build
+    environment:
+      SANDBOX_PROVIDER: docker
+      COMPUTER_SETTINGS_ENABLED: "true"
+      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}
+    depends_on:
+      supervisor: {condition: service_started}
+  worker:
+    image: ${PAWS_BOTS_SOURCE_IMAGE:-paws-bots-app:monorepo}
+    build: *source-build
+    environment:
+      SANDBOX_PROVIDER: docker
+      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}
+  web:
+    sysctls:
+      net.ipv4.ip_forward: "0"
+    image: ${PAWS_BOTS_SOURCE_IMAGE:-paws-bots-app:monorepo}
+    build: *source-build
+  supervisor:
+    image: ${PAWS_BOTS_SOURCE_IMAGE:-paws-bots-app:monorepo}
+    build: *source-build
+    user: "1000:1000"
+    group_add: ["0"]
+    sysctls:
+      net.ipv4.ip_forward: "0"
+    depends_on:
+      computer-egress: {condition: service_healthy}
+    working_dir: /app/infra/sandboxes/supervisor
+    command: [node_modules/.bin/tsx, src/index.ts]
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      SUPERVISOR_HOST: 0.0.0.0
+      SUPERVISOR_PORT: "7091"
+      DOCKER_SOCKET: /var/run/docker.sock
+      RAKAZO_COMPUTER_IMAGE: ${PAWS_BOTS_COMPUTER_IMAGE:-paws-bots-computer:chrome-use-monorepo}
+      RAKAZO_COMPUTER_MEMORY: 2g
+      RAKAZO_COMPUTER_CPUS: "2"
+      RAKAZO_COMPUTER_PIDS_LIMIT: "2048"
+      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}
+      SANDBOX_SCREEN_NETWORK: isolated
+      # No direct internet/host route; all public egress uses the filtering proxy.
+      SANDBOX_COMPUTER_EGRESS: proxy
+      SANDBOX_TEAM_SCREEN_LIMIT: "2"
+    volumes:
+      - homes:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [app]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 256
+    mem_limit: 768m
+
+  computer-egress:
+    image: ${PAWS_BOTS_SOURCE_IMAGE:-paws-bots-app:monorepo}
+    build: *source-build
+    user: "1000:1000"
+    command: [node, /opt/paws/public-proxy.mjs]
+    init: true
+    restart: unless-stopped
+    labels:
+      paws.publicEgress: ipv4-http-v1
+    # No application network, credentials, Docker socket or user-data mounts.
+    networks: [computer-egress]
+    sysctls:
+      net.ipv4.ip_forward: "0"
+      net.ipv6.conf.all.disable_ipv6: "1"
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 64
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD, node, -e, "const s=require('node:net').connect(3128,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));s.setTimeout(1500,()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+networks:
+  computer-egress:

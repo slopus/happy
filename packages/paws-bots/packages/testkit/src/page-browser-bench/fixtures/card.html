@@ -1,0 +1,10 @@
+<!doctype html>
+<title>Checkout</title>
+<h1>Checkout</h1>
+<form method="post" action="/submit">
+  <label>Card number <input name="number" autocomplete="cc-number" inputmode="numeric"></label>
+  <label>Expiry <input name="expiry" autocomplete="cc-exp" placeholder="MM / YY"></label>
+  <label>Security code <input name="cvc" autocomplete="cc-csc"></label>
+  <label>Postal code <input name="postal" autocomplete="postal-code"></label>
+  <button type="submit">Pay now</button>
+</form>

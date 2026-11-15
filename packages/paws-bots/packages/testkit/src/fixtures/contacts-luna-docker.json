@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "scenario": "contacts-export",
+  "source": "luna-openrouter-docker",
+  "steps": [
+    {
+      "op": "navigate",
+      "outcome": "ok"
+    },
+    {
+      "op": "observe",
+      "outcome": "ok"
+    },
+    {
+      "op": "snapshot",
+      "outcome": "ok"
+    },
+    {
+      "op": "click",
+      "target": "Export contacts",
+      "outcome": "ok"
+    },
+    {
+      "op": "click",
+      "target": "Download CSV",
+      "outcome": "ok"
+    },
+    {
+      "op": "read",
+      "outcome": "ok"
+    }
+  ]
+}

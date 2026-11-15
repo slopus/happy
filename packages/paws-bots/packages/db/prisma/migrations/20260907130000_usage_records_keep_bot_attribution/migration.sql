@@ -1,0 +1,27 @@
+-- Keep a bot's token spend, and the knowledge of which bot spent it, after the bot is deleted.
+--
+-- usage_records_botId_fkey was ON DELETE CASCADE, so `bots/remove` erased the bot's usage rows
+-- along with everything else. #30 catalogued the cascade breadth (thread, messages, events,
+-- runs, effects, memory, computer, routines, artifacts) and #40 answered it with the
+-- bot_deletions tombstone, treating that breadth as a design call. usage_records was not in
+-- that list: it is not conversation state that a user chooses to discard, it is the record of
+-- what the bot cost, and deleting a bot should not be a way to erase it.
+--
+-- ON DELETE SET NULL was considered and rejected. Deleting a bot also deletes its runs, which
+-- fires usage_records_runId_fkey (already SET NULL), so botId and runId would BOTH come back
+-- NULL and the row would keep only space, user, model and token counts. The money survives and
+-- the attribution does not, which makes "which bot spent what" unanswerable one column later.
+--
+-- So: no foreign key. A financial row must not cascade, blank or fail because of a lifecycle
+-- event on its subject. This is the same shape the codebase already uses elsewhere for an
+-- identity column that has to outlive its row.
+--
+-- Consequence accepted: botId may dangle. BotDeletion.id IS the bot id, so a deleted bot's
+-- name stays reachable through a LEFT JOIN. No index is added on botId: nothing queries per
+-- bot today, and the foreign key never provided one either (Postgres does not index a
+-- referencing column).
+--
+-- runs keep cascading on purpose, so external_effects still follow their run: journey 10
+-- asserts a removed bot's runs are gone, and that stays true.
+
+ALTER TABLE "usage_records" DROP CONSTRAINT "usage_records_botId_fkey";

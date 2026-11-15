@@ -1,0 +1,13 @@
+[Unit]
+Description=Check host storage, backup health and SSH access rules
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/rakazo/backup.env
+ExecStart=/usr/local/sbin/rakazo-host-check
+StateDirectory=rakazo/alerts
+StateDirectoryMode=0700
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rakazo/alerts
+ProtectHome=true
+PrivateTmp=true

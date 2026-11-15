@@ -82,7 +82,9 @@ test('native bootstrap uses native auth cookie and raw oRPC, then reuses existin
     throw new Error(`Unexpected path ${url.pathname}`);
   };
   const options = { subject: 'alice', secret: 'a'.repeat(64), apiUrl: 'http://127.0.0.1:3001', authOrigin: 'https://bots.test', fetcher };
-  assert.equal((await bootstrapNative(options)).spaceId, 'space-a');
+  const initial = await bootstrapNative(options);
+  assert.equal(initial.spaceId, 'space-a');
+  assert.equal(initial.accountKey, id);
   await bootstrapNative(options);
   assert.equal(requests.filter((request) => request.path === '/rpc/bots/create').length, 1);
 });
@@ -224,7 +226,7 @@ async function fixture(t, handle, overrides = {}) {
   const upstream = http.createServer(handle);
   const target = new URL(await listen(upstream));
   const config = { webUrl: target, apiUrl: target, authOrigin: 'https://bots.test', publicOrigin: 'https://bots.test', parentOrigins: ['https://paws.test'], bridgeSecret: 's'.repeat(64) };
-  const gateway = createGateway(config, { state: overrides.state, bootstrap: async (subject) => ({ cookie: `native=${subject}`, spaceId: `space-${subject}` }) });
+  const gateway = createGateway(config, { state: overrides.state, bootstrap: async (subject) => ({ cookie: `native=${subject}`, spaceId: `space-${subject}`, accountKey: identityFor(subject, "test-secret").chiefId }) });
   const base = await listen(gateway.server);
   t.after(async () => { gateway.server.closeAllConnections(); upstream.closeAllConnections(); await Promise.all([new Promise((r) => gateway.server.close(r)), new Promise((r) => upstream.close(r))]); });
   const post = (path, body, headers = {}) => fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
@@ -448,4 +450,100 @@ test('a restarted worker restores only the requesting document memory lease, wit
   assert.equal(requests.length, 1);
   assert.equal(requests[0].headers.get('x-paws-rakazo-session'), 'a'.repeat(43));
   assert.deepEqual(clientsAsked.slice(0, 2), ['original-tab', 'new-tab']);
+});
+
+test('embedded mount CORS is allowlisted and tickets/leases remain parent bound', async (t) => {
+  const seen = [];
+  const f = await fixture(t, (req, res) => { seen.push(req.headers.cookie); res.setHeader('access-control-allow-origin', '*'); res.end('native reply'); });
+  f.config.parentOrigins.push('https://other-paws.test');
+  const preflight = headers => fetch(`${f.base}/rpc/bootstrap`, { method: 'OPTIONS', headers });
+  const ok = await preflight({ origin: 'https://paws.test', 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type,x-paws-rakazo-session,x-rakazo-space-id,x-request-id,traceparent' });
+  assert.equal(ok.status, 204); assert.equal(ok.headers.get('access-control-allow-origin'), 'https://paws.test');
+  assert.equal((await preflight({ origin: 'https://evil.test', 'access-control-request-method': 'POST' })).status, 403);
+  assert.equal((await preflight({ origin: 'https://paws.test', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization' })).status, 403);
+  const launch = await f.launch();
+  const body = { ticket: launch.ticket, parentOrigin: 'https://paws.test', platform: 'web' };
+  assert.equal((await f.post('/__paws/redeem', body, { origin: 'https://other-paws.test' })).status, 403);
+  const redeemed = await f.post('/__paws/redeem', body, { origin: 'https://paws.test' });
+  assert.equal(redeemed.status, 200); assert.equal(redeemed.headers.get('access-control-allow-origin'), 'https://paws.test');
+  const { sessionKey } = await redeemed.json();
+  for (const origin of ['https://other-paws.test', 'https://evil.test']) {
+    assert.equal((await fetch(`${f.base}/rpc/bootstrap`, { headers: { origin, 'x-paws-rakazo-session': sessionKey } })).status, 401);
+  }
+  const response = await fetch(`${f.base}/rpc/bootstrap`, { headers: { origin: 'https://paws.test', 'x-paws-rakazo-session': sessionKey } });
+  assert.equal(response.status, 200); assert.equal(response.headers.get('access-control-allow-origin'), 'https://paws.test');
+  assert.deepEqual(seen, ['native=alice']);
+});
+
+test('embedded screen probes expose native capability status only to allowed parents', async (t) => {
+  const seen = [];
+  const f = await fixture(t, (req, res) => {
+    seen.push({ cookie: req.headers.cookie, authorization: req.headers.authorization, path: req.url });
+    // Native validation remains authoritative, including an expired/refused screen.
+    res.writeHead(410, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+    res.end('{"error":"expired screen"}');
+  });
+  const path = '/novnc/session/view/1794660000000.test-capability/?probe=1';
+  for (const method of ['GET', 'HEAD']) {
+    const response = await fetch(f.base + path, { method, headers: { origin: 'https://paws.test',
+      cookie: 'host=secret', authorization: 'Bearer host-secret' } });
+    assert.equal(response.status, 410);
+    assert.equal(response.headers.get('access-control-allow-origin'), 'https://paws.test');
+    assert.equal(response.headers.get('access-control-allow-credentials'), null);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+  for (const [path, origin] of [['/novnc/arbitrary/probe', 'https://paws.test'],
+    ['/novnc/session/view/1794660000000.test-capability/?probe=1', 'https://evil.test']]) {
+    const response = await fetch(f.base + path, { headers: { origin } });
+    assert.equal(response.headers.get('access-control-allow-origin'), null);
+  }
+  const preflight = method => fetch(f.base + path, { method: 'OPTIONS', headers: {
+    origin: 'https://paws.test', 'access-control-request-method': method } });
+  assert.equal((await preflight('HEAD')).status, 204);
+  assert.equal((await preflight('POST')).status, 403);
+  assert(seen.length >= 2);
+  assert(seen.every(request => request.cookie === undefined && request.authorization === undefined));
+});
+
+test('only exact static viewer shells allow configured Paws ancestors and retain other CSP directives', async (t) => {
+  const nativePolicy = "default-src 'none'; script-src 'unsafe-inline'; connect-src 'none'; frame-ancestors 'self'";
+  const f = await fixture(t, (_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html', 'content-security-policy': nativePolicy, 'x-frame-options': 'SAMEORIGIN' });
+    res.end('<!doctype html><html><body>native sandbox viewer</body></html>');
+  });
+  for (const path of ['/html-viewer.html', '/mcp-app-viewer.html']) {
+    for (const method of ['GET', 'HEAD']) {
+      const response = await fetch(f.base + path, { method });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('x-frame-options'), null);
+      const policy = response.headers.get('content-security-policy');
+      assert.match(policy, /default-src 'none'; script-src 'unsafe-inline'; connect-src 'none'/);
+      assert.match(policy, /frame-ancestors 'self' https:\/\/paws\.test/);
+      assert(!policy.includes('*'));
+      if (method === 'GET') assert.match(await response.text(), /native sandbox viewer/);
+    }
+  }
+  for (const path of ['/other.html', '/nested/html-viewer.html', '/html-viewer.html/extra']) {
+    const response = await fetch(f.base + path);
+    assert.equal(response.headers.get('content-security-policy'), nativePolicy);
+    assert.equal(response.headers.get('x-frame-options'), 'SAMEORIGIN');
+  }
+});
+
+test('opaque screen module reads retain CORS without granting private RPC access', async (t) => {
+  const f = await fixture(t, (req, res) => {
+    assert.equal(req.headers.cookie, undefined);
+    res.writeHead(200, { 'content-type': 'text/javascript', 'access-control-allow-origin': '*' });
+    res.end('export const ready = true;');
+  });
+  const path = '/novnc/session/control/1794660000000.test-capability/core/input/keyboard.js';
+  const response = await fetch(f.base + path, { headers: { origin: 'null' } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'null');
+  for (const path of ['/novnc/arbitrary/file.js', '/rpc/bootstrap']) {
+    const denied = await fetch(f.base + path, { headers: { origin: 'null' } });
+    assert.equal(denied.headers.get('access-control-allow-origin'), null);
+  }
+  const post = await fetch(f.base + path, { method: 'POST', headers: { origin: 'null' } });
+  assert.equal(post.headers.get('access-control-allow-origin'), null);
 });

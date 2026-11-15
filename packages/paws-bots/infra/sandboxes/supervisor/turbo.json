@@ -1,0 +1,13 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "check": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/infra/sandboxes/computer/*.js",
+        "$TURBO_ROOT$/infra/sandboxes/computer/*.d.ts"
+      ]
+    }
+  }
+}

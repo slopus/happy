@@ -1,0 +1,9 @@
+# Optional drop-in: /etc/systemd/system/rakazo-backup.service.d/alerts.conf
+[Unit]
+OnFailure=rakazo-backup-alert.service
+
+[Service]
+ExecStartPost=-/usr/local/sbin/rakazo-host-alert backup-failure ""
+ReadWritePaths=/var/lib/rakazo/alerts
+StateDirectory=rakazo/alerts
+StateDirectoryMode=0700

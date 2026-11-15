@@ -1,0 +1,38 @@
+{
+  "name": "@rakazo/testkit",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/testkit/src"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.6",
+    "@lingui/core": "6.12.0",
+    "@lingui/message-utils": "6.12.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@rakazo/adapter-kit": "workspace:*",
+    "@rakazo/adapters": "workspace:*",
+    "@rakazo/contracts": "workspace:*",
+    "@rakazo/core": "workspace:*",
+    "@rakazo/db": "workspace:*",
+    "@rakazo/page-kit": "workspace:*",
+    "@testcontainers/postgresql": "12.2.1",
+    "fflate": "0.8.3",
+    "pngjs": "7.0.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "3.1164.0",
+    "@playwright/test": "1.64.1",
+    "@rakazo/api": "workspace:*",
+    "@rakazo/sandbox-supervisor": "workspace:*",
+    "@types/pngjs": "6.0.5",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

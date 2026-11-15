@@ -1,0 +1,11 @@
+[Unit]
+Description=Notify operators when a production backup fails
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rakazo-host-alert backup-failure "Nightly backup failed. Inspect rakazo-backup.service on the server."
+StateDirectory=rakazo/alerts
+StateDirectoryMode=0700
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rakazo/alerts
+PrivateTmp=true

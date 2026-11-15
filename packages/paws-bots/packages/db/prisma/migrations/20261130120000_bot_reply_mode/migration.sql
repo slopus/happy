@@ -1,0 +1,1 @@
+ALTER TABLE "bots" ADD COLUMN "replyMode" TEXT NOT NULL DEFAULT 'chat';

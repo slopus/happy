@@ -1,0 +1,45 @@
+diff --git a/lib/docker.js b/lib/docker.js
+index 4951f8db867b1b12b75af79be2ebae6165534960..2711cb95ae54b5c90774c2aaccff8a112c991a01 100644
+--- a/lib/docker.js
++++ b/lib/docker.js
+@@ -309,13 +309,16 @@ Docker.prototype.buildImage = function(file, opts, callback) {
+         optsf.options.session = sessionId;
+ 
+         dial((err, data) => {
+-          callback(err, data);
+-
++          // Close the session once the build stream closes, or right away when /build failed.
+           if (data) {
+-            data.on("end", done);
++            data.once("close", done);
++          } else {
++            done();
+           }
++
++          callback(err, data);
+         });
+-      });
++      }, optsf.abortSignal);
+     } else {
+       dial(callback);
+     }
+diff --git a/lib/session.js b/lib/session.js
+index 495c0e77bdcb85bd59a17bf3a31096ac54329f67..bcf7834e0fc2377f97d43103b5eb81a02b29a1a6 100644
+--- a/lib/session.js
++++ b/lib/session.js
+@@ -3,13 +3,14 @@ var grpc = require("@grpc/grpc-js"),
+   path = require("path"),
+   crypto = require("crypto");
+ 
+-function withSession(docker, auth, handler) {
++function withSession(docker, auth, handler, abortSignal) {
+   const sessionId = crypto.randomUUID();
+ 
+   const opts = {
+     method: "POST",
+     path: "/session",
+     hijack: true,
++    abortSignal: abortSignal,
+     headers: {
+       Upgrade: "h2c",
+       "X-Docker-Expose-Session-Uuid": sessionId,

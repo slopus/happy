@@ -1,0 +1,19 @@
+<!doctype html>
+<title>Country search</title>
+<h1>Country search</h1>
+<label>Search countries <input id="q" autocomplete="off"></label>
+<form method="post" action="/submit" id="results"></form>
+<script>
+  // Suggestions load 300 ms after the last keystroke, as most search boxes do.
+  let timer;
+  document.getElementById("q").addEventListener("input", (event) => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const response = await fetch(`/api/search?q=${encodeURIComponent(event.target.value)}`);
+      const found = await response.json();
+      document.getElementById("results").innerHTML = found
+        .map(([code, name]) => `<button name="country" value="${code}">${name}</button>`)
+        .join("");
+    }, 300);
+  });
+</script>

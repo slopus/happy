@@ -5,44 +5,90 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 import { BotsFrame } from './BotsFrame.web';
 
-describe('Bots iframe identity boundary', () => {
-    let tree: any, listener: ((event: any) => void) | undefined;
-    const child = { postMessage: vi.fn() }, authenticated = vi.fn(), failure = vi.fn();
-    const origin = 'https://bots.example';
+vi.mock('react-native', () => ({ Platform: { OS: 'web', select: (values: any) => values.web ?? values.default } }));
+
+vi.mock('react-native-unistyles', async () => {
+    const { appThemes } = await import('@/themePacks');
+    return { useUnistyles: () => ({ theme: { ...appThemes.ginghamDark } }) };
+});
+
+describe('Bots workspace mount boundary', () => {
+    let tree: any, nodes: any[], host: object;
+    const dispose = vi.fn(), mountRuntime = vi.fn((_host: unknown, _options: unknown) => dispose), authenticated = vi.fn(), failure = vi.fn();
     beforeEach(() => {
         (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-        vi.clearAllMocks(); listener = undefined;
-        vi.stubGlobal('window', {
-            addEventListener: (_type: string, callback: any) => { listener = callback; },
-            removeEventListener: (_type: string, callback: any) => { if (listener === callback) listener = undefined; },
+        vi.clearAllMocks(); nodes = []; host = { style: { setProperty: vi.fn() } };
+        vi.stubGlobal('window', { PawsBots: { mount: mountRuntime } });
+        vi.stubGlobal('document', {
+            querySelector: (selector: string) => ({ content: selector.includes('entry') ? '/assets/bots/abc.js' : '/assets/bots/def.css' }),
+            createElement: (tag: string) => ({ tag, remove: vi.fn() }),
+            head: { appendChild: (node: any) => nodes.push(node) },
         });
     });
     afterEach(async () => { if (tree) await act(async () => tree.unmount()); tree = null; vi.unstubAllGlobals(); });
     const mount = async (expiresAt = Date.now() + 60_000) => {
-        await act(async () => { tree = TestRenderer.create(<BotsFrame runtimeUrl={origin + '/'} ticket={'s'.repeat(43)} expiresAt={expiresAt} onAuthenticated={authenticated} onFailure={failure} />, { createNodeMock: () => ({ contentWindow: child }) }); });
+        await act(async () => { tree = TestRenderer.create(<BotsFrame runtimeUrl="https://bots.example/" ticket={'s'.repeat(43)} expiresAt={expiresAt} onAuthenticated={authenticated} onFailure={failure} />, { createNodeMock: () => host }); });
     };
-    it('sends the ticket once to the exact frame origin, without putting it in its URL or attributes', async () => {
-        await mount(); const frame = tree.root.findByType('iframe');
-        expect(frame.props.src).toBe(origin + '/');
-        expect(JSON.stringify(frame.props)).not.toContain('s'.repeat(43));
-        await act(async () => { listener?.({ origin, source: child, data: { type: 'paws:rakazo:ready' } }); frame.props.onLoad(); });
-        expect(child.postMessage).toHaveBeenCalledTimes(1);
-        expect(child.postMessage).toHaveBeenCalledWith({ type: 'paws:rakazo:launch', ticket: 's'.repeat(43) }, origin);
-    });
-    it('ignores both a wrong origin and a same-origin message from a different window', async () => {
+    it('mounts the local workspace into a div after styles load; no iframe or credential in DOM', async () => {
         await mount();
-        await act(async () => {
-            listener?.({ origin: 'https://other.example', source: child, data: { type: 'paws:rakazo:authenticated' } });
-            listener?.({ origin, source: {}, data: { type: 'paws:rakazo:error' } });
-        });
-        expect(authenticated).not.toHaveBeenCalled(); expect(failure).not.toHaveBeenCalled();
-        await act(async () => listener?.({ origin, source: child, data: { type: 'paws:rakazo:authenticated' } }));
-        expect(authenticated).toHaveBeenCalledTimes(1);
+        expect(tree.root.findAllByType('iframe')).toHaveLength(0);
+        expect(JSON.stringify(tree.root.findByType('div').props)).not.toContain('s'.repeat(43));
+        const style = nodes[0]; expect(style.href).toBe('/assets/bots/def.css');
+        await act(async () => style.onload());
+        const script = nodes[1]; expect(script.src).toBe('/assets/bots/abc.js');
+        await act(async () => script.onload());
+        expect(mountRuntime).toHaveBeenCalledTimes(1);
+        expect(mountRuntime.mock.calls[0][0]).toBe(host);
+        const options = (mountRuntime.mock.calls as any)[0][1];
+        expect(options.ticket).toBe('s'.repeat(43));
+        const { appThemes } = await import('@/themePacks');
+        expect(options.theme['--accent']).toBe(appThemes.ginghamDark.colors.surfaceSelected);
+        expect(options.theme['--secondary']).toBe(appThemes.ginghamDark.colors.surfacePressed);
+        expect(options.theme['--primary']).toBe(appThemes.ginghamDark.colors.button.primary.background);
+        expect(options.theme['--overlay']).toBe(appThemes.ginghamDark.colors.modal.backdrop);
+        await act(async () => tree.update(<BotsFrame {...tree.root.findByType(BotsFrame).props} />));
+        expect(mountRuntime).toHaveBeenCalledTimes(1);
+        expect(dispose).not.toHaveBeenCalled();
+        await act(async () => tree.unmount()); tree = null;
+        expect(dispose).toHaveBeenCalledOnce(); expect(style.remove).not.toHaveBeenCalled(); expect(script.remove).toHaveBeenCalledOnce();
     });
-    it('does not post an expired ticket, and removes the message listener on exit', async () => {
+    it('ignores a late library load after leaving the screen', async () => {
+        await mount(); const style = nodes[0];
+        await act(async () => style.onload()); const script = nodes[1];
+        await act(async () => tree.unmount()); tree = null;
+        await act(async () => script.onload());
+        expect(mountRuntime).not.toHaveBeenCalled(); expect(failure).not.toHaveBeenCalled();
+    });
+    it('fails closed for expired launches without calling the workspace', async () => {
         await mount(Date.now() - 1);
-        await act(async () => tree.root.findByType('iframe').props.onLoad());
-        expect(child.postMessage).not.toHaveBeenCalled(); expect(failure).toHaveBeenCalledTimes(1);
-        await act(async () => tree.unmount()); tree = null; expect(listener).toBeUndefined();
+        await act(async () => nodes[0].onload());
+        await act(async () => nodes[1].onload());
+        expect(mountRuntime).not.toHaveBeenCalled(); expect(failure).toHaveBeenCalledOnce();
     });
+    it('reuses scoped styles on return and executes a fresh isolated account runtime', async () => {
+        await mount();
+        expect(nodes).toHaveLength(2);
+        await act(async () => { nodes[1].onload(); });
+        expect(mountRuntime).not.toHaveBeenCalled();
+        await act(async () => { nodes[0].onload(); });
+        await act(async () => tree.unmount()); tree = null;
+        await mount();
+        expect(nodes).toHaveLength(3);
+        expect(mountRuntime).toHaveBeenCalledTimes(1);
+        await act(async () => { nodes[2].onload(); });
+        expect(mountRuntime).toHaveBeenCalledTimes(2);
+        expect(dispose).toHaveBeenCalledTimes(1);
+    });
+    it('does not poison retry after a resource fails', async () => {
+        await mount();
+        await act(async () => { nodes[0].onerror(); nodes[1].onload(); });
+        expect(failure).toHaveBeenCalledOnce();
+        expect(mountRuntime).not.toHaveBeenCalled();
+        await act(async () => tree.unmount()); tree = null;
+        await mount();
+        expect(nodes).toHaveLength(4);
+        await act(async () => { nodes[2].onload(); nodes[3].onload(); });
+        expect(mountRuntime).toHaveBeenCalledOnce();
+    });
+
 });

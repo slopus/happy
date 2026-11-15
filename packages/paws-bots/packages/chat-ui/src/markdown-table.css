@@ -1,0 +1,314 @@
+/* Interactive card for GFM markdown tables (rk-table-*). `.rk-table-box` is
+   the shared scope for internal styles — it sits on the inline card and on
+   the portaled dialog, so cell/scroll rules reach both. */
+
+.rk-table-head {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.15em;
+  padding: 0.3em 0.45em;
+}
+
+.rk-table-tool {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.7em;
+  height: 1.7em;
+  border: 0;
+  border-radius: 0.45em;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 0;
+}
+
+.rk-table-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rk-table-tool:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+/* Chrome is not table text: row numbers, the toolbar strip, the pager range,
+   and the empty state must stay out of text selections so a dragged excerpt
+   still matches the message's rendered text for quoting. */
+.rk-table-head,
+.rk-table-gutter,
+.rk-table-footer,
+.rk-table-empty {
+  user-select: none;
+}
+
+.rk-table-scroll {
+  overflow: auto;
+  max-height: 20em;
+}
+
+.rk-table td {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--foreground);
+}
+
+.rk-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+.rk-table-sort {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6em;
+}
+
+button.rk-table-sort {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: inherit;
+}
+
+.rk-table-sort-trigger {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.rk-table-sort-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rk-table-sort-icon {
+  display: inline-flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.rk-table-empty {
+  text-align: center;
+  color: var(--muted-foreground);
+  padding: 1em;
+}
+
+.rk-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4em;
+  border-top: 1px solid var(--border);
+  padding: 0.2em 0.5em;
+  font-size: 0.8em;
+  color: var(--muted-foreground);
+}
+
+.rk-table-cell-text {
+  display: block;
+  max-width: 60ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rk-table .rk-align-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rk-table .rk-align-center {
+  text-align: center;
+}
+
+.rk-table-box .rk-table .rk-table-gutter {
+  width: 2.2em;
+  min-width: 2.2em;
+  text-align: center;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border-inline-end: 1px solid var(--border);
+  font-size: 0.85em;
+  padding-left: 0.3em;
+  padding-right: 0.3em;
+}
+
+.rk-align-right .rk-table-sort {
+  flex-direction: row-reverse;
+}
+
+/* Bubbles use dir="auto", not dir="rtl" — :dir() matches the resolved
+   direction so RTL content actually triggers the flip. */
+.rk-align-right .rk-table-sort:dir(rtl) {
+  flex-direction: row;
+}
+
+.rk-table-sort-icon .rk-sort-off {
+  color: var(--muted-foreground);
+  opacity: 0.45;
+}
+
+.rk-table-sort-icon .rk-sort-on {
+  color: var(--foreground);
+}
+
+.rk-table-footer .rk-table-range {
+  margin-inline-end: auto;
+}
+
+.rk-chat-markdown .rk-table-card {
+  position: relative;
+  margin: 0.65em 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75em;
+  background: var(--card);
+  overflow: hidden;
+}
+
+/* Inline card: reserved static strip so tools never overlay sortable headers.
+   Tools fade in on hover/focus; the dialog head stays always-visible. */
+.rk-table-card > .rk-table-head {
+  position: static;
+  padding: 0.3em 0.45em;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.rk-table-card > .rk-table-head .rk-table-tool {
+  opacity: 0;
+}
+
+.rk-table-dialog .rk-table-head {
+  padding: 0.45em 0.7em;
+  border-bottom: 1px solid var(--border);
+}
+
+.rk-table-box .rk-table {
+  display: table;
+  width: max-content;
+  min-width: 100%;
+  /* Cancel the legacy .rk-chat-markdown table clamp so wide tables overflow
+     into .rk-table-scroll instead of scrolling the <table> element itself. */
+  max-width: none;
+  overflow: visible;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.rk-table-box .rk-table th,
+.rk-table-box .rk-table td {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.35em 0.75em;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.rk-table-card:hover > .rk-table-head .rk-table-tool,
+.rk-table-card:focus-within > .rk-table-head .rk-table-tool {
+  opacity: 1;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .rk-table-tool {
+    width: 44px;
+    height: 44px;
+  }
+
+  button.rk-table-sort,
+  .rk-table-sort-trigger {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .rk-table-card > .rk-table-head .rk-table-tool {
+    opacity: 1;
+  }
+}
+
+/* DialogContent's default text-sm shrinks cells below the card's; the dialog
+   is the expanded view, so it tracks the document base size instead. */
+.rk-table-dialog {
+  display: flex;
+  flex-direction: column;
+  font-size: 1rem;
+  min-width: min(32rem, 94vw);
+  max-width: 94vw;
+  max-height: 90vh;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.9em;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 8px 30px var(--overlay);
+  overflow: hidden;
+}
+
+.rk-table-dialog-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.rk-table-dialog .rk-table th,
+.rk-table-dialog .rk-table td,
+.rk-table-dialog .rk-table-cell-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.rk-table-dialog .rk-table-cell-text {
+  max-width: min(60ch, 76vw);
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.rk-table-box .rk-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.rk-table-dialog-scroll {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.rk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

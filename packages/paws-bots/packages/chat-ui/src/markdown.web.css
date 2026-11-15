@@ -1,0 +1,431 @@
+.rk-chat-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Semibold, not bold: the system font's 700 reads heavy and smudged beside 420 body text. */
+.rk-chat-markdown strong,
+.rk-chat-markdown b {
+  font-weight: 600;
+}
+
+.rk-chat-markdown > :first-child,
+.rk-chat-markdown > :first-child > :first-child {
+  margin-top: 0;
+}
+
+.rk-chat-markdown > :last-child,
+.rk-chat-markdown > :last-child > :last-child {
+  margin-bottom: 0;
+}
+
+.rk-chat-markdown p,
+.rk-chat-markdown blockquote,
+.rk-chat-markdown pre,
+.rk-chat-markdown table,
+.rk-chat-markdown ul,
+.rk-chat-markdown ol {
+  margin: 0.65em 0;
+}
+
+.rk-chat-markdown h1,
+.rk-chat-markdown h2,
+.rk-chat-markdown h3,
+.rk-chat-markdown h4,
+.rk-chat-markdown h5,
+.rk-chat-markdown h6 {
+  margin: 0.9em 0 0.35em;
+  color: var(--foreground);
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.rk-chat-markdown h1 {
+  font-size: 1.35em;
+}
+
+.rk-chat-markdown h2 {
+  font-size: 1.2em;
+}
+
+.rk-chat-markdown h3,
+.rk-chat-markdown h4,
+.rk-chat-markdown h5,
+.rk-chat-markdown h6 {
+  font-size: 1.05em;
+}
+
+.rk-chat-markdown ul,
+.rk-chat-markdown ol {
+  padding-left: 1.45em;
+}
+
+.rk-chat-markdown ul {
+  list-style: disc;
+}
+
+.rk-chat-markdown ol {
+  list-style: decimal;
+}
+
+.rk-chat-markdown li::marker {
+  color: var(--faint-foreground);
+}
+
+.rk-chat-markdown li + li {
+  margin-top: 0.25em;
+}
+
+.rk-chat-markdown li > p {
+  margin: 0.2em 0;
+}
+
+.rk-chat-markdown .contains-task-list,
+.rk-chat-markdown .task-list-item {
+  list-style: none;
+}
+
+.rk-chat-markdown .contains-task-list {
+  padding-left: 0;
+}
+
+.rk-chat-markdown a {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--link) 55%, transparent);
+  text-underline-offset: 0.15em;
+}
+
+.rk-chat-markdown .rk-chat-markdown-image {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.4em;
+  border: 1px solid var(--border);
+  border-radius: 0.5em;
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 0.25em 0.6em;
+  font: inherit;
+  font-size: 0.92em;
+  line-height: 1.4;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.rk-chat-markdown .rk-chat-markdown-linked-image {
+  display: flex;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25em;
+  margin: 0.65em 0;
+}
+
+.rk-chat-markdown .rk-chat-markdown-image:hover {
+  background: var(--accent);
+}
+
+.rk-chat-markdown .rk-chat-markdown-image:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.rk-chat-markdown .rk-chat-markdown-image-host {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rk-chat-markdown code {
+  border: 1px solid var(--border);
+  border-radius: 0.35em;
+  background: var(--secondary);
+  color: var(--foreground);
+  padding: 0.08em 0.32em;
+  font-family: var(--font-mono);
+  font-size: var(--text-body-sm);
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.rk-chat-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75em;
+  background: var(--secondary);
+  padding: 0.8em 0.9em;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.rk-chat-markdown pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: var(--text-body-sm);
+  line-height: var(--text-body-sm--line-height);
+  white-space: pre;
+}
+
+.rk-chat-markdown-pre-wrap {
+  position: relative;
+  margin: 0.65em 0;
+}
+
+/* A text fence reads as prose: the body font and wrapped lines on the code card, each line taking
+   its direction from its own text like the mobile fence. */
+.rk-chat-markdown .rk-chat-markdown-pre-prose,
+.rk-chat-markdown .rk-chat-markdown-pre-prose code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  direction: inherit;
+}
+
+.rk-chat-markdown .rk-chat-markdown-pre-prose {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+.rk-chat-markdown .rk-chat-markdown-pre-prose code {
+  white-space: pre-wrap;
+  unicode-bidi: normal;
+}
+
+.rk-chat-markdown .rk-chat-markdown-pre-wrap pre {
+  margin: 0;
+}
+
+/* A Mermaid diagram sits on the same card a code block uses. A wide one scrolls sideways. */
+.rk-chat-markdown-diagram {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75em;
+  background: var(--card);
+  padding: 0.8em 0.9em;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.rk-chat-markdown-copy {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75em;
+  height: 1.75em;
+  border: 1px solid var(--border);
+  border-radius: 0.4em;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity 0.12s;
+  cursor: pointer;
+}
+
+.rk-chat-markdown-pre-wrap:hover .rk-chat-markdown-copy,
+.rk-chat-markdown-copy:focus-visible {
+  opacity: 1;
+}
+
+.rk-chat-markdown-copy:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.rk-chat-markdown blockquote {
+  border-left: 3px solid var(--faint-foreground);
+  padding-left: 0.85em;
+  color: var(--muted-foreground);
+}
+
+.rk-chat-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.rk-chat-markdown th,
+.rk-chat-markdown td {
+  border: 1px solid var(--input);
+  padding: 0.4em 0.6em;
+  text-align: left;
+  /* Not the container's `anywhere`: its break opportunities count toward
+     min-content, so columns collapse to 1ch and the table never overflows. */
+  overflow-wrap: break-word;
+}
+
+.rk-chat-markdown td {
+  color: var(--muted-foreground);
+}
+
+.rk-chat-markdown th {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.rk-chat-markdown hr {
+  margin: 0.9em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.rk-chat-markdown img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.65em 0;
+  border-radius: 0.65em;
+}
+
+/* Shrinks to fit, but not below 80% of its drawn size: past that the card scrolls instead. */
+.rk-chat-markdown .rk-chat-markdown-diagram img {
+  display: block;
+  max-width: max(100%, calc(var(--rk-diagram-width) * 0.8));
+  height: auto;
+  margin: 0 auto;
+  border-radius: 0;
+}
+
+.rk-chat-markdown input[type="checkbox"] {
+  margin-right: 0.4em;
+  accent-color: var(--primary);
+}
+
+.rk-chat-markdown-streaming {
+  position: relative;
+  padding-right: 0.8em;
+}
+
+.rk-chat-markdown-cursor {
+  position: absolute;
+  right: 0;
+  bottom: 0.24em;
+  width: 0.16em;
+  height: 1em;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  animation: rkMarkdownCursor 1s steps(2, jump-none) infinite;
+}
+
+@keyframes rkMarkdownCursor {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* A website link: its site icon, then the label. The icon never ends a line on its own. */
+a.rk-chat-link {
+  color: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.rk-chat-link-tile {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  margin-inline-end: 4px;
+  overflow: hidden;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+  padding: 1px;
+  /* Centred on the capitals of the surrounding text. */
+  vertical-align: calc((1cap - 18px) / 2);
+}
+
+.rk-chat-link-tile-icon {
+  background: var(--favicon-plate);
+  padding: 2px;
+}
+
+/* Outranks the block layout that markdown images get inside a reply. */
+a.rk-chat-link .rk-chat-link-tile > img,
+a.rk-chat-link .rk-chat-link-tile > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.rk-chat-link-label {
+  white-space: normal;
+  text-decoration: underline;
+  text-decoration-color: var(--input);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* In a user bubble the link is the bubble's text colour, so its underline is what marks it. */
+a.rk-chat-link-in-bubble .rk-chat-link-label {
+  text-decoration-color: currentColor;
+}
+
+/* The user bubble is filled with ink, so the fallback globe follows the bubble's text instead. */
+a.rk-chat-link-in-bubble .rk-chat-link-tile {
+  color: currentColor;
+}
+
+a.rk-chat-link:hover .rk-chat-link-label {
+  text-decoration-color: currentColor;
+}
+
+/* A page named in a message: its glyph, then its title underlined in the text's own colour. */
+.rk-chat-page-chip {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+/* Sized to the text: 17px tall at 16px, the bottom 2px below the baseline, 7px before the title. */
+.rk-chat-page-chip-icon {
+  display: inline-block;
+  width: calc(1.0625em * 33 / 41);
+  height: 1.0625em;
+  margin-inline-end: 0.4375em;
+  vertical-align: -0.125em;
+}
+
+/* Measured: 10% of the text on desktop, 30% in the touch apps, 3px under the baseline. */
+.rk-chat-page-chip-title {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2.5px;
+  text-decoration-color: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+@media (pointer: coarse) {
+  .rk-chat-page-chip-title {
+    text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+  }
+}
+
+.rk-chat-page-chip:hover .rk-chat-page-chip-title {
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.rk-chat-page-chip:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

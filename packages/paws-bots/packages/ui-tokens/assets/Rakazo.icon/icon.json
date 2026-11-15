@@ -1,0 +1,30 @@
+{
+  "fill": "system-dark",
+  "groups": [
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "orange-bot.png",
+          "name": "orange-bot"
+        }
+      ],
+      "position": {
+        "scale": 1,
+        "translation-in-points": [0, 90]
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": ["watchOS"],
+    "squares": "shared"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "live-restore": true,
+  "log-driver": "local",
+  "log-opts": {
+    "max-file": "3",
+    "max-size": "10m"
+  },
+  "no-new-privileges": true,
+  "userland-proxy": false
+}

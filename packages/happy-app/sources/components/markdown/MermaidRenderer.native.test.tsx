@@ -3,8 +3,9 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer is only used by this component harness.
 import TestRenderer from 'react-test-renderer';
-// @ts-expect-error jsdom provides the test runtime without optional declaration files.
-import { JSDOM } from 'jsdom';
+import { JSDOM as Jsdom } from 'jsdom';
+// These fixtures intentionally replace DOM methods and evaluate generated scripts.
+const JSDOM: any = Jsdom;
 
 vi.mock('react-native', () => ({
     Modal: 'Modal',

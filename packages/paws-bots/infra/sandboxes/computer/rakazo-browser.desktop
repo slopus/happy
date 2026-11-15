@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Rakazo Browser
+Comment=Chromium with Rakazo container flags and profile isolation
+Exec=/usr/local/bin/rakazo-browser %U
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;
+StartupNotify=false

@@ -1,0 +1,25 @@
+{
+  "name": "@rakazo/i18n",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./bot-removal": "./src/bot-removal.ts",
+    "./run-error": "./src/run-error.ts",
+    "./vault": "./src/vault.ts",
+    "./locales/*": "./locales/*"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/i18n/src"
+  },
+  "dependencies": {
+    "@lingui/core": "6.12.0",
+    "@rakazo/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

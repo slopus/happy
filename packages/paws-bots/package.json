@@ -1,0 +1,29 @@
+{
+  "name": "@paws/bots",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @rakazo/web build:embedded",
+    "check": "pnpm --filter @rakazo/web check",
+    "test": "vitest run apps/web/src/paws"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.6",
+    "@lingui/cli": "6.12.0",
+    "@lingui/conf": "6.12.0",
+    "@lingui/format-po": "6.12.0",
+    "@lingui/vite-plugin": "6.12.0",
+    "@types/node": "24.19.2",
+    "cross-env": "10.1.0",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "turbo": "2.11.10",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

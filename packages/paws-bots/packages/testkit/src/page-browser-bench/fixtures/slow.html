@@ -1,0 +1,10 @@
+<!doctype html>
+<title>Order tracking</title>
+<h1>Order tracking</h1>
+<div id="app">Loading…</div>
+<script>
+  fetch("/api/slow").then((response) => response.text()).then(() => {
+    document.getElementById("app").innerHTML =
+      '<form method="post" action="/submit"><label>Order number <input name="order"></label><button type="submit">Track order</button></form>';
+  });
+</script>
