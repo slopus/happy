@@ -28,6 +28,58 @@ function api() {
   };
 }
 describe('Codex account launch lifecycle', () => {
+  it('isolates gateway model configuration while preserving account capabilities and source files', async () => {
+    const sourceHome = await home();
+    const config = `model = "group/daily-auto"
+model_provider = "magpie"
+model_catalog_json = "/host/magpie-models.json"
+model_reasoning_effort = "high"
+model_context_window = 1000000
+model_instructions_file = "/host/gemini-instructions.md"
+openai_base_url = "http://127.0.0.1:3425/backend-api/codex"
+profile = "work"
+[model_providers.magpie]
+base_url = "http://127.0.0.1:3425/v1"
+[models.new_thread]
+model = "group/daily-auto"
+model_reasoning_effort = "max"
+[profiles.work]
+model = "group/daily-auto"
+model_catalog_json = "/host/other-models.json"
+[profiles.work.mcp_servers.work]
+command = "work-mcp"
+[mcp_servers.safe]
+command = "safe-mcp"
+[mcp_servers.safe.env]
+model = "mcp-owned-value"
+`;
+    const profile = 'model = "agy-cli/gemini-4-argon"\n[mcp_servers.profile]\ncommand = "profile-mcp"\n';
+    await writeFile(join(sourceHome, 'config.toml'), config);
+    await writeFile(join(sourceHome, 'work.config.toml'), profile);
+    await mkdir(join(sourceHome, 'skills'));
+    await writeFile(join(sourceHome, 'skills', 'SKILL.md'), 'keep skills');
+    const launch = await CodexAccountLaunch.prepare(api(), 'machine-1', 'g'.repeat(43), { sourceHome, historyRoot: await home() });
+    try {
+      const saved = await readFile(join(launch.home, 'config.toml'), 'utf8');
+      expect(saved).not.toContain('group/daily-auto');
+      expect(saved).not.toContain('magpie-models');
+      expect(saved).not.toContain('gemini-instructions');
+      expect(saved).not.toContain('127.0.0.1:3425');
+      expect(saved).not.toContain('1000000');
+      expect(saved).toContain('safe-mcp');
+      expect(saved).toContain('mcp-owned-value');
+      expect(saved).toContain('work-mcp');
+      const savedProfile = await readFile(join(launch.home, 'work.config.toml'), 'utf8');
+      expect(savedProfile).not.toContain('agy-cli/');
+      expect(savedProfile).toContain('profile-mcp');
+      expect(await readFile(join(launch.home, 'skills', 'SKILL.md'), 'utf8')).toBe('keep skills');
+      expect(await readFile(join(sourceHome, 'config.toml'), 'utf8')).toBe(config);
+      expect(await readFile(join(sourceHome, 'work.config.toml'), 'utf8')).toBe(profile);
+      await writeFile(join(sourceHome, 'config.toml'), 'model = "group/changed"');
+      expect(await readFile(join(launch.home, 'config.toml'), 'utf8')).toBe(saved);
+    } finally { await launch.finish(); }
+  });
+
   it('publishes probe catalogs before unchanged credentials return and restores only after fresh redemption', async () => {
     const historyRoot = await home(), sourceHome = await home(), a = api();
     const probe = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome, historyRoot, inheritConfiguration: false });

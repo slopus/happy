@@ -1,7 +1,8 @@
-import { chmod, cp, lstat, mkdir, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, cp, lstat, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { join, resolve } from 'node:path';
 import * as tmp from 'tmp';
+import { parse, stringify } from '@iarna/toml';
 
 const INHERITED_CODEX_HOME_ENTRIES = new Set([
     'AGENTS.md',
@@ -63,6 +64,27 @@ async function inheritCodexHomeEntry(sourcePath: string, destinationPath: string
     }
 }
 
+/** Snapshot account settings without inheriting another provider's model policy. */
+function isolateAccountModelConfiguration(config: ReturnType<typeof parse>): void {
+    for (const key of Object.keys(config)) {
+        if (key === 'model' || key.startsWith('model_') || key === 'models'
+            || key === 'openai_base_url' || key === 'chatgpt_base_url'
+            || key === 'review_model' || key === 'compact_model' || key === 'subagent_model') {
+            delete config[key];
+        }
+    }
+    // Older Codex versions keep profiles inside config.toml. Newer versions use
+    // sibling *.config.toml files, each snapshotted through the same path below.
+    const profiles = config.profiles;
+    if (profiles && typeof profiles === 'object' && !Array.isArray(profiles)) {
+        for (const profile of Object.values(profiles)) {
+            if (profile && typeof profile === 'object' && !Array.isArray(profile) && !(profile instanceof Date)) {
+                isolateAccountModelConfiguration(profile);
+            }
+        }
+    }
+}
+
 export async function prepareCodexHomeWithAuth(authJson: string, opts: {
     sourceHome?: string;
     env?: NodeJS.ProcessEnv;
@@ -70,6 +92,8 @@ export async function prepareCodexHomeWithAuth(authJson: string, opts: {
     createTempDir?: () => string;
     /** Application bindings supply their own policy; do not inherit host MCP/config. */
     inheritConfiguration?: boolean;
+    /** Bound ChatGPT accounts must not inherit gateway model defaults/catalogs. */
+    isolateModelConfiguration?: boolean;
 } = {}): Promise<string> {
     const sourceHome = opts.sourceHome ?? resolveCodexHome({ env: opts.env, homeDir: opts.homeDir });
     const tempHome = opts.createTempDir?.() ?? tmp.dirSync({ prefix: 'happy-codex-home-' }).name;
@@ -84,7 +108,13 @@ export async function prepareCodexHomeWithAuth(authJson: string, opts: {
                 if (entry.name === 'auth.json' || !shouldInheritCodexHomeEntry(entry.name)) {
                     continue;
                 }
-                await inheritCodexHomeEntry(join(sourceHome, entry.name), join(tempHome, entry.name));
+                if (opts.isolateModelConfiguration && (entry.name === 'config.toml' || entry.name.endsWith('.config.toml'))) {
+                    const config = parse(await readFile(join(sourceHome, entry.name), 'utf8'));
+                    isolateAccountModelConfiguration(config);
+                    await writeFile(join(tempHome, entry.name), stringify(config), { mode: 0o600, flag: 'wx' });
+                } else {
+                    await inheritCodexHomeEntry(join(sourceHome, entry.name), join(tempHome, entry.name));
+                }
             }
         }
 

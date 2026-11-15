@@ -534,6 +534,87 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it.each([true, false])('validates model routes only for managed account turns (managed=%s)', async managed => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, managed ? { HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'profile-a' } : {});
+        const raw = client as any;
+        raw._threadId = 'thread-a';
+        const request = vi.spyOn(raw, 'request').mockImplementation(async (method: unknown) => {
+            if (method === 'model/list') return { data: [{ model: 'gpt-6.1-sol' }], nextCursor: null };
+            return { turn: { id: 'turn-a' } };
+        });
+        if (managed) {
+            await expect(client.sendTurn('hello', { model: 'group/daily-auto' })).rejects.toThrow('ChatGPT');
+            expect(request.mock.calls.some(call => call[0] === 'turn/start')).toBe(false);
+            await expect(client.sendTurn('hello', { model: 'gpt-6.1-sol' })).resolves.toBeUndefined();
+            expect(request.mock.calls.filter(call => call[0] === 'model/list')).toHaveLength(1);
+        } else {
+            await expect(client.sendTurn('hello', { model: 'group/daily-auto' })).resolves.toBeUndefined();
+            expect(request.mock.calls.some(call => call[0] === 'model/list')).toBe(false);
+        }
+        await client.disconnect();
+    });
+
+    it('checks inherited account models against every catalog page and fails closed on catalog errors', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, { HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'profile-a' });
+        const raw = client as any;
+        raw._threadId = 'thread-a';
+        raw.threadDefaults = { model: 'group/daily-auto' };
+        let unavailable = true;
+        const request = vi.spyOn(raw, 'request').mockImplementation(async (method: unknown, params: any) => {
+            if (method === 'model/list') {
+                if (unavailable) throw new Error('catalog error');
+                return params.cursor ? { data: [{ model: 'gpt-6-astra' }], nextCursor: null }
+                    : { data: [{ model: 'gpt-6.1-sol' }], nextCursor: 'page-2' };
+            }
+            return { turn: { id: 'turn-a' } };
+        });
+        await expect(client.sendTurn('hello')).rejects.toThrow('catalog');
+        expect(request.mock.calls.some(call => call[0] === 'turn/start')).toBe(false);
+        unavailable = false;
+        await expect(client.sendTurn('hello')).rejects.toThrow('ChatGPT');
+        await expect(client.sendTurn('hello', { model: 'gpt-6-astra' })).resolves.toBeUndefined();
+        expect(request.mock.calls.filter(call => call[0] === 'turn/start')).toHaveLength(1);
+        await client.disconnect();
+    });
+
+    it.each(['review', 'compact', 'goal', 'sample'] as const)('blocks inherited foreign models before %s inference and accepts a subsequent model switch', async operation => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, { HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'profile-a' });
+        const raw = client as any;
+        raw._threadId = 'thread-a';
+        raw.threadDefaults = { model: 'group/daily-auto' };
+        const request = vi.spyOn(raw, 'request').mockImplementation(async (method: unknown) => {
+            if (method === 'model/list') return { data: [{ model: 'gpt-6.1-sol' }], nextCursor: null };
+            return { turn: { id: 'turn-a' } };
+        });
+        const inference = () => operation === 'review' ? client.startReview({ threadId: 'thread-a', target: { type: 'uncommittedChanges' } })
+            : operation === 'compact' ? client.startCompact()
+            : operation === 'goal' ? client.setThreadGoal({ status: 'active' })
+            : client.sampleThread('previous-turn', 'predict', new AbortController().signal);
+        await expect(inference()).rejects.toThrow('ChatGPT');
+        expect(request.mock.calls.every(call => call[0] === 'model/list')).toBe(true);
+        await client.setThreadGoal({ status: 'paused' }); // Stopping work never needs a model catalog.
+        await client.sendTurn('hello', { model: 'gpt-6.1-sol' });
+        raw._turnId = null; // The accepted recovery turn has completed before the next command.
+        await expect(inference()).resolves.toBeDefined();
+        await client.disconnect();
+    });
+
+    it('remembers authoritative root model settings, ignoring subagent settings', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const raw = client as any;
+        raw._threadId = 'thread-a';
+        raw.threadDefaults = { model: 'initial', cwd: '/work' };
+        raw.handleRawNotification('thread/settings/updated', { threadId: 'child-a', threadSettings: { model: 'child-model' } });
+        expect(raw.threadDefaults.model).toBe('initial');
+        raw.handleRawNotification('thread/settings/updated', { threadId: 'thread-a', threadSettings: { model: 'current-model' } });
+        expect(raw.threadDefaults).toMatchObject({ model: 'current-model', cwd: '/work' });
+        await client.disconnect();
+    });
+
     it('forces file-only OAuth credentials for a Paws profile launch', async () => {
         const saved = process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID;
         process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID = 'profile-a';

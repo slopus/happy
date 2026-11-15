@@ -113,7 +113,7 @@ export class CodexAccountLaunch {
       throw new Error('Invalid Codex grant response');
     }
     const home = await prepareCodexHomeWithAuth(JSON.stringify(parsed.data), {
-      ...options, createTempDir: options?.createTempDir ?? createCodexSessionHome,
+      ...options, isolateModelConfiguration: true, createTempDir: options?.createTempDir ?? createCodexSessionHome,
     });
     try {
       await new CodexModelCache(historyRoot, redeemed.profile.id, parsed.data.tokens.account_id).restore(home);

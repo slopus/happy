@@ -932,6 +932,9 @@ importers:
       '@anthropic-ai/sandbox-runtime':
         specifier: ^0.0.37
         version: 0.0.37
+      '@iarna/toml':
+        specifier: 2.2.5
+        version: 2.2.5
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.6)(zod@4.6.7)

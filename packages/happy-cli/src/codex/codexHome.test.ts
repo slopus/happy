@@ -42,6 +42,22 @@ describe('prepareCodexHomeWithAuth', () => {
             if (home) await rm(home, { recursive: true, force: true });
         }
     });
+    it('fails closed on invalid account TOML without changing the source or keeping a partial home', async () => {
+        const sourceHome = await makeTempDir('codex-invalid-source-');
+        const tempHome = await makeTempDir('codex-invalid-target-');
+        try {
+            await writeFile(join(sourceHome, 'config.toml'), 'not valid = [');
+            await expect(prepareCodexHomeWithAuth('selected-login', {
+                sourceHome, createTempDir: () => tempHome, isolateModelConfiguration: true,
+            })).rejects.toThrow('Unable to prepare private Codex home');
+            await expect(stat(tempHome)).rejects.toThrow();
+            expect(await readFile(join(sourceHome, 'config.toml'), 'utf8')).toBe('not valid = [');
+        } finally {
+            await rm(sourceHome, { recursive: true, force: true });
+            await rm(tempHome, { recursive: true, force: true });
+        }
+    });
+
     it('writes private auth without overwriting a pre-existing auth symlink', async () => {
         const sourceHome = await makeTempDir('codex-source-');
         await writeFile(join(sourceHome, 'auth.json'), 'global-original');

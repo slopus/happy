@@ -35,6 +35,7 @@ export function assertCodexAccountConfig(value: unknown): void {
   for (const [key, expected] of Object.entries(CODEX_ACCOUNT_CONFIG)) {
     if (config[key] !== expected) throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
   }
+  if (config.model_catalog_json != null) throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
   const providers = config.model_providers;
   if (!providers || typeof providers !== 'object' || Array.isArray(providers)) throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
   const provider = (providers as Record<string, unknown>)[CODEX_ACCOUNT_PROVIDER];
@@ -49,5 +50,15 @@ export function assertCodexAccountConfig(value: unknown): void {
     if (Object.hasOwn(CODEX_ACCOUNT_HTTP_PROVIDER, key) || field == null
         || (key === 'supports_standalone_web_search' && field === false)) continue;
     throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
+  }
+}
+
+
+/** A visible gateway alias is not a route on the managed ChatGPT connection. */
+export function assertCodexAccountModel(model: string | undefined, models: readonly { model: string }[] | null): void {
+  if (!model) return; // Let the isolated native configuration choose its default.
+  if (!models) throw new Error('ChatGPT model catalog is unavailable. Reopen the session or choose the default model.');
+  if (!models.some(entry => entry.model === model)) {
+    throw new Error(`Model "${model}" is unavailable on this ChatGPT account connection. Choose a model from this session’s catalog; Magpie routes require a separate Magpie connection.`);
   }
 }

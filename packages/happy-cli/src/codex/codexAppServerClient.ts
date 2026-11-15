@@ -68,6 +68,7 @@ import type {
     ApprovalPolicy,
     SandboxMode,
     InputItem,
+    Model,
     ModelListParams,
     ModelListResponse,
     ReasoningEffort,
@@ -80,7 +81,7 @@ import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 import packageJson from '../../package.json';
 import { CodexMcpAppAdapter } from './mcpApps/CodexMcpAppAdapter';
-import { assertCodexAccountConfig, CODEX_ACCOUNT_OVERRIDES, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_CONFIG_ERROR, CODEX_ACCOUNT_UNSET_ENV } from './codexAccountConfig';
+import { assertCodexAccountConfig, assertCodexAccountModel, CODEX_ACCOUNT_OVERRIDES, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_CONFIG_ERROR, CODEX_ACCOUNT_UNSET_ENV } from './codexAccountConfig';
 
 type PendingRequest = {
     resolve: (result: unknown) => void;
@@ -352,6 +353,7 @@ export class CodexAppServerClient {
     public mcpUiCapability: 'enabled' | 'legacy' | null = null;
 
     // Session state
+    private accountModelCatalog: Model[] | null = null;
     private _threadId: string | null = null;
     private _turnId: string | null = null;
     private threadDefaults: {
@@ -406,6 +408,8 @@ export class CodexAppServerClient {
     }
 
     async sampleThread(sourceTurnId: string, prompt: string, signal: AbortSignal): Promise<ThreadSampleResponse> {
+        if (!this._threadId || this._turnId || signal.aborted) throw new Error('Prediction source unavailable');
+        await this.assertAccountModel(this.threadDefaults?.model);
         if (!this._threadId || this._turnId || signal.aborted) throw new Error('Prediction source unavailable');
         const controller = new AbortController();
         const abort = () => controller.abort();
@@ -741,6 +745,7 @@ export class CodexAppServerClient {
             const threadId = typeof params?.threadId === 'string' ? params.threadId : null;
             const threadSettings = params?.threadSettings as ThreadSettings | undefined;
             if (threadSettings && typeof threadSettings.model === 'string') {
+                this.threadDefaults = { ...this.threadDefaults, model: threadSettings.model };
                 this.eventHandler?.({
                     type: 'thread_settings_updated',
                     ...(threadId ? { thread_id: threadId } : {}),
@@ -1079,6 +1084,7 @@ export class CodexAppServerClient {
     }
 
     private async openLocalProcessTransport(codexCommand: string): Promise<void> {
+        this.accountModelCatalog = null;
         if (this.applicationPolicy && !await verifyRestrictedCodex(codexCommand)) throw new Error('unsupported-runtime');
         let command = codexCommand;
         let args = ['app-server', '--listen', 'stdio://', '-c', `service_tier=\"${this.serviceTier}\"`];
@@ -1400,6 +1406,26 @@ export class CodexAppServerClient {
         return await this.request('model/list', params) as ModelListResponse;
     }
 
+    private async assertAccountModel(model: string | undefined): Promise<void> {
+        if (!this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID || this.applicationPolicy || !model) return;
+        if (!this.accountModelCatalog) {
+            const models: Model[] = [];
+            let cursor: string | null = null;
+            try {
+                do {
+                    const page = await this.listModels({ cursor, includeHidden: true, limit: 100 });
+                    models.push(...page.data);
+                    cursor = page.nextCursor ?? null;
+                } while (cursor);
+            } catch {
+                // Do not send a model request when its account catalog is unknown.
+                assertCodexAccountModel(model, null);
+            }
+            this.accountModelCatalog = models;
+        }
+        assertCodexAccountModel(model, this.accountModelCatalog);
+    }
+
     // ─── Thread management ──────────────────────────────────────
 
     async startThread(opts: {
@@ -1526,7 +1552,7 @@ export class CodexAppServerClient {
         this._threadId = result.thread.id;
         this._turnId = null;
         this.rememberThreadDefaults({
-            model: opts.model ?? defaults.model,
+            model: opts.model ?? defaults.model ?? result.model,
             cwd: opts.cwd ?? defaults.cwd,
             approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy,
             sandbox: opts.sandbox ?? defaults.sandbox,
@@ -1595,6 +1621,9 @@ export class CodexAppServerClient {
             throw new Error('No thread available to set a goal.');
         }
 
+        if (opts.status === 'active' || (opts.objective != null && opts.status == null)) {
+            await this.assertAccountModel(this.threadDefaults?.model);
+        }
         const params: Record<string, unknown> = { threadId };
         if (opts.objective !== undefined) params.objective = opts.objective;
         if (opts.status !== undefined) params.status = opts.status;
@@ -1655,10 +1684,12 @@ export class CodexAppServerClient {
             throw new Error('No thread available to compact.');
         }
 
+        await this.assertAccountModel(this.threadDefaults?.model);
         return await this.request('thread/compact/start', { threadId }) as ThreadCompactStartResponse;
     }
 
     async startReview(opts: ReviewStartParams): Promise<ReviewStartResponse> {
+        await this.assertAccountModel(this.threadDefaults?.model);
         return await this.request('review/start', opts) as ReviewStartResponse;
     }
 
@@ -1919,6 +1950,8 @@ export class CodexAppServerClient {
             throw new Error('No active thread. Call startThread first.');
         }
 
+        await this.assertAccountModel(opts?.model ?? this.threadDefaults?.model);
+
         // Images first, then text — mirrors the Claude path's ordering and is
         // what Codex expects (visual context precedes the instruction).
         const input: InputItem[] = [
@@ -1954,9 +1987,15 @@ export class CodexAppServerClient {
         // turn/start returns immediately; turn completes via events.
         // We don't await completion here — the caller's event handler
         // tracks task_complete / turn_aborted.
+        const defaultsAtStart = this.threadDefaults;
         this.pendingPawsTurnStart = { prompt, deferredUserItems: [] };
         try {
             const result = await this.request('turn/start', params) as { turn?: { id?: string | null } };
+            // Native model overrides persist on the thread. Prefer a settings
+            // notification when one arrived while turn/start was in flight.
+            if (opts?.model && this._threadId === params.threadId && this.threadDefaults === defaultsAtStart) {
+                this.threadDefaults = { ...this.threadDefaults, model: opts.model };
+            }
             const turnId = result?.turn?.id;
             const resolvedTurnId = typeof turnId === 'string' && turnId.length > 0 ? turnId : null;
             this.settlePawsTurnStart(resolvedTurnId, true);
