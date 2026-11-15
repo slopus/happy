@@ -21,6 +21,28 @@ class AgentEndpointTest {
         transport.close()
     }
 
+    @Test fun bootstrapAdvertisementUpdatesSelectedRouteAndMissingConfigPreservesIt() = runBlocking {
+        val saved = mutableListOf<AgentConnectionCredentials>()
+        val endpoint = AgentEndpoint(original) { saved += it }
+        val made = mutableListOf<Pair<AgentConnectionCredentials, Fake>>()
+        val transport = AgentEndpointTransport(endpoint) { credentials ->
+            Fake().also { made += credentials to it }
+        }
+        transport.warm(2)
+        made.last().second.bootstrap = """{"config":{"api":{"publicUrl":"https://agent.example"}}}"""
+        transport.request("GET", "/v0/bootstrap/desktop", "token")
+        assertEquals("https://agent.example", saved.single().publicUrl)
+        assertTrue(made.first().second.closed)
+        transport.request("GET", "/v0/bootstrap/desktop", "token")
+        assertEquals("https://agent.example", made.last().first.publicUrl)
+        assertEquals("missing config does not remove the selected URL", 1, saved.size)
+        made.last().second.bootstrap = """{"config":{"api":{"publicUrl":null}}}"""
+        transport.request("GET", "/v0/bootstrap/desktop", "token")
+        assertNull(saved.last().publicUrl)
+        assertEquals(2, saved.size)
+        transport.close()
+    }
+
     @Test fun diagnosticsNeverConnectAnIdleOrInvalidatedEndpoint() = runBlocking {
         val endpoint = AgentEndpoint(original) { }
         var made = 0
@@ -144,13 +166,18 @@ class AgentEndpointTest {
 
     private class Fake : Transport {
         var config = """{"config":{}}"""
+        var bootstrap = "{}"
         var closed = false
         var failing = false
         var gate: CompletableDeferred<TransportResponse>? = null
         override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
             if (failing) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
             if (path == "/v0/config") gate?.let { return it.await() }
-            return TransportResponse(200, body = (if (path == "/v0/config") config else "{}").toByteArray())
+            return TransportResponse(200, body = (when (path) {
+                "/v0/config" -> config
+                "/v0/bootstrap/desktop" -> bootstrap
+                else -> "{}"
+            }).toByteArray())
         }
         override suspend fun close() { closed = true }
     }
