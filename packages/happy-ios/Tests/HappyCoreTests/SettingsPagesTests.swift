@@ -223,7 +223,7 @@ final class AgentsPageTests: XCTestCase {
         XCTAssertEqual(fields.map(\.detail), ["Default (Auto)", "Default (Opus 5.5)", "Default (Medium)"])
         XCTAssertEqual(fields.map(\.codeDefaultName), ["Auto", "Opus 5.5", "Medium"])
         XCTAssertEqual(fields.map(\.hasOverride), [false, false, false])
-        XCTAssertEqual(fields[1].options.count, 6)
+        XCTAssertEqual(fields[1].options.count, 7)
         XCTAssertFalse(fields[1].offersCustomModel)
     }
 
