@@ -112,7 +112,7 @@ private actor OrderServer: AgentTransport {
         log.append("GET " + path)
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
         streams.append(continuation)
-        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"\(cursor)\",\"resumed\":false,\"gap\":false,\"daemonId\":\"d1\"}\n\n".utf8))
+        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"\(cursor)\",\"resumed\":false,\"gap\":false,\"daemonId\":\"d1\",\"streamId\":\"s1\"}\n\n".utf8))
         return .init(status: 200, body: body)
     }
 
@@ -621,6 +621,37 @@ final class SyncOrderTests: XCTestCase {
         _ = try? await client.health()
         let asked = await server.requests()
         XCTAssertFalse(asked.contains("GET /v0/health"))
+    }
+
+    /// An open document links to the stream at its hello, as the chat on
+    /// screen reads: home's bootstrap held or failing doesn't keep it
+    /// waiting, and home verified later doesn't link it again.
+    func testAnOpenDocumentLinksAtTheStreamsHello() async throws {
+        for fails in [false, true] {
+            let server = OrderServer()
+            if fails { await server.failBootstrap() } else { await server.hold() }
+            let engine = SyncEngine(client: AgentClient(transport: server, token: "t"), directory: folder())
+            let heard = Heard()
+            let events = await engine.documents.streams.events("doc")
+            Task { for await event in events { heard.add(event) } }
+            await engine.start()
+            try await eventually("linked at hello") { heard.events == [.connected(streamId: "s1")] }
+            let asked = await server.requests()
+            XCTAssertFalse(asked.contains("answered GET /v0/bootstrap/desktop"))
+            if !fails {
+                await server.answer()
+                try await settled(server)
+            }
+            XCTAssertEqual(heard.events, [.connected(streamId: "s1")], fails ? "home failing" : "linked once")
+            await engine.stop()
+        }
+    }
+
+    private final class Heard: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: [DocumentStreamEvent] = []
+        var events: [DocumentStreamEvent] { lock.withLock { value } }
+        func add(_ event: DocumentStreamEvent) { lock.withLock { value.append(event) } }
     }
 
     /// One launch to its end, in `directory`: what a phone keeps from it.
