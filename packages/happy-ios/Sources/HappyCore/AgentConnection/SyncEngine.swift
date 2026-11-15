@@ -155,6 +155,8 @@ public actor SyncEngine {
     private var heldVerification = false
     /// The newest hello, until home is verified on it (`connected`).
     private var connection: (hello: JSONValue, gap: Bool, continued: Bool)?
+    /// Verified, with what waits for home held until the chat on screen is read.
+    private var waitingForChat = false
     private var eventIDs: Set<String> = []
     private var eventOrder: [String] = []
     private var refresh: Task<Void, Never>?
@@ -231,7 +233,7 @@ public actor SyncEngine {
         })
         self.intents = intents
         documents = DocumentLibrary(client: client, directory: directory)
-        let spaces = Store(client: client, offline: offline, intents: intents)
+        let spaces = Store(client: client, offline: offline, intents: intents, holdsChatsForStream: true)
         self.spaces = spaces
         let keep = EngineResources()
         todos = TodoLibrary(routes: client, outbox: intents, keep: keep, events: { await spaces.events(matching: ["todo."]) })
@@ -353,6 +355,7 @@ public actor SyncEngine {
         verified = false
         heldVerification = false
         connection = nil
+        waitingForChat = false
         let pausedGeneration = generation
         holdID = nil; holdDeadline = nil
         holdTimer?.cancel(); holdTimer = nil
@@ -425,6 +428,7 @@ public actor SyncEngine {
     public func stop() async {
         stopped = true
         await pause()
+        await spaces.externalStreamAsked()
         await spaces.stop()
         await documents.stop()
         await todos.stop()
@@ -487,6 +491,7 @@ public actor SyncEngine {
             await artifacts.start()
         } catch {
             // What this phone keeps could not be read: nothing to do with the link.
+            await spaces.externalStreamAsked()
             snapshot.error = "Could not open this connection on this device."
             publish()
             return
@@ -517,6 +522,8 @@ public actor SyncEngine {
                 // Asked for first, so the reads beside it usually begin after
                 // it and cover what came before it (`coverStream`).
                 await events.start(after: resuming ? streamCursor : nil)
+                // The chat on screen next, then home.
+                await spaces.externalStreamAsked()
                 // The chat on screen is read beside a replay, however long
                 // the replay takes to come through.
                 if resuming { await spaces.externalOpening(replays: true) } else { await readAgain(generation) }
@@ -728,8 +735,21 @@ public actor SyncEngine {
     /// counts. Asked beside the stream and home's bootstrap, they held both
     /// back on a cold start.
     private func connected(_ generation: Int) async {
-        guard verified, let (hello, gap, continued) = connection else { return }
-        connection = nil
+        guard verified, let connection else { return }
+        self.connection = nil
+        // The chat on screen is read first, alone on the link.
+        waitingForChat = true
+        let spaces = spaces
+        Task {
+            await spaces.chatReadsLanded()
+            await self.release(generation, connection)
+        }
+    }
+
+    private func release(_ generation: Int, _ connection: (hello: JSONValue, gap: Bool, continued: Bool)) async {
+        guard current(generation), verified else { return }
+        waitingForChat = false
+        let (hello, gap, continued) = connection
         watchGit()
         await documents.opened(hello)
         // Reads the newest page each time, so a gap loses nothing.
@@ -1116,7 +1136,7 @@ public actor SyncEngine {
     /// Renewing keeps the daemon's bounded watcher interest alive; changes
     /// themselves arrive on the existing event stream.
     private func watchGit() {
-        guard snapshot.live, verified, !stopped else { return }
+        guard snapshot.live, verified, !waitingForChat, !stopped else { return }
         let ids = Set(snapshot.rows.compactMap(\.workspaceId))
         // Nothing to watch yet: home's first rows on a fresh install come with its bootstrap.
         guard gitWatcher == nil ? !ids.isEmpty : ids != gitInterest else { return }

@@ -371,16 +371,17 @@ final class SyncPathTests: XCTestCase {
         await engine.stop()
     }
 
-    /// A launch straight into a chat from a push: the chat's read, on its
-    /// way before the stream opens, is let land rather than asked again.
+    /// A launch straight into a chat from a push: the chat's read, asked
+    /// right after the stream and on its way before it opens, is let land
+    /// rather than asked again.
     func testALaunchIntoAChatKeepsTheChatsReadOnItsWay() async throws {
         let server = PathServer()
         let client = AgentClient(transport: server, token: "t")
         let engine = SyncEngine(client: client, directory: folder())
         await server.holdMessageReads(true)
         let (conversation, shown) = await open(engine, client)
-        try await eventually("the chat's read") { await server.queries().count == 1 }
         await engine.start()
+        try await eventually("the chat's read") { await server.queries().count == 1 }
         try await eventually("live") { let home = await Self.home(engine); return home.live }
         try await Task.sleep(for: .milliseconds(200))
         let asked = await server.queries().count

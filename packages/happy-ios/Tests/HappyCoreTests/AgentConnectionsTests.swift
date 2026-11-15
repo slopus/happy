@@ -519,32 +519,26 @@ final class AgentConnectionsTests: XCTestCase {
         await manager.setForeground(false)
     }
 
-    /// While the open account's engine runs, its checks and a rename go
-    /// over the engine's tunnels: no transport, so no Tailcat client, of
-    /// their own. Paused, each check has its own again.
-    func testIdentityChecksShareTheRunningEnginesTransport() async throws {
+    /// While the open account's engine runs, its name and picture come
+    /// with the engine's bootstrap: no identity check of its own goes out,
+    /// and a rename goes over the engine's tunnels, with no transport (so
+    /// no Tailcat client) of its own.
+    func testTheRunningEngineIdentifiesItsAccount() async throws {
         let transport = IdentityTransport()
         let made = Counter()
         let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in made.increment(); return transport })
         manager.refreshInterval = .milliseconds(20)
         let account = try await manager.add(value("shared"), name: "Mac")
         let engine = try XCTUnwrap(manager.syncEngine(for: account.id))
-        func checks() async -> Int { await transport.paths().filter { $0 == "/v0/config" }.count }
-        func wait(for count: Int) async throws {
-            for _ in 0..<200 where await checks() < count { try await Task.sleep(for: .milliseconds(10)) }
-            let read = await checks()
-            XCTAssertGreaterThanOrEqual(read, count)
-        }
-        try await wait(for: 2)
-        let before = made.value
-        try await wait(for: await checks() + 3)
+        func checks() async -> Int { await transport.paths().filter { $0 == "/v0/config" || $0 == "/v0/health" }.count }
+        try await Task.sleep(for: .milliseconds(100))
+        let before = (checks: await checks(), made: made.value)
+        try await Task.sleep(for: .milliseconds(200))
+        let after = await checks()
+        XCTAssertEqual(after, before.checks, "ten intervals went by")
         try await manager.rename(account.id, to: "Studio Mac")
-        try await wait(for: await checks() + 1)
-        XCTAssertEqual(made.value, before)
-        await engine.pause()
-        let paused = made.value
-        try await wait(for: await checks() + 2)
-        XCTAssertGreaterThanOrEqual(made.value, paused + 2)
+        XCTAssertEqual(made.value, before.made)
+        await engine.stop()
         try await manager.remove(account.id)
     }
 

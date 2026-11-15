@@ -434,6 +434,9 @@ public actor Conversation {
     /// read again, once.
     private var readCursor: String?
     private var streamFrom: String?
+    /// Opened before its engine asked for the stream: home's read waits
+    /// until this chat's has gone (`Store.chatOpening`).
+    private var holdsHome = false
     /// The account's stream picks up where it left off (`.resync(replays:)`):
     /// its replay brings what changed in runs that had finished, so the read
     /// beside it need only bring the runs after the newest finished one held.
@@ -567,9 +570,11 @@ public actor Conversation {
 
     public func start() async {
         guard following == nil else { return }
+        if creation == nil { holdsHome = await store.chatOpening() }
         do { try await checkpointClaim(for: "conversation:\(agentId)").value }
         catch {
             checkpointClaims.removeValue(forKey: "conversation:\(agentId)")
+            await letHomeAsk()
             snapshot.error = "Could not open this conversation on this device."; publish(); return
         }
         if let creation {
@@ -594,6 +599,7 @@ public actor Conversation {
     }
 
     public func stop() async {
+        await letHomeAsk()
         following?.cancel(); following = nil
         children?.cancel(); children = nil
         questionEvents?.cancel(); questionEvents = nil
@@ -770,16 +776,21 @@ public actor Conversation {
                 if heldEvents == nil { heldEvents = [] }
                 let after = anchored ? anchor() : nil
                 let resets = await store.carrierResets
+                await store.streamAsked()
+                await store.chatReadBegan()
                 do {
                     async let bootstrap = client.bootstrap(agentId)
                     async let page = client.messages(agentId, after: after?.message)
+                    await letHomeAsk()
                     var (start, history) = try await (bootstrap, page)
                     var since = after?.run
                     if since != nil, history.hasMore { history = try await client.messages(agentId); since = nil }
+                    await store.chatReadEnded()
                     if Task.isCancelled { return }
                     adopt(start, history, since: since)
                     return
                 } catch {
+                    await store.chatReadEnded()
                     if Task.isCancelled { return }
                     // A message the computer no longer holds: the newest runs instead, at once.
                     if after != nil, case AgentClientError.status = error { anchored = false; continue }
@@ -880,6 +891,18 @@ public actor Conversation {
             streamFrom = nil
             if !covered(from) { reload() }
         }
+    }
+
+    deinit {
+        guard holdsHome else { return }
+        let store = store
+        Task { await store.chatAsked() }
+    }
+
+    private func letHomeAsk() async {
+        guard holdsHome else { return }
+        holdsHome = false
+        await store.chatAsked()
     }
 
     /// The newest read taken began after the stream that began at `from`.

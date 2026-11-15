@@ -132,6 +132,17 @@ public actor Store {
     /// (`SyncEngine.resetCarrier`): a read on its way dies with it, and is
     /// asked again without saying it failed.
     public private(set) var carrierResets = 0
+    /// Until its engine first asks for the stream, a chat opened is read
+    /// only after it, and home's read waits for those chats to ask
+    /// (`externalStreamAsked`): the chat on screen goes between the two.
+    private var streamOpen: Bool
+    private var waitingForStream: [CheckedContinuation<Void, Never>] = []
+    private var chatsAsking = 0
+    private var waitingForChats: [CheckedContinuation<Void, Never>] = []
+    /// Chat history reads on their way: what waits for home waits for
+    /// them too (`chatReadsLanded`), so none shares the link with it.
+    private var chatReads = 0
+    private var waitingForChatReads: [CheckedContinuation<Void, Never>] = []
     private var placesDirty = false
     /// When the bots and tasks were last read (~0.8 MB on a busy
     /// computer), and what came meanwhile that their read could not follow.
@@ -155,8 +166,9 @@ public actor Store {
     private var attentionIdle: Task<Void, Never>?
     private var attentionVisible = true
 
-    public init(client: AgentClient, offline: OfflineFile? = nil, intents: IntentOutbox? = nil, labels: Rows.Labels = Rows.Labels(), placesRereadInterval: Duration = .seconds(10)) {
+    public init(client: AgentClient, offline: OfflineFile? = nil, intents: IntentOutbox? = nil, labels: Rows.Labels = Rows.Labels(), placesRereadInterval: Duration = .seconds(10), holdsChatsForStream: Bool = false) {
         self.client = client
+        streamOpen = !holdsChatsForStream
         self.placesRereadInterval = placesRereadInterval
         self.offline = offline
         self.intents = intents
@@ -192,6 +204,55 @@ public actor Store {
     }
 
     public func carrierReset() { carrierResets += 1 }
+
+    /// A chat opening: true while the stream is yet to be asked for, and
+    /// then it says `chatAsked` once its read has gone (or it closed).
+    public func chatOpening() -> Bool {
+        guard !streamOpen else { return false }
+        chatsAsking += 1
+        return true
+    }
+
+    public func chatAsked() {
+        chatsAsking -= 1
+        guard chatsAsking == 0 else { return }
+        let waiting = waitingForChats
+        waitingForChats = []
+        for chat in waiting { chat.resume() }
+    }
+
+    /// A chat's read waits here until the stream has been asked for.
+    public func streamAsked() async {
+        guard !streamOpen else { return }
+        await withCheckedContinuation { waitingForStream.append($0) }
+    }
+
+    public func chatReadBegan() { chatReads += 1 }
+
+    public func chatReadEnded() {
+        chatReads -= 1
+        guard chatReads == 0 else { return }
+        let waiting = waitingForChatReads
+        waitingForChatReads = []
+        for engine in waiting { engine.resume() }
+    }
+
+    /// Returns once no chat history read is on its way.
+    public func chatReadsLanded() async {
+        guard chatReads > 0 else { return }
+        await withCheckedContinuation { waitingForChatReads.append($0) }
+    }
+
+    /// The engine has asked for the stream (or never will): the chats that
+    /// waited are asked now, and this returns once they have been.
+    public func externalStreamAsked() async {
+        guard !streamOpen else { return }
+        streamOpen = true
+        let waiting = waitingForStream
+        waitingForStream = []
+        for chat in waiting { chat.resume() }
+        if chatsAsking > 0 { await withCheckedContinuation { waitingForChats.append($0) } }
+    }
 
     /// The account's stream is open. It carries everything after
     /// `missedBefore`; what came before it, those following read again.
