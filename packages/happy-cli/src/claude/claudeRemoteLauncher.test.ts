@@ -99,6 +99,34 @@ describe('claudeRemoteLauncher provider auth', () => {
 describe('claudeRemoteLauncher model switches', () => {
     beforeEach(() => { vi.mocked(claudeRemote).mockReset(); });
 
+    it.each([false, true])('preserves images across consecutive switches (isolated: %s)', async isolate => {
+        const { session, stop } = fixture();
+        const sent = ['opus', 'fable', 'sonnet'].map((model, index) => ({
+            message: `on ${model}`, mode: { permissionMode: 'default', model }, hash: model,
+            isolate: index === 2 && isolate,
+            attachments: index === 2 ? [{ name: 'image.png', mimeType: 'image/png', data: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) }] : [],
+        }));
+        (session.queue as any).waitForMessagesAndGetAsString = vi.fn(async () => sent.shift() ?? null);
+        const queries: Array<Array<{ message: unknown; model: string | undefined }>> = [];
+        vi.mocked(claudeRemote).mockImplementation(async opts => {
+            const received: typeof queries[number] = [];
+            for (let next = await opts.nextMessage(); next; next = await opts.nextMessage()) {
+                received.push({ message: next.message, model: next.mode.model });
+            }
+            queries.push(received);
+            if (queries.length === 3) stop();
+        });
+        await claudeRemoteLauncher(session as any);
+        expect(queries).toEqual([
+            [{ message: 'on opus', model: 'opus' }],
+            [{ message: 'on fable', model: 'fable' }],
+            [{ message: [
+                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } },
+                { type: 'text', text: 'on sonnet' },
+            ], model: 'sonnet' }],
+        ]);
+    });
+
     it('starts a new query for every model switch, including one right after another', async () => {
         const { session, stop } = fixture();
         const sent = ['opus', 'fable', 'sonnet'].map(model => ({

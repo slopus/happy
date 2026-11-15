@@ -19,7 +19,7 @@ import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
-import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 
 interface PermissionsField {
     date: number;
@@ -277,11 +277,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     try {
-        let pending: {
-            message: MessageParam['content'];
-            mode: EnhancedMode;
-            hash: string;
-        } | null = null;
+        let pending: Awaited<ReturnType<Session['queue']['waitForMessagesAndGetAsString']>> = null;
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)
@@ -324,23 +320,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         return permissionHandler.isAborted(toolCallId);
                     },
                     nextMessage: async () => {
-                        if (pending) {
-                            let p = pending;
-                            pending = null;
-                            // The held message starts this query, so its mode is
-                            // the one to compare against. Left unset, the next
-                            // model switch joined this query on the old model.
-                            modeHash = p.hash;
-                            mode = p.mode;
-                            permissionHandler.handleModeChange(p.mode.permissionMode);
-                            return p;
-                        }
-
-                        let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                        // A held batch already crossed its query boundary. It
+                        // still needs the same image conversion as a fresh one.
+                        const held = pending;
+                        pending = null;
+                        const msg = held ?? await session.queue.waitForMessagesAndGetAsString(controller.signal);
 
                         // Check if mode has changed
                         if (msg) {
-                            if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
+                            if (!held && ((modeHash && msg.hash !== modeHash) || msg.isolate)) {
                                 logger.debug('[remote]: mode has changed, pending message');
                                 pending = msg;
                                 return null;
