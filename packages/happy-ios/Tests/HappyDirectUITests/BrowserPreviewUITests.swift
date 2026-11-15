@@ -27,21 +27,31 @@ final class BrowserPreviewUITests: XCTestCase {
         keep("10-chat")
         for (index, target) in (environment["PREVIEW_LINKS"] ?? "localhost:5173/go,127.0.0.1:5173/app").split(separator: ",").enumerated() {
             let matches = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", String(target), String(target)))
-            guard matches.firstMatch.waitForExistence(timeout: 20), let link = matches.allElementsBoundByIndex.last else {
-                XCTFail("no link \(target)")
-                print("PREVIEW_TREE \(app.debugDescription)")
-                continue
+            if matches.firstMatch.waitForExistence(timeout: 10), let link = matches.allElementsBoundByIndex.last {
+                // The newest message naming it, one element; tap the line its link is on.
+                let lines = link.label.components(separatedBy: "\n")
+                let line = lines.firstIndex { $0.contains(target) } ?? 0
+                link.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: (Double(line) + 0.5) / Double(lines.count))).tap()
             }
-            // The newest message naming it, one element; tap the line its link is on.
-            let lines = link.label.components(separatedBy: "\n")
-            let line = lines.firstIndex { $0.contains(target) } ?? 0
-            link.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: (Double(line) + 0.5) / Double(lines.count))).tap()
+            if !app.webViews.firstMatch.waitForExistence(timeout: 5) {
+                // The message may be scrolled away: the chat's details list its links, from the same agent.
+                let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'detail-link:' AND value CONTAINS %@", String(target))).firstMatch
+                if !row.exists { app.staticTexts[chat].firstMatch.tap() }
+                if row.waitForExistence(timeout: 5) { row.tap() }
+                guard app.webViews.firstMatch.waitForExistence(timeout: 10) else {
+                    XCTFail("no link \(target)")
+                    print("PREVIEW_TREE \(app.debugDescription)")
+                    continue
+                }
+            }
             var waited = 0
-            for second in [3, 8, 15, 30] {
+            // PREVIEW_HOLD keeps the page open that many seconds, read every 2 s and kept every 10 s, for a window on the computer.
+            let hold = Int(environment["PREVIEW_HOLD"] ?? "") ?? 0
+            for second in hold > 0 ? Array(stride(from: 2, through: hold, by: 2)) : [3, 8, 15, 30] {
                 pause(Double(second - waited))
                 waited = second
                 report(String(target), at: second)
-                keep("\(20 + index)-\(target.replacingOccurrences(of: "/", with: "_"))-\(second)s")
+                if hold == 0 || second % 10 == 0 { keep("\(20 + index)-\(target.replacingOccurrences(of: "/", with: "_"))-\(second)s") }
             }
             app.navigationBars.buttons.element(boundBy: 0).tap()
             pause(2)
@@ -57,7 +67,8 @@ final class BrowserPreviewUITests: XCTestCase {
             return own + snapshot.children.flatMap { texts($0) }
         }
         let web = app.webViews.firstMatch
-        print("PREVIEW_TEXT \(target) @\(second)s web=\(web.exists) \(texts(try? web.snapshot()).joined(separator: " | "))")
+        let now = Date().formatted(.iso8601.time(includingFractionalSeconds: false))
+        print("PREVIEW_TEXT \(target) @\(second)s \(now)Z web=\(web.exists) \(texts(try? web.snapshot()).joined(separator: " | "))")
         print("PREVIEW_SCREEN \(target) @\(second)s \(texts(try? app.snapshot()).prefix(12).joined(separator: " | "))")
     }
 
