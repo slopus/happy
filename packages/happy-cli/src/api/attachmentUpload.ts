@@ -94,7 +94,7 @@ export async function uploadEncryptedBlob(
     for (const [k, v] of Object.entries(descriptor.formFields ?? {})) {
         form.append(k, v);
     }
-    form.append('file', new Blob([encrypted], { type: 'application/octet-stream' }), 'blob');
+    form.append('file', new Blob([Uint8Array.from(encrypted)], { type: 'application/octet-stream' }), 'blob');
     const abort = AbortSignal.timeout(60000);
     let res: Response;
     try {

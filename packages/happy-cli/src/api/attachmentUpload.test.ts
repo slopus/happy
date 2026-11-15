@@ -43,6 +43,24 @@ describe('requestAttachmentUpload', () => {
 });
 
 describe('uploadEncryptedBlob', () => {
+    it('preserves the exact encrypted view and policy field order in presigned POST uploads', async () => {
+        const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+            const form = init.body as FormData;
+            expect([...form.keys()]).toEqual(['key', 'policy', 'file']);
+            const file = form.get('file');
+            expect(file).toBeInstanceOf(Blob);
+            expect([...new Uint8Array(await (file as Blob).arrayBuffer())]).toEqual([2, 3]);
+            return new Response(null, { status: 204 });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        try {
+            await uploadEncryptedBlob({ ref: 'r', uploadUrl: 'https://storage.test/up', method: 'POST', formFields: { key: 'r', policy: 'p' } }, new Uint8Array([1, 2, 3, 4]).subarray(1, 3), 'tok');
+            expect(fetchMock).toHaveBeenCalledOnce();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it('PUTs raw bytes to uploadUrl with bearer token for local-storage mode', async () => {
         mockPut.mockResolvedValue({ status: 200 });
         const bytes = new Uint8Array([1, 2, 3]);

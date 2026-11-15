@@ -61,7 +61,12 @@ jobs:
       - run: pnpm -r --filter '!@wangjs-jacky/paws-agent-chrome' --if-present typecheck
       # This independent consumer uses locked tarballs, not workspace package links.
       - run: npm ci --prefix examples/ai-service-smoke --ignore-scripts --no-audit --no-fund
-      - run: pnpm -r --workspace-concurrency=4 --if-present test -- --run
+      # Bots owns a separate source-workspace CI with its own test selection.
+      # Running every upstream Bots package here invokes unrelated DB/live suites
+      # and the integration root has no tests under apps/web/src/paws.
+      # Keep package suites sequential so their own workers and subprocesses
+      # do not contend with the App's timing-sensitive integration tests.
+      - run: pnpm -r --filter '!{./packages/paws-bots/**}' --workspace-concurrency=1 --if-present test -- --run
 
   unit:
     strategy:

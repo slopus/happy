@@ -122,7 +122,7 @@ describe('importPexelsCover', () => {
         const fetchImpl = vi.fn(async (input: string | URL | Request) => (
             new URL(String(input)).hostname === 'api.pexels.com'
                 ? jsonResponse(PHOTO)
-                : new Response(source, {
+                : new Response(Uint8Array.from(source), {
                     headers: { 'content-type': 'image/jpeg', 'content-length': String(source.length) },
                 })
         ));
@@ -174,7 +174,7 @@ describe('importPexelsCover', () => {
         const fetchImpl = vi.fn(async (input: string | URL | Request) => (
             new URL(String(input)).hostname === 'api.pexels.com'
                 ? jsonResponse(maliciousPhoto)
-                : new Response(source, { headers: { 'content-type': 'image/jpeg' } })
+                : new Response(Uint8Array.from(source), { headers: { 'content-type': 'image/jpeg' } })
         ));
 
         await expect(importPexelsCover(PHOTO.id, {
@@ -200,7 +200,7 @@ describe('importPexelsCover', () => {
                 }
                 return fetchImpl('http://127.0.0.1/admin', init);
             }
-            return new Response(source, { headers: { 'content-type': 'image/jpeg' } });
+            return new Response(Uint8Array.from(source), { headers: { 'content-type': 'image/jpeg' } });
         });
 
         await expect(importPexelsCover(PHOTO.id, {
@@ -232,7 +232,7 @@ describe('importPexelsCover', () => {
                 return new Response(body, { status: 302, headers: { location: '/redirected/cover.jpeg' } });
             }
             if (url === redirectedUrl) {
-                return new Response(source, { headers: { 'content-type': 'image/jpeg' } });
+                return new Response(Uint8Array.from(source), { headers: { 'content-type': 'image/jpeg' } });
             }
             throw new Error(`Unexpected URL: ${url}`);
         });

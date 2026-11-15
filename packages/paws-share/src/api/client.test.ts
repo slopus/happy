@@ -81,7 +81,7 @@ describe('PawsShareClient', () => {
             kind: 'image',
             size: 5,
             sha256: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
-            bytes: Buffer.from('hello'),
+            bytes: Buffer.from('-hello-').subarray(1, 6),
         })).rejects.toThrow('upload URL');
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(String(fetchMock.mock.calls[0][0])).toContain('paws.example');

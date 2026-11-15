@@ -53,7 +53,7 @@ function ensureWorker(): Worker {
     w.on('error', (err) => {
         // eslint-disable-next-line no-console
         console.error('[agent-worker] error:', err)
-        crashAllSessions(err.message || 'Worker crashed')
+        crashAllSessions(err instanceof Error && err.message || 'Worker crashed')
         worker = null
     })
     w.on('exit', (code) => {

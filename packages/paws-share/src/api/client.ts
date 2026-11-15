@@ -107,7 +107,7 @@ export class PawsShareClient {
         );
         await this.request(this.normalizeUploadUrl(prepared.uploadUrl), {
             method: 'PUT',
-            body: asset.bytes,
+            body: Uint8Array.from(asset.bytes),
             headers: { 'Content-Type': 'application/octet-stream' },
         });
     }

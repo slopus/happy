@@ -14,7 +14,7 @@ beforeEach(() => { vi.mocked(axios.get).mockReset(); vi.mocked(axios.post).mockR
 describe('production project relay adapter', () => {
     it('includes old tasks beyond the first 150 sessions and excludes another machine/directory', async () => {
         vi.mocked(axios.get).mockImplementation(async (url, config) => {
-            if (String(url).endsWith('/v2/sessions')) return { data: config?.params?.cursor
+            if (String(url).endsWith('/v2/sessions')) return { data: (config?.params as { cursor?: string } | undefined)?.cursor
                 ? { sessions: [row('old-task', 1), row('blank-chat', 1), row('wrong-machine', 1, { ...metadata, machineId: 'other' })], hasNext: false }
                 : { sessions: Array.from({ length: 200 }, (_, i) => row(`unrelated-${i}`, 0, { ...metadata, path: '/elsewhere' })), hasNext: true, nextCursor: 'cursor_v1_old' } };
             const content = String(url).includes('blank-chat') ? ready : { role: 'user', content: { type: 'text', text: 'Execute' } };

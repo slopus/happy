@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { request } from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { createAccountServer, AccountAccess } from '../dist/server.mjs';
 import { createProductionGateway } from './production-gateway.mjs';
 
@@ -12,7 +13,7 @@ const accessToken = randomBytes(32).toString('base64url');
 let backend, gateway;
 try {
   const access = new AccountAccess('http://fixture.invalid', accessToken, async () => Response.json({ id: 'smoke-owner' }));
-  backend = await createAccountServer({ dataDir, masterKey: accessToken, serverUrl: 'http://fixture.invalid', access, staticDir: new URL('../dist/web/', import.meta.url).pathname });
+  backend = await createAccountServer({ dataDir, masterKey: accessToken, serverUrl: 'http://fixture.invalid', access, staticDir: fileURLToPath(new URL('../dist/web/', import.meta.url)) });
   const frameToken = access.exchange(access.issue({ id: 'smoke-owner', name: 'Smoke test' }, 'fixture-only')).token;
   gateway = await createProductionGateway({ backendUrl: backend.url, port: 0, revision: 'a'.repeat(40) });
   const get = (path, authenticated = false) => new Promise((resolve, reject) => {
