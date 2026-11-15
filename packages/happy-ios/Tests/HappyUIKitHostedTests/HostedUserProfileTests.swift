@@ -6,15 +6,17 @@ import HappyWire
 import UIKit
 import XCTest
 
-/// A team server that finds Ada by name (`POST /v0/search`'s `user`
-/// result), names her picture (`GET /v0/users`) and serves her profile;
+/// A team server whose bootstrap says it searches, that finds Ada by
+/// name (`POST /v0/search`'s `user` result), names her picture (`GET /v0/users`) and serves her profile;
 /// her role is one the team made, named by `GET /v0/roles` unless
 /// `rolesFail`.
 private struct PeopleTransport: AgentTransport {
     var rolesFail = false
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
-        if path == "/v0/health" { return HTTP1Response(status: 200, body: Data(#"{"ok":true,"capabilities":{"search":true}}"#.utf8)) }
+        if path == "/v0/bootstrap/desktop" {
+            return HTTP1Response(status: 200, body: Data(#"{"cursor":"c","projects":[],"workspaces":[],"health":{"ok":true,"capabilities":{"search":true}}}"#.utf8))
+        }
         if path == "/v0/search" {
             return HTTP1Response(status: 200, body: Data(#"""
             {"results":[{"type":"agent","key":"agent:a9","rank":1,"agentId":"a9","workspaceId":"w9","kind":"task","title":"Ada's notes"},
@@ -63,7 +65,10 @@ final class HostedUserProfileTests: XCTestCase {
             Session.forget(connection.id)
             try? await account.agentConnections.remove(connection.id)
         }
-        return (AppContext(account: account, variant: .preview, version: "test"), connection.id)
+        let context = AppContext(account: account, variant: .preview, version: "test")
+        // Its health comes with home's bootstrap.
+        await Session.session(for: connection.id, context: context)?.engine.start()
+        return (context, connection.id)
     }
 
     private func host(_ controller: UIViewController) async throws -> UINavigationController {

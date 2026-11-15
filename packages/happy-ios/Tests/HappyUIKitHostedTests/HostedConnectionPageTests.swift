@@ -1,6 +1,6 @@
 #if canImport(UIKit)
 import Foundation
-import HappyCore
+@testable import HappyCore
 import HappyLayout
 import HappyStore
 import HappyWire
@@ -296,9 +296,10 @@ final class HostedConnectionPageTests: XCTestCase {
         assertEveryRowIsOneLine(page)
         XCTAssertTrue(page.isTicking)
 
-        // Traffic: five health checks. The page moves within a tick or two.
+        // Traffic: five health checks, asked of the computer (`health()`
+        // answers from home's bootstrap). The page moves within a tick or two.
         let before = shown.row("requests")?.value
-        for _ in 0..<5 { _ = try? await session.client.health() }
+        for _ in 0..<5 { _ = try? await session.client.decode(JSONValue.self, "GET", "/v0/health") }
         let refreshes = page.refreshes
         try await until("the numbers move", 4) { page.page?.row("requests")?.value != before && page.refreshes > refreshes }
         XCTAssertEqual(page.connectionLayout.cards.count, 5)
