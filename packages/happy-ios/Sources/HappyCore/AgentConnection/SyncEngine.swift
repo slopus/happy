@@ -459,6 +459,9 @@ public actor SyncEngine {
     private func run(_ generation: Int) async {
         // However this run ends, no chat waits for its stream.
         defer { spaces.chatsFirst.open() }
+        // Flows for the screen's first reads, and the tunnel under them,
+        // coming up while what this phone keeps is read.
+        warm()
         // Nothing goes out before this run has read the computer, even when
         // the pause before it was overtaken and left the outbox as it was.
         await intents.setOnline(false)
@@ -519,8 +522,6 @@ public actor SyncEngine {
                 // Asked for first, so the reads beside it usually begin after
                 // it and cover what came before it (`coverStream`).
                 await events.start(after: resuming ? streamCursor : nil)
-                // Connecting: flows ready for the screen's first reads, beside the stream and home's.
-                warm()
                 // The chat on screen next, then home.
                 spaces.chatsFirst.open()
                 await spaces.chatsFirst.chatsAsked()
