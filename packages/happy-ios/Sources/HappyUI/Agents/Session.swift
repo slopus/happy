@@ -400,24 +400,15 @@ final class Session {
         return Watch { [weak self] in self?.watchers.removeValue(forKey: id) }
     }
 
-    /// No link is ever offline: one not connected is asked again with
-    /// backoff for as long as it is there, so it is connecting, whatever
-    /// kept it away. What is not the network's to fix (a pairing to redo, a
-    /// sign-in that ended) home's notice says, in its own words.
-    static func headerState(status: ConnectionStatus, snapshot: HomeSnapshot, network: Bool = true) -> Strings.HeaderStatus.State {
-        // No way out at all: nothing to connect to yet, whatever was last heard.
-        if !network { return .waitingForNetwork }
-        // The stream is open: it is the truth, whatever the pairing's own
-        // check (which retries on its own backoff) last said.
-        if snapshot.live { return snapshot.loaded && !snapshot.syncing ? .online : .syncing }
-        // The pairing answered and the stream isn't open yet: catching up,
-        // unless the stream is on its way back or stopped for a reason.
-        if status == .connected, !snapshot.reconnecting, snapshot.error == nil { return .syncing }
-        return .connecting
+    /// Home's header (`LinkState.home`): what is not the network's to fix
+    /// (a pairing to redo, a sign-in that ended) home's notice says, in its
+    /// own words.
+    static func headerState(snapshot: HomeSnapshot, network: Bool = true) -> Strings.HeaderStatus.State {
+        .home(snapshot, network: network)
     }
 
     private func updateHeaderState() {
-        let next = Self.headerState(status: connectionStatus, snapshot: home, network: networkPath)
+        let next = Self.headerState(snapshot: home, network: networkPath)
         guard next != headerState else { return }
         headerState = next
         link.want(next)

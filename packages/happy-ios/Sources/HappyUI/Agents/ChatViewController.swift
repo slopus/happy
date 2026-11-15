@@ -1478,13 +1478,15 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     /// The header's grey line: what the agent is at, in a word, while it is.
     private func updateHeaderStatus() {
-        header.status = Strings.HeaderStatus.text(headerState, activity: chat.activity, loaded: chat.loaded)
+        // Updating only until this chat's history read lands, whatever home is at.
+        let state = LinkState.chat(home: headerState, historyRead: chat.synced || chat.error != nil)
+        header.status = Strings.HeaderStatus.text(state, activity: chat.activity, loaded: chat.loaded)
         // The link on its way, or the chat still catching up: said with
         // the spinner, as home's title says it.
-        header.statusSpins = Strings.HeaderStatus.spins(headerState) || (headerState == .online && !chat.loaded)
+        header.statusSpins = Strings.HeaderStatus.spins(state) || (state == .online && !chat.loaded)
         // "Thinking" and "Working" sweep while the working line's loader
         // runs; a question or a wait is said still.
-        header.statusShimmers = headerState == .online && chat.loaded && ChatJumpButton.spins(chat.activity)
+        header.statusShimmers = state == .online && chat.loaded && ChatJumpButton.spins(chat.activity)
     }
 
     // MARK: Layout
