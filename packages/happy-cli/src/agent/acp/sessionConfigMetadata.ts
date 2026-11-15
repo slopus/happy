@@ -3,6 +3,9 @@ import type { SessionConfigOption, SessionModeState, SessionModelState } from '@
 
 type SupportedCategory = 'mode' | 'model' | 'thought_level';
 
+// Only select options carry a value list; ACP also has boolean options.
+type SelectConfigOption = Extract<SessionConfigOption, { type: 'select' }>;
+
 const SUPPORTED_CATEGORIES = new Set<SupportedCategory>(['mode', 'model', 'thought_level']);
 
 type MetadataOption = {
@@ -73,7 +76,7 @@ function flattenConfigSelectOptions(options: unknown): MetadataOption[] {
 function findConfigOptionByCategory(
   configOptions: SessionConfigOption[],
   category: SupportedCategory,
-): SessionConfigOption | null {
+): SelectConfigOption | null {
   for (const option of configOptions) {
     if (option.type !== 'select') {
       continue;
@@ -88,7 +91,7 @@ function findConfigOptionByCategory(
 
 function applyConfigCategory(
   metadata: Metadata,
-  option: SessionConfigOption | null,
+  option: SelectConfigOption | null,
   kind: SupportedCategory,
 ): void {
   if (!option) {
