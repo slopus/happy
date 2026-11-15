@@ -13,6 +13,7 @@ import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.connection.TransportStream
 import com.slopus.happy.documents.DocumentStreamEvent
+import com.slopus.happy.ui.conversation.makeConversation
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -79,6 +80,54 @@ class AgentSessionTest {
 
     private suspend fun <T> eventually(read: () -> T, check: (T) -> Boolean) {
         withTimeout(10_000) { while (!check(read())) kotlinx.coroutines.delay(20) }
+    }
+
+    @Test
+    fun homeHoldsSecondaryReadsUntilBootstrapIsVerified() = runBlocking {
+        val requested = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val seen = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val session = sessions { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                seen += "$method $path"
+                if (path == "/v0/bootstrap/desktop") { requested.complete(Unit); release.await() }
+                return agent.request(method, path, credential, body, headers, category)
+            }
+        } }.session(id)!!
+        requested.await()
+        session.markRead("at1")
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.P0Live }
+        assertEquals(listOf("STREAM /v0/events/stream"), agent.calls.toList())
+        assertEquals(listOf("GET /v0/bootstrap/desktop"), seen.toList())
+        release.complete(Unit)
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        eventually({ agent.calls.toList() }) { "GET /v0/artifacts?limit=100" in it && "POST /v0/git/watch" in it }
+        assertEquals(1, agent.calls.count { it == "GET /v0/artifacts?limit=100" })
+        assertEquals(listOf("STREAM /v0/events/stream", "GET /v0/bootstrap/desktop"), agent.calls.take(2))
+    }
+
+    @Test
+    fun restoredChatGoesBetweenStreamAndHomeAndAdoptsHistoryOnce() = runBlocking {
+        agent.resources["/v0/agents/at1/bootstrap"] = AgentClient.json.parseToJsonElement("""{"agent":{"id":"at1","workspaceId":"wat1","status":"idle","title":"Fix login"},"pending":[]}""") as kotlinx.serialization.json.JsonObject
+        agent.resources["/v0/agents/at1/messages?limit=100&omitToolData=true"] = AgentClient.json.parseToJsonElement("""{"runs":[],"hasMore":false}""") as kotlinx.serialization.json.JsonObject
+        val manager = sessions()
+        manager.setOpenChat(id, "at1")
+        val session = manager.session(id)!!
+        eventually({ session.catalog.value.loaded }) { it }
+        val conversation = session.makeConversation("at1", null)
+        try {
+            conversation.start()
+            eventually({ conversation.state.value.synced }) { it }
+            assertEquals(listOf("STREAM /v0/events/stream", "GET /v0/agents/at1/bootstrap", "GET /v0/agents/at1/messages?limit=100&omitToolData=true", "GET /v0/bootstrap/desktop"), agent.calls.toList())
+            agent.frames.send(Wire.hello("c0"))
+            eventually({ session.phase.value }) { it == SyncPhase.Verified }
+            eventually({ agent.calls.toList() }) { "GET /v0/artifacts?limit=100" in it }
+            assertEquals("Fix login", conversation.state.value.title)
+            assertEquals(1, agent.calls.count { "/messages?" in it })
+            assertEquals(1, agent.calls.count { it == "GET /v0/agents/at1/bootstrap" })
+            assertEquals(0, agent.calls.count { it == "GET /v0/config" })
+        } finally { conversation.close() }
     }
 
     @Test

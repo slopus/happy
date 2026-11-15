@@ -54,6 +54,11 @@ class AgentSessions(
     private val makeTransport: (AgentConnectionCredentials) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
 ) {
     private val sessions = HashMap<String, AgentSession>()
+    @Volatile private var openChat: Pair<String, String>? = null
+
+    fun setOpenChat(connectionId: String?, agentId: String?) {
+        openChat = if (connectionId != null && agentId != null) connectionId to agentId else null
+    }
 
     init {
         // Discovery belongs to every paired account, not only the open
@@ -169,6 +174,7 @@ class AgentSessions(
                     parent = scope,
                     makeTransport = makeTransport,
                     chime = chime,
+                    openChat = { openChat?.takeIf { it.first == connectionId }?.second },
                 )
             }
         }

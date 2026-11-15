@@ -98,6 +98,7 @@ class AgentSession internal constructor(
     private val random: Random = Random.Default,
     /** Plays desktop's completion chime ([CompletionWatch] decides when). */
     private val chime: () -> Unit = {},
+    private val openChat: () -> String? = { null },
 ) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
     private val linkLock = Mutex()
@@ -141,6 +142,25 @@ class AgentSession internal constructor(
     private val phaseState = MutableStateFlow(SyncPhase.Offline)
     val phase: StateFlow<SyncPhase> = phaseState.asStateFlow()
     private var avatarHash: String? = null
+    private var bootstrapConfig: JsonObject? = null
+    private class ChatRead(val agentId: String, val result: Deferred<Result<Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>>>, var taken: Boolean = false)
+    private val chatLock = Any()
+    private var chatRead: ChatRead? = null
+
+    suspend fun awaitVerified() { phase.first { it == SyncPhase.Verified } }
+
+    suspend fun takeChatRead(agentId: String): Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>? {
+        phase.first { it >= SyncPhase.P0Connecting }
+        val read = synchronized(chatLock) { chatRead?.takeIf { it.agentId == agentId && !it.taken }?.also { it.taken = true } }
+        return read?.result?.await()?.getOrThrow()
+    }
+
+    fun chatNeedsResync(agentId: String): Boolean = synchronized(chatLock) { chatRead?.let { it.agentId != agentId || !it.taken } ?: true }
+
+    suspend fun configuration(): com.slopus.happy.connection.TransportResponse {
+        awaitVerified()
+        return com.slopus.happy.connection.TransportResponse(200, body = buildJsonObject { put("config", bootstrapConfig ?: JsonObject(emptyMap())) }.toString().toByteArray())
+    }
 
     private val reads = MutableStateFlow(0)
     /** Bootstrap or a resource whose event version chain broke is being caught up. */
@@ -211,7 +231,7 @@ class AgentSession internal constructor(
 
     /** What Feed entries name that the catalog doesn't hold: artifacts, and the todos they made. */
     val feedLookups: FeedLookups by lazy {
-        FeedLookups.of(scope, client) { ArtifactClient(client).artifact(it) }.also { lookups ->
+        FeedLookups.of(scope, client, beforeNetwork = ::awaitVerified) { ArtifactClient(client).artifact(it) }.also { lookups ->
             scope.launch { events.collect(lookups::receive) }
         }
     }
@@ -231,7 +251,7 @@ class AgentSession internal constructor(
      */
     val team = TeamDirectory(
         scope,
-        read = { ids -> client.teamUsers(ids) },
+        read = { ids -> awaitVerified(); client.teamUsers(ids) },
         kept = { withContext(Dispatchers.IO) { cachedResource(TeamDirectory.RESOURCE) } },
         keep = { value -> withContext(Dispatchers.IO) { keepResource(TeamDirectory.RESOURCE, value) } },
     )
@@ -339,7 +359,7 @@ class AgentSession internal constructor(
 
     /** The computer's accounts' plan usage, followed while a composer shows ([AgentUsageSource.follow]). */
     val usage: AgentUsageSource by lazy {
-        AgentUsageSource({ client.decode<JsonObject>("GET", "/v0/usage") }, events, scope) { accounts ->
+        AgentUsageSource({ awaitVerified(); client.decode<JsonObject>("GET", "/v0/usage") }, events, scope) { accounts ->
             client.send("POST", "/v0/usage/refresh", buildJsonObject { put("providerIds", JsonArray(accounts.map(::JsonPrimitive))) })
         }
     }
@@ -351,8 +371,8 @@ class AgentSession internal constructor(
     val references: com.slopus.happy.references.ReferenceReader by lazy {
         com.slopus.happy.references.ReferenceReader(
             scope, catalog, events,
-            readArtifact = { ArtifactClient(client).artifact(it) },
-            readUsers = { com.slopus.happy.references.ReferenceReader.userNames(client, it) },
+            readArtifact = { awaitVerified(); ArtifactClient(client).artifact(it) },
+            readUsers = { awaitVerified(); com.slopus.happy.references.ReferenceReader.userNames(client, it) },
         )
     }
     /**
@@ -383,7 +403,14 @@ class AgentSession internal constructor(
      * (iOS's `SyncEngine.documents`), kept beside the catalog in
      * `<connection>.documents/`; their live frames come off this session's stream.
      */
-    val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope)
+    val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope, ::awaitVerified)
+
+    val artifacts = com.slopus.happy.artifacts.ArtifactCatalogFeed(
+        scope, fetch = { cursor -> awaitVerified(); ArtifactClient(client).catalog(cursor) },
+        fetchOne = { id -> awaitVerified(); ArtifactClient(client).artifact(id) },
+        kept = { cachedResource(com.slopus.happy.artifacts.ArtifactCatalogFeed.RESOURCE) },
+        keep = { keepResource(com.slopus.happy.artifacts.ArtifactCatalogFeed.RESOURCE, it) },
+    )
 
     val pictures = AgentPictures(connectionId, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".pictures") }) { path -> client.send("GET", path, category = RequestCategory.File).body }
 
@@ -639,7 +666,8 @@ class AgentSession internal constructor(
         // The members the listed tasks belong to, read as they are listed.
         scope.launch { catalogState.map(TeamUser::authors).distinctUntilChanged().collect(team::want) }
         // Sent while the link is up; every connect sends what waits at once.
-        scope.launch { statusState.collect { intents.setOnline(it == AgentLinkStatus.Connected) } }
+        scope.launch { phaseState.collect { intents.setOnline(it == SyncPhase.Verified) } }
+        artifacts.start(events, phase.map { it == SyncPhase.Verified }.distinctUntilChanged())
         scope.launch {
             intents.rejections.collectLatest { rejection ->
                 if (rejection.intent.kind == SURFACE_JOIN) {
@@ -666,7 +694,7 @@ class AgentSession internal constructor(
                     !signedIn -> statusState.value = AgentLinkStatus.SignInRequired
                     // Off the collector: Tailcat's reads block their thread, and on the collector's
                     // they would hold up the next value, so a background could not stop the link.
-                    on -> coroutineScope {
+                    on -> try { coroutineScope {
                         launch {
                             // Kept through a background: its tunnels check every way to the
                             // agent before the stream asks them for anything.
@@ -674,7 +702,7 @@ class AgentSession internal constructor(
                             launch { watchGit() }
                             live()
                         }
-                    }
+                    } } finally { phaseState.value = SyncPhase.Offline }
                     statusState.value == AgentLinkStatus.SignInRequired -> statusState.value = AgentLinkStatus.Connecting
                 }
             }
@@ -761,8 +789,24 @@ class AgentSession internal constructor(
             try {
                 coroutineScope {
                     val stream = client.events(catalogState.value.cursor.takeIf { snapshotRead })
+                    val chat = openChat()?.let { agentId ->
+                        val result = async {
+                            try {
+                                val api = com.slopus.happy.conversation.ConversationApi { method, path, body, category -> client.send(method, path, body, category = category) }
+                                Result.success(coroutineScope {
+                                    val bootstrap = async(start = CoroutineStart.UNDISPATCHED) { api.bootstrap(agentId) }
+                                    val messages = async(start = CoroutineStart.UNDISPATCHED) { api.messages(agentId) }
+                                    bootstrap.await() to messages.await()
+                                })
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { Result.failure(e) }
+                        }
+                        ChatRead(agentId, result)
+                    }
+                    synchronized(chatLock) { chatRead = chat }
                     phaseState.value = SyncPhase.P0Connecting
                     val snapshot = async {
+                        chat?.result?.await()
                         if (!snapshotRead) {
                             readSnapshot()
                             snapshotRead = true
@@ -828,6 +872,7 @@ class AgentSession internal constructor(
     private suspend fun bootstrapIdentity(bootstrap: WireDesktopBootstrap) {
         val known = connections.accounts.value.firstOrNull { it.id == connectionId }
         val info = AgentIdentity.bootstrap(bootstrap.health, bootstrap.config, known?.name.orEmpty())
+        bootstrapConfig = bootstrap.config
         client.noteHealth(info)
         pluginsAvailability.noteHealth(info.plugins)
         avatarHash = info.thumbhash?.takeIf { it != known?.thumbhash || known.avatarFile == null }
@@ -946,8 +991,8 @@ class AgentSession internal constructor(
     private suspend fun watchGit() {
         // Happy Cloud has no folders, so no git.
         if (client.cloud) return
-        combine(feed.map(::gitWorkspaceIds).distinctUntilChanged(), gitRenewal, status) { ids, renewal, status ->
-            Triple(ids, renewal, status == AgentLinkStatus.Connected)
+        combine(feed.map(::gitWorkspaceIds).distinctUntilChanged(), gitRenewal, phase) { ids, renewal, phase ->
+            Triple(ids, renewal, phase == SyncPhase.Verified)
         }.distinctUntilChanged().collectLatest { (ids, _, connected) ->
             if (!connected) return@collectLatest
             gitSnapshots.update { it.filterKeys(ids::contains) }
@@ -1040,7 +1085,7 @@ class AgentSession internal constructor(
     private suspend fun deliverSettings() {
         var attempt = 0
         while (true) {
-            if (statusState.value != AgentLinkStatus.Connected) return
+            if (phaseState.value != SyncPhase.Verified) return
             val (key, change) = catalogState.value.pendingSettings.entries.minByOrNull { it.key }?.toPair() ?: return
             try {
                 val answer = client.decode<JsonObject>(

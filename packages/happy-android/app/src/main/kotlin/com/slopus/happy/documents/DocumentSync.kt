@@ -116,6 +116,7 @@ class DocumentSync internal constructor(
     private val streams: DocumentStreams,
     directory: File?,
     parent: CoroutineScope,
+    private val beforeNetwork: suspend () -> Unit = {},
     private val retire: suspend (DocumentSync) -> Unit = {},
 ) {
     private val confined = Dispatchers.IO.limitedParallelism(1)
@@ -206,6 +207,7 @@ class DocumentSync internal constructor(
             return DocumentOpening.Ready
         }
         return try {
+            beforeNetwork()
             val state = DocumentRoutes.state(client, surfaceId)
             replica.applyUpdate(state.update)
             meta = meta.copy(serverVector = state.stateVector, seq = state.seq)
@@ -659,6 +661,7 @@ class DocumentLibrary(
     /** Where documents are kept (`<connection>.documents/`); null keeps nothing. */
     private val directory: File?,
     parent: CoroutineScope,
+    private val beforeNetwork: suspend () -> Unit = {},
 ) {
     val streams = DocumentStreams()
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
@@ -667,7 +670,7 @@ class DocumentLibrary(
 
     fun document(surfaceId: String): DocumentSync = synchronized(lock) {
         syncs.getOrPut(surfaceId) {
-            DocumentSync(surfaceId, client, streams, directory, scope) { retire(it) }
+            DocumentSync(surfaceId, client, streams, directory, scope, retire = { retire(it) }, beforeNetwork = beforeNetwork)
         }
     }
 

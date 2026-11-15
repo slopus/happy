@@ -25,6 +25,10 @@ import com.slopus.happy.ui.start.StartWarmup
 import com.slopus.happy.ui.theme.AppNightMode
 import com.slopus.happy.ui.theme.paintWindow
 import androidx.profileinstaller.ProfileInstaller
+import androidx.navigation.NavHostController
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.toRoute
+import com.slopus.happy.ui.conversation.ConversationRoute
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -45,10 +49,15 @@ class MainActivity : ComponentActivity() {
     /** [AfterStart]: the opening screen fully drawn (or [START_GRACE_MS] without it), and one frame more. */
     private val started = CompletableDeferred<Unit>()
     private val afterStart = AfterStart { started.await() }
+    private var navigation: NavHostController? = null
+    private var restoredChat: Pair<String, String>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        restoredChat = savedInstanceState?.getString("openChat.connection")?.let { connection ->
+            savedInstanceState.getString("openChat.agent")?.let { connection to it }
+        }
         MaxRefreshRate.follow(this)
         if (savedInstanceState == null && !oauthCallback(intent)) DeepLinks.offer(intent)
         val ready = (application as HappyApplication).graphReady
@@ -56,6 +65,7 @@ class MainActivity : ComponentActivity() {
         if (!ready.isCompleted) holdFirstFrame()
         lifecycleScope.launch {
             val built = ready.await()
+            seedChat(built)
             graph.value = built
             // Start's shaders and grain, made off the main thread while its first frame is put together.
             if (built.openAccount.value == OpenAccount.None) StartWarmup.warm(this@MainActivity)
@@ -93,9 +103,33 @@ class MainActivity : ComponentActivity() {
         setContent {
             val shown by graph.collectAsState()
             shown?.let { CompositionLocalProvider(LocalAfterStart provides afterStart) {
-                HappyApp(it, onDarkThemeChange = ::showTheme)
+                HappyApp(it, onNavigationReady = ::navigationReady, onDarkThemeChange = ::showTheme)
             } }
         }
+    }
+
+    private fun seedChat(built: AppGraph) {
+        restoredChat?.let { (connection, agent) -> built.agentSessions.setOpenChat(connection, agent) }
+        restoredChat = null
+    }
+
+    private fun navigationReady(nav: NavHostController) {
+        if (navigation === nav) return
+        navigation = nav
+        nav.addOnDestinationChangedListener { controller, _, _ ->
+            val entry = controller.currentBackStackEntry
+            val chat = entry?.takeIf { it.destination.hasRoute<ConversationRoute>() }?.toRoute<ConversationRoute>()
+            graph.value?.agentSessions?.setOpenChat(chat?.connectionId, chat?.agentId)
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        val chat = navigation?.currentBackStackEntry?.takeIf { it.destination.hasRoute<ConversationRoute>() }?.toRoute<ConversationRoute>()
+        chat?.agentId?.let { agent ->
+            outState.putString("openChat.connection", chat.connectionId)
+            outState.putString("openChat.agent", agent)
+        }
+        super.onSaveInstanceState(outState)
     }
 
     private var shownDark: Boolean? = null
@@ -124,7 +158,11 @@ class MainActivity : ComponentActivity() {
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         val ready = (application as HappyApplication).graphReady
-        if (graph.value == null && ready.isCompleted && ready.getCompletionExceptionOrNull() == null) graph.value = ready.getCompleted()
+        if (graph.value == null && ready.isCompleted && ready.getCompletionExceptionOrNull() == null) {
+            val built = ready.getCompleted()
+            seedChat(built)
+            graph.value = built
+        }
     }
 
     private fun holdFirstFrame() {
