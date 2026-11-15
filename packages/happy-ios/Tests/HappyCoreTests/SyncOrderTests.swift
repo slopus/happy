@@ -104,9 +104,14 @@ private actor OrderServer: AgentTransport {
     /// Flows opened ahead, and the tunnel under them: no request.
     func warm(_ count: Int) { log.append("warm \(count)") }
 
+    private var streams: [AsyncThrowingStream<Data, Error>.Continuation] = []
+    /// Every stream open is lost, as a network change loses it.
+    func dropStreams() { streams.forEach { $0.finish(throwing: URLError(.networkConnectionLost)) }; streams = [] }
+
     func stream(path: String, credential: String, headers: [String: String]) throws -> HTTP1Stream {
         log.append("GET " + path)
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        streams.append(continuation)
         continuation.yield(Data("event: hello\ndata: {\"cursor\":\"\(cursor)\",\"resumed\":false,\"gap\":false,\"daemonId\":\"d1\"}\n\n".utf8))
         return .init(status: 200, body: body)
     }
@@ -502,9 +507,26 @@ final class SyncOrderTests: XCTestCase {
             try await eventually("the stream asked") { await server.requests().contains("GET /v0/events/stream") }
             let log = await server.requests()
             XCTAssertEqual(log.first, "warm 2", "before anything is asked: \(log)")
-            XCTAssertEqual(log.filter { $0.hasPrefix("warm") }, ["warm 2"], "once a run")
+            XCTAssertEqual(log.filter { $0.hasPrefix("warm") }, ["warm 2"], "once as it starts")
             await engine.stop()
         }
+    }
+
+    /// A later connect of the same run warms again, beside its stream.
+    func testAReconnectWithinARunWarmsBesideItsStream() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        try await eventually("home verified") { let home = await Self.home(engine); return home.live && !home.syncing }
+        await server.clear()
+        await server.dropStreams()
+        try await eventually("the stream asked again") { await server.requests().contains("GET /v0/events/stream") }
+        try await eventually("warmed again") { await server.requests().contains("warm 2") }
+        try await Task.sleep(for: .milliseconds(200))
+        let log = await server.requests()
+        XCTAssertEqual(log.filter { $0.hasPrefix("warm") }, ["warm 2"], "once for the reconnect")
+        await engine.stop()
     }
 
     /// Health comes with home's bootstrap; with none coming, whoever asks

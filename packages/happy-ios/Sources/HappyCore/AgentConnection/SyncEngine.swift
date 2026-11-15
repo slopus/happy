@@ -460,7 +460,8 @@ public actor SyncEngine {
         // However this run ends, no chat waits for its stream.
         defer { spaces.chatsFirst.open() }
         // Flows for the screen's first reads, and the tunnel under them,
-        // coming up while what this phone keeps is read.
+        // coming up while what this phone keeps is read; a later connect
+        // of this run warms beside its stream.
         warm()
         // Nothing goes out before this run has read the computer, even when
         // the pause before it was overtaken and left the outbox as it was.
@@ -497,6 +498,7 @@ public actor SyncEngine {
             return
         }
         var attempt = 0
+        var reconnecting = false
         while current(generation) {
             var resetStream = false
             do {
@@ -522,6 +524,8 @@ public actor SyncEngine {
                 // Asked for first, so the reads beside it usually begin after
                 // it and cover what came before it (`coverStream`).
                 await events.start(after: resuming ? streamCursor : nil)
+                if reconnecting { warm() }
+                reconnecting = true
                 // The chat on screen next, then home.
                 spaces.chatsFirst.open()
                 await spaces.chatsFirst.chatsAsked()
