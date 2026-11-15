@@ -243,16 +243,24 @@ public enum Metrics {
     /// The trailing square a status mark, an unread dot or a fold stands in (`SIDEBAR_SLOT_CELL`).
     public static let trailing: CGFloat = 18 * phone
     public static let trailingGap: CGFloat = 8 * phone
-    /// `.happy-sidebar__item-unread`: the dot a new row wears in that square.
-    public static let newDot: CGFloat = 8 * phone
+    /// `.happy-sidebar__item-unread`: the dot a new row wears, in the status slot.
+    public static let newDot: CGFloat = 10
+    /// The square every row's status mark stands in, its ink centred: the
+    /// working signal (8 by 14), a question or clock and a new row's dot.
+    /// As tall as the signal, as wide as the question's circle, so the four
+    /// share one column and one weight.
+    public static let statusSlot: CGFloat = 14
+    /// From the title's or the counts' end to the status slot. The slot's
+    /// own room puts the signal's ink 12 off (`trailingGap`), the dot's 10.
+    public static let statusGap: CGFloat = 8
     /// `--happy-hover-radius`.
     public static let cornerRadius: CGFloat = 6 * phone
     /// A picture's rounding in its lane: a rounded square, never a circle.
     public static let pictureRadius: CGFloat = 6 * phone
     /// A title too long for its row fades out over its last this many
     /// points, to clear at the label's end, instead of ending in "…"
-    /// (desktop's 12px, not scaled).
-    public static let titleFade: CGFloat = 12
+    /// (desktop's 14px, not scaled).
+    public static let titleFade: CGFloat = 14
     /// Legacy home's session/project title size, keeping this row's face and weight.
     public static let labelSize: CGFloat = TextStyles.sessionTitle.size
     /// Legacy home's "BOTS" / "PROJECTS" section size, keeping the mono bold face.
@@ -261,13 +269,15 @@ public enum Metrics {
     public static let sectionTracking: CGFloat = 0.08
     /// The tree's lines and a separator's rule: desktop's, not scaled.
     public static let line: CGFloat = 1
-    /// The fold's chevron, the question and the clock in the trailing square.
+    /// The fold's chevron in the trailing square.
     public static let chevronGlyph: CGFloat = 12 * phone
-    public static let questionGlyph: CGFloat = 15 * phone
-    public static let clockGlyph: CGFloat = 14 * phone
+    /// The question and the clock in the status slot: their circles 13
+    /// across, the signal's height (its ink is 6 by 13).
+    public static let questionGlyph: CGFloat = 16
+    public static let clockGlyph: CGFloat = 16
     /// A section's "+".
     public static let addGlyph: CGFloat = 14 * phone
-    /// The chat's braille loader, standing in the trailing square while a
+    /// The chat's braille loader, standing in the status slot while a
     /// row's work runs.
     public static let workingSignal = CGSize(width: 8, height: 14)
     /// The tree's lines, at 0.28 of the row ink.

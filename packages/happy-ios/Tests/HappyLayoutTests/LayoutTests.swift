@@ -50,7 +50,9 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(M.phone, 1.5)
         XCTAssertEqual([M.rowHeight, M.sectionHeight, M.separatorHeight, M.rowGap, M.inset], [48, 42, 26, 3, 8])
         XCTAssertEqual([M.mark, M.glyph, M.markGap, M.trailing, M.addGlyph], [30, 24, 12, 27, 21])
-        XCTAssertEqual([M.labelSize, M.sectionLabelSize, M.chevronGlyph, M.questionGlyph, M.clockGlyph], [17, 11, 18, 22.5, 21])
+        XCTAssertEqual([M.labelSize, M.sectionLabelSize, M.chevronGlyph, M.questionGlyph, M.clockGlyph], [17, 11, 18, 16, 16])
+        // Every status mark in one 14 square: signal, question, clock, dot.
+        XCTAssertEqual([M.statusSlot, M.workingSignal.height, M.newDot, M.statusGap], [14, 14, 10, 8])
         XCTAssertEqual(M.labelSize, TextStyles.sessionTitle.size)
         XCTAssertEqual(M.labelSize, TextStyles.projectName.size)
         XCTAssertEqual(M.sectionLabelSize, TextStyles.projectSection.size)

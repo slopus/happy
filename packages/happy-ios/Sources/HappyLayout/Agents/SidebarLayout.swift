@@ -183,30 +183,45 @@ public enum SidebarLayout {
 
     /// Counts take their measured width before the activity/fold lanes.
     /// Only the title yields space; no count update changes a row's height.
+    /// The working signal, a question, a clock or a new row's dot stands in
+    /// one `statusSlot` square ending at `activityRight`, its ink centred
+    /// there, so every row's mark lines up in one column. The title's box,
+    /// where its fade ends, and the counts stop `statusGap` before that
+    /// square; the title stops the row's gap (`trailingGap`) before counts.
     static func reserveLineChanges(_ row: Row, frame: inout Frame, activityRight: CGFloat, scale: CGFloat) {
-        let ink = workingInk(scale: scale)
+        let slot = statusSlot(box: frame.box, activityRight: activityRight)
+        var slotted = false
         if var corner = frame.corner, !row.hasFold {
-            corner.origin.x = activityRight - ink.maxX
-            corner.origin.y = frame.box.midY - ink.midY
+            let ink = workingInk(scale: scale)
+            corner.origin.x = slot.midX - ink.midX
+            corner.origin.y = slot.midY - ink.midY
             frame.corner = corner
-            frame.label.size.width = max(0, corner.minX + ink.minX - 6 - frame.label.minX)
+            slotted = true
         }
         if var trailing = frame.trailing, let statusInk = row.trailingInk, !row.hasFold {
-            trailing.origin.x = activityRight - statusInk.maxX
-            trailing.origin.y = frame.box.midY - statusInk.midY
+            trailing.origin.x = slot.midX - statusInk.midX
+            trailing.origin.y = slot.midY - statusInk.midY
             frame.trailing = trailing
-            frame.label.size.width = max(0, trailing.minX + statusInk.minX - 6 - frame.label.minX)
+            slotted = true
         }
+        if slotted { frame.label.size.width = max(0, slot.minX - Metrics.statusGap - frame.label.minX) }
         guard row.kind == .row, row.lineChangesWidth > 0 else { return }
         let right: CGFloat
-        if let corner = frame.corner {
-            right = corner.minX + ink.minX - 6
+        if slotted {
+            right = slot.minX - Metrics.statusGap
         } else {
             right = !row.hasTrailing && !row.hasFold ? activityRight : frame.label.maxX
         }
         let width = min(row.lineChangesWidth, max(0, right - frame.label.minX))
         frame.lineChanges = CGRect(x: right - width, y: frame.box.minY, width: width, height: frame.box.height)
-        frame.label.size.width = max(0, right - width - 8 - frame.label.minX)
+        frame.label.size.width = max(0, right - width - Metrics.trailingGap - frame.label.minX)
+    }
+
+    /// The status column's square on a row: `statusSlot` wide and tall,
+    /// ending at `activityRight`, on the row's middle.
+    public static func statusSlot(box: CGRect, activityRight: CGFloat) -> CGRect {
+        let side = Metrics.statusSlot
+        return CGRect(x: activityRight - side, y: box.midY - side / 2, width: side, height: side)
     }
 
     static func workingInk(scale: CGFloat) -> CGRect {

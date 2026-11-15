@@ -137,8 +137,12 @@ class AgentHomeLayoutTest {
         val counts = rule.onNode(hasTestTag(AgentHomeTags.ROW_CHANGES) and hasAnyAncestor(hasTestTag(rowTag)), useUnmergedTree = true).bounds
         val title = rule.onNode(hasTestTag(AgentHomeTags.ROW_TITLE) and hasAnyAncestor(hasTestTag(rowTag)), useUnmergedTree = true).bounds
         val dot = rule.onNode(hasTestTag(AgentHomeTags.ROW_DOT) and hasAnyAncestor(hasTestTag(rowTag)), useUnmergedTree = true).bounds
+        val slot = rule.onNode(hasTestTag(AgentHomeTags.ROW_STATUS) and hasAnyAncestor(hasTestTag(rowTag)), useUnmergedTree = true).bounds
         assertTrue(title.right <= counts.left)
-        assertTrue(counts.right <= dot.left)
+        assertDp("counts to the status slot", AgentHomeSpec.statusGap, slot.left - counts.right)
+        assertDp("the slot's width", AgentHomeSpec.statusSlot, slot.width)
+        assertDp("the dot centred across", (slot.left + slot.right) / 2, (dot.left + dot.right) / 2)
+        assertDp("the dot centred down", (slot.top + slot.bottom) / 2, (dot.top + dot.bottom) / 2)
         assertDp("unchanged row", 48, rule.node(rowTag).bounds.height)
         rule.onNodeWithContentDescription("≈ +12345 −1234", useUnmergedTree = true).assertExists()
     }
@@ -148,8 +152,8 @@ class AgentHomeLayoutTest {
         val changes = com.slopus.happy.agent.WorkspaceLineChanges("ready", 12345, 1234, false, 1.0)
         show(AgentFeed.derive(catalog(sample), git = mapOf("wat1" to changes)))
         val counts = rule.onNode(hasTestTag(AgentHomeTags.ROW_CHANGES), useUnmergedTree = true).bounds
-        val dot = rule.onNode(hasTestTag(AgentHomeTags.ROW_DOT) and hasAnyAncestor(hasTestTag(AgentHomeTags.row("agent-at2"))), useUnmergedTree = true).bounds
-        assertDp("counts and activity right edge", dot.right, counts.right)
+        val slot = rule.onNode(hasTestTag(AgentHomeTags.ROW_STATUS) and hasAnyAncestor(hasTestTag(AgentHomeTags.row("agent-at2"))), useUnmergedTree = true).bounds
+        assertDp("counts and the status slot share the right edge", slot.right, counts.right)
         assertDp("stable line height", AgentHomeSpec.TITLE_LINE, counts.height)
         rule.onAllNodesWithText("≈", useUnmergedTree = true).assertCountEquals(0)
     }

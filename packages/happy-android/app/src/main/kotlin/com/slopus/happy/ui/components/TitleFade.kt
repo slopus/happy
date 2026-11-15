@@ -17,8 +17,8 @@ import androidx.compose.ui.unit.dp
  * A title that fits stays wholly opaque.
  */
 object TitleFade {
-    /** How far before the end the fade starts, desktop's 12. */
-    val length = 12.dp
+    /** How far before the end the fade starts, desktop's 14. */
+    val length = 14.dp
 }
 
 /**

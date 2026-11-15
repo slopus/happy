@@ -242,10 +242,10 @@ abstract class FoldableLayoutTest(
         val row = rule.node(AgentHomeTags.row("agent-ab1")).bounds
         val card = DpRect(row.left + ContentTokens.inset, row.top, row.right - ContentTokens.inset, row.bottom)
         assertOnKeylines("agent home", null, null, card)
-        // The bar's outer glyphs stand on the content inside the cards: the first row's mark, the dots at the rows' ends.
+        // The bar's outer glyphs stand on the content inside the cards: the first row's mark, the status slots at the rows' ends.
         val mark = first(AgentHomeTags.ROW_MARK)
-        val dot = first(AgentHomeTags.ROW_DOT)
-        assertOnRowContent("agent home", glyph(AccountMenuTags.BUTTON, 32.dp), glyph(AgentHomeTags.SETTINGS, 24.dp), mark.left, dot.right)
+        val status = first(AgentHomeTags.ROW_STATUS)
+        assertOnRowContent("agent home", glyph(AccountMenuTags.BUTTON, 32.dp), glyph(AgentHomeTags.SETTINGS, 24.dp), mark.left, status.right)
         assertDp("agent home: search sits 48 before settings", glyph(AgentHomeTags.SETTINGS, 24.dp).right - 48.dp, glyph(AgentHomeTags.SEARCH, 24.dp).right)
         assertRestsBelowFeather("agent home")
         shot("agent-home")

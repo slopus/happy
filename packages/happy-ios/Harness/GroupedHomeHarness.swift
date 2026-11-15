@@ -24,7 +24,23 @@ private actor GroupedHomeTransport: AgentTransport {
     let lineCounts: Bool
     /// Every name but Happy's runs past its row (`-longTitles`).
     let longTitles: Bool
-    init(avatar: Data, lineCounts: Bool = false, longTitles: Bool = false) { self.avatar = avatar; self.lineCounts = lineCounts; self.longTitles = longTitles }
+    /// Onboarding emails waits, its clock after counts, beside the signal
+    /// and the question (`-statusMarks`).
+    let statusMarks: Bool
+    init(avatar: Data, lineCounts: Bool = false, longTitles: Bool = false, statusMarks: Bool = false) { self.avatar = avatar; self.lineCounts = lineCounts; self.longTitles = longTitles; self.statusMarks = statusMarks }
+
+    /// `tasks` with `-statusMarks`' wait.
+    private func marked(_ tasks: [[String: Any]]) -> [[String: Any]] {
+        guard statusMarks else { return tasks }
+        return tasks.map { task in
+            guard task["id"] as? String == "onboarding", var agent = task["agent"] as? [String: Any] else { return task }
+            var task = task
+            agent["status"] = "working"
+            agent["wait"] = ["startedAt": Self.now - 60_000, "dueAt": Self.now + 3_600_000]
+            task["agent"] = agent
+            return task
+        }
+    }
 
     /// `entries` with each name and title (a subtask's too) run long.
     private func lengthened(_ entries: [[String: Any]]) -> [[String: Any]] {
@@ -96,7 +112,7 @@ private actor GroupedHomeTransport: AgentTransport {
         [
             "cursor": "c1", "profile": ["userId": NSNull()],
             "userSettings": [],
-            "bots": lengthened(bots), "tasks": lengthened(tasks),
+            "bots": lengthened(bots), "tasks": lengthened(marked(tasks)),
             "taskMemberships": tasks.map { ["taskId": $0["id"]!] },
             "surfaces": Self.surfaces,
             "projects": lengthened([
@@ -234,12 +250,13 @@ private actor GroupedHomeTransport: AgentTransport {
                 }
                 return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["snapshots": snapshots]))
             }
-            let samples: [String: (Int, Int, Bool)] = lineCounts ? [
+            var samples: [String: (Int, Int, Bool)] = lineCounts ? [
                 "w-happy-sub1": (42, 7, true), "w-research-agent": (1250, 0, true),
                 "w-release-agent": (0, 18, true), "w-landing-agent": (128, 34, true),
                 "w-crash-agent": (309, 324, true), "w-crash-sub1": (1, 0, true),
                 "w-crash-sub2": (12345, 1234, false), "p1": (76, 9, true), "w1": (25, 4, true),
             ] : [:]
+            if lineCounts, statusMarks { samples["w-onboarding-agent"] = (64, 3, true) }
             var snapshots: [String: Any] = [:]
             for id in sent["workspaceIds"] as? [String] ?? [] {
                 let counts = samples[id] ?? (0, 0, true)
@@ -340,6 +357,7 @@ private actor GroupedHomeTransport: AgentTransport {
 final class GroupedHomeHarness {
     private var lineCounts = false
     private var longTitles = false
+    private var statusMarks = false
     private var account: AccountController?
     private var home: AgentHomeViewController?
 
@@ -355,6 +373,7 @@ final class GroupedHomeHarness {
         }
         lineCounts = arguments.contains("-lineCounts")
         longTitles = arguments.contains("-longTitles")
+        statusMarks = arguments.contains("-statusMarks")
         if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
         if arguments.contains("-light") { window.overrideUserInterfaceStyle = .light }
         let bottom = arguments.contains("-bottom")
@@ -395,7 +414,7 @@ final class GroupedHomeHarness {
     private var transport: GroupedHomeTransport?
 
     private func open(window: UIWindow, churns: Bool, shareLinks: Bool, linkChips: Bool = false) async {
-        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts, longTitles: longTitles)
+        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts, longTitles: longTitles, statusMarks: statusMarks)
         await transport.setChurns(churns)
         await transport.setShareLinks(shareLinks)
         await transport.setLinkChips(linkChips)

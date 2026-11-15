@@ -127,6 +127,8 @@ object AgentHomeTags {
     const val ROW_COUNT = "agentHome.rowCount"
     const val ROW_DIVIDER = HomeCardTags.DIVIDER
     const val ROW_DOT = "agentHome.rowDot"
+    /** The square at a row's end its status mark is centred in ([AgentHomeSpec.statusSlot]). */
+    const val ROW_STATUS = "agentHome.rowStatus"
     const val ROW_CHANGES = "agentHome.rowChanges"
     /** A Surface row's held menu: Leave. */
     const val LEAVE = "agentHome.leave"
@@ -162,8 +164,16 @@ object AgentHomeSpec {
     val tileRadius = 8.dp
     val tileGlyph = 18.dp
     val dot = HomeCardSpec.dot
-    /** Between the title and the dot. */
+    /** Between the title and the line counts after it. */
     val cornerGap = 12.dp
+    /**
+     * The square every status mark stands in, centred, ending at the row's
+     * end: as iOS's (`Metrics.statusSlot`), so its signal, question, clock
+     * and dots share one column. The title and the counts stop [statusGap]
+     * before it; its own room puts a [dot]'s ink 10 off.
+     */
+    val statusSlot = 14.dp
+    val statusGap = 8.dp
     /** The bar's title, the agent's name: smaller than Material's large title. */
     val barTitle = happyTextStyle(fontSize = 18, lineHeight = 24, weight = FontWeight.SemiBold)
     /** The compose button's margin from the window's corner, and the room under the last card to scroll it clear. */
@@ -512,8 +522,8 @@ private fun titleStart(row: AgentFeedRow): Dp {
 /**
  * One conversation, on one line: a bot's or task's 30 mark, the title 17/22
  * (desktop's sheen while it runs, [AgentFeedRow.Conversation.running];
- * cut with its last 12 fading where it runs out of room, [com.slopus.happy.ui.components.TitleFade]),
- * and a 10 dot 12 after it while it waits or is unread. No time. The whole
+ * cut with its last 14 fading where it runs out of room, [com.slopus.happy.ui.components.TitleFade]),
+ * and a 10 dot in its status slot while it waits or is unread. No time. The whole
  * row opens it.
  */
 @Composable
@@ -573,7 +583,7 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
             }
         }
         WorkspaceCounts(row.lineChanges)
-        Corner(row.blocked, row.unread, row.lineChanges?.visible == true)
+        Corner(row.blocked, row.unread)
     }
 }
 
@@ -709,28 +719,36 @@ private fun WorkspaceCounts(changes: WorkspaceLineChanges?) {
             if (changes.deletions > 0) "−${compactCount(changes.deletions)}" else null,
         ),
         color = HappyTheme.colors.textSecondary,
-        modifier = Modifier.padding(start = 8.dp).testTag(AgentHomeTags.ROW_CHANGES)
+        modifier = Modifier.padding(start = AgentHomeSpec.cornerGap).testTag(AgentHomeTags.ROW_CHANGES)
             .clearAndSetSemantics { contentDescription = exact },
     )
 }
 
 /**
  * A dot at the row's end while it needs something: orange waiting, blue
- * unread; nothing otherwise (home shows no times). The title gives way to
- * it, on the same line, so the row's height never changes.
+ * unread; nothing otherwise (home shows no times). It is centred in the
+ * row's [AgentHomeSpec.statusSlot], so the dots stand in one column. The
+ * title gives way to it, on the same line, so the row's height never changes.
  */
 @Composable
-private fun Corner(blocked: Boolean, unread: Boolean, hasCounts: Boolean = false) {
+private fun Corner(blocked: Boolean, unread: Boolean) {
     if (!blocked && !unread) return
     val label = stringResource(if (blocked) R.string.status_input_required else R.string.status_unread)
-    StatusDot(
-        color = if (blocked) BlockedDotColor else UnreadDotColor,
-        size = AgentHomeSpec.dot,
+    Box(
         modifier = Modifier
-            .padding(start = if (hasCounts) 6.dp else AgentHomeSpec.cornerGap)
-            .semantics { contentDescription = label }
-            .testTag(AgentHomeTags.ROW_DOT),
-    )
+            .padding(start = AgentHomeSpec.statusGap)
+            .size(AgentHomeSpec.statusSlot)
+            .testTag(AgentHomeTags.ROW_STATUS),
+        contentAlignment = Alignment.Center,
+    ) {
+        StatusDot(
+            color = if (blocked) BlockedDotColor else UnreadDotColor,
+            size = AgentHomeSpec.dot,
+            modifier = Modifier
+                .semantics { contentDescription = label }
+                .testTag(AgentHomeTags.ROW_DOT),
+        )
+    }
 }
 
 /** The list itself; [header] rows (a banner) go above the conversations. */

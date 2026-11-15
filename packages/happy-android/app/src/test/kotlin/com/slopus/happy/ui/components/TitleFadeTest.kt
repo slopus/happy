@@ -32,7 +32,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Desktop's sidebar title: a title that runs out of room fades over its last 12 instead of ending in "…". */
+/** Desktop's sidebar title: a title that runs out of room fades over its last 14 instead of ending in "…". */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -83,7 +83,7 @@ class TitleFadeTest {
     }
 
     @Test
-    fun aLongTitlesLast12FadeToNothing() {
+    fun aLongTitlesLast14FadeToNothing() {
         show(long, fade = true)
         val pixels = rule.node("title").captureToImage().toPixelMap()
         assertEquals("the title takes the whole box", px(160), pixels.width)
@@ -95,7 +95,7 @@ class TitleFadeTest {
     fun rightToLeftFadesOnTheLeft() {
         show(long, fade = true, LayoutDirection.Rtl)
         val pixels = rule.node("title").captureToImage().toPixelMap()
-        assertTrue("letters stand after the fade", pixels.ink(px(12), px(36)) > 0.8f)
+        assertTrue("letters stand after the fade", pixels.ink(px(TitleFade.length.value.toInt()), px(36)) > 0.8f)
         assertTrue("its very end is gone", pixels.ink(0, 2) < 0.1f)
     }
 
