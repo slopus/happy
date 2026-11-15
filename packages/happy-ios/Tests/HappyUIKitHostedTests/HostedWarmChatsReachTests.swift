@@ -49,5 +49,28 @@ final class HostedWarmChatsReachTests: XCTestCase {
         warm.release(again.chat, token: again.token, opened: false)
         try await account.agentConnections.remove(computer.id)
     }
+
+    /// Read-ahead waits for home to be verified (sync order I5): the
+    /// sidebar's rows alone, painted from what the phone kept, read nothing.
+    func testReadAheadStartsOnceHomeIsVerified() async throws {
+        let account = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "verified-test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil, agentTransport: { _ in ReachNoComputer() })
+        await account.agentConnections.setForeground(false)
+        let credentials = try JSONDecoder().decode(AgentConnectionCredentials.self,
+            from: Data(#"{"address":"verified-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"test"}"#.utf8))
+        let computer = try await account.agentConnections.add(credentials, name: "Verified test")
+        let session = try XCTUnwrap(Session.session(for: computer.id, context: AppContext(account: account, variant: .preview, version: "test")))
+        defer { Session.forget(computer.id) }
+        let warm = session.warm
+        let rows = (0..<3).map { Row(id: "s:\($0)", nodeId: "n\($0)", kind: .space, label: "Work \($0)", mark: .happy, agentId: "a\($0)", spaceId: "s\($0)") }
+        let before = warm.warmedCount
+        warm.update(rows: rows, visible: 0...2, references: References(), verified: false)
+        try await Task.sleep(for: .seconds(2))
+        XCTAssertEqual(warm.warmedCount, before, "read ahead before home was verified")
+        warm.update(rows: rows, visible: 0...2, references: References(), verified: true)
+        for _ in 0..<50 where warm.warmedCount == before { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertGreaterThan(warm.warmedCount, before, "nothing read ahead once home was verified")
+        try await account.agentConnections.remove(computer.id)
+    }
 }
 #endif

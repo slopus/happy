@@ -73,6 +73,8 @@ final class WarmChats {
     var instanceId: String?
     private var pump: Task<Void, Never>?
     private var started = false
+    /// Home is verified (sync order I5): read-ahead is P3, after P2 began.
+    private var verified = false
     /// Set by `stop`, so a second call has nothing to do.
     private(set) var stopped = false
     private var background = false
@@ -160,20 +162,22 @@ final class WarmChats {
     // MARK: What the sidebar says
 
     /// The rows the sidebar shows, folds applied, and the places among
-    /// them on screen (nil before it is measured).
-    func update(rows: [Row], visible shown: ClosedRange<Int>?, references: References) {
+    /// them on screen (nil before it is measured), and whether home is
+    /// verified: read-ahead starts each time it is, never before.
+    func update(rows: [Row], visible shown: ClosedRange<Int>?, references: References, verified: Bool) {
         let next = Warmth.candidates(rows)
         var references = references
         references.busy.formUnion(References.busy(in: rows))
         let referencesChanged = references != self.references
         self.references = references
-        guard next != candidates || shown != self.visible || referencesChanged || !started else { return }
+        guard next != candidates || shown != self.visible || referencesChanged || verified != self.verified else { return }
         candidates = next
         self.visible = shown
-        if !started {
+        let arrived = verified && !self.verified
+        self.verified = verified
+        if arrived {
             started = true
-            // After the sidebar's first paint, and an open made meanwhile.
-            schedule(after: Warmth.Limits.delay)
+            schedule(after: .zero)
         }
         rerank()
     }
@@ -249,7 +253,7 @@ final class WarmChats {
         ranked = Self.enabled && !background ? Warmth.ranked(candidates, visible: visible, limit: limit) : []
         prune()
         replanAll()
-        if started, pump == nil, !background { schedule(after: .zero) }
+        if started, verified, pump == nil, !background { schedule(after: .zero) }
     }
 
     /// Drops what desktop's limits don't keep.
@@ -365,9 +369,11 @@ final class WarmChats {
 
     /// Nothing is read or kept in the background but what is on screen:
     /// coming back, the store reads every conversation still following it
-    /// again at once, and the rest are read one at a time after the delay.
+    /// again at once, and the rest are read one at a time once home is
+    /// verified again.
     private func enterBackground() {
         background = true
+        verified = false
         pump?.cancel(); pump = nil
         dropUnheld()
     }
@@ -376,7 +382,6 @@ final class WarmChats {
         background = false
         pressed = false
         rerank()
-        if started { schedule(after: Warmth.Limits.delay) }
     }
 
     /// Everything not on screen goes, and only the top few are read again

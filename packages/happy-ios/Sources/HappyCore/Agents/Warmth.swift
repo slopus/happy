@@ -22,9 +22,6 @@ public enum Warmth {
         public static let released = 16
         /// Low Data Mode, Low Power Mode or a hot phone: only the top few.
         public static let constrained = 3
-        /// `PRELOAD_DELAY_MS`: after the sidebar lands, so its first paint
-        /// and an open go first.
-        public static let delay: Duration = .milliseconds(1_500)
         /// `PRELOAD_BUSY_WAIT_MS`: how often a read-ahead looks again while
         /// a conversation someone opened is still loading.
         public static let busyWait: Duration = .milliseconds(100)
