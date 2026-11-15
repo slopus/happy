@@ -363,7 +363,7 @@ class AgentSession internal constructor(
 
     /** What Feed entries name that the catalog doesn't hold: artifacts, and the todos they made. */
     val feedLookups: FeedLookups by lazy {
-        FeedLookups.of(scope, client) { ArtifactClient(client).artifact(it) }.also { lookups ->
+        FeedLookups.of(scope, client, beforeNetwork = { checkSessionAllowed() }) { ArtifactClient(client).artifact(it) }.also { lookups ->
             scope.launch { events.collect(lookups::receive) }
         }
     }
@@ -502,8 +502,8 @@ class AgentSession internal constructor(
     val references: com.slopus.happy.references.ReferenceReader by lazy {
         com.slopus.happy.references.ReferenceReader(
             scope, catalog, events,
-            readArtifact = { awaitBootstrap(); ArtifactClient(client).artifact(it) },
-            readUsers = { awaitBootstrap(); team.names(it.toSet()) },
+            readArtifact = { checkSessionAllowed(); ArtifactClient(client).artifact(it) },
+            readUsers = { checkSessionAllowed(); team.names(it.toSet()) },
         )
     }
     /**

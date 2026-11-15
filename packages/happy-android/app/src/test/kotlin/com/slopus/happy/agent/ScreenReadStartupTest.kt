@@ -9,6 +9,7 @@ import com.slopus.happy.documents.DocumentOpening
 import com.slopus.happy.feed.FeedFilter
 import com.slopus.happy.feed.FeedItem
 import com.slopus.happy.feed.FeedSubject
+import com.slopus.happy.feed.FeedLatest
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -130,5 +131,36 @@ class ScreenReadStartupTest {
         releaseHome.complete(Unit)
         eventually { session.phase.value == SyncPhase.Verified && agent.calls.any { it == "POST /v0/git/watch" } }
         assertEquals(1, subscriptions.get())
+    }
+
+    @Test fun artifactTodoAndUserNamesResolveWhileHomeNeverVerifies(): Unit = runBlocking {
+        val home = CompletableDeferred<Unit>()
+        val transport = object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (path == "/v0/bootstrap/desktop") { home.complete(Unit); awaitCancellation() }
+                return agent.request(method, path, credential, body, headers, category)
+            }
+        }
+        agent.resources["/v0/artifacts/a1"] = json("""{"artifact":{"id":"a1","title":"A title","type":"markdown","latestVersion":1}}""")
+        agent.resources["/v0/surfaces/todo/s1/td1"] = json("""{"todo":{"text":"A todo"}}""")
+        open.value = id
+        val session = manager(transport).session(id)!!
+        home.await()
+        agent.frames.send(Wire.hello("c0"))
+        eventually { session.phase.value == SyncPhase.P0Live }
+        session.team.bootstrap(JsonArray(listOf(json("""{"id":"u2","name":"A teammate"}"""))), null)
+        session.references.read("<happy-artifact id=\"a1\"/> <happy-user id=\"u2\"/>")
+        session.feedLookups.want(listOf(
+            FeedItem("f1", "1", "c1", FeedSubject("artifact", "a1"), firstAt = 1, lastAt = 2),
+            FeedItem("f2", "1", "c2", FeedSubject("surface", "s1"), firstAt = 1, lastAt = 2, latest = FeedLatest("todo.created", todoId = "td1")),
+        ))
+        eventually {
+            session.references.references.value.artifacts.containsKey("a1") &&
+                session.references.references.value.users["u2"] == "A teammate" &&
+                session.feedLookups.found.value.artifacts["a1"]?.title == "A title" &&
+                session.feedLookups.found.value.todos["s1/td1"] == "A todo"
+        }
+        assertEquals(SyncPhase.P0Live, session.phase.value)
+        assertTrue(agent.calls.none { it.startsWith("GET /v0/artifacts?") || it == "POST /v0/git/watch" })
     }
 }
