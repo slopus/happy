@@ -32,6 +32,7 @@ actor TeamFixture: AgentTransport {
         "alex": ["id": "alex", "name": "Alex", "photo": ["thumbhash": .string(TeamFixture.alexHash)], "version": "1", "updatedAt": 1],
     ]
     let bootstrap: String
+    let team: Bool
     var online = true
     /// The bootstrap's `health`; nil: none.
     var health: String?
@@ -40,6 +41,7 @@ actor TeamFixture: AgentTransport {
 
     /// `team` false: the same computer standalone, no team user signed in.
     init(team: Bool = true) {
+        self.team = team
         bootstrap = team ? Self.fixture : Self.fixture.replacingOccurrences(of: #""userId":"alex""#, with: #""userId":null"#)
     }
 
@@ -56,13 +58,14 @@ actor TeamFixture: AgentTransport {
         guard online else { throw URLError(.notConnectedToInternet) }
         requested.append(path)
         if path == "/v0/bootstrap/desktop" {
-            guard let health else { return .init(status: 200, body: Data(bootstrap.utf8)) }
-            return .init(status: 200, body: Data(bootstrap.replacingOccurrences(of: "{", with: #"{"health":\#(health),"#, range: bootstrap.range(of: "{")).utf8))
-        }
-        if path.hasPrefix("/v0/users?ids=") {
-            let ids = path.dropFirst("/v0/users?ids=".count).split(separator: ",").map(String.init)
-            let found = ids.compactMap { users[$0] }
-            return .init(status: 200, body: try JSONEncoder().encode(JSONValue.object(["users": .array(found)])))
+            // In a team, the members come with it; standalone, none do.
+            var fields = ""
+            if let health { fields += #""health":\#(health),"# }
+            if team {
+                let teammates = try JSONEncoder().encode(JSONValue.array(users.keys.sorted().map { users[$0]! }))
+                fields += #""teammates":\#(String(decoding: teammates, as: UTF8.self)),"#
+            }
+            return .init(status: 200, body: Data(bootstrap.replacingOccurrences(of: "{", with: "{" + fields, range: bootstrap.range(of: "{")).utf8))
         }
         return .init(status: 404, body: Data("{}".utf8))
     }
@@ -138,7 +141,7 @@ final class TeamTaskAuthorTests: XCTestCase {
     }
 
     /// Standalone: no signed-in team user, so every task keeps its own
-    /// placeholder, whatever owner a task still names, and nobody is read.
+    /// placeholder, whatever owner a task still names.
     func testOutsideATeamTasksKeepTheirOwnPlaceholder() throws {
         let json = TeamFixture.fixture.replacingOccurrences(of: #""userId":"alex""#, with: #""userId":null"#)
         let standalone = try desktop(json)
@@ -146,13 +149,6 @@ final class TeamTaskAuthorTests: XCTestCase {
         XCTAssertEqual(marks["Mine"], .placeholder(seed: "mine"))
         XCTAssertEqual(marks["Ada's"], .placeholder(seed: "adas"))
         XCTAssertEqual(marks["Bo's"], .placeholder(seed: "bos"))
-        XCTAssertEqual(SidebarRows.authors(standalone), [])
-    }
-
-    /// Only the listed tasks' authors are read: joined and not archived,
-    /// and never the signed-in person, whose face is the profile's.
-    func testOnlyTheListedTasksAuthorsAreRead() throws {
-        XCTAssertEqual(SidebarRows.authors(try desktop()), ["ada", "bo", "cy"])
     }
 
     /// A picture the bootstrap can't read is none, never a lost list.
@@ -182,10 +178,10 @@ final class TeamTaskAuthorTests: XCTestCase {
 
     private static func mark(_ snapshot: HomeSnapshot, _ label: String) -> Row.Mark? { snapshot.allRows.first { $0.label == label }?.mark }
 
-    /// The engine reads the members it doesn't know, in one read, and the
-    /// rows wear their faces; kept, they show on a relaunch with the
-    /// computer out of reach.
-    func testTheEngineReadsAndKeepsTheAuthors() async throws {
+    /// The members come with the bootstrap's `teammates`, with no read of
+    /// their own, and the rows wear their faces; kept, they show on a
+    /// relaunch with the computer out of reach.
+    func testTheAuthorsComeWithTheBootstrapAndAreKept() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("team-authors-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let transport = TeamFixture()
@@ -196,7 +192,7 @@ final class TeamTaskAuthorTests: XCTestCase {
         XCTAssertEqual(Self.mark(read, "Cy's"), .placeholder(seed: "cy"))
         XCTAssertEqual(Self.mark(read, "Mine"), .image(path: "/v0/users/alex/photo", thumbhash: TeamFixture.alexHash))
         let reads = await transport.requestedPaths().filter { $0.hasPrefix("/v0/users") }
-        XCTAssertEqual(reads.first, "/v0/users?ids=ada,bo,cy")
+        XCTAssertEqual(reads, [])
         await engine.stop()
 
         await transport.configure(online: false)
@@ -209,17 +205,20 @@ final class TeamTaskAuthorTests: XCTestCase {
         await relaunched.stop()
     }
 
-    /// A member's new picture (`profile.updated` naming them) is read and
-    /// worn; one the computer still doesn't name keeps their placeholder.
+    /// A member's new picture (`profile.updated` naming them) comes with
+    /// the bootstrap read again, and is worn; one the computer still
+    /// doesn't name keeps their placeholder.
     func testAMembersNewPictureIsWorn() async throws {
         let transport = TeamFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && Self.mark($0, "Ada's") == .image(path: "/v0/users/ada/photo", thumbhash: TeamFixture.adaHash) }
         await transport.setUser("bo", ["id": "bo", "name": "Bo", "photo": ["thumbhash": .string(TeamFixture.alexHash)], "version": "2", "updatedAt": 2])
         await transport.emit(["type": "profile.updated", "payload": ["userId": "bo"]])
         let changed = try await wait(engine) { Self.mark($0, "Bo's") == .image(path: "/v0/users/bo/photo", thumbhash: TeamFixture.alexHash) }
         XCTAssertEqual(Self.mark(changed, "Cy's"), .placeholder(seed: "cy"))
+        let reads = await transport.requestedPaths().filter { $0.hasPrefix("/v0/users") }
+        XCTAssertEqual(reads, [])
         await engine.stop()
     }
 

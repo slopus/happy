@@ -175,14 +175,9 @@ public actor SyncEngine {
     private var stopped = false
     private var cursor: String?
     private var dirty = false
-    /// The team members the listed tasks belong to, as last read, kept
-    /// beside the bootstrap (`TeamUser`); those asked for and not named,
-    /// left until the stream comes back; and those to read again.
+    /// The team's members, as the newest bootstrap's `teammates` named
+    /// them (`TeamUser`), kept beside it; none outside a team.
     private var users: [String: TeamUser] = [:]
-    private var usersMissing: Set<String> = []
-    private var usersAgain: Set<String> = []
-    private var usersDirty = false
-    private var usersRead: Task<Void, Never>?
     private var gitWatcher: Task<Void, Never>?
     /// Rows drawn again soon, after agents' updates (`deriveSoon`).
     private var deriving: Task<Void, Never>?
@@ -361,9 +356,9 @@ public actor SyncEngine {
         holdTimer?.cancel(); holdTimer = nil
         let release = releaseHold; releaseHold = nil
         let events = eventStream; eventStream = nil
-        let tasks = [runner, refresh, delivery, messageDelivery, usersRead, gitWatcher].compactMap { $0 }
+        let tasks = [runner, refresh, delivery, messageDelivery, gitWatcher].compactMap { $0 }
         gitWatcher = nil; gitInterest = []
-        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil
+        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil
         deriving?.cancel(); deriving = nil
         tasks.forEach { $0.cancel() }
         await events?.close()
@@ -604,7 +599,7 @@ public actor SyncEngine {
                     }
                     if event["type"] == .string("profile.updated") {
                         profileChanged()
-                        authorChanged(event["payload"]?["userId"]?.stringValue, generation)
+                        memberChanged(event["payload"]?["userId"]?.stringValue, generation)
                     }
                     if event["type"] == .string("user_settings.updated"), let value = event["payload"]?["setting"],
                        let setting = try? JSONDecoder().decode(UserSetting.self, from: JSONEncoder().encode(value)) {
@@ -765,11 +760,6 @@ public actor SyncEngine {
         guard await stage() else { return }
         await lookups.connected(gap: gap)
         await wantReferences()
-        // Faces may have changed while away; picked up where
-        // it left off, their `profile.updated` follows instead.
-        usersMissing = []
-        guard !continued else { return }
-        readAuthors(generation, again: Set(users.keys))
     }
 
     /// Home read again: at once on connecting, else for news, at most one
@@ -825,6 +815,7 @@ public actor SyncEngine {
         // it at once: what Gen UI's actions may run.
         client.servedHealth.take(value["health"])
         computer = Computer(health: value["health"], node: value["config"]?["node"])
+        try await takeTeammates(value["teammates"])
         let served = try await client.health()
         await spaces.externalCapabilities(served.capabilities)
         if cloud {
@@ -885,64 +876,26 @@ public actor SyncEngine {
         deriveDirectory()
         // The Feed's names wait for a bootstrap to know the rest by.
         await wantReferences()
-        readAuthors(generation)
     }
 
-    // MARK: Authors
+    // MARK: People
 
-    /// A member's name or picture changed (`profile.updated` names them in
-    /// a team): theirs is read again. The signed-in person's own comes with
-    /// the bootstrap.
-    private func authorChanged(_ id: String?, _ generation: Int) {
-        guard let id, let desktop, let me = desktop.profile?.userId else { return }
-        if id == me { return scheduleReconcile(generation) }
-        guard SidebarRows.authors(desktop).contains(id) else { return }
-        usersMissing.remove(id)
-        readAuthors(generation, again: [id])
+    /// Someone's name or picture changed (`profile.updated`): the signed-in
+    /// person's own, or a teammate's, comes with the next bootstrap.
+    private func memberChanged(_ id: String?, _ generation: Int) {
+        guard let id, let desktop else { return }
+        if id == desktop.profile?.userId || users[id] != nil { scheduleReconcile(generation) }
     }
 
-    /// Reads the members the listed tasks belong to that this phone doesn't
-    /// know yet, and `again` those that changed: one read at a time, an ask
-    /// made meanwhile read when it lands. None outside a team.
-    private func readAuthors(_ generation: Int, again: Set<String> = []) {
-        usersAgain.formUnion(again)
-        usersDirty = true
-        guard usersRead == nil else { return }
-        usersRead = Task {
-            while usersDirty && current(generation) {
-                usersDirty = false
-                guard let desktop else { break }
-                let authors = SidebarRows.authors(desktop)
-                let wanted = authors.filter { (users[$0] == nil && !usersMissing.contains($0)) || usersAgain.contains($0) }.sorted()
-                usersAgain.subtract(wanted)
-                guard !wanted.isEmpty else { continue }
-                var read: [TeamUser] = []
-                do {
-                    for start in stride(from: 0, to: wanted.count, by: 100) {
-                        read += try await client.teamUsers(Array(wanted[start..<min(start + 100, wanted.count)]))
-                    }
-                } catch {
-                    // Asked again when the stream comes back; meanwhile
-                    // they wear their placeholders.
-                    usersMissing.formUnion(wanted)
-                    continue
-                }
-                guard current(generation) else { break }
-                usersMissing.formUnion(Set(wanted).subtracting(read.map(\.id)))
-                // Members no listed task belongs to any more are let go.
-                var next = users.filter { authors.contains($0.key) }
-                for user in read { next[user.id] = user }
-                // A read that changed nothing redraws and writes nothing.
-                guard next != users else { continue }
-                users = next
-                let kept = try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(next.values.sorted { $0.id < $1.id }))
-                if let kept { try? await database().commit(.init(value: kept, cursor: nil), named: "users") }
-                guard current(generation) else { break }
-                derive()
-                deriveDirectory()
-            }
-            if self.generation == generation { usersRead = nil }
-        }
+    /// The bootstrap's `teammates`, kept for the next launch: names and
+    /// pictures for the tasks' authors. Standalone, it sends none.
+    private func takeTeammates(_ teammates: JSONValue?) async throws {
+        let list = (teammates.flatMap { try? JSONDecoder().decode([Lossy<TeamUser>].self, from: JSONEncoder().encode($0)) } ?? []).compactMap(\.value)
+        let next = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        guard next != users else { return }
+        users = next
+        let kept = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(next.values.sorted { $0.id < $1.id }))
+        try await database().commit(.init(value: kept, cursor: nil), named: "users")
     }
 
     public func setProjectsHidden(_ hidden: Bool) async throws {
