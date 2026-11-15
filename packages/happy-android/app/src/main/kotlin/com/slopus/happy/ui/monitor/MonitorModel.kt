@@ -26,7 +26,7 @@ internal class MonitorModel(private val session: AgentSession, surfaceId: String
     val feed = SystemMonitorFeed(
         scope = scope,
         fetch = {
-            session.awaitVerified()
+            session.awaitBootstrap()
             val answer = session.client.send("GET", SystemMonitorFeed.path(surfaceId))
             AgentClient.json.decodeFromString(SystemMonitorSample.serializer(), answer.text)
         },
