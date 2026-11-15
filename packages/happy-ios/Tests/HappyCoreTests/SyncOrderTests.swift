@@ -396,16 +396,26 @@ final class SyncOrderTests: XCTestCase {
         await engine.stop()
     }
 
-    func testAChatOpenedAsItsEngineStopsIsRead() async throws {
+    /// Stopped (signed out) as it opens: the chat isn't left waiting, and
+    /// asks a signed-out computer nothing.
+    func testAChatOpenedAsItsEngineStopsAsksNothing() async throws {
         let server = OrderServer()
         let client = AgentClient(transport: server, token: "t")
         let engine = SyncEngine(client: client, directory: folder())
-        let (conversation, shown) = await chat(client, engine)
+        let (conversation, _) = await chat(client, engine)
         await engine.start()
         await conversation.start()
         await engine.stop()
-        try await eventually("the chat read") { shown.snapshot.synced }
+        try await Task.sleep(for: .milliseconds(200))
+        let before = await server.requests().filter { $0.hasPrefix("GET /v0/agents/s/") }
+        // Opened after the stop, too.
+        let (later, _) = await chat(client, engine)
+        await later.start()
+        try await Task.sleep(for: .milliseconds(200))
+        let after = await server.requests().filter { $0.hasPrefix("GET /v0/agents/s/") }
+        XCTAssertEqual(after, before, "nothing asked after the stop")
         await conversation.stop()
+        await later.stop()
     }
 
     /// What this phone keeps can't be read: no stream is asked for.
@@ -570,6 +580,22 @@ final class SyncOrderTests: XCTestCase {
         XCTAssertNotNil(health.capabilities)
         await server.answer()
         _ = await pausing.value
+        await engine.stop()
+    }
+
+    /// What this phone keeps can't be read: no bootstrap is coming, and
+    /// whoever asks what the computer serves asks it.
+    func testAnEngineThatFailsToOpenLetsHealthBeAsked() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let blocked = folder()
+        try Data().write(to: blocked)
+        let engine = SyncEngine(client: client, directory: blocked)
+        await engine.start()
+        let waiting = Task { try await client.health() }
+        try await eventually("the error said") { await Self.home(engine).error != nil }
+        let health = try await waiting.value
+        XCTAssertNotNil(health.capabilities)
         await engine.stop()
     }
 
