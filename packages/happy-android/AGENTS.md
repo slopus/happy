@@ -2309,7 +2309,20 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
 - **Remote only.** Every WebView request goes through `ProxyController`'s
   override to the loopback `BrowserProxy`, with no bypass rules, applied
   before the first load; a WebView without `PROXY_OVERRIDE` shows
-  "unsupported" and loads nothing. There is no direct fallback.
+  "unsupported" and loads nothing. There is no direct fallback, but the proxy
+  itself dials past the loopback of a network that carries only that (below).
+- **Loopback-only networks** (`BrowserDestinations`, iOS's docs/browser-proxy.md):
+  the agent's network lookup may say `destinations: "loopback"` (Happy
+  Cloud). Then only `localhost`, `*.localhost`, `127.0.0.0/8` and `::1`, by
+  the host as written and never resolved, go through its tunnels; the proxy
+  dials the rest from the phone over plain TCP (`BrowserDirect`), the page's
+  TLS end to end and nothing of the agent's with it. Absent, every
+  destination is tunnelled as before. A nested CONNECT refused
+  `403 destination_not_allowed` past the loopback teaches the page the same
+  (`Page.dial`); one to a loopback port (a reserved one, `3128`) stays a 403
+  and is never dialed. The trade-off: a page's public requests leave from
+  the phone's network, so a page can reach the phone's LAN, where through
+  the tunnel it could only reach the computer's loopback.
 - **Android limits and what we do:**
   - The proxy override is process-wide, not per WebView as WKWebView's.
     While a browser page is open, every WebView of the app (Mermaid's too)

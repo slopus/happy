@@ -288,6 +288,60 @@ class BrowserTest {
         assertEquals(BrowserFailure(503, "Service Unavailable", "browser_proxy_live_unavailable"), BrowserFailure.of(BrowserUpstreamException(BrowserException(BrowserException.Kind.LiveUnavailable, 404))))
     }
 
+    @Test fun aNetworkThatCarriesOnlyItsLoopbackSaysSo() = runBlocking {
+        fun authority(url: String) = BrowserPolicy.Authority.of(url)!!
+        val loopback = listOf("http://localhost:5173", "http://app.localhost:3000", "http://127.0.0.1:5173", "http://127.8.9.10", "http://[::1]:5173")
+        val outside = listOf(
+            "https://fonts.googleapis.com", "http://192.168.1.10:5173", "http://10.0.0.1", "http://localhost.example.com",
+            "http://128.0.0.1", "http://127.0.0.256", "http://[::2]", "https://example.com:8443", "http://0.0.0.0:5173",
+        )
+        for (url in loopback) {
+            assertTrue(url, BrowserDestinations.Loopback.tunnels(authority(url)))
+            assertTrue(url, BrowserDestinations.All.tunnels(authority(url)))
+        }
+        for (url in outside) {
+            assertFalse(url, BrowserDestinations.Loopback.tunnels(authority(url)))
+            // Absent, as on a computer: the computer reaches everything.
+            assertTrue(url, BrowserDestinations.All.tunnels(authority(url)))
+        }
+        assertEquals(BrowserDestinations.Loopback, BrowserDestinations.of("loopback"))
+        assertEquals(BrowserDestinations.All, BrowserDestinations.of(null))
+        assertEquals(BrowserDestinations.All, BrowserDestinations.of("anything"))
+
+        // The lookup's marker reaches the page's network.
+        fun cloud(answer: String) = AgentClient(
+            Routing(
+                mapOf(
+                    "/v0/agents/chat1" to """{"agent":{"id":"chat1","workspaceId":"w1","status":"idle"}}""",
+                    "/v0/workspaces/w1/agents/chat1/proxy" to answer,
+                ),
+            ),
+            "test",
+            cloud = true,
+        )
+        val network = cloud("""{"networkId":"c-chat1","kind":"runner","destinations":"loopback"}""").browserNetwork(agentId = "chat1")
+        assertEquals("/v0/networks/c-chat1/proxy", network.path)
+        assertEquals(BrowserDestinations.Loopback, network.destinations)
+        assertEquals(BrowserDestinations.All, cloud("""{"networkId":"c-chat1"}""").browserNetwork(agentId = "chat1").destinations)
+
+        // The nested CONNECT's refusal says which it is.
+        val body = """{"error":"Destination not allowed","code":"destination_not_allowed"}"""
+        val refusal = "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n$body"
+        val refused = runCatching {
+            BrowserTunnel.open(AgentClient(Sockets(Bytes("HTTP/1.1 200 OK\r\n\r\n", refusal)), "token", cloud = true), BrowserNetwork.network("c-chat1"), authority("https://cdn.example.com"))
+        }.exceptionOrNull() as BrowserException
+        assertEquals(BrowserException.Kind.OutsideNetwork, refused.kind)
+        assertEquals(BrowserFailure(403, "Upstream Refused", "browser_proxy_upstream_refused"), BrowserFailure.of(BrowserUpstreamException(refused)))
+        assertEquals(BrowserFailure(403, "Upstream Refused", "browser_proxy_upstream_refused"), BrowserFailure.of(refused))
+
+        // The phone never dials itself: only the computer's loopback is the page's.
+        for (url in listOf("http://0.0.0.0:5173", "http://[::ffff:127.0.0.1]:5173")) {
+            val error = runCatching { BrowserDirect.open(authority(url)) }.exceptionOrNull() as? BrowserException
+            assertEquals(url, BrowserException.Kind.Forbidden, error?.kind)
+            assertEquals(url, BrowserFailure(403, "Forbidden", "browser_proxy_forbidden"), BrowserFailure.of(BrowserUpstreamException(error!!)))
+        }
+    }
+
     @Test fun aStoppedComputesRefusalIsTheComputeGoneNotTheServer() = runBlocking {
         val target = BrowserPolicy.Authority.of("http://localhost:5173")!!
         fun refusal(status: Int, code: String): String {

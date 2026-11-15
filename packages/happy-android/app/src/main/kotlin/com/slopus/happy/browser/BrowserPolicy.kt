@@ -14,6 +14,9 @@ class BrowserException(val kind: Kind, val status: Int = 0) : Exception(kind.nam
 
         /** The agent's compute is gone (detached, offline or draining): a tunnel refused with one of [BrowserCompute.gone]'s codes. */
         ComputeGone,
+
+        /** A network that carries only its loopback refused a destination past it (`403 destination_not_allowed`): the phone dials it ([BrowserDestinations]). */
+        OutsideNetwork,
     }
 }
 

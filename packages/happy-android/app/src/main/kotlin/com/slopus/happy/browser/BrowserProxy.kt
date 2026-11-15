@@ -29,7 +29,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * The in-app browser's proxy (iOS's `BrowserProxy`, docs/browser-proxy.md):
  * one authenticated listener on 127.0.0.1 that every in-app web page and
  * picture fetch goes through, so they use the computer's network and never
- * the phone's.
+ * the phone's, except past the loopback of a network that carries only its
+ * loopback ([BrowserDestinations]).
  *
  * Android's WebView takes one proxy for the whole app (`ProxyController`),
  * where WebKit takes one per page, so one listener serves every open
@@ -116,6 +117,27 @@ class BrowserProxy(parent: CoroutineScope) {
                 throw e
             } catch (_: Exception) {
                 throw BrowserException(BrowserException.Kind.Unavailable)
+            }
+        }
+
+        /**
+         * The network refused a destination past its loopback
+         * (`403 destination_not_allowed`) though its lookup didn't say so:
+         * from now on the phone dials everything past it.
+         */
+        @Volatile private var refusedOutside = false
+
+        /** A stream to [authority]: through [network]'s tunnel, or from the phone where it carries only its loopback. */
+        internal suspend fun dial(network: BrowserNetwork, authority: BrowserPolicy.Authority): TransportSocket {
+            val destinations = if (refusedOutside) BrowserDestinations.Loopback else network.destinations
+            if (!destinations.tunnels(authority)) return BrowserDirect.open(authority)
+            return try {
+                BrowserTunnel.open(scope.client, network, authority)
+            } catch (e: BrowserException) {
+                // A loopback port it refuses (a reserved one) is never dialed from the phone.
+                if (e.kind != BrowserException.Kind.OutsideNetwork || BrowserDestinations.isLoopback(authority)) throw e
+                refusedOutside = true
+                BrowserDirect.open(authority)
             }
         }
 
@@ -259,7 +281,7 @@ class BrowserProxy(parent: CoroutineScope) {
                         }
                         else -> {
                             val network = owner.network()
-                            val remote = upstream { BrowserTunnel.open(owner.scope.client, network, authority) }
+                            val remote = upstream { owner.dial(network, authority) }
                             try {
                                 local.write(ESTABLISHED)
                                 started = true
@@ -292,7 +314,7 @@ class BrowserProxy(parent: CoroutineScope) {
                             kept = null
                         }
                         val network = owner.network()
-                        val (remote, next) = forward(local, reused, { BrowserTunnel.open(owner.scope.client, network, authority) }, inner, rest) { started = true }
+                        val (remote, next) = forward(local, reused, { owner.dial(network, authority) }, inner, rest) { started = true }
                         kept = remote?.let { authority to it }
                         // Another request on the page's connection, which may go on the same tunnel.
                         remote ?: return
@@ -666,9 +688,10 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
                     cause is BrowserException && cause.kind == BrowserException.Kind.Timeout -> failure(504, "Gateway Timeout", "upstream_timeout")
                     cause is BrowserException && cause.kind == BrowserException.Kind.LiveUnavailable -> failure(503, "Service Unavailable", "live_unavailable")
                     cause is BrowserException && cause.kind == BrowserException.Kind.ComputeGone -> failure(503, "Service Unavailable", "compute_gone")
+                    cause is BrowserException && cause.kind == BrowserException.Kind.Forbidden -> failure(403, "Forbidden", "forbidden")
                     cause is BrowserException && (cause.kind == BrowserException.Kind.Malformed || cause.kind == BrowserException.Kind.TooLarge) ->
                         failure(502, "Bad Gateway", "upstream_response_invalid")
-                    cause is BrowserException && cause.kind == BrowserException.Kind.Upstream && cause.status in 400..599 ->
+                    cause is BrowserException && (cause.kind == BrowserException.Kind.Upstream || cause.kind == BrowserException.Kind.OutsideNetwork) && cause.status in 400..599 ->
                         failure(cause.status, "Upstream Refused", "upstream_refused")
                     atCapacity(cause) -> failure(503, "Service Unavailable", "upstream_capacity")
                     else -> failure(502, "Bad Gateway", "upstream_transport")
@@ -684,7 +707,7 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
                     BrowserException.Kind.LiveUnavailable -> failure(503, "Service Unavailable", "live_unavailable")
                     BrowserException.Kind.ComputeGone -> failure(503, "Service Unavailable", "compute_gone")
                     BrowserException.Kind.Timeout -> failure(408, "Request Timeout", "request_timeout")
-                    BrowserException.Kind.Upstream ->
+                    BrowserException.Kind.Upstream, BrowserException.Kind.OutsideNetwork ->
                         if (error.status in 400..599) failure(error.status, "Upstream Refused", "upstream_refused") else failure(502, "Bad Gateway", "upstream_transport")
                 }
             }

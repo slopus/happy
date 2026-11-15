@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
@@ -42,7 +41,7 @@ enum class BrowserCompute {
 
         /** The same, from a refusal's JSON body (its `code`). */
         fun gone(status: Int, body: ByteArray): Boolean =
-            gone(status, runCatching { Json.parseToJsonElement(body.decodeToString()) }.getOrNull().obj?.get("code").str)
+            gone(status, BrowserTunnel.code(body))
 
         /** Happy Cloud's close of an open tunnel when the agent's compute goes. */
         fun goneOnClose(close: Int, reason: String): Boolean = close == 1001 && (reason == "no_compute" || reason == "compute_offline")
