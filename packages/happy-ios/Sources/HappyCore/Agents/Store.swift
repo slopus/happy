@@ -132,13 +132,9 @@ public actor Store {
     /// (`SyncEngine.resetCarrier`): a read on its way dies with it, and is
     /// asked again without saying it failed.
     public private(set) var carrierResets = 0
-    /// Until its engine first asks for the stream, a chat opened is read
-    /// only after it, and home's read waits for those chats to ask
-    /// (`externalStreamAsked`): the chat on screen goes between the two.
-    private var streamOpen: Bool
-    private var waitingForStream: [CheckedContinuation<Void, Never>] = []
-    private var chatsAsking = 0
-    private var waitingForChats: [CheckedContinuation<Void, Never>] = []
+    /// A chat opened before its engine first asks for the stream is read
+    /// after it, and home's read waits for it (`ChatsFirst`).
+    public nonisolated let chatsFirst = ChatsFirst()
     private var placesDirty = false
     /// When the bots and tasks were last read (~0.8 MB on a busy
     /// computer), and what came meanwhile that their read could not follow.
@@ -162,9 +158,8 @@ public actor Store {
     private var attentionIdle: Task<Void, Never>?
     private var attentionVisible = true
 
-    public init(client: AgentClient, offline: OfflineFile? = nil, intents: IntentOutbox? = nil, labels: Rows.Labels = Rows.Labels(), placesRereadInterval: Duration = .seconds(10), holdsChatsForStream: Bool = false) {
+    public init(client: AgentClient, offline: OfflineFile? = nil, intents: IntentOutbox? = nil, labels: Rows.Labels = Rows.Labels(), placesRereadInterval: Duration = .seconds(10)) {
         self.client = client
-        streamOpen = !holdsChatsForStream
         self.placesRereadInterval = placesRereadInterval
         self.offline = offline
         self.intents = intents
@@ -200,39 +195,6 @@ public actor Store {
     }
 
     public func carrierReset() { carrierResets += 1 }
-
-    /// A chat opening: true while the stream is yet to be asked for, and
-    /// then it says `chatAsked` once its read has gone (or it closed).
-    public func chatOpening() -> Bool {
-        guard !streamOpen else { return false }
-        chatsAsking += 1
-        return true
-    }
-
-    public func chatAsked() {
-        chatsAsking -= 1
-        guard chatsAsking == 0 else { return }
-        let waiting = waitingForChats
-        waitingForChats = []
-        for chat in waiting { chat.resume() }
-    }
-
-    /// A chat's read waits here until the stream has been asked for.
-    public func streamAsked() async {
-        guard !streamOpen else { return }
-        await withCheckedContinuation { waitingForStream.append($0) }
-    }
-
-    /// The engine has asked for the stream (or never will): the chats that
-    /// waited are asked now, and this returns once they have been.
-    public func externalStreamAsked() async {
-        guard !streamOpen else { return }
-        streamOpen = true
-        let waiting = waitingForStream
-        waitingForStream = []
-        for chat in waiting { chat.resume() }
-        if chatsAsking > 0 { await withCheckedContinuation { waitingForChats.append($0) } }
-    }
 
     /// The account's stream is open. It carries everything after
     /// `missedBefore`; what came before it, those following read again.
@@ -1311,4 +1273,75 @@ public actor Store {
 struct Lossy<T: Decodable>: Decodable {
     let value: T?
     init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+}
+
+/// The chat on screen goes between the stream and home's bootstrap (sync
+/// order P0). Closed from its engine's first start until that engine asks
+/// for the stream: a chat opened meanwhile is read right after the ask,
+/// and the ask's home read waits until those chats have asked. A chat
+/// whose engine never started reads at once.
+public final class ChatsFirst: @unchecked Sendable {
+    private let lock = NSLock()
+    private var closed = false
+    private var used = false
+    private var waitingForStream: [CheckedContinuation<Void, Never>] = []
+    private var asking = 0
+    private var waitingForChats: [CheckedContinuation<Void, Never>] = []
+
+    /// The engine starts, the first time.
+    public func close() { lock.withLock { if !used { used = true; closed = true } } }
+
+    /// A chat opening: true while closed, and then it says `asked` once
+    /// its read has gone, or it closed.
+    public func opening() -> Bool {
+        lock.withLock {
+            guard closed else { return false }
+            asking += 1
+            return true
+        }
+    }
+
+    public func asked() {
+        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            asking -= 1
+            guard asking == 0 else { return [] }
+            defer { waitingForChats = [] }
+            return waitingForChats
+        }
+        for waiter in waiters { waiter.resume() }
+    }
+
+    /// A chat's read waits here while closed.
+    public func wait() async {
+        await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+            let now = lock.withLock { () -> Bool in
+                if !closed { return true }
+                waitingForStream.append(waiter)
+                return false
+            }
+            if now { waiter.resume() }
+        }
+    }
+
+    /// The stream was asked for, or won't be: the chats waiting are read now.
+    public func open() {
+        let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            closed = false
+            defer { waitingForStream = [] }
+            return waitingForStream
+        }
+        for waiter in waiters { waiter.resume() }
+    }
+
+    /// Returns once the chats opened while closed have asked.
+    public func chatsAsked() async {
+        await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+            let now = lock.withLock { () -> Bool in
+                if asking == 0 { return true }
+                waitingForChats.append(waiter)
+                return false
+            }
+            if now { waiter.resume() }
+        }
+    }
 }
