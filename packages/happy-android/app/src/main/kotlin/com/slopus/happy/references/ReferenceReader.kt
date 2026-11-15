@@ -42,7 +42,7 @@ class ReferenceReader(
     events: Flow<AgentEvent>,
     /** `GET /v0/artifacts/:id`'s artifact. */
     private val readArtifact: suspend (String) -> JsonObject,
-    /** `GET /v0/users?ids=`: the names of at most 100 people, by ID. */
+    /** Names from the bootstrap team directory, by ID. */
     private val readUsers: suspend (List<String>) -> Map<String, String>,
     private val io: CoroutineContext = Dispatchers.IO,
     /** Where the readings are put together. */

@@ -15,10 +15,10 @@ internal sealed interface AgentEndpointAdvertisement {
     data class Select(val publicUrl: String?) : AgentEndpointAdvertisement
 
     companion object {
-        fun decode(bytes: ByteArray): AgentEndpointAdvertisement {
+        fun decode(bytes: ByteArray, configOptional: Boolean = false): AgentEndpointAdvertisement {
             fun invalid(): Nothing = throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
             val root = Json.parseToJsonElement(bytes.decodeToString()) as? JsonObject ?: invalid()
-            val config = root["config"] as? JsonObject ?: invalid()
+            val config = root["config"] as? JsonObject ?: if (configOptional) return Unchanged else invalid()
             val api = config["api"]?.let { it as? JsonObject ?: invalid() } ?: return Unchanged
             val value = api["publicUrl"] ?: return Unchanged
             if (value == JsonNull) return Select(null)
@@ -103,8 +103,8 @@ internal class AgentEndpointTransport(
         val (base, snapshot) = current()
         val response = base.request(method, path, credential, body, headers, category)
         // A team server (OAuth) is reached at the address it was signed in to, whatever its config says.
-        if (method == "GET" && path == "/v0/config" && response.status == 200 && snapshot.credentials.oauth == null && credential == snapshot.credentials.deviceToken) {
-            val advertisement = AgentEndpointAdvertisement.decode(response.body)
+        if (method == "GET" && path in setOf("/v0/config", "/v0/bootstrap/desktop") && response.status == 200 && snapshot.credentials.oauth == null && credential == snapshot.credentials.deviceToken) {
+            val advertisement = AgentEndpointAdvertisement.decode(response.body, configOptional = path == "/v0/bootstrap/desktop")
             val changed = endpoint.apply(advertisement, snapshot)
             if (changed && advertisement == AgentEndpointAdvertisement.Select(null) && snapshot.credentials.tailcatAvailable == false) {
                 throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)

@@ -28,7 +28,7 @@ interface TodoRoutes {
     suspend fun reorder(surfaceId: String, todoId: String, afterId: String?, ifMatch: String, mutationId: String): TodoItem
     /** Every revision, oldest first, following the pages. */
     suspend fun versions(surfaceId: String, todoId: String): List<TodoRevision>
-    /** Team members' names by user ID (`GET /v0/users`); unknown ones are left out. */
+    /** Bootstrap team members' names by user ID; unknown ones are left out. */
     suspend fun names(ids: List<String>): Map<String, String>
 }
 
