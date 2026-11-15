@@ -157,15 +157,29 @@ class FeedLibrary(
     }
 
     /** The bootstrap was read: its `feedUnread` (null from a daemon without a feed), as of its event [cursor]. */
-    fun bootstrap(unread: Int?, cursor: String?) {
+    fun bootstrap(unread: Int?, cursor: String?, capabilities: FeedCapabilities? = null) {
         scope.launch {
             lock.withLock {
+                if (capabilities != null) {
+                    capable = capabilities.feed
+                    filtering = capabilities.subjectFilter
+                    if (!capabilities.subjectFilter) highlights.clear()
+                }
                 counted = unread != null
                 if (unread != null) setUnread(unread, cursor)
                 settle()
                 commit()
             }
+            readInitial()
         }
+    }
+
+    /** The stream's hello allows screen reads; later connects' automatic refresh stays in [connected]. */
+    fun hello() { live = true; readInitial() }
+
+    /** First launch needs a page once both conditions hold, whichever arrived last. */
+    private fun readInitial() {
+        if (live && !stateFlow.value.loaded && reading?.isActive != true) refresh()
     }
 
     /** The event stream opened: health says whether there is a feed and whether it filters, and the newest page is read. */
@@ -247,7 +261,7 @@ class FeedLibrary(
      * followed by one more.
      */
     fun refresh(): Job? {
-        if (!live || stateFlow.value.available != true) return null
+        if (stateFlow.value.available != true) return null
         if (reading?.isActive == true) {
             again = true
             return reading

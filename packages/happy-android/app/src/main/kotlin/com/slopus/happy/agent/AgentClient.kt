@@ -243,6 +243,10 @@ class AgentClient private constructor(
         return bootstrapHealth
     }
 
+    /** A screen needs capabilities now, even if no home bootstrap will run. */
+    suspend fun healthNow(): JsonObject = bootstrapHealth.takeIf { it.isNotEmpty() }
+        ?: decode<JsonObject>("GET", "/v0/health").also(::noteHealth)
+
     fun noteHealth(health: JsonObject) {
         bootstrapHealth = health
         val capabilities = health["capabilities"] as? JsonObject
