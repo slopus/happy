@@ -9,11 +9,15 @@ public final class AppContext {
     public let account: AccountController
     public let variant: AppVariant
     public let version: String
+    /// The build number (`CFBundleVersion`): every build of a version
+    /// carries the same CalVer one and differs only by this.
+    public let build: String?
 
-    public init(account: AccountController, variant: AppVariant, version: String) {
+    public init(account: AccountController, variant: AppVariant, version: String, build: String? = nil) {
         self.account = account
         self.variant = variant
         self.version = version
+        self.build = build
     }
 
     /// The custom server's host (and port), shown under the title; nil on

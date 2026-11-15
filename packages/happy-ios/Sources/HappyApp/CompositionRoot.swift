@@ -37,7 +37,8 @@ enum CompositionRoot {
             }
         }
         startAnalytics(bundle: bundle, variant: variant, version: version)
-        return AppContext(account: account, variant: variant, version: version)
+        let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return AppContext(account: account, variant: variant, version: version, build: build)
     }
 
     private static func startAnalytics(bundle: Bundle, variant: AppVariant, version: String) {
