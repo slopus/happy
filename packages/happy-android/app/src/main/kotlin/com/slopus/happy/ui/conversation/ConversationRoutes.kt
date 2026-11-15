@@ -216,7 +216,8 @@ internal fun NavHostController.heldConversation(agentId: String): Conversation? 
 /** The agent connection's client as a conversation asks it: refusals become [ConversationApiException]. */
 internal fun AgentSession.conversationRequest(): AgentRequest = { method, path, body, category ->
     try {
-        client.send(method, path, body, category = category)
+        if (method == "GET" && path == "/v0/config") configuration()
+        else client.send(method, path, body, category = category)
     } catch (e: AgentApiException) {
         throw ConversationApiException(e.status, e.code, e.message, e.body as? kotlinx.serialization.json.JsonObject)
     }
@@ -258,7 +259,8 @@ internal fun AgentSession.makeConversation(
         bytesRequest = conversationBytesRequest(), request = conversationRequest(), cloud = client.cloud, fileRequest = conversationFileRequest(),
         sendingDevice = { client.environment.sendingDeviceId },
     ),
-    signals = events.signalsFor(agentId),
+    signals = events.signalsFor(agentId, { chatNeedsResync(agentId) }),
+    initialRead = { takeChatRead(agentId) },
     // No screen's or call's: a send or draft save in flight finishes after they go.
     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     agentId = agentId,
@@ -300,9 +302,9 @@ internal fun AgentSession.conversationKeeper(agentId: String): ConversationKeepe
 }
 
 /** The connection's journal as one conversation hears it: its own events, configuration and skill changes, and a resync on every (re)connect. */
-internal fun Flow<AgentEvent>.signalsFor(agentId: String): Flow<ConversationSignal> = mapNotNull { event ->
+internal fun Flow<AgentEvent>.signalsFor(agentId: String, needsResync: () -> Boolean = { true }): Flow<ConversationSignal> = mapNotNull { event ->
     when {
-        event.type == AgentEvent.HELLO -> ConversationSignal.Resync
+        event.type == AgentEvent.HELLO -> if (needsResync()) ConversationSignal.Resync else null
         event.agentId == agentId -> ConversationSignal.Event(event.type, event.data)
         // The computer's configuration (its models) changed: every conversation's pickers follow.
         event.type == "config.updated" -> ConversationSignal.Event(event.type, event.data)

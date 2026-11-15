@@ -200,6 +200,7 @@ class Conversation(
     /** Where its analytics go: [Analytics], or a test's list. */
     private val record: (AnalyticsEvent) -> Unit = Analytics::record,
     private val errorShown: (ErrorArea, ErrorCode) -> Unit = Analytics::errorShown,
+    private val initialRead: suspend () -> Pair<Bootstrap, MessagesPage>? = { null },
 ) {
     /**
      * A send on its way: the person's [text], its pictures and its [files].
@@ -438,7 +439,10 @@ class Conversation(
             publish { it.copy(syncing = true) }
             try {
                 // Their own scope: a failed read is this read's failure, not the conversation's.
-                val (start, read) = coroutineScope {
+                val prepared = initialRead()
+                val (start, read) = if (prepared != null) {
+                    prepared.first to HistoryRead(prepared.second.runs, prepared.second.hasMore, null)
+                } else coroutineScope {
                     val bootstrap = async { api.bootstrap(agentId) }
                     val messages = async { readHistory() }
                     bootstrap.await() to messages.await()

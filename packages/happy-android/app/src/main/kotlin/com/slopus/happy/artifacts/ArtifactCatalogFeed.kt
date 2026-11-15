@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,16 +59,15 @@ class ArtifactCatalogFeed(
     private var again = false
 
     /** Disk, then the computer, then its [events], for as long as [scope] lives. */
-    fun start(events: Flow<AgentEvent>) {
+    fun start(events: Flow<AgentEvent>, verified: Flow<Boolean> = flowOf(true)) {
         if (started) return
         started = true
         scope.launch {
             val items = withContext(io) { kept() }?.let(ArtifactCatalog::fromKept)
             if (items != null && !stateFlow.value.loaded) stateFlow.update { it.copy(items = items, loaded = true) }
-            refresh()
+            launch { verified.collect { if (it) refresh() } }
             events.collect { event ->
                 when {
-                    event.type == AgentEvent.HELLO -> refresh()
                     event.type.startsWith("artifact.") -> receive(event)
                 }
             }

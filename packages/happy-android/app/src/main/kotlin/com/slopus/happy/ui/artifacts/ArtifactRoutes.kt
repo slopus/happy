@@ -93,16 +93,7 @@ internal fun computerName(graph: AppGraph, connectionId: String): String {
 }
 
 private class ArtifactsHolder(session: AgentSession?) : ViewModel() {
-    val feed: ArtifactCatalogFeed? = session?.let {
-        val files = ArtifactClient(it.client)
-        ArtifactCatalogFeed(
-            scope = viewModelScope,
-            fetch = { cursor -> files.catalog(cursor) },
-            fetchOne = { id -> files.artifact(id) },
-            kept = { it.cachedResource(ArtifactCatalogFeed.RESOURCE) },
-            keep = { value -> it.keepResource(ArtifactCatalogFeed.RESOURCE, value) },
-        ).also { feed -> feed.start(it.events) }
-    }
+    val feed: ArtifactCatalogFeed? = session?.artifacts
     val thumbnails: ArtifactThumbnails? = session?.let { ArtifactThumbnails(ArtifactClient(it.client), viewModelScope) }
 }
 

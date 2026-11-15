@@ -226,10 +226,11 @@ class FeedLookups(
         fun todoKey(surfaceId: String, todoId: String) = "$surfaceId/$todoId"
 
         /** Lookups through [client]. */
-        fun of(scope: CoroutineScope, client: AgentClient, readArtifact: suspend (String) -> JsonObject) = FeedLookups(
+        fun of(scope: CoroutineScope, client: AgentClient, beforeNetwork: suspend () -> Unit = {}, readArtifact: suspend (String) -> JsonObject) = FeedLookups(
             scope,
-            readArtifact,
+            readArtifact = { beforeNetwork(); readArtifact(it) },
             readTodo = { surfaceId, todoId ->
+                beforeNetwork()
                 client.decode<JsonObject>("GET", "/v0/surfaces/todo/${AgentClient.escape(surfaceId)}/${AgentClient.escape(todoId)}")["todo"].obj ?: JsonObject(emptyMap())
             },
         )
