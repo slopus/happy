@@ -253,6 +253,8 @@ final class DocumentSyncTests: XCTestCase {
         library = DocumentLibrary(client: client, directory: directory)
         await daemon.setStreams(library.streams)
         await library.opened(.object(["streamId": .string("s3")]))
+        // Home verified on that stream.
+        await library.resume()
         let sent = await Self.eventually { await daemon.markdown == expected }
         XCTAssertTrue(sent)
         let retired = await Self.eventually { await library.open.isEmpty }

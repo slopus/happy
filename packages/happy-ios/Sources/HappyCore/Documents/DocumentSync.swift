@@ -599,8 +599,11 @@ public actor DocumentLibrary {
 
     public var open: [String] { syncs.keys.sorted() }
 
-    func opened(_ hello: JSONValue) async {
-        await streams.opened(hello)
+    /// The stream said hello: the documents open link to it.
+    func opened(_ hello: JSONValue) async { await streams.opened(hello) }
+
+    /// Home verified on that stream: what was left unsent goes on.
+    func resume() async {
         guard await streams.current != nil else { return }
         resumeUnsent()
     }

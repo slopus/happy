@@ -587,6 +587,8 @@ public actor SyncEngine {
                         profileChanged()
                         await feed.opened()
                         await lookups.opened()
+                        // The documents on screen, as the chat on screen.
+                        await documents.opened(hello)
                         // Conversations and lists read again only for what they missed.
                         await spaces.externalOpened(missedBefore: continued ? nil : streamStart)
                         // Home verified before this hello came.
@@ -760,7 +762,7 @@ public actor SyncEngine {
     }
 
     private func release(_ generation: Int, _ connection: (hello: JSONValue, gap: Bool, continued: Bool)) async {
-        let (hello, gap, continued) = connection
+        let (_, gap, continued) = connection
         let chatReads = client.chatReads
         func stage() async -> Bool {
             await chatReads.landed()
@@ -778,7 +780,7 @@ public actor SyncEngine {
         waitingForChat = false
         await watchGit()?.value
         guard await stage() else { return }
-        await documents.opened(hello)
+        await documents.resume()
         guard await stage() else { return }
         await lookups.connected(gap: gap)
         await wantReferences()
