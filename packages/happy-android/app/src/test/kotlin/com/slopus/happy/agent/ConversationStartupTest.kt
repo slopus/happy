@@ -7,6 +7,7 @@ import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.*
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationRow
+import com.slopus.happy.conversation.Problem
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.conversation.makeConversation
 import kotlinx.coroutines.*
@@ -19,7 +20,7 @@ import org.junit.runner.RunWith
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 
-/** The ordering gate cannot prevent a separately held conversation from reading history. */
+/** History ordering releases ordinary reads, or ends with the stopped session's error. */
 @RunWith(AndroidJUnit4::class)
 class ConversationStartupTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
@@ -68,6 +69,15 @@ class ConversationStartupTest {
         }
     }
 
+    private suspend fun assertStopped(session: AgentSession, reason: AgentConnectionException.Reason) {
+        val before = agent.calls.count { it.startsWith("GET /v0/agents/") }
+        val chat = conversation(session)
+        eventually { chat.state.value.loaded && !chat.state.value.syncing }
+        assertEquals(Problem.Link(reason), chat.state.value.error)
+        assertFalse(chat.state.value.synced)
+        assertEquals(before, agent.calls.count { it.startsWith("GET /v0/agents/") })
+    }
+
     private suspend fun verified(manager: AgentSessions): AgentSession = manager.session(id)!!.also { session ->
         agent.frames.send(Wire.hello("c0"))
         eventually { session.phase.value == SyncPhase.Verified }
@@ -113,23 +123,22 @@ class ConversationStartupTest {
             override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream = throw AgentConnectionException(reason)
         } }.session(id)!!
         eventually { session.status.value == status }
-        assertCurrent(session)
+        assertStopped(session, reason)
     }
 
-    @Test fun revokedStreamDoesNotHoldHistory() = runBlocking {
+    @Test fun revokedStreamEndsHistoryWithRevokedErrorWithoutARequest() = runBlocking {
         terminal(AgentConnectionException.Reason.Revoked, AgentLinkStatus.Revoked)
     }
 
-    @Test fun updateRequiredStreamDoesNotHoldHistory() = runBlocking {
+    @Test fun updateRequiredStreamEndsHistoryWithUpdateErrorWithoutARequest() = runBlocking {
         terminal(AgentConnectionException.Reason.UpdateRequired, AgentLinkStatus.UpdateRequired)
     }
 
-    @Test fun signOutDoesNotHoldASeparatelyObservedConversation(): Unit = runBlocking {
+    @Test fun signOutEndsASeparatelyObservedConversationWithoutARequest(): Unit = runBlocking {
         val session = verified(manager())
         connections.signedOut(id)
         eventually { session.status.value == AgentLinkStatus.SignInRequired && session.phase.value == SyncPhase.Offline }
-        // The fake still accepts the cached credential, isolating the gate from authorization refusal.
-        assertCurrent(session)
+        assertStopped(session, AgentConnectionException.Reason.SignInRequired)
     }
 
     @Test fun switchingAwayDoesNotHoldTheOldAccountsHistory(): Unit = runBlocking {
@@ -139,10 +148,10 @@ class ConversationStartupTest {
         assertCurrent(session)
     }
 
-    @Test fun closedSessionDoesNotHoldASeparatelyObservedConversation(): Unit = runBlocking {
+    @Test fun closedSessionEndsASeparatelyObservedConversationWithoutARequest(): Unit = runBlocking {
         val session = verified(manager())
         session.close()
-        assertCurrent(session)
+        assertStopped(session, AgentConnectionException.Reason.Unavailable)
     }
 
     @Test fun aPendingStreamHeadDoesNotHoldHistory(): Unit = runBlocking {
