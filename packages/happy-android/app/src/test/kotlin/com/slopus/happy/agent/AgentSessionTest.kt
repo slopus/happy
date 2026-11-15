@@ -393,7 +393,7 @@ class AgentSessionTest {
         val releaseHome = CompletableDeferred<Unit>()
         val outboxStarted = CompletableDeferred<Unit>()
         val releaseOutbox = CompletableDeferred<Unit>()
-        val stages = listOf("GET /v0/feed?limit=50", "GET /v0/artifacts?limit=100", "POST /v0/git/watch", "POST /v0/surfaces/document/d1/subscribe")
+        val stages = listOf("GET /v0/feed?limit=50", "GET /v0/artifacts?limit=100", "POST /v0/git/watch")
         val stageStarted = stages.map { CompletableDeferred<Unit>() }
         val stageEnded = stages.map { CompletableDeferred<Unit>() }
         val releaseStage = stages.map { CompletableDeferred<Unit>() }
@@ -410,8 +410,9 @@ class AgentSessionTest {
                 fun answer(text: String) = TransportResponse(200, body = text.toByteArray())
                 if (path == "/v0/bootstrap/desktop") { homeStarted.complete(Unit); releaseHome.await() }
                 if (path == "/outbox-probe") { outboxStarted.complete(Unit); releaseOutbox.await(); return answer("{}") }
-                // A screen's initial state read is ordinary; its stream subscription remains the final automatic stage.
+                // Open documents link at hello independently of the automatic stages.
                 if (path == "/v0/surfaces/document/d1/state") return answer("""{"seq":0,"update":"AAA=","stateVector":"AA=="}""")
+                if (path == "/v0/surfaces/document/d1/subscribe") return answer("""{"seq":0}""")
                 if (path.startsWith("/v0/agents/read")) {
                     val index = path.substringAfter("/v0/agents/read").substringBefore('/').toInt()
                     activeChats.incrementAndGet()

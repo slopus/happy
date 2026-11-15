@@ -103,4 +103,32 @@ class ScreenReadStartupTest {
         assertTrue(agent.calls.none { it.startsWith("GET /v0/artifacts") || it == "POST /v0/git/watch" })
         releaseChat.complete(Unit)
     }
+
+    @Test fun openDocumentLinksAtHelloWhileHomeBootstrapIsHeldAndP2DoesNotRelink(): Unit = runBlocking {
+        val home = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val subscriptions = java.util.concurrent.atomic.AtomicInteger()
+        val transport = object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (path == "/v0/bootstrap/desktop") { home.complete(Unit); releaseHome.await() }
+                if (path == "/v0/surfaces/document/d1/subscribe") {
+                    subscriptions.incrementAndGet()
+                    return TransportResponse(200, body = """{"seq":0}""".toByteArray())
+                }
+                return agent.request(method, path, credential, body, headers, category)
+            }
+        }
+        agent.resources["/v0/surfaces/document/d1/state"] = json("""{"seq":0,"update":"AAA=","stateVector":"AA=="}""")
+        open.value = id
+        val session = manager(transport).session(id)!!
+        home.await()
+        assertEquals(DocumentOpening.Ready, session.documents.document("d1").start())
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c0\",\"gap\":false,\"resumed\":true,\"streamId\":\"st1\"}\n\n")
+        eventually { subscriptions.get() == 1 }
+        assertEquals(SyncPhase.P0Live, session.phase.value)
+        assertTrue(agent.calls.none { it.startsWith("GET /v0/artifacts?") || it == "POST /v0/git/watch" })
+        releaseHome.complete(Unit)
+        eventually { session.phase.value == SyncPhase.Verified && agent.calls.any { it == "POST /v0/git/watch" } }
+        assertEquals(1, subscriptions.get())
+    }
 }
