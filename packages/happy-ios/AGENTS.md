@@ -714,6 +714,9 @@ and preview ship the same number on their own listings.
 - `CFBundleVersion` (`CURRENT_PROJECT_VERSION`) stays the build number:
   production's is set in `App/Info-Production.plist` and the Happy target's
   Release settings; preview uploads let Xcode pick the next free one.
+- Settings › Version shows both, `2026.11.1 (160)`, as Android shows
+  `versionName (versionCode)`; outside production the variant follows
+  (`2026.11.1 (171) / preview`).
 - The version also goes out as `X-Happy-Client: ios/<version>` and in
   `POST /v1/version` (the server's semver range `>=1.4.1` admits it). The
   server uses the header only for metrics labels.

@@ -786,7 +786,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             Row(Index.privacy, action: { [weak self] in self?.openBrowser(Strings.Links.privacy) }),
             Row(Index.terms, action: { [weak self] in self?.openBrowser(Strings.Links.terms) }),
             Row(Index.eula, action: { [weak self] in self?.openBrowser(Strings.Links.eula) }),
-            Row(Index.version, value: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
+            Row(Index.version, value: SettingsIndexModel.versionDetail(version: context.version, build: context.build, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
         ] + developerRows()).withFooter(aboutFooter)
     }
 

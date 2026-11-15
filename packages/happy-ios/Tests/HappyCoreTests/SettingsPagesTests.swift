@@ -49,6 +49,10 @@ final class SettingsIndexModelTests: XCTestCase {
     func testVersionDetail() {
         XCTAssertEqual(SettingsIndexModel.versionDetail(version: "2026.10.1", variant: .production), "2026.10.1")
         XCTAssertEqual(SettingsIndexModel.versionDetail(version: "2026.10.1", variant: .preview), "2026.10.1 / preview")
+        // Builds of one CalVer version differ only by their build number.
+        XCTAssertEqual(SettingsIndexModel.versionDetail(version: "2026.11.1", build: "160", variant: .production), "2026.11.1 (160)")
+        XCTAssertEqual(SettingsIndexModel.versionDetail(version: "2026.11.1", build: "171", variant: .preview), "2026.11.1 (171) / preview")
+        XCTAssertEqual(SettingsIndexModel.versionDetail(version: "2026.11.1", build: "", variant: .production), "2026.11.1")
     }
 }
 

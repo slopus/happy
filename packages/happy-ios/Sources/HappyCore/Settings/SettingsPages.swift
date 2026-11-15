@@ -31,10 +31,14 @@ public struct SettingsIndexModel: Equatable, Sendable {
         }
     }
 
-    /// The Version row's detail. happy-app shows `version / runtime N`; this
-    /// app has no OTA runtime, so it names the variant outside production.
-    public static func versionDetail(version: String, variant: AppVariant) -> String {
-        variant == .production ? version : "\(version) / \(variant.rawValue)"
+    /// The Version row's detail: the CalVer version and its build, as
+    /// Android shows `versionName (versionCode)`, since every build of a
+    /// version differs only by its build number. happy-app shows
+    /// `version / runtime N`; this app has no OTA runtime, so it names the
+    /// variant outside production.
+    public static func versionDetail(version: String, build: String? = nil, variant: AppVariant) -> String {
+        let built = build.map { $0.isEmpty ? version : "\(version) (\($0))" } ?? version
+        return variant == .production ? built : "\(built) / \(variant.rawValue)"
     }
 }
 
