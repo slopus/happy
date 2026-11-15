@@ -3,6 +3,7 @@ package com.slopus.happy.connection
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /** A paired agent as the phone shows it: its own name and avatar, and how it answers now. */
 data class AgentInfo(
@@ -103,7 +104,7 @@ object AgentIdentity {
      * The node's picture. Only a refusal (401/403) fails the refresh: a
      * picture that can't be read, or isn't one, leaves the kept one as it is.
      */
-    private suspend fun avatar(requester: Requester, etag: String?, oauth: Boolean): NodeAvatar {
+    internal suspend fun avatar(requester: Requester, etag: String?, oauth: Boolean): NodeAvatar {
         val image = try {
             requester.request("GET", "/v0/node/avatar", etag?.let { mapOf("If-None-Match" to it) } ?: emptyMap(), RequestCategory.File)
         } catch (e: CancellationException) {
@@ -125,6 +126,28 @@ object AgentIdentity {
             404 -> NodeAvatar.None
             else -> NodeAvatar.Unchanged
         }
+    }
+
+    /** The live session gets identity from the same snapshot as home. */
+    internal fun bootstrap(health: JsonObject?, config: JsonObject?, fallbackName: String): AgentInfo {
+        if (health == null || config == null) throw AgentConnectionException(AgentConnectionException.Reason.UpdateRequired)
+        val state = json.decodeFromString<Health>(health.toString())
+        if (state.version.protocol < MIN_PROTOCOL) throw AgentConnectionException(AgentConnectionException.Reason.UpdateRequired)
+        if (!state.ready) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+        val node = json.decodeFromString<Config>(config.toString()).node
+        val name = node?.name?.takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 128 && it.none(Char::isISOControl) }
+        if (node != null && name == null) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+        return AgentInfo(
+            name = name ?: fallbackName,
+            thumbhash = node?.avatar?.thumbhash,
+            daemonVersion = state.version.daemon,
+            protocol = state.version.protocol,
+            avatar = if (node != null && node.avatar == null) NodeAvatar.None else NodeAvatar.Unchanged,
+            webSocketTunnels = state.capabilities?.webSocketTunnels == true,
+            instanceId = state.instanceId?.takeIf(com.slopus.happy.agent.HappyUrls::isInstanceId),
+            search = state.capabilities?.search == true,
+            plugins = state.capabilities?.plugins == true,
+        )
     }
 
     private fun check(response: TransportResponse, oauth: Boolean): TransportResponse {

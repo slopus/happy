@@ -132,6 +132,8 @@ data class WireProfile(val userId: String? = null, val name: String? = null, val
  */
 @Serializable
 data class WireDesktopBootstrap(
+    val health: JsonObject? = null,
+    val config: JsonObject? = null,
     val projects: List<JsonObject> = emptyList(),
     val workspaces: List<JsonObject> = emptyList(),
     val bots: List<JsonObject> = emptyList(),

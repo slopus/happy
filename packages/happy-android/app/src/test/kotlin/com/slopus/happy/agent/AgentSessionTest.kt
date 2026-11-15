@@ -82,6 +82,15 @@ class AgentSessionTest {
     }
 
     @Test
+    fun coldHomeRequestsStreamBeforeBootstrapAndUsesBootstrapIdentity() = runBlocking {
+        val session = sessions().session(id)!!
+        eventually({ session.catalog.value.loaded }) { it }
+        assertEquals(listOf("STREAM /v0/events/stream", "GET /v0/bootstrap/desktop"), agent.calls.toList())
+        assertEquals("Studio", connections.accounts.value.single().name)
+        assertEquals(0, agent.calls.count { it == "GET /v0/health" || it == "GET /v0/config" || it == "GET /v0/node/avatar" })
+    }
+
+    @Test
     fun artifactFilesUseOnlyTheSelectedConnectionsCredential() = runBlocking {
         foreground.value = false
         open.value = null

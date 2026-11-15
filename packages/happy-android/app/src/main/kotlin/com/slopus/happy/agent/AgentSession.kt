@@ -74,14 +74,15 @@ enum class AgentLinkStatus {
     SignInRequired,
 }
 
+enum class SyncPhase { Offline, P0Connecting, P0Live, Verified }
+
 /**
  * One agent connection while the phone talks to it (iOS's DirectSyncEngine):
  * its [client]; the catalog home draws, from `GET /v0/bootstrap/desktop` and
  * then the journal; the journal itself as [events] for the open chat; and
  * [status]. The live link runs while [active] is true (the connection is
- * open and the app in the foreground): health and identity, the snapshot
- * unless the catalog already has a cursor, then `/v0/events/stream` from
- * the cursor, reconnecting with socket.io's backoff (1 to 5 s, jitter 0.5)
+ * open and the app in the foreground): `/v0/events/stream`, then the snapshot
+ * unless resuming a recent cursor, reconnecting with backoff (1 to 5 s, jitter 0.5)
  * and resuming from the last cursor. A `hello` with `gap` reads the
  * snapshot again. The catalog is kept in [cacheFile] and read off the main
  * thread as the session starts, so home shows from disk, offline too, and
@@ -137,6 +138,9 @@ class AgentSession internal constructor(
     /** Kept through the last background, its tunnels not resumed since ([backgrounded]). */
     private val suspended = AtomicBoolean(false)
     val status: StateFlow<AgentLinkStatus> = statusState.asStateFlow()
+    private val phaseState = MutableStateFlow(SyncPhase.Offline)
+    val phase: StateFlow<SyncPhase> = phaseState.asStateFlow()
+    private var avatarHash: String? = null
 
     private val reads = MutableStateFlow(0)
     /** Bootstrap or a resource whose event version chain broke is being caught up. */
@@ -755,12 +759,17 @@ class AgentSession internal constructor(
             // The sign-in this attempt runs under: a refusal it meets signs out only that one.
             val grant = connections.grant(connectionId)
             try {
-                refreshIdentity()
-                if (!snapshotRead) {
-                    readSnapshot()
-                    snapshotRead = true
+                coroutineScope {
+                    val stream = client.events(catalogState.value.cursor.takeIf { snapshotRead })
+                    phaseState.value = SyncPhase.P0Connecting
+                    val snapshot = async {
+                        if (!snapshotRead) {
+                            readSnapshot()
+                            snapshotRead = true
+                        }
+                    }
+                    follow(stream, snapshot) { backoff = INITIAL_BACKOFF }
                 }
-                follow { backoff = INITIAL_BACKOFF }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: AgentConnectionException) {
@@ -788,6 +797,8 @@ class AgentSession internal constructor(
                 reconnecting()
             } catch (_: Exception) {
                 reconnecting()
+            } finally {
+                phaseState.value = SyncPhase.Offline
             }
             delay(backoff + (backoff * JITTER * (random.nextDouble() * 2 - 1)).toLong())
             backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF)
@@ -814,14 +825,14 @@ class AgentSession internal constructor(
         connections.accounts.first { list -> list.none { it.id == connectionId && it.signInRequired } }
     }
 
-    /** Health (protocol 27 or later) and the agent's own name and avatar, shown in the account menu. */
-    private suspend fun refreshIdentity() {
+    private suspend fun bootstrapIdentity(bootstrap: WireDesktopBootstrap) {
         val known = connections.accounts.value.firstOrNull { it.id == connectionId }
-        val info = AgentIdentity.refresh(client.requester, known?.name.orEmpty(), known?.avatarFile?.let { known.avatarETag }, oauth = client.isOAuth())
+        val info = AgentIdentity.bootstrap(bootstrap.health, bootstrap.config, known?.name.orEmpty())
         client.noteHealth(info)
         pluginsAvailability.noteHealth(info.plugins)
+        avatarHash = info.thumbhash?.takeIf { it != known?.thumbhash || known.avatarFile == null }
         if (known != null) {
-            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false, instanceId = info.instanceId, daemonVersion = info.daemonVersion, protocol = info.protocol) }
+            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash, revoked = false, instanceId = info.instanceId, daemonVersion = info.daemonVersion, protocol = info.protocol) }
         }
     }
 
@@ -829,6 +840,11 @@ class AgentSession internal constructor(
         reads.update { it + 1 }
         try {
             val bootstrap = client.decode<WireDesktopBootstrap>("GET", "/v0/bootstrap/desktop")
+            val owner = connections.accounts.value.firstOrNull { it.id == connectionId }?.userId
+            if (owner != null && bootstrap.profile?.string("userId") != owner) {
+                throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
+            }
+            bootstrapIdentity(bootstrap)
             catalogLock.withLock { catalogState.update { it.withBootstrap(bootstrap) } }
             feedLibrary.bootstrap(bootstrap.feedUnread, bootstrap.cursor)
         } finally {
@@ -839,8 +855,7 @@ class AgentSession internal constructor(
     private val completions = CompletionWatch()
 
     /** The journal from the catalog's cursor until the stream ends or fails. */
-    private suspend fun follow(onConnected: () -> Unit) {
-        val stream = client.events(catalogState.value.cursor)
+    private suspend fun follow(stream: com.slopus.happy.connection.TransportStream, snapshot: Deferred<Unit>, onConnected: () -> Unit) {
         try {
             val parser = ServerSentEventParser()
             while (true) {
@@ -853,9 +868,19 @@ class AgentSession internal constructor(
                     }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
-                        documents.opened(event.data)
+                        phaseState.value = SyncPhase.P0Live
+                        snapshot.await()
                         val hello = AgentHello.of(event)
                         if (hello.gap) readSnapshot()
+                        phaseState.value = SyncPhase.Verified
+                        documents.opened(event.data)
+                        avatarHash?.let { hash ->
+                            avatarHash = null
+                            scope.launch {
+                                val avatar = AgentIdentity.avatar(client.requester, null, client.isOAuth())
+                                connections.update(connectionId, avatar) { it.copy(thumbhash = hash) }
+                            }
+                        }
                         statusState.value = AgentLinkStatus.Connected
                         // Reads the Feed's newest page each time, so a gap loses nothing.
                         feedLibrary.connected()
@@ -866,6 +891,7 @@ class AgentSession internal constructor(
                         // Every connect sends what was changed while offline.
                         if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)
                     } else {
+                        snapshot.await()
                         if (event.type == "git.updated") {
                             val id = event.data.string("workspaceId")
                             val state = WorkspaceLineChanges.parse(event.data["git"])
