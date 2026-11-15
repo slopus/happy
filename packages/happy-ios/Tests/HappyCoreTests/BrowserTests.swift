@@ -39,6 +39,22 @@ final class BrowserTests: XCTestCase {
         catch { XCTAssertEqual(error as? BrowserError, .unavailable) }
     }
 
+    func testAChatOpensInItsAgentsNetworkAndAnOlderComputerInTheWorkspace() async throws {
+        let client = AgentClient(transport: RoutingTransport(responses: [
+            "/v0/agents/chat1": #"{"agent":{"id":"chat1","workspaceId":"botworkspace","status":"idle"}}"#,
+            "/v0/workspaces/botworkspace/agents/chat1/proxy": #"{"networkId":"c-chat1_env2"}"#,
+        ]), token: "test")
+        let network = try await client.agentNetwork("chat1")
+        XCTAssertEqual(network, .network("c-chat1_env2"))
+        XCTAssertEqual(network.path, "/v0/networks/c-chat1_env2/proxy")
+        // A daemon without the agent network route has only the workspace's.
+        let older = AgentClient(transport: RoutingTransport(responses: ["/v0/agents/chat1": #"{"agent":{"id":"chat1","workspaceId":"hostworkspace","status":"idle"}}"#]), token: "test")
+        let fallback = try await older.agentNetwork("chat1")
+        XCTAssertEqual(fallback, .workspace("hostworkspace"))
+        for id in ["", "-a", "Host", "a/b", "a..b", String(repeating: "a", count: 129)] { XCTAssertNil(BrowserNetwork.network(id).path, id) }
+        XCTAssertNotNil(BrowserNetwork.network("host").path)
+    }
+
     func testArtifactBoundaryAndQueryArePreserved() throws {
         XCTAssertEqual(try BrowserPolicy.artifactPath(target: "/api/v1/kv/entry?key=a%2Fb", artifactID: "art1", version: 2), "/v0/artifacts/art1/api/v1/kv/entry?key=a%2Fb")
         XCTAssertEqual(try BrowserPolicy.artifactPath(target: "/nested/app.js", artifactID: "art1", version: 2), "/v0/artifacts/art1/versions/2/files/nested/app.js")

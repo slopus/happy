@@ -121,6 +121,14 @@ public enum BrowserPolicy {
         }
     }
 
+    /// A `networkId` (happy-agent API.md): 1 to 128 lowercase letters and
+    /// digits, plus `-` and `_` after the first. Opaque: never parsed.
+    public static func validNetworkID(_ value: String) -> Bool {
+        let bytes = Array(value.utf8)
+        guard (1...128).contains(bytes.count), (97...122).contains(bytes[0]) || (48...57).contains(bytes[0]) else { return false }
+        return bytes.allSatisfy { (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 }
+    }
+
     public static func validID(_ value: String) -> Bool {
         guard let first = value.utf8.first, (97...122).contains(first) else { return false }
         return value.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) }

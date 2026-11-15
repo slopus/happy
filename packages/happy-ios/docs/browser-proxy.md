@@ -43,11 +43,21 @@ append a second HTTP error response to its bytes.
   workspace explicitly marked local `compute.type: host`, never an arbitrary
   runner. Without a usable connection or route, loading fails with retry and
   **never creates a direct WebKit view**.
-- Each target opens authenticated `CONNECT /v0/workspaces/:id/proxy`, then
-  nested `CONNECT host:port`. The daemon chooses the workspace's runner. Its
-  CONNECT contract permits arbitrary valid host:port targets, including public
-  destinations. DNS resolution occurs remotely. TLS and WebSocket bytes remain
-  untouched, preserving real origins, cookies and redirects.
+- A chat link opens in its agent's own network, the one its commands run
+  in, as desktop's does: `GET /v0/workspaces/:ws/agents/:id/proxy` names it
+  (`networkId`), and each target opens authenticated
+  `CONNECT /v0/networks/:networkId/proxy`, then nested `CONNECT host:port`
+  (`BrowserNetwork.network`, `BrowserAgentNetwork`). For an agent in a
+  container that is the container, where its dev server listens; the
+  workspace's proxy refuses such a workspace (`501`). A `404` from the
+  network route (its environment changed) reads the agent's network again,
+  once. A computer that names no network (`404` on the read) has only the
+  workspace's: `CONNECT /v0/workspaces/:id/proxy`, which is also what a link
+  outside a chat and an artifact's external requests use. Happy Cloud serves
+  the same pair of routes and no workspace proxy. The CONNECT contract
+  permits arbitrary valid host:port targets, including public destinations.
+  DNS resolution occurs remotely. TLS and WebSocket bytes remain untouched,
+  preserving real origins, cookies and redirects.
 - Bundled artifacts get a unique synthetic HTTP origin and a nonpersistent
   WebKit store. `/api/*` maps only to `/v0/artifacts/:id/api/*`; other paths map
   only to the opened version's files. All methods and query strings survive.

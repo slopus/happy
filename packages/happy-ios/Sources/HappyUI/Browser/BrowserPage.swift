@@ -46,6 +46,12 @@ final class BrowserPage {
         return try await start(url: url, proxy: BrowserProxy(client: client, scope: .workspace(id: workspaceID)))
     }
 
+    /// A page from an agent's chat, in the network its commands run in.
+    static func agent(client: AgentClient, url: URL, network: BrowserAgentNetwork) async throws -> BrowserPage {
+        guard BrowserPolicy.Authority(url: url) != nil else { throw BrowserError.malformed }
+        return try await start(url: url, proxy: BrowserProxy(client: client, scope: .agent(network)))
+    }
+
     /// A live artifact at its version's URL, http or https, through the
     /// artifact's own proxy in the network it was made on. Its store is
     /// this page's alone, and nothing bridges its `/api/*` to the daemon.

@@ -139,8 +139,14 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
                 if let artifactID {
                     // A live artifact opens where it was made, never in a workspace guessed for it.
                     page = try await BrowserPage.live(client: session.client, url: originalURL, artifactID: artifactID)
+                } else if let agentID, !agentID.isEmpty {
+                    // The agent's own network, which is where it ran the server.
+                    let network = BrowserAgentNetwork(client: session.client, agentID: agentID)
+                    _ = try await network.current()
+                    try Task.checkCancellation()
+                    page = try await BrowserPage.agent(client: session.client, url: originalURL, network: network)
                 } else {
-                    let workspace = try await session.client.browserWorkspace(agentID: agentID)
+                    let workspace = try await session.client.browserWorkspace()
                     try Task.checkCancellation()
                     page = try await BrowserPage.workspace(client: session.client, url: originalURL, workspaceID: workspace)
                 }

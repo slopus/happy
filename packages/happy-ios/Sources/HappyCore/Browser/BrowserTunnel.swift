@@ -37,17 +37,22 @@ extension TailcatHTTPTransport {
 }
 
 /// Where a page's tunnels open. A workspace's network is the one its
-/// workspace resolves to now. A live artifact's is the one it was made on
-/// (`live.networkId`), through `CONNECT /v0/artifacts/:id/proxy`, where the
-/// daemon checks every destination against the artifact's URL.
+/// workspace resolves to now. An agent's is the network its commands run
+/// in (its container, runner or this computer), named by a `networkId`
+/// and opened through `CONNECT /v0/networks/:id/proxy`. A live artifact's
+/// is the one it was made on (`live.networkId`), through
+/// `CONNECT /v0/artifacts/:id/proxy`, where the daemon checks every
+/// destination against the artifact's URL.
 public enum BrowserNetwork: Equatable, Sendable {
     case workspace(String)
+    case network(String)
     case artifact(String)
 
     /// The outer CONNECT's route; nil for an ID that isn't one.
     public var path: String? {
         switch self {
         case .workspace(let id): BrowserPolicy.validID(id) ? "/v0/workspaces/\(id)/proxy" : nil
+        case .network(let id): BrowserPolicy.validNetworkID(id) ? "/v0/networks/\(id)/proxy" : nil
         case .artifact(let id): BrowserPolicy.validID(id) ? "/v0/artifacts/\(id)/proxy" : nil
         }
     }

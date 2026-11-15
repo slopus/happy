@@ -9,6 +9,9 @@ public actor BrowserProxy {
     public enum Scope: Sendable {
         case artifact(id: String, version: Int, authority: BrowserPolicy.Authority, workspaceID: String?)
         case workspace(id: String)
+        /// A page opened from an agent's chat: the network its commands
+        /// run in, read again when the computer stops serving it.
+        case agent(BrowserAgentNetwork)
         /// A live artifact's page at its URL: every tunnel goes through the
         /// artifact's own proxy, whose daemon decides what it may reach.
         /// No data bridge: its `/api/*` is the site's own.
@@ -118,20 +121,30 @@ public actor BrowserProxy {
                 try BrowserPolicy.checkArtifactOrigin(request.0, authority: authority)
                 try await artifact(local, client: client, upstream: upstream, files: .vault(surfaceId: surfaceId, entryId: entryId, version: version), initial: request)
             default:
-                let network: BrowserNetwork
+                var network: BrowserNetwork
                 switch scope {
                 case .artifact(_, _, _, let workspace):
                     guard let workspace else { throw BrowserError.unavailable }
                     network = .workspace(workspace)
                 case .liveArtifact(let id): network = .artifact(id)
                 case .workspace(let workspace): network = .workspace(workspace)
+                case .agent(let agent): network = try await agent.current()
                 case .vaultArtifact: throw BrowserError.unavailable
                 }
                 // Even public CDNs, redirects and WebSockets are resolved and
                 // connected by the computer. There is no phone-network fallback.
                 // A loopback alias is the computer's own loopback.
                 let loopback = BrowserPolicy.Loopback.target(authority)
-                let remote = try await client.browserTunnel(network, target: loopback ?? authority)
+                let agent: BrowserAgentNetwork? = if case .agent(let agent) = scope, case .network = network { agent } else { nil }
+                let remote: any BrowserStream
+                do { remote = try await client.browserTunnel(network, target: loopback ?? authority) }
+                catch BrowserError.upstream(404) where agent != nil {
+                    // The computer no longer serves that network: the agent's is read again, once.
+                    guard let agent else { throw BrowserError.upstream(404) }
+                    await agent.forget(network)
+                    network = try await agent.current()
+                    remote = try await client.browserTunnel(network, target: loopback ?? authority)
+                }
                 do {
                     try await local.write(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
                     opaqueTunnel = true
