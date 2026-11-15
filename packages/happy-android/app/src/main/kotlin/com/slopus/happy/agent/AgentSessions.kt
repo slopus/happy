@@ -60,8 +60,8 @@ class AgentSessions(
         // session. These identity-only jobs never open a catalog or SSE and
         // their transient failures cannot cancel the selected session.
         scope.launch {
-            combine(connections.accounts, foreground) { accounts, front ->
-                if (front) accounts.filterNot { it.revoked }.map { it.id }.toSet() else emptySet()
+            combine(connections.accounts, foreground, openId) { accounts, front, open ->
+                if (front) accounts.filterNot { it.revoked || it.id == open }.map { it.id }.toSet() else emptySet()
             }.distinctUntilChanged().collectLatest { ids ->
                 coroutineScope {
                     ids.forEach { id -> launch { refreshIdentity(id) } }
