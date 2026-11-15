@@ -173,6 +173,13 @@ public actor FeedLookups {
     /// The stream opened: what wasn't there is asked for again with the
     /// next `want`, which the engine makes at once. `gap`: events may have
     /// been missed, so everything held is read again too.
+    /// The stream said hello: what is wanted is read from now, as the
+    /// Feed's rows are (`FeedLibrary.opened`).
+    public func opened() {
+        live = true
+        read()
+    }
+
     public func connected(gap: Bool) {
         live = true
         missing = Wanted()

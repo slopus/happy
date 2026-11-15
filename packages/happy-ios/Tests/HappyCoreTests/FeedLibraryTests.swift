@@ -465,6 +465,21 @@ final class FeedLibraryTests: XCTestCase {
         try await eventually { await server.filters.contains { $0 == FeedFilter.highlights.subjects } }
     }
 
+    /// What the Feed's rows name is looked up from the stream's hello, as
+    /// they are read, not only once home is verified.
+    func testLookupsReadFromTheStreamsHello() async throws {
+        let routes = LookupRoutes()
+        let lookups = FeedLookups(routes: routes, keep: MemoryFeedKeep())
+        var wanted = FeedLookups.Wanted()
+        wanted.artifacts = ["a1"]
+        await lookups.want(wanted)
+        try await Task.sleep(for: .milliseconds(50))
+        let early = await routes.artifacts
+        XCTAssertEqual(early, [], "no stream yet")
+        await lookups.opened()
+        try await eventually { await routes.artifacts == ["a1"] }
+    }
+
     // MARK: Highlights
 
     /// A computer that filters pages Highlights on its own: only artifact
@@ -597,4 +612,17 @@ final class FeedLibraryTests: XCTestCase {
         let unread = await server.unread
         XCTAssertEqual(unread, 0)
     }
+}
+
+/// Lookups' routes that hear which artifacts were asked for.
+private actor LookupRoutes: FeedLookupRoutes {
+    private(set) var artifacts: [String] = []
+    func agent(_ agentId: String) async throws -> AgentWire.Agent { throw URLError(.badServerResponse) }
+    func teamUsers(_ ids: [String]) async throws -> [TeamUser] { [] }
+    func artifact(_ artifactId: String) async throws -> JSONValue {
+        artifacts.append(artifactId)
+        return ["id": .string(artifactId), "title": "A"]
+    }
+    func todo(_ surfaceId: String, _ todoId: String) async throws -> TodoItem { throw URLError(.badServerResponse) }
+    func place(_ kind: String, _ id: String) async throws -> JSONValue { throw URLError(.badServerResponse) }
 }

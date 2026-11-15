@@ -586,6 +586,7 @@ public actor SyncEngine {
                         publish()
                         profileChanged()
                         await feed.opened()
+                        await lookups.opened()
                         // Conversations and lists read again only for what they missed.
                         await spaces.externalOpened(missedBefore: continued ? nil : streamStart)
                         // Home verified before this hello came.
