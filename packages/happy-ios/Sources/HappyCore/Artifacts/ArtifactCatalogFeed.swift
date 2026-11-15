@@ -67,8 +67,9 @@ public actor ArtifactCatalogFeed {
         for listener in listeners.values { listener.yield(state) }
     }
 
-    /// Disk, then its events, until `stop`. The computer is read when its
-    /// account's engine says (`refresh`): once each connection, after home.
+    /// Disk, then its events, until `stop`. The computer is read on
+    /// `refresh`: by its engine once each connection, after home, and by
+    /// the Artifacts screen as it opens.
     public func start() async {
         guard !started else { return }
         started = true
