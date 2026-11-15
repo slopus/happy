@@ -244,7 +244,6 @@ public actor SyncEngine {
             events: { await spaces.events(matching: ["artifact."]) }
         )
         lookups = FeedLookups(routes: client, keep: keep)
-        client.servedHealth.follow()
         forward.engine = self
         keep.engine = self
     }
@@ -285,6 +284,7 @@ public actor SyncEngine {
     public func start() {
         guard !stopped, runner == nil else { return }
         spaces.chatsFirst.close()
+        client.servedHealth.follow()
         backgrounded = false
         generation += 1
         verified = false
@@ -352,6 +352,7 @@ public actor SyncEngine {
         heldVerification = false
         connection = nil
         waitingForChat = false
+        client.servedHealth.close()
         let pausedGeneration = generation
         holdID = nil; holdDeadline = nil
         holdTimer?.cancel(); holdTimer = nil
@@ -801,6 +802,7 @@ public actor SyncEngine {
                     // News that came during the read, all of which it has.
                     if dirty, let through = newsThrough, let cursor, through <= cursor { dirty = false; covered = signalled }
                 } catch {
+                    client.servedHealth.missed()
                     // Signed out: the stream says so.
                     guard current(generation), (error as? AgentClientError) != .revoked else { break }
                     dirty = true

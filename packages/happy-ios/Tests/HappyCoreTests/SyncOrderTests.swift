@@ -30,6 +30,9 @@ private actor OrderServer: AgentTransport {
     /// A Feed page, empty, rather than a 404.
     var servesFeed = false
     func serveFeed() { servesFeed = true }
+    /// Home's bootstrap answers 500.
+    var failsBootstrap = false
+    func failBootstrap() { failsBootstrap = true }
     func answerFeed() { holdingFeed = false; heldFeed.forEach { $0.resume() }; heldFeed = [] }
     func holdChat() { holdingChat = true }
     func answerChat() { holdingChat = false; heldChat.forEach { $0.resume() }; heldChat = [] }
@@ -52,6 +55,8 @@ private actor OrderServer: AgentTransport {
         log.append(category == .file ? route + " (file)" : route)
         let value: JSONValue
         switch route {
+        case "GET /v0/bootstrap/desktop" where failsBootstrap:
+            return .init(status: 500, body: Data("{}".utf8))
         case "GET /v0/bootstrap/desktop":
             var bootstrap: [String: JSONValue] = [
                 "cursor": .string(cursor), "profile": ["userId": .null], "userSettings": [], "feedUnread": 0,
@@ -480,6 +485,50 @@ final class SyncOrderTests: XCTestCase {
         try await eventually("the message between") { shown.snapshot.items.contains { $0.text == "again" } }
         try await eventually("the chat current") { shown.snapshot.synced }
         await conversation.stop()
+        await engine.stop()
+    }
+
+    /// Health comes with home's bootstrap; with none coming, whoever asks
+    /// what the computer serves asks it, as on main, never waiting on.
+    func testHealthWithoutARunningEngineIsAskedOfTheComputer() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        let health = try await client.health()
+        XCTAssertNotNil(health.capabilities)
+        let asked = await server.requests()
+        XCTAssertEqual(asked, ["GET /v0/health"])
+        await engine.stop()
+    }
+
+    func testAFailedBootstrapEndsTheWaitForHealth() async throws {
+        let server = OrderServer()
+        await server.failBootstrap()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        let health = try await client.health()
+        XCTAssertNotNil(health.capabilities)
+        let asked = await server.requests()
+        XCTAssertTrue(asked.contains("GET /v0/health"))
+        await engine.stop()
+    }
+
+    func testAPauseEndsTheWaitForHealth() async throws {
+        let server = OrderServer()
+        await server.hold()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        try await eventually("home asked") { await server.requests().contains("GET /v0/bootstrap/desktop") }
+        let waiting = Task { try await client.health() }
+        try await Task.sleep(for: .milliseconds(100))
+        // The pause winds down once the held bootstrap is let go.
+        let pausing = Task { await engine.pause() }
+        let health = try await waiting.value
+        XCTAssertNotNil(health.capabilities)
+        await server.answer()
+        _ = await pausing.value
         await engine.stop()
     }
 
