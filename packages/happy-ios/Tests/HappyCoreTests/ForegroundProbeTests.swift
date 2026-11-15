@@ -8,9 +8,9 @@ import HappyWire
 /// change on screen, beside the stream's first asks rather than before them.
 @MainActor
 final class ForegroundProbeTests: XCTestCase {
-    /// A computer that answers the identity checks, refuses everything
-    /// else, and writes down what the engine asked and when its transport
-    /// was told it came back.
+    /// A computer that answers the identity checks (the open one's is its
+    /// engine's bootstrap), refuses everything else, and writes down what
+    /// the engine asked and when its transport was told it came back.
     private actor Computer: AgentTransport {
         /// How long waking its tunnels takes: a relay iOS reclaimed in the
         /// suspension, connected again over a network still coming back.
@@ -28,6 +28,10 @@ final class ForegroundProbeTests: XCTestCase {
                 try await Task.sleep(for: checking)
                 return HTTP1Response(status: 200, body: Data(#"{"ready":true,"version":{"protocol":27}}"#.utf8))
             case "/v0/config": return HTTP1Response(status: 200, body: Data(#"{"config":{"node":{"name":"Studio","avatar":null}}}"#.utf8))
+            case "/v0/bootstrap/desktop":
+                log.append(path)
+                try await Task.sleep(for: checking)
+                return HTTP1Response(status: 200, body: Data(#"{"cursor":"c1","profile":{"userId":null},"userSettings":[],"feedUnread":0,"projects":[],"workspaces":[],"health":{"ready":true,"version":{"protocol":27}},"config":{"node":{"name":"Studio","avatar":null}}}"#.utf8))
             default:
                 log.append(path)
                 return HTTP1Response(status: 503, body: Data("{}".utf8))
