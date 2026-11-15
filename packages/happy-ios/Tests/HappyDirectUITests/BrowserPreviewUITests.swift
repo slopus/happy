@@ -26,16 +26,16 @@ final class BrowserPreviewUITests: XCTestCase {
         pause(3)
         keep("10-chat")
         for (index, target) in (environment["PREVIEW_LINKS"] ?? "localhost:5173/go,127.0.0.1:5173/app").split(separator: ",").enumerated() {
-            let link = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", String(target), String(target))).firstMatch
-            guard link.waitForExistence(timeout: 20) else {
+            let matches = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", String(target), String(target)))
+            guard matches.firstMatch.waitForExistence(timeout: 20), let link = matches.allElementsBoundByIndex.last else {
                 XCTFail("no link \(target)")
                 print("PREVIEW_TREE \(app.debugDescription)")
                 continue
             }
-            // A message is one element; tap the line its link is on.
+            // The newest message naming it, one element; tap the line its link is on.
             let lines = link.label.components(separatedBy: "\n")
             let line = lines.firstIndex { $0.contains(target) } ?? 0
-            link.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: (Double(line) + 0.5) / Double(lines.count))).tap()
+            link.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: (Double(line) + 0.5) / Double(lines.count))).tap()
             var waited = 0
             for second in [3, 8, 15, 30] {
                 pause(Double(second - waited))
@@ -62,9 +62,11 @@ final class BrowserPreviewUITests: XCTestCase {
     }
 
     private func launch() {
+        if let code = environment["PREVIEW_SCAN"] { app.launchEnvironment["HAPPY_SIMULATED_SCAN"] = code }
         app.launch()
         let any = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "row:")).firstMatch
         if any.waitForExistence(timeout: 10) { return }
+        if environment["PREVIEW_SCAN"] != nil { return signIn(until: any) }
         print("HAPPY_PAIR_READY")
         let match = app.buttons["Emoji match"]
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -79,6 +81,47 @@ final class BrowserPreviewUITests: XCTestCase {
         pause(1.5)
         match.tap()
         XCTAssertTrue(any.waitForExistence(timeout: 90))
+    }
+
+    /// A server's code (`PREVIEW_SCAN`) read by Start's scanner, then its
+    /// sign-in page filled with `PREVIEW_USER` and `PREVIEW_PASSWORD`.
+    private func signIn(until home: XCUIElement) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let browser = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
+        let start = app.buttons["start-button"]
+        XCTAssertTrue(start.waitForExistence(timeout: 30), "no Start")
+        start.tap()
+        let scan = app.buttons["install-desktop-scan"]
+        if scan.waitForExistence(timeout: 10) { scan.tap() }
+        pause(1)
+        for button in ["Allow", "OK"] where springboard.alerts.buttons[button].exists { springboard.alerts.buttons[button].tap() }
+        let proceed = app.descendants(matching: .any)["server-sign-in-continue"]
+        XCTAssertTrue(proceed.waitForExistence(timeout: 20), "the sign-in screen didn't open")
+        keep("01-server-sign-in")
+        proceed.tap()
+        let consent = springboard.alerts.buttons["Continue"]
+        if consent.waitForExistence(timeout: 20) { consent.tap() }
+        let user = browser.textFields.firstMatch
+        XCTAssertTrue(user.waitForExistence(timeout: 30), "the sign-in page never showed")
+        keep("02-sign-in-page")
+        user.tap()
+        user.typeText(environment["PREVIEW_USER"] ?? "")
+        let password = browser.secureTextFields.firstMatch
+        password.tap()
+        password.typeText(environment["PREVIEW_PASSWORD"] ?? "")
+        browser.buttons["Sign in"].tap()
+        let deadline = Date().addingTimeInterval(90)
+        while Date() < deadline, !home.exists {
+            // A profile gate asks for a name the first time.
+            let name = app.textFields.firstMatch
+            if name.exists, app.buttons["Continue"].exists, (name.value as? String ?? "").isEmpty {
+                name.tap(); name.typeText("Alice"); app.buttons["Continue"].tap()
+            }
+            _ = home.waitForExistence(timeout: 2)
+        }
+        keep("03-signed-in")
+        if !home.exists { print("PREVIEW_TREE \(app.debugDescription)") }
+        XCTAssertTrue(home.exists, "never reached the server's home")
     }
 
     private func keep(_ name: String) {
