@@ -116,6 +116,24 @@ final class ForegroundProbeTests: XCTestCase {
         XCTAssertTrue(after.contains("resumed"), "the tunnels weren't woken: \(after)")
     }
 
+    /// Back, the open account is connecting at once, never paused, until
+    /// its engine's bootstrap says it is connected.
+    func testTheOpenAccountIsConnectingUntilItsBootstrapLands() async throws {
+        let computer = Computer()
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in computer })
+        let account = try await manager.add(credentials("mac"), name: "Mac")
+        let engine = try XCTUnwrap(manager.syncEngine(for: account.id))
+        defer { Task { await engine.stop() } }
+        try await wait { manager.accounts.first?.status == .connected }
+
+        await manager.setForeground(false)
+        XCTAssertEqual(manager.accounts.first?.status, .paused)
+        await computer.slowDown(.milliseconds(500))
+        await manager.setForeground(true)
+        XCTAssertEqual(manager.accounts.first?.status, .connecting)
+        try await wait { manager.accounts.first?.status == .connected }
+    }
+
     /// Back, the open computer goes first: its check answers while its own
     /// tunnels are still waking, and while another computer's check and
     /// wake hang; the other's tunnels aren't woken until it is opened.
