@@ -50,7 +50,7 @@
     <string name="compute_create_failed">インストールコマンドがありません</string>
     <string name="compute_no_command">Happy Cloud からインストールコマンドが届きませんでした。</string>
     <string name="compute_create">インストールコマンドを作成</string>
-    <string name="compute_install_shared">チームのエージェントが使うコンピューターで実行してください。Happy supervisor をインストールし、コンピューターを共有として参加させます。</string>
+    <string name="compute_install_shared">チームのエージェントが使うコンピューターで、管理者として実行してください。Happy supervisor をシステム全体にインストールし、コンピューターを共有として参加させます。</string>
     <string name="compute_install_private">自分のコンピューターで、自分のアカウントにサインインした状態で実行してください。Happy supervisor をインストールし、コンピューターをあなたのものとして参加させます。</string>
     <string name="compute_command_note">このコマンドは一度だけ使え、秘密情報を含むため、他人に見せないでください。</string>
     <string name="compute_expires">有効期限: %1$s</string>

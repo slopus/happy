@@ -53,7 +53,7 @@
     <string name="compute_create_failed">Нет команды установки</string>
     <string name="compute_no_command">Happy Cloud не прислал команду установки.</string>
     <string name="compute_create">Создать команду установки</string>
-    <string name="compute_install_shared">Запустите это на компьютере, которым будут пользоваться агенты команды. Команда установит Happy supervisor и подключит компьютер как общий.</string>
+    <string name="compute_install_shared">Запустите это на компьютере, которым будут пользоваться агенты команды, от имени администратора. Команда установит Happy supervisor для всей системы и подключит компьютер как общий.</string>
     <string name="compute_install_private">Запустите это на своём компьютере под своей учётной записью. Команда установит Happy supervisor и подключит компьютер как ваш.</string>
     <string name="compute_command_note">Команда срабатывает один раз и содержит секрет, поэтому никому её не показывайте.</string>
     <string name="compute_expires">Действует до %1$s</string>

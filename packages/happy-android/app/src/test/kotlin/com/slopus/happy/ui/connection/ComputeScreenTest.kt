@@ -309,6 +309,15 @@ class ComputeScreenTest {
     }
 
     @Test
+    fun withNoPublishedPlatformTheServerAndTokenAreShownInsteadOfCommands() {
+        rule.setHappyContent { ComputerAddScreen(install(ComputeAccess.Shared, systems = emptySet()), ComputeRole.Manage, {}, {}, {}) }
+        rule.onNodeWithTag(ComputeTags.command("server")).assertTextEquals("https://acme.happy-clusters.com")
+        rule.onNodeWithTag(ComputeTags.command("token")).assertTextEquals("jt-secret")
+        rule.onAllNodesWithTag(ComputeTags.command("unix")).assertCountEquals(0)
+        rule.onAllNodesWithTag(ComputeTags.command("windows")).assertCountEquals(0)
+    }
+
+    @Test
     fun anExpiredInstallCannotBeReadOrCopied() {
         rule.setHappyContent { ComputerAddScreen(install(ComputeAccess.Private, expiresAt = 1), ComputeRole.Use, {}, {}, {}) }
         rule.onAllNodesWithTag(ComputeTags.command("unix")).assertCountEquals(0)

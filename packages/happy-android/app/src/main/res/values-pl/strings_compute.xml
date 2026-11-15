@@ -53,7 +53,7 @@
     <string name="compute_create_failed">Brak polecenia instalacji</string>
     <string name="compute_no_command">Happy Cloud nie wysłał polecenia instalacji.</string>
     <string name="compute_create">Utwórz polecenie instalacji</string>
-    <string name="compute_install_shared">Uruchom to na komputerze, z którego będą korzystać agenci zespołu. Instaluje Happy supervisor i dołącza komputer jako współdzielony.</string>
+    <string name="compute_install_shared">Uruchom to jako administrator na komputerze, z którego będą korzystać agenci zespołu. Instaluje Happy supervisor dla całego systemu i dołącza komputer jako współdzielony.</string>
     <string name="compute_install_private">Uruchom to na własnym komputerze, zalogowany jako Ty. Instaluje Happy supervisor i dołącza komputer jako Twój.</string>
     <string name="compute_command_note">Polecenie działa raz i zawiera sekret, więc nikomu go nie pokazuj.</string>
     <string name="compute_expires">Wygasa: %1$s</string>

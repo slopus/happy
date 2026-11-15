@@ -50,7 +50,7 @@
     <string name="compute_create_failed">没有安装命令</string>
     <string name="compute_no_command">Happy Cloud 没有发送安装命令。</string>
     <string name="compute_create">创建安装命令</string>
-    <string name="compute_install_shared">请在团队智能体将使用的电脑上运行。它会安装 Happy supervisor，并将电脑作为共享电脑加入。</string>
+    <string name="compute_install_shared">请以管理员身份在团队智能体将使用的电脑上运行。它会为整个系统安装 Happy supervisor，并将电脑作为共享电脑加入。</string>
     <string name="compute_install_private">请在你自己的电脑上、以你自己的账户运行。它会安装 Happy supervisor，并将电脑以你的名义加入。</string>
     <string name="compute_command_note">此命令只能使用一次，并包含密钥，请勿外泄。</string>
     <string name="compute_expires">到期时间：%1$s</string>

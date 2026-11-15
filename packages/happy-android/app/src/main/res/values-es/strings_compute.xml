@@ -52,7 +52,7 @@
     <string name="compute_create_failed">No hay comando de instalación</string>
     <string name="compute_no_command">Happy Cloud no envió un comando de instalación.</string>
     <string name="compute_create">Crear comando de instalación</string>
-    <string name="compute_install_shared">Ejecútalo en el ordenador que usarán los agentes de tu equipo. Instala el supervisor de Happy y une el ordenador como compartido.</string>
+    <string name="compute_install_shared">Ejecútalo como administrador en el ordenador que usarán los agentes de tu equipo. Instala el supervisor de Happy para todo el sistema y une el ordenador como compartido.</string>
     <string name="compute_install_private">Ejecútalo en tu propio ordenador, con tu sesión. Instala el supervisor de Happy y une el ordenador como tuyo.</string>
     <string name="compute_command_note">El comando funciona una sola vez y contiene un secreto, así que mantenlo en privado.</string>
     <string name="compute_expires">Caduca el %1$s</string>

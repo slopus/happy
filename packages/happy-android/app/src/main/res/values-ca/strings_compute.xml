@@ -52,7 +52,7 @@
     <string name="compute_create_failed">No hi ha ordre d’instal·lació</string>
     <string name="compute_no_command">Happy Cloud no ha enviat cap ordre d’instal·lació.</string>
     <string name="compute_create">Crea l’ordre d’instal·lació</string>
-    <string name="compute_install_shared">Executa-ho a l’ordinador que faran servir els agents del teu equip. Instal·la el supervisor de Happy i uneix l’ordinador com a compartit.</string>
+    <string name="compute_install_shared">Executa-ho com a administrador a l\'ordinador que faran servir els agents del teu equip. Instal·la el supervisor de Happy per a tot el sistema i uneix l\'ordinador com a compartit.</string>
     <string name="compute_install_private">Executa-ho al teu propi ordinador, amb la teva sessió. Instal·la el supervisor de Happy i uneix l’ordinador com a teu.</string>
     <string name="compute_command_note">L’ordre funciona una sola vegada i conté un secret, així que no la comparteixis.</string>
     <string name="compute_expires">Caduca el %1$s</string>

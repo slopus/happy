@@ -51,7 +51,7 @@
     <string name="compute_create_failed">No install command</string>
     <string name="compute_no_command">Happy Cloud didn\'t send an install command.</string>
     <string name="compute_create">Create install command</string>
-    <string name="compute_install_shared">Run this on the computer your team\'s agents will use. It installs the Happy supervisor and joins the computer as a shared one.</string>
+    <string name="compute_install_shared">Run this on the computer your team\'s agents will use, as an administrator. It installs the Happy supervisor for the whole system and joins the computer as a shared one.</string>
     <string name="compute_install_private">Run this on your own computer, signed in as yourself. It installs the Happy supervisor and joins the computer as yours.</string>
     <string name="compute_command_note">The command works once and holds a secret, so keep it private.</string>
     <string name="compute_expires">Expires at %1$s</string>
