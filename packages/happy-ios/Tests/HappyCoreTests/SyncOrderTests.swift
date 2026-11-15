@@ -101,6 +101,9 @@ private actor OrderServer: AgentTransport {
         return .init(status: 200, body: try JSONEncoder().encode(value))
     }
 
+    /// Flows opened ahead, and the tunnel under them: no request.
+    func warm(_ count: Int) { log.append("warm \(count)") }
+
     func stream(path: String, credential: String, headers: [String: String]) throws -> HTTP1Stream {
         log.append("GET " + path)
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
@@ -486,6 +489,22 @@ final class SyncOrderTests: XCTestCase {
         try await eventually("the chat current") { shown.snapshot.synced }
         await conversation.stop()
         await engine.stop()
+    }
+
+    /// The tunnel comes up while the engine reads what this phone keeps,
+    /// before its stream is asked for, and asks the computer nothing.
+    func testTheTunnelIsBroughtUpBeforeTheStreamIsAskedFor() async throws {
+        for _ in 0..<5 {
+            let server = OrderServer()
+            let client = AgentClient(transport: server, token: "t")
+            let engine = SyncEngine(client: client, directory: folder())
+            await engine.start()
+            try await eventually("the stream asked") { await server.requests().contains("GET /v0/events/stream") }
+            let log = await server.requests()
+            XCTAssertEqual(log.first, "warm 2", "before anything is asked: \(log)")
+            XCTAssertEqual(log.filter { $0.hasPrefix("warm") }, ["warm 2"], "once a run")
+            await engine.stop()
+        }
     }
 
     /// Health comes with home's bootstrap; with none coming, whoever asks
