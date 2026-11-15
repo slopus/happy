@@ -254,6 +254,35 @@ final class HostedComputeLiveTests: XCTestCase {
         try screenshot(fullPage, name: "live-owner-agent-removed")
     }
 
+    /// The owner answers their agents' join requests in place: the first
+    /// approved, the second denied (`HAPPY_COMPUTE_LIVE_APPROVE` and
+    /// `HAPPY_COMPUTE_LIVE_DENY`, each `computerId/agentId`).
+    func testOwnerAnswersJoinRequests() async throws {
+        guard let approve = environment["HAPPY_COMPUTE_LIVE_APPROVE"], let deny = environment["HAPPY_COMPUTE_LIVE_DENY"] else {
+            throw XCTSkip("No requests named")
+        }
+        let (session, client, _) = try await rig("OWNER")
+        let waiting = try await client.computerApprovals()
+        print("approvals waiting: \(waiting.map { "\($0.id) \($0.agentTitle ?? "nil") on \($0.computerName ?? "nil")" })")
+        let page = ComputeViewController(session: session)
+        let navigation = try await host(page)
+        try await until { page.shownRow("compute-request-\(approve)") != nil && page.shownRow("compute-request-\(deny)") != nil }
+        try await settled(navigation)
+        for id in [approve, deny] { print("\(id): \(page.shownRow("compute-request-\(id)")?.title ?? "-") | \(page.shownRow("compute-request-\(id)")?.subtitle ?? "-")") }
+        try screenshot(page, name: "live-owner-requests-before")
+        page.tapRow("compute-approve-\(approve)")
+        try await until({ page.shownRow("compute-request-\(approve)") == nil }, seconds: 15)
+        page.tapRow("compute-deny-\(deny)")
+        try await until({ page.shownRow("compute-request-\(deny)") == nil }, seconds: 15)
+        try await settled(navigation)
+        try screenshot(page, name: "live-owner-requests-after")
+        let left = try await client.computerApprovals()
+        print("approvals left: \(left.map(\.id))")
+        XCTAssertFalse(left.contains { $0.id == approve || $0.id == deny })
+        let computer = try await client.computer(String(approve.split(separator: "/")[0]))
+        print("\(computer.displayName) agents now \(computer.agents.map(\.id))")
+    }
+
     func testAsMember() async throws {
         let (session, client, _) = try await rig("MEMBER")
         let computers = try await client.computers()
