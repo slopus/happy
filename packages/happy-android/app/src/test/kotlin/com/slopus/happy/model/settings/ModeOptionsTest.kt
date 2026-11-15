@@ -41,12 +41,12 @@ class ModeOptionsTest {
     @Test
     fun modelModesPerHarness() {
         assertEquals(
-            listOf("claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-haiku-5-5"),
+            listOf("claude-fable-5-2", "claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-haiku-5-5"),
             ModeOptions.modelModes("claude").map { it.key },
         )
         assertEquals("1M context", ModeOptions.modelModes("claude")[0].description)
         assertEquals(
-            listOf("gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"),
+            listOf("gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"),
             ModeOptions.modelModes("codex").map { it.key },
         )
         assertEquals("most capable", ModeOptions.modelModes("codex")[0].description)
@@ -82,6 +82,7 @@ class ModeOptionsTest {
 
         assertEquals(listOf("Low", "Medium", "High", "xHigh", "Max"), ModeOptions.effortLevelsForModel("claude", "claude-haiku-5-5").map { it.name })
         assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), ModeOptions.effortLevelsForModel("codex", "gpt-6.1-sol").map { it.key })
+        assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), ModeOptions.effortLevelsForModel("codex", "gpt-6.1-terra").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh", "max"), ModeOptions.effortLevelsForModel("codex", "gpt-6-luna").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh"), ModeOptions.effortLevelsForModel("codex", "my-model").map { it.key })
         assertEquals(listOf("low", "medium", "high"), ModeOptions.effortLevelsForModel("agy", "Gemini 3.8 Flash").map { it.key })
