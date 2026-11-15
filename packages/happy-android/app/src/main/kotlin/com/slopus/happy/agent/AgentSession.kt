@@ -117,7 +117,7 @@ class AgentSession internal constructor(
      * The transport is made once; the bearer is asked for on every request,
      * so a team server's access token is refreshed as it nears expiry.
      */
-    val client: AgentClient = AgentClient.lazy(cloud = com.slopus.happy.connection.HappyCloud.isServer(connections.accounts.value.firstOrNull { it.id == connectionId }?.server), beforeHealth = ::awaitVerified) {
+    val client: AgentClient = AgentClient.lazy(cloud = com.slopus.happy.connection.HappyCloud.isServer(connections.accounts.value.firstOrNull { it.id == connectionId }?.server), beforeHealth = ::usesBootstrapHealth) {
         val (credentials, transport) = linkLock.withLock {
             route ?: run {
                 val credentials = connections.linkCredentials(connectionId) ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
@@ -146,6 +146,10 @@ class AgentSession internal constructor(
     private val suspended = AtomicBoolean(false)
     val status: StateFlow<AgentLinkStatus> = statusState.asStateFlow()
     private val phaseState = MutableStateFlow(SyncPhase.Offline)
+    private val healthLock = Any()
+    private var healthReady: CompletableDeferred<Boolean>? = if (initiallyActive) CompletableDeferred() else null
+    private var healthStopped = false
+    private var healthClosed = false
     val phase: StateFlow<SyncPhase> = phaseState.asStateFlow()
     /** Home's P0 only; later resource refreshes never keep its title updating. */
     val homeUpdating: StateFlow<Boolean> = phase.map { it == SyncPhase.P0Connecting || it == SyncPhase.P0Live }
@@ -197,10 +201,47 @@ class AgentSession internal constructor(
         return ChatRead(agentId, result, asked).also { chatRead = it }
     }
 
-    suspend fun awaitVerified() { phase.first { it == SyncPhase.Verified } }
+    /** Share startup while it can answer; otherwise the caller uses its ordinary request or kept value. */
+    suspend fun awaitBootstrap() { usesBootstrapHealth() }
+
+    private fun checkSessionAllowed() = synchronized(healthLock) {
+        val account = connections.accounts.value.firstOrNull { it.id == connectionId }
+        if (healthStopped || scope.coroutineContext[Job]?.isActive != true || account == null || account.signInRequired || account.revoked || account.sessionEnded) {
+            throw CancellationException("Agent session stopped")
+        }
+    }
+
+    /** A screen shares a running bootstrap, but can ask for itself when no bootstrap can answer. */
+    private suspend fun usesBootstrapHealth(): Boolean {
+        val waiting = synchronized(healthLock) { checkSessionAllowed(); healthReady }
+        val shared = waiting?.await() ?: false
+        checkSessionAllowed()
+        return shared
+    }
+
+    private fun beginHealth() = synchronized(healthLock) {
+        if (!healthClosed) {
+            healthStopped = false
+            if (healthReady?.isCompleted != false) healthReady = CompletableDeferred()
+        }
+    }
+
+    private fun finishHealth(shared: Boolean) = synchronized(healthLock) {
+        healthReady?.complete(shared)
+        if (!shared) healthReady = null
+    }
+
+    private fun stopHealth(closing: Boolean = false, terminal: Boolean = false) = synchronized(healthLock) {
+        if (closing) healthClosed = true
+        if (closing || terminal) healthStopped = true
+        healthReady?.completeExceptionally(CancellationException("Agent session stopped"))
+        healthReady = null
+    }
 
     suspend fun takeChatRead(agentId: String): Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>? {
+        checkSessionAllowed()
         chatStarting.first { !it }
+        checkSessionAllowed()
         val read = synchronized(chatLock) { chatRead?.takeIf { it.agentId == agentId && !it.taken }?.also { it.taken = true } } ?: return null
         return try { read.result.await().getOrThrow().also { (bootstrap, messages) ->
             synchronized(chatLock) { read.cursor = if (bootstrap.cursor != null && messages.cursor != null) minOf(bootstrap.cursor, messages.cursor) else null }
@@ -208,6 +249,7 @@ class AgentSession internal constructor(
         catch (error: CancellationException) {
             // The engine can pause while this independently held conversation still wants history.
             currentCoroutineContext().ensureActive()
+            checkSessionAllowed()
             null
         }
     }
@@ -221,7 +263,7 @@ class AgentSession internal constructor(
     }
 
     suspend fun configuration(): com.slopus.happy.connection.TransportResponse {
-        awaitVerified()
+        if (!usesBootstrapHealth()) return client.send("GET", "/v0/config")
         return configLock.withLock {
             if (bootstrapConfig == null) {
                 val response = client.send("GET", "/v0/config")
@@ -436,7 +478,7 @@ class AgentSession internal constructor(
 
     /** The computer's accounts' plan usage, followed while a composer shows ([AgentUsageSource.follow]). */
     val usage: AgentUsageSource by lazy {
-        AgentUsageSource({ awaitVerified(); client.decode<JsonObject>("GET", "/v0/usage") }, events, scope) { accounts ->
+        AgentUsageSource({ awaitBootstrap(); client.decode<JsonObject>("GET", "/v0/usage") }, events, scope) { accounts ->
             client.send("POST", "/v0/usage/refresh", buildJsonObject { put("providerIds", JsonArray(accounts.map(::JsonPrimitive))) })
         }
     }
@@ -448,8 +490,8 @@ class AgentSession internal constructor(
     val references: com.slopus.happy.references.ReferenceReader by lazy {
         com.slopus.happy.references.ReferenceReader(
             scope, catalog, events,
-            readArtifact = { awaitVerified(); ArtifactClient(client).artifact(it) },
-            readUsers = { awaitVerified(); team.names(it.toSet()) },
+            readArtifact = { awaitBootstrap(); ArtifactClient(client).artifact(it) },
+            readUsers = { awaitBootstrap(); team.names(it.toSet()) },
         )
     }
     /**
@@ -738,6 +780,7 @@ class AgentSession internal constructor(
     val conversations = HeldConversations(scope)
 
     init {
+        scope.coroutineContext[Job]!!.invokeOnCompletion { stopHealth(closing = true) }
         scope.coroutineContext[Job]?.invokeOnCompletion { chatStarting.value = false }
         intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, SURFACE_JOIN), ::deliver)
         feedLibrary.start()
@@ -771,6 +814,7 @@ class AgentSession internal constructor(
                 linking = on && signedIn
                 if (!linking) {
                     chatStarting.value = false
+                    if (signedIn) finishHealth(false) else stopHealth()
                     restoreCache()
                 }
                 when {
@@ -779,6 +823,7 @@ class AgentSession internal constructor(
                     // they would hold up the next value, so a background could not stop the link.
                     on -> try { coroutineScope {
                         launch {
+                            beginHealth()
                             // Bring up the shared query/stream tunnel while the kept catalog loads.
                             val warmAsked = CompletableDeferred<Unit>()
                             val warming = launch {
@@ -861,6 +906,7 @@ class AgentSession internal constructor(
 
     /** Stops the link and lets go of the tunnel. */
     suspend fun close() {
+        stopHealth(closing = true)
         chatStarting.value = false
         // Open documents keep what they hold and say goodbye, briefly: a lost link must not hold the close up.
         withContext(kotlinx.coroutines.NonCancellable) { kotlinx.coroutines.withTimeoutOrNull(2_000) { documents.stop() } }
@@ -878,6 +924,7 @@ class AgentSession internal constructor(
             val alreadyWarmed = firstConnect
             firstConnect = false
             awaitSignedIn()
+            beginHealth()
             if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
             // The sign-in this attempt runs under: a refusal it meets signs out only that one.
             val grant = connections.grant(connectionId)
@@ -915,15 +962,18 @@ class AgentSession internal constructor(
             } catch (e: AgentConnectionException) {
                 when (e.reason) {
                     AgentConnectionException.Reason.Revoked -> {
+                        stopHealth(terminal = true)
                         statusState.value = AgentLinkStatus.Revoked
                         connections.update(connectionId) { it.copy(revoked = true) }
                         return
                     }
                     AgentConnectionException.Reason.UpdateRequired -> {
+                        stopHealth(terminal = true)
                         statusState.value = AgentLinkStatus.UpdateRequired
                         return
                     }
                     AgentConnectionException.Reason.SignInRequired, AgentConnectionException.Reason.ProfileRequired -> {
+                        stopHealth()
                         val profile = e.reason == AgentConnectionException.Reason.ProfileRequired
                         connections.signedOut(connectionId, profile, grant)
                         backoff = INITIAL_BACKOFF
@@ -955,6 +1005,7 @@ class AgentSession internal constructor(
      * ever offline: its headers say connecting.
      */
     private fun reconnecting() {
+        finishHealth(false)
         statusState.value = AgentLinkStatus.Connecting
     }
 
@@ -1025,6 +1076,7 @@ class AgentSession internal constructor(
                         if (hello.gap && (resumed || wasVerified)) readSnapshot()
                         resumeAllowed = true
                         phaseState.value = SyncPhase.Verified
+                        finishHealth(true)
                         intents.setOnline(true)
                         if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)
                         secondary?.cancel()

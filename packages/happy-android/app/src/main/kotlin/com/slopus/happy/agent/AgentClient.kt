@@ -45,7 +45,7 @@ class AgentClient private constructor(
     private val link: suspend () -> Link,
     /** To a Happy Cloud server: no folders, and the web through an agent's network ([com.slopus.happy.browser.browserNetwork]). */
     val cloud: Boolean = false,
-    private val beforeHealth: suspend () -> Unit = {},
+    private val beforeHealth: (suspend () -> Boolean)? = null,
 ) {
     /**
      * The transport and the bearer it is authorized with. A team server
@@ -66,7 +66,7 @@ class AgentClient private constructor(
     constructor(transport: Transport, token: String, cloud: Boolean = false) : this(Link(transport, token).let { fixed -> { fixed } }, cloud)
 
     companion object {
-        internal fun lazy(cloud: Boolean = false, beforeHealth: suspend () -> Unit = {}, link: suspend () -> Link) = AgentClient(link, cloud, beforeHealth)
+        internal fun lazy(cloud: Boolean = false, beforeHealth: (suspend () -> Boolean)? = null, link: suspend () -> Link) = AgentClient(link, cloud, beforeHealth)
 
         /** How every agent answer is read: unknown keys are skipped, as the wire grows. */
         val json = Json {
@@ -242,10 +242,11 @@ class AgentClient private constructor(
     /** Bootstrap health's `capabilities.webSocketTunnels`, once known through [noteHealth]. */
     @Volatile private var webSocketTunnels: Boolean? = null
     @Volatile private var bootstrapHealth = JsonObject(emptyMap())
+    @Volatile private var healthKnown = false
 
     suspend fun health(): JsonObject {
-        beforeHealth()
-        return bootstrapHealth
+        return if (beforeHealth?.invoke() ?: healthKnown) bootstrapHealth
+        else decode<JsonObject>("GET", "/v0/health").also(::noteHealth)
     }
 
     /** A screen needs capabilities now, even if no home bootstrap will run. */
@@ -254,6 +255,7 @@ class AgentClient private constructor(
 
     fun noteHealth(health: JsonObject) {
         bootstrapHealth = health
+        healthKnown = true
         val capabilities = health["capabilities"] as? JsonObject
         webSocketTunnels = capabilities?.get("webSocketTunnels") == JsonPrimitive(true)
         search = capabilities?.get("search") == JsonPrimitive(true)
