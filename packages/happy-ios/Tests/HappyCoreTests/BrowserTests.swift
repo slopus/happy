@@ -51,6 +51,10 @@ final class BrowserTests: XCTestCase {
         let older = AgentClient(transport: RoutingTransport(responses: ["/v0/agents/chat1": #"{"agent":{"id":"chat1","workspaceId":"hostworkspace","status":"idle"}}"#]), token: "test")
         let fallback = try await older.agentNetwork("chat1")
         XCTAssertEqual(fallback, .workspace("hostworkspace"))
+        // A server signed in to has no workspace proxy: no network named is none at all.
+        let server = AgentClient(transport: RoutingTransport(responses: ["/v0/agents/chat1": #"{"agent":{"id":"chat1","workspaceId":"teamworkspace","status":"idle"}}"#]), token: "test", signsIn: true)
+        do { _ = try await server.agentNetwork("chat1"); XCTFail("fell back to the workspace's proxy") }
+        catch { XCTAssertEqual(error as? BrowserError, .unavailable) }
         for id in ["", "-a", "Host", "a/b", "a..b", String(repeating: "a", count: 129)] { XCTAssertNil(BrowserNetwork.network(id).path, id) }
         XCTAssertNotNil(BrowserNetwork.network("host").path)
     }

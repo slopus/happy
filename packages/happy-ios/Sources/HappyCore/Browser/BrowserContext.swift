@@ -34,8 +34,10 @@ extension AgentClient {
     /// The network `agentID`'s commands run in, as desktop finds it:
     /// `GET /v0/workspaces/:ws/agents/:id/proxy` names it, on a computer
     /// and on Happy Cloud alike. A workspace whose agents run in containers
-    /// has no network of its own, so its proxy can't reach them. A computer
-    /// too old to name one (404) has only the workspace's.
+    /// has no network of its own, so its proxy can't reach them. A paired
+    /// computer too old to name one (404) has only the workspace's; a server
+    /// signed in to (Happy Cloud, a team server) has no workspace proxy, so
+    /// there a 404 is no network at all.
     public func agentNetwork(_ agentID: String) async throws -> BrowserNetwork {
         let workspaceID = try await agent(agentID).workspaceId
         guard BrowserPolicy.validID(workspaceID) else { throw BrowserError.unavailable }
@@ -44,6 +46,7 @@ extension AgentClient {
             guard let id = answer["networkId"]?.stringValue, BrowserPolicy.validNetworkID(id) else { throw BrowserError.unavailable }
             return .network(id)
         } catch AgentClientError.status(404, _, _) {
+            if signsIn { throw BrowserError.unavailable }
             return .workspace(workspaceID)
         } catch AgentClientError.status(let status, _, _) {
             throw BrowserError.upstream(status)

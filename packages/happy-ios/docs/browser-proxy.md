@@ -51,8 +51,10 @@ append a second HTTP error response to its bytes.
   container that is the container, where its dev server listens; the
   workspace's proxy refuses such a workspace (`501`). A `404` from the
   network route (its environment changed) reads the agent's network again,
-  once. A computer that names no network (`404` on the read) has only the
-  workspace's: `CONNECT /v0/workspaces/:id/proxy`, which is also what a link
+  once. A paired computer that names no network (`404` on the read) has
+  only the workspace's; a server signed in to has no workspace proxy, so
+  there that `404` opens nothing. The workspace's is
+  `CONNECT /v0/workspaces/:id/proxy`, which is also what a link
   outside a chat and an artifact's external requests use. Happy Cloud serves
   the same pair of routes and no workspace proxy. The CONNECT contract
   permits arbitrary valid host:port targets, including public destinations.
