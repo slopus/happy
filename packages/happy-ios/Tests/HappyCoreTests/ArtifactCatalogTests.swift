@@ -178,6 +178,8 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         return last
     }
 
+    /// Started, it shows what it kept and reads nothing: its engine reads
+    /// it once each connection, after home (`SyncEngine.connected`).
     func testItOpensOnWhatItKeptThenReadsEveryPageAndWritesItBack() async throws {
         let box = Box()
         await box.keep(json("[\(artifact("old", title: "Kept", updatedAt: 1))]"))
@@ -188,6 +190,9 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         let last = await watch(feed)
         await feed.start()
         try await eventually { last.all.contains { $0.items.map(\.id) == ["old"] && $0.loaded } }
+        let unread = await box.reads
+        XCTAssertEqual(unread, 0)
+        await feed.refresh()
         try await eventually { last.state.items.map(\.id) == ["a", "b"] }
         // Written down after it shows.
         try await eventually { await box.kept?.arrayValue?.compactMap { $0["id"]?.stringValue } == ["a", "b"] }
@@ -202,6 +207,7 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         let feed = make(box, events: events)
         let last = await watch(feed)
         await feed.start()
+        await feed.refresh()
         try await eventually { last.state.items.map(\.id) == ["a"] }
         input.yield(.event(json(#"{"type":"artifact.updated","payload":{"artifactId":"a","changes":{"title":"A2"}}}"#)))
         try await eventually { last.state.items.first?.title == "A2" }
@@ -212,10 +218,12 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         let kept = await box.kept
         XCTAssertEqual(kept?.arrayValue?.compactMap { $0["id"]?.stringValue }, ["z", "a"])
         XCTAssertEqual(kept?.arrayValue?.last?["deleted"], .bool(true), "kept as a tombstone")
-        // A resync reads the whole catalog again.
-        let before = await box.reads
+        // A resync reads nothing: the engine's next connection does.
         input.yield(.resync(from: nil))
-        try await eventually { await box.reads > before }
+        input.yield(.event(json(#"{"type":"artifact.updated","payload":{"artifactId":"z","changes":{"title":"Zed 2"}}}"#)))
+        try await eventually { last.state.items.first?.title == "Zed 2" }
+        let reads = await box.reads
+        XCTAssertEqual(reads, 1)
         await feed.stop()
     }
 
@@ -227,6 +235,7 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         let feed = make(box, events: events)
         let last = await watch(feed)
         await feed.start()
+        await feed.refresh()
         try await eventually { last.state.error != nil }
         XCTAssertEqual(last.state.items.map(\.id), ["old"])
         await box.set(status: 404)
