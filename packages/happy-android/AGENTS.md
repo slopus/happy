@@ -980,10 +980,9 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
 - Shipping goes through the `release` skill like every other release.
 - Release and preview bundles request native debug symbols at `FULL`; inspect
   their `BUNDLE-METADATA` before upload and follow the release skill's "Debug symbols" rules.
-- CI: `.github/workflows/happy-android.yml` runs `assembleDebug
-  assembleRelease testDebugUnitTest :crypto:test` on changes under
-  `packages/happy-android/` and shared mobile resources. It has no signing
-  secrets and no voice agent (`HAPPY_RELEASE_WITHOUT_CALL_AGENT=1`).
+- There is no Android CI: run `assembleDebug assembleRelease
+  testDebugUnitTest :crypto:test` locally. Without signing secrets or a voice
+  agent, set `HAPPY_RELEASE_WITHOUT_CALL_AGENT=1`.
 
 The JDK toolchain (21) is provisioned by the foojay resolver if the machine
 only has a JRE. In the agent sandbox Gradle needs network and local sockets:

@@ -214,8 +214,8 @@ entrypoint into `dist/` and copies `prisma/` in (this needs bun).
 Publish from `packages/happy-server-self-host`; it no longer bundles a web app.
 Pre-run its full `prepublishOnly` chain before handing a publish to the user.
 
-The server typecheck, unit suite, and both Docker images are gated by
-`.github/workflows/server.yml`.
+There is no server CI: run the server typecheck and unit suite locally before
+publishing.
 
 (Observed: `1332` merged a `standalone.spec.ts` test that only passes on Windows
 because the impl used POSIX `path.basename`; it was red on `main` and would have
