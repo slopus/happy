@@ -82,13 +82,12 @@ class GenUiClusterSecretFormTest {
         },
         "t",
         cloud,
-    )
+    ).also { it.noteHealth(Json.parseToJsonElement("""{"capabilities":$capabilities}""").jsonObject) }
 
     private fun open(cloud: Boolean = true): GenUiInline {
         val inline = GenUiInline(server(cloud), null, "a1", onMessage = {}, onOpenWeb = {})
         rule.setHappyContent { GenUiInlineBlock("s1", 3, inline, label = { it }) }
         rule.waitUntil(5_000) { inline.block("s1", 3) != null }
-        rule.waitUntil(5_000) { sent.any { it.second == "/v0/health" } }
         if (cloud && "\"artifactSecretActions\":true" in capabilities) rule.waitUntil(5_000) { inline.secrets.served }
         rule.waitForIdle()
         return inline

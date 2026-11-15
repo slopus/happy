@@ -19,25 +19,23 @@ class LiveDailyUsageSourceTest {
     private val asked = mutableListOf<String>()
     private val answers = ArrayDeque<Pair<Int, String>>()
     private val history = """{"since":"2026-01-05","days":[{"date":"2026-01-05","byProvider":{"claude":{"opus":{"input":1,"output":2,"cacheRead":3,"cacheWrite":4}}}}]}"""
-    private val health = "GET /v0/health"
     private val daily = "GET /v0/usage/daily?days=371&tz=America%2FLos_Angeles"
 
     /** A source whose health answers [healths] in turn, the last from then on; the daily route answers [answers] in turn. */
     private fun source(vararg healths: Pair<Int, String>): LiveDailyUsageSource {
-        val left = ArrayDeque(healths.toList())
         return LiveDailyUsageSource(
             AgentClient(
                 object : Transport {
                     override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                         asked += "$method $path"
-                        val (status, text) = if (path == "/v0/health") (if (left.size > 1) left.removeFirst() else left.first()) else answers.removeFirst()
+                        val (status, text) = answers.removeFirst()
                         return TransportResponse(status, mapOf("content-type" to "application/json"), text.toByteArray())
                     }
 
                     override suspend fun close() {}
                 },
                 "t",
-            ),
+            ).also { it.noteHealth(AgentClient.json.parseToJsonElement(healths.first().second) as kotlinx.serialization.json.JsonObject) },
         )
     }
 
@@ -52,7 +50,7 @@ class LiveDailyUsageSourceTest {
         val source = source(on)
         val read = source.year()!!
         source.year()
-        assertEquals(listOf(health, daily, daily), asked)
+        assertEquals(listOf(daily, daily), asked)
         assertEquals(LocalDate.of(2026, 1, 5), read.since)
         assertEquals(7L, read.days.single().byProvider.getValue("claude").getValue("opus").counted)
     }
@@ -62,7 +60,7 @@ class LiveDailyUsageSourceTest {
         val source = source(200 to """{"ok":true,"capabilities":{"feed":true,"dailyUsage":false}}""")
         assertNull(source.year())
         assertNull(source.year())
-        assertEquals(listOf(health), asked)
+        assertEquals(emptyList<String>(), asked)
     }
 
     @Test
@@ -70,7 +68,7 @@ class LiveDailyUsageSourceTest {
         val source = source(200 to """{"ok":true,"capabilities":{"feed":true}}""")
         assertNull(source.year())
         assertNull(source.year())
-        assertEquals(listOf(health), asked)
+        assertEquals(emptyList<String>(), asked)
     }
 
     /** The route and the flag ship together: a health with no capabilities at all has no route. */
@@ -79,17 +77,16 @@ class LiveDailyUsageSourceTest {
         val source = source(200 to """{"ok":true}""")
         assertNull(source.year())
         assertNull(source.year())
-        assertEquals(listOf(health), asked)
+        assertEquals(emptyList<String>(), asked)
     }
 
-    /** Health that can't be read gives nothing now, and is read again at the next refresh. */
+    /** Missing bootstrap health disables history without asking another endpoint. */
     @Test
     fun aFailedHealthIsReadAgain() {
-        answers += 200 to history
-        val source = source(500 to """{"error":"boom"}""", on)
+        val source = source(200 to "{}")
         assertNull(source.year())
-        assertEquals(LocalDate.of(2026, 1, 5), source.year()?.since)
-        assertEquals(listOf(health, health, daily), asked)
+        assertNull(source.year())
+        assertEquals(emptyList<String>(), asked)
     }
 
     /** A server that sets the flag but has no route isn't asked again. */
@@ -101,7 +98,7 @@ class LiveDailyUsageSourceTest {
             val source = source(on)
             assertNull(source.year())
             assertNull(source.year())
-            assertEquals("$status", listOf(health, daily), asked)
+            assertEquals("$status", listOf(daily), asked)
         }
     }
 
@@ -114,6 +111,6 @@ class LiveDailyUsageSourceTest {
         assertNull(source.year())
         assertNull(source.year())
         assertNull(source.year())
-        assertEquals(listOf(health, daily, daily, daily), asked)
+        assertEquals(listOf(daily, daily, daily), asked)
     }
 }

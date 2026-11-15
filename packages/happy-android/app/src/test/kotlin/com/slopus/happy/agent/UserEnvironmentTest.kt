@@ -46,6 +46,7 @@ class UserEnvironmentTest {
         override suspend fun close() {}
 
         fun paths() = asked.map { it.first }
+        fun health() = buildJsonObject { put("capabilities", buildJsonObject { takes?.let { put("userEnvironment", it) } }) }
     }
 
     private fun conversation(client: AgentClient) = ConversationApi(
@@ -85,7 +86,7 @@ class UserEnvironmentTest {
     @Test
     fun reportsWhatTheApiDocumentsAndNamesTheDeviceOnSendsOnceTaken() = runBlocking {
         val computer = Computer(takes = true)
-        val client = AgentClient(computer, "t")
+        val client = AgentClient(computer, "t").also { it.noteHealth(computer.health()) }
         client.environment.report(client, berlin, "6f1c2a8e-3b7d-4e0a-9c55-1d2e3f4a5b6c")
         assertEquals("PUT /v0/environment", computer.asked.last().first)
         assertEquals(
@@ -114,22 +115,23 @@ class UserEnvironmentTest {
     @Test
     fun aComputerThatDoesntTakeReportsIsNeverToldNorSentADevice() = runBlocking {
         val computer = Computer(takes = null)
-        val client = AgentClient(computer, "t")
+        val client = AgentClient(computer, "t").also { it.noteHealth(computer.health()) }
         client.environment.report(client, berlin, "d1")
         conversation(client).send("agent", "m1", "hi", emptyList(), mode)
-        assertEquals(listOf("GET /v0/health", "POST /v0/agents/agent/send"), computer.paths())
+        assertEquals(listOf("POST /v0/agents/agent/send"), computer.paths())
         assertFalse(computer.asked.last().second!!.containsKey("deviceId"))
 
-        // Updated while the app runs: health is asked again and now says yes.
+        // A later bootstrap advertises reports.
         computer.takes = true
+        client.noteHealth(computer.health())
         client.environment.report(client, berlin, "d1")
-        assertEquals(listOf("GET /v0/health", "PUT /v0/environment"), computer.paths().takeLast(2))
+        assertEquals(listOf("POST /v0/agents/agent/send", "PUT /v0/environment"), computer.paths())
     }
 
     @Test
     fun aRefusedRouteStopsNamingTheDevice() = runBlocking {
         val computer = Computer(takes = true, status = 404)
-        val client = AgentClient(computer, "t")
+        val client = AgentClient(computer, "t").also { it.noteHealth(computer.health()) }
         client.environment.report(client, berlin, "d1")
         assertNull(client.environment.sendingDeviceId)
         conversation(client).send("agent", "m1", "hi", emptyList(), mode)
@@ -139,7 +141,7 @@ class UserEnvironmentTest {
     @Test
     fun aFailedReportIsToldAgain() = runBlocking {
         val computer = Computer(takes = true, status = 500)
-        val client = AgentClient(computer, "t")
+        val client = AgentClient(computer, "t").also { it.noteHealth(computer.health()) }
         try {
             client.environment.report(client, berlin, "d1")
             fail("a 500 is thrown")

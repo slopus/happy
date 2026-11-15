@@ -95,7 +95,7 @@ class GenUiSecretFormTest {
         },
         "t",
         cloud,
-    )
+    ).also { it.noteHealth(Json.parseToJsonElement("""{"capabilities":$capabilities}""").jsonObject) }
 
     private fun open(origin: String? = "a1", cloud: Boolean = false): GenUiInline {
         val inline = GenUiInline(computer(origin, cloud), null, "a1", onMessage = {}, onOpenWeb = {})
@@ -202,7 +202,6 @@ class GenUiSecretFormTest {
     fun aComputerThatDoesntSayItRunsSecretActionsKeepsTheButtonDisabled() {
         capabilities = """{"feed":true}"""
         open()
-        rule.waitUntil(5_000) { sent.any { it.second == "/v0/health" } }
         rule.waitForIdle()
         rule.onNodeWithText("Add Stripe keys").assertIsNotEnabled()
         assertTrue(rule.onAllNodesWithTag(GenUiSecretTags.SHEET).fetchSemanticsNodes().isEmpty())
@@ -235,7 +234,6 @@ class GenUiSecretFormTest {
     @Test
     fun aHappyCloudServerServesItsOwnSecretActionNotThisOne() {
         open(cloud = true)
-        rule.waitUntil(5_000) { sent.any { it.second == "/v0/health" } }
         rule.waitForIdle()
         rule.onNodeWithText("Add Stripe keys").assertIsNotEnabled()
     }

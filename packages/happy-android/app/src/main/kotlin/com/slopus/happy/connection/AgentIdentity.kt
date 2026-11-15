@@ -67,10 +67,6 @@ object AgentIdentity {
     suspend fun refresh(transport: Transport, token: String, fallbackName: String, etag: String? = null, oauth: Boolean = false): AgentInfo =
         refresh(Requester { method, path, headers, category -> transport.request(method, path, token, headers = headers, category = category) }, fallbackName, etag, oauth)
 
-    /** Health's `capabilities.webSocketTunnels` alone. */
-    suspend fun webSocketTunnels(requester: Requester, oauth: Boolean): Boolean =
-        json.decodeOrInvalid<Health>(check(requester.request("GET", "/v0/health", emptyMap(), RequestCategory.Query), oauth)).capabilities?.webSocketTunnels == true
-
     suspend fun refresh(requester: Requester, fallbackName: String, etag: String? = null, oauth: Boolean = false): AgentInfo {
         fun checked(response: TransportResponse) = check(response, oauth)
         val health = json.decodeOrInvalid<Health>(checked(requester.request("GET", "/v0/health", emptyMap(), RequestCategory.Query)))
@@ -130,23 +126,22 @@ object AgentIdentity {
 
     /** The live session gets identity from the same snapshot as home. */
     internal fun bootstrap(health: JsonObject?, config: JsonObject?, fallbackName: String): AgentInfo {
-        if (health == null || config == null) throw AgentConnectionException(AgentConnectionException.Reason.UpdateRequired)
-        val state = json.decodeFromString<Health>(health.toString())
-        if (state.version.protocol < MIN_PROTOCOL) throw AgentConnectionException(AgentConnectionException.Reason.UpdateRequired)
-        if (!state.ready) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
-        val node = json.decodeFromString<Config>(config.toString()).node
+        val state = health?.let { json.decodeFromString<Health>(it.toString()) }
+        if (state != null && state.version.protocol < MIN_PROTOCOL) throw AgentConnectionException(AgentConnectionException.Reason.UpdateRequired)
+        if (state != null && !state.ready) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+        val node = config?.let { json.decodeFromString<Config>(it.toString()).node }
         val name = node?.name?.takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 128 && it.none(Char::isISOControl) }
         if (node != null && name == null) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         return AgentInfo(
             name = name ?: fallbackName,
             thumbhash = node?.avatar?.thumbhash,
-            daemonVersion = state.version.daemon,
-            protocol = state.version.protocol,
+            daemonVersion = state?.version?.daemon,
+            protocol = state?.version?.protocol,
             avatar = if (node != null && node.avatar == null) NodeAvatar.None else NodeAvatar.Unchanged,
-            webSocketTunnels = state.capabilities?.webSocketTunnels == true,
-            instanceId = state.instanceId?.takeIf(com.slopus.happy.agent.HappyUrls::isInstanceId),
-            search = state.capabilities?.search == true,
-            plugins = state.capabilities?.plugins == true,
+            webSocketTunnels = state?.capabilities?.webSocketTunnels == true,
+            instanceId = state?.instanceId?.takeIf(com.slopus.happy.agent.HappyUrls::isInstanceId),
+            search = state?.capabilities?.search == true,
+            plugins = state?.capabilities?.plugins == true,
         )
     }
 

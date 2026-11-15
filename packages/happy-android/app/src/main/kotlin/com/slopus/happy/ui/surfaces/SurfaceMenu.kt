@@ -96,7 +96,7 @@ fun SurfaceMenu(
         (surface.members.mapNotNull { it.userId } + listOfNotNull(surface.creatorUserId)).distinct()
     }
     val names by produceState(emptyMap<String, String>(), session, ids) {
-        value = try { ReferenceReader.userNames(session.client, ids) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
+        value = session.team.names(ids.toSet())
     }
     val people = SurfacePeople(
         members = surface.members.map { member -> member.userId?.let { names[it] }?.takeIf { it.isNotEmpty() } },

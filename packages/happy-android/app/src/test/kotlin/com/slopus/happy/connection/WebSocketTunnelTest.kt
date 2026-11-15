@@ -99,7 +99,6 @@ class WebSocketTunnelTest {
 
     @Test
     fun theBrowserPrefersTheWebSocketTwinWhenHealthOffersIt() = runBlocking {
-        server.enqueue(health)
         server.enqueue(MockResponse.Builder().webSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 // The nested CONNECT's answer, as the daemon writes it inside the tunnel.
@@ -111,15 +110,14 @@ class WebSocketTunnelTest {
             }
         }).build())
         val client = AgentClient(transport, "device-token")
+        client.noteHealth(AgentClient.json.parseToJsonElement("""{"capabilities":{"webSocketTunnels":true}}""") as kotlinx.serialization.json.JsonObject)
         val tunnel = withTimeout(10_000) { BrowserTunnel.open(client, com.slopus.happy.browser.BrowserNetwork.workspace("w1"), com.slopus.happy.browser.BrowserPolicy.Authority.parse("localhost:3000")!!) }
         tunnel.close()
-        assertEquals("/v0/health", server.takeRequest().target)
         assertEquals("/v0/workspaces/w1/proxy/websocket", server.takeRequest().target)
     }
 
     @Test
     fun anEdgeThatRefusesConnectTurnsTunnelsOff() = runBlocking {
-        server.enqueue(MockResponse.Builder().addHeader("Content-Type", "application/json").body("""{"healthy":true,"ready":true,"version":{"protocol":33,"daemon":"1"}}""").build())
         // A load balancer's own page for CONNECT.
         server.enqueue(MockResponse.Builder().code(405).addHeader("Content-Type", "text/html").body("<html>Method Not Allowed</html>").build())
         val client = AgentClient(transport, "device-token")

@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
  */
 internal fun connectionTodos(session: AgentSession, client: AgentClient, scope: CoroutineScope): TodoLibrary {
     val library = TodoLibrary(
-        routes = AgentTodoRoutes(client),
+        routes = AgentTodoRoutes(client) { session.team.names(it.toSet()) },
         outbox = session.intents,
         kept = { key -> withContext(Dispatchers.IO) { session.cachedResource(key) } },
         keep = { key, value -> withContext(Dispatchers.IO) { session.keepResource(key, value) } },

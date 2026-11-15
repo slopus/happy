@@ -77,7 +77,7 @@ object DocumentRoutes {
      * (`capabilities.collaborativeDocuments`); older ones only serve Markdown.
      */
     suspend fun collaborativeDocuments(client: AgentClient): Boolean {
-        val health = client.decode<JsonObject>("GET", "/v0/health")
+        val health = client.health()
         return (health["capabilities"] as? JsonObject)?.get("collaborativeDocuments")?.let { (it as? JsonPrimitive)?.booleanOrNull } == true
     }
 

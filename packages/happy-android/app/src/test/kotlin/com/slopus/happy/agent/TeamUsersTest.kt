@@ -53,8 +53,6 @@ class TeamUsersTest {
         // One without a picture wears their own placeholder.
         assertNull(rows.getValue("at3").picture)
         assertEquals("u3", rows.getValue("at3").seed)
-        // The members to read: the listed tasks' authors, not the person, not an archived task's.
-        assertEquals(setOf("u2", "u3"), TeamUser.authors(catalog(task("t1", Wire.USER), task("t2", "u2"), task("t3", "u3"), task("t4", "u4", archived = true))))
     }
 
     @Test fun `standalone, a task keeps its own placeholder`() {
@@ -62,7 +60,6 @@ class TeamUsersTest {
         val row = AgentFeed.derive(alone).conversations.single()
         assertNull(row.picture)
         assertEquals("t1", row.seed)
-        assertEquals(emptySet<String>(), TeamUser.authors(alone))
     }
 
     @Test fun `a standalone profile event brings the new photo`() {
@@ -71,69 +68,24 @@ class TeamUsersTest {
         assertEquals(hash, before.apply(event).catalog.profilePhoto)
     }
 
-    private fun TestScope.directory(read: suspend (List<String>) -> List<TeamUser>, kept: JsonObject? = null, keep: (JsonObject) -> Unit = {}) =
+    private fun TestScope.directory(kept: JsonObject? = null, keep: (JsonObject) -> Unit = {}) =
         // Not backgroundScope: advanceUntilIdle leaves its work alone.
-        TeamDirectory(CoroutineScope(StandardTestDispatcher(testScheduler) + Job().also { jobs += it }), read, kept = { kept }, keep = { keep(it) })
+        TeamDirectory(CoroutineScope(StandardTestDispatcher(testScheduler) + Job().also { jobs += it }), kept = { kept }, keep = { keep(it) })
 
     private val jobs = mutableListOf<Job>()
 
     @After fun cancel() = jobs.forEach { it.cancel() }
 
-    @Test fun `members are read once, a hundred at a time, kept, and asked again only once the link is back`() = runTest {
-        val asked = mutableListOf<List<String>>()
+    @Test fun `bootstrap people are kept offline and a later bootstrap replaces them`() = runTest {
         var saved: JsonObject? = null
-        val known = (1..150).associate { "m$it" to TeamUser("m$it", "Member $it") }
-        val team = directory({ ids -> asked += ids; ids.mapNotNull(known::get) }, keep = { saved = it })
+        val team = directory(keep = { saved = it })
         advanceUntilIdle()
-        team.want(known.keys + "gone")
+        team.bootstrap(kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("id", "u2"); put("name", "Ann") })), null)
+        assertEquals(mapOf("u2" to "Ann"), team.names(setOf("u2", "missing")))
+        val again = directory(kept = saved)
         advanceUntilIdle()
-        assertEquals(listOf(100, 51), asked.map { it.size })
-        assertEquals(150, team.users.value.size)
-        // Asked again: neither the known nor the one the computer doesn't know.
-        team.want(known.keys + "gone")
-        advanceUntilIdle()
-        assertEquals(2, asked.size)
-        // Back online: everyone shown is read again, the unknown one too.
-        team.connected()
-        advanceUntilIdle()
-        assertEquals(4, asked.size)
-        assertEquals(true, "gone" in asked.last() || "gone" in asked[2])
-
-        // A relaunch draws them from what was kept, before any read.
-        val again = directory({ CompletableDeferred<List<TeamUser>>().await() }, kept = saved)
-        advanceUntilIdle()
-        assertEquals("Member 7", again.users.value["m7"]?.name)
-    }
-
-    @Test fun `a member whose profile changed is read again, and names are read where not known`() = runTest {
-        var name = "Ann"
-        var reads = 0
-        val team = directory({ ids -> reads++; ids.map { TeamUser(it, if (it == "u2") name else "Bo") } })
-        advanceUntilIdle()
-        team.want(setOf("u2"))
-        advanceUntilIdle()
-        name = "Ann Lee"
-        team.changed("u2")
-        team.changed("nobody")
-        advanceUntilIdle()
-        assertEquals("Ann Lee", team.users.value["u2"]?.name)
-        assertEquals(2, reads)
-        assertEquals(mapOf("u2" to "Ann Lee", "u3" to "Bo"), team.names(setOf("u2", "u3")))
-    }
-
-    @Test fun `a read that fails leaves placeholders until the link is back`() = runTest {
-        var failing = true
-        var reads = 0
-        val team = directory({ ids -> reads++; if (failing) throw java.io.IOException("offline") else ids.map { TeamUser(it, "N") } })
-        advanceUntilIdle()
-        team.want(setOf("u2"))
-        advanceUntilIdle()
-        team.want(setOf("u2"))
-        advanceUntilIdle()
-        assertEquals(1, reads)
-        failing = false
-        team.connected()
-        advanceUntilIdle()
-        assertEquals("N", team.users.value["u2"]?.name)
+        assertEquals("Ann", again.users.value["u2"]?.name)
+        again.bootstrap(null, buildJsonObject { put("userId", "u1"); put("name", "Me") })
+        assertEquals(mapOf("u1" to "Me"), again.names(setOf("u1", "u2")))
     }
 }

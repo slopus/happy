@@ -32,7 +32,7 @@ interface TodoRoutes {
     suspend fun names(ids: List<String>): Map<String, String>
 }
 
-class AgentTodoRoutes(private val client: AgentClient) : TodoRoutes {
+class AgentTodoRoutes(private val client: AgentClient, private val people: (List<String>) -> Map<String, String> = { emptyMap() }) : TodoRoutes {
     private fun path(surfaceId: String, todoId: String? = null, route: String? = null) =
         "/v0/surfaces/todo/${escape(surfaceId)}" + (todoId?.let { "/" + escape(it) } ?: "") + (route?.let { "/$it" } ?: "")
 
@@ -90,17 +90,7 @@ class AgentTodoRoutes(private val client: AgentClient) : TodoRoutes {
         return revisions
     }
 
-    override suspend fun names(ids: List<String>): Map<String, String> {
-        if (ids.isEmpty()) return emptyMap()
-        return ids.distinct().chunked(100).flatMap { batch ->
-            val answer = call("GET", "/v0/users?ids=" + batch.joinToString(",") { escape(it) })
-            answer["users"].arr.orEmpty().mapNotNull { user ->
-                val o = user.obj ?: return@mapNotNull null
-                val id = o["id"].str ?: return@mapNotNull null
-                o["name"].str?.takeIf { it.isNotEmpty() }?.let { id to it }
-            }
-        }.toMap()
-    }
+    override suspend fun names(ids: List<String>): Map<String, String> = people(ids)
 }
 
 /**

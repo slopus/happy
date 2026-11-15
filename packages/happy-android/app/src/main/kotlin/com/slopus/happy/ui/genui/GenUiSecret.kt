@@ -89,7 +89,7 @@ class GenUiSecretApi(private val client: AgentClient) {
     suspend fun check() {
         if (capable != null) return
         val flag = try {
-            val capabilities = AgentClient.json.parseToJsonElement(client.send("GET", "/v0/health").text).asObject()?.get("capabilities") as? JsonObject
+            val capabilities = client.health()["capabilities"] as? JsonObject
             (capabilities?.get("artifactSecretActions") as? JsonPrimitive)?.takeIf { !it.isString }?.content == "true"
         } catch (e: CancellationException) {
             throw e
