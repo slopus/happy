@@ -573,6 +573,30 @@ final class SyncOrderTests: XCTestCase {
         await engine.stop()
     }
 
+    /// Stopped (signed out): those waiting are told so, and nothing is
+    /// asked of the computer for them.
+    func testAStopEndsTheWaitForHealthAskingNothing() async throws {
+        let server = OrderServer()
+        await server.hold()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        try await eventually("home asked") { await server.requests().contains("GET /v0/bootstrap/desktop") }
+        let waiting = Task { try await client.health() }
+        try await Task.sleep(for: .milliseconds(100))
+        let stopping = Task { await engine.stop() }
+        do {
+            _ = try await waiting.value
+            XCTFail("a stopped engine's health")
+        } catch {}
+        await server.answer()
+        _ = await stopping.value
+        // After it too: what is known, or an error, never a request.
+        _ = try? await client.health()
+        let asked = await server.requests()
+        XCTAssertFalse(asked.contains("GET /v0/health"))
+    }
+
     /// One launch to its end, in `directory`: what a phone keeps from it.
     private func launchedBefore(_ server: OrderServer, _ client: AgentClient, _ directory: URL) async throws {
         let engine = SyncEngine(client: client, directory: directory)

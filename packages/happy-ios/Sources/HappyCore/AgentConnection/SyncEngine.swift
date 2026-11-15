@@ -352,7 +352,7 @@ public actor SyncEngine {
         heldVerification = false
         connection = nil
         waitingForChat = false
-        client.servedHealth.close()
+        client.servedHealth.letGo()
         let pausedGeneration = generation
         holdID = nil; holdDeadline = nil
         holdTimer?.cancel(); holdTimer = nil
@@ -424,6 +424,8 @@ public actor SyncEngine {
 
     public func stop() async {
         stopped = true
+        // Before the pause, which would let them ask the computer.
+        client.servedHealth.close()
         await pause()
         await spaces.stop()
         await documents.stop()
@@ -432,7 +434,6 @@ public actor SyncEngine {
         await feed.stop()
         await artifacts.stop()
         await lookups.stop()
-        client.servedHealth.close()
         feedFollowing?.cancel()
         directoryFollowing.forEach { $0.cancel() }
         directoryFollowing = []

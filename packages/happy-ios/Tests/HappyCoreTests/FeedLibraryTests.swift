@@ -399,6 +399,22 @@ final class FeedLibraryTests: XCTestCase {
         }
     }
 
+    /// Two bootstraps on the heels of the hello, before the first page's
+    /// read has begun: still one read.
+    func testAFeedFoundTwiceAtOnceIsReadOnce() async throws {
+        let server = FakeFeedServer()
+        await server.seed([Self.item(1), Self.item(2)])
+        let account = await launch(server, keep: MemoryFeedKeep())
+        await account.library.opened()
+        let capabilities = await server.capabilities()
+        await account.library.bootstrap(unread: 2, cursor: nil, capabilities: capabilities)
+        await account.library.bootstrap(unread: 2, cursor: nil, capabilities: capabilities)
+        try await eventually { await account.library.current.items.count == 2 }
+        try await Task.sleep(for: .milliseconds(100))
+        let reads = await server.reads
+        XCTAssertEqual(reads.count, 1)
+    }
+
     /// Something kept: the newest page waits for home (`connected`).
     func testAKeptFeedWaitsForHomeForItsNewestPage() async throws {
         let server = FakeFeedServer()
