@@ -191,11 +191,23 @@ public actor FeedLibrary {
         // Updated to one that doesn't filter: Highlights comes from
         // the whole list.
         if !capabilities.subjectFilter { picked = nil }
-        let was = state.available
         await settleAvailability()
         await commit()
-        // A feed this connection found only now: its newest page.
-        if live, was != true, state.available == true { Task { await self.refresh() } }
+        readFirstPage()
+    }
+
+    /// The stream said hello: what the person does reads from now.
+    public func opened() {
+        live = true
+        readFirstPage()
+    }
+
+    /// Nothing kept, once both the stream and the bootstrap say there is a
+    /// feed, whichever said it second: its first page, at once. Later
+    /// pages come with home (`connected`).
+    private func readFirstPage() {
+        guard live, state.available == true, !state.loaded, reading == nil else { return }
+        Task { await self.refresh() }
     }
 
     /// Home was verified on a new connection: the newest page is read, and

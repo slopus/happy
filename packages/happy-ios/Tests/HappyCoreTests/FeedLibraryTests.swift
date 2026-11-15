@@ -378,6 +378,77 @@ final class FeedLibraryTests: XCTestCase {
         XCTAssertFalse(hasMore)
     }
 
+    /// Nothing kept (a first launch): the first page is read as soon as
+    /// the stream's hello and the bootstrap's health have both said there
+    /// is a feed, whichever came second, before home is verified.
+    func testAFeedWithNothingKeptIsReadOnceHelloAndTheBootstrapBothSay() async throws {
+        for helloFirst in [true, false] {
+            let server = FakeFeedServer()
+            await server.seed([Self.item(1), Self.item(2)])
+            let account = await launch(server, keep: MemoryFeedKeep())
+            if helloFirst { await account.library.opened() }
+            else { await account.library.bootstrap(unread: 2, cursor: nil, capabilities: await server.capabilities()) }
+            try await Task.sleep(for: .milliseconds(50))
+            let early = await server.reads
+            XCTAssertEqual(early, [], "one of the two hasn't said yet")
+            if helloFirst { await account.library.bootstrap(unread: 2, cursor: nil, capabilities: await server.capabilities()) }
+            else { await account.library.opened() }
+            try await eventually { await account.library.current.items.count == 2 }
+            let reads = await server.reads
+            XCTAssertEqual(reads.count, 1, "read once")
+        }
+    }
+
+    /// Something kept: the newest page waits for home (`connected`).
+    func testAKeptFeedWaitsForHomeForItsNewestPage() async throws {
+        let server = FakeFeedServer()
+        await server.seed([Self.item(1)])
+        let keep = MemoryFeedKeep()
+        let first = await launch(server, keep: keep)
+        await connect(first, unread: 1)
+        try await eventually { await first.library.current.items.count == 1 }
+        await first.library.stop()
+        await server.seed([Self.item(1), Self.item(2)])
+        let account = await launch(server, keep: keep)
+        let before = await server.reads.count
+        await account.library.opened()
+        await account.library.bootstrap(unread: 2, cursor: nil, capabilities: await server.capabilities())
+        try await Task.sleep(for: .milliseconds(100))
+        let after = await server.reads.count
+        XCTAssertEqual(after, before, "kept: nothing read before home")
+        await account.library.connected()
+        let shown = await account.library.current.items.count
+        XCTAssertEqual(shown, 2)
+    }
+
+    /// After the stream's hello and before home is verified, what the
+    /// person does reads: the older page.
+    func testLoadingMoreWorksFromTheStreamsHello() async throws {
+        let server = FakeFeedServer()
+        await server.seed((1...(FeedLibrary.page + 5)).map { Self.item($0) })
+        let account = await launch(server, keep: MemoryFeedKeep())
+        await account.library.opened()
+        await account.library.bootstrap(unread: 0, cursor: nil, capabilities: await server.capabilities())
+        await account.library.refresh()
+        let first = await account.library.current.items.count
+        XCTAssertEqual(first, FeedLibrary.page)
+        await account.library.loadMore()
+        let state = await account.library.current
+        XCTAssertEqual(state.items.count, FeedLibrary.page + 5)
+    }
+
+    /// And Highlights, from a computer that filters.
+    func testHighlightsWorkFromTheStreamsHello() async throws {
+        let server = FakeFeedServer()
+        await server.setFiltering(true)
+        await server.seed([Self.item(1)])
+        let account = await launch(server, keep: MemoryFeedKeep())
+        await account.library.opened()
+        await account.library.bootstrap(unread: 0, cursor: nil, capabilities: await server.capabilities())
+        await account.library.setFilter(.highlights)
+        try await eventually { await server.filters.contains { $0 == FeedFilter.highlights.subjects } }
+    }
+
     // MARK: Highlights
 
     /// A computer that filters pages Highlights on its own: only artifact
