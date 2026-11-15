@@ -207,7 +207,15 @@ public actor FeedLibrary {
     /// pages come with home (`connected`).
     private func readFirstPage() {
         guard live, state.available == true, !state.loaded, reading == nil else { return }
-        Task { await self.refresh() }
+        // Taken now, so the other event finds it under way: one read.
+        reading = Task {
+            await readFirst()
+            reading = nil
+            if again {
+                again = false
+                await refresh()
+            }
+        }
     }
 
     /// Home was verified on a new connection: the newest page is read, and

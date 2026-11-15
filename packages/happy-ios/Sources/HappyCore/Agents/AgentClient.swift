@@ -773,8 +773,9 @@ extension AgentConnections {
 final class ServedHealth: @unchecked Sendable {
     private let lock = NSLock()
     private var followed = false
+    private var ended = false
     private var health: JSONValue?
-    private var waiting: [CheckedContinuation<JSONValue?, Never>] = []
+    private var waiting: [CheckedContinuation<JSONValue?, Error>] = []
 
     func follow() { lock.withLock { followed = true } }
 
@@ -788,9 +789,8 @@ final class ServedHealth: @unchecked Sendable {
         for waiter in waiters { waiter.resume(returning: health) }
     }
 
-    /// The engine paused or stopped: nobody waits for a bootstrap that
-    /// won't come.
-    func close() {
+    /// The engine paused: those waiting ask the computer themselves.
+    func letGo() {
         let waiters = lock.withLock {
             followed = false
             defer { waiting = [] }
@@ -808,13 +808,29 @@ final class ServedHealth: @unchecked Sendable {
         for waiter in waiters { waiter.resume(returning: nil) }
     }
 
+    /// The engine stopped (signed out, removed): nothing is asked of its
+    /// computer again, and those waiting are told so.
+    func close() {
+        let waiters = lock.withLock {
+            followed = false
+            ended = true
+            defer { waiting = [] }
+            return waiting
+        }
+        for waiter in waiters { waiter.resume(throwing: CancellationError()) }
+    }
+
     func value(asking ask: () async throws -> JSONValue) async throws -> JSONValue {
-        let (known, follows) = lock.withLock { (health, followed) }
+        let (known, follows, over) = lock.withLock { (health, followed, ended) }
         if let known { return known }
+        guard !over else { throw CancellationError() }
         guard follows else { return try await ask() }
-        let taken: JSONValue? = await withCheckedContinuation { (waiter: CheckedContinuation<JSONValue?, Never>) in
+        let taken: JSONValue? = try await withCheckedThrowingContinuation { (waiter: CheckedContinuation<JSONValue?, Error>) in
             lock.withLock {
-                if let health { waiter.resume(returning: health) } else if followed { waiting.append(waiter) } else { waiter.resume(returning: nil) }
+                if let health { waiter.resume(returning: health) }
+                else if ended { waiter.resume(throwing: CancellationError()) }
+                else if followed { waiting.append(waiter) }
+                else { waiter.resume(returning: nil) }
             }
         }
         if let taken { return taken }
