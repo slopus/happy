@@ -687,6 +687,11 @@ git watches, and open document work. Pictures use file clients. Bootstrap
 Bootstrap `config.node` updates identity when present. Neither needs a separate
 startup health/config request. People come only from bootstrap teammates (or
 the standalone profile), never per-author lookups.
+Home's “Updating…” uses only the session's P0 phase and clears at Verified.
+A chat's “Updating…” uses only its own history read; home bootstrap and P2
+cannot keep it updating. Hello sets connection status to Connected; before
+hello the header says “Connecting…”. Delivery and P2 still wait for Verified.
+The header debounce keeps its existing behavior.
 
 **Store merges** (`HappyStore`). Writes merge instead of overwrite: each
 versioned document (metadata, agentState, daemonState) keeps the higher

@@ -142,6 +142,9 @@ class AgentSession internal constructor(
     val status: StateFlow<AgentLinkStatus> = statusState.asStateFlow()
     private val phaseState = MutableStateFlow(SyncPhase.Offline)
     val phase: StateFlow<SyncPhase> = phaseState.asStateFlow()
+    /** Home's P0 only; later resource refreshes never keep its title updating. */
+    val homeUpdating: StateFlow<Boolean> = phase.map { it == SyncPhase.P0Connecting || it == SyncPhase.P0Live }
+        .stateIn(scope, SharingStarted.Eagerly, false)
     private var avatarHash: String? = null
     @Volatile private var lastHeard: Long? = null
     private var resumeAllowed = false
@@ -936,6 +939,7 @@ class AgentSession internal constructor(
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
                         val wasVerified = phaseState.value == SyncPhase.Verified
+                        statusState.value = AgentLinkStatus.Connected
                         phaseState.value = SyncPhase.P0Live
                         snapshot.await()
                         val hello = AgentHello.of(event)
@@ -950,7 +954,6 @@ class AgentSession internal constructor(
                                 connections.update(connectionId, avatar) { it.copy(thumbhash = hash) }
                             }
                         }
-                        statusState.value = AgentLinkStatus.Connected
                         // Reads the Feed's newest page each time, so a gap loses nothing.
                         feedLibrary.connected()
                         gitRenewal.update { it + 1 }

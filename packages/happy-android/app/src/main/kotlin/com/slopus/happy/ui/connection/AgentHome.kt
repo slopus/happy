@@ -942,10 +942,10 @@ private fun SignedInAgentHome(
     val people by session.team.users.collectAsStateWithLifecycle()
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
-    val syncing by session.isSyncing.collectAsStateWithLifecycle()
+    val updating by session.homeUpdating.collectAsStateWithLifecycle()
     val notice by session.notice.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val link = rememberShownLinkState(status.linkState(syncing, rememberNetworkPath()))
+    val link = rememberShownLinkState(status.linkState(updating, rememberNetworkPath()))
     // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): home past its loader.
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
