@@ -214,13 +214,4 @@ public enum SidebarRows {
             return row
         }
     }
-
-    /// The members whose faces the listed tasks wear, other than the
-    /// signed-in person, whose own is the profile's; none outside a team.
-    public static func authors(_ desktop: DesktopSnapshot) -> Set<String> {
-        guard let me = desktop.profile?.userId else { return [] }
-        let joined = Set((desktop.taskMemberships ?? []).map(\.taskId))
-        let listed = (desktop.tasks ?? []).filter { joined.contains($0.id) && $0.status != "archived" }
-        return Set(listed.compactMap(\.ownerUserId)).subtracting([me])
-    }
 }
