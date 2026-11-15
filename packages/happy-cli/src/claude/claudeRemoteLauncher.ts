@@ -280,6 +280,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         let pending: {
             message: MessageParam['content'];
             mode: EnhancedMode;
+            hash: string;
         } | null = null;
 
         // Track session ID to detect when it actually changes
@@ -326,6 +327,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         if (pending) {
                             let p = pending;
                             pending = null;
+                            // The held message starts this query, so its mode is
+                            // the one to compare against. Left unset, the next
+                            // model switch joined this query on the old model.
+                            modeHash = p.hash;
+                            mode = p.mode;
                             permissionHandler.handleModeChange(p.mode.permissionMode);
                             return p;
                         }
