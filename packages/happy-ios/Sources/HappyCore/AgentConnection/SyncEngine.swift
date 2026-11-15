@@ -517,6 +517,8 @@ public actor SyncEngine {
                 // Asked for first, so the reads beside it usually begin after
                 // it and cover what came before it (`coverStream`).
                 await events.start(after: resuming ? streamCursor : nil)
+                // Connecting: flows ready for the screen's first reads, beside the stream and home's.
+                warm()
                 // The chat on screen next, then home.
                 await spaces.externalStreamAsked()
                 // The chat on screen is read beside a replay, however long
@@ -735,6 +737,12 @@ public actor SyncEngine {
         self.connection = nil
         waitingForChat = true
         Task { await self.release(generation, connection) }
+    }
+
+    /// Two query flows kept open for the next requests (`IdleFlows.warm`).
+    private func warm() {
+        let client = client
+        Task { await client.warm(2) }
     }
 
     private func release(_ generation: Int, _ connection: (hello: JSONValue, gap: Bool, continued: Bool)) async {
