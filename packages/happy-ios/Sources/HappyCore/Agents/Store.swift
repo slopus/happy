@@ -139,10 +139,6 @@ public actor Store {
     private var waitingForStream: [CheckedContinuation<Void, Never>] = []
     private var chatsAsking = 0
     private var waitingForChats: [CheckedContinuation<Void, Never>] = []
-    /// Chat history reads on their way: what waits for home waits for
-    /// them too (`chatReadsLanded`), so none shares the link with it.
-    private var chatReads = 0
-    private var waitingForChatReads: [CheckedContinuation<Void, Never>] = []
     private var placesDirty = false
     /// When the bots and tasks were last read (~0.8 MB on a busy
     /// computer), and what came meanwhile that their read could not follow.
@@ -225,22 +221,6 @@ public actor Store {
     public func streamAsked() async {
         guard !streamOpen else { return }
         await withCheckedContinuation { waitingForStream.append($0) }
-    }
-
-    public func chatReadBegan() { chatReads += 1 }
-
-    public func chatReadEnded() {
-        chatReads -= 1
-        guard chatReads == 0 else { return }
-        let waiting = waitingForChatReads
-        waitingForChatReads = []
-        for engine in waiting { engine.resume() }
-    }
-
-    /// Returns once no chat history read is on its way.
-    public func chatReadsLanded() async {
-        guard chatReads > 0 else { return }
-        await withCheckedContinuation { waitingForChatReads.append($0) }
     }
 
     /// The engine has asked for the stream (or never will): the chats that

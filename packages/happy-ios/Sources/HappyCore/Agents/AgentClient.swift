@@ -32,6 +32,11 @@ public final class AgentClient: Sendable {
     public let attachmentSupport = AttachmentSupport()
     /// What the computer serves, as its account's bootstrap says.
     let servedHealth = ServedHealth()
+    /// Chat history reads on their way: a request made while
+    /// `yieldsToChats` (what waits for home) waits for them before it is
+    /// sent, so none shares the link with the chat on screen.
+    public let chatReads = ChatReads()
+    @TaskLocal public static var yieldsToChats = false
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport
@@ -55,6 +60,7 @@ public final class AgentClient: Sendable {
     /// `sent` hears the body's bytes as they are written.
     func send(_ method: String, _ path: String, json: JSONValue? = nil, raw: Data? = nil, headers: [String: String] = [:], category: RequestCategory = .query,
               sent: (@Sendable (Int) -> Void)? = nil) async throws -> HTTP1Response {
+        if Self.yieldsToChats { await chatReads.landed() }
         #if DEBUG
         if method != "GET", let slow = Self.slowWrites { try await Task.sleep(for: .seconds(slow)) }
         #endif
@@ -805,5 +811,36 @@ final class ServedHealth: @unchecked Sendable {
         }
         guard let taken else { throw CancellationError() }
         return taken
+    }
+}
+
+/// How many chat history reads are on their way (`AgentClient.chatReads`).
+public final class ChatReads: @unchecked Sendable {
+    private let lock = NSLock()
+    private var reading = 0
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    public func began() { lock.withLock { reading += 1 } }
+
+    public func ended() {
+        let waiters = lock.withLock {
+            reading -= 1
+            guard reading == 0 else { return [CheckedContinuation<Void, Never>]() }
+            defer { waiting = [] }
+            return waiting
+        }
+        for waiter in waiters { waiter.resume() }
+    }
+
+    /// Returns once no chat history read is on its way.
+    public func landed() async {
+        await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
+            let now = lock.withLock {
+                if reading == 0 { return true }
+                waiting.append(waiter)
+                return false
+            }
+            if now { waiter.resume() }
+        }
     }
 }

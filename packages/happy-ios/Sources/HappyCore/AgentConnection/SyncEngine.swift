@@ -739,10 +739,10 @@ public actor SyncEngine {
         self.connection = nil
         // The chat on screen is read first, alone on the link.
         waitingForChat = true
-        let spaces = spaces
+        let client = client
         Task {
-            await spaces.chatReadsLanded()
-            await self.release(generation, connection)
+            await client.chatReads.landed()
+            await AgentClient.$yieldsToChats.withValue(true) { await self.release(generation, connection) }
         }
     }
 
