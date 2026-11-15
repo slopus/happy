@@ -1222,9 +1222,15 @@ public actor Conversation {
         }
     }
 
+    /// Sends a failed message again, with the mode the composer shows now:
+    /// a refusal is usually about the mode (its provider switched off, its
+    /// model gone, and the person has picked another since), and the same
+    /// one again would only be refused again, holding every later message
+    /// in the conversation behind it.
     public func retry(_ id: String) {
         guard let index = outgoing.firstIndex(where: { $0.id == id }), outgoing[index].failure != nil else { return }
         outgoing[index].failure = nil
+        if let mode { outgoingModes[id] = mode }
         publish()
         // Not made yet: the task is asked for again, under the same names.
         if creation != nil {
@@ -1239,7 +1245,7 @@ public actor Conversation {
                 let payload = queuedMessage(id: id, text: send.text, pictures: send.pictures)
                 do {
                     try await persistence.enqueueMessage(payload)
-                    try await persistence.retryMessage(id)
+                    try await persistence.retryMessage(id, mode: payload.mode)
                 } catch { failed(id, "Could not save this message on this device.") }
             }
             return

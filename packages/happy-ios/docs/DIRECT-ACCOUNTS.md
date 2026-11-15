@@ -91,6 +91,13 @@ progress is saved before the message is sent with relative file paths.
 The API prepends the required top-level caption to the optional rich blocks;
 image blocks use `mimeType`, and image-only sends supply a short caption.
 
+A send the computer refuses (a 4xx) shows "Not sent. Tap to retry." and holds
+the conversation's later sends in the outbox behind it. Its retry goes with
+the mode the composer shows now, not the refused one (`Conversation.retry`,
+`SyncEngine.retryMessage(_:mode:)`): a refusal is usually about the mode, a
+provider switched off or a model gone, and the same mode again was refused
+at once, so the tap seemed to do nothing and the later sends waited for good.
+
 An upload can take up to 15 minutes and writes its request body in cancellable
 chunks. Acknowledging the outbox row retains local copies: an older cached
 conversation may still need them after a crash. Only a successful serialized
