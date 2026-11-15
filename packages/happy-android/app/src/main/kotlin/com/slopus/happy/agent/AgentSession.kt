@@ -1079,7 +1079,7 @@ class AgentSession internal constructor(
                     }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
-                        documents.opened(event.data)
+                        documents.streams.opened(event.data)
                         feedLibrary.hello()
                         val wasVerified = phaseState.value == SyncPhase.Verified
                         statusState.value = AgentLinkStatus.Connected
@@ -1136,6 +1136,8 @@ class AgentSession internal constructor(
         awaitChatReads()
         val ids = gitWorkspaceIds(feed.value)
         readGit(ids)
+        awaitChatReads()
+        documents.resumeUnsent()
         watchGit(ids)
     }
 

@@ -679,8 +679,13 @@ class DocumentLibrary(
 
     fun opened(hello: JsonObject) {
         streams.opened(hello)
+        resumeUnsent()
+    }
+
+    /** Automatic replay of kept edits, separate from the live link of documents already open. */
+    fun resumeUnsent() {
         if (streams.current == null) return
-        scope.launch { resumeUnsent() }
+        scope.launch { readUnsent() }
     }
 
     fun closed() = streams.closed()
@@ -694,7 +699,7 @@ class DocumentLibrary(
     }
 
     /** Those kept with something unsent, which no editor holds now. */
-    private fun resumeUnsent() {
+    private fun readUnsent() {
         val ids = directory?.list() ?: return
         for (id in ids) {
             if (synchronized(lock) { id in syncs }) continue
