@@ -87,7 +87,8 @@ object ModeOptions {
 
     // The current generation by full model ID, one row each: every one is 1M-native.
     private val claudeModelModes = listOf(
-        ModeOption("claude-fable-5-1", "Fable 5.1", "1M context"),
+        ModeOption("claude-fable-5-2", "Fable 5.2", "1M context"),
+        ModeOption("claude-fable-5-1", "Fable 5.1"),
         ModeOption("claude-fable-5", "Fable 5"),
         ModeOption("claude-opus-5-5", "Opus 5.5"),
         ModeOption("claude-opus-5", "Opus 5"),
@@ -101,6 +102,7 @@ object ModeOptions {
     private val codexModelModes = listOf(
         ModeOption("gpt-6-astra", "GPT-6 Astra", "most capable"),
         ModeOption("gpt-6.1-sol", "GPT-6.1 Sol"),
+        ModeOption("gpt-6.1-terra", "GPT-6.1 Terra"),
         ModeOption("gpt-6-sol", "GPT-6 Sol"),
         ModeOption("gpt-6-luna", "GPT-6 Luna"),
         ModeOption("gpt-5.6-sol", "GPT-5.6 Sol"),
@@ -164,6 +166,7 @@ object ModeOptions {
     private val codexEffortsByModel = mapOf(
         "gpt-6-astra" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
         "gpt-6.1-sol" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+        "gpt-6.1-terra" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
         "gpt-6-sol" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
         "gpt-6-luna" to listOf("low", "medium", "high", "xhigh", "max"),
         "gpt-5.6-sol" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
