@@ -2,7 +2,7 @@ package com.slopus.happy.ui.monitor
 
 import androidx.lifecycle.ViewModel
 import com.slopus.happy.agent.AgentClient
-import com.slopus.happy.agent.AgentLinkStatus
+import com.slopus.happy.agent.SyncPhase
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.monitor.SystemMonitorFeed
 import com.slopus.happy.monitor.SystemMonitorSample
@@ -26,6 +26,7 @@ internal class MonitorModel(private val session: AgentSession, surfaceId: String
     val feed = SystemMonitorFeed(
         scope = scope,
         fetch = {
+            session.awaitVerified()
             val answer = session.client.send("GET", SystemMonitorFeed.path(surfaceId))
             AgentClient.json.decodeFromString(SystemMonitorSample.serializer(), answer.text)
         },
@@ -37,7 +38,7 @@ internal class MonitorModel(private val session: AgentSession, surfaceId: String
     fun resume() {
         feed.resume()
         if (watching?.isActive == true) return
-        watching = scope.launch { session.status.collect { if (it == AgentLinkStatus.Connected) feed.poke() } }
+        watching = scope.launch { session.phase.collect { if (it == SyncPhase.Verified) feed.poke() } }
     }
 
     fun pause() {

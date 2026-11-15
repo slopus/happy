@@ -54,6 +54,7 @@ import com.slopus.happy.conversation.ConversationApiException
 import com.slopus.happy.conversation.ConversationKeeper
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationSignal
+import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.HeldConversations
 import com.slopus.happy.conversation.RowTypesetter
 import com.slopus.happy.conversation.KeptMedia
@@ -424,16 +425,19 @@ private fun failureShown(row: ConversationRow.Failure, address: ChatAddress) {
  * An agent connection's link as its chats' headers say it. No link is ever
  * offline: one not connected is asked again until it is, so it is
  * connecting, whatever kept it away (a computer that didn't answer, a
- * pairing to redo: home says those in words of its own). Reading the
- * snapshot is catching up, not connecting: the computer or server answered
- * (iOS's `Session.headerState`, `.connected` with the stream down).
+ * pairing to redo: home says those in words of its own). Hello ends
+ * connecting; each screen's P0 then decides whether it is catching up.
  */
 internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean): LinkState = when {
     !network -> LinkState.WaitingForNetwork
+    this != null && this != AgentLinkStatus.Connected -> LinkState.Connecting
     syncing -> LinkState.Syncing
-    this == null || this == AgentLinkStatus.Connected -> LinkState.Online
-    else -> LinkState.Connecting
+    else -> LinkState.Online
 }
+
+/** A chat finishes P0 when its own history lands, independently of home's bootstrap or P2. */
+internal fun AgentLinkStatus?.conversationLinkState(state: ConversationState, network: Boolean): LinkState =
+    linkState(syncing = state.syncing || (state.created && !state.loaded), network = network)
 
 @Composable
 private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: ConversationRoute) {
@@ -463,13 +467,12 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     }
     val usage by session.usage.usage.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
-    val syncing by session.isSyncing.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     DisposableEffect(holder) { onDispose { holder.hold.show(false) } }
     // A link in this chat browses through this chat's agent's workspace (iOS's openBrowser(session:agentID:)).
     val context = LocalContext.current
     val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
-    val link = rememberShownLinkState(status.linkState(syncing, network))
+    val link = rememberShownLinkState(status.conversationLinkState(state, network))
     val computer = computerName(graph, route.connectionId)
     // A name a message wrote, or a Happy URL, opens what it names here.
     val happyLinks = com.slopus.happy.ui.connection.LocalHappyLinks.current

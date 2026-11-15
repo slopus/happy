@@ -8,12 +8,15 @@ import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.AgentConnectionCredentials
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.ByteSource
+import com.slopus.happy.connection.LinkState
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.connection.TransportStream
 import com.slopus.happy.documents.DocumentStreamEvent
 import com.slopus.happy.ui.conversation.makeConversation
+import com.slopus.happy.ui.conversation.conversationLinkState
+import com.slopus.happy.ui.conversation.linkState
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -210,6 +213,7 @@ class AgentSessionTest {
         agent.frames.send(Wire.hello("c0"))
         eventually({ session.phase.value }) { it == SyncPhase.P0Live }
         assertEquals(listOf("STREAM /v0/events/stream"), agent.calls.toList())
+        assertEquals(AgentLinkStatus.Connected, session.status.value)
         assertEquals(listOf("GET /v0/bootstrap/desktop"), seen.toList())
         release.complete(Unit)
         eventually({ session.phase.value }) { it == SyncPhase.Verified }
@@ -440,6 +444,89 @@ class AgentSessionTest {
     }
 
     @Test
+    fun homeUpdatingClearsAtVerifiedWhileSecondaryReadsRemainPending(): Unit = runBlocking {
+        val homeStarted = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val resourceStarted = CompletableDeferred<Unit>()
+        val releaseSecondary = CompletableDeferred<Unit>()
+        agent.resources["/v0/agents/at1"] = buildJsonObject { put("agent", Wire.agent("at1", version = "03")) }
+        val session = sessions { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                when (path) {
+                    "/v0/bootstrap/desktop" -> { homeStarted.complete(Unit); releaseHome.await() }
+                    "/v0/artifacts?limit=100" -> releaseSecondary.await()
+                    "/v0/agents/at1" -> { resourceStarted.complete(Unit); releaseSecondary.await() }
+                }
+                return agent.request(method, path, credential, body, headers, category)
+            }
+        } }.session(id)!!
+        withTimeout(10_000) { homeStarted.await() }
+        eventually({ session.homeUpdating.value }) { it }
+        assertEquals(LinkState.Connecting, session.status.value.linkState(session.homeUpdating.value, network = true))
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.P0Live }
+        assertEquals(LinkState.Syncing, session.status.value.linkState(session.homeUpdating.value, network = true))
+        releaseHome.complete(Unit)
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        eventually({ session.homeUpdating.value }) { !it }
+        // A broken resource version chain catches up in the background after home's P0.
+        agent.frames.send(Wire.frame("c1", "agent.updated", Wire.updated("agentId", "at1", "missing", "03", buildJsonObject { put("status", "thinking") })))
+        withTimeout(10_000) { resourceStarted.await() }
+        eventually({ session.isSyncing.value }) { it }
+        assertEquals(LinkState.Online, session.status.value.linkState(session.homeUpdating.value, network = true))
+        releaseSecondary.complete(Unit)
+    }
+
+    @Test
+    fun chatUpdatingClearsWithHistoryWhileHomeAndP2RemainPending(): Unit = runBlocking {
+        agent.resources["/v0/agents/at1/bootstrap"] = AgentClient.json.parseToJsonElement("""{"agent":{"id":"at1","status":"idle"},"pending":[]}""") as kotlinx.serialization.json.JsonObject
+        agent.resources["/v0/agents/at1/messages?limit=100&omitToolData=true"] = AgentClient.json.parseToJsonElement("""{"runs":[],"hasMore":false}""") as kotlinx.serialization.json.JsonObject
+        val homeStarted = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val messagesStarted = CompletableDeferred<Unit>()
+        val releaseMessages = CompletableDeferred<Unit>()
+        val p2Started = CompletableDeferred<Unit>()
+        val releaseP2 = CompletableDeferred<Unit>()
+        val manager = sessions { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                when (path) {
+                    "/v0/bootstrap/desktop" -> { homeStarted.complete(Unit); releaseHome.await() }
+                    "/v0/agents/at1/messages?limit=100&omitToolData=true" -> { messagesStarted.complete(Unit); releaseMessages.await() }
+                    "/v0/artifacts?limit=100" -> { p2Started.complete(Unit); releaseP2.await() }
+                }
+                return agent.request(method, path, credential, body, headers, category)
+            }
+        } }
+        val session = manager.session(id)!!
+        withTimeout(10_000) { homeStarted.await() }
+        manager.setOpenChat(id, "at1")
+        withTimeout(10_000) { messagesStarted.await() }
+        val conversation = session.makeConversation("at1", null)
+        try {
+            conversation.start()
+            eventually({ conversation.state.value.syncing }) { it }
+            assertEquals(LinkState.Connecting, session.status.value.conversationLinkState(conversation.state.value, network = true))
+            agent.frames.send(Wire.hello("c0"))
+            eventually({ session.phase.value }) { it == SyncPhase.P0Live }
+            assertEquals(LinkState.Syncing, session.status.value.conversationLinkState(conversation.state.value, network = true))
+            releaseMessages.complete(Unit)
+            eventually({ conversation.state.value.synced }) { it }
+            assertTrue(session.isSyncing.value)
+            assertEquals(LinkState.Online, session.status.value.conversationLinkState(conversation.state.value, network = true))
+            assertFalse(p2Started.isCompleted)
+            releaseHome.complete(Unit)
+            eventually({ session.phase.value }) { it == SyncPhase.Verified }
+            withTimeout(10_000) { p2Started.await() }
+            assertEquals(LinkState.Online, session.status.value.conversationLinkState(conversation.state.value, network = true))
+        } finally {
+            releaseHome.complete(Unit)
+            releaseMessages.complete(Unit)
+            releaseP2.complete(Unit)
+            conversation.close()
+        }
+    }
+
+    @Test
     fun bootstrapAndGapReadsStaySyncingUntilTheirResponsesArrive() = runBlocking {
         var gate = CompletableDeferred<Unit>()
         val session = sessions {
@@ -639,7 +726,7 @@ class AgentSessionTest {
                 }
             } })
             try {
-                eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+                eventually({ session.phase.value }) { it == SyncPhase.Verified }
                 assertTrue(bootstraps.get() >= 2)
                 agent.resources[path] = buildJsonObject { put("setting", Wire.projectsHidden(true, "v1")) }
                 server.enqueue(mockwebserver3.MockResponse.Builder().headersDelay(3, java.util.concurrent.TimeUnit.SECONDS).body("late").build())

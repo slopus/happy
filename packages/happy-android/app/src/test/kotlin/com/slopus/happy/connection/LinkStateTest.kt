@@ -140,8 +140,8 @@ class LinkStateTest {
         assertEquals(WaitingForNetwork, AgentLinkStatus.Revoked.linkState(syncing = false, network = false))
         assertEquals(Connecting, AgentLinkStatus.Connecting.linkState(syncing = false, network = true))
         assertEquals(Syncing, AgentLinkStatus.Connected.linkState(syncing = true, network = true))
-        // Reading the snapshot before the stream opens: it answered, and the phone is catching up.
-        assertEquals(Syncing, AgentLinkStatus.Connecting.linkState(syncing = true, network = true))
+        // P0 never replaces Connecting before the stream's hello.
+        assertEquals(Connecting, AgentLinkStatus.Connecting.linkState(syncing = true, network = true))
         assertEquals(Online, (null as AgentLinkStatus?).linkState(syncing = false, network = true))
         // Kept away by something other than the network: home says what to do, the headers say connecting.
         for (away in listOf(AgentLinkStatus.Revoked, AgentLinkStatus.UpdateRequired, AgentLinkStatus.SignInRequired)) {
