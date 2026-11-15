@@ -33,6 +33,7 @@ object TerminalScreenTags {
     const val ACTIONS = "terminal.actions"
     const val ACCEPT = "terminal.accept"
     const val REJECT = "terminal.reject"
+    const val ACCOUNT = "terminal.account"
 }
 
 /** terminal/index.tsx and terminal/connect.tsx */
@@ -64,7 +65,8 @@ object TerminalScreenSpec {
  * `happy://terminal?<key>`). Spec: a hero group (48 terminal icon in
  * radio.active, 16 above the title 20 semibold, 12 above the description
  * 14/20 secondary; 24/16 padding, centred); "Connection Details" with the
- * key's first 12 characters and the encryption, 29 icons; Accept (large,
+ * Happy CLI [account] it connects to (when given: the phone may have
+ * several), the key's first 12 characters and the encryption, 29 icons; Accept (large,
  * "Connecting..." while busy) and Reject (large, quiet) 12 apart in 16
  * padding; and the Security group with its footer. Without a key: a
  * warning group (48 warning icon, 16/8 gaps, 16 semibold title and 14/20
@@ -76,6 +78,7 @@ fun TerminalConfirmScreen(
     connecting: Boolean,
     onAccept: () -> Unit,
     onReject: () -> Unit,
+    account: String? = null,
 ) {
     val colors = HappyTheme.colors
     val blue = TerminalScreenSpec.radioActive(colors.dark)
@@ -113,6 +116,13 @@ fun TerminalConfirmScreen(
                 )
             }
             ItemGroup(title = stringResource(R.string.terminal_connection_details)) {
+                if (account != null) Item(
+                    title = stringResource(R.string.settings_account),
+                    detail = account,
+                    icon = { Icon(Ionicon.PersonCircleOutline, TerminalScreenSpec.itemIcon, blue) },
+                    showChevron = false,
+                    modifier = Modifier.testTag(TerminalScreenTags.ACCOUNT),
+                )
                 Item(
                     title = stringResource(R.string.terminal_public_key),
                     detail = "${publicKey.take(12)}...",

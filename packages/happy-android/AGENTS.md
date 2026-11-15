@@ -1173,6 +1173,12 @@ verifies with, so a Play-distributed build should verify as it does; a build
 signed with only the upload key won't. Signed out, only the screens that need
 no account (server, restore, troubleshoot, changelog, onboarding settings)
 open; other links are dropped rather than pushed onto empty signed-in screens.
+A terminal link is never dropped: with an agent connection open, or none,
+the Happy CLI account it goes to opens first (`AccountRegistry.forTerminal`:
+the one open last, kept as `lastHappyId`, else the newest added) and its
+stack shows the confirm screen; with no Happy CLI account on the phone the
+confirm screen says a new one is made, and Accept makes it, as Add does.
+The confirm screen names the account ("Account" in Connection Details).
 
 ### Team servers behind SSO (edge SSO)
 

@@ -69,6 +69,7 @@ class DeepLinkRoutingTest {
                 composable<ConversationRoute> { Text("conversation") }
                 composable<SurfaceRoute> { Text("surface") }
                 composable<com.slopus.happy.ui.files.WorkspaceFileRoute> { Text("file") }
+                composable<TerminalRoute> { Text("terminal") }
             }
             DeepLinkEffect(nav, signedIn, onOpenSession = { opened += it }, openConnection = openConnection, onHappyLink = { happy += it })
         }
@@ -107,6 +108,41 @@ class DeepLinkRoutingTest {
         assertEquals(emptyList<String>(), opened)
         DeepLinks.offer(parseDeepLink("happy://server")!!)
         assertAt<ServerRoute>()
+        assertNull(DeepLinks.pending.value)
+    }
+
+    @Test
+    fun aTerminalLinkWithNoHappyAccountOnThePhoneIsConfirmedForANewOne() {
+        setHost(signedIn = false, openConnection = "c1")
+        DeepLinks.offer(parseDeepLink("happy://terminal?pk1")!!)
+        assertAt<TerminalRoute>()
+        assertEquals(TerminalRoute("pk1"), nav.currentBackStackEntry!!.toRoute<TerminalRoute>())
+        assertNull(DeepLinks.pending.value)
+    }
+
+    @Test
+    fun aTerminalLinkWithAnAgentConnectionOpenWaitsForTheHappyAccountItOpens() {
+        var signedIn by mutableStateOf(false)
+        val opening = mutableListOf<Int>()
+        rule.setContent {
+            nav = rememberNavController()
+            NavHost(nav, startDestination = HomeRoute) {
+                composable<HomeRoute> { Text("home") }
+                composable<TerminalRoute> { Text("terminal") }
+            }
+            DeepLinkEffect(nav, signedIn, openConnection = if (signedIn) null else "c1", openHappyAccount = { opening += 1; true })
+        }
+        val link = parseDeepLink("happy://terminal?pk1")!!
+        DeepLinks.offer(link)
+        rule.waitForIdle()
+        assertEquals(listOf(1), opening)
+        assertAt<HomeRoute>()
+        assertEquals(link, DeepLinks.pending.value)
+        // The Happy account opened: its stack takes the link.
+        signedIn = true
+        assertAt<TerminalRoute>()
+        assertEquals(TerminalRoute("pk1"), nav.currentBackStackEntry!!.toRoute<TerminalRoute>())
+        assertEquals(listOf(1), opening)
         assertNull(DeepLinks.pending.value)
     }
 

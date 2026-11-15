@@ -6,6 +6,7 @@
 -->
 <resources>
     <string name="account_kind_add_cli_account">Adicionar conta do Happy CLI</string>
+    <string name="account_kind_new_cli_account">Nova conta do Happy CLI</string>
     <string name="account_kind_connect_agent">Conectar Happy Agent</string>
     <string name="account_kind_restore_cli_account">Restaurar conta do Happy CLI</string>
     <string name="account_kind_cli_server">Servidor do Happy CLI</string>
