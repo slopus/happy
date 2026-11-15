@@ -27,6 +27,9 @@ private actor OrderServer: AgentTransport {
     var holdingFeed = false
     var heldFeed: [CheckedContinuation<Void, Never>] = []
     func holdFeed() { holdingFeed = true }
+    /// A Feed page, empty, rather than a 404.
+    var servesFeed = false
+    func serveFeed() { servesFeed = true }
     func answerFeed() { holdingFeed = false; heldFeed.forEach { $0.resume() }; heldFeed = [] }
     func holdChat() { holdingChat = true }
     func answerChat() { holdingChat = false; heldChat.forEach { $0.resume() }; heldChat = [] }
@@ -75,7 +78,8 @@ private actor OrderServer: AgentTransport {
         case "GET /v0/feed":
             if holdingFeed { await withCheckedContinuation { heldFeed.append($0) } }
             log.append("answered " + route)
-            return .init(status: 404, body: Data("{}".utf8))
+            guard servesFeed else { return .init(status: 404, body: Data("{}".utf8)) }
+            value = ["items": [], "unread": 0, "hasMore": .bool(false)]
         case "GET /v0/artifacts", "POST /v0/git/watch":
             log.append("answered " + route)
             return .init(status: 404, body: Data("{}".utf8))
@@ -214,7 +218,11 @@ final class SyncOrderTests: XCTestCase {
     func testWhatWaitsForHomeWaitsForTheChatOnScreen() async throws {
         let server = OrderServer()
         let client = AgentClient(transport: server, token: "t")
-        let engine = SyncEngine(client: client, directory: folder())
+        let directory = folder()
+        // Launched before, so its Feed is kept: a first launch reads it at hello.
+        await server.serveFeed()
+        try await launchedBefore(server, client, directory)
+        let engine = SyncEngine(client: client, directory: directory)
         await server.holdChat()
         let conversation = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: engine)
         let shown = Shown()
@@ -473,6 +481,15 @@ final class SyncOrderTests: XCTestCase {
         try await eventually("the chat current") { shown.snapshot.synced }
         await conversation.stop()
         await engine.stop()
+    }
+
+    /// One launch to its end, in `directory`: what a phone keeps from it.
+    private func launchedBefore(_ server: OrderServer, _ client: AgentClient, _ directory: URL) async throws {
+        let engine = SyncEngine(client: client, directory: directory)
+        await engine.start()
+        try await settled(server)
+        await engine.stop()
+        await server.clear()
     }
 
     private static func home(_ engine: SyncEngine) async -> HomeSnapshot {
