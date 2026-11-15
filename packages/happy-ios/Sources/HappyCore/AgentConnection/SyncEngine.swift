@@ -153,6 +153,8 @@ public actor SyncEngine {
     private var holdTimer: Task<Void, Never>?
     private var releaseHold: (@Sendable () async -> Void)?
     private var heldVerification = false
+    /// The newest hello, until home is verified on it (`connected`).
+    private var connection: (hello: JSONValue, gap: Bool, continued: Bool)?
     private var eventIDs: Set<String> = []
     private var eventOrder: [String] = []
     private var refresh: Task<Void, Never>?
@@ -331,6 +333,7 @@ public actor SyncEngine {
         generation += 1
         verified = false
         heldVerification = false
+        connection = nil
         let pausedGeneration = generation
         holdID = nil; holdDeadline = nil
         holdTimer?.cancel(); holdTimer = nil
@@ -532,6 +535,7 @@ public actor SyncEngine {
                         let same = daemon != nil && daemon == verifiedDaemon
                         verifiedDaemon = verified || continued || same ? daemon : nil
                         if fresh { streamCursor = hello["cursor"]?.stringValue ?? streamCursor }
+                        connection = (hello, gap, continued)
                         if continued {
                             verified = true
                             snapshot.syncing = false
@@ -543,20 +547,12 @@ public actor SyncEngine {
                             streamStart = hello["cursor"]?.stringValue ?? ""
                             if refresh == nil { coverStream(generation) }
                         }
-                        watchGit()
                         publish()
-                        await documents.opened(hello)
                         profileChanged()
-                        // Reads the newest page each time, so a gap loses nothing.
-                        await feed.connected()
-                        await lookups.connected(gap: gap)
-                        await wantReferences()
-                        // Faces may have changed while away; picked up where
-                        // it left off, their `profile.updated` follows instead.
-                        usersMissing = []
-                        if !continued { readAuthors(generation, again: Set(users.keys)) }
                         // Conversations and lists read again only for what they missed.
                         await spaces.externalOpened(missedBefore: continued ? nil : streamStart)
+                        // Home verified before this hello came.
+                        await connected(generation)
                         // A later hello is a race candidate's, opened from the cursor.
                         resuming = true
                         continue
@@ -699,6 +695,31 @@ public actor SyncEngine {
         await intents.setOnline(deliveryAllowed)
         // Conversations send what waited for this.
         for listener in messageListeners.values { listener.continuation.yield(.allowed) }
+        await connected(generation)
+    }
+
+    /// What waits for home to be verified (P2 of the sync order), once per
+    /// connection, after its hello: open documents, the Feed's newest page
+    /// and what it names, the artifact catalog and the workspaces' line
+    /// counts. Asked beside the stream and home's bootstrap, they held both
+    /// back on a cold start.
+    private func connected(_ generation: Int) async {
+        guard verified, let (hello, gap, continued) = connection else { return }
+        connection = nil
+        watchGit()
+        await documents.opened(hello)
+        // Reads the newest page each time, so a gap loses nothing.
+        await feed.connected()
+        await lookups.connected(gap: gap)
+        await wantReferences()
+        // Faces may have changed while away; picked up where
+        // it left off, their `profile.updated` follows instead.
+        usersMissing = []
+        guard !continued else { return }
+        readAuthors(generation, again: Set(users.keys))
+        // Its replay covers what a pick-up missed.
+        let artifacts = artifacts
+        Task { await artifacts.refresh() }
     }
 
     /// Home read again: at once on connecting, else for news, at most one
@@ -798,13 +819,13 @@ public actor SyncEngine {
         for news in appliedNews { _ = HomeEvent.apply(news.event, to: &self.desktop!) }
         agentIndex = nil
         cursor = desktop.cursor
+        await feed.bootstrap(unread: desktop.feedUnread, cursor: desktop.cursor)
         if !verified {
             verified = true
             if snapshot.live { verifiedDaemon = streamDaemon; snapshot.syncing = false }
             await allowDelivery(generation)
         }
         coverStream(generation)
-        await feed.bootstrap(unread: desktop.feedUnread, cursor: desktop.cursor)
         snapshot.settings = try await database.settings()
         // This read began after these were taken, so it has them.
         if settling.contains(where: { $0.read < read }) {
@@ -1072,9 +1093,10 @@ public actor SyncEngine {
     /// Renewing keeps the daemon's bounded watcher interest alive; changes
     /// themselves arrive on the existing event stream.
     private func watchGit() {
-        guard snapshot.live, !stopped else { return }
+        guard snapshot.live, verified, !stopped else { return }
         let ids = Set(snapshot.rows.compactMap(\.workspaceId))
-        guard gitWatcher == nil || ids != gitInterest else { return }
+        // Nothing to watch yet: home's first rows on a fresh install come with its bootstrap.
+        guard gitWatcher == nil ? !ids.isEmpty : ids != gitInterest else { return }
         gitWatcher?.cancel()
         gitInterest = ids
         gitSnapshots = gitSnapshots.filter { ids.contains($0.key) }
