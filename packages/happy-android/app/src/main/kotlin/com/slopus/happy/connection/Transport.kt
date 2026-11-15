@@ -111,7 +111,7 @@ interface TransportSocket {
 
 /**
  * [Transport] over tailcat-kotlin: the agent's [TailcatClients] (one
- * client for the event stream, one for queries, up to eight for files and
+ * main client for the event stream and queries, up to three for files and
  * the browser), and a fresh TCP stream to `server.tailcat:<port>` for every
  * HTTP/1.1 request (`Connection: close`), as tailcat-swift is used on iOS.
  * A query must be answered within [requestTimeoutMillis]; a file has

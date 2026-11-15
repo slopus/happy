@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * What a request to the agent is for. Each category has Tailcat clients
- * of its own ([TailcatClients]) and its own deadline, so a long upload or
+ * What a request to the agent is for. JSON and the stream share the main
+ * Tailcat client; files have their own clients and deadline, so a long upload or
  * a broken file client never holds up the event stream or the next call.
  */
 enum class RequestCategory {
@@ -39,8 +39,8 @@ enum class RequestCategory {
 }
 
 /**
- * One agent connection's Tailcat clients: one for [RequestCategory.Realtime],
- * one for [RequestCategory.Query] and up to [maxFileClients] for
+ * One agent connection's Tailcat clients: one shared by [RequestCategory.Realtime]
+ * and [RequestCategory.Query], and up to [maxFileClients] for
  * [RequestCategory.File], each made on first use. Every connect is made
  * with a node key of its own, fresh each time: the agent and the DERP relay
  * tell clients apart by node key, and a relay keeps one connection per key,
@@ -113,7 +113,7 @@ internal class TailcatClients<C : Any>(
     suspend fun lease(category: RequestCategory): Lease {
         val slot = lock.withLock {
             if (closed) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
-            pick(category).also { it.inFlight.incrementAndGet() }
+            pick(pool(category)).also { it.inFlight.incrementAndGet() }
         }
         try {
             return Lease(slot, client(slot))
@@ -185,9 +185,9 @@ internal class TailcatClients<C : Any>(
         old?.let { closeOffMain(it) }
     }
 
-    /** Lets go of every client of [category]; the other categories' stay. */
+    /** Resets the main client for stream or JSON; files stay separate. */
     suspend fun reset(category: RequestCategory) {
-        val old = lock.withLock { slots.filter { it.category == category }.mapNotNull { slot -> slot.client.also { slot.client = null } } }
+        val old = lock.withLock { slots.filter { it.category == pool(category) }.mapNotNull { slot -> slot.client.also { slot.client = null } } }
         old.forEach { closeOffMain(it) }
     }
 
@@ -202,7 +202,9 @@ internal class TailcatClients<C : Any>(
     }
 
     /** How many places [category] has, connected or not. */
-    internal suspend fun count(category: RequestCategory): Int = lock.withLock { slots.count { it.category == category } }
+    internal suspend fun count(category: RequestCategory): Int = lock.withLock { slots.count { it.category == pool(category) } }
+
+    private fun pool(category: RequestCategory): RequestCategory = if (category == RequestCategory.File) category else RequestCategory.Realtime
 
     /** Connected clients only; no reservations or empty slots, and no connect as a side effect. */
     internal suspend fun connected(): List<Pair<RequestCategory, C>> = lock.withLock {
@@ -220,7 +222,7 @@ internal class TailcatClients<C : Any>(
 
     companion object {
         /** File clients one agent connection may have up at once. */
-        const val MAX_FILE_CLIENTS = 8
+        const val MAX_FILE_CLIENTS = 3
 
         /** How long a request may go with nothing back over its client before the client is checked. */
         const val STALL_AFTER_MILLIS = 3_000L
