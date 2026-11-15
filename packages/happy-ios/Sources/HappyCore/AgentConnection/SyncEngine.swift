@@ -426,6 +426,7 @@ public actor SyncEngine {
         stopped = true
         // Before the pause, which would let them ask the computer.
         client.servedHealth.close()
+        spaces.chatsFirst.end()
         await pause()
         await spaces.stop()
         await documents.stop()
@@ -494,6 +495,8 @@ public actor SyncEngine {
             await artifacts.start()
         } catch {
             // What this phone keeps could not be read: nothing to do with the link.
+            // No bootstrap will come: whoever waits for health asks.
+            client.servedHealth.letGo()
             snapshot.error = "Could not open this connection on this device."
             publish()
             return

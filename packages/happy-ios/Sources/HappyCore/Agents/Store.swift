@@ -1284,6 +1284,7 @@ public final class ChatsFirst: @unchecked Sendable {
     private let lock = NSLock()
     private var closed = false
     private var used = false
+    private var ended = false
     private var waitingForStream: [CheckedContinuation<Void, Never>] = []
     private var asking = 0
     private var waitingForChats: [CheckedContinuation<Void, Never>] = []
@@ -1311,16 +1312,24 @@ public final class ChatsFirst: @unchecked Sendable {
         for waiter in waiters { waiter.resume() }
     }
 
-    /// A chat's read waits here while closed.
-    public func wait() async {
+    /// A chat's read waits here while closed: false once its engine
+    /// stopped (signed out), when nothing is to be asked.
+    public func wait() async -> Bool {
         await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
             let now = lock.withLock { () -> Bool in
-                if !closed { return true }
+                if !closed || ended { return true }
                 waitingForStream.append(waiter)
                 return false
             }
             if now { waiter.resume() }
         }
+        return lock.withLock { !ended }
+    }
+
+    /// The engine stopped: chats waiting, and any after, ask nothing.
+    public func end() {
+        lock.withLock { ended = true }
+        open()
     }
 
     /// The stream was asked for, or won't be: the chats waiting are read now.

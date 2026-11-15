@@ -783,7 +783,8 @@ public actor Conversation {
                 if heldEvents == nil { heldEvents = [] }
                 let after = anchored ? anchor() : nil
                 let resets = await store.carrierResets
-                await store.chatsFirst.wait()
+                // Its engine stopped (signed out): nothing is asked.
+                guard await store.chatsFirst.wait() else { letHomeAsk(); return }
                 let opening = holdsHome ? openings : nil
                 client.chatReads.began()
                 do {
