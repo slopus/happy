@@ -112,8 +112,7 @@ interface TransportSocket {
 /**
  * [Transport] over tailcat-kotlin: the agent's [TailcatClients] (one
  * main client for the event stream and queries, up to three for files and
- * the browser), and a fresh TCP stream to `server.tailcat:<port>` for every
- * HTTP/1.1 request (`Connection: close`), as tailcat-swift is used on iOS.
+ * the browser), with iOS's kept HTTP/1.1 connections per client.
  * A query must be answered within [requestTimeoutMillis]; a file has
  * [fileTimeoutMillis] in all, though any one read or write still fails
  * after [requestTimeoutMillis] of silence. The address is a secret;
@@ -137,11 +136,13 @@ class TailcatTransport internal constructor(
 
     private val flows = OpenFlows()
     private val owners = java.util.concurrent.ConcurrentHashMap<TailcatClient, OpenFlows.Owner>()
+    private val idle = java.util.concurrent.ConcurrentHashMap<TailcatClient, IdleFlows>()
     private val clients = TailcatClients(
         connect = { category, key ->
             val client = connect(category, key)
             try {
                 owners[client] = flows.owner()
+                idle[client] = IdleFlows()
                 client
             } catch (error: Throwable) {
                 client.close()
@@ -149,6 +150,7 @@ class TailcatTransport internal constructor(
             }
         },
         disconnect = { client ->
+            idle.remove(client)?.shut()
             owners.remove(client)?.close()
             client.close()
         },
@@ -156,15 +158,15 @@ class TailcatTransport internal constructor(
         check = { it.wake() },
     )
 
-    private class OpenFlow(private val stream: TailcatConnection, private val ownership: OpenFlows.Owner.Flow) {
+    private class OpenFlow(private val stream: TailcatConnection, private val ownership: OpenFlows.Owner.Flow) : HttpFlow {
         fun read(maximumBytes: Int) = stream.read(maximumBytes)
-        fun read(maximumBytes: Int, timeoutMillis: Long) = stream.read(maximumBytes, timeoutMillis = timeoutMillis)
+        override fun read(maximumBytes: Int, timeoutMillis: Long) = stream.read(maximumBytes, timeoutMillis = timeoutMillis)
         fun write(bytes: ByteArray) = stream.write(bytes)
-        fun write(bytes: ByteArray, timeoutMillis: Long) = stream.write(bytes, timeoutMillis = timeoutMillis)
-        fun close() = ownership.close()
+        override fun write(bytes: ByteArray, timeoutMillis: Long) = stream.write(bytes, timeoutMillis = timeoutMillis)
+        override fun close() = ownership.close()
 
         /** Lets go of an answer no longer wanted: the flow is reset, so the computer stops sending. [close] would take the rest in and discard it. */
-        fun abort() {
+        override fun abort() {
             try {
                 stream.abort()
             } catch (_: Exception) {
@@ -204,7 +206,7 @@ class TailcatTransport internal constructor(
         headers: Map<String, String>,
         category: RequestCategory,
     ): TransportResponse {
-        val head = TailcatHttp.requestHead(method, path, port, credential, body, headers)
+        val head = TailcatHttp.requestHead(method, path, port, credential, body, headers, close = false)
         val progress = kotlinx.coroutines.currentCoroutineContext()[BodyProgress]
         val lease = clients.lease(category)
         val deadline = if (category == RequestCategory.File) fileTimeoutMillis else requestTimeoutMillis
@@ -212,27 +214,8 @@ class TailcatTransport internal constructor(
         val watch = lease.watch()
         return try {
             withTimeout(deadline) {
-                runInterruptible(Dispatchers.IO) {
-                    val stream = open(lease.client)
-                    var answered = false
-                    try {
-                        stream.write(head, timeoutMillis = requestTimeoutMillis)
-                        if (body != null) {
-                            if (progress == null) stream.write(body, timeoutMillis = requestTimeoutMillis)
-                            else progress.write(body) { stream.write(it, timeoutMillis = requestTimeoutMillis) }
-                        }
-                        val parser = HttpResponseParser()
-                        while (true) {
-                            val bytes = stream.read(65536, timeoutMillis = requestTimeoutMillis)
-                            if (bytes.isNotEmpty()) lease.heard()
-                            parser.append(bytes, eof = bytes.isEmpty())?.let { answered = true; return@runInterruptible it }
-                        }
-                        @Suppress("UNREACHABLE_CODE") error("unreachable")
-                    } finally {
-                        // Cut off or given up on: the computer stops sending the rest.
-                        if (answered) stream.close() else stream.abort()
-                    }
-                }
+                val pool = idle[lease.client] ?: throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+                exchangeHttp(pool, method, head, body, requestTimeoutMillis, progress, lease::heard) { open(lease.client) }
             }
         } catch (e: AgentConnectionException) {
             throw e
@@ -376,7 +359,7 @@ class TailcatTransport internal constructor(
      * doesn't answer within two seconds, every direct path is probed and one
      * that stopped answering dropped, and an expired session rekeys.
      */
-    override suspend fun resumed() = each { it.wake() }
+    override suspend fun resumed() = each { idle[it]?.drop(); it.wake() }
 
     /**
      * tailcat-kotlin hears of no network change on its own (tailcat-swift
@@ -458,7 +441,7 @@ object TailcatHttp {
     const val PROTOCOL_HEADER = "Happy-Protocol"
 
     /** The request line and headers; refuses anything that could split them. */
-    fun requestHead(method: String, path: String, port: Int, credential: String, body: ByteArray?, headers: Map<String, String>, authority: String = "server.tailcat:$port"): ByteArray {
+    fun requestHead(method: String, path: String, port: Int, credential: String, body: ByteArray?, headers: Map<String, String>, authority: String = "server.tailcat:$port", close: Boolean = true): ByteArray {
         fun unsafe(text: String) = text.contains('\r') || text.contains('\n')
         if (method !in methods || !path.startsWith("/") || path.contains(' ') || unsafe(path) || unsafe(credential) ||
             headers.any { (name, value) -> unsafe(name) || name.contains(':') || unsafe(value) }
@@ -467,7 +450,7 @@ object TailcatHttp {
             .append("$method $path HTTP/1.1\r\n")
             .append("Host: $authority\r\n")
             .append("Authorization: Bearer $credential\r\n")
-            .append("Connection: close\r\n")
+            .append(if (close) "Connection: close\r\n" else "")
             .append("$PROTOCOL_HEADER: $PROTOCOL\r\n")
         if (headers.keys.none { it.equals("Accept", ignoreCase = true) }) head.append("Accept: application/json\r\n")
         head.append("Content-Length: ${body?.size ?: 0}\r\n")
