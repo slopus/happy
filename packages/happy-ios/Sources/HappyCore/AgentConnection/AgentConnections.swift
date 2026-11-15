@@ -179,7 +179,8 @@ public final class AgentConnections {
         if signedOut(id) { return nil }
         if let engine = engines[id] { return engine }
         guard let client = agentClient(for: id) else { return nil }
-        let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id), cloud: HappyCloud.isCloud(server(for: id)), streamHold: streamHold)
+        let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id), cloud: HappyCloud.isCloud(server(for: id)), streamHold: streamHold,
+                                heard: { [weak self] news in await self?.heard(news, from: id) })
         engines[id] = engine
         if foreground && activeID == id {
             Task { await engine.start() }
@@ -187,6 +188,39 @@ public final class AgentConnections {
         }
         return engine
     }
+    /// The open account's name, picture, health and revocation, as its
+    /// engine hears them: no identity check of its own while it runs
+    /// (`identifiedByEngine`). The picture's bytes are read only when its
+    /// ThumbHash changed, on a file client over the engine's tunnels.
+    private func heard(_ news: SyncEngine.Heard, from id: String) async {
+        guard let account = accounts.first(where: { $0.id == id }), !account.revoked else { return }
+        let generation = generation
+        switch news {
+        case .revoked:
+            await stop(id)
+            var revoked = account
+            revoked.revoked = true; revoked.status = .revoked
+            await apply(revoked, generation: generation, issue: PairingError.revoked)
+        case .verified(let computer):
+            do {
+                var (updated, readsAvatar) = try AgentIdentity.take(computer, into: account)
+                if readsAvatar, let credential = credentials[id], let transport = await runningTransport(id) {
+                    updated = try await AgentIdentity.avatar(updated, transport: transport, token: credential.deviceToken)
+                }
+                await apply(updated, generation: generation)
+            } catch {
+                var failed = account
+                failed.status = .retrying
+                await apply(failed, generation: generation, issue: error)
+            }
+        }
+    }
+
+    /// Whether `id`'s name, picture and health come from its engine's
+    /// bootstrap: the open account's while in the foreground. Its own
+    /// check went out beside the engine's first reads on every return.
+    private func identifiedByEngine(_ id: String) -> Bool { foreground && activeID == id && engines[id] != nil }
+
     func credential(for id: String) -> AgentConnectionCredentials? { credentials[id] }
     /// What the connection's placeholder picture is picked by: its
     /// computer's address, the same on every phone paired with it.
@@ -501,9 +535,17 @@ public final class AgentConnections {
                 var issue: (any Error)?
                 while !Task.isCancelled {
                     do {
-                        current.status = attempt == 0 ? .connecting : .retrying
-                        await self?.apply(current, generation: generation)
+                        if await self?.identifiedByEngine(account.id) != true {
+                            current.status = attempt == 0 ? .connecting : .retrying
+                            await self?.apply(current, generation: generation)
+                        }
                         while !Task.isCancelled {
+                            if await self?.identifiedByEngine(account.id) == true {
+                                try await RadioWake.shared.next(after: interval * 9 / 10, by: interval)
+                                continue
+                            }
+                            // What the engine took in meanwhile, its picture's ETag included.
+                            current = await self?.accounts.first { $0.id == account.id } ?? current
                             // Over the running engine's tunnels when there are
                             // some; else a transport per check, closed after it:
                             // its tunnels don't idle on the radio until the next one.

@@ -187,11 +187,29 @@ public actor SyncEngine {
     private var gitInterest: Set<String> = []
     private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
 
+    /// What the newest bootstrap says of the computer itself: its
+    /// `health` and `config.node`, nil where it carries none.
+    public struct Computer: Equatable, Sendable {
+        public var health: JSONValue?
+        public var node: JSONValue?
+    }
+
+    /// What the engine hears of its computer that its connection shows
+    /// (`AgentConnections`): who it is, each time home is verified, and
+    /// that this device was unpaired.
+    public enum Heard: Sendable {
+        case verified(Computer)
+        case revoked
+    }
+    private let heard: (@Sendable (Heard) async -> Void)?
+    private var computer: Computer?
+
     /// `cloud`: a Happy Cloud server, which lists its plugins under
     /// Artifacts once its health says it serves them.
     public init(client: AgentClient, directory: URL?, cloud: Bool = false, streamHold: @escaping StreamHold = { _ in nil }, streamHoldDuration: Duration = .seconds(25),
-                resumeWindow: Duration = .seconds(30), rereadInterval: Duration = .seconds(10)) {
+                resumeWindow: Duration = .seconds(30), rereadInterval: Duration = .seconds(10), heard: (@Sendable (Heard) async -> Void)? = nil) {
         self.client = client
+        self.heard = heard
         self.cloud = cloud
         self.streamHold = streamHold
         // Held only while a resume from the cursor is still taken (`resumeWindow`).
@@ -229,6 +247,7 @@ public actor SyncEngine {
             events: { await spaces.events(matching: ["artifact."]) }
         )
         lookups = FeedLookups(routes: client, keep: keep)
+        client.servedHealth.follow()
         forward.engine = self
         keep.engine = self
     }
@@ -413,6 +432,7 @@ public actor SyncEngine {
         await feed.stop()
         await artifacts.stop()
         await lookups.stop()
+        client.servedHealth.close()
         feedFollowing?.cancel()
         directoryFollowing.forEach { $0.cancel() }
         directoryFollowing = []
@@ -633,6 +653,8 @@ public actor SyncEngine {
                 snapshot.live = false; snapshot.reconnecting = false
                 snapshot.error = client.signsIn ? "Your sign-in to this server has ended. Sign in again." : "This device was disconnected. Pair it again."
                 publish()
+                // A sign-in's ending is its authorization's to say.
+                if !client.signsIn { await heard?(.revoked) }
                 return
             } catch {
                 guard current(generation) else { return }
@@ -695,6 +717,8 @@ public actor SyncEngine {
         await intents.setOnline(deliveryAllowed)
         // Conversations send what waited for this.
         for listener in messageListeners.values { listener.continuation.yield(.allowed) }
+        // On its own task: the picture it may read waits behind what home needs.
+        if let computer { Task { [heard] in await heard?(.verified(computer)) } }
         await connected(generation)
     }
 
@@ -768,17 +792,16 @@ public actor SyncEngine {
         let read = reads
         let database = try database()
         let settingRevision = await database.confirmedSettingsRevision()
-        // What the server serves beside it; a failed read keeps what was known.
-        // The store hears it as soon as it is read: what Gen UI's actions may run.
-        let (client, spaces) = (client, spaces)
-        let health = Task {
-            let served = try? await client.health()
-            if let served { await spaces.externalCapabilities(served.capabilities) }
-            return served
-        }
         let value = try await client.decode(JSONValue.self, "GET", "/v0/bootstrap/desktop")
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(value))
-        if cloud, let served = await health.value {
+        // What the server serves is the bootstrap's `health`, exactly
+        // `GET /v0/health`: no read of its own beside it. The store hears
+        // it at once: what Gen UI's actions may run.
+        client.servedHealth.take(value["health"])
+        computer = Computer(health: value["health"], node: value["config"]?["node"])
+        let served = try await client.health()
+        await spaces.externalCapabilities(served.capabilities)
+        if cloud {
             let plugins = served.capabilities?.plugins == true
             if plugins != self.plugins {
                 self.plugins = plugins
@@ -819,7 +842,7 @@ public actor SyncEngine {
         for news in appliedNews { _ = HomeEvent.apply(news.event, to: &self.desktop!) }
         agentIndex = nil
         cursor = desktop.cursor
-        await feed.bootstrap(unread: desktop.feedUnread, cursor: desktop.cursor)
+        await feed.bootstrap(unread: desktop.feedUnread, cursor: desktop.cursor, capabilities: FeedCapabilities(health: value["health"] ?? .object([:])))
         if !verified {
             verified = true
             if snapshot.live { verifiedDaemon = streamDaemon; snapshot.syncing = false }

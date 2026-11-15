@@ -60,7 +60,7 @@ extension AgentClient {
     /// Whether the computer keeps documents as shared Yjs state
     /// (`capabilities.collaborativeDocuments`); older ones only serve Markdown.
     public func collaborativeDocuments() async throws -> Bool {
-        try await decode(JSONValue.self, "GET", "/v0/health")["capabilities"]?["collaborativeDocuments"]?.boolValue == true
+        try await served()["capabilities"]?["collaborativeDocuments"]?.boolValue == true
     }
 
     /// The document as of now, of `seq`, or only what `stateVector` lacks.

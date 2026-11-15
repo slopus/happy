@@ -162,16 +162,18 @@ private actor SyncFixture: AgentTransport {
                 holdNextRead = false
                 await withCheckedContinuation { held = $0 }
             }
-            let read = try JSONEncoder().encode(value)
+            var served = value
+            if let capabilities, case .object(var fields) = served {
+                fields["health"] = .object(["ready": .bool(true), "capabilities": capabilities])
+                served = .object(fields)
+            }
+            let read = try JSONEncoder().encode(served)
             if newsDuringReads > 0 {
                 newsDuringReads -= 1
                 emit(.object(["type": .string("workspace.updated"), "payload": .object(["workspaceId": .string("work")])]))
                 try await Task.sleep(for: .milliseconds(50))
             }
             return .init(status: 200, body: read)
-        }
-        if path == "/v0/health", let capabilities {
-            return .init(status: 200, body: try JSONEncoder().encode(JSONValue.object(["ready": .bool(true), "capabilities": capabilities])))
         }
         if method == "PUT", path.hasPrefix("/v0/user-settings/") {
             let request = try JSONDecoder().decode(JSONValue.self, from: body!)

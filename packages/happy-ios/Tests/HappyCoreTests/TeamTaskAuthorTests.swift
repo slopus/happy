@@ -33,7 +33,7 @@ actor TeamFixture: AgentTransport {
     ]
     let bootstrap: String
     var online = true
-    /// `GET /v0/health`'s answer; nil: 404.
+    /// The bootstrap's `health`; nil: none.
     var health: String?
     var requested: [String] = []
     var continuations: [AsyncThrowingStream<Data, Error>.Continuation] = []
@@ -55,8 +55,10 @@ actor TeamFixture: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         guard online else { throw URLError(.notConnectedToInternet) }
         requested.append(path)
-        if path == "/v0/bootstrap/desktop" { return .init(status: 200, body: Data(bootstrap.utf8)) }
-        if path == "/v0/health", let health { return .init(status: 200, body: Data(health.utf8)) }
+        if path == "/v0/bootstrap/desktop" {
+            guard let health else { return .init(status: 200, body: Data(bootstrap.utf8)) }
+            return .init(status: 200, body: Data(bootstrap.replacingOccurrences(of: "{", with: #"{"health":\#(health),"#, range: bootstrap.range(of: "{")).utf8))
+        }
         if path.hasPrefix("/v0/users?ids=") {
             let ids = path.dropFirst("/v0/users?ids=".count).split(separator: ",").map(String.init)
             let found = ids.compactMap { users[$0] }

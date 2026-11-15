@@ -30,6 +30,8 @@ public final class AgentClient: Sendable {
     public let environment = UserEnvironmentReports()
     /// Whether the computer was lately found without attachments.
     public let attachmentSupport = AttachmentSupport()
+    /// What the computer serves, as its account's bootstrap says.
+    let servedHealth = ServedHealth()
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport
@@ -99,7 +101,15 @@ public final class AgentClient: Sendable {
     // MARK: Health and settings
 
     public func health() async throws -> AgentWire.Health {
-        try await decode(AgentWire.Health.self, "GET", "/v0/health")
+        let value = try await served()
+        let capabilities = value["capabilities"].flatMap { try? JSONDecoder().decode(AgentWire.Health.Capabilities.self, from: JSONEncoder().encode($0)) }
+        return AgentWire.Health(ready: value["ready"]?.boolValue ?? true, capabilities: capabilities)
+    }
+
+    /// `GET /v0/health`'s answer. An engine's client takes it from the
+    /// engine's bootstrap (`ServedHealth`) and never asks for it.
+    func served() async throws -> JSONValue {
+        try await servedHealth.value { try await self.decode(JSONValue.self, "GET", "/v0/health") }
     }
 
     /// Tells the computer this device's environment (`PUT /v0/environment`),
@@ -382,7 +392,7 @@ public final class AgentClient: Sendable {
 
     /// Whether the server keeps a daily history (`capabilities.dailyUsage`).
     public func servesDailyUsage() async throws -> Bool {
-        try await decode(JSONValue.self, "GET", "/v0/health")["capabilities"]?["dailyUsage"]?.boolValue == true
+        try await served()["capabilities"]?["dailyUsage"]?.boolValue == true
     }
 
     /// `GET /v0/usage/daily`: the last `days` local days in `timeZone`
@@ -748,5 +758,52 @@ extension AgentConnections {
     public func agentClient(for accountID: String) -> AgentClient? {
         guard let credential = credential(for: accountID) else { return nil }
         return AgentClient(transport: transport(credential, for: accountID), token: credential.deviceToken, signsIn: credential.signIn != nil)
+    }
+}
+
+/// What a computer serves (`GET /v0/health`'s answer) as the bootstrap its
+/// account's engine reads carries it: everyone who asks what it serves is
+/// answered from there, after the first bootstrap lands. A bootstrap
+/// without `health` serves nothing optional. A client no engine follows
+/// asks the computer.
+final class ServedHealth: @unchecked Sendable {
+    private let lock = NSLock()
+    private var followed = false
+    private var health: JSONValue?
+    private var waiting: [CheckedContinuation<JSONValue?, Never>] = []
+
+    func follow() { lock.withLock { followed = true } }
+
+    func take(_ health: JSONValue?) {
+        let health = health ?? .object([:])
+        let waiters = lock.withLock {
+            self.health = health
+            defer { waiting = [] }
+            return waiting
+        }
+        for waiter in waiters { waiter.resume(returning: health) }
+    }
+
+    /// The engine stopped: nobody waits for a bootstrap that won't come.
+    func close() {
+        let waiters = lock.withLock {
+            followed = false
+            defer { waiting = [] }
+            return waiting
+        }
+        for waiter in waiters { waiter.resume(returning: nil) }
+    }
+
+    func value(asking ask: () async throws -> JSONValue) async throws -> JSONValue {
+        let (known, follows) = lock.withLock { (health, followed) }
+        if let known { return known }
+        guard follows else { return try await ask() }
+        let taken: JSONValue? = await withCheckedContinuation { (waiter: CheckedContinuation<JSONValue?, Never>) in
+            lock.withLock {
+                if let health { waiter.resume(returning: health) } else if followed { waiting.append(waiter) } else { waiter.resume(returning: nil) }
+            }
+        }
+        guard let taken else { throw CancellationError() }
+        return taken
     }
 }
