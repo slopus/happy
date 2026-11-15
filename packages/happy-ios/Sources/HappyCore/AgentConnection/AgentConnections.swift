@@ -204,10 +204,13 @@ public final class AgentConnections {
         case .verified(let computer):
             do {
                 var (updated, readsAvatar) = try AgentIdentity.take(computer, into: account)
-                if readsAvatar, let credential = credentials[id], let transport = await runningTransport(id) {
-                    updated = try await AgentIdentity.avatar(updated, transport: transport, token: credential.deviceToken)
-                }
                 await apply(updated, generation: generation)
+                if readsAvatar, let credential = credentials[id], let engine = engines[id], let transport = await runningTransport(id) {
+                    // The picture's bytes wait for the chat on screen's read.
+                    await engine.client.chatReads.landed()
+                    updated = try await AgentIdentity.avatar(updated, transport: transport, token: credential.deviceToken)
+                    await apply(updated, generation: generation)
+                }
             } catch {
                 var failed = account
                 failed.status = .retrying

@@ -22,7 +22,14 @@ private actor OrderServer: AgentTransport {
     var holdingChat = false
     var heldChat: [CheckedContinuation<Void, Never>] = []
 
+    /// The first page of artifacts is held unanswered until `answerArtifacts`,
+    /// and says another follows.
+    var holdingArtifacts = false
+    var heldArtifacts: [CheckedContinuation<Void, Never>] = []
+
     func setCarries(_ carries: Bool) { self.carries = carries }
+    func holdArtifacts() { holdingArtifacts = true }
+    func answerArtifacts() { holdingArtifacts = false; heldArtifacts.forEach { $0.resume() }; heldArtifacts = [] }
     func holdChat() { holdingChat = true }
     func answerChat() { holdingChat = false; heldChat.forEach { $0.resume() }; heldChat = [] }
     func hold() { holding = true }
@@ -64,6 +71,9 @@ private actor OrderServer: AgentTransport {
         case "GET /v0/agents/s/bootstrap":
             value = ["agent": ["id": "s", "workspaceId": "p", "status": "idle"], "pending": [], "cursor": .string(cursor),
                      "mode": ["providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "medium", "permissionMode": "auto"]]
+        case "GET /v0/artifacts" where holdingArtifacts && !path.contains("cursor="):
+            await withCheckedContinuation { heldArtifacts.append($0) }
+            value = ["artifacts": [], "nextPageCursor": "p2"]
         case "GET /v0/agents/s/messages":
             if holdingChat { await withCheckedContinuation { heldChat.append($0) } }
             value = ["cursor": .string(cursor), "hasMore": .bool(false), "runs": [[
@@ -218,6 +228,37 @@ final class SyncOrderTests: XCTestCase {
         let landed = log.firstIndex(of: "GET /v0/agents/s/messages")!
         XCTAssertEqual(log[..<landed].filter(Self.waitsForHome.contains), [])
         XCTAssertEqual(log.filter(Self.waitsForHome.contains).sorted(), ["GET /v0/artifacts", "GET /v0/feed", "POST /v0/git/watch"])
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// A chat opened while what waits for home is on its way: none of it
+    /// asked after is sent until the chat's read lands. What was already
+    /// sent is let land.
+    func testAChatOpenedAfterVerifiedGoesBeforeWhatWaitsForHome() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await server.holdArtifacts()
+        await engine.start()
+        try await eventually("artifacts asked") { await server.requests().contains("GET /v0/artifacts") }
+        await server.holdChat()
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: engine)
+        let shown = Shown()
+        let updates = conversation.updates
+        Task { for await snapshot in updates { shown.set(snapshot) } }
+        await conversation.start()
+        await conversation.setVisible(true)
+        try await eventually("the chat asked") { await server.requests().contains("GET /v0/agents/s/messages") }
+        await server.answerArtifacts()
+        try await Task.sleep(for: .milliseconds(300))
+        let reading = await server.requests()
+        XCTAssertEqual(reading.filter { $0 == "GET /v0/artifacts" }.count, 1, "the next page went beside the chat's read")
+        await server.answerChat()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        try await eventually("the next page") { await server.requests().filter { $0 == "GET /v0/artifacts" }.count == 2 }
+        let log = await server.requests()
+        XCTAssertGreaterThan(log.lastIndex(of: "GET /v0/artifacts")!, log.firstIndex(of: "GET /v0/agents/s/messages")!)
         await conversation.stop()
         await engine.stop()
     }

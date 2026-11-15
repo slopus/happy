@@ -437,6 +437,10 @@ public actor Conversation {
     /// Opened before its engine asked for the stream: home's read waits
     /// until this chat's has gone (`Store.chatOpening`).
     private var holdsHome = false
+    /// The stream openings heard (`.resync(from: nil)`), and the one a
+    /// read asked after its stream was asked for landed before.
+    private var openings = 0
+    private var readAtOpening: Int?
     /// The account's stream picks up where it left off (`.resync(replays:)`):
     /// its replay brings what changed in runs that had finished, so the read
     /// beside it need only bring the runs after the newest finished one held.
@@ -739,11 +743,14 @@ public actor Conversation {
                     // The stream's `.resync(from:)` says whether it covers.
                 } else if replays, !visible, heldEvents == nil {
                     // Off screen, the replay brings what it missed.
+                } else if from == nil, readAtOpening == openings {
+                    // Read since this stream was asked for: its hello says whether it covers.
                 } else if from.map(covered) != true {
                     // Some may be lost: not current again until the read below is in.
                     snapshot.synced = false
                     reload()
                 }
+                if from == nil { openings += 1; readAtOpening = nil }
                 deliverWaiting()
             case .event(let envelope):
                 if heldEvents != nil { heldEvents?.append(envelope) } else { receive(envelope) }
@@ -777,7 +784,8 @@ public actor Conversation {
                 let after = anchored ? anchor() : nil
                 let resets = await store.carrierResets
                 await store.streamAsked()
-                await store.chatReadBegan()
+                let opening = holdsHome ? openings : nil
+                client.chatReads.began()
                 do {
                     async let bootstrap = client.bootstrap(agentId)
                     async let page = client.messages(agentId, after: after?.message)
@@ -785,12 +793,13 @@ public actor Conversation {
                     var (start, history) = try await (bootstrap, page)
                     var since = after?.run
                     if since != nil, history.hasMore { history = try await client.messages(agentId); since = nil }
-                    await store.chatReadEnded()
+                    client.chatReads.ended()
                     if Task.isCancelled { return }
+                    if let opening { readAtOpening = opening }
                     adopt(start, history, since: since)
                     return
                 } catch {
-                    await store.chatReadEnded()
+                    client.chatReads.ended()
                     if Task.isCancelled { return }
                     // A message the computer no longer holds: the newest runs instead, at once.
                     if after != nil, case AgentClientError.status = error { anchored = false; continue }
