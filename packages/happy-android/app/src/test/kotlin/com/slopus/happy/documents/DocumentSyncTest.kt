@@ -260,7 +260,7 @@ class DocumentSyncTest {
     }
 
     @Test
-    fun anUnsentDocumentNoEditorHoldsIsSentWhenTheStreamReturns() = runBlocking {
+    fun keptUnsentDocumentsWaitForExplicitResumeAfterStreamHello() = runBlocking {
         val daemon = Daemon(surfaceId, base)
         val client = AgentClient(daemon, "t")
         var library = library(client)
@@ -273,7 +273,10 @@ class DocumentSyncTest {
         val expected = DocumentMarkdown.markdown(editor.blocks)
         library = library(client)
         daemon.streams = library.streams
-        library.opened(hello("s3"))
+        library.streams.opened(hello("s3"))
+        assertTrue("hello only links documents already open", library.open.isEmpty())
+        assertTrue("kept edits stay parked until their automatic stage", daemon.posted.isEmpty())
+        library.resumeUnsent()
         assertTrue(eventually { daemon.markdown() == expected })
         assertTrue("let go of once saved", eventually { library.open.isEmpty() })
     }
