@@ -178,7 +178,15 @@ enum class FeedFilter(val wire: String, val subjects: Set<String>?) {
 data class FeedPage(val items: List<FeedItem>, val unread: Int, val hasMore: Boolean, val cursor: String? = null, val filteredUnread: Int? = null)
 
 /** What health says of the Feed: whether there is one, and whether it filters by subject (`feedSubjectFilter`). */
-data class FeedCapabilities(val feed: Boolean, val subjectFilter: Boolean = false)
+data class FeedCapabilities(val feed: Boolean, val subjectFilter: Boolean = false) {
+    companion object {
+        fun of(health: JsonObject): FeedCapabilities {
+            val capabilities = health["capabilities"].obj
+            fun flag(name: String) = (capabilities?.get(name) as? JsonPrimitive)?.booleanOrNull == true
+            return FeedCapabilities(flag("feed"), flag("feedSubjectFilter"))
+        }
+    }
+}
 
 /** The Feed's routes (API.md "Feed"), as the library uses them: the computer's, or a test's fake. */
 interface FeedRoutes {
@@ -199,11 +207,7 @@ interface FeedRoutes {
 
 /** The Feed's routes through [client]. */
 class AgentFeedRoutes(private val client: AgentClient) : FeedRoutes {
-    override suspend fun capabilities(): FeedCapabilities {
-        val capabilities = client.health()["capabilities"].obj
-        fun flag(name: String) = (capabilities?.get(name) as? JsonPrimitive)?.booleanOrNull == true
-        return FeedCapabilities(flag("feed"), flag("feedSubjectFilter"))
-    }
+    override suspend fun capabilities(): FeedCapabilities = FeedCapabilities.of(client.health())
 
     override suspend fun page(before: String?, limit: Int, subjects: Set<String>?): FeedPage {
         val query = "/v0/feed?limit=${limit.coerceIn(1, 200)}" +

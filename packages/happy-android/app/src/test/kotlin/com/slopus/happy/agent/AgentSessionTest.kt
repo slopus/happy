@@ -192,8 +192,9 @@ class AgentSessionTest {
         eventually({ session.phase.value }) { it == SyncPhase.Verified }
         assertEquals("Studio", connections.accounts.value.single().name)
         assertFalse(session.client.search)
-        assertFalse(com.slopus.happy.documents.DocumentRoutes.collaborativeDocuments(session.client))
         assertEquals(0, agent.calls.count { it == "GET /v0/health" || it == "GET /v0/config" })
+        assertFalse(com.slopus.happy.documents.DocumentRoutes.collaborativeDocuments(session.client))
+        assertEquals(1, agent.calls.count { it == "GET /v0/health" })
     }
 
     @Test
@@ -288,7 +289,7 @@ class AgentSessionTest {
         val releaseHome = CompletableDeferred<Unit>()
         val outboxStarted = CompletableDeferred<Unit>()
         val releaseOutbox = CompletableDeferred<Unit>()
-        val stages = listOf("GET /v0/feed?limit=50", "GET /v0/artifacts?limit=100", "POST /v0/git/watch", "GET /v0/surfaces/document/d1/state")
+        val stages = listOf("GET /v0/feed?limit=50", "GET /v0/artifacts?limit=100", "POST /v0/git/watch", "POST /v0/surfaces/document/d1/subscribe")
         val stageStarted = stages.map { CompletableDeferred<Unit>() }
         val stageEnded = stages.map { CompletableDeferred<Unit>() }
         val releaseStage = stages.map { CompletableDeferred<Unit>() }
@@ -297,6 +298,7 @@ class AgentSessionTest {
         val chatRequests = java.util.concurrent.atomic.AtomicIntegerArray(stages.size)
         val activeChats = java.util.concurrent.atomic.AtomicInteger()
         val activeStages = java.util.concurrent.atomic.AtomicInteger()
+        val initialFeed = java.util.concurrent.atomic.AtomicBoolean(true)
         val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
         val violations = java.util.concurrent.CopyOnWriteArrayList<String>()
         val manager = sessions { object : Transport by agent {
@@ -304,6 +306,8 @@ class AgentSessionTest {
                 fun answer(text: String) = TransportResponse(200, body = text.toByteArray())
                 if (path == "/v0/bootstrap/desktop") { homeStarted.complete(Unit); releaseHome.await() }
                 if (path == "/outbox-probe") { outboxStarted.complete(Unit); releaseOutbox.await(); return answer("{}") }
+                // A screen's initial state read is ordinary; its stream subscription remains the final automatic stage.
+                if (path == "/v0/surfaces/document/d1/state") return answer("""{"seq":0,"update":"AAA=","stateVector":"AA=="}""")
                 if (path.startsWith("/v0/agents/read")) {
                     val index = path.substringAfter("/v0/agents/read").substringBefore('/').toInt()
                     activeChats.incrementAndGet()
@@ -314,6 +318,8 @@ class AgentSessionTest {
                     } finally { activeChats.decrementAndGet() }
                 }
                 val key = "$method $path"
+                // First availability has its own initial page; the later automatic refresh is staged.
+                if (key == stages.first() && initialFeed.compareAndSet(true, false)) return answer("""{"items":[],"unread":0,"hasMore":false}""")
                 val index = stages.indexOf(key)
                 if (index >= 0) {
                     asked += key
@@ -326,7 +332,7 @@ class AgentSessionTest {
                             0 -> answer("""{"items":[],"unread":0,"hasMore":false}""")
                             1 -> answer("""{"artifacts":[],"nextPageCursor":null}""")
                             2 -> answer("""{"snapshots":{}}""")
-                            else -> TransportResponse(404, body = """{"error":"No document","code":"not_found"}""".toByteArray())
+                            else -> answer("""{"seq":0}""")
                         }
                     } finally { activeStages.decrementAndGet(); stageEnded[index].complete(Unit) }
                 }
@@ -340,7 +346,7 @@ class AgentSessionTest {
         val document = async { session.documents.document("d1").start() }
         // Navigation and the verified transition share this boundary; the hint records the pending reads synchronously.
         manager.setOpenChat(id, "read0")
-        agent.frames.send(Wire.hello("c0"))
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c0\",\"gap\":false,\"resumed\":true,\"daemonId\":\"d1\",\"streamId\":\"st1\"}\n\n")
         releaseHome.complete(Unit)
         eventually({ session.phase.value }) { it == SyncPhase.Verified }
         withTimeout(10_000) { chatStarted[0].await(); outboxStarted.await() }

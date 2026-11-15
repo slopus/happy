@@ -82,6 +82,31 @@ class FeedTest {
         FeedLibrary(scope, routes, outbox, kept = { kept }, keep = { written += it }, now = { 77 })
 
     @Test
+    fun firstPageWaitsForHelloAndAvailabilityInEitherOrder(): Unit = runBlocking {
+        val beforeHello = Routes()
+        val first = library(beforeHello, IntentOutbox(scope, MemoryIntentStorage()))
+        first.start()
+        first.bootstrap(0, "e1", FeedCapabilities(true))
+        eventually { first.state.value.available == true }
+        assertTrue(beforeHello.asked.isEmpty())
+        first.hello()
+        eventually { first.state.value.loaded }
+        assertEquals(1, beforeHello.asked.size)
+        first.hello()
+        first.bootstrap(0, "e2", FeedCapabilities(true))
+        assertEquals("a later hello does no automatic refresh", 1, beforeHello.asked.size)
+
+        val afterHello = Routes()
+        val second = library(afterHello, IntentOutbox(scope, MemoryIntentStorage()))
+        second.start()
+        second.hello()
+        assertTrue(afterHello.asked.isEmpty())
+        second.bootstrap(0, "e1", FeedCapabilities(true))
+        eventually { second.state.value.loaded }
+        assertEquals(1, afterHello.asked.size)
+    }
+
+    @Test
     fun entriesMergeByIdTheGreaterVersionWinningNewestCursorFirst() {
         val held = listOf(item("b", "c2", version = "2"), item("a", "c1"))
         val merged = FeedLibrary.upsert(held, listOf(item("b", "c2", version = "1"), item("a", "c3", version = "2"), item("n", "c4")), hasMore = false)

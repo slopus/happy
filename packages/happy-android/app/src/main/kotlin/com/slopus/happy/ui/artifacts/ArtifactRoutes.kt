@@ -102,6 +102,7 @@ private fun AgentArtifacts(graph: AppGraph, nav: NavHostController, route: Agent
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
     val holder = viewModel { ArtifactsHolder(session) }
     val feed = holder.feed
+    LaunchedEffect(feed) { feed?.refresh() }
     val state = feed?.state?.collectAsStateWithLifecycle()?.value ?: ArtifactCatalogFeed.State(loaded = true, error = Problem.Unknown)
     val status = session?.status?.collectAsStateWithLifecycle()?.value
     val syncing = session?.isSyncing?.collectAsStateWithLifecycle()?.value ?: false

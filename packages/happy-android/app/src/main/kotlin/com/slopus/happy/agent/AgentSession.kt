@@ -260,7 +260,6 @@ class AgentSession internal constructor(
 
     private val gitSnapshots = MutableStateFlow<Map<String, WorkspaceLineChanges>>(emptyMap())
     private val chatReads = MutableStateFlow(0)
-    private val documentsReady = MutableStateFlow(false)
 
     /** Only bookkeeping: chat reads are never held behind secondary work. */
     suspend fun <T> readChat(agentId: String, read: suspend () -> T): T {
@@ -310,7 +309,7 @@ class AgentSession internal constructor(
 
     /** What Feed entries name that the catalog doesn't hold: artifacts, and the todos they made. */
     val feedLookups: FeedLookups by lazy {
-        FeedLookups.of(scope, client, beforeNetwork = ::awaitVerified) { ArtifactClient(client).artifact(it) }.also { lookups ->
+        FeedLookups.of(scope, client) { ArtifactClient(client).artifact(it) }.also { lookups ->
             scope.launch { events.collect(lookups::receive) }
         }
     }
@@ -481,11 +480,11 @@ class AgentSession internal constructor(
      * (iOS's `SyncEngine.documents`), kept beside the catalog in
      * `<connection>.documents/`; their live frames come off this session's stream.
      */
-    val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope) { documentsReady.first { it } }
+    val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope)
 
     val artifacts = com.slopus.happy.artifacts.ArtifactCatalogFeed(
-        scope, fetch = { cursor -> awaitVerified(); ArtifactClient(client).catalog(cursor) },
-        fetchOne = { id -> awaitVerified(); ArtifactClient(client).artifact(id) },
+        scope, fetch = { cursor -> ArtifactClient(client).catalog(cursor) },
+        fetchOne = { id -> ArtifactClient(client).artifact(id) },
         kept = { cachedResource(com.slopus.happy.artifacts.ArtifactCatalogFeed.RESOURCE) },
         keep = { keepResource(com.slopus.happy.artifacts.ArtifactCatalogFeed.RESOURCE, it) },
     )
@@ -971,7 +970,7 @@ class AgentSession internal constructor(
             bootstrapIdentity(bootstrap)
             team.bootstrap(bootstrap.teammates, bootstrap.profile)
             catalogLock.withLock { catalogState.update { it.withBootstrap(bootstrap) } }
-            feedLibrary.bootstrap(bootstrap.feedUnread, bootstrap.cursor)
+            feedLibrary.bootstrap(bootstrap.feedUnread, bootstrap.cursor, bootstrap.health?.let(com.slopus.happy.feed.FeedCapabilities::of))
         } finally {
             reads.update { it - 1 }
         }
@@ -995,6 +994,7 @@ class AgentSession internal constructor(
                     }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
+                        feedLibrary.hello()
                         val wasVerified = phaseState.value == SyncPhase.Verified
                         statusState.value = AgentLinkStatus.Connected
                         phaseState.value = SyncPhase.P0Live
@@ -1034,7 +1034,6 @@ class AgentSession internal constructor(
             }
         } finally {
             secondary?.cancel()
-            documentsReady.value = false
             documents.closed()
             feedLibrary.disconnected()
             stream.close()
@@ -1051,7 +1050,6 @@ class AgentSession internal constructor(
         val ids = gitWorkspaceIds(feed.value)
         readGit(ids)
         awaitChatReads()
-        documentsReady.value = true
         documents.opened(hello)
         watchGit(ids)
     }
