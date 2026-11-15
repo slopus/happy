@@ -111,7 +111,7 @@ class AgentSession internal constructor(
      * The transport is made once; the bearer is asked for on every request,
      * so a team server's access token is refreshed as it nears expiry.
      */
-    val client: AgentClient = AgentClient.lazy(cloud = com.slopus.happy.connection.HappyCloud.isServer(connections.accounts.value.firstOrNull { it.id == connectionId }?.server)) {
+    val client: AgentClient = AgentClient.lazy(cloud = com.slopus.happy.connection.HappyCloud.isServer(connections.accounts.value.firstOrNull { it.id == connectionId }?.server), beforeHealth = ::awaitVerified) {
         val (credentials, transport) = linkLock.withLock {
             route ?: run {
                 val credentials = connections.linkCredentials(connectionId) ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
@@ -143,6 +143,7 @@ class AgentSession internal constructor(
     val phase: StateFlow<SyncPhase> = phaseState.asStateFlow()
     private var avatarHash: String? = null
     private var bootstrapConfig: JsonObject? = null
+    private val configLock = Mutex()
     private class ChatRead(val agentId: String, val result: Deferred<Result<Pair<com.slopus.happy.conversation.Bootstrap, com.slopus.happy.conversation.MessagesPage>>>, var taken: Boolean = false)
     private val chatLock = Any()
     private var chatRead: ChatRead? = null
@@ -159,7 +160,13 @@ class AgentSession internal constructor(
 
     suspend fun configuration(): com.slopus.happy.connection.TransportResponse {
         awaitVerified()
-        return com.slopus.happy.connection.TransportResponse(200, body = buildJsonObject { put("config", bootstrapConfig ?: JsonObject(emptyMap())) }.toString().toByteArray())
+        return configLock.withLock {
+            if (bootstrapConfig == null) {
+                val response = client.send("GET", "/v0/config")
+                bootstrapConfig = (AgentClient.json.parseToJsonElement(response.text) as? JsonObject)?.get("config") as? JsonObject ?: JsonObject(emptyMap())
+            }
+            com.slopus.happy.connection.TransportResponse(200, body = buildJsonObject { put("config", bootstrapConfig ?: JsonObject(emptyMap())) }.toString().toByteArray())
+        }
     }
 
     private val reads = MutableStateFlow(0)
@@ -218,7 +225,7 @@ class AgentSession internal constructor(
 
     /** Whether home lists Plugins: health's `capabilities.plugins`, with a probe for Happy Cloud servers deployed before it. */
     private val pluginsAvailability = com.slopus.happy.plugins.PluginsAvailability(
-        probe = if (client.cloud) ({ com.slopus.happy.plugins.PluginsAvailability.probe(client) }) else null,
+        probe = null,
         kept = { withContext(Dispatchers.IO) { (cachedResource(com.slopus.happy.plugins.PluginsAvailability.RESOURCE)?.get("available") as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() } },
         keep = { value -> withContext(Dispatchers.IO) { keepResource(com.slopus.happy.plugins.PluginsAvailability.RESOURCE, JsonObject(mapOf("available" to kotlinx.serialization.json.JsonPrimitive(value)))) } },
         scope = scope,
@@ -251,7 +258,6 @@ class AgentSession internal constructor(
      */
     val team = TeamDirectory(
         scope,
-        read = { ids -> awaitVerified(); client.teamUsers(ids) },
         kept = { withContext(Dispatchers.IO) { cachedResource(TeamDirectory.RESOURCE) } },
         keep = { value -> withContext(Dispatchers.IO) { keepResource(TeamDirectory.RESOURCE, value) } },
     )
@@ -372,7 +378,7 @@ class AgentSession internal constructor(
         com.slopus.happy.references.ReferenceReader(
             scope, catalog, events,
             readArtifact = { awaitVerified(); ArtifactClient(client).artifact(it) },
-            readUsers = { awaitVerified(); com.slopus.happy.references.ReferenceReader.userNames(client, it) },
+            readUsers = { awaitVerified(); team.names(it.toSet()) },
         )
     }
     /**
@@ -663,8 +669,6 @@ class AgentSession internal constructor(
     init {
         intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, SURFACE_JOIN), ::deliver)
         feedLibrary.start()
-        // The members the listed tasks belong to, read as they are listed.
-        scope.launch { catalogState.map(TeamUser::authors).distinctUntilChanged().collect(team::want) }
         // Sent while the link is up; every connect sends what waits at once.
         scope.launch { phaseState.collect { intents.setOnline(it == SyncPhase.Verified) } }
         artifacts.start(events, phase.map { it == SyncPhase.Verified }.distinctUntilChanged())
@@ -872,12 +876,13 @@ class AgentSession internal constructor(
     private suspend fun bootstrapIdentity(bootstrap: WireDesktopBootstrap) {
         val known = connections.accounts.value.firstOrNull { it.id == connectionId }
         val info = AgentIdentity.bootstrap(bootstrap.health, bootstrap.config, known?.name.orEmpty())
-        bootstrapConfig = bootstrap.config
-        client.noteHealth(info)
+        bootstrapConfig = bootstrap.config ?: JsonObject(emptyMap())
+        client.noteHealth(bootstrap.health ?: JsonObject(emptyMap()))
         pluginsAvailability.noteHealth(info.plugins)
         avatarHash = info.thumbhash?.takeIf { it != known?.thumbhash || known.avatarFile == null }
         if (known != null) {
-            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash, revoked = false, instanceId = info.instanceId, daemonVersion = info.daemonVersion, protocol = info.protocol) }
+            val hasNode = bootstrap.config?.get("node") is JsonObject
+            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = if (hasNode) info.thumbhash else it.thumbhash, revoked = false, instanceId = info.instanceId ?: it.instanceId, daemonVersion = info.daemonVersion ?: it.daemonVersion, protocol = info.protocol ?: it.protocol) }
         }
     }
 
@@ -890,6 +895,7 @@ class AgentSession internal constructor(
                 throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
             }
             bootstrapIdentity(bootstrap)
+            team.bootstrap(bootstrap.teammates, bootstrap.profile)
             catalogLock.withLock { catalogState.update { it.withBootstrap(bootstrap) } }
             feedLibrary.bootstrap(bootstrap.feedUnread, bootstrap.cursor)
         } finally {
@@ -929,14 +935,13 @@ class AgentSession internal constructor(
                         statusState.value = AgentLinkStatus.Connected
                         // Reads the Feed's newest page each time, so a gap loses nothing.
                         feedLibrary.connected()
-                        // Faces may have changed while away.
-                        team.connected()
                         gitRenewal.update { it + 1 }
                         onConnected()
                         // Every connect sends what was changed while offline.
                         if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)
                     } else {
                         snapshot.await()
+                        if (event.type == "config.updated") bootstrapConfig = null
                         if (event.type == "git.updated") {
                             val id = event.data.string("workspaceId")
                             val state = WorkspaceLineChanges.parse(event.data["git"])
@@ -966,7 +971,10 @@ class AgentSession internal constructor(
     private fun profileChanged(event: AgentEvent) {
         if (event.data["profile"] is JsonObject) return
         val id = event.data.string("userId") ?: return
-        if (id != catalogState.value.userId) return team.changed(id)
+        if (id != catalogState.value.userId) {
+            scope.launch { reread(AgentCatalog.Stale(AgentCatalog.Stale.SNAPSHOT, "")) }
+            return
+        }
         scope.launch {
             val profile = try {
                 client.decode<JsonObject>("GET", "/v0/profile")["profile"] as? JsonObject

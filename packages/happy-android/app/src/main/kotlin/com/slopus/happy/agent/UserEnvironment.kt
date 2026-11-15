@@ -109,12 +109,10 @@ class UserEnvironmentReports {
      * goes again at the next report.
      */
     suspend fun report(client: AgentClient, environment: UserEnvironment, deviceId: String) {
-        if (served != true) {
-            val capabilities = client.decode<JsonObject>("GET", "/v0/health")["capabilities"] as? JsonObject
-            val takes = (capabilities?.get("userEnvironment") as? JsonPrimitive)?.booleanOrNull == true
-            serves(takes, deviceId)
-            if (!takes) return
-        }
+        val capabilities = client.health()["capabilities"] as? JsonObject
+        val takes = (capabilities?.get("userEnvironment") as? JsonPrimitive)?.booleanOrNull == true
+        serves(takes, deviceId)
+        if (!takes) return
         if (reported == environment) return
         try {
             client.send("PUT", "/v0/environment", environment.report(deviceId))

@@ -247,7 +247,7 @@ class FeedLibrary(
      * followed by one more.
      */
     fun refresh() {
-        if (stateFlow.value.available != true) return
+        if (!live || stateFlow.value.available != true) return
         if (reading?.isActive == true) {
             again = true
             return

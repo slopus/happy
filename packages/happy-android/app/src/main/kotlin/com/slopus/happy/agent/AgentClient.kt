@@ -16,6 +16,8 @@ import com.slopus.happy.connection.TransportStream
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -43,6 +45,7 @@ class AgentClient private constructor(
     private val link: suspend () -> Link,
     /** To a Happy Cloud server: no folders, and the web through an agent's network ([com.slopus.happy.browser.browserNetwork]). */
     val cloud: Boolean = false,
+    private val beforeHealth: suspend () -> Unit = {},
 ) {
     /**
      * The transport and the bearer it is authorized with. A team server
@@ -63,7 +66,7 @@ class AgentClient private constructor(
     constructor(transport: Transport, token: String, cloud: Boolean = false) : this(Link(transport, token).let { fixed -> { fixed } }, cloud)
 
     companion object {
-        internal fun lazy(cloud: Boolean = false, link: suspend () -> Link) = AgentClient(link, cloud)
+        internal fun lazy(cloud: Boolean = false, beforeHealth: suspend () -> Unit = {}, link: suspend () -> Link) = AgentClient(link, cloud, beforeHealth)
 
         /** How every agent answer is read: unknown keys are skipped, as the wire grows. */
         val json = Json {
@@ -219,6 +222,19 @@ class AgentClient private constructor(
 
     /** Health's `capabilities.webSocketTunnels`, once known ([noteHealth], or read by [webSocketTunnel]). */
     @Volatile private var webSocketTunnels: Boolean? = null
+    @Volatile private var bootstrapHealth = JsonObject(emptyMap())
+
+    suspend fun health(): JsonObject {
+        beforeHealth()
+        return bootstrapHealth
+    }
+
+    fun noteHealth(health: JsonObject) {
+        bootstrapHealth = health
+        val capabilities = health["capabilities"] as? JsonObject
+        webSocketTunnels = capabilities?.get("webSocketTunnels") == JsonPrimitive(true)
+        search = capabilities?.get("search") == JsonPrimitive(true)
+    }
     private val blocked = MutableStateFlow(false)
 
     /**
@@ -255,7 +271,7 @@ class AgentClient private constructor(
     suspend fun webSocketTunnel(connectPath: String): TransportSocket? {
         val link = link()
         if (!link.transport.overHttps()) return null
-        val supported = webSocketTunnels ?: AgentIdentity.webSocketTunnels(requester, link.oauth).also { webSocketTunnels = it }
+        val supported = webSocketTunnels ?: (health()["capabilities"] as? JsonObject)?.get("webSocketTunnels").let { it == JsonPrimitive(true) }
         if (!supported) return null
         val path = "$connectPath/websocket"
         return try {

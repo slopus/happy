@@ -153,7 +153,6 @@ private fun AgentFeed(graph: AppGraph, nav: NavHostController, route: AgentFeedR
     // The newest page each time the Feed opens; what entries name that the catalog doesn't hold, as they come.
     LaunchedEffect(library) { library.refresh() }
     LaunchedEffect(state.items) { lookups.want(state.items) }
-    LaunchedEffect(state.items, catalog.userId) { session.team.want(FeedRows.people(state.items, catalog)) }
     val rows by produceState(emptyList<FeedRow>(), state, catalog, found, photo, users) {
         value = withContext(Dispatchers.Default) { FeedRows.make(state.items, state::isUnread, catalog, found, route.connectionId, photo, users) }
     }
@@ -227,7 +226,6 @@ private fun AgentFeedPeek(graph: AppGraph, nav: NavHostController, route: AgentF
     val photo = rememberProfilePhoto(session)
     val users by session.team.users.collectAsStateWithLifecycle()
     LaunchedEffect(peek.items) { lookups.want(peek.items) }
-    LaunchedEffect(peek.items, catalog.userId) { session.team.want(FeedRows.people(peek.items, catalog)) }
     // None carries the dot: a peek reads nothing.
     val rows by produceState(emptyList<FeedRow>(), peek, catalog, found, photo, users) {
         value = withContext(Dispatchers.Default) { FeedRows.make(peek.items, { false }, catalog, found, route.connectionId, photo, users) }

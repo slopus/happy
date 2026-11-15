@@ -200,7 +200,7 @@ interface FeedRoutes {
 /** The Feed's routes through [client]. */
 class AgentFeedRoutes(private val client: AgentClient) : FeedRoutes {
     override suspend fun capabilities(): FeedCapabilities {
-        val capabilities = client.decode<JsonObject>("GET", "/v0/health")["capabilities"].obj
+        val capabilities = client.health()["capabilities"].obj
         fun flag(name: String) = (capabilities?.get(name) as? JsonPrimitive)?.booleanOrNull == true
         return FeedCapabilities(flag("feed"), flag("feedSubjectFilter"))
     }

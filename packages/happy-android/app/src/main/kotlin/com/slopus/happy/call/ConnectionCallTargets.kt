@@ -2,7 +2,6 @@ package com.slopus.happy.call
 
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
-import com.slopus.happy.agent.teamUsers
 import com.slopus.happy.conversation.NewTask
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.FailureReason
@@ -78,9 +77,6 @@ class ConnectionCallTargets(
     private val held = HashMap<String, Held>()
     /** New work the call started, off screen, until it is let go with the call. */
     private val started = HashMap<String, Held>()
-    /** Team members' names by user ID, once the computer has given them; those asked for already, named or not. */
-    private val names = HashMap<String, String>()
-    private val asked = HashSet<String>()
     private val watching = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     /** A followed conversation changed. */
     var onChange: ((CallTargetState) -> Unit)? = null
@@ -161,29 +157,9 @@ class ConnectionCallTargets(
     private fun read(state: ConversationState, target: CallTarget): CallTargetState =
         CallTargetState.from(state, target, failureText).copy(fresh = isCurrent(state))
 
-    /**
-     * [state] with who wrote each message said, the members it doesn't know yet asked for once
-     * (`GET /v0/users`). Outside a team no message has an author, and nothing is asked.
-     */
-    private suspend fun named(state: CallTargetState): CallTargetState {
-        val me = session.catalog.value.userId
-        val missing = state.authors - names.keys - asked - setOfNotNull(me)
-        if (missing.isNotEmpty()) {
-            asked += missing
-            // Asked again next time when it fails: until then they are "a teammate".
-            runCatching { session.client.teamUsers(missing.toList()) }
-                .onSuccess { users -> for (user in users) names[user.id] = user.name }
-                .onFailure { asked -= missing }
-        }
-        return state.named(names, me)
-    }
+    private fun named(state: CallTargetState): CallTargetState = state.named(session.team.names(state.authors), session.catalog.value.userId)
 
-    /** [named] with the names known now, for an update that can't wait: the ones it lacks are asked for, for the next. */
-    private fun namedNow(state: CallTargetState): CallTargetState {
-        val me = session.catalog.value.userId
-        if ((state.authors - names.keys - asked - setOfNotNull(me)).isNotEmpty()) watching.launch { named(state) }
-        return state.named(names, me)
-    }
+    private fun namedNow(state: CallTargetState): CallTargetState = named(state)
 
     /** [read] with the model its next message goes with and the models the pickers offer, once the computer's are read. */
     private fun withModels(read: CallTargetState, state: ConversationState): CallTargetState {

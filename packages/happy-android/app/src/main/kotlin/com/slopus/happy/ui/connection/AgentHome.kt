@@ -282,8 +282,6 @@ fun AgentHomeScreen(
     search: (suspend (String) -> SearchAnswer?)? = null,
     /** The team members read so far ([com.slopus.happy.agent.TeamDirectory]), whose pictures search's People wear. */
     people: Map<String, TeamUser> = emptyMap(),
-    /** Reads the members search found that [people] lacks. */
-    wantPeople: (Collection<String>) -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val reduceMotion = rememberReduceMotion()
@@ -366,10 +364,6 @@ fun AgentHomeScreen(
         // Only the answer to what is typed now joins in; an earlier query's would bring in what no longer answers.
         val answer = remote?.takeIf { it.query == query.trim().take(SearchClient.MAX_QUERY) }
         agentSearchResults(feed, query, label, words, searchEntries.first, searchEntries.second, sources, answer, people = actions.onOpenPerson != null)
-    }
-    LaunchedEffect(results) {
-        val found = results.mapNotNull { (it as? AgentSearchResult.Person)?.userId }
-        if (found.isNotEmpty()) wantPeople(found)
     }
 
     // One ground under the bar and the page, the chat's own (surface), light and dark; the cards sit on it, as on iOS.
@@ -1008,7 +1002,6 @@ private fun SignedInAgentHome(
             },
             search = remember(session) { { query -> session.search(query) } },
             people = people,
-            wantPeople = remember(session) { { ids -> session.team.want(ids) } },
         )
     }
 }

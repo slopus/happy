@@ -83,6 +83,42 @@ class AgentSessionTest {
     }
 
     @Test
+    fun bootstrapHealthAndTeammatesAreSharedWithoutExtraReadsOnConnectOrReconnect() = runBlocking {
+        val health = buildJsonObject {
+            put("ready", true); put("version", buildJsonObject { put("protocol", 30) })
+            put("capabilities", buildJsonObject { put("feed", true); put("search", true); put("collaborativeDocuments", true); put("dailyUsage", true); put("userEnvironment", true) })
+        }
+        agent.bootstrap = agent.bootstrap.with("health", health).with("feedUnread", 0).with("teammates", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("id", "u2"); put("name", "Ann") })))
+        agent.resources["/v0/feed?limit=50"] = AgentClient.json.parseToJsonElement("""{"items":[],"unread":0,"hasMore":false}""") as kotlinx.serialization.json.JsonObject
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.feedLibrary.state.value.loaded }) { it }
+        assertEquals(mapOf("u2" to "Ann"), session.team.names(setOf("u2", "unknown")))
+        assertTrue(session.client.search)
+        assertTrue(com.slopus.happy.documents.DocumentRoutes.collaborativeDocuments(session.client))
+        val dropped = agent.frames
+        agent.frames = Channel(Channel.UNLIMITED)
+        dropped.close()
+        eventually({ agent.streamCursors.size }) { it == 2 }
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        assertEquals(0, agent.calls.count { it == "GET /v0/health" || it == "GET /v0/config" || it.startsWith("GET /v0/users?") })
+        assertEquals(2, agent.calls.count { it == "STREAM /v0/events/stream" })
+    }
+
+    @Test
+    fun bootstrapWithoutHealthOrNodeVerifiesWithCapabilitiesOffAndKeepsIdentity() = runBlocking {
+        agent.bootstrap = kotlinx.serialization.json.JsonObject(agent.bootstrap - "health" - "config")
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        assertEquals("Studio", connections.accounts.value.single().name)
+        assertFalse(session.client.search)
+        assertFalse(com.slopus.happy.documents.DocumentRoutes.collaborativeDocuments(session.client))
+        assertEquals(0, agent.calls.count { it == "GET /v0/health" || it == "GET /v0/config" })
+    }
+
+    @Test
     fun homeHoldsSecondaryReadsUntilBootstrapIsVerified() = runBlocking {
         val requested = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
