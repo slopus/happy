@@ -180,8 +180,9 @@ class ConversationStartupTest {
         session.client.observeAsk = { method, path -> asked += "$method $path" }
         open.value = id
         eventually { asked.contains("GET /v0/bootstrap/desktop") }
-        assertEquals("STREAM /v0/events/stream", asked.first())
-        assertEquals(setOf("GET /v0/agents/at1/bootstrap", "GET /v0/agents/at1/messages?limit=100&omitToolData=true"), asked.drop(1).dropLast(1).toSet())
+        assertEquals("WARM 2", asked.first())
+        assertEquals("STREAM /v0/events/stream", asked[1])
+        assertEquals(setOf("GET /v0/agents/at1/bootstrap", "GET /v0/agents/at1/messages?limit=100&omitToolData=true"), asked.drop(2).dropLast(1).toSet())
         assertEquals("GET /v0/bootstrap/desktop", asked.last())
         agent.frames.send(Wire.hello("c0"))
         eventually { session.phase.value == SyncPhase.Verified }

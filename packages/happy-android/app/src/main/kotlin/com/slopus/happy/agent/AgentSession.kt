@@ -757,25 +757,44 @@ class AgentSession internal constructor(
             }
         }
         scope.launch {
-            // The kept catalog first: home draws it, and the link resumes from its cursor.
-            traced("AgentSession.readCache") { readCache() }?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
+            var restored = false
+            suspend fun restoreCache() {
+                if (restored) return
+                traced("AgentSession.readCache") { readCache() }?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
+                restored = true
+            }
             // A team server that wants signing in again (a refused refresh) stops the link at once,
             // even with its event stream still open, and it resumes from its cursor after.
             val signedIn = connections.accounts.map { list -> list.none { it.id == connectionId && it.signInRequired } }.distinctUntilChanged()
             // A redial ([networkReturned], [networkMoved]) starts the link over, as iOS's `SyncEngine.reconnect` pauses and starts it.
             combine(active.distinctUntilChanged(), signedIn, redials, ::Triple).collectLatest { (on, signedIn) ->
                 linking = on && signedIn
-                if (!linking) chatStarting.value = false
+                if (!linking) {
+                    chatStarting.value = false
+                    restoreCache()
+                }
                 when {
                     !signedIn -> statusState.value = AgentLinkStatus.SignInRequired
                     // Off the collector: Tailcat's reads block their thread, and on the collector's
                     // they would hold up the next value, so a background could not stop the link.
                     on -> try { coroutineScope {
                         launch {
-                            // Kept through a background: its tunnels check every way to the
-                            // agent before the stream asks them for anything.
-                            if (suspended.getAndSet(false)) linkLock.withLock { route?.second }?.resumed()
-                            live()
+                            // Bring up the shared query/stream tunnel while the kept catalog loads.
+                            val warmAsked = CompletableDeferred<Unit>()
+                            val warming = launch {
+                                try { client.warm(2) { warmAsked.complete(Unit) } }
+                                catch (e: CancellationException) { throw e }
+                                catch (_: Exception) { /* Warming is best effort; the stream reports a refusal. */ }
+                                finally { warmAsked.complete(Unit) }
+                            }
+                            try {
+                                warmAsked.await()
+                                restoreCache()
+                                // Kept through a background: its tunnels check every way to the
+                                // agent before the stream asks them for anything.
+                                if (suspended.getAndSet(false)) linkLock.withLock { route?.second }?.resumed()
+                                live()
+                            } finally { warming.cancel() }
                         }
                     } } finally { phaseState.value = SyncPhase.Offline }
                     statusState.value == AgentLinkStatus.SignInRequired -> statusState.value = AgentLinkStatus.Connecting
@@ -854,7 +873,10 @@ class AgentSession internal constructor(
 
     private suspend fun live() {
         var backoff = INITIAL_BACKOFF
+        var firstConnect = true
         while (true) {
+            val alreadyWarmed = firstConnect
+            firstConnect = false
             awaitSignedIn()
             if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
             // The sign-in this attempt runs under: a refusal it meets signs out only that one.
@@ -879,7 +901,7 @@ class AgentSession internal constructor(
                         openChat()?.let { prepareChat(it, owner) }
                     }
                     chatStarting.value = false
-                    launch { client.warm(2) }
+                    if (!alreadyWarmed) launch { client.warm(2) }
                     val stream = opening.await()
                     phaseState.value = SyncPhase.P0Connecting
                     val snapshot = async {
