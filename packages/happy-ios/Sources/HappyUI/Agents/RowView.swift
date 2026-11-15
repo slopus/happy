@@ -337,9 +337,15 @@ final class RowView: UIView {
         picture.frame = mark
         tile.frame = mark
         signal.frame = frames.corner.map(local) ?? .zero
-        label.frame = local(frames.label)
+        // The title's box is where its fade ends: when a status, counts or
+        // a width move it, the fade is there at once, never squeezed into
+        // place by a glide the list runs around it.
+        UIView.performWithoutAnimation {
+            label.frame = local(frames.label)
+            label.layoutIfNeeded()
+            field?.frame = label.frame
+        }
         lineChanges.frame = frames.lineChanges.map(local) ?? .zero
-        field?.frame = label.frame
         trailing.frame = frames.trailing.map(local) ?? .zero
         chevron.frame = frames.chevronGlyph.map(local) ?? .zero
         rule.frame = frames.rule.map(local) ?? .zero

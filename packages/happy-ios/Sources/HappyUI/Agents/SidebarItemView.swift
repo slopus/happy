@@ -69,14 +69,18 @@ final class SidebarItemView: ListRowView {
         }
         guard fresh || titleBand == nil else { return }
         let drawing = entry.drawing
-        let band = ShimmerBand(
-            frame: drawing.frame.label, run: CGRect(x: 0, y: 0, width: run, height: drawing.frame.label.height),
-            scale: drawing.displayScale, draw: { drawing.drawShimmerCopy(in: $0) }
-        )
-        band.accessibilityIdentifier = "shimmer"
-        titleBand?.removeFromSuperview()
-        insertSubview(band, aboveSubview: drawingView)
-        titleBand = band
+        // The band fades with the title: placed at once, never glided in
+        // by a list pass that animates the row.
+        UIView.performWithoutAnimation {
+            let band = ShimmerBand(
+                frame: drawing.frame.label, run: CGRect(x: 0, y: 0, width: run, height: drawing.frame.label.height),
+                scale: drawing.displayScale, draw: { drawing.drawShimmerCopy(in: $0) }
+            )
+            band.accessibilityIdentifier = "shimmer"
+            titleBand?.removeFromSuperview()
+            insertSubview(band, aboveSubview: drawingView)
+            titleBand = band
+        }
     }
     override var isDisplayReady: Bool { drawingView.isDisplayReady }
 
