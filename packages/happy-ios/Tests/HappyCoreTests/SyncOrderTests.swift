@@ -18,7 +18,13 @@ private actor OrderServer: AgentTransport {
     var holding = false
     var held: [CheckedContinuation<Void, Never>] = []
 
+    /// The chat's history is held unanswered until `answerChat`.
+    var holdingChat = false
+    var heldChat: [CheckedContinuation<Void, Never>] = []
+
     func setCarries(_ carries: Bool) { self.carries = carries }
+    func holdChat() { holdingChat = true }
+    func answerChat() { holdingChat = false; heldChat.forEach { $0.resume() }; heldChat = [] }
     func hold() { holding = true }
     func answer() { holding = false; held.forEach { $0.resume() }; held = [] }
     func requests() -> [String] { log }
@@ -59,6 +65,7 @@ private actor OrderServer: AgentTransport {
             value = ["agent": ["id": "s", "workspaceId": "p", "status": "idle"], "pending": [], "cursor": .string(cursor),
                      "mode": ["providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "medium", "permissionMode": "auto"]]
         case "GET /v0/agents/s/messages":
+            if holdingChat { await withCheckedContinuation { heldChat.append($0) } }
             value = ["cursor": .string(cursor), "hasMore": .bool(false), "runs": [[
                 "id": "r1", "status": "completed", "startedAt": 1, "endedAt": 2,
                 "messages": [["id": "a1", "role": "agent", "createdAt": 1, "metadata": [:], "content": [["type": "text", "text": "hello"]]]],
@@ -150,6 +157,103 @@ final class SyncOrderTests: XCTestCase {
         XCTAssertEqual(afterAgain.filter(Self.waitsForHome.contains).sorted(), ["GET /v0/artifacts", "GET /v0/feed", "POST /v0/git/watch"])
         XCTAssertEqual(again.filter(Self.identity.contains), [], "health and identity come with the bootstrap again")
         await engine.stop()
+    }
+
+    /// A launch straight into a chat (a link, a push): the stream, then the
+    /// chat's two reads, then home's bootstrap, and the chat read once.
+    func testAColdLaunchIntoAChatAsksTheStreamThenTheChatThenHome() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        // Opened before the engine has read what this phone keeps.
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: engine)
+        let shown = Shown()
+        let updates = conversation.updates
+        Task { for await snapshot in updates { shown.set(snapshot) } }
+        await conversation.start()
+        await conversation.setVisible(true)
+        await engine.start()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        try await settled(server)
+        let log = await server.requests()
+        print("SYNC_ORDER chat cold launch: \(log)")
+        // Home is asked once the chat's reads have been (`Store.chatOpening`);
+        // the three then race to the computer, so their order is not asserted.
+        let p0: Set = ["GET /v0/events/stream", "GET /v0/agents/s/bootstrap", "GET /v0/agents/s/messages", "GET /v0/bootstrap/desktop"]
+        let asked = log.filter(p0.contains)
+        XCTAssertEqual(asked.first, "GET /v0/events/stream")
+        XCTAssertEqual(asked.dropFirst().sorted(), ["GET /v0/agents/s/bootstrap", "GET /v0/agents/s/messages", "GET /v0/bootstrap/desktop"])
+        XCTAssertEqual(log.filter { $0 == "GET /v0/agents/s/messages" }.count, 1)
+        let (before, after) = Self.split(log)
+        XCTAssertEqual(before.filter(Self.waitsForHome.contains), [])
+        XCTAssertEqual(after.filter(Self.waitsForHome.contains).sorted(), ["GET /v0/artifacts", "GET /v0/feed", "POST /v0/git/watch"])
+        XCTAssertEqual(log.filter(Self.identity.contains), [])
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// Home verified while the chat on screen is still being read: what
+    /// waits for home waits for the chat too, and the chat never waits for
+    /// home.
+    func testWhatWaitsForHomeWaitsForTheChatOnScreen() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await server.holdChat()
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: engine)
+        let shown = Shown()
+        let updates = conversation.updates
+        Task { for await snapshot in updates { shown.set(snapshot) } }
+        await conversation.start()
+        await conversation.setVisible(true)
+        await engine.start()
+        try await eventually("home verified") { let home = await Self.home(engine); return home.live && !home.syncing }
+        try await Task.sleep(for: .milliseconds(300))
+        let reading = await server.requests()
+        XCTAssertEqual(reading.filter(Self.waitsForHome.contains), [], "asked beside the chat's read")
+        await server.answerChat()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        try await settled(server)
+        let log = await server.requests()
+        let landed = log.firstIndex(of: "GET /v0/agents/s/messages")!
+        XCTAssertEqual(log[..<landed].filter(Self.waitsForHome.contains), [])
+        XCTAssertEqual(log.filter(Self.waitsForHome.contains).sorted(), ["GET /v0/artifacts", "GET /v0/feed", "POST /v0/git/watch"])
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// The chat on screen is current with home's bootstrap still unanswered.
+    func testTheChatIsCurrentWithHomesBootstrapHeld() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await server.hold()
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: engine)
+        let shown = Shown()
+        let updates = conversation.updates
+        Task { for await snapshot in updates { shown.set(snapshot) } }
+        await conversation.start()
+        await conversation.setVisible(true)
+        await engine.start()
+        try await eventually("the chat current") { shown.snapshot.synced && shown.snapshot.loaded }
+        let log = await server.requests()
+        XCTAssertFalse(log.contains("answered GET /v0/bootstrap/desktop"))
+        XCTAssertEqual(log.filter { $0 == "GET /v0/agents/s/messages" }.count, 1)
+        await server.answer()
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    private static func home(_ engine: SyncEngine) async -> HomeSnapshot {
+        var iterator = await engine.snapshots().makeAsyncIterator()
+        return await iterator.next()!
+    }
+
+    private final class Shown: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = ChatSnapshot()
+        var snapshot: ChatSnapshot { lock.withLock { value } }
+        func set(_ snapshot: ChatSnapshot) { lock.withLock { value = snapshot } }
     }
 
     /// A bootstrap without `health` (Happy Cloud's, for now) serves
