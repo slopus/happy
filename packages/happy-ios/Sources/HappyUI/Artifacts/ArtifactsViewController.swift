@@ -9,7 +9,7 @@ import UltraView
 /// the previous seven and thirty days, then by month), newest first. It
 /// opens on the list it last showed, kept on the phone by the account's
 /// catalog (`SyncEngine.artifacts`, which follows its events and reads it
-/// whole after a gap). The bar's search filters by title and kind. A row opens the artifact viewer on the latest version.
+/// whole after a gap), read again as it opens. The bar's search filters by title and kind. A row opens the artifact viewer on the latest version.
 final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     private let session: Session
     private let feed: ArtifactCatalogFeed
@@ -81,6 +81,8 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
                 return true
             }
             await feed.start()
+            // Read whenever the screen opens, connected or not.
+            await feed.refresh()
         }
         registerForTraitChanges(UIView.textSizeTraits + [UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateInput()
