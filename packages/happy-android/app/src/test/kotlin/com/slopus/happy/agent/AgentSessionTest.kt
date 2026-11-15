@@ -197,6 +197,88 @@ class AgentSessionTest {
     }
 
     @Test
+    fun connectWarmsTwoOrdinaryConnectionsAndChatUsesBothAtVerification(): Unit = runBlocking {
+        val pool = com.slopus.happy.connection.IdleFlows()
+        val warmed = CompletableDeferred<Unit>()
+        val releaseStreamHead = CompletableDeferred<Unit>()
+        val homeStarted = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val releaseChat = java.util.concurrent.CountDownLatch(1)
+        val used = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+        val opened = java.util.concurrent.atomic.AtomicInteger()
+        var streamAsked = false
+        var warms = 0
+        val manager = sessions { object : Transport by agent {
+            override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream {
+                streamAsked = true
+                releaseStreamHead.await()
+                return agent.stream(path, credential, headers, silenceMillis)
+            }
+            override suspend fun warm(count: Int) {
+                assertTrue(streamAsked)
+                assertEquals(2, count)
+                warms++
+                pool.warm(count) {
+                    val number = opened.incrementAndGet()
+                    object : com.slopus.happy.connection.HttpFlow {
+                        val input = java.util.concurrent.LinkedBlockingQueue<ByteArray>()
+                        override fun read(maximumBytes: Int, timeoutMillis: Long): ByteArray {
+                            if (maximumBytes > 1) releaseChat.await()
+                            return input.take()
+                        }
+                        override fun write(bytes: ByteArray, timeoutMillis: Long) {
+                            assertEquals(5_000L, timeoutMillis)
+                            used += number
+                            val path = bytes.toString(Charsets.UTF_8)
+                            val body = if (path.contains("/bootstrap")) """{"agent":{"id":"at1","status":"idle"},"pending":[]}""" else """{"runs":[],"hasMore":false}"""
+                            input.put("HTTP/1.1 200 OK\r\nContent-Length: ${body.toByteArray().size}\r\n\r\n$body".toByteArray())
+                        }
+                        override fun close() { input.offer(ByteArray(0)) }
+                        override fun abort() = close()
+                    }
+                }
+                warmed.complete(Unit)
+            }
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (path == "/v0/bootstrap/desktop") { homeStarted.complete(Unit); releaseHome.await() }
+                if (path.startsWith("/v0/agents/at1/")) {
+                    val head = com.slopus.happy.connection.TailcatHttp.requestHead(method, path, 24781, credential, body, headers, close = false)
+                    return com.slopus.happy.connection.exchangeHttp(pool, method, head, body, 35_000) { error("chat must reuse warmed flows") }
+                }
+                return agent.request(method, path, credential, body, headers, category)
+            }
+            override suspend fun close() { pool.shut(); agent.close() }
+        } }
+        try {
+            val session = manager.session(id)!!
+            // Warming starts immediately after the stream is asked, even with its head pending.
+            withTimeout(10_000) { warmed.await() }
+            releaseStreamHead.complete(Unit)
+            withTimeout(10_000) { homeStarted.await() }
+            assertEquals(2, pool.count)
+            assertEquals(2, opened.get())
+            assertTrue(agent.calls.none { it.contains("/v0/artifacts") || it.contains("/v0/git/watch") })
+            // Navigation shares the verification boundary, before its secondary child is launched.
+            manager.setOpenChat(id, "at1")
+            agent.frames.send(Wire.hello("c0"))
+            releaseHome.complete(Unit)
+            eventually({ session.phase.value }) { it == SyncPhase.Verified }
+            eventually({ used.size }) { it == 2 }
+            assertEquals(0, pool.count)
+            releaseChat.countDown()
+            session.takeChatRead("at1")!!
+            assertEquals(2, pool.count)
+            assertEquals(2, opened.get())
+            // Each reconnect warms again, even when the prior keepalive pool already has two.
+            val old = agent.frames
+            agent.frames = Channel(Channel.UNLIMITED)
+            old.close()
+            eventually({ warms }) { it == 2 }
+            assertEquals(2, opened.get())
+        } finally { releaseChat.countDown(); pool.shut() }
+    }
+
+    @Test
     fun secondaryStagesAreOrderedAndWaitForChatReadsAtEveryBoundary(): Unit = runBlocking {
         agent.bootstrap = agent.bootstrap.with("health", buildJsonObject {
             put("ready", true); put("version", buildJsonObject { put("protocol", 30) })
@@ -673,7 +755,7 @@ class AgentSessionTest {
     fun goingBehindAndComingBackDoesNotReadTheSnapshotAgain() = runBlocking {
         val session = sessions().session(id)!!
         agent.frames.send(Wire.hello("c0"))
-        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
         assertEquals(1, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
         foreground.value = false
         agent.frames.close()

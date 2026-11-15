@@ -26,6 +26,9 @@ class TransportResponse(val status: Int, val headers: Map<String, String> = empt
  * id, or the device token.
  */
 interface Transport {
+    /** Best effort: park [count] query connections in the ordinary keepalive pool. */
+    suspend fun warm(count: Int) {}
+
     /** Current app-owned flows and public path data, without connecting or making requests. */
     suspend fun diagnostics(): TransportDiagnostics? = null
 
@@ -232,6 +235,19 @@ class TailcatTransport internal constructor(
             watch.cancel()
             lease.release()
         }
+    }
+
+    override suspend fun warm(count: Int) {
+        val lease = try { clients.lease(RequestCategory.Query) }
+        catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (_: Exception) { return }
+        try {
+            withTimeout(requestTimeoutMillis) { idle[lease.client]?.warm(count) { open(lease.client) } }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            if (error !is kotlinx.coroutines.TimeoutCancellationException) throw error
+        } catch (_: Exception) {
+            // A failed warm does not prevent the ordinary request from trying.
+        } finally { lease.release() }
     }
 
     override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream {

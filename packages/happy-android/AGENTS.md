@@ -2223,9 +2223,16 @@ is `packages/happy-ios`. The wire keeps its own names
   checks its MAC before anything is kept; `AgentIdentity` reads health
   (protocol 27 or later) and `config.node`; `AgentConnections` keeps each
   connection's credentials Keystore-encrypted, apart from relay credentials.
-- **Transport** (`TailcatTransport`): tailcat-kotlin, and a fresh TCP
-  stream to `server.tailcat:<port>` per HTTP/1.1 request, framed by
-  `HttpResponseParser`. Each request says its `RequestCategory`, which
+- **Transport** (`TailcatTransport`): tailcat-kotlin, with iOS's `IdleFlows`
+  per client: four newest idle TCP connections, kept for 50 s and watched
+  for peer data or EOF. Only exact, self-delimited HTTP/1.1 answers without
+  `Connection: close` return their connection. A stale kept GET retries
+  once fresh before considering a tunnel reset; mutations never retry.
+  A reused head write has 5 s. Reset/close empties the client's pool;
+  resume drops idle connections and rejects returns from before that drop.
+  Every connect asks the event stream first, then warms two ordinary main
+  connections alongside bootstrap. SSE and raw browser sockets stay outside
+  this pool; HTTPS still closes every answer. Each request says its `RequestCategory`, which
   picks its client in the connection's `TailcatClients` (iOS's, same names):
   one shared main client for `Realtime` (the event stream) and `Query`
   (the default), and up to three for `File` (pictures and avatars, attachments, messages with

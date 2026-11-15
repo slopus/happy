@@ -178,6 +178,9 @@ class AgentClient private constructor(
         }
     }
 
+    /** Opens ordinary query connections without delaying bootstrap or delivery. */
+    suspend fun warm(count: Int) = link().transport.warm(count)
+
     /** `GET /v0/events/stream` from [after]; the stream's status is checked. */
     suspend fun events(after: String?): TransportStream {
         val link = link()

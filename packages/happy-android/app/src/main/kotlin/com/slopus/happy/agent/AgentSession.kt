@@ -833,7 +833,9 @@ class AgentSession internal constructor(
                         resumeAllowed && catalogState.value.loaded && lastHeard?.let { clock() - it in 0 until 30_000L } == true
                     }
                     if (cursor == null) resumeAllowed = false
-                    val stream = client.events(cursor)
+                    val opening = async(start = CoroutineStart.UNDISPATCHED) { client.events(cursor) }
+                    launch { client.warm(2) }
+                    val stream = opening.await()
                     val chat = synchronized(chatLock) {
                         chatRead = null
                         chatScope = this
