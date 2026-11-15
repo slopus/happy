@@ -32,11 +32,9 @@ public final class AgentClient: Sendable {
     public let attachmentSupport = AttachmentSupport()
     /// What the computer serves, as its account's bootstrap says.
     let servedHealth = ServedHealth()
-    /// Chat history reads on their way: a request made while
-    /// `yieldsToChats` (what waits for home) waits for them before it is
-    /// sent, so none shares the link with the chat on screen.
+    /// Chat history reads on their way: what waits for home waits for them
+    /// (`SyncEngine`'s P2 stages, a picture's bytes).
     public let chatReads = ChatReads()
-    @TaskLocal public static var yieldsToChats = false
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport
@@ -60,7 +58,6 @@ public final class AgentClient: Sendable {
     /// `sent` hears the body's bytes as they are written.
     func send(_ method: String, _ path: String, json: JSONValue? = nil, raw: Data? = nil, headers: [String: String] = [:], category: RequestCategory = .query,
               sent: (@Sendable (Int) -> Void)? = nil) async throws -> HTTP1Response {
-        if Self.yieldsToChats { await chatReads.landed() }
         #if DEBUG
         if method != "GET", let slow = Self.slowWrites { try await Task.sleep(for: .seconds(slow)) }
         #endif

@@ -730,30 +730,39 @@ public actor SyncEngine {
     }
 
     /// What waits for home to be verified (P2 of the sync order), once per
-    /// connection, after its hello: open documents, the Feed's newest page
-    /// and what it names, the artifact catalog and the workspaces' line
-    /// counts. Asked beside the stream and home's bootstrap, they held both
-    /// back on a cold start.
+    /// connection, after its hello and the delivery `allowDelivery` began:
+    /// the Feed's newest page, the artifact catalog, the workspaces' line
+    /// counts, open documents, then what the Feed names and its authors.
+    /// One stage at a time, each once the chat on screen has no read on
+    /// its way (sync order rule 9).
     private func connected(_ generation: Int) async {
         guard verified, let connection else { return }
         self.connection = nil
-        // The chat on screen is read first, alone on the link.
         waitingForChat = true
-        let client = client
-        Task {
-            await client.chatReads.landed()
-            await AgentClient.$yieldsToChats.withValue(true) { await self.release(generation, connection) }
-        }
+        Task { await self.release(generation, connection) }
     }
 
     private func release(_ generation: Int, _ connection: (hello: JSONValue, gap: Bool, continued: Bool)) async {
-        guard current(generation), verified else { return }
-        waitingForChat = false
         let (hello, gap, continued) = connection
-        watchGit()
-        await documents.opened(hello)
+        let chatReads = client.chatReads
+        func stage() async -> Bool {
+            await chatReads.landed()
+            return current(generation) && verified
+        }
         // Reads the newest page each time, so a gap loses nothing.
+        guard await stage() else { return }
         await feed.connected()
+        // Its replay covers what a pick-up missed.
+        if !continued {
+            guard await stage() else { return }
+            await artifacts.refresh()
+        }
+        guard await stage() else { return }
+        waitingForChat = false
+        await watchGit()?.value
+        guard await stage() else { return }
+        await documents.opened(hello)
+        guard await stage() else { return }
         await lookups.connected(gap: gap)
         await wantReferences()
         // Faces may have changed while away; picked up where
@@ -761,9 +770,6 @@ public actor SyncEngine {
         usersMissing = []
         guard !continued else { return }
         readAuthors(generation, again: Set(users.keys))
-        // Its replay covers what a pick-up missed.
-        let artifacts = artifacts
-        Task { await artifacts.refresh() }
     }
 
     /// Home read again: at once on connecting, else for news, at most one
@@ -1135,16 +1141,20 @@ public actor SyncEngine {
     /// One subscription set per open account, never one request per row.
     /// Renewing keeps the daemon's bounded watcher interest alive; changes
     /// themselves arrive on the existing event stream.
-    private func watchGit() {
-        guard snapshot.live, verified, !waitingForChat, !stopped else { return }
+    /// Returns what ends with the first watch's answer, when one is asked.
+    @discardableResult
+    private func watchGit() -> Task<Void, Never>? {
+        guard snapshot.live, verified, !waitingForChat, !stopped else { return nil }
         let ids = Set(snapshot.rows.compactMap(\.workspaceId))
         // Nothing to watch yet: home's first rows on a fresh install come with its bootstrap.
-        guard gitWatcher == nil ? !ids.isEmpty : ids != gitInterest else { return }
+        guard gitWatcher == nil ? !ids.isEmpty : ids != gitInterest else { return nil }
         gitWatcher?.cancel()
         gitInterest = ids
         gitSnapshots = gitSnapshots.filter { ids.contains($0.key) }
         let generation = generation
+        let (answered, answer) = AsyncStream.makeStream(of: Void.self)
         gitWatcher = Task {
+            defer { answer.finish() }
             while current(generation), snapshot.live {
                 do {
                     struct Response: Decodable { var snapshots: [String: WorkspaceLineChanges] }
@@ -1154,11 +1164,13 @@ public actor SyncEngine {
                     guard current(generation), gitInterest == ids else { return }
                     receiveGit(response.snapshots)
                 } catch { if Task.isCancelled { return } }
+                answer.finish()
                 // Renewed within 30 seconds as before, but from 20 on with the
                 // computer's heartbeat, while the radio is up for it anyway.
                 do { try await RadioWake.shared.next(after: .seconds(20), by: .seconds(30)) } catch { return }
             }
         }
+        return Task { for await _ in answered {} }
     }
 
     private func receiveGit(_ states: [String: WorkspaceLineChanges]) {

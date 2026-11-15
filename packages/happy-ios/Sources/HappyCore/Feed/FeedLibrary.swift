@@ -198,11 +198,11 @@ public actor FeedLibrary {
         if live, was != true, state.available == true { Task { await self.refresh() } }
     }
 
-    /// Home was verified on a new connection: the newest page is read, on
-    /// its own task, so the engine goes on.
-    public func connected() {
+    /// Home was verified on a new connection: the newest page is read, and
+    /// the engine's next stage waits for it.
+    public func connected() async {
         live = true
-        if state.available == true { Task { await self.refresh() } }
+        await refresh()
     }
 
     /// The stream went away: reads under way stop.
