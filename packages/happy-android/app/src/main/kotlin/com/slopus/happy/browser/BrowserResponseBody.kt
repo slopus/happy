@@ -21,7 +21,8 @@ internal class BrowserResponseBody(head: HttpHead, method: String) {
     private var state: State
     private val line = java.io.ByteArrayOutputStream()
     private var trailerBytes = 0
-    private val permitsReuse: Boolean
+    /** An HTTP/1.1 answer that keeps its connection and says where it ends. */
+    val permitsReuse: Boolean
 
     init {
         val status = head.line.split(' ')

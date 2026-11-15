@@ -2340,8 +2340,14 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
     can't reach.
 - **Pooling** (`BrowserConnectionPool`, `BrowserResponseBody`): artifact
   `/api/*` requests lease keep-alive connections per page (6 idle, 5 s),
-  returned only after an exact, self-delimited answer; everything else
-  closes after one answer. `BrowserProxyTest` runs OkHttp through the
+  returned only after an exact, self-delimited answer. Plain http through
+  a network keeps its tunnel for as long as WebView keeps its connection
+  to the proxy and asks the same host (`PageConnection`, `relayKeeping`):
+  on Happy Cloud each tunnel is a session the person has eight of, so one
+  Vite page load is 3 tunnels, not 9. A kept tunnel the dev server let go
+  of while idle is replaced and the request sent again. Upgrades, chunked
+  or oversized uploads and `Connection: close` still close after one
+  answer. `BrowserProxyTest` runs OkHttp through the
   proxy against a byte-level fake daemon; `BrowserWebViewDeviceTest`
   (androidTest, an emulator) does the same with real WebViews: two artifact
   pages in their own profiles at once, the computer's localhost, and the

@@ -89,7 +89,7 @@ class BrowserProxyTest {
                 val target = text.substringBefore("\r\n").split(' ')[1]
                 val keepAlive = text.contains("Connection: keep-alive")
                 // A live artifact's proxy, and the destinations it opens: localhost:4191 is its dev server.
-                if (text.startsWith("CONNECT /v0/artifacts/live1/proxy ") || text.startsWith("CONNECT localhost:4191 ") || text.startsWith("CONNECT cdn.example.com:80 ")) {
+                if (text.startsWith("CONNECT /v0/artifacts/live1/proxy ") || text.startsWith("CONNECT /v0/networks/host/proxy ") || text.startsWith("CONNECT localhost:4191 ") || text.startsWith("CONNECT cdn.example.com:80 ")) {
                     output.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
                     output.flush()
                     continue
@@ -100,7 +100,19 @@ class BrowserProxyTest {
                     output.flush()
                     return
                 }
+                if (text.startsWith("CONNECT localhost:4192 ")) {
+                    output.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
+                    output.flush()
+                    continue
+                }
                 when {
+                    text.contains("Host: localhost:4192") -> {
+                        // A dev server that lets an idle keep-alive go after one answer, as Node does after five seconds.
+                        val answer = "once:$target"
+                        output.write("HTTP/1.1 200 OK\r\nContent-Length: ${answer.length}\r\n\r\n$answer".toByteArray())
+                        output.flush()
+                        return
+                    }
                     text.contains("Host: localhost:4191") || text.contains("Host: cdn.example.com") -> {
                         val answer = "site:$target"
                         output.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${answer.length}\r\n\r\n$answer".toByteArray())
@@ -326,8 +338,9 @@ class BrowserProxyTest {
             site.newCall(Request.Builder().url("http://cdn.example.com/lib.js").build()).execute().use { assertEquals("site:/lib.js", it.body.string()) }
             // HTTPS is a tunnel of its own through the same route, its TLS end to end.
             runCatching { site.newCall(Request.Builder().url("https://secure.example/").build()).execute().close() }
+            // The page's GET and PUT to its own host share one tunnel; the CDN and the TLS host each have one.
             val outer = daemon.heads.filter { it.startsWith("CONNECT /v0/") }
-            assertEquals(4, outer.size)
+            assertEquals(3, outer.size)
             assertTrue(outer.all { it.startsWith("CONNECT /v0/artifacts/live1/proxy HTTP/1.1\r\n") && it.contains("Authorization: Bearer device-token") })
             assertTrue(daemon.heads.any { it.startsWith("CONNECT secure.example:443 ") })
             assertTrue(daemon.heads.any { it.startsWith("PUT /api/v1/kv/entry?key=a HTTP/1.1\r\n") })
@@ -336,6 +349,39 @@ class BrowserProxyTest {
             assertTrue(daemon.heads.filter { !it.startsWith("CONNECT /v0/") }.none { it.contains("device-token") })
         } finally {
             live.close()
+        }
+    }
+
+    /** On Happy Cloud every tunnel is a session the person has eight of at once: plain http to one host keeps one. */
+    @Test fun plainHttpToOneHostKeepsOneTunnel() {
+        val web = proxy.open(BrowserProxy.Scope.Web(client) { BrowserNetwork.network("host") }, webView = true, isolated = true)
+        try {
+            val site = through(web)
+            repeat(20) { index ->
+                site.newCall(Request.Builder().url("http://localhost:4191/module$index.js").build()).execute().use { assertEquals("site:/module$index.js", it.body.string()) }
+            }
+            site.newCall(Request.Builder().url("http://localhost:4191/api").post("{}".toRequestBody()).build()).execute().use { assertEquals("site:/api", it.body.string()) }
+            val outer = daemon.heads.filter { it.startsWith("CONNECT /v0/") }
+            assertEquals(1, outer.size)
+            assertTrue(outer.single().startsWith("CONNECT /v0/networks/host/proxy HTTP/1.1\r\n"))
+            assertEquals(1, daemon.heads.count { it.startsWith("CONNECT localhost:4191 ") })
+            assertTrue(daemon.heads.filter { !it.startsWith("CONNECT") && it.contains("Host: localhost:4191") }.all { it.contains("Connection: keep-alive") })
+        } finally {
+            web.close()
+        }
+    }
+
+    /** A target that let an idle keep-alive go: the request goes again on a fresh tunnel, and the page never sees it. */
+    @Test fun aKeptTunnelTheTargetClosedIsReplaced() {
+        val web = proxy.open(BrowserProxy.Scope.Web(client) { BrowserNetwork.network("host") }, webView = true, isolated = true)
+        try {
+            val site = through(web)
+            repeat(3) { index ->
+                site.newCall(Request.Builder().url("http://localhost:4192/page$index").build()).execute().use { assertEquals("once:/page$index", it.body.string()) }
+            }
+            assertEquals(3, daemon.heads.count { it.startsWith("CONNECT localhost:4192 ") })
+        } finally {
+            web.close()
         }
     }
 
