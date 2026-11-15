@@ -20,6 +20,7 @@ vi.mock('./utils/permissionHandler', () => ({
         setOnPermissionRequest = vi.fn();
         getResponseLookup = () => new Map();
         handleToolCall = vi.fn();
+        handleModeChange = vi.fn();
     },
 }));
 
@@ -93,5 +94,27 @@ describe('claudeRemoteLauncher provider auth', () => {
         expect(JSON.stringify(session.client.sendSessionEvent.mock.calls)).not.toContain('fixture-secret');
         expect(notification).not.toHaveBeenCalled();
         expect(claudeRemote).toHaveBeenCalledTimes(2);
+    });
+});
+describe('claudeRemoteLauncher model switches', () => {
+    beforeEach(() => { vi.mocked(claudeRemote).mockReset(); });
+
+    it('starts a new query for every model switch, including one right after another', async () => {
+        const { session, stop } = fixture();
+        const sent = ['opus', 'fable', 'sonnet'].map(model => ({
+            message: `on ${model}`, mode: { permissionMode: 'default', model }, hash: model, isolate: false,
+        }));
+        (session.queue as any).waitForMessagesAndGetAsString = vi.fn(async () => sent.shift() ?? null);
+        const queries: string[][] = [];
+        vi.mocked(claudeRemote).mockImplementation(async opts => {
+            const received: string[] = [];
+            for (let next = await opts.nextMessage(); next; next = await opts.nextMessage()) {
+                received.push(next.mode.model!);
+            }
+            queries.push(received);
+            if (queries.length === 3) stop();
+        });
+        await claudeRemoteLauncher(session as any);
+        expect(queries).toEqual([['opus'], ['fable'], ['sonnet']]);
     });
 });
