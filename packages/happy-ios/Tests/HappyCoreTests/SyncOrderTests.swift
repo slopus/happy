@@ -263,6 +263,54 @@ final class SyncOrderTests: XCTestCase {
         await engine.stop()
     }
 
+    /// Home's header: connecting until the stream's hello, updating until
+    /// home's bootstrap verifies the computer, online after.
+    func testHomeIsUpdatingUntilItsBootstrapLands() async throws {
+        let server = OrderServer()
+        let engine = SyncEngine(client: AgentClient(transport: server, token: "t"), directory: folder())
+        let unstarted = await Self.home(engine)
+        XCTAssertEqual(LinkState.home(unstarted), .connecting)
+        await server.hold()
+        await engine.start()
+        try await eventually("hello") { await Self.home(engine).live }
+        let unverified = await Self.home(engine)
+        XCTAssertEqual(LinkState.home(unverified), .syncing)
+        await server.answer()
+        try await eventually("verified") { LinkState.home(await Self.home(engine)) == .online }
+        await engine.stop()
+    }
+
+    /// A chat's header: updating only until its own history read lands,
+    /// with home's bootstrap still unanswered and nothing that waits for
+    /// home sent.
+    func testAChatIsUpdatingOnlyUntilItsHistoryLands() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await server.hold()
+        await server.holdChat()
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: engine)
+        let shown = Shown()
+        let updates = conversation.updates
+        Task { for await snapshot in updates { shown.set(snapshot) } }
+        await conversation.start()
+        await conversation.setVisible(true)
+        await engine.start()
+        try await eventually("hello") { await Self.home(engine).live }
+        let home = LinkState.home(await Self.home(engine))
+        XCTAssertEqual(home, .syncing)
+        XCTAssertEqual(LinkState.chat(home: home, historyRead: shown.snapshot.synced), .syncing)
+        await server.answerChat()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        let still = LinkState.home(await Self.home(engine))
+        XCTAssertEqual(still, .syncing, "home's bootstrap is still unanswered")
+        XCTAssertEqual(LinkState.chat(home: still, historyRead: shown.snapshot.synced), .online)
+        XCTAssertEqual(LinkState.chat(home: .connecting, historyRead: true), .connecting, "before the hello, whatever the chat holds")
+        await server.answer()
+        await conversation.stop()
+        await engine.stop()
+    }
+
     /// The chat on screen is current with home's bootstrap still unanswered.
     func testTheChatIsCurrentWithHomesBootstrapHeld() async throws {
         let server = OrderServer()
