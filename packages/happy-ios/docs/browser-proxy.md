@@ -60,6 +60,19 @@ append a second HTTP error response to its bytes.
   permits arbitrary valid host:port targets, including public destinations.
   DNS resolution occurs remotely. TLS and WebSocket bytes remain untouched,
   preserving real origins, cookies and redirects.
+- A network that carries only its computer's loopback says so in the
+  lookup (`destinations: "loopback"`, Happy Cloud; absent means every
+  destination, as on a computer). Its tunnels then take only `localhost`,
+  `*.localhost`, `127.0.0.0/8` and `[::1]` (and their aliases), decided by
+  the host as written, never by resolving it (`BrowserDestinations`); the
+  phone dials everything else itself over plain TCP (`BrowserDirect`), TLS
+  still the page's own. The trade-off: a page's public requests (fonts, CDNs,
+  APIs) leave from the phone's network, not the agent's, so they see the
+  phone's address and reach what the phone can reach, its LAN included. A
+  network that didn't say so but refuses a destination past its loopback
+  (`403 destination_not_allowed` on the nested CONNECT) is treated the same
+  from then on; a refused loopback port (a reserved one) is never dialed
+  from the phone.
 - Bundled artifacts get a unique synthetic HTTP origin and a nonpersistent
   WebKit store. `/api/*` maps only to `/v0/artifacts/:id/api/*`; other paths map
   only to the opened version's files. All methods and query strings survive.

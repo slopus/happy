@@ -132,18 +132,26 @@ public actor BrowserProxy {
                 case .vaultArtifact: throw BrowserError.unavailable
                 }
                 // Even public CDNs, redirects and WebSockets are resolved and
-                // connected by the computer. There is no phone-network fallback.
-                // A loopback alias is the computer's own loopback.
+                // connected by the computer, unless the network carries only
+                // its loopback (`BrowserDestinations`): then the phone dials
+                // the rest. A loopback alias is the computer's own loopback.
                 let loopback = BrowserPolicy.Loopback.target(authority)
                 let agent: BrowserAgentNetwork? = if case .agent(let agent) = scope, case .network = network { agent } else { nil }
                 let remote: any BrowserStream
-                do { remote = try await client.browserTunnel(network, target: loopback ?? authority) }
-                catch BrowserError.upstream(404) where agent != nil {
-                    // The computer no longer serves that network: the agent's is read again, once.
-                    guard let agent else { throw BrowserError.upstream(404) }
-                    await agent.forget(network)
-                    network = try await agent.current()
-                    remote = try await client.browserTunnel(network, target: loopback ?? authority)
+                if let agent, try await !agent.tunnels(authority) { remote = try await BrowserDirect.open(authority) }
+                else {
+                    do { remote = try await client.browserTunnel(network, target: loopback ?? authority) }
+                    catch BrowserError.upstream(404) where agent != nil {
+                        // The computer no longer serves that network: the agent's is read again, once.
+                        guard let agent else { throw BrowserError.upstream(404) }
+                        await agent.forget(network)
+                        network = try await agent.current()
+                        remote = try await client.browserTunnel(network, target: loopback ?? authority)
+                    } catch BrowserError.outsideNetwork where agent != nil {
+                        // A network that carries only its loopback though its lookup didn't say.
+                        guard let agent, await agent.refused(authority) else { throw BrowserError.outsideNetwork }
+                        remote = try await BrowserDirect.open(authority)
+                    }
                 }
                 do {
                     try await local.write(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
@@ -265,6 +273,69 @@ public actor BrowserProxy {
     private nonisolated static func writeResponse(_ bytes: Data, to local: any BrowserStream) async throws {
         do { try await local.write(bytes) }
         catch { throw BrowserProxyFailure.responseStarted(error) }
+    }
+}
+
+/// A destination the phone dials itself, for a network that carries only
+/// its computer's loopback (`BrowserDestinations.loopback`): plain TCP,
+/// whatever the page speaks over it (TLS stays the page's own).
+enum BrowserDirect {
+    static func open(_ authority: BrowserPolicy.Authority, timeout: Duration = .seconds(20)) async throws -> any BrowserStream {
+        guard let port = NWEndpoint.Port(rawValue: authority.port) else { throw BrowserError.forbidden }
+        let connection = NWConnection(host: NWEndpoint.Host(authority.host), port: port, using: .tcp)
+        let opened = Opening()
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .ready: opened.finish(nil)
+            case .failed(let error), .waiting(let error): opened.finish(error)
+            case .cancelled: opened.finish(CancellationError())
+            default: break
+            }
+        }
+        connection.start(queue: DispatchQueue(label: "happy.browser.direct"))
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { try await opened.wait() }
+                group.addTask { try await Task.sleep(for: timeout); throw BrowserError.timeout }
+                defer { group.cancelAll() }
+                try await group.next()
+            }
+        } catch {
+            connection.cancel()
+            // The phone's own network couldn't reach it: as a server that isn't answering.
+            if error is CancellationError || error as? BrowserError == .timeout { throw error }
+            throw BrowserError.upstream(502)
+        }
+        connection.stateUpdateHandler = nil
+        return NetworkBrowserStream(connection)
+    }
+
+    private final class Opening: @unchecked Sendable {
+        private let lock = NSLock()
+        private var result: Result<Void, any Error>?
+        private var waiter: CheckedContinuation<Void, any Error>?
+
+        func finish(_ error: (any Error)?) {
+            let waiter: CheckedContinuation<Void, any Error>? = lock.withLock {
+                guard result == nil else { return nil }
+                result = error.map { .failure($0) } ?? .success(())
+                defer { self.waiter = nil }
+                return self.waiter
+            }
+            waiter?.resume(with: error.map { .failure($0) } ?? .success(()))
+        }
+
+        func wait() async throws {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    let done: Result<Void, any Error>? = lock.withLock {
+                        if result == nil { waiter = continuation }
+                        return result
+                    }
+                    if let done { continuation.resume(with: done) }
+                }
+            } onCancel: { finish(CancellationError()) }
+        }
     }
 }
 

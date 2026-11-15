@@ -39,15 +39,21 @@ extension AgentClient {
     /// signed in to (Happy Cloud, a team server) has no workspace proxy, so
     /// there a 404 is no network at all.
     public func agentNetwork(_ agentID: String) async throws -> BrowserNetwork {
+        try await agentRoute(agentID).network
+    }
+
+    /// The agent's network and which destinations its tunnels carry
+    /// (`destinations`; every one where the answer doesn't say).
+    public func agentRoute(_ agentID: String) async throws -> (network: BrowserNetwork, destinations: BrowserDestinations) {
         let workspaceID = try await agent(agentID).workspaceId
         guard BrowserPolicy.validID(workspaceID) else { throw BrowserError.unavailable }
         do {
             let answer = try await decode(JSONValue.self, "GET", "/v0/workspaces/\(Self.escape(workspaceID))/agents/\(Self.escape(agentID))/proxy")
             guard let id = answer["networkId"]?.stringValue, BrowserPolicy.validNetworkID(id) else { throw BrowserError.unavailable }
-            return .network(id)
+            return (.network(id), BrowserDestinations(answer["destinations"]?.stringValue))
         } catch AgentClientError.status(404, _, _) {
             if signsIn { throw BrowserError.unavailable }
-            return .workspace(workspaceID)
+            return (.workspace(workspaceID), .all)
         } catch AgentClientError.status(let status, let code, _) {
             if BrowserCompute.gone(status: status, code: code) { throw BrowserError.computeGone }
             throw BrowserError.upstream(status)
@@ -63,6 +69,10 @@ public actor BrowserAgentNetwork {
     public nonisolated let agentID: String
     private let client: AgentClient
     private var known: BrowserNetwork?
+    private var destinations = BrowserDestinations.all
+    /// The network refused a destination outside its loopback
+    /// (`403 destination_not_allowed`) though its lookup didn't say so.
+    private var refusedOutside = false
 
     public init(client: AgentClient, agentID: String) {
         self.client = client; self.agentID = agentID
@@ -70,9 +80,26 @@ public actor BrowserAgentNetwork {
 
     public func current() async throws -> BrowserNetwork {
         if let known { return known }
-        let network = try await client.agentNetwork(agentID)
-        known = network
-        return network
+        let route = try await client.agentRoute(agentID)
+        known = route.network
+        destinations = route.destinations
+        return route.network
+    }
+
+    /// Whether `authority` goes through the network's tunnel; false means
+    /// the phone dials it (`BrowserDestinations`).
+    public func tunnels(_ authority: BrowserPolicy.Authority) async throws -> Bool {
+        _ = try await current()
+        return (refusedOutside ? .loopback : destinations).tunnels(authority)
+    }
+
+    /// A tunnel to `authority` was refused as a destination the network
+    /// doesn't carry: past its loopback, the phone dials from now on.
+    /// True when that is what a dial would change.
+    public func refused(_ authority: BrowserPolicy.Authority) -> Bool {
+        guard !BrowserDestinations.loopback.tunnels(authority) else { return false }
+        refusedOutside = true
+        return true
     }
 
     /// Forgets `network` if it is still the one known, so the next tunnel reads it again.

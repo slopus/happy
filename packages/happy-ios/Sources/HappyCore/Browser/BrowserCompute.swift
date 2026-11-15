@@ -31,8 +31,7 @@ public enum BrowserCompute: Equatable, Sendable {
 
     /// The same, from a refusal's JSON body (its `code`).
     public static func gone(status: Int, body: Data) -> Bool {
-        let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
-        return gone(status: status, code: object?["code"] as? String)
+        gone(status: status, code: BrowserTunnel.code(body))
     }
 }
 

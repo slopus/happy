@@ -63,6 +63,31 @@ public enum BrowserNetwork: Equatable, Sendable {
     public static let unavailable: Set<Int> = [404, 501, 503]
 }
 
+/// Which destinations a network's tunnels carry, as the agent's network
+/// lookup says (`destinations`): every one (absent, as on a computer), or
+/// only the computer's own loopback (`"loopback"`, Happy Cloud), when
+/// everything else is dialed from the phone. Decided by the host as
+/// written, never by resolving it: `localhost`, `*.localhost`,
+/// `127.0.0.0/8` and `::1` (and their aliases) are the loopback.
+public enum BrowserDestinations: Equatable, Sendable {
+    case all
+    case loopback
+
+    public init(_ value: String?) { self = value == "loopback" ? .loopback : .all }
+
+    /// Whether a tunnel carries `authority`; false means the phone dials it.
+    public func tunnels(_ authority: BrowserPolicy.Authority) -> Bool {
+        self == .all || Self.isLoopback(BrowserPolicy.Loopback.target(authority) ?? authority)
+    }
+
+    public static func isLoopback(_ authority: BrowserPolicy.Authority) -> Bool {
+        let host = authority.host
+        if host == "localhost" || host.hasSuffix(".localhost") || host == "::1" { return true }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count == 4 && parts[0] == "127" && parts.allSatisfy { UInt8($0) != nil }
+    }
+}
+
 extension AgentClient {
     /// The computer's recorder, when the client's transport counts.
     var metrics: ConnectionMetrics? { (transport as? MeteredAgentTransport)?.metrics ?? (transport as? AgentEndpointTransport)?.metrics }
@@ -104,7 +129,7 @@ extension AgentClient {
             await stream.close()
             if error is CancellationError { throw error }
             if case BrowserError.upstream = error { throw error }
-            if error as? BrowserError == .computeGone { throw error }
+            if error as? BrowserError == .computeGone || error as? BrowserError == .outsideNetwork { throw error }
             throw BrowserProxyFailure.upstream(error)
         }
     }
@@ -131,8 +156,16 @@ extension AgentClient {
                 while body.count < length, let bytes = try? await stream.read(maximumBytes: length - body.count), !bytes.isEmpty { body.append(bytes) }
             }
             if BrowserCompute.gone(status: status, body: body) { throw BrowserError.computeGone }
+            if status == 403, BrowserTunnel.code(body) == "destination_not_allowed" { throw BrowserError.outsideNetwork }
             throw BrowserError.upstream(status)
         }
+    }
+}
+
+enum BrowserTunnel {
+    /// A refusal's JSON `code`, if its body has one.
+    static func code(_ body: Data) -> String? {
+        (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["code"] as? String
     }
 }
 

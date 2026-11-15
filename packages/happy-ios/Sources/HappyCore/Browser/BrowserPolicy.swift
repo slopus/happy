@@ -170,6 +170,10 @@ public enum BrowserError: Error, Equatable, Sendable {
     /// The agent's compute is gone (detached, offline or draining): a
     /// tunnel refused with one of `BrowserCompute.gone`'s codes.
     case computeGone
+    /// The network refused the destination as one it doesn't carry
+    /// (`403 destination_not_allowed`): Happy Cloud's tunnels reach only
+    /// the computer's loopback.
+    case outsideNetwork
 }
 
 /// A bounded HTTP head, preserving duplicate response fields (notably Set-Cookie).

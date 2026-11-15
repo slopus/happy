@@ -36,6 +36,7 @@ struct BrowserFailure {
         case BrowserError.tunnelsBlocked: self.init(503, "Service Unavailable", "tunnels_blocked")
         case BrowserError.liveUnavailable: self.init(503, "Service Unavailable", "live_unavailable")
         case BrowserError.computeGone: self.init(503, "Service Unavailable", "compute_gone")
+        case BrowserError.outsideNetwork: self.init(403, "Upstream Refused", "upstream_refused")
         case AgentClientError.revoked, is TunnelRefusal: self.init(401, "Unauthorized", "sign_in_required")
         case BrowserError.upstream(let status) where (400...599).contains(status):
             self.init(status, "Upstream Refused", "upstream_refused")

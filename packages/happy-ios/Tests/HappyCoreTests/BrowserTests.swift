@@ -197,6 +197,63 @@ final class BrowserTests: XCTestCase {
         XCTAssertEqual(BrowserProxyRefusal(status: failure.status, code: failure.code).problem, .liveUnavailable)
     }
 
+    func testANetworkThatCarriesOnlyItsLoopbackLeavesTheRestToThePhone() async throws {
+        func authority(_ url: String) -> BrowserPolicy.Authority { BrowserPolicy.Authority(url: URL(string: url)!)! }
+        let loopback = ["http://localhost:5173", "http://app.localhost:3000", "http://127.0.0.1:5173", "http://127.8.9.10", "http://[::1]:5173",
+                        "http://ipv4.happy-loopback.invalid:5173", "http://name.happy-loopback.invalid:3000"]
+        let outside = ["https://fonts.googleapis.com", "http://192.168.1.10:5173", "http://10.0.0.1", "http://localhost.example.com",
+                       "http://128.0.0.1", "http://[::2]", "https://example.com:8443"]
+        for url in loopback {
+            XCTAssertTrue(BrowserDestinations.loopback.tunnels(authority(url)), url)
+            XCTAssertTrue(BrowserDestinations.all.tunnels(authority(url)), url)
+        }
+        for url in outside {
+            XCTAssertFalse(BrowserDestinations.loopback.tunnels(authority(url)), url)
+            // Absent, as on a computer: the computer reaches everything.
+            XCTAssertTrue(BrowserDestinations.all.tunnels(authority(url)), url)
+        }
+        XCTAssertEqual(BrowserDestinations("loopback"), .loopback)
+        XCTAssertEqual(BrowserDestinations(nil), .all)
+        XCTAssertEqual(BrowserDestinations("anything"), .all)
+
+        // The lookup's marker reaches the page's network.
+        let cloud = AgentClient(transport: RoutingTransport(responses: [
+            "/v0/agents/chat1": #"{"agent":{"id":"chat1","workspaceId":"w1","status":"idle"}}"#,
+            "/v0/workspaces/w1/agents/chat1/proxy": #"{"networkId":"c-chat1","kind":"runner","destinations":"loopback"}"#,
+        ]), token: "test")
+        let route = try await cloud.agentRoute("chat1")
+        XCTAssertEqual(route.network, .network("c-chat1"))
+        XCTAssertEqual(route.destinations, .loopback)
+        let network = BrowserAgentNetwork(client: cloud, agentID: "chat1")
+        let cdn = authority("https://cdn.example.com")
+        let tunnelsCDN = try await network.tunnels(cdn)
+        XCTAssertFalse(tunnelsCDN)
+        let tunnelsDev = try await network.tunnels(authority("http://localhost:5173"))
+        XCTAssertTrue(tunnelsDev)
+
+        // Without the marker, a refusal of the destination teaches it, and only past the loopback.
+        let plain = AgentClient(transport: RoutingTransport(responses: [
+            "/v0/agents/chat1": #"{"agent":{"id":"chat1","workspaceId":"w1","status":"idle"}}"#,
+            "/v0/workspaces/w1/agents/chat1/proxy": #"{"networkId":"c-chat1"}"#,
+        ]), token: "test")
+        let learning = BrowserAgentNetwork(client: plain, agentID: "chat1")
+        let before = try await learning.tunnels(cdn)
+        XCTAssertTrue(before)
+        let reservedPort = await learning.refused(authority("http://localhost:3128"))
+        XCTAssertFalse(reservedPort, "a refused loopback port is never dialed from the phone")
+        let learned = await learning.refused(cdn)
+        XCTAssertTrue(learned)
+        let after = try await learning.tunnels(cdn)
+        XCTAssertFalse(after)
+
+        // The nested CONNECT's refusal says which it is.
+        let body = Data(#"{"error":"Destination not allowed","code":"destination_not_allowed"}"#.utf8)
+        let refusing = AgentClient(transport: Transport(Bytes([Data("HTTP/1.1 200 OK\r\n\r\n".utf8), Data("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\n\r\n".utf8), body])), token: "token")
+        do { _ = try await refusing.browserTunnel(.network("c-chat1"), target: cdn); XCTFail() }
+        catch { XCTAssertEqual(error as? BrowserError, .outsideNetwork) }
+        XCTAssertEqual(BrowserFailure(BrowserError.outsideNetwork).status, 403)
+    }
+
     func testAStoppedComputesRefusalIsTheComputeGoneNotTheServer() async throws {
         let target = try XCTUnwrap(BrowserPolicy.Authority(url: XCTUnwrap(URL(string: "http://localhost:5173"))))
         func refusal(_ status: Int, _ code: String) -> [Data] {
