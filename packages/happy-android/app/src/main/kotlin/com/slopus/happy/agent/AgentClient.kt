@@ -185,7 +185,12 @@ class AgentClient private constructor(
     }
 
     /** Opens ordinary query connections without delaying bootstrap or delivery. */
-    suspend fun warm(count: Int) = link().transport.warm(count)
+    suspend fun warm(count: Int, onAsked: () -> Unit = {}) {
+        val transport = link().transport
+        observeAsk?.invoke("WARM", count.toString())
+        onAsked()
+        transport.warm(count)
+    }
 
     /** Observes the handoff boundary, independently of a transport's scheduling or socket writes. */
     @Volatile internal var observeAsk: ((method: String, path: String) -> Unit)? = null

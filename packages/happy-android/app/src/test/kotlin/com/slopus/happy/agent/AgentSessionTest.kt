@@ -27,6 +27,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
@@ -216,7 +217,7 @@ class AgentSessionTest {
                 return agent.stream(path, credential, headers, silenceMillis)
             }
             override suspend fun warm(count: Int) {
-                assertTrue(streamAsked)
+                if (warms == 0) assertFalse(streamAsked) else assertTrue(streamAsked)
                 assertEquals(2, count)
                 warms++
                 pool.warm(count) {
@@ -252,7 +253,7 @@ class AgentSessionTest {
         } }
         try {
             val session = manager.session(id)!!
-            // Warming starts immediately after the stream is asked, even with its head pending.
+            // The first warm starts before the stream; later connects still warm after handoff.
             withTimeout(10_000) { warmed.await() }
             releaseStreamHead.complete(Unit)
             withTimeout(10_000) { homeStarted.await() }
@@ -277,6 +278,109 @@ class AgentSessionTest {
             eventually({ warms }) { it == 2 }
             assertEquals(2, opened.get())
         } finally { releaseChat.countDown(); pool.shut() }
+    }
+
+    @Test
+    fun activeRunWarmsBeforeCacheRestoreWithoutWaitingForWarmCompletionAndReconnectStillWarms(): Unit = runBlocking {
+        val cache = File(cacheDir, "early-warm.json").also {
+            it.parentFile!!.mkdirs()
+            it.writeText(AgentClient.json.encodeToString(AgentCatalog.serializer(), AgentCatalog(loaded = true, cursor = "kept")))
+        }
+        val active = MutableSharedFlow<Boolean>(replay = 1)
+        val releaseWarm = CompletableDeferred<Unit>()
+        val releaseHead = CompletableDeferred<Unit>()
+        val handoffs = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val cacheAtWarm = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+        val events = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val warms = java.util.concurrent.atomic.AtomicInteger()
+        val session = AgentSession(id, connections, cache, active, scope, makeTransport = { object : Transport by agent {
+            override suspend fun warm(count: Int) {
+                events += "warm $count"
+                warms.incrementAndGet()
+                releaseWarm.await()
+            }
+            override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream {
+                events += "stream"
+                releaseHead.await()
+                return agent.stream(path, credential, headers, silenceMillis)
+            }
+        } })
+        session.client.observeAsk = { method, path ->
+            handoffs += "$method $path"
+            if (method == "WARM") cacheAtWarm += session.catalog.value.loaded
+        }
+        active.emit(true)
+        eventually({ session.catalog.value.loaded }) { it }
+        eventually({ handoffs.toList() }) { "STREAM /v0/events/stream" in it }
+        assertEquals("warm 2", events.first())
+        assertEquals(listOf(false), cacheAtWarm.toList())
+        assertEquals(listOf("WARM 2", "STREAM /v0/events/stream"), handoffs.toList())
+        assertFalse(releaseWarm.isCompleted)
+        assertTrue(agent.calls.isEmpty())
+        releaseHead.complete(Unit)
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        assertEquals(1, warms.get())
+        releaseWarm.complete(Unit)
+        handoffs.clear()
+        val old = agent.frames
+        agent.frames = Channel(Channel.UNLIMITED)
+        old.close()
+        eventually({ warms.get() }) { it == 2 }
+        val nextStream = handoffs.indexOf("STREAM /v0/events/stream")
+        val nextWarm = handoffs.indexOf("WARM 2")
+        assertTrue(handoffs.toString(), nextStream >= 0 && nextWarm > nextStream)
+    }
+
+    private suspend fun assertNoInitialWarm(front: Boolean, selected: Boolean) {
+        File(cacheDir, "$id.json").also {
+            it.parentFile!!.mkdirs()
+            it.writeText(AgentClient.json.encodeToString(AgentCatalog.serializer(), AgentCatalog(loaded = true)))
+        }
+        foreground.value = front
+        open.value = if (selected) id else null
+        val warms = java.util.concurrent.atomic.AtomicInteger()
+        val session = sessions { object : Transport by agent {
+            override suspend fun warm(count: Int) { warms.incrementAndGet() }
+        } }.session(id)!!
+        eventually({ session.catalog.value.loaded }) { it }
+        assertEquals(0, warms.get())
+        assertTrue(agent.streamCursors.isEmpty())
+    }
+
+    @Test fun inactiveAccountRestoresCacheWithoutWarming(): Unit = runBlocking { assertNoInitialWarm(front = true, selected = false) }
+
+    @Test fun backgroundAccountRestoresCacheWithoutWarming(): Unit = runBlocking { assertNoInitialWarm(front = false, selected = true) }
+
+    @Test
+    fun anEarlyWarmFailureStillRestoresAndConnects(): Unit = runBlocking {
+        val warms = java.util.concurrent.atomic.AtomicInteger()
+        val session = sessions { object : Transport by agent {
+            override suspend fun warm(count: Int) {
+                warms.incrementAndGet()
+                throw java.io.IOException("warm failed")
+            }
+        } }.session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        assertTrue(session.catalog.value.loaded)
+        assertEquals(1, warms.get())
+    }
+
+    @Test
+    fun backgroundCancelsAnEarlyWarmStillInFlight(): Unit = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        sessions { object : Transport by agent {
+            override suspend fun warm(count: Int) {
+                started.complete(Unit)
+                try { kotlinx.coroutines.awaitCancellation() }
+                finally { cancelled.complete(Unit) }
+            }
+        } }.session(id)!!
+        withTimeout(10_000) { started.await() }
+        foreground.value = false
+        withTimeout(10_000) { cancelled.await() }
     }
 
     @Test
