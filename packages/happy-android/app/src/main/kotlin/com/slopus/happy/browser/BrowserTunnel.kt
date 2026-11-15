@@ -113,10 +113,12 @@ object BrowserTunnel {
 
 /**
  * Whose network a page reaches the web through, by its proxy route
- * ([path]): a workspace's on a computer, an agent's on Happy Cloud, which
- * has no workspaces, or a live artifact's own, the network it was made on
- * (`live.networkId`), where the daemon checks every destination against the
- * artifact's URL. An id that isn't one is refused before any route.
+ * ([path]): an agent's own, the network its commands run in (its
+ * container, runner or the computer), named by a `networkId`; a
+ * workspace's on a computer too old to name one; or a live artifact's
+ * own, the network it was made on (`live.networkId`), where the daemon
+ * checks every destination against the artifact's URL. An id that isn't
+ * one is refused before any route.
  */
 @JvmInline
 value class BrowserNetwork private constructor(val path: String) {
@@ -125,7 +127,7 @@ value class BrowserNetwork private constructor(val path: String) {
 
     companion object {
         fun workspace(id: String) = BrowserNetwork("/v0/workspaces/${checked(id)}/proxy")
-        fun agent(id: String) = BrowserNetwork("/v0/agents/${checked(id)}/proxy")
+        fun network(id: String) = BrowserNetwork("/v0/networks/${id.takeIf(BrowserPolicy::validNetworkId) ?: throw BrowserException(BrowserException.Kind.Forbidden)}/proxy")
         fun artifact(id: String) = BrowserNetwork("/v0/artifacts/${checked(id)}/proxy")
 
         /**
@@ -141,10 +143,11 @@ value class BrowserNetwork private constructor(val path: String) {
 
 /**
  * The network a page reaches the web through (iOS's `browserWorkspace`).
- * On a computer, a workspace's: an artifact's source's, else the agent's,
- * else the one active workspace on the computer itself, never an
- * arbitrary runner. On Happy Cloud, an agent's: the artifact's source's
- * (its agent, bot's or task's), else [agentId]'s; nothing else has one.
+ * On a computer: an artifact's source workspace's, else its or [agentId]'s
+ * agent's own ([agentNetwork]), else the one active workspace on the
+ * computer itself, never an arbitrary runner. On Happy Cloud, an agent's:
+ * the artifact's source's (its agent, bot's or task's), else [agentId]'s;
+ * nothing else has one.
  */
 suspend fun AgentClient.browserNetwork(agentId: String? = null, artifactId: String? = null): BrowserNetwork {
     if (artifactId != null) {
@@ -156,8 +159,8 @@ suspend fun AgentClient.browserNetwork(agentId: String? = null, artifactId: Stri
             val id = source?.get(key).str?.takeIf(BrowserPolicy::validId) ?: continue
             val owner = decode<JsonObject>("GET", "/v0/$resource/$id")[field].obj
             val found = if (cloud) owner?.get("agent").obj?.get("id").str else owner?.get("workspaceId").str
-            return found?.takeIf(BrowserPolicy::validId)?.let { if (cloud) BrowserNetwork.agent(it) else BrowserNetwork.workspace(it) }
-                ?: throw BrowserException(BrowserException.Kind.Unavailable)
+            val target = found?.takeIf(BrowserPolicy::validId) ?: throw BrowserException(BrowserException.Kind.Unavailable)
+            return if (cloud) agentNetwork(target) else BrowserNetwork.workspace(target)
         }
     }
     if (!agentId.isNullOrEmpty()) return agentNetwork(agentId)
@@ -170,11 +173,25 @@ suspend fun AgentClient.browserNetwork(agentId: String? = null, artifactId: Stri
     }?.get("id").str?.let(BrowserNetwork::workspace) ?: throw BrowserException(BrowserException.Kind.Unavailable)
 }
 
-/** [agentId]'s own network on Happy Cloud; on a computer, its workspace's. */
-private suspend fun AgentClient.agentNetwork(agentId: String): BrowserNetwork =
-    if (cloud) BrowserNetwork.agent(agentId)
-    else decode<JsonObject>("GET", "/v0/agents/${AgentClient.escape(agentId)}")["agent"].obj?.get("workspaceId").str?.let(BrowserNetwork::workspace)
+/**
+ * The network [agentId]'s commands run in, as desktop finds it:
+ * `GET /v0/workspaces/:ws/agents/:id/proxy` names it, on a computer and on
+ * Happy Cloud alike. A workspace whose agents run in containers has no
+ * network of its own, so its proxy can't reach them. A computer too old to
+ * name one (404) has only the workspace's; Happy Cloud has no workspace's.
+ */
+internal suspend fun AgentClient.agentNetwork(agentId: String): BrowserNetwork {
+    val workspaceId = decode<JsonObject>("GET", "/v0/agents/${AgentClient.escape(agentId)}")["agent"].obj?.get("workspaceId").str
+        ?.takeIf(BrowserPolicy::validId) ?: throw BrowserException(BrowserException.Kind.Unavailable)
+    val answer = try {
+        decode<JsonObject>("GET", "/v0/workspaces/${AgentClient.escape(workspaceId)}/agents/${AgentClient.escape(agentId)}/proxy")
+    } catch (e: AgentApiException) {
+        if (e.status == 404) return if (cloud) throw BrowserException(BrowserException.Kind.Unavailable) else BrowserNetwork.workspace(workspaceId)
+        throw BrowserException(BrowserException.Kind.Upstream, e.status)
+    }
+    return answer["networkId"].str?.takeIf(BrowserPolicy::validNetworkId)?.let(BrowserNetwork::network)
         ?: throw BrowserException(BrowserException.Kind.Unavailable)
+}
 
 /** Runs [block], turning anything but cancellation into null. */
 internal suspend fun <T> quietly(block: suspend () -> T): T? = try {

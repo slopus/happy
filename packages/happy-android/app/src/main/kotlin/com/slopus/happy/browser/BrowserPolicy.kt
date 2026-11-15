@@ -172,6 +172,10 @@ object BrowserPolicy {
         return "$prefix/versions/$version/files$target"
     }
 
+    /** A `networkId` (happy-agent API.md): 1 to 128 lowercase letters and digits, plus `-` and `_` after the first. Opaque: never parsed. */
+    fun validNetworkId(value: String): Boolean =
+        value.length in 1..128 && value[0].let { it in 'a'..'z' || it in '0'..'9' } && value.all { it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '_' }
+
     /** API.md's identifiers: a lowercase letter, then lowercase letters and digits. */
     fun validId(value: String): Boolean = value.firstOrNull()?.let { it in 'a'..'z' } == true && value.all { it in 'a'..'z' || it in '0'..'9' }
 

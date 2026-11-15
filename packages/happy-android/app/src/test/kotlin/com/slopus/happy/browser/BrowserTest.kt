@@ -109,8 +109,28 @@ class BrowserTest {
         assertEquals("must not silently use a runner as the host fallback", BrowserException.Kind.Unavailable, (error as? BrowserException)?.kind)
     }
 
-    @Test fun happyCloudReachesTheWebThroughAnAgentNeverAWorkspace() = runBlocking {
-        // No workspace routes: Happy Cloud has none, so asking one would fail the test.
+    @Test fun aChatOpensInItsAgentsNetworkAndAnOlderComputerInTheWorkspace() = runBlocking {
+        val client = AgentClient(
+            Routing(
+                mapOf(
+                    "/v0/agents/chat1" to """{"agent":{"id":"chat1","workspaceId":"botworkspace","status":"idle"}}""",
+                    "/v0/workspaces/botworkspace/agents/chat1/proxy" to """{"networkId":"c-chat1_env2"}""",
+                ),
+            ),
+            "test",
+        )
+        assertEquals("/v0/networks/c-chat1_env2/proxy", client.browserNetwork(agentId = "chat1").path)
+        // A daemon without the agent network route has only the workspace's.
+        val older = AgentClient(Routing(mapOf("/v0/agents/chat1" to """{"agent":{"id":"chat1","workspaceId":"hostworkspace","status":"idle"}}""")), "test")
+        assertEquals("/v0/workspaces/hostworkspace/proxy", older.browserNetwork(agentId = "chat1").path)
+        for (id in listOf("", "-a", "Host", "a/b", "a..b", "a".repeat(129))) {
+            assertEquals(id, BrowserException.Kind.Forbidden, (runCatching { BrowserNetwork.network(id) }.exceptionOrNull() as? BrowserException)?.kind)
+        }
+        assertEquals("/v0/networks/host/proxy", BrowserNetwork.network("host").path)
+    }
+
+    @Test fun happyCloudReachesTheWebThroughAnAgentsNetworkNeverAWorkspace() = runBlocking {
+        // No workspace proxy: Happy Cloud has none, so asking one would fail the test.
         val client = AgentClient(
             Routing(
                 mapOf(
@@ -118,25 +138,30 @@ class BrowserTest {
                     "/v0/artifacts/art2" to """{"artifact":{"source":{"botId":"bot1"}}}""",
                     "/v0/artifacts/art3" to """{"artifact":{"source":{"workspaceId":"artifactworkspace"}}}""",
                     "/v0/bots/bot1" to """{"bot":{"id":"bot1","agent":{"id":"botagent1"}}}""",
+                    "/v0/agents/maker1" to """{"agent":{"id":"maker1","workspaceId":"makerworkspace","status":"idle"}}""",
+                    "/v0/workspaces/makerworkspace/agents/maker1/proxy" to """{"networkId":"agent-maker1"}""",
+                    "/v0/agents/botagent1" to """{"agent":{"id":"botagent1","workspaceId":"botworkspace","status":"idle"}}""",
+                    "/v0/workspaces/botworkspace/agents/botagent1/proxy" to """{"networkId":"agent-botagent1","kind":"container"}""",
+                    "/v0/agents/chat1" to """{"agent":{"id":"chat1","workspaceId":"chatworkspace","status":"idle"}}""",
                 ),
             ),
             "test",
             cloud = true,
         )
-        assertEquals("/v0/agents/maker1/proxy", client.browserNetwork(agentId = "chat1", artifactId = "art1").path)
-        assertEquals("/v0/agents/botagent1/proxy", client.browserNetwork(artifactId = "art2").path)
-        assertEquals("/v0/agents/chat1/proxy", client.browserNetwork(agentId = "chat1").path)
+        assertEquals("/v0/networks/agent-maker1/proxy", client.browserNetwork(agentId = "chat1", artifactId = "art1").path)
+        assertEquals("/v0/networks/agent-botagent1/proxy", client.browserNetwork(artifactId = "art2").path)
+        // A server that names no network for the agent has nothing to open: never the workspace's.
+        assertEquals(BrowserException.Kind.Unavailable, (runCatching { client.browserNetwork(agentId = "chat1") }.exceptionOrNull() as? BrowserException)?.kind)
         // Only a workspace, or nothing: no network on Happy Cloud.
         assertEquals(BrowserException.Kind.Unavailable, (runCatching { client.browserNetwork(artifactId = "art3") }.exceptionOrNull() as? BrowserException)?.kind)
         assertEquals(BrowserException.Kind.Unavailable, (runCatching { client.browserNetwork() }.exceptionOrNull() as? BrowserException)?.kind)
-        assertEquals(BrowserException.Kind.Forbidden, (runCatching { BrowserNetwork.agent("../x") }.exceptionOrNull() as? BrowserException)?.kind)
     }
 
-    @Test fun connectGoesThroughAnAgentsProxyOnHappyCloud() = runBlocking {
+    @Test fun connectGoesThroughAnAgentsNetwork() = runBlocking {
         val bytes = Bytes("HTTP/1.1 200 OK\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n")
         val client = AgentClient(Sockets(bytes), "native-token", cloud = true)
-        BrowserTunnel.open(client, BrowserNetwork.agent("chat1"), BrowserPolicy.Authority.of("http://localhost:5173")!!).close()
-        assertTrue(bytes.writes.first().decodeToString().startsWith("CONNECT /v0/agents/chat1/proxy HTTP/1.1"))
+        BrowserTunnel.open(client, BrowserNetwork.network("agent-chat1"), BrowserPolicy.Authority.of("http://localhost:5173")!!).close()
+        assertTrue(bytes.writes.first().decodeToString().startsWith("CONNECT /v0/networks/agent-chat1/proxy HTTP/1.1"))
     }
 
     @Test fun artifactBoundaryAndQueryArePreserved() {
