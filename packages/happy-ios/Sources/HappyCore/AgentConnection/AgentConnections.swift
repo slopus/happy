@@ -459,7 +459,14 @@ public final class AgentConnections {
         // of them waits on the open engine's wake, nor it on them.
         if active { startConnections() }
         let open = active ? activeID.flatMap { id in engines[id].map { (id, $0) } } : nil
-        if case let (id, engine)? = open { await resume(id, engine) }
+        if case let (id, engine)? = open {
+            // Connecting until its engine's bootstrap says otherwise, as its own check said.
+            if var account = accounts.first(where: { $0.id == id }), account.status == .paused {
+                account.status = .connecting
+                await apply(account, generation: generation)
+            }
+            await resume(id, engine)
+        }
         for (id, engine) in engines where id != open?.0 {
             guard foreground == active else { return }
             if !active && id == activeID { await engine.background() }
