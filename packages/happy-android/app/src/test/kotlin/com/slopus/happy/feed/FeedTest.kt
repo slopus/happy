@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -104,6 +105,26 @@ class FeedTest {
         second.bootstrap(0, "e1", FeedCapabilities(true))
         eventually { second.state.value.loaded }
         assertEquals(1, afterHello.asked.size)
+    }
+
+    @Test
+    fun concurrentHelloAndBootstrapAskForExactlyOneFirstPage(): Unit = runBlocking {
+        repeat(300) { iteration ->
+            val runScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            try {
+                val routes = Routes()
+                val feed = FeedLibrary(runScope, routes, IntentOutbox(runScope, MemoryIntentStorage()), kept = { null }, keep = {})
+                feed.start()
+                val start = CompletableDeferred<Unit>()
+                val hello = runScope.launch { start.await(); feed.hello().join() }
+                val bootstrap = runScope.launch { start.await(); feed.bootstrap(0, "e1", FeedCapabilities(true)).join() }
+                start.complete(Unit)
+                hello.join()
+                bootstrap.join()
+                eventually { feed.state.value.loaded }
+                assertEquals("iteration $iteration", 1, routes.asked.size)
+            } finally { runScope.cancel() }
+        }
     }
 
     @Test
