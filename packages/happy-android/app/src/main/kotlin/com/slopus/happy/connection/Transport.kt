@@ -483,6 +483,14 @@ object TailcatHttp {
  */
 class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
     private var data = ByteArray(0)
+    /** Only a whole, self-delimited HTTP/1.1 answer can leave its socket idle. */
+    var reusable = false
+        private set
+
+    private fun completed(status: Int, headers: Map<String, String>, body: ByteArray, exact: Boolean, http11: Boolean): TransportResponse {
+        reusable = exact && http11 && headers["connection"]?.split(',')?.none { it.trim().equals("close", ignoreCase = true) } != false
+        return TransportResponse(status, headers, body)
+    }
 
     private fun invalid(): Nothing = throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
 
@@ -500,6 +508,7 @@ class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
         val statusParts = lines.first().split(' ')
         if (statusParts.size < 2 || statusParts[0] !in setOf("HTTP/1.1", "HTTP/1.0")) invalid()
         val status = statusParts[1].toIntOrNull()?.takeIf { it in 200..599 } ?: invalid()
+        val http11 = statusParts[0] == "HTTP/1.1"
         val headers = mutableMapOf<String, String>()
         for (line in lines.drop(1)) {
             val colon = line.indexOf(':').takeIf { it > 0 } ?: invalid()
@@ -508,14 +517,14 @@ class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
             headers[name] = line.substring(colon + 1).trim()
         }
         val body = data.copyOfRange(divider + 4, data.size)
-        if (status == 204 || status == 304) return TransportResponse(status, headers)
+        if (status == 204 || status == 304) return completed(status, headers, ByteArray(0), body.isEmpty(), http11)
         headers["transfer-encoding"]?.let { transfer ->
             if (!transfer.equals("chunked", ignoreCase = true) || "content-length" in headers) invalid()
-            return chunked(status, headers, body, eof)
+            return chunked(status, headers, body, eof, http11)
         }
         headers["content-length"]?.let { length ->
             val count = length.toIntOrNull()?.takeIf { it in 0..limit } ?: invalid()
-            if (body.size >= count) return TransportResponse(status, headers, body.copyOf(count))
+            if (body.size >= count) return completed(status, headers, body.copyOf(count), body.size == count, http11)
             if (eof) invalid()
             return null
         }
@@ -523,7 +532,7 @@ class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
         return if (eof) TransportResponse(status, headers, body) else null
     }
 
-    private fun chunked(status: Int, headers: Map<String, String>, body: ByteArray, eof: Boolean): TransportResponse? {
+    private fun chunked(status: Int, headers: Map<String, String>, body: ByteArray, eof: Boolean, http11: Boolean): TransportResponse? {
         var cursor = 0
         val decoded = java.io.ByteArrayOutputStream()
         var chunks = 0
@@ -540,10 +549,10 @@ class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
             if (++chunks > 65536) invalid()
             if (count == 0) {
                 if (body.size >= cursor + 2 && body[cursor] == '\r'.code.toByte() && body[cursor + 1] == '\n'.code.toByte()) {
-                    return TransportResponse(status, headers, decoded.toByteArray())
+                    return completed(status, headers, decoded.toByteArray(), body.size == cursor + 2, http11)
                 }
                 val end = indexOf(body, CRLFCRLF, cursor)
-                if (end >= 0 && end + 4 - cursor <= 32768) return TransportResponse(status, headers, decoded.toByteArray())
+                if (end >= 0 && end + 4 - cursor <= 32768) return completed(status, headers, decoded.toByteArray(), body.size == end + 4, http11)
                 if (body.size - cursor > 32768 || eof) invalid()
                 return null
             }
