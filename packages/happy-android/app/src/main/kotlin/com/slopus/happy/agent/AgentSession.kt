@@ -1079,6 +1079,7 @@ class AgentSession internal constructor(
                     }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
+                        documents.opened(event.data)
                         feedLibrary.hello()
                         val wasVerified = phaseState.value == SyncPhase.Verified
                         statusState.value = AgentLinkStatus.Connected
@@ -1092,7 +1093,7 @@ class AgentSession internal constructor(
                         intents.setOnline(true)
                         if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)
                         secondary?.cancel()
-                        secondary = launch { startSecondary(event.data) }
+                        secondary = launch { startSecondary() }
                         avatarHash?.let { hash ->
                             avatarHash = null
                             scope.launch {
@@ -1127,7 +1128,7 @@ class AgentSession internal constructor(
     }
 
     /** Delivery is already allowed at Verified. Each read stage follows the previous one. */
-    private suspend fun startSecondary(hello: JsonObject) {
+    private suspend fun startSecondary() {
         awaitChatReads()
         feedLibrary.connected().join()
         awaitChatReads()
@@ -1135,8 +1136,6 @@ class AgentSession internal constructor(
         awaitChatReads()
         val ids = gitWorkspaceIds(feed.value)
         readGit(ids)
-        awaitChatReads()
-        documents.opened(hello)
         watchGit(ids)
     }
 
