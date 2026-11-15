@@ -102,6 +102,9 @@ object BrowserSpec {
     const val PROGRESS_FADE_DELAY_MILLIS = 100L
     const val PROGRESS_FADE_MILLIS = 250
     const val PROGRESS_HIDE_MILLIS = 200
+    /** A page closed for its compute asks whether it is back after 3 s, then twice as long each time, up to 30 s (iOS's `probeCompute`). */
+    const val COMPUTE_PROBE_FIRST_MILLIS = 3_000L
+    const val COMPUTE_PROBE_MAX_MILLIS = 30_000L
 }
 
 /**
@@ -167,6 +170,7 @@ fun browserProblemWords(problem: BrowserProblem, computer: String, host: String?
         stringResource(R.string.browser_problem_unreachable_title, computer) to stringResource(R.string.browser_problem_unreachable_message, computer)
     BrowserProblem.Unavailable -> stringResource(R.string.browser_problem_unavailable_title) to stringResource(R.string.browser_problem_unavailable_message)
     BrowserProblem.LiveUnavailable -> stringResource(R.string.browser_problem_live_unavailable_title) to stringResource(R.string.browser_problem_live_unavailable_message)
+    BrowserProblem.ComputeDisconnected -> stringResource(R.string.browser_problem_compute_disconnected_title) to stringResource(R.string.browser_problem_compute_disconnected_message)
     BrowserProblem.HostNotFound -> stringResource(R.string.browser_problem_host_not_found_title) to
         (if (host != null) stringResource(R.string.browser_problem_host_not_found_message, computer, host) else stringResource(R.string.browser_problem_host_not_found_message_no_host, computer))
     BrowserProblem.ServerNotResponding -> stringResource(R.string.browser_problem_server_title) to
@@ -187,7 +191,7 @@ fun browserProblemWords(problem: BrowserProblem, computer: String, host: String?
 
 /** The error page's glyph for [problem] (iOS's `BrowserFailureView.glyph`). */
 fun browserProblemGlyph(problem: BrowserProblem): Ionicon = when (problem) {
-    BrowserProblem.NoNetwork, BrowserProblem.ComputerUnreachable -> Ionicon.CloudOfflineOutline
+    BrowserProblem.NoNetwork, BrowserProblem.ComputerUnreachable, BrowserProblem.ComputeDisconnected -> Ionicon.CloudOfflineOutline
     BrowserProblem.Unavailable, BrowserProblem.LiveUnavailable -> Ionicon.LaptopOutline
     BrowserProblem.HostNotFound -> Ionicon.GlobeOutline
     BrowserProblem.ServerNotResponding -> Ionicon.ServerOutline

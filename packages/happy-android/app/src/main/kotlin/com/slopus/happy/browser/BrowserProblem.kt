@@ -54,6 +54,8 @@ sealed interface BrowserProblem {
     data object Cleartext : BrowserProblem
     /** The page answered with an error status and nothing to show; [reason] is the server's phrase, if it gave one. */
     data class Http(val status: Int, val reason: String? = null) : BrowserProblem
+    /** The agent's compute went away (detached or offline): the page opens again by itself when it is back. */
+    data object ComputeDisconnected : BrowserProblem
     /** The page's renderer stopped again after being reloaded once. */
     data object Crashed : BrowserProblem
     /** A link to an app or scheme this phone has nothing to open with. */
@@ -73,6 +75,7 @@ sealed interface BrowserProblem {
             if (isCancellation(net)) return null
             // The daemon itself refused the live artifact's route: whatever the phone thinks of its network, the computer answered.
             if (refusal?.problem == LiveUnavailable) return LiveUnavailable
+            if (refusal?.problem == ComputeDisconnected) return ComputeDisconnected
             if (link == BrowserLink.NoNetwork) return NoNetwork
             if (net == "ERR_CLEARTEXT_NOT_PERMITTED") return Cleartext
             if (net.startsWith("ERR_CERT_") || net.startsWith("ERR_SSL_")) return Insecure
@@ -106,7 +109,7 @@ sealed interface BrowserProblem {
         fun response(status: Int, proxyError: String?, hasBody: Boolean, link: BrowserLink?, reason: String? = null): BrowserProblem? {
             if (status < 400) return null
             if (proxyError != null) {
-                if (BrowserProxyRefusal(status, proxyError).problem == LiveUnavailable) return LiveUnavailable
+                BrowserProxyRefusal(status, proxyError).problem.takeIf { it == LiveUnavailable || it == ComputeDisconnected }?.let { return it }
                 if (link == BrowserLink.NoNetwork) return NoNetwork
                 // The proxy's own answer says which side failed (docs/browser-proxy.md: a failed tunnel to the computer is Can't Reach).
                 BrowserProxyRefusal(status, proxyError).problem.takeIf { it != Unavailable }?.let { return it }
@@ -119,6 +122,7 @@ sealed interface BrowserProblem {
         fun opening(error: Throwable, link: BrowserLink?): BrowserProblem = when {
             link == BrowserLink.NoNetwork -> NoNetwork
             error is BrowserException && error.kind == BrowserException.Kind.LiveUnavailable -> LiveUnavailable
+            error is BrowserException && error.kind == BrowserException.Kind.ComputeGone -> ComputeDisconnected
             error is BrowserException || error is com.slopus.happy.agent.AgentApiException -> Unavailable
             else -> ComputerUnreachable
         }
@@ -140,7 +144,13 @@ data class BrowserProxyRefusal(val status: Int, val code: String) {
         "browser_proxy_upstream_response_invalid" -> BrowserProblem.ServerNotResponding
         "browser_proxy_upstream_refused" if status in 502..504 -> BrowserProblem.ServerNotResponding
         "browser_proxy_live_unavailable" -> BrowserProblem.LiveUnavailable
+        COMPUTE_GONE -> BrowserProblem.ComputeDisconnected
         else -> BrowserProblem.Unavailable
+    }
+
+    companion object {
+        /** The code of a tunnel refused because the agent's compute is gone. */
+        const val COMPUTE_GONE = "browser_proxy_compute_gone"
     }
 }
 
@@ -151,10 +161,16 @@ data class BrowserProxyRefusal(val status: Int, val code: String) {
  */
 class BrowserRefusals {
     private val byAuthority = HashMap<String, BrowserProxyRefusal>()
+    @Volatile private var computeGone: (() -> Unit)? = null
 
-    @Synchronized
     fun record(refusal: BrowserProxyRefusal, authority: BrowserPolicy.Authority) {
-        byAuthority[authority.text] = refusal
+        synchronized(this) { byAuthority[authority.text] = refusal }
+        if (refusal.code == BrowserProxyRefusal.COMPUTE_GONE) computeGone?.invoke()
+    }
+
+    /** Told (on the proxy's thread) whenever a tunnel of the page's, its own or a subresource's, is refused because the agent's compute is gone. */
+    fun onComputeGone(handler: (() -> Unit)?) {
+        computeGone = handler
     }
 
     /** The last refusal for [url]'s host, if any since it was last cleared. */

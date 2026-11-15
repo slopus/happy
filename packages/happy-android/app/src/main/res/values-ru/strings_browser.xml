@@ -14,6 +14,8 @@
     <string name="browser_problem_unavailable_message">Страницы открываются через компьютер с Happy Agent, а подключения, через которое можно открыть эту, нет.</string>
     <string name="browser_problem_live_unavailable_title">Компьютер этой страницы недоступен</string>
     <string name="browser_problem_live_unavailable_message">Эта страница работает на компьютере, где работает агент, который ею поделился. Сейчас этот компьютер недоступен, или страница больше не опубликована.</string>
+    <string name="browser_problem_compute_disconnected_title">Компьютер отключён</string>
+    <string name="browser_problem_compute_disconnected_message">Компьютер, на котором работает этот агент, отключился. Страница откроется снова, когда он вернётся.</string>
     <string name="browser_problem_host_not_found_title">Сервер не найден</string>
     <string name="browser_problem_host_not_found_message">%1$s не находит «%2$s». Проверьте адрес.</string>
     <string name="browser_problem_host_not_found_message_no_host">%1$s не находит сервер. Проверьте адрес.</string>

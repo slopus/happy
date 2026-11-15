@@ -11,6 +11,9 @@ class BrowserException(val kind: Kind, val status: Int = 0) : Exception(kind.nam
 
         /** A live artifact's own proxy refused to open ([BrowserNetwork.unavailable]): the artifact is gone or not live, or its network isn't served. */
         LiveUnavailable,
+
+        /** The agent's compute is gone (detached, offline or draining): a tunnel refused with one of [BrowserCompute.gone]'s codes. */
+        ComputeGone,
     }
 }
 

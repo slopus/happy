@@ -62,6 +62,7 @@ import androidx.webkit.WebViewFeature
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.browser.Browser
+import com.slopus.happy.browser.BrowserCompute
 import com.slopus.happy.browser.BrowserLink
 import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.browser.BrowserProblem
@@ -77,6 +78,9 @@ import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import java.util.UUID
 import java.util.concurrent.Executor
@@ -121,6 +125,14 @@ class BrowserPage(val url: String, val scope: BrowserProxy.Scope, val artifactId
         }
     }
 }
+
+/**
+ * An agent's page following its compute (Happy Cloud): the compute as it
+ * [changes] ([com.slopus.happy.browser.browserAgentCompute]), and whether a
+ * tunnel to an address [answers] now, which a page closed for its compute
+ * asks while the compute last said it was there.
+ */
+class BrowserComputeWatch(val changes: Flow<BrowserCompute>, val answers: suspend (url: String) -> Boolean)
 
 /**
  * A WebView profile per browser page (androidx.webkit `MULTI_PROFILE`): its
@@ -233,6 +245,8 @@ fun BrowserView(
      * pulled to reload, and back is its host's, never the page's history.
      */
     app: BrowserAppMode? = null,
+    /** An agent's page: closed while its compute is gone, opened again when it is back. */
+    compute: BrowserComputeWatch? = null,
 ) {
     state.artifactLink = artifactLink
     val colors = HappyTheme.colors
@@ -250,6 +264,23 @@ fun BrowserView(
         if (!waitsOnNoNetwork) return@LaunchedEffect
         delay(BrowserState.OFFLINE_GRACE_MILLIS)
         state.offline()
+    }
+
+    LaunchedEffect(compute) {
+        state.followsCompute = compute != null
+        compute?.changes?.collect { state.computeChanged(it) }
+    }
+    // A compute back within its grace sends no news of having gone or come back: while it last said it was there, or said nothing, ask now and then.
+    LaunchedEffect(state.computeClosed) {
+        val watch = compute ?: return@LaunchedEffect
+        var wait = BrowserSpec.COMPUTE_PROBE_FIRST_MILLIS
+        while (state.computeClosed) {
+            delay(wait)
+            wait = (wait * 2).coerceAtMost(BrowserSpec.COMPUTE_PROBE_MAX_MILLIS)
+            if (state.computeNow == BrowserCompute.Detached) continue
+            val url = state.failedUrl ?: continue
+            if (watch.answers(url) && state.computeClosed) state.computeChanged(BrowserCompute.Attached)
+        }
     }
 
     LaunchedEffect(state.attempt) {
@@ -287,6 +318,12 @@ fun BrowserView(
             acquired = WebViewProxyOverride.acquire(Browser.proxy.port)
             if (acquired) {
                 state.refusals = opened.refusals
+                if (compute != null) {
+                    // Told on the proxy's thread: closed here, on the main one.
+                    val gone = Channel<Unit>(Channel.CONFLATED)
+                    opened.refusals.onComputeGone { gone.trySend(Unit) }
+                    launch { for (refused in gone) state.computeGone() }
+                }
                 pageSession = opened
             } else {
                 unsupported = true
@@ -295,6 +332,7 @@ fun BrowserView(
             awaitCancellation()
         } finally {
             pageSession = null
+            opened.refusals.onComputeGone(null)
             state.refusals = null
             opened.close()
             if (acquired) WebViewProxyOverride.release()

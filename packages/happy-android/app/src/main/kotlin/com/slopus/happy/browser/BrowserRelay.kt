@@ -178,8 +178,13 @@ object BrowserRelay {
         }
     }
 
-    /** Both ways until either side ends or fails; then both close, which wakes the other. */
+    /**
+     * Both ways until either side ends or fails; then both close, which
+     * wakes the other. A side closed for the agent's compute being gone
+     * ([BrowserException.Kind.ComputeGone]) is thrown once both are closed.
+     */
     suspend fun duplex(first: TransportSocket, second: TransportSocket) {
+        var gone: BrowserException? = null
         try {
             coroutineScope {
                 val done = CompletableDeferred<Unit>()
@@ -189,8 +194,9 @@ object BrowserRelay {
                             pipe(from, to)
                         } catch (e: CancellationException) {
                             throw e
-                        } catch (_: Exception) {
+                        } catch (e: Exception) {
                             // A failed side ends the relay as an ended one does.
+                            if (e is BrowserException && e.kind == BrowserException.Kind.ComputeGone) gone = e
                         }
                         done.complete(Unit)
                     }
@@ -200,6 +206,7 @@ object BrowserRelay {
                 second.close()
                 ways.forEach { it.cancel() }
             }
+            gone?.let { throw it }
         } finally {
             first.close()
             second.close()

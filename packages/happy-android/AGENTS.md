@@ -2352,6 +2352,21 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
   (androidTest, an emulator) does the same with real WebViews: two artifact
   pages in their own profiles at once, the computer's localhost, and the
   cleartext refusal.
+- **Compute disconnected** (`BrowserCompute`, iOS's docs/browser-proxy.md):
+  on Happy Cloud a chat's page follows its agent's `compute`
+  (`browserAgentCompute`: read, then `agent.updated`, read again after a
+  `hello`; only once it said online or offline, since a computer's own
+  agents say `type: "none"`). Detached or offline sets `page` to null, so
+  the WebView and the proxy page go, and shows Compute Disconnected;
+  online bumps `attempt` at the same address. Tunnel refusals close it
+  first: `409 no_compute` or `503 compute_offline`/`runner_unavailable`/
+  `draining` (JSON code) on the lookup, the network route or the nested
+  CONNECT, and an open twin closed `1001 no_compute`/`compute_offline`
+  (`BrowserRelay.duplex` throws it once both sides closed). `1000 idle`,
+  `1008`, `429` and `502 proxy_target_unavailable` are not the compute.
+  A closed page probes a tunnel (`computeAnswers`) every 3 s doubling to
+  30 s while the compute last said it was there: a compute back within
+  its grace sends no news.
 - **App mode** (`<meta name="happy-page-mode" content="app">`, the
   contract shared with desktop and iOS, as agents read it in
   happy-agent's docs/DESIGN.md §1.8). `artifacts/ArtifactPageMode` reads the entry's first

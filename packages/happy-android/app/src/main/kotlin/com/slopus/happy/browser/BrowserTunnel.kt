@@ -51,6 +51,7 @@ object BrowserTunnel {
         } catch (e: AgentApiException) {
             // No daemon code: the edge turned the upgrade away.
             if (e.code == null) client.blockTunnels()
+            if (BrowserCompute.gone(e.status, e.code)) throw BrowserException(BrowserException.Kind.ComputeGone, e.status)
             throw BrowserException(BrowserException.Kind.Upstream, e.status)
         }
         if (webSocket != null) return webSocket
@@ -81,6 +82,7 @@ object BrowserTunnel {
         val type = response.value("content-type")
         if (client.isOAuth() && SignInRule.requiresSignIn(status, type, body)) client.signInRequired()
         if (https && !SignInRule.isHappyError(type, body)) client.blockTunnels()
+        if (BrowserCompute.gone(status, body)) throw BrowserException(BrowserException.Kind.ComputeGone, status)
         throw BrowserException(BrowserException.Kind.Upstream, status)
     }
 
@@ -107,7 +109,11 @@ object BrowserTunnel {
         credential?.let { head.append("Authorization: Bearer ").append(it).append("\r\n") }
         stream.write(head.append("\r\n").toString().toByteArray(Charsets.UTF_8))
         val (response, rest) = BrowserRelay.head(stream)
-        if (response.status != 200 || rest.isNotEmpty()) throw BrowserException(BrowserException.Kind.Upstream, response.status ?: 502)
+        val status = response.status ?: 502
+        if (status == 200 && rest.isEmpty()) return
+        // Happy Cloud answers a stopped compute's CONNECT with a JSON code.
+        if (status != 200 && BrowserCompute.gone(status, refusalBody(stream, response, rest))) throw BrowserException(BrowserException.Kind.ComputeGone, status)
+        throw BrowserException(BrowserException.Kind.Upstream, status)
     }
 }
 
@@ -188,10 +194,31 @@ internal suspend fun AgentClient.agentNetwork(agentId: String): BrowserNetwork {
         decode<JsonObject>("GET", "/v0/workspaces/${AgentClient.escape(workspaceId)}/agents/${AgentClient.escape(agentId)}/proxy")
     } catch (e: AgentApiException) {
         if (e.status == 404) return if (cloud || isOAuth()) throw BrowserException(BrowserException.Kind.Unavailable) else BrowserNetwork.workspace(workspaceId)
+        if (BrowserCompute.gone(e.status, e.code)) throw BrowserException(BrowserException.Kind.ComputeGone, e.status)
         throw BrowserException(BrowserException.Kind.Upstream, e.status)
     }
     return answer["networkId"].str?.takeIf(BrowserPolicy::validNetworkId)?.let(BrowserNetwork::network)
         ?: throw BrowserException(BrowserException.Kind.Unavailable)
+}
+
+/**
+ * Whether [agentId]'s compute answers a tunnel to [url]'s server now: it
+ * opens, or something other than the compute refuses it. A compute back
+ * within its grace says nothing of having gone, so a page closed for it
+ * asks this.
+ */
+suspend fun AgentClient.computeAnswers(agentId: String, url: String): Boolean {
+    val authority = BrowserPolicy.Authority.of(url) ?: return false
+    return try {
+        BrowserTunnel.open(this, agentNetwork(agentId), authority).close()
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: BrowserException) {
+        e.kind == BrowserException.Kind.Upstream && e.status != 429
+    } catch (_: Exception) {
+        false
+    }
 }
 
 /** Runs [block], turning anything but cancellation into null. */

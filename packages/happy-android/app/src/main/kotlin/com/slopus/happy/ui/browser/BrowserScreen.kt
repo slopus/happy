@@ -20,10 +20,11 @@ fun BrowserScreen(
     onBack: () -> Unit,
     onOpenElsewhere: (String) -> Unit,
     agentStatus: AgentLinkStatus? = null,
+    compute: BrowserComputeWatch? = null,
     state: BrowserState = rememberBrowserState(),
 ) {
     val (title, subtitle) = browserHeader(state, BrowserState.hostOf(url).orEmpty())
     PlaceScaffold(title, onBack, "browser.screen", actions = { BrowserControls(state) }, subtitle = subtitle, closes = true) {
-        BrowserView(state, prepare = prepare, computer = computer, agentStatus = agentStatus, onOpenElsewhere = onOpenElsewhere)
+        BrowserView(state, prepare = prepare, computer = computer, agentStatus = agentStatus, onOpenElsewhere = onOpenElsewhere, compute = compute)
     }
 }

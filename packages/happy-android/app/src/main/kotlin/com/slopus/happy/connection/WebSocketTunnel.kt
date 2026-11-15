@@ -1,5 +1,7 @@
 package com.slopus.happy.connection
 
+import com.slopus.happy.browser.BrowserCompute
+import com.slopus.happy.browser.BrowserException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
@@ -55,7 +57,8 @@ internal class WebSocketTunnel private constructor(override val authority: Strin
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
             webSocket.close(1000, null)
-            incoming.close()
+            // Happy Cloud closes an open tunnel so when the agent's compute goes.
+            incoming.close(if (BrowserCompute.goneOnClose(code, reason)) BrowserException(BrowserException.Kind.ComputeGone) else null)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {

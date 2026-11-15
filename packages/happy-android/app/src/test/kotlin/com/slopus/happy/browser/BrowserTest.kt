@@ -39,9 +39,9 @@ class BrowserTest {
         override suspend fun close() {}
     }
 
-    private class Routing(val responses: Map<String, String>) : Transport {
+    private class Routing(val responses: Map<String, String>, val statuses: Map<String, Int> = emptyMap()) : Transport {
         override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) =
-            TransportResponse(if (responses[path] == null) 404 else 200, body = (responses[path] ?: "{}").toByteArray())
+            TransportResponse(statuses[path] ?: if (responses[path] == null) 404 else 200, body = (responses[path] ?: "{}").toByteArray())
 
         override suspend fun close() {}
     }
@@ -286,6 +286,65 @@ class BrowserTest {
             assertEquals(403, it.status)
         }
         assertEquals(BrowserFailure(503, "Service Unavailable", "browser_proxy_live_unavailable"), BrowserFailure.of(BrowserUpstreamException(BrowserException(BrowserException.Kind.LiveUnavailable, 404))))
+    }
+
+    @Test fun aStoppedComputesRefusalIsTheComputeGoneNotTheServer() = runBlocking {
+        val target = BrowserPolicy.Authority.of("http://localhost:5173")!!
+        fun refusal(status: Int, code: String): String {
+            val body = """{"error":"x","code":"$code"}"""
+            return "HTTP/1.1 $status Refused\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n$body"
+        }
+        suspend fun opening(vararg answers: String) =
+            runCatching { BrowserTunnel.open(AgentClient(Sockets(Bytes(*answers)), "token", cloud = true), BrowserNetwork.network("c-chat1"), target) }.exceptionOrNull() as BrowserException
+        // Happy Cloud answers the page's own CONNECT once the compute stopped,
+        assertEquals(BrowserException.Kind.ComputeGone, opening("HTTP/1.1 200 OK\r\n\r\n", refusal(503, "compute_offline")).kind)
+        // and the network's own after its grace, or with no compute at all.
+        assertEquals(BrowserException.Kind.ComputeGone, opening(refusal(503, "draining")).kind)
+        assertEquals(BrowserException.Kind.ComputeGone, opening(refusal(409, "no_compute")).kind)
+        // A dev server that isn't running is still the server's answer.
+        opening("HTTP/1.1 200 OK\r\n\r\n", refusal(502, "proxy_target_unavailable")).let {
+            assertEquals(BrowserException.Kind.Upstream, it.kind)
+            assertEquals(502, it.status)
+        }
+        // An agent with no compute names no network.
+        val detached = AgentClient(
+            Routing(
+                mapOf(
+                    "/v0/agents/chat1" to """{"agent":{"id":"chat1","workspaceId":"botworkspace","status":"idle"}}""",
+                    "/v0/workspaces/botworkspace/agents/chat1/proxy" to """{"error":"No compute","code":"no_compute"}""",
+                ),
+                statuses = mapOf("/v0/workspaces/botworkspace/agents/chat1/proxy" to 409),
+            ),
+            "test",
+            cloud = true,
+        )
+        assertEquals(BrowserException.Kind.ComputeGone, (runCatching { detached.browserNetwork(agentId = "chat1") }.exceptionOrNull() as? BrowserException)?.kind)
+    }
+
+    @Test fun anOpenTunnelClosedForItsComputeIsToldOnceBothSidesClose() = runBlocking {
+        // The page's side waits, as a dev server's socket does.
+        val local = object : TransportSocket {
+            var closed = false
+            override suspend fun read(maximumBytes: Int): ByteArray = kotlinx.coroutines.awaitCancellation()
+            override suspend fun write(bytes: ByteArray) {}
+            override fun close() {
+                closed = true
+            }
+        }
+        val remote = object : TransportSocket {
+            var closed = false
+            override suspend fun read(maximumBytes: Int): ByteArray = throw BrowserException(BrowserException.Kind.ComputeGone)
+            override suspend fun write(bytes: ByteArray) {}
+            override fun close() {
+                closed = true
+            }
+        }
+        val error = runCatching { BrowserRelay.duplex(local, remote) }.exceptionOrNull()
+        assertEquals(BrowserException.Kind.ComputeGone, (error as? BrowserException)?.kind)
+        assertTrue(local.closed)
+        assertTrue(remote.closed)
+        // Any other end is just an end.
+        BrowserRelay.duplex(Bytes(), Bytes())
     }
 
     @Test fun chunkedRequestIsBoundedAndCannotSmuggleAnotherRequest() = runBlocking {

@@ -316,6 +316,9 @@ class BrowserProxy(parent: CoroutineScope) {
             if (!started) {
                 refused?.let { (owner, authority) -> owner.refusals.record(BrowserProxyRefusal(failure.status, failure.code), authority) }
                 runCatching { local.write(failure.bytes) }
+            } else if (e is BrowserException && e.kind == BrowserException.Kind.ComputeGone) {
+                // An open tunnel (a dev server's socket) closed for the compute: told, never answered.
+                refused?.let { (owner, authority) -> owner.refusals.record(BrowserProxyRefusal(failure.status, failure.code), authority) }
             }
         } finally {
             kept?.second?.close()
@@ -662,6 +665,7 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
                 return when {
                     cause is BrowserException && cause.kind == BrowserException.Kind.Timeout -> failure(504, "Gateway Timeout", "upstream_timeout")
                     cause is BrowserException && cause.kind == BrowserException.Kind.LiveUnavailable -> failure(503, "Service Unavailable", "live_unavailable")
+                    cause is BrowserException && cause.kind == BrowserException.Kind.ComputeGone -> failure(503, "Service Unavailable", "compute_gone")
                     cause is BrowserException && (cause.kind == BrowserException.Kind.Malformed || cause.kind == BrowserException.Kind.TooLarge) ->
                         failure(502, "Bad Gateway", "upstream_response_invalid")
                     cause is BrowserException && cause.kind == BrowserException.Kind.Upstream && cause.status in 400..599 ->
@@ -678,6 +682,7 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
                     BrowserException.Kind.TooLarge -> failure(413, "Content Too Large", "request_too_large")
                     BrowserException.Kind.Unavailable -> failure(503, "Service Unavailable", "route_unavailable")
                     BrowserException.Kind.LiveUnavailable -> failure(503, "Service Unavailable", "live_unavailable")
+                    BrowserException.Kind.ComputeGone -> failure(503, "Service Unavailable", "compute_gone")
                     BrowserException.Kind.Timeout -> failure(408, "Request Timeout", "request_timeout")
                     BrowserException.Kind.Upstream ->
                         if (error.status in 400..599) failure(error.status, "Upstream Refused", "upstream_refused") else failure(502, "Bad Gateway", "upstream_transport")

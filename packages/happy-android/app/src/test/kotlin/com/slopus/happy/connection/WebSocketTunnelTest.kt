@@ -86,6 +86,29 @@ class WebSocketTunnelTest {
     }
 
     @Test
+    fun anOpenTunnelClosedForItsComputeSaysSoAndAnIdleOneJustEnds() = runBlocking {
+        for ((code, reason) in listOf(1001 to "compute_offline", 1001 to "no_compute", 1000 to "idle", 1008 to "")) {
+            server.enqueue(MockResponse.Builder().webSocketUpgrade(object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    webSocket.close(code, reason.ifEmpty { null })
+                }
+            }).build())
+            val tunnel = withTimeout(10_000) { transport.webSocketTunnel("/v0/networks/n/proxy/websocket", "access-1") }
+            try {
+                val read = runCatching { withTimeout(10_000) { tunnel.read(65536) } }
+                if (code == 1001) {
+                    assertEquals("$code $reason", BrowserException.Kind.ComputeGone, (read.exceptionOrNull() as? BrowserException)?.kind)
+                } else {
+                    // An idle close, or a policy one, is no compute's: the stream ends.
+                    assertEquals("$code $reason", 0, read.getOrThrow().size)
+                }
+            } finally {
+                tunnel.close()
+            }
+        }
+    }
+
+    @Test
     fun aRefusedUpgradeCarriesItsAnswer() = runBlocking {
         server.enqueue(MockResponse.Builder().code(401).addHeader("Content-Type", "application/json").body("""{"error":"Unauthorized","code":"unauthorized"}""").build())
         try {

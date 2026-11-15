@@ -31,7 +31,9 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -123,6 +125,21 @@ class BrowserChromeTest {
             assertEquals(1, state.attempt)
             assertEquals(BrowserProgress.Phase.Loading, state.progress.phase)
         }
+    }
+
+    @Test fun aPageBackWithItsComputeStopsAskingWhetherItIsBack() {
+        val state = BrowserState()
+        state.followsCompute = true
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Attached)
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Detached)
+        assertTrue(state.computeClosed)
+        assertEquals(BrowserProblem.ComputeDisconnected, state.problem)
+        val before = state.attempt
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Attached)
+        // Open again, so the probe that asks whether it is back stops.
+        assertFalse(state.computeClosed)
+        assertNull(state.problem)
+        assertEquals(before + 1, state.attempt)
     }
 
     @Test fun theLinkComingBackOpensWhatFailedForWantOfIt() {
