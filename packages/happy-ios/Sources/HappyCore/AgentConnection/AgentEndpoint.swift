@@ -143,6 +143,7 @@ actor AgentEndpointTransport: AgentTransport {
     func reset() async { await selected?.0.reset() }
     func reset(_ category: RequestCategory) async { await selected?.0.reset(category) }
     func resumed() async { await selected?.0.resumed() }
+    func warm(_ count: Int) async { await selected?.0.warm(count) }
     func close() async {
         closed = true
         await endpoint.removeObserver(id)

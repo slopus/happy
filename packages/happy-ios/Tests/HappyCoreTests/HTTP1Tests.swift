@@ -87,6 +87,31 @@ final class HTTP1Tests: XCTestCase {
         XCTAssertTrue(flow.closed)
     }
 
+    /// Flows opened ahead are what the next requests go on: none opens one
+    /// of its own, and a warm with enough kept opens nothing.
+    func testWarmedFlowsAreTakenByTheNextRequests() async throws {
+        let first = FakeFlow(replies: [Self.ok]), second = FakeFlow(replies: [Self.ok])
+        let opener = Opener(first, second), idle = IdleFlows(), transport = makeTransport()
+        await idle.warm(2) { try opener.open() }
+        XCTAssertEqual(opener.opened, 2)
+        XCTAssertEqual(idle.count, 2)
+        await idle.warm(2) { try opener.open() }
+        XCTAssertEqual(opener.opened, 2)
+        let answers = try await withThrowingTaskGroup(of: HTTP1Response.self) { group in
+            for _ in 0..<2 {
+                group.addTask {
+                    try await transport.exchange(method: "GET", path: "/v0/health", credential: "token", body: nil, headers: [:], idle: idle, sent: nil) { try opener.open() }
+                }
+            }
+            return try await group.reduce(into: []) { $0.append($1) }
+        }
+        XCTAssertEqual(answers.map(\.body), [Data("OK".utf8), Data("OK".utf8)])
+        XCTAssertEqual(opener.opened, 2, "a request opened a flow of its own")
+        XCTAssertFalse(String(decoding: first.written, as: UTF8.self).isEmpty)
+        XCTAssertFalse(String(decoding: second.written, as: UTF8.self).isEmpty)
+        await idle.shut()
+    }
+
     func testAResponseThatEndsWithItsFlowClosesIt() async throws {
         let flow = FakeFlow(replies: [Data("HTTP/1.1 200 OK\r\n\r\nOK".utf8)])
         flow.endAfterReply = true
