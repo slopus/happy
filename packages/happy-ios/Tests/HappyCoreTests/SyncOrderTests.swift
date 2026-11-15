@@ -35,7 +35,10 @@ private actor OrderServer: AgentTransport {
     func requests() -> [String] { log }
     func clear() { log = [] }
 
-    private let cursor = "c0001"
+    private var cursor = "c0001"
+    /// A second message, written after the first read.
+    private var answered = false
+    func addMessage() { answered = true; cursor = "c0002" }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         try await request(method: method, path: path, credential: credential, body: body, headers: headers, category: .query)
@@ -78,9 +81,10 @@ private actor OrderServer: AgentTransport {
             return .init(status: 404, body: Data("{}".utf8))
         case "GET /v0/agents/s/messages":
             if holdingChat { await withCheckedContinuation { heldChat.append($0) } }
+            var messages: [JSONValue] = [["id": "a1", "role": "agent", "createdAt": 1, "metadata": [:], "content": [["type": "text", "text": "hello"]]]]
+            if answered { messages.append(["id": "a2", "role": "agent", "createdAt": 3, "metadata": [:], "content": [["type": "text", "text": "again"]]]) }
             value = ["cursor": .string(cursor), "hasMore": .bool(false), "runs": [[
-                "id": "r1", "status": "completed", "startedAt": 1, "endedAt": 2,
-                "messages": [["id": "a1", "role": "agent", "createdAt": 1, "metadata": [:], "content": [["type": "text", "text": "hello"]]]],
+                "id": "r1", "status": "completed", "startedAt": 1, "endedAt": 2, "messages": .array(messages),
             ]]]
         default:
             return .init(status: 404, body: Data("{}".utf8))
@@ -177,19 +181,19 @@ final class SyncOrderTests: XCTestCase {
         let server = OrderServer()
         let client = AgentClient(transport: server, token: "t")
         let engine = SyncEngine(client: client, directory: folder())
-        // Opened before the engine has read what this phone keeps.
+        // Opened as the engine starts, before it has read what this phone keeps.
         let conversation = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: engine)
         let shown = Shown()
         let updates = conversation.updates
         Task { for await snapshot in updates { shown.set(snapshot) } }
+        await engine.start()
         await conversation.start()
         await conversation.setVisible(true)
-        await engine.start()
         try await eventually("the chat read") { shown.snapshot.synced }
         try await settled(server)
         let log = await server.requests()
         print("SYNC_ORDER chat cold launch: \(log)")
-        // Home is asked once the chat's reads have been (`Store.chatOpening`);
+        // Home is asked once the chat's reads have been (`ChatsFirst`);
         // the three then race to the computer, so their order is not asserted.
         let p0: Set = ["GET /v0/events/stream", "GET /v0/agents/s/bootstrap", "GET /v0/agents/s/messages", "GET /v0/bootstrap/desktop"]
         let asked = log.filter(p0.contains)
@@ -216,9 +220,9 @@ final class SyncOrderTests: XCTestCase {
         let shown = Shown()
         let updates = conversation.updates
         Task { for await snapshot in updates { shown.set(snapshot) } }
+        await engine.start()
         await conversation.start()
         await conversation.setVisible(true)
-        await engine.start()
         try await eventually("home verified") { let home = await Self.home(engine); return home.live && !home.syncing }
         try await Task.sleep(for: .milliseconds(300))
         let reading = await server.requests()
@@ -297,9 +301,9 @@ final class SyncOrderTests: XCTestCase {
         let shown = Shown()
         let updates = conversation.updates
         Task { for await snapshot in updates { shown.set(snapshot) } }
+        await engine.start()
         await conversation.start()
         await conversation.setVisible(true)
-        await engine.start()
         try await eventually("hello") { await Self.home(engine).live }
         let home = LinkState.home(await Self.home(engine))
         XCTAssertEqual(home, .syncing)
@@ -325,14 +329,148 @@ final class SyncOrderTests: XCTestCase {
         let shown = Shown()
         let updates = conversation.updates
         Task { for await snapshot in updates { shown.set(snapshot) } }
+        await engine.start()
         await conversation.start()
         await conversation.setVisible(true)
-        await engine.start()
         try await eventually("the chat current") { shown.snapshot.synced && shown.snapshot.loaded }
         let log = await server.requests()
         XCTAssertFalse(log.contains("answered GET /v0/bootstrap/desktop"))
         XCTAssertEqual(log.filter { $0 == "GET /v0/agents/s/messages" }.count, 1)
         await server.answer()
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// A chat on screen is held only while its own engine starts: in no
+    /// other case is it left waiting for a stream nobody will ask for.
+    private func chat(_ client: AgentClient, _ engine: SyncEngine, persistence: SyncEngine?? = .none) async -> (Conversation, Shown) {
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "s", persistence: persistence ?? engine)
+        let shown = Shown()
+        let updates = conversation.updates
+        Task { for await snapshot in updates { shown.set(snapshot) } }
+        return (conversation, shown)
+    }
+
+    func testAChatWhoseEngineNeverStartedIsReadAtOnce() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        let (conversation, shown) = await chat(client, engine)
+        await conversation.start()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    func testAChatOpenedAsItsEnginePausesIsRead() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        let (conversation, shown) = await chat(client, engine)
+        await engine.start()
+        await conversation.start()
+        await engine.pause()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    func testAChatOpenedAsItsEngineStopsIsRead() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        let (conversation, shown) = await chat(client, engine)
+        await engine.start()
+        await conversation.start()
+        await engine.stop()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        await conversation.stop()
+    }
+
+    /// What this phone keeps can't be read: no stream is asked for.
+    func testAChatOpenedAsItsEngineFailsToOpenIsRead() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let blocked = folder()
+        try Data().write(to: blocked)
+        let engine = SyncEngine(client: client, directory: blocked)
+        // Kept nowhere: its engine's storage is what failed.
+        let (conversation, shown) = await chat(client, engine, persistence: .some(nil))
+        await engine.start()
+        await conversation.start()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        try await eventually("the error said") { await Self.home(engine).error != nil }
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// Another account's engine starting holds no chat of this one's.
+    func testAnotherAccountsEngineHoldsNoChat() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let other = SyncEngine(client: AgentClient(transport: OrderServer(), token: "t"), directory: folder())
+        let engine = SyncEngine(client: client, directory: folder())
+        let (conversation, shown) = await chat(client, engine)
+        await other.start()
+        await conversation.start()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        let asked = await server.requests()
+        XCTAssertFalse(asked.contains("GET /v0/events/stream"))
+        await conversation.stop()
+        await other.stop()
+        await engine.stop()
+    }
+
+    /// Started twice as it opens, a chat still lets home be asked.
+    func testAChatStartedTwiceLetsHomeAsk() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        let (conversation, shown) = await chat(client, engine)
+        await engine.start()
+        async let first: Void = conversation.start()
+        async let second: Void = conversation.start()
+        _ = await (first, second)
+        try await eventually("the chat read") { shown.snapshot.synced }
+        try await eventually("home read") { await server.requests().contains("answered GET /v0/bootstrap/desktop") }
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// Read before its engine asked for the stream, with a message written
+    /// in between: the stream's opening reads it again, as on main.
+    func testAChatReadBeforeTheStreamIsAskedTakesWhatCameBetween() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        let (conversation, shown) = await chat(client, engine)
+        await conversation.start()
+        await conversation.setVisible(true)
+        try await eventually("the chat read") { shown.snapshot.synced }
+        await server.addMessage()
+        await engine.start()
+        try await eventually("the message between") { shown.snapshot.items.contains { $0.text == "again" } }
+        try await eventually("the chat current") { shown.snapshot.synced }
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// The same, with the gate let go by a pause before the stream was
+    /// asked for: the next stream's hello says the read missed something.
+    func testAChatReadAsItsEnginePausesTakesWhatCameBeforeTheNextStream() async throws {
+        let server = OrderServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        let (conversation, shown) = await chat(client, engine)
+        await engine.start()
+        await conversation.start()
+        await conversation.setVisible(true)
+        await engine.pause()
+        try await eventually("the chat read") { shown.snapshot.synced }
+        await server.addMessage()
+        await engine.start()
+        try await eventually("the message between") { shown.snapshot.items.contains { $0.text == "again" } }
+        try await eventually("the chat current") { shown.snapshot.synced }
         await conversation.stop()
         await engine.stop()
     }

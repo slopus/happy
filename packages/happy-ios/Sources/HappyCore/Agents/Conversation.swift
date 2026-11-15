@@ -435,7 +435,7 @@ public actor Conversation {
     private var readCursor: String?
     private var streamFrom: String?
     /// Opened before its engine asked for the stream: home's read waits
-    /// until this chat's has gone (`Store.chatOpening`).
+    /// until this chat's has gone (`ChatsFirst`).
     private var holdsHome = false
     /// The stream openings heard (`.resync(from: nil)`), and the one a
     /// read asked after its stream was asked for landed before.
@@ -574,11 +574,11 @@ public actor Conversation {
 
     public func start() async {
         guard following == nil else { return }
-        if creation == nil { holdsHome = await store.chatOpening() }
+        if creation == nil, !holdsHome { holdsHome = store.chatsFirst.opening() }
         do { try await checkpointClaim(for: "conversation:\(agentId)").value }
         catch {
             checkpointClaims.removeValue(forKey: "conversation:\(agentId)")
-            await letHomeAsk()
+            letHomeAsk()
             snapshot.error = "Could not open this conversation on this device."; publish(); return
         }
         if let creation {
@@ -603,7 +603,7 @@ public actor Conversation {
     }
 
     public func stop() async {
-        await letHomeAsk()
+        letHomeAsk()
         following?.cancel(); following = nil
         children?.cancel(); children = nil
         questionEvents?.cancel(); questionEvents = nil
@@ -783,13 +783,13 @@ public actor Conversation {
                 if heldEvents == nil { heldEvents = [] }
                 let after = anchored ? anchor() : nil
                 let resets = await store.carrierResets
-                await store.streamAsked()
+                await store.chatsFirst.wait()
                 let opening = holdsHome ? openings : nil
                 client.chatReads.began()
                 do {
                     async let bootstrap = client.bootstrap(agentId)
                     async let page = client.messages(agentId, after: after?.message)
-                    await letHomeAsk()
+                    letHomeAsk()
                     var (start, history) = try await (bootstrap, page)
                     var since = after?.run
                     if since != nil, history.hasMore { history = try await client.messages(agentId); since = nil }
@@ -903,15 +903,13 @@ public actor Conversation {
     }
 
     deinit {
-        guard holdsHome else { return }
-        let store = store
-        Task { await store.chatAsked() }
+        if holdsHome { store.chatsFirst.asked() }
     }
 
-    private func letHomeAsk() async {
+    private func letHomeAsk() {
         guard holdsHome else { return }
         holdsHome = false
-        await store.chatAsked()
+        store.chatsFirst.asked()
     }
 
     /// The newest read taken began after the stream that began at `from`.

@@ -228,7 +228,7 @@ public actor SyncEngine {
         })
         self.intents = intents
         documents = DocumentLibrary(client: client, directory: directory)
-        let spaces = Store(client: client, offline: offline, intents: intents, holdsChatsForStream: true)
+        let spaces = Store(client: client, offline: offline, intents: intents)
         self.spaces = spaces
         let keep = EngineResources()
         todos = TodoLibrary(routes: client, outbox: intents, keep: keep, events: { await spaces.events(matching: ["todo."]) })
@@ -284,6 +284,7 @@ public actor SyncEngine {
 
     public func start() {
         guard !stopped, runner == nil else { return }
+        spaces.chatsFirst.close()
         backgrounded = false
         generation += 1
         verified = false
@@ -423,7 +424,6 @@ public actor SyncEngine {
     public func stop() async {
         stopped = true
         await pause()
-        await spaces.externalStreamAsked()
         await spaces.stop()
         await documents.stop()
         await todos.stop()
@@ -456,6 +456,8 @@ public actor SyncEngine {
     }
 
     private func run(_ generation: Int) async {
+        // However this run ends, no chat waits for its stream.
+        defer { spaces.chatsFirst.open() }
         // Nothing goes out before this run has read the computer, even when
         // the pause before it was overtaken and left the outbox as it was.
         await intents.setOnline(false)
@@ -486,7 +488,6 @@ public actor SyncEngine {
             await artifacts.start()
         } catch {
             // What this phone keeps could not be read: nothing to do with the link.
-            await spaces.externalStreamAsked()
             snapshot.error = "Could not open this connection on this device."
             publish()
             return
@@ -520,7 +521,8 @@ public actor SyncEngine {
                 // Connecting: flows ready for the screen's first reads, beside the stream and home's.
                 warm()
                 // The chat on screen next, then home.
-                await spaces.externalStreamAsked()
+                spaces.chatsFirst.open()
+                await spaces.chatsFirst.chatsAsked()
                 // The chat on screen is read beside a replay, however long
                 // the replay takes to come through.
                 if resuming { await spaces.externalOpening(replays: true) } else { await readAgain(generation) }
