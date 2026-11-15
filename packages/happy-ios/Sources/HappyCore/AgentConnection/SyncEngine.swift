@@ -1404,9 +1404,11 @@ public actor SyncEngine {
         beginMessageDelivery(generation)
     }
 
-    public func retryMessage(_ id: String) async throws {
+    /// A failed message goes again, with `mode` when one is given.
+    public func retryMessage(_ id: String, mode: AgentWire.Mode? = nil) async throws {
         guard var message = try await database().queuedMessages().first(where: { $0.id == id }) else { return }
         message.failure = nil
+        if let mode { message.mode = mode }
         try await database().updateMessage(message)
         beginMessageDelivery(generation)
     }
