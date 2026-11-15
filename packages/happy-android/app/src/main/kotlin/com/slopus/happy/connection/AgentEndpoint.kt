@@ -117,6 +117,7 @@ internal class AgentEndpointTransport(
         current().first.stream(path, credential, headers, silenceMillis)
 
     override suspend fun socket(): TransportSocket = current().first.socket()
+    override suspend fun warm(count: Int) = current().first.warm(count)
     override suspend fun webSocketTunnel(path: String, credential: String): TransportSocket? = current().first.webSocketTunnel(path, credential)
     override suspend fun overHttps(): Boolean = current().first.overHttps()
     override suspend fun diagnostics(): TransportDiagnostics? = lock.withLock { selected?.first }?.diagnostics()

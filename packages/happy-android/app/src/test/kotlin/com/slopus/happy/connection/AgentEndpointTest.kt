@@ -11,6 +11,16 @@ import java.util.UUID
 class AgentEndpointTest {
     private val original = AgentConnectionCredentials("original-tailcat", 24781, "device", "token")
 
+    @Test fun warmSelectsTheRouteBeforeAnyRequest() = runBlocking {
+        var warmed = 0
+        val transport = AgentEndpointTransport(AgentEndpoint(original) {}) {
+            object : Transport by Fake() { override suspend fun warm(count: Int) { warmed += count } }
+        }
+        transport.warm(2)
+        assertEquals(2, warmed)
+        transport.close()
+    }
+
     @Test fun diagnosticsNeverConnectAnIdleOrInvalidatedEndpoint() = runBlocking {
         val endpoint = AgentEndpoint(original) { }
         var made = 0
