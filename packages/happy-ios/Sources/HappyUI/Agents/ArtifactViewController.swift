@@ -511,10 +511,10 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         readServed()
     }
 
-    /// What the server runs, read again each time the Gen UI shows: an
-    /// update may have started or stopped serving its secret actions or
-    /// plugins since the store last heard. Its buttons follow the answer,
-    /// and so does every other screen of this server.
+    /// What the server runs, as its newest bootstrap says, each time the
+    /// Gen UI shows: an update may have started or stopped serving its
+    /// secret actions or plugins since the store last heard. Its buttons
+    /// follow the answer, and so does every other screen of this server.
     private func readServed() {
         servedRead?.cancel()
         servedRead = Task { [weak self, session] in

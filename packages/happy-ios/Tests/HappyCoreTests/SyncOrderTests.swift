@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import HappyCore
+import HappyCrypto
 import HappyWire
 
 /// A computer that writes down every request in the order it arrives, and
@@ -50,6 +51,10 @@ private actor OrderServer: AgentTransport {
             log.append("answered " + route)
         case "GET /v0/health":
             value = Self.health
+        case "GET /v0/config":
+            value = ["config": ["node": ["name": "Paired name", "avatar": ["thumbhash": "paired"]]]]
+        case "GET /v0/node/avatar":
+            return .init(status: 200, headers: ["content-type": "image/png", "etag": "\"v1\""], body: Data([1, 2, 3]))
         case "GET /v0/agents/s/bootstrap":
             value = ["agent": ["id": "s", "workspaceId": "p", "status": "idle"], "pending": [], "cursor": .string(cursor),
                      "mode": ["providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "medium", "permissionMode": "auto"]]
@@ -103,6 +108,9 @@ final class SyncOrderTests: XCTestCase {
         return (Array(log[..<answered]), Array(log[(answered + 1)...]))
     }
 
+    /// What the bootstrap already carries (`health`, `config.node`).
+    private static let identity: Set<String> = ["GET /v0/health", "GET /v0/config"]
+
     /// What waits for home's owner to be checked (P2).
     private static let waitsForHome: Set<String> = ["GET /v0/artifacts", "GET /v0/feed", "POST /v0/git/watch", "GET /v0/users"]
 
@@ -122,6 +130,7 @@ final class SyncOrderTests: XCTestCase {
         let (before, after) = Self.split(log)
         XCTAssertEqual(before.filter(Self.waitsForHome.contains), [])
         XCTAssertEqual(after.filter(Self.waitsForHome.contains).sorted(), ["GET /v0/artifacts", "GET /v0/feed", "POST /v0/git/watch"])
+        XCTAssertEqual(log.filter(Self.identity.contains), [], "health and identity come with the bootstrap")
 
         // Back after longer than the resume window: from now, the same order.
         await engine.pause()
@@ -139,6 +148,65 @@ final class SyncOrderTests: XCTestCase {
         let (beforeAgain, afterAgain) = Self.split(again)
         XCTAssertEqual(beforeAgain.filter(Self.waitsForHome.contains), [])
         XCTAssertEqual(afterAgain.filter(Self.waitsForHome.contains).sorted(), ["GET /v0/artifacts", "GET /v0/feed", "POST /v0/git/watch"])
+        XCTAssertEqual(again.filter(Self.identity.contains), [], "health and identity come with the bootstrap again")
         await engine.stop()
+    }
+
+    /// A bootstrap without `health` (Happy Cloud's, for now) serves
+    /// nothing optional: no Feed, and nobody asks `/v0/health` instead.
+    func testABootstrapWithoutHealthServesNothingOptional() async throws {
+        let server = OrderServer()
+        await server.setCarries(false)
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        try await eventually("home asked") { await server.requests().contains("GET /v0/artifacts") }
+        let health = try await client.health()
+        XCTAssertNil(health.capabilities)
+        let search = try await client.servesSearch()
+        XCTAssertFalse(search)
+        try await Task.sleep(for: .milliseconds(300))
+        let log = await server.requests()
+        XCTAssertEqual(log.filter { $0 == "GET /v0/health" || $0 == "GET /v0/feed" }, [])
+        await engine.stop()
+    }
+
+    /// A cold launch with a paired computer open: its connection's name
+    /// and picture come from the bootstrap, never an identity check, and
+    /// the picture's bytes are read once, after home, on a file client,
+    /// because its ThumbHash changed.
+    @MainActor
+    func testTheOpenComputersIdentityComesWithItsBootstrap() async throws {
+        let server = OrderServer()
+        let store = InMemoryAgentConnectionCredentialStore()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("sync-order-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let paired = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in server })
+        await paired.setForeground(false)
+        let credentials = AgentConnectionCredentials(address: "tcAddress", port: 24781, deviceID: "device", deviceToken: CanonicalBase64URL.encode(Data(repeating: 7, count: 32)))
+        let account = try await paired.add(credentials, name: "Mac")
+        XCTAssertEqual(account.name, "Paired name")
+
+        await server.clear()
+        let launched = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in server })
+        try await launched.restore()
+        let engine = try XCTUnwrap(launched.syncEngine(for: account.id))
+        for _ in 0..<250 where launched.accounts.first?.name != "Studio" || launched.accounts.first?.avatar != Data([1, 2, 3]) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(launched.accounts.first?.name, "Studio")
+        XCTAssertEqual(launched.accounts.first?.avatar, Data([1, 2, 3]))
+        try await Task.sleep(for: .milliseconds(300))
+        let log = await server.requests()
+        print("SYNC_ORDER identity cold launch: \(log)")
+        XCTAssertEqual(log.filter(Self.identity.contains), [])
+        let (_, after) = Self.split(log)
+        XCTAssertEqual(after.filter { $0.contains("/v0/node/avatar") }, ["GET /v0/node/avatar (file)"])
+        XCTAssertEqual(launched.accounts.first?.status, .connected)
+        XCTAssertEqual(launched.accounts.first?.thumbhash, "1QcSHQRnh493V4dIh4eXh1h4kJUI")
+        XCTAssertEqual(launched.accounts.first?.instanceId, "k3x9q2m7p0a4b8c1d5e6f7g2")
+        await engine.stop()
+        await launched.setForeground(false)
     }
 }

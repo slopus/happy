@@ -36,10 +36,8 @@ actor FakeFeedServer: FeedRoutes {
 
     var unread: Int { items.filter(\.open).count }
 
-    func feedCapabilities() async throws -> FeedCapabilities {
-        if away { throw URLError(.cannotConnectToHost) }
-        return FeedCapabilities(feed: capable, subjectFilter: filtering, covers: covers)
-    }
+    /// What its bootstrap's `health` says of the Feed.
+    func capabilities() -> FeedCapabilities { FeedCapabilities(feed: capable, subjectFilter: filtering, covers: covers) }
 
     func feed(before: String?, limit: Int, subjects: [String]?) async throws -> FeedPage {
         try reachable()
@@ -132,6 +130,7 @@ final class FeedLibraryTests: XCTestCase {
     private struct Account {
         let library: FeedLibrary
         let outbox: IntentOutbox
+        let server: FakeFeedServer
     }
 
     /// One launch of an account: its outbox over `storage`, its feed over `keep`.
@@ -143,13 +142,13 @@ final class FeedLibraryTests: XCTestCase {
         delivery.library = library
         await outbox.setOnline(online)
         await library.start()
-        return Account(library: library, outbox: outbox)
+        return Account(library: library, outbox: outbox, server: server)
     }
 
-    /// Connected as the engine connects: the bootstrap's count, then health
-    /// and the newest page on their own task.
+    /// Connected as the engine connects: the bootstrap's count and health,
+    /// then, once home is verified, the newest page on its own task.
     private func connect(_ account: Account, unread: Int?, cursor: String? = nil) async {
-        await account.library.bootstrap(unread: unread, cursor: cursor)
+        await account.library.bootstrap(unread: unread, cursor: cursor, capabilities: await account.server.capabilities())
         await account.library.connected()
     }
 

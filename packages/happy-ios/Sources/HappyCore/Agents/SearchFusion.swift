@@ -125,7 +125,7 @@ extension Search {
 extension AgentClient {
     /// Whether the computer answers search (`capabilities.search`).
     public func servesSearch() async throws -> Bool {
-        try await decode(JSONValue.self, "GET", "/v0/health")["capabilities"]?["search"]?.boolValue == true
+        try await served()["capabilities"]?["search"]?.boolValue == true
     }
 
     /// What the computer finds for `query`, best first, asked as desktop

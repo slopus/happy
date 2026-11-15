@@ -295,8 +295,6 @@ public struct FeedPeek: Decodable, Equatable, Sendable {
 /// The Feed's routes (API.md "Feed"), as the library uses them: the
 /// computer's client, or a test's fake.
 public protocol FeedRoutes: Sendable {
-    /// Whether the daemon serves the Feed, filters it and covers artifacts.
-    func feedCapabilities() async throws -> FeedCapabilities
     /// A page of the entries about `subjects`, or of every entry for nil.
     func feed(before: String?, limit: Int, subjects: [String]?) async throws -> FeedPage
     func markFeedSeen(_ subject: FeedSubject, through: String?, mutationId: String) async throws -> FeedSeenAnswer
@@ -309,10 +307,6 @@ public protocol FeedRoutes: Sendable {
 }
 
 extension AgentClient: FeedRoutes {
-    public func feedCapabilities() async throws -> FeedCapabilities {
-        FeedCapabilities(health: try await decode(JSONValue.self, "GET", "/v0/health"))
-    }
-
     public func feed(before: String?, limit: Int, subjects: [String]?) async throws -> FeedPage {
         var query = ["limit=\(max(1, min(200, limit)))"]
         if let before { query.append("before=\(Self.escape(before))") }
