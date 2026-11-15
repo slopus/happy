@@ -29,6 +29,9 @@ private actor ComputeServer: AgentTransport {
     func deny() { forbidden = true }
     func setPermissions(_ granted: [String]) { self.granted = granted }
 
+    private var tokensLeft = Int.max
+    func limitTokens(_ count: Int) { tokensLeft = count }
+
     private var manager: Bool { granted.contains("pools.manage") }
 
     private func node(_ id: String, name: String? = nil, status: String = "online", os: String, arch: String, access: String, owner: String? = nil,
@@ -81,6 +84,11 @@ private actor ComputeServer: AgentTransport {
             approvals.removeAll { $0.contains(#""agentId":"\#(answer[2])""#) }
             return ok(#"{"approval":{"computerId":"\#(answer[1])","agentId":"\#(answer[2])","requestedBy":"me","state":"approved","createdAt":1,"decidedAt":2}}"#)
         case ("POST", ["join-tokens"]):
+            guard tokensLeft > 0 else {
+                return HTTP1Response(status: 400, headers: ["content-type": "application/json"],
+                    body: Data(#"{"code":"limit_exceeded","error":"A pool has at most 8 unused join tokens; wait for one to expire."}"#.utf8))
+            }
+            tokensLeft -= 1
             let access = sent?["access"]?.stringValue ?? ""
             let given: Int? = if case .number(let number)? = sent?["concurrency"] { Int(number) } else { nil }
             let concurrency = given ?? (access == "private" ? 1 : 8)
@@ -300,6 +308,30 @@ final class HostedComputeMonitoringTests: XCTestCase {
         try await until { flow.navigation.topViewController is ComputeInstallViewController }
         let minted = await server.requests.first { $0.path == "/v0/computers/join-tokens" }
         XCTAssertEqual(minted?.body, .object(["access": .string("shared"), "concurrency": .number(4)]))
+        flow.close()
+    }
+
+    /// A refused token says why, and the choice stays to try again.
+    func testARefusedTokenSaysWhy() async throws {
+        let (_, session, server) = try await rig()
+        await server.limitTokens(0)
+        let page = ComputeViewController(session: session)
+        let navigation = try await host(page)
+        try await until { page.shownRow("compute-add") != nil }
+        page.tapRow("compute-add")
+        let flow = try XCTUnwrap(page.adding)
+        try await settled(navigation)
+        let choice = try XCTUnwrap(flow.navigation.topViewController as? ComputeAccessViewController)
+        flow.create()
+        try await until { choice.presentedViewController is UIAlertController }
+        let alert = try XCTUnwrap(choice.presentedViewController as? UIAlertController)
+        XCTAssertEqual(alert.title, "No install command")
+        XCTAssertEqual(alert.message, "A pool has at most 8 unused join tokens; wait for one to expire.")
+        XCTAssertEqual(flow.state, .failed(ComputerDraft(access: .shared), message: "A pool has at most 8 unused join tokens; wait for one to expire."))
+        XCTAssertEqual(choice.navigationItem.rightBarButtonItem?.accessibilityIdentifier, "compute-create", "Create again")
+        try await settled(flow.navigation)
+        try screenshot(choice, name: "compute-token-refused")
+        alert.dismiss(animated: false)
         flow.close()
     }
 

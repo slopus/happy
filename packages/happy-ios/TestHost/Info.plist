@@ -6,6 +6,8 @@
 	<dict>
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
 		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
 	</dict>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Test picking a video from Photos into the composer.</string>
