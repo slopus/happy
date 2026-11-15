@@ -1067,6 +1067,26 @@ final class WebSocketTunnelTests: XCTestCase {
         XCTAssertTrue(end.isEmpty)
     }
 
+    func testAnOpenTunnelClosedForItsComputeSaysSo() async throws {
+        let head = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: \(accept)\r\n\r\n"
+        func closing(_ code: UInt16, _ reason: String) async throws -> WebSocketTunnel {
+            let payload = Data([UInt8(code >> 8), UInt8(code & 0xFF)]) + Data(reason.utf8)
+            return try await WebSocketTunnel.open(Pipe([Data(head.utf8) + serverFrame(0x8, payload)]), path: "/v0/networks/n/proxy/websocket", credential: "t", key: key, mask: mask, keepalive: false)
+        }
+        for reason in ["no_compute", "compute_offline"] {
+            let tunnel = try await closing(1001, reason)
+            await XCTAssertThrowsAsync(try await tunnel.read(maximumBytes: 10)) { XCTAssertEqual($0 as? BrowserError, .computeGone, reason) }
+        }
+        // An idle tunnel's close is an end, and a policy close is no compute's.
+        let idle = try await closing(1000, "idle")
+        let end = try await idle.read(maximumBytes: 10)
+        XCTAssertTrue(end.isEmpty)
+        let policy = try await closing(1008, "")
+        await XCTAssertThrowsAsync(try await policy.read(maximumBytes: 10)) { XCTAssertEqual($0 as? WebSocketTunnelError, .closed(code: 1008)) }
+        let away = try await closing(1001, "going_away")
+        await XCTAssertThrowsAsync(try await away.read(maximumBytes: 10)) { XCTAssertEqual($0 as? WebSocketTunnelError, .closed(code: 1001)) }
+    }
+
     func testLargeWritesAreSplitAndAnEmptyWriteHalfCloses() async throws {
         let head = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: upgrade\r\nSec-WebSocket-Accept: \(accept)\r\n\r\n"
         let pipe = Pipe([Data(head.utf8)])

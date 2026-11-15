@@ -165,6 +165,9 @@ public actor BrowserProxy {
                 if case BrowserProxyFailure.responseStarted = error {} else if !opaqueTunnel {
                     if let target { refusals.record(BrowserProxyRefusal(status: failure.status, code: failure.code), for: target) }
                     try? await local.write(failure.data)
+                } else if error as? BrowserError == .computeGone, let target {
+                    // An open tunnel (a dev server's socket) closed for the compute: told, never answered.
+                    refusals.record(BrowserProxyRefusal(status: failure.status, code: failure.code), for: target)
                 }
             }
             throw error

@@ -203,8 +203,11 @@ never close for it. A tunnel refused for the compute closes the page as the
 news does, before the news arrives: `409 no_compute`, or `503`
 `compute_offline`, `runner_unavailable` or `draining` (`BrowserCompute.gone`),
 on the agent's network read, the network route or the nested CONNECT, whose
-JSON body names the code. `1000 idle`, `429` and the dev server's own
-refusal (`502 proxy_target_unavailable`) are not the compute. Closing tears
+JSON body names the code; or an open WebSocket twin (a dev server's HMR
+socket) closed `1001` with reason `no_compute` or `compute_offline`. A twin
+closed `1000 idle` just ends (the page's socket reconnects), and `1008`,
+`429` and the dev server's own refusal (`502 proxy_target_unavailable`) are
+not the compute. Closing tears
 down the web view and the proxy, so nothing in the page keeps knocking. A
 compute back within its grace sends no news either way, so while the
 compute last said it was there, the page asks every 3 s, doubling to 30 s,

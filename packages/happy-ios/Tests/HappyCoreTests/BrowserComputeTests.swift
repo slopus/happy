@@ -103,4 +103,18 @@ final class BrowserComputeTests: XCTestCase {
         }
         nonisolated func close() async {}
     }
+
+    func testThePageHearsOfATunnelRefusedForItsCompute() throws {
+        let refusals = BrowserRefusals()
+        let heard = Heard()
+        refusals.onComputeGone { heard.count += 1 }
+        let authority = try XCTUnwrap(BrowserPolicy.Authority(url: XCTUnwrap(URL(string: "http://localhost:5173"))))
+        refusals.record(BrowserProxyRefusal(status: 502, code: "browser_proxy_upstream_refused"), for: authority)
+        XCTAssertEqual(heard.count, 0)
+        let failure = BrowserFailure(BrowserError.computeGone)
+        refusals.record(BrowserProxyRefusal(status: failure.status, code: failure.code), for: authority)
+        XCTAssertEqual(heard.count, 1)
+    }
+
+    private final class Heard: @unchecked Sendable { var count = 0 }
 }
