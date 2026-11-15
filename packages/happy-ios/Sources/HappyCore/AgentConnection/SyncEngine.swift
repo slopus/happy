@@ -726,6 +726,7 @@ public actor SyncEngine {
         for listener in messageListeners.values { listener.continuation.yield(.allowed) }
         // On its own task: the picture it may read waits behind what home needs.
         if let computer { Task { [heard] in await heard?(.verified(computer)) } }
+        warm()
         await connected(generation)
     }
 
@@ -744,6 +745,12 @@ public actor SyncEngine {
             await client.chatReads.landed()
             await AgentClient.$yieldsToChats.withValue(true) { await self.release(generation, connection) }
         }
+    }
+
+    /// Two query flows kept open for the next requests (`IdleFlows.warm`).
+    private func warm() {
+        let client = client
+        Task { await client.warm(2) }
     }
 
     private func release(_ generation: Int, _ connection: (hello: JSONValue, gap: Bool, continued: Bool)) async {
@@ -812,6 +819,8 @@ public actor SyncEngine {
         let read = reads
         let database = try database()
         let settingRevision = await database.confirmedSettingsRevision()
+        // Connecting: flows ready for the screen's first reads, beside home's.
+        if !verified { warm() }
         let value = try await client.decode(JSONValue.self, "GET", "/v0/bootstrap/desktop")
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(value))
         // What the server serves is the bootstrap's `health`, exactly

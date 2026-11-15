@@ -40,6 +40,9 @@ public protocol AgentTransport: Sendable {
     /// once (the relay and every direct path), and only what doesn't answer
     /// is replaced; tunnels, requests under way and sessions stay.
     func resumed() async
+    /// Opens query flows ahead of the requests that will want them, up to
+    /// `count` kept: a request takes one without waiting for a new one.
+    func warm(_ count: Int) async
     func close() async
     /// The bearer to write into a request this transport doesn't frame
     /// itself (an artifact request on a browser connection): `credential`,
@@ -63,6 +66,9 @@ public struct HTTP1Stream: Sendable {
 }
 
 extension AgentTransport {
+    /// One way to the computer with no flows to keep: nothing to open ahead.
+    public func warm(_ count: Int) async {}
+
     public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String], category: RequestCategory) async throws -> HTTP1Response {
         try await request(method: method, path: path, credential: credential, body: body, headers: headers)
     }
@@ -253,6 +259,14 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
                 }
             }
         }
+    }
+
+    /// Over Tailcat, new flows wait for their handshake over the relay and
+    /// the computer's process start: the screen's first reads take these.
+    public func warm(_ count: Int) async {
+        guard publicUrl == nil, let lease = try? await lease(.query) else { return }
+        defer { lease.release() }
+        await lease.client.idle.warm(count) { try await self.openFlow(lease, .query) }
     }
 
     /// The way a `category` request goes: a lease on one of that
@@ -542,6 +556,19 @@ final class IdleFlows: @unchecked Sendable {
             return entries.count > Self.limit ? [entries.removeFirst()] : []
         }
         for entry in closing { await close(entry) }
+    }
+
+    /// Opens flows until `count` are kept, all at once; one that fails to
+    /// open is left to the request that wants it.
+    func warm(_ count: Int, open: @escaping @Sendable () async throws -> any BrowserStream) async {
+        let epoch = epoch
+        let missing = count - self.count
+        guard missing > 0 else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<missing {
+                group.addTask { if let flow = try? await open() { await self.put(flow, epoch: epoch) } }
+            }
+        }
     }
 
     /// The newest flow still open, no longer read or kept; nil when none is.
