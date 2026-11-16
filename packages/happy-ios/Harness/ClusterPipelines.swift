@@ -5,11 +5,13 @@ import HappyWire
 /// A Happy Cloud server's pipelines and runs as happy-cluster answers
 /// them (API.md, "Pipelines"), for `ClusterServer` before a server with
 /// real runs is at hand: the runs list, each run with its nodes, the
-/// graphs of the versions they pinned, the nodes' logs, and abort. Times
-/// are set from when it was made, so running runs count from a minute or
-/// so. `tick` adds a line to the running migration's log; `advance` moves
-/// it on as the cluster would: the running deploy and its child succeed,
-/// the queued sweep starts, and a new run of Triage inbox comes in.
+/// graphs of the versions they pinned, the nodes' logs, and abort; each
+/// pipeline with its definition, history and runs
+/// (`ClusterPipelineDefinitions`). Times are set from when it was made, so
+/// running runs count from a minute or so. `tick` adds a line to the
+/// running migration's log; `advance` moves it on as the cluster would:
+/// the running deploy and its child succeed, the queued sweep starts, a
+/// new run of Triage inbox comes in, and Deploy preview gets version 9.
 struct ClusterPipelines {
     struct Run {
         var id: String
@@ -32,6 +34,8 @@ struct ClusterPipelines {
     private(set) var runs: [Run]
     /// `advance` has happened, at this time.
     private var advanced: Double?
+    /// `advance` has published Deploy preview's version 9.
+    private var published = false
     /// Lines `tick` added to the running migration's output.
     private var ticks = 0
     /// Abort is refused (`-abortrefused`), as when the server can't reach its worker.
@@ -51,17 +55,23 @@ struct ClusterPipelines {
             Run(id: "r3", pipeline: "sweep", version: 12, state: "queued", trigger: agent("cos-agent"), created: ago(40)),
             Run(id: "r4", pipeline: "sweep", version: 12, state: "failed", trigger: agent("cos-agent"), created: ago(3 * 3600), started: ago(3 * 3600), ended: ago(3 * 3600 - 843)),
             Run(id: "r5", pipeline: "build", version: 4, state: "succeeded", trigger: node("r6", "build"), parent: "r6", created: ago(24 * 60), started: ago(24 * 60), ended: ago(20 * 60)),
-            Run(id: "r6", pipeline: "deploy", version: 6, state: "superseded", trigger: agent("t1-agent"), created: ago(25 * 60), started: ago(25 * 60), ended: ago(19 * 60)),
+            Run(id: "r6", pipeline: "deploy", version: 7, state: "superseded", trigger: agent("t1-agent"), created: ago(25 * 60), started: ago(25 * 60), ended: ago(19 * 60)),
             Run(id: "r7", pipeline: "importer", version: 2, state: "succeeded", trigger: #"{"kind":"agent","agentId":null}"#, created: ago(26 * 3600), started: ago(26 * 3600), ended: ago(26 * 3600 - 95)),
             Run(id: "r8", pipeline: "notes", version: 3, state: "aborted", trigger: agent("gone-agent"), created: ago(2 * 86400), started: ago(2 * 86400), ended: ago(2 * 86400 - 30)),
             Run(id: "r9", pipeline: "notes", version: 2, state: "succeeded", trigger: agent("cos-agent"), created: ago(4 * 86400), started: ago(4 * 86400), ended: ago(4 * 86400 - 212)),
             Run(id: "r10", pipeline: "sweep", version: 11, state: "succeeded", trigger: agent("cos-agent"), created: ago(9 * 86400), started: ago(9 * 86400), ended: ago(9 * 86400 - 3910)),
             Run(id: "r11", pipeline: "build", version: 3, state: "succeeded", trigger: node("r-old", "build"), parent: "r-old", created: ago(10 * 86400), started: ago(10 * 86400), ended: ago(10 * 86400 - 260)),
-        ]
+        ] + (1...12).map { day in
+            // Older nightly sweeps, for its page's second page of runs.
+            let at = ago(Double(10 + day) * 86400)
+            return Run(id: "s\(day)", pipeline: "sweep", version: day < 6 ? 11 : 10, state: day == 4 ? "failed" : "succeeded", trigger: agent("cos-agent"),
+                       created: at, started: at, ended: at + (day == 4 ? 843_000 : 3_910_000))
+        }
     }
 
     /// What happens next, at `now`: the deploy and its build succeed, the
-    /// queued sweep starts, a new triage run comes in.
+    /// queued sweep starts, a new triage run comes in, the deploy's
+    /// version 9 is published.
     mutating func advance(at now: Date = Date()) {
         let at = (now.timeIntervalSince1970 * 1000).rounded()
         advanced = at
@@ -76,6 +86,7 @@ struct ClusterPipelines {
             default: break
             }
         }
+        published = true
         runs.insert(Run(id: "r12", pipeline: "triage", version: 1, state: "running", trigger: #"{"kind":"agent","agentId":"cos-agent"}"#, created: at, started: at), at: 0)
     }
 
@@ -86,15 +97,46 @@ struct ClusterPipelines {
         return #"{"id":"\#(run.id)","version":\#(run.version),"state":"\#(run.state)","trigger":\#(run.trigger),"parentRunId":\#(parent),"createdAt":\#(number(run.created)),"startedAt":\#(number(run.started)),"endedAt":\#(number(run.ended)),"pipelineId":"\#(run.pipeline)","pipelineName":"\#(name)","pipelineArchived":\#(run.pipeline == "importer")}"#
     }
 
-    private var pipelines: String {
-        let heads = ["build": 4, "deploy": 7, "notes": 3, "sweep": 12, "triage": 1]
-        let list = heads.keys.sorted().map { id -> String in
-            let last = runs.first { $0.pipeline == id }
-            let lastRun = last.map { #"{"id":"\#($0.id)","state":"\#($0.state)","createdAt":\#(Int64($0.created)),"endedAt":\#($0.ended.map { String(Int64($0)) } ?? "null")}"# } ?? "null"
-            let head = heads[id] ?? 1
-            return #"{"id":"\#(id)","name":"\#(Self.names[id] ?? id)","description":null,"enabled":\#(id != "notes"),"head":{"number":\#(head),"digest":"d\#(head)","message":"","createdAt":\#(Int64(now))},"lastRun":\#(lastRun),"createdBy":"steve","createdAt":\#(Int64(now)),"updatedAt":\#(Int64(now))}"#
+    /// Pipelines the list shows; Old importer is archived.
+    static let live = ["build", "deploy", "notes", "sweep", "triage"]
+
+    static let descriptions = [
+        "deploy": "Builds the branch, runs its migrations on the preview database and publishes a preview once review says ship.",
+        "build": "Builds and signs the app on a Mac and uploads it.",
+        "notes": "Drafts the release notes since the last tag.",
+    ]
+
+    /// `pipeline`'s versions, newest first: who published each, why, and when.
+    private func versions(_ pipeline: String) -> [(number: Int, message: String, author: [String: Any], at: Double)] {
+        var history = Self.history[pipeline] ?? []
+        if pipeline == "deploy", published { history.insert(("Release only when review says ship", ["kind": "user", "userId": "steve"]), at: 0) }
+        // The head is the newest; each before it a day and a half older.
+        let age = ["deploy": 40, "build": 3 * 86400, "notes": 5 * 86400, "sweep": 2 * 86400, "triage": 6 * 86400][pipeline] ?? 86400
+        let head = pipeline == "deploy" && published ? advanced ?? now : now - Double(age) * 1000
+        return history.enumerated().map { index, entry in
+            (history.count - index, entry.message, entry.author, head - Double(index * 129_600) * 1000)
         }
-        return #"{"pipelines":[\#(list.joined(separator: ","))]}"#
+    }
+
+    private func version(_ pipeline: String, _ entry: (number: Int, message: String, author: [String: Any], at: Double), whole: Bool) -> [String: Any] {
+        var version: [String: Any] = ["number": entry.number, "digest": "sha256:" + String(String(repeating: "\(entry.number)c4e9\(pipeline.count)f0b", count: 8).prefix(64)), "parent": entry.number > 1 ? entry.number - 1 : NSNull() as Any,
+                                      "message": entry.message, "author": entry.author, "createdAt": entry.at]
+        if whole { version["definition"] = Self.definition(pipeline, entry.number) ?? NSNull() }
+        return version
+    }
+
+    private func pipeline(_ id: String, whole: Bool) -> [String: Any]? {
+        guard Self.live.contains(id), let head = versions(id).first else { return nil }
+        let last = runs.first { $0.pipeline == id }
+        let lastRun: Any = last.map { ["id": $0.id, "state": $0.state, "createdAt": $0.created, "endedAt": $0.ended as Any? ?? NSNull()] as [String: Any] } ?? NSNull()
+        let created = versions(id).last?.at ?? now
+        return ["id": id, "name": Self.names[id] ?? id, "description": Self.descriptions[id] as Any? ?? NSNull(), "enabled": id != "notes",
+                "head": version(id, head, whole: whole), "lastRun": lastRun, "createdBy": id == "build" ? "olga" : "steve",
+                "createdAt": created, "updatedAt": head.at]
+    }
+
+    private var pipelines: String {
+        Self.encode(["pipelines": Self.live.compactMap { pipeline($0, whole: false) }])
     }
 
     /// A route's answer, and the events it journals.
@@ -118,11 +160,7 @@ struct ClusterPipelines {
             let next = start + page.count < runs.count ? page.last.map { "\"\($0.id)\"" } ?? "null" : "null"
             return Answer(body: #"{"runs":[\#(page.map(json).joined(separator: ","))],"nextCursor":\#(next)}"#)
         }
-        // /v0/pipelines/:id/versions/:n
-        if parts.count == 5, parts[1] == "pipelines", parts[3] == "versions", let number = Int(parts[4]) {
-            guard let graph = Self.graphs[parts[2]] else { return missing }
-            return Answer(body: Self.encode(["version": ["number": number, "message": "", "definition": graph] as [String: Any]]))
-        }
+        if parts.count >= 3, parts[1] == "pipelines" { return pipelineRoute(parts, path) }
         guard parts.count >= 3, parts[1] == "pipeline-runs", let run = runs.first(where: { $0.id == parts[2] }) else {
             return parts.count >= 3 && parts[1] == "pipeline-runs" ? missing : nil
         }
@@ -136,6 +174,40 @@ struct ClusterPipelines {
         // The migration's command grows while it runs, and closes.
         let changed = run.id == "r1" && node.id == "migrate" ? entries.filter { $0["kind"] as? String == "command" && ($0["seq"] as? Int ?? 0) <= after } : []
         return Answer(body: Self.encode(["entries": newer, "nextAfter": newer.last?["seq"] ?? after, "dropped": 0, "changed": changed]))
+    }
+
+    /// `/v0/pipelines/:id` and what's under it. An archived pipeline is
+    /// gone, but its versions and runs still read.
+    private func pipelineRoute(_ parts: [String], _ path: String) -> Answer {
+        let id = parts[2]
+        let history = versions(id)
+        switch parts.count {
+        case 3:
+            guard let pipeline = pipeline(id, whole: true) else { return missing }
+            return Answer(body: Self.encode(["pipeline": pipeline]))
+        case 4 where parts[3] == "versions":
+            return Answer(body: Self.encode(["versions": history.map { version(id, $0, whole: false) }]))
+        case 5 where parts[3] == "versions":
+            // The importer kept no history here: its runs' version alone.
+            guard let number = Int(parts[4]), let definition = Self.definition(id, number) else { return missing }
+            let entry = history.first { $0.number == number } ?? (number, "", ["kind": "user", "userId": "steve"], now - 30 * 86400 * 1000)
+            return Answer(body: Self.encode(["version": version(id, entry, whole: true).merging(["definition": definition]) { _, new in new }]))
+        case 4 where parts[3] == "runs":
+            let own = runs.filter { $0.pipeline == id }
+            let cursor = URLComponents(string: path)?.queryItems?.first { $0.name == "cursor" }?.value
+            let start = cursor.flatMap { id in own.firstIndex { $0.id == id }.map { $0 + 1 } } ?? 0
+            let page = Array(own.dropFirst(start).prefix(pageSize))
+            let next: Any = start + page.count < own.count ? page.last?.id as Any? ?? NSNull() : NSNull()
+            return Answer(body: Self.encode(["runs": page.map(entry), "nextCursor": next]))
+        default:
+            return missing
+        }
+    }
+
+    /// A run as `GET /v0/pipelines/:id/runs` lists it, without its pipeline.
+    private func entry(_ run: Run) -> [String: Any] {
+        ["id": run.id, "version": run.version, "state": run.state, "trigger": (try? JSONSerialization.jsonObject(with: Data(run.trigger.utf8))) ?? NSNull(),
+         "parentRunId": run.parent as Any? ?? NSNull(), "createdAt": run.created, "startedAt": run.started as Any? ?? NSNull(), "endedAt": run.ended as Any? ?? NSNull()]
     }
 
     private var missing: Answer { Answer(status: 404, body: #"{"code":"not_found","error":"No such run."}"#) }
@@ -165,46 +237,6 @@ struct ClusterPipelines {
         guard runs.first(where: { $0.id == "r1" })?.state == "running" else { return [] }
         ticks += 1
         return [("pipeline.node.log", #"{"runId":"r1","nodeId":"migrate"}"#), ("pipeline.node.updated", #"{"pipelineId":"deploy","runId":"r1","nodeId":"migrate"}"#)]
-    }
-
-    // MARK: Graphs
-
-    /// Each pipeline's definition; every version of one has the same graph here.
-    static var graphs: [String: [String: Any]] { [
-        "deploy": definition(root: "checkout", [
-            "checkout": ["kind": "code"],
-            "build": ["kind": "pipeline", "pipeline": "build"],
-            "migrate": ["kind": "code", "compute": ["acquire": [["name": "box", "pool": "linux"]]] as [String: Any]],
-            "review": ["kind": "agent", "model": "anthropic/claude-opus-5"],
-            "release": ["kind": "code"],
-            "notify": ["kind": "code"],
-        ], ["checkout>build", "checkout>migrate", "checkout>review", "build>release", "migrate>release", "review>release", "build!notify"]),
-        "build": definition(root: "fetch", [
-            "fetch": ["kind": "code", "compute": ["acquire": [["name": "mac", "pool": "macos"]], "pass": ["mac"]] as [String: Any]],
-            "compile": ["kind": "code", "compute": ["use": ["mac"], "pass": ["mac"]] as [String: Any]],
-            "sign": ["kind": "code", "compute": ["use": ["mac"]] as [String: Any]],
-            "upload": ["kind": "code"],
-        ], ["fetch>compile", "compile>sign", "sign>upload"]),
-        "sweep": definition(root: "plan", [
-            "plan": ["kind": "agent", "model": "openai/gpt-6.1-sol"],
-            "tests": ["kind": "code", "compute": ["acquire": [["name": "runner", "pool": "linux"]]] as [String: Any]],
-            "triage": ["kind": "agent", "model": "openai/gpt-6.1-sol"],
-            "report": ["kind": "code"],
-        ], ["plan>tests", "tests>triage", "tests!report"]),
-        "notes": definition(root: "collect", ["collect": ["kind": "code"], "write": ["kind": "agent", "model": "anthropic/claude-opus-5"], "publish": ["kind": "code"]],
-                            ["collect>write", "write>publish"]),
-        "triage": definition(root: "read", ["read": ["kind": "code"], "sort": ["kind": "agent", "model": "openai/gpt-6.1-terra"]], ["read>sort"]),
-        "importer": definition(root: "import", ["import": ["kind": "code"]], []),
-    ] }
-
-    /// `a>b` runs b when a succeeds, `a!b` when it fails.
-    private static func definition(root: String, _ nodes: [String: [String: Any]], _ edges: [String]) -> [String: Any] {
-        let edges = edges.map { edge -> [String: Any] in
-            let failure = edge.contains("!")
-            let ends = edge.split(whereSeparator: { $0 == ">" || $0 == "!" }).map(String.init)
-            return ["from": ends[0], "to": ends[1], "on": failure ? "failure" : "success"]
-        }
-        return ["root": root, "nodes": nodes, "edges": edges]
     }
 
     // MARK: Runs
@@ -238,7 +270,7 @@ struct ClusterPipelines {
         }
         var result: Any = NSNull()
         if ["succeeded", "failed"].contains(run.state) {
-            let graph = Self.graphs[run.pipeline]
+            let graph = Self.definition(run.pipeline, run.version)
             let leaves = nodes.filter { node in
                 node.state == "succeeded" && !((graph?["edges"] as? [[String: Any]]) ?? []).contains { edge in
                     edge["from"] as? String == node.id && nodes.contains { $0.id == edge["to"] as? String && $0.state != "skipped" }

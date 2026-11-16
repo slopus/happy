@@ -271,5 +271,172 @@ extension Strings {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             return (try? encoder.encode(value)).flatMap { String(data: $0, encoding: .utf8) } ?? "null"
         }
+
+        // The pipeline page, its versions' and its nodes' definitions.
+        static let pipelineLoading = "Loading pipeline…"
+        static let pipelineMissing = "This server has no such pipeline. It may have been archived; its runs are below."
+        static let pipelineUnreadable = "This pipeline couldn’t be read."
+        static let pipelineOutOfDate = "This pipeline may be out of date."
+        static let definitionLoading = "Reading this version…"
+        static let definitionUnreadable = "This version couldn’t be read, or is in a form this app doesn’t read yet."
+        static let status = "Status"
+        static let enabled = "Enabled"
+        static let disabledNote = "Disabled: it refuses new runs"
+        static let description = "Description"
+        static let createdBy = "Created by"
+        static let updated = "Updated"
+        static let latest = "Latest"
+        static let versions = "Versions"
+        static let versionsLoading = "Reading the history…"
+        static let versionNoMessage = "No message"
+        static let digest = "Digest"
+        static let concurrency = "Concurrency"
+        static let startedByHeading = "Who may start it"
+        static let noTrigger = "No agent may start it yet."
+        static let rawSchema = "JSON Schema"
+        static let graph = "Graph"
+        static let root = "Root"
+        static let endsRun = "Ends the run"
+        static let permissions = "Permissions"
+        static let ceiling = "The pipeline"
+        static let nothingGranted = "Nothing granted"
+        static let nothingGrantedNote = "Nothing is allowed unless granted: its nodes may compute and nothing else."
+        static let nodeNothingGranted = "Nothing granted: it may compute and nothing else."
+        static let compute = "Compute"
+        static let source = "Source"
+        static let instructions = "Instructions"
+        static let lastRunLabel = "Last run"
+        static let thisPipelineRunsEmpty = "No runs yet."
+
+        /// How runs of it share the cluster, in plain words (desktop's `CONCURRENCY_TEXT`).
+        nonisolated static func mode(_ mode: PipelineDefinition.Mode) -> (title: String, detail: String) {
+            switch mode {
+            case .independent: ("Independent", "Every run starts at once, alongside any already running")
+            case .supersede: ("Supersede", "A new run aborts the one running and takes its place")
+            case .queue: ("Queue", "Runs wait their turn, one at a time")
+            }
+        }
+
+        nonisolated static func group(_ group: String?) -> (title: String, detail: String) {
+            guard let group else { return ("One group", "Every run of it is in the same group") }
+            return ("Grouped by \(group)", "Runs with the same value share a group; others don’t wait for them")
+        }
+
+        static let batching = ("Batching", "Waiting runs are merged into the next one, their inputs as a list")
+
+        nonisolated static func versionTitle(_ number: Int, latest: Bool) -> String { latest ? "Version \(number), the latest" : "Version \(number)" }
+
+        /// Who made the pipeline: `You`, a teammate's name, or `Someone`.
+        nonisolated static func creator(_ id: String, people: [String: String], me: String?) -> String {
+            id == me ? "You" : people[id] ?? "Someone"
+        }
+
+        /// Who published a version, by name where this app knows it: `By you`, `By Olga’s agent`.
+        nonisolated static func author(_ author: PipelineAuthor?, agents: [String: String], people: [String: String], me: String?) -> String {
+            func person(_ id: String?) -> String? {
+                guard let id else { return nil }
+                if id == me { return "you" }
+                return people[id]
+            }
+            switch author {
+            case .user(let id)?: return "By " + (person(id) ?? "someone")
+            case .agent(let agentId, let user)?:
+                if let name = agents[agentId], !name.isEmpty { return "By \(name)" }
+                guard let name = person(user) else { return "By an agent" }
+                return name == "you" ? "By your agent" : "By \(name)’s agent"
+            case nil: return "Author unknown"
+            }
+        }
+
+        /// A type in a few plain words: `text`, `list of whole number`, `one of "a", "b"`, `… or null`.
+        nonisolated static func type(_ type: PipelineType) -> String {
+            var text: String
+            if let values = type.values, !values.isEmpty {
+                text = "one of " + values.joined(separator: ", ")
+            } else {
+                switch type.kind {
+                case .string: text = "text"
+                case .number: text = "number"
+                case .integer: text = "whole number"
+                case .boolean: text = "true or false"
+                case .null: text = "null"
+                case .array: text = "list of " + (type.items.first.map { Self.type($0) } ?? "anything")
+                case .object: text = type.fields.isEmpty ? "empty object" : "object"
+                }
+            }
+            return type.nullable ? text + " or null" : text
+        }
+
+        nonisolated static func requirement(_ required: Bool) -> String { required ? "Required" : "Optional" }
+        nonisolated static func outputPresence(_ required: Bool) -> String { required ? "Always there" : "There when the run reaches it" }
+        nonisolated static func nodesCount(_ count: Int) -> String { count == 1 ? "1 node" : "\(count) nodes" }
+        nonisolated static func versionsCount(_ count: Int) -> String { count == 1 ? "1 version" : "\(count) versions" }
+        nonisolated static func wholeType(_ type: PipelineType) -> String { "The whole value is " + Self.type(type) }
+
+        /// What a node does: `Code`, `Agent · openai/gpt-6.1 · high effort`, `Runs Build and sign`.
+        nonisolated static func definitionKind(_ node: PipelineDefinitionNode, pipeline: String?) -> String {
+            switch node.kind {
+            case "agent": return ["Agent", node.model, node.effort.map { "\($0) effort" }].compactMap { $0 }.joined(separator: " · ")
+            case "pipeline": return "Runs " + (pipeline ?? "a pipeline")
+            default: return "Code"
+            }
+        }
+
+        /// Where a node leads: `On success → b, c · On failure → d`, or that the run ends there.
+        nonisolated static func leads(success: [String], failure: [String]) -> String {
+            var parts: [String] = []
+            if !success.isEmpty { parts.append("On success → " + success.joined(separator: ", ")) }
+            if !failure.isEmpty { parts.append("On failure → " + failure.joined(separator: ", ")) }
+            return parts.isEmpty ? endsRun : parts.joined(separator: " · ")
+        }
+
+        /// A permission set, one line per kind of grant it holds.
+        nonisolated static func grants(_ permissions: PipelinePermissions, name: (String, String) -> String) -> [(title: String, detail: String)] {
+            func list(_ kind: String, _ ids: [String]) -> String { ids.map { name(kind, $0) }.joined(separator: ", ") }
+            func grants(_ kind: String, _ grants: [PipelinePermissions.Grant]) -> String {
+                grants.map { "\(name(kind, $0.id)) (\($0.access == "write" ? "read and write" : "read only"))" }.joined(separator: ", ")
+            }
+            var lines: [(String, String)] = []
+            if !permissions.vaults.isEmpty { lines.append(("Vaults", grants("vault", permissions.vaults))) }
+            if !permissions.secrets.isEmpty { lines.append(("Secrets", list("secret", permissions.secrets))) }
+            if !permissions.repositories.isEmpty { lines.append(("Repositories", grants("repository", permissions.repositories))) }
+            if !permissions.agents.isEmpty { lines.append(("Messages agents", list("agent", permissions.agents))) }
+            if !permissions.pipelines.isEmpty { lines.append(("Runs pipelines", list("pipeline", permissions.pipelines))) }
+            if !permissions.tools.isEmpty { lines.append(("Tools", permissions.tools.joined(separator: ", "))) }
+            if !permissions.egressHosts.isEmpty { lines.append(("Reaches hosts", permissions.egressHosts.joined(separator: ", "))) }
+            if let compute = permissions.compute, !(compute.pools.isEmpty && compute.computers.isEmpty) {
+                var parts: [String] = []
+                if !compute.pools.isEmpty { parts.append("pools " + compute.pools.joined(separator: ", ")) }
+                if !compute.computers.isEmpty { parts.append("computers " + compute.computers.joined(separator: ", ")) }
+                if let most = compute.maxLeases { parts.append("at most \(most) at once") }
+                lines.append(("Computers", parts.joined(separator: " · ")))
+            }
+            return lines
+        }
+
+        /// A node's leases: what it acquires, uses and hands on.
+        nonisolated static func leases(_ node: PipelineDefinitionNode) -> [(title: String, detail: String)] {
+            var lines: [(String, String)] = []
+            if !node.acquire.isEmpty {
+                lines.append(("Acquires", node.acquire.map { lease in
+                    lease.pool.map { "\(lease.name) from pool \($0)" } ?? lease.computer.map { "\(lease.name) on \($0)" } ?? lease.name
+                }.joined(separator: ", ")))
+            }
+            if !node.uses.isEmpty { lines.append(("Uses", node.uses.joined(separator: ", "))) }
+            if !node.passes.isEmpty { lines.append(("Hands on", node.passes.joined(separator: ", "))) }
+            return lines
+        }
+
+        /// Seconds as the largest whole unit that fits: `10 min`, `1 h`, `90 s`.
+        nonisolated static func seconds(_ seconds: Int) -> String {
+            if seconds % 3600 == 0 { return "\(seconds / 3600) h" }
+            if seconds % 60 == 0 { return "\(seconds / 60) min" }
+            return "\(seconds) s"
+        }
+
+        nonisolated static func join(_ join: String) -> String { join == "any" ? "Any edge into it fired" : "Every edge into it fired" }
+        static let timesOut = "Times out after"
+        static let runsWhen = "Runs when"
+        static let childPipeline = "Child pipeline"
     }
 }

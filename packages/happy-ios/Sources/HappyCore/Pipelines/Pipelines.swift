@@ -138,12 +138,13 @@ enum PipelineRead {
         }
     }
 
-    static func runListEntry(_ value: JSONValue) -> PipelineRunListEntry? {
+    /// A run entry; one pipeline's own runs list doesn't name it, so `pipelineId` and `name` do.
+    static func runListEntry(_ value: JSONValue, pipelineId: String? = nil, name: String? = nil) -> PipelineRunListEntry? {
         guard let id = value["id"]?.stringValue, let state = state(value["state"]), let version = integer(value["version"]),
-              let pipelineId = value["pipelineId"]?.stringValue else { return nil }
+              let pipelineId = value["pipelineId"]?.stringValue ?? pipelineId else { return nil }
         return PipelineRunListEntry(id: id, version: version, state: state, trigger: trigger(value["trigger"]), parentRunId: text(value["parentRunId"]),
                                     createdAt: number(value["createdAt"]) ?? 0, startedAt: number(value["startedAt"]), endedAt: number(value["endedAt"]),
-                                    pipelineId: pipelineId, pipelineName: text(value["pipelineName"]) ?? pipelineId,
+                                    pipelineId: pipelineId, pipelineName: text(value["pipelineName"]) ?? name ?? pipelineId,
                                     pipelineArchived: value["pipelineArchived"]?.boolValue == true)
     }
 }
@@ -159,7 +160,7 @@ extension PipelineSummary {
 extension PipelineRunPage {
     /// `GET /v0/pipeline-runs?cursor=` → `{ runs, nextCursor }`, newest first.
     public static func read(_ answer: JSONValue) -> PipelineRunPage {
-        PipelineRunPage(runs: (answer["runs"]?.arrayValue ?? []).compactMap(PipelineRead.runListEntry), nextCursor: PipelineRead.text(answer["nextCursor"]))
+        PipelineRunPage(runs: (answer["runs"]?.arrayValue ?? []).compactMap { PipelineRead.runListEntry($0) }, nextCursor: PipelineRead.text(answer["nextCursor"]))
     }
 
     /// A first page read again over what is kept, newest first. A reader

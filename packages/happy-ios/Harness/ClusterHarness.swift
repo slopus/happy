@@ -361,7 +361,7 @@ actor ClusterServer: AgentTransport {
         publish(["r12", "r1", "r2", "r3"].map { run in
             let pipeline = ["r12": "triage", "r1": "deploy", "r2": "build", "r3": "sweep"][run] ?? ""
             return ("pipeline.run.updated", #"{"pipelineId":"\#(pipeline)","runId":"\#(run)"}"#)
-        } + [("pipeline.node.log", #"{"runId":"r1","nodeId":"migrate"}"#)])
+        } + [("pipeline.node.log", #"{"runId":"r1","nodeId":"migrate"}"#), ("pipeline.updated", #"{"pipelineId":"deploy"}"#)])
     }
 
     /// Journals `events` on every open stream.
@@ -409,7 +409,9 @@ actor ClusterServer: AgentTransport {
 /// abort it, `-aborted` aborts it as the confirmation does, refused with
 /// `-abortrefused`) or one node of it (`-open node:r1:migrate`; `-toggle
 /// <seq>` opens or folds a command, `-bottom` to the log's tail); on
-/// either `-select <row>` taps a row;
+/// either `-select <row>` taps a row; a pipeline (`-open pipeline:deploy`,
+/// a version of it `pipeline:deploy:v7`, a node of its head
+/// `pipeline:deploy:migrate`; `-scroll <row>`, `-bottom`, `-select <row>`);
 /// an existing tenant
 /// whose Policy vault is still flagged (`-policyvault`), or as deployed
 /// before the documents moved to settings (`-production`);
@@ -477,6 +479,32 @@ final class ClusterHarness {
                     try? await Task.sleep(for: .seconds(2))
                     pipelines.list.onSelect?(row)
                 }
+            case let open? where open.hasPrefix("pipeline:"):
+                // `pipeline:deploy`, `pipeline:deploy:v7` (a version), `pipeline:deploy:migrate` (a node of the head).
+                let parts = open.split(separator: ":").map(String.init)
+                navigation.pushViewController(PipelinesViewController(session: session), animated: false)
+                var page = PipelineViewController(session: session, pipelineId: parts[1])
+                navigation.pushViewController(page, animated: false)
+                try? await Task.sleep(for: .seconds(1.5))
+                if parts.count == 3 {
+                    page.open(parts[2].hasPrefix("v") ? .version(Int(parts[2].dropFirst()) ?? 1) : .definitionNode(version: nil, nodeId: parts[2]))
+                    page = navigation.topViewController as? PipelineViewController ?? page
+                    try? await Task.sleep(for: .seconds(1.5))
+                }
+                // A scroll made here says nothing to the page, as a reader's does: it's told, so it reads the next page of runs.
+                if let row = value("-scroll", in: arguments) {
+                    page.list.scroll(to: row, animated: false)
+                    page.list.onScroll?()
+                }
+                if arguments.contains("-bottom") {
+                    for _ in 0..<2 {
+                        page.list.list.scrollToBottom(animated: false)
+                        page.list.onScroll?()
+                        try? await Task.sleep(for: .seconds(1.5))
+                    }
+                    page.list.list.scrollToBottom(animated: false)
+                }
+                if let row = value("-select", in: arguments) { page.list.onSelect?(row) }
             case let open? where open.hasPrefix("run:") || open.hasPrefix("node:"):
                 let parts = open.split(separator: ":").map(String.init)
                 navigation.pushViewController(PipelinesViewController(session: session), animated: false)
