@@ -157,6 +157,59 @@ class BrowserChromeTest {
         assertEquals(BrowserProblem.Http(500), state.problem)
     }
 
+    @Test fun aPageBackWithItsComputeTriesAgainWhileItsServerStartsThenStops() {
+        val state = BrowserState()
+        val address = "http://localhost:5173/"
+        state.followsCompute = true
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Attached)
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Detached)
+        assertEquals(BrowserProblem.ComputeDisconnected, state.problem)
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Attached)
+        val reopened = state.attempt
+        // Its server isn't up yet: 2, 4, 8 and 15 s, each a new try, then Try Again is the person's.
+        for ((index, wait) in BrowserSpec.REOPEN_RETRY_MILLIS.withIndex()) {
+            state.fail(BrowserProblem.ServerNotResponding, address)
+            assertEquals(wait, state.reopenRetryMillis)
+            state.retryAfterReopen()
+            assertNull(state.problem)
+            assertNull(state.reopenRetryMillis)
+            assertEquals(reopened + index + 1, state.attempt)
+        }
+        state.fail(BrowserProblem.ServerNotResponding, address)
+        assertNull(state.reopenRetryMillis)
+        assertEquals(BrowserProblem.ServerNotResponding, state.problem)
+        // Nothing to try once it stopped.
+        state.retryAfterReopen()
+        assertEquals(BrowserProblem.ServerNotResponding, state.problem)
+
+        // A page that loaded is done with it: a later failure is the page's own.
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Detached)
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Attached)
+        state.finished()
+        state.fail(BrowserProblem.ServerNotResponding, address)
+        assertNull(state.reopenRetryMillis)
+        // So is one that failed otherwise, and one tried again by hand.
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Detached)
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Attached)
+        state.fail(BrowserProblem.Http(500), address)
+        state.fail(BrowserProblem.ServerNotResponding, address)
+        assertNull(state.reopenRetryMillis)
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Detached)
+        state.computeChanged(com.slopus.happy.browser.BrowserCompute.Attached)
+        state.fail(BrowserProblem.ServerNotResponding, address)
+        state.retry()
+        assertNull(state.reopenRetryMillis)
+        state.fail(BrowserProblem.ServerNotResponding, address)
+        assertNull(state.reopenRetryMillis)
+    }
+
+    @Test fun anOrdinaryLoadWhoseServerIsntRespondingIsNotTriedAgain() {
+        val state = BrowserState()
+        state.fail(BrowserProblem.ServerNotResponding, "http://localhost:5173/")
+        assertNull(state.reopenRetryMillis)
+        assertEquals(BrowserProblem.ServerNotResponding, state.problem)
+    }
+
     @Test fun webViewsOwnErrorDocumentIsNoNewLoad() {
         val state = BrowserState()
         state.started("http://localhost:5999/")

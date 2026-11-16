@@ -105,6 +105,8 @@ object BrowserSpec {
     /** A page closed for its compute asks whether it is back after 3 s, then twice as long each time, up to 30 s (iOS's `probeCompute`). */
     const val COMPUTE_PROBE_FIRST_MILLIS = 3_000L
     const val COMPUTE_PROBE_MAX_MILLIS = 30_000L
+    /** A page opened again for its compute whose server isn't answering yet tries again after these, then leaves it to Try Again. */
+    val REOPEN_RETRY_MILLIS = longArrayOf(2_000L, 4_000L, 8_000L, 15_000L)
 }
 
 /**

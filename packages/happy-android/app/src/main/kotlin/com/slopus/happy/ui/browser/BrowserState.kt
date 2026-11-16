@@ -64,6 +64,11 @@ class BrowserState internal constructor() {
     /** Closed while the agent's compute is gone ([computeChanged]); opened again when it is back. */
     var computeClosed by mutableStateOf(false)
         private set
+    /** How long until a page opened again for its compute tries once more ([retryAfterReopen]); null when it won't. */
+    internal var reopenRetryMillis by mutableStateOf<Long?>(null)
+        private set
+    /** Tries made since the compute came back, while its server may still be starting; null once the page loaded or anything else happened. */
+    private var reopenTries: Int? = null
 
     /** The page paints no background of its own and asks for no dark one: it was made on white ([BARE_PAGE]). */
     internal var bare by mutableStateOf(false)
@@ -234,6 +239,7 @@ class BrowserState internal constructor() {
         if (problem == null) {
             progress = progress.finish()
             failedUrl = null
+            reopenTries = null
         } else {
             progress = progress.hide()
         }
@@ -311,6 +317,23 @@ class BrowserState internal constructor() {
         loading = false
         refreshing = false
         navigation()
+        // Back with its compute, the page's server may still be starting: a few more tries, then Try Again.
+        val tries = reopenTries
+        if (problem == BrowserProblem.ServerNotResponding && tries != null && tries < BrowserSpec.REOPEN_RETRY_MILLIS.size) {
+            reopenTries = tries + 1
+            reopenRetryMillis = BrowserSpec.REOPEN_RETRY_MILLIS[tries]
+        } else {
+            reopenTries = null
+            reopenRetryMillis = null
+        }
+    }
+
+    /** [reopenRetryMillis] passed: the page that failed, once more. */
+    internal fun retryAfterReopen() {
+        if (reopenRetryMillis == null) return
+        val tries = reopenTries
+        retry()
+        reopenTries = tries
     }
 
     internal fun linkChanged(next: BrowserLink?) {
@@ -332,6 +355,8 @@ class BrowserState internal constructor() {
         }
         problem = null
         refusals?.clear()
+        reopenTries = null
+        reopenRetryMillis = null
     }
 
     /** The agent's compute changed ([com.slopus.happy.browser.browserAgentCompute], or a probe found it back). */
@@ -346,6 +371,7 @@ class BrowserState internal constructor() {
                 reloadedAfterCrash = false
                 progress = progress.begin()
                 attempt++
+                reopenTries = 0
             }
             null -> {}
         }

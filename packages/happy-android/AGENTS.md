@@ -2379,7 +2379,10 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
   `1008`, `429` and `502 proxy_target_unavailable` are not the compute.
   A closed page probes a tunnel (`computeAnswers`) every 3 s doubling to
   30 s while the compute last said it was there: a compute back within
-  its grace sends no news.
+  its grace sends no news. A page reopened so whose server isn't
+  responding yet (a dev server still starting) loads again after 2, 4, 8
+  and 15 s (`BrowserState.reopenRetryMillis`), then leaves Try Again; an
+  ordinary load never retries by itself.
 - **App mode** (`<meta name="happy-page-mode" content="app">`, the
   contract shared with desktop and iOS, as agents read it in
   happy-agent's docs/DESIGN.md §1.8). `artifacts/ArtifactPageMode` reads the entry's first

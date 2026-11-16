@@ -283,6 +283,12 @@ fun BrowserView(
         }
     }
 
+    // Opened again for its compute while its server is still starting: tried again a few times, then left to Try Again.
+    LaunchedEffect(state.reopenRetryMillis) {
+        delay(state.reopenRetryMillis ?: return@LaunchedEffect)
+        state.retryAfterReopen()
+    }
+
     LaunchedEffect(state.attempt) {
         if (state.page != null) {
             if (unsupported) state.fail(BrowserProblem.Other(unsupportedText), null)
