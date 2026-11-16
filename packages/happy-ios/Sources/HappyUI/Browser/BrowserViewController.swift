@@ -55,6 +55,9 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     private var computeNow: BrowserCompute?
     private var computeWatch: Task<Void, Never>?
     private var computeProbe: Task<Void, Never>?
+    /// Back with its compute, the page's server may still be starting.
+    private var reopenRetry = BrowserReopenRetry()
+    private var reopenRetrying: Task<Void, Never>?
     private let isApp: Bool
     /// Where an app's close button is, as its page is told.
     var appClose = AppPageScripts.Close(corner: .topStart, box: 0, rightToLeft: false)
@@ -299,11 +302,23 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             UIView.animate(withDuration: 0.2) { self.failureView.alpha = 1 }
         }
         updateHeader()
+        reopenRetrying?.cancel()
+        if let wait = reopenRetry.failed(problem) {
+            reopenRetrying = Task { [weak self] in
+                try? await Task.sleep(for: wait)
+                guard let self, !Task.isCancelled else { return }
+                // Try Again's load, the tries so far kept.
+                let kept = reopenRetry
+                retry()
+                reopenRetry = kept
+            }
+        }
     }
 
     private func clearFailure() {
         // Tried again by hand: the compute closes it again if still gone.
         if compute.closed { compute = BrowserComputeGate(); computeProbe?.cancel() }
+        reopenRetry.end(); reopenRetrying?.cancel()
         problem = nil
         failureView.isHidden = true
         page?.refusals.clear()
@@ -356,6 +371,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         computeProbe?.cancel()
         clearFailure()
         reloadedAfterCrash = false
+        reopenRetry.reopened()
         open()
     }
 
@@ -483,7 +499,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         super.viewDidDisappear(animated)
         if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true || parent?.isMovingFromParent == true || parent?.isBeingDismissed == true {
             loading?.cancel(); trickling?.cancel(); linkWatch = nil
-            computeWatch?.cancel(); computeProbe?.cancel()
+            computeWatch?.cancel(); computeProbe?.cancel(); reopenRetrying?.cancel()
             web?.stopLoading(); web?.removeFromSuperview(); web = nil; page = nil; observations = []
         }
     }
@@ -507,6 +523,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         // A page arrived: whatever failed before it is behind it now.
         if problem != nil { clearFailure() }
+        reopenRetry.end()
         failedURL = nil
     }
 

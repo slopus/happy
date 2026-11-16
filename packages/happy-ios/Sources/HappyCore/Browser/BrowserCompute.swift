@@ -104,3 +104,30 @@ public struct BrowserComputeGate: Equatable, Sendable {
         }
     }
 }
+
+/// A page opened again for its compute whose server isn't responding yet
+/// (a dev server still starting) loads again after 2, 4, 8 and 15 s, then
+/// leaves it to Try Again. Only that reopen: an ordinary load never tries
+/// again by itself, and a page that loaded, another failure, or anything
+/// the person does ends it.
+public struct BrowserReopenRetry: Equatable, Sendable {
+    public static let delays: [Duration] = [.seconds(2), .seconds(4), .seconds(8), .seconds(15)]
+
+    /// Tries made since the compute came back; nil when none are to come.
+    private var tries: Int?
+
+    public init() {}
+
+    /// The compute came back and the page opens again.
+    public mutating func reopened() { tries = 0 }
+
+    /// The page failed with `problem`: how long until it loads again, or nil when it won't.
+    public mutating func failed(_ problem: BrowserProblem) -> Duration? {
+        guard problem == .serverNotResponding, let made = tries, made < Self.delays.count else { tries = nil; return nil }
+        tries = made + 1
+        return Self.delays[made]
+    }
+
+    /// The page loaded, or the person did something.
+    public mutating func end() { tries = nil }
+}

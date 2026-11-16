@@ -33,6 +33,24 @@ final class BrowserComputeTests: XCTestCase {
         XCTAssertEqual(gate.apply(.detached), .close)
     }
 
+    func testAPageBackWithItsComputeTriesAgainWhileItsServerStartsThenStops() {
+        var retry = BrowserReopenRetry()
+        // An ordinary load never tries again by itself.
+        XCTAssertNil(retry.failed(.serverNotResponding))
+        retry.reopened()
+        XCTAssertEqual([.seconds(2), .seconds(4), .seconds(8), .seconds(15)], (0..<4).map { _ in retry.failed(.serverNotResponding) })
+        XCTAssertNil(retry.failed(.serverNotResponding), "then Try Again is the person's")
+        XCTAssertNil(retry.failed(.serverNotResponding))
+        // Another failure, a page that loaded, or the person ends it.
+        retry.reopened()
+        XCTAssertNotNil(retry.failed(.serverNotResponding))
+        XCTAssertNil(retry.failed(.http(status: 500)))
+        XCTAssertNil(retry.failed(.serverNotResponding))
+        retry.reopened()
+        retry.end()
+        XCTAssertNil(retry.failed(.serverNotResponding))
+    }
+
     func testARefusedTunnelSaysWhenTheComputeIsGone() {
         let origin = "https://compute-\(UUID().uuidString.lowercased()).example"
         let body = { (code: String) in Data(#"{"error":"x","code":"\#(code)"}"#.utf8) }

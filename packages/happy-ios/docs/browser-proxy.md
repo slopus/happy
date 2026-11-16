@@ -227,7 +227,10 @@ down the web view and the proxy, so nothing in the page keeps knocking. A
 compute back within its grace sends no news either way, so while the
 compute last said it was there, the page asks every 3 s, doubling to 30 s,
 whether a tunnel opens (`BrowserAgentNetwork.answers`). Try Again opens it
-at once, and it closes again if the compute is still gone.
+at once, and it closes again if the compute is still gone. Reopened, a page
+whose server isn't responding yet (a dev server still starting) loads again
+after 2, 4, 8 and 15 s, then leaves Try Again (`BrowserReopenRetry`); an
+ordinary load never tries again by itself.
 
 WebKit only says the proxy refused a tunnel, so `BrowserProxy` keeps the last
 refusal per host (`BrowserRefusals`) and the screen reads it. Cancelled and
