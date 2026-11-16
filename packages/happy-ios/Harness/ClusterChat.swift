@@ -65,9 +65,9 @@ enum ClusterChat {
              "The sweep passed: no new failures, nothing to file.")
         turn(own("Check whether tonight’s sweep finished, and report any failures.", explanation: "Scheduled for 9:00: check tonight’s sweep"),
              "Started tonight’s sweep again; I’ll report when it ends.")
-        let failure = "tests: exception — RuntimeError: 2 tests failed in shard sync"
-        turn(own(notice("r4", "Nightly test sweep", version: 12, "failed", failed: failure),
-                 explanation: "Pipeline \"Nightly test sweep\" run failed", run: pipelineRun("r4", "sweep", "Nightly test sweep", version: 12, "failed", summary: failure)),
+        // The summary is each failed node and its code (`; and N more` after three), never the failure's message.
+        turn(own(notice("r4", "Nightly test sweep", version: 12, "failed", failed: "tests: exception — RuntimeError: 2 tests failed in shard sync"),
+                 explanation: "Pipeline \"Nightly test sweep\" run failed", run: pipelineRun("r4", "sweep", "Nightly test sweep", version: 12, "failed", summary: "tests: exception")),
              "Tonight’s sweep failed: two tests in the sync shard. I’ve sent them to triage.")
         turn(own(notice("r9", "Release notes", version: 2, "succeeded"), explanation: "Pipeline \"Release notes\" run succeeded"),
              "The release notes are published.")
