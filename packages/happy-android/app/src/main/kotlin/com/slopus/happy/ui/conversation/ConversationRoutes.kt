@@ -15,6 +15,7 @@ import com.slopus.happy.ui.files.workspaceSource
 import com.slopus.happy.ui.chat.rememberShownLinkState
 import com.slopus.happy.ui.page
 import com.slopus.happy.ui.plugins.openPlugin
+import com.slopus.happy.ui.pipelines.PipelineRunRoute
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -552,6 +553,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onToggleTurn = conversation::toggleTurn,
                     onToggleMessage = conversation::toggleMessage,
                     onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },
+                    onOpenPipelineRun = { notice -> nav.navigate(PipelineRunRoute(route.connectionId, notice.runId, notice.pipelineName)) },
                     workspace = if (session.client.cloud) null else session::workspaceSource,
                     // The values typed into a secret go in this one request to the computer and nowhere else.
                     secrets = SecretRequestActions(

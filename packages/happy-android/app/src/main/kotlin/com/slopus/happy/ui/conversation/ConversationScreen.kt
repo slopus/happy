@@ -212,6 +212,8 @@ class ConversationScreenActions(
     val onToggleMessage: (String) -> Unit = {},
     /** Opens a tool call on its own screen, by its id. */
     val onOpenTool: ((String) -> Unit)? = null,
+    /** Opens the run a pipeline's result tells of. */
+    val onOpenPipelineRun: ((com.slopus.happy.pipelines.PipelineRunNotice) -> Unit)? = null,
     /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
     val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
 )
@@ -326,6 +328,7 @@ fun ConversationScreen(
             videos = videos,
             pages = actions.pages,
             genUi = actions.genUi,
+            onOpenPipelineRun = actions.onOpenPipelineRun,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

@@ -1874,6 +1874,18 @@ cut falls at seventy lines of text height. A tap on the bubble calls `Conversati
 and flips `ConversationRow.User.opened`. `FoldHold` keeps the row above the
 message in place, so the bubble opens downward.
 
+A `user` message whose `metadata.senderAgentId` is the agent's own was
+written by nobody: a goal's continuation, a message the agent scheduled for
+itself, a pipeline run's result. It is never the person's bubble
+(`ConversationRow.SelfNote`, `SelfNoteViews`; desktop #156). It is one
+quiet line, its `senderAgentExplanation` or "Message to itself", whose
+words open under it on a tap. With `metadata.pipelineRun` it is a card
+drawn from that alone: the run's state glyph and colour, the pipeline's
+name over its version and how it ended, the cluster's `summary` as sent
+(never parsed, nor the sentence). A tap opens `PipelineRunRoute`, which is
+when the run is read. A run's result still `pending` isn't drawn: the
+cluster may withdraw it. The kept history keeps both fields (version 3).
+
 Code in a Happy Agent chat works as on desktop (3365ef9f, 3e08585d).
 ConversationScreen provides `LocalCodeCopy` = `CodeCopy.Icon`, so
 MarkdownView's code block shows a quiet 14 copy glyph in a 24 box, 6 in
@@ -2622,7 +2634,9 @@ pages; words are `strings_pipelines.xml` in every locale.
   opens the list, `--es pipelines.run r-failed` a run and with
   `--es pipelines.node build` its node; `--es pipelines.pipeline p-deploy` a
   pipeline, with `--ei pipelines.version 2` a version, and with
-  `--es pipelines.node triage` that version's node.
+  `--es pipelines.node triage` that version's node; `--ez pipelines.chat
+  true` a chat told how its runs ended (`pipelines.chat.before` draws the
+  agent's own messages as before they were told apart).
 
 ## Autocomplete
 

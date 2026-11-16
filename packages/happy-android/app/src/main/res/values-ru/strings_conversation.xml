@@ -22,6 +22,7 @@
     <string name="conversation_tool_running">Выполняется</string>
     <string name="conversation_tool_failed">Ошибка</string>
     <string name="conversation_from_agent">От другого агента</string>
+    <string name="conversation_self_message">Сообщение самому себе</string>
     <string name="conversation_failure_resolved">Повторено</string>
     <string name="conversation_compacting">Сжатие разговора…</string>
     <string name="conversation_compacted">Разговор сжат</string>

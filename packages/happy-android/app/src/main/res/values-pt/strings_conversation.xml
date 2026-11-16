@@ -22,6 +22,7 @@
     <string name="conversation_tool_running">Em execução</string>
     <string name="conversation_tool_failed">Falhou</string>
     <string name="conversation_from_agent">De outro agente</string>
+    <string name="conversation_self_message">Mensagem para si mesmo</string>
     <string name="conversation_failure_resolved">Tentado novamente</string>
     <string name="conversation_compacting">Compactando a conversa…</string>
     <string name="conversation_compacted">Conversa compactada</string>

@@ -403,6 +403,10 @@ data class Message(
     val status: String? = null,
     val runId: String? = null,
     val senderAgentId: String? = null,
+    /** Why an agent wrote it, in a line: a message an agent sent itself names what it is (`metadata.senderAgentExplanation`). */
+    val senderAgentExplanation: String? = null,
+    /** A pipeline run's result told to the agent that started it (`metadata.pipelineRun`), kept as sent; [com.slopus.happy.pipelines.PipelineRunNotice] reads it. */
+    val pipelineRun: JsonObject? = null,
     /** On a team's computer, the member who wrote a person's message (`metadata.userId`, named by `GET /v0/users`). */
     val userId: String? = null,
     /** An error service message's typed failure, kept as sent. */
@@ -423,6 +427,8 @@ data class Message(
                 status = o["status"].str,
                 runId = o["runId"].str,
                 senderAgentId = o["metadata"].obj?.get("senderAgentId").str,
+                senderAgentExplanation = o["metadata"].obj?.get("senderAgentExplanation").str,
+                pipelineRun = o["metadata"].obj?.get("pipelineRun").obj,
                 userId = o["metadata"].obj?.get("userId").str,
                 failure = o["failure"].obj,
                 error = o["error"].obj,

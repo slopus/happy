@@ -22,6 +22,7 @@
     <string name="conversation_tool_running">W toku</string>
     <string name="conversation_tool_failed">Niepowodzenie</string>
     <string name="conversation_from_agent">Od innego agenta</string>
+    <string name="conversation_self_message">Wiadomość do samego siebie</string>
     <string name="conversation_failure_resolved">Ponowiono</string>
     <string name="conversation_compacting">Kompaktowanie rozmowy…</string>
     <string name="conversation_compacted">Rozmowa skompaktowana</string>

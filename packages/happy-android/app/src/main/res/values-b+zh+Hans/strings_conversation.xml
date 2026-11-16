@@ -22,6 +22,7 @@
     <string name="conversation_tool_running">运行中</string>
     <string name="conversation_tool_failed">失败</string>
     <string name="conversation_from_agent">来自另一个智能体</string>
+    <string name="conversation_self_message">发给自己的消息</string>
     <string name="conversation_failure_resolved">已重试</string>
     <string name="conversation_compacting">正在压缩对话…</string>
     <string name="conversation_compacted">对话已压缩</string>

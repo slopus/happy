@@ -22,6 +22,7 @@
     <string name="conversation_tool_running">En curs</string>
     <string name="conversation_tool_failed">Ha fallat</string>
     <string name="conversation_from_agent">D\'un altre agent</string>
+    <string name="conversation_self_message">Missatge per a si mateix</string>
     <string name="conversation_failure_resolved">Reintentat</string>
     <string name="conversation_compacting">Compactant la conversa…</string>
     <string name="conversation_compacted">Conversa compactada</string>

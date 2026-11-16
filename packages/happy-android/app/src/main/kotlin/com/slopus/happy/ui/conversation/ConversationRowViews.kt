@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.pipelines.PipelineRunNotice
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.MessageDelivery
@@ -153,6 +154,8 @@ class ConversationRowActions(
     val pages: InlinePages? = null,
     /** Gen UI artifacts drawn under their cards; null where none are. */
     val genUi: GenUiInline? = null,
+    /** Opens the run a pipeline's result tells of; null where nothing opens it, and its card is only read. */
+    val onOpenPipelineRun: ((PipelineRunNotice) -> Unit)? = null,
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
@@ -258,6 +261,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                 }
             }
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
+            is ConversationRow.SelfNote -> SelfNoteRow(row, actions, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
             is ConversationRow.Ask -> AskRow(row, actions.asks, content)
             is ConversationRow.TurnEnd -> TurnEndRow(row, content)
