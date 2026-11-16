@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.pipelines
 
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -8,7 +9,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToKey
+import androidx.compose.ui.test.getAlignmentLinePosition
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.pipelines.PipelineAbort
 import com.slopus.happy.pipelines.PipelineDefinition
@@ -223,6 +226,45 @@ class PipelineRunScreenTest {
         assertDp("the gutter 16 into the card", 32, gutter.left)
         assertDp("44 wide", 44, gutter.right - gutter.left)
         assertDp("the first row 12 below the card's top", 12, gutter.top - first.top)
+    }
+
+    @Test
+    fun aRunningNodesLogFollowsItsEndUntilTheReaderScrollsUp() {
+        val live = running.copy(run = run(PipelineRunState.Running, listOf(node("build", PipelineNodeState.Running, startedAgo = 90 * second))))
+        fun lines(count: Int) = PipelineNodeLog(loading = false, entries = (1..count).map { PipelineLogEntry.Output(it.toLong(), now - 80 * second + it, false, "line $it") })
+        val shown = androidx.compose.runtime.mutableStateOf(lines(3))
+        // Opened before the run has been read: the node's page, once there, decides.
+        val page = androidx.compose.runtime.mutableStateOf(PipelineRunView())
+        rule.setHappyContent { PipelineNodeScreen(page.value, "build", shown.value, onRetry = {}, onBack = {}, onOpenRun = {}, now = now) }
+        page.value = live
+        rule.waitForIdle()
+        // The end was on screen: what arrives is followed.
+        shown.value = lines(80)
+        rule.waitForIdle()
+        rule.node(PipelineNodeTags.entry(80)).assertIsDisplayed()
+        shown.value = lines(120)
+        rule.waitForIdle()
+        rule.node(PipelineNodeTags.entry(120)).assertIsDisplayed()
+        // Scrolled up, the page stays where the reader put it.
+        rule.node(PipelineNodeTags.LIST).performScrollToIndex(0)
+        shown.value = lines(160)
+        rule.waitForIdle()
+        rule.node(PipelineNodeTags.SUMMARY).assertIsDisplayed()
+        rule.node(PipelineNodeTags.entry(160)).assertDoesNotExist()
+    }
+
+    @Test
+    fun anAgentsWordsSitOnTheLineOfTheirTime() {
+        val agent = PipelineNodeLog(loading = false, entries = listOf(PipelineLogEntry.Message(1, now - 80 * second, "The build **broke**.")))
+        val live = running.copy(run = run(PipelineRunState.Running, listOf(node("triage", PipelineNodeState.Running, PipelineNodeKind.Agent, startedAgo = 90 * second))))
+        rule.setHappyContent { PipelineNodeScreen(live, "triage", agent, onRetry = {}, onBack = {}, onOpenRun = {}, now = now) }
+        val time = rule.node(PipelineNodeTags.gutter(1))
+        val words = rule.onNode(hasText("The build broke."), useUnmergedTree = true)
+        assertDp(
+            "the time on the words' first baseline, below the Markdown's top margin",
+            words.bounds.top + words.getAlignmentLinePosition(FirstBaseline),
+            time.bounds.top + time.getAlignmentLinePosition(FirstBaseline),
+        )
     }
 
     @Test
