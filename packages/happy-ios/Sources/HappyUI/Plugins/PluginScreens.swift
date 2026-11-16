@@ -272,7 +272,12 @@ final class PluginViewController: SettingsPageViewController {
     // MARK: Acts
 
     /// Runs `act` with `row` spinning; a refusal is said under `failure`.
-    private func run<T: Sendable>(_ row: String, failure: String, _ act: @escaping @Sendable (AgentClient) async throws -> T, then: @escaping (T) -> Void = { _ in }) {
+    private func run<T: Sendable>(
+        _ row: String,
+        failure: String,
+        _ act: @escaping @Sendable (AgentClient) async throws -> T,
+        then: @escaping (T) -> Void = { _ in }
+    ) {
         guard !busy.contains(row) else { return }
         busy.insert(row)
         reload()
