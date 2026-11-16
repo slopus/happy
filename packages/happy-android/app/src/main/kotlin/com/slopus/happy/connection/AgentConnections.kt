@@ -308,6 +308,19 @@ class AgentConnections(
     }
 
     /**
+     * Ends the session of every team server whose kept credential [ends]
+     * picks, as a refused refresh would ([endSession]); at launch, Happy
+     * Cloud's from an earlier build (accounts contract C9).
+     */
+    suspend fun endSessions(ends: (AgentConnection, OAuthCredential) -> Boolean) = lock.withLock {
+        for (account in state.value) {
+            if (account.sessionEnded) continue
+            val credential = withContext(Dispatchers.IO) { read(account.id)?.oauth } ?: continue
+            if (ends(account, credential)) endSession(account.id)
+        }
+    }
+
+    /**
      * [id]'s session ended: signed out, and its tokens and credentials
      * forgotten here, so nothing of the session is left on the phone ([AgentConnection.sessionEnded]);
      * its sessions and caches go with it in [com.slopus.happy.agent.AgentSessions]. Holding [lock].

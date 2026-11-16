@@ -293,6 +293,22 @@ class TeamServerTest {
         dir.deleteRecursively()
     }
 
+    /** At launch, the sessions picked (Happy Cloud's from an earlier build, C9) end as a refused refresh's would; the rest stand. */
+    @Test
+    fun theSessionsALaunchPicksEndAndNoOthers(): Unit = runBlocking {
+        val connections = connections()
+        val beta = AgentOrigin.parse("https://beta.acme.example")
+        val old = connections.addServer(origin, member("u-a", "refresh-old"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example")
+        val kept = connections.addServer(beta, OAuthCredential("jwt", "happy", "https://api.acme.example/token", "refresh-new", "https://beta.acme.example/", userId = "u-b"), AccessToken("access-b", now + 300_000), fallbackName = "beta.acme.example")
+        connections.endSessions { connection, credential -> connection.server == origin.value && credential.refreshUrl != "https://api.acme.example/token" }
+        assertTrue(connections.accounts.value.single { it.id == old.id }.sessionEnded)
+        assertEquals(null, connections.credentials(old.id))
+        assertFalse(connections.accounts.value.single { it.id == kept.id }.signInRequired)
+        assertEquals("refresh-new", connections.credentials(kept.id)?.oauth?.refreshToken)
+        // Nothing was asked of any token endpoint.
+        assertEquals(0, sso.requestCount)
+    }
+
     @Test
     fun aSessionEndingLeavesOnlyItsSignInAndNothingOfItsServer(): Unit = runBlocking {
         val connections = connections()

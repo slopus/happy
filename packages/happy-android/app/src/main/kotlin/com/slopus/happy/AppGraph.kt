@@ -400,6 +400,9 @@ class AppGraph(
             auth = serverAuth,
             http = okHttp,
         )
+    }?.also { account ->
+        // Cloud servers signed in by an earlier build refresh at the accounts service, which no longer does: ended now, signed in again from their home.
+        scope.launch { agentConnections.endSessions { connection, credential -> HappyCloud.isServer(connection.server) && credential.refreshToken != null && !account.issued(credential) } }
     }
 
     /**
