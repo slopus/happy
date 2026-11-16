@@ -216,6 +216,10 @@ class TailcatTransport internal constructor(
         val head = TailcatHttp.requestHead(method, path, port, credential, body, headers, close = false, gzip = true)
         val progress = kotlinx.coroutines.currentCoroutineContext()[BodyProgress]
         val lease = clients.lease(category)
+        kotlinx.coroutines.currentCoroutineContext()[ResponseTiming]?.let { timing ->
+            timing.path = pathName(lease.client.path)
+            timing.openFlows = owners.values.sumOf { it.count }
+        }
         val deadline = if (category == RequestCategory.File) fileTimeoutMillis else requestTimeoutMillis
         // In a dead relay even the flow's opening and the head's write hang.
         val watch = lease.watch()
@@ -432,16 +436,29 @@ class TailcatTransport internal constructor(
                 throw error
             }
             span.end()
-            trace.snapshot().forEach { Timing.mark("tailcat.$name.${it.name}", at = span.startedAt + it.atMillis) }
+            // The trace goes on past the connect (disco probes, callMeMaybe, directValidated): the watch below logs the rest as they come.
+            var logged = 0
+            fun logSteps() {
+                val steps = trace.snapshot()
+                steps.drop(logged).forEach { Timing.mark("tailcat.$name.${it.name}", it.value?.let { value -> "value=$value" } ?: "", span.startedAt + it.atMillis) }
+                logged = steps.size
+            }
+            logSteps()
             if (name == "main") thread(isDaemon = true, name = "happy-timing-path") {
+                Timing.mark("tailcat.main.watching", "path=${pathName(client.path)}")
                 repeat((DIRECT_WATCH_MILLIS / DIRECT_POLL_MILLIS).toInt()) {
-                    val path = try { client.path } catch (_: Exception) { return@thread }
+                    val path = try { client.path } catch (error: Exception) {
+                        Timing.mark("tailcat.main.watch_failed", "error=${error::class.simpleName}")
+                        return@thread
+                    }
+                    logSteps()
                     if (path is ConnectionPath.Direct) {
                         Timing.mark("tailcat.main.direct", "since_connect=${Timing.now() - span.startedAt}")
                         return@thread
                     }
                     Thread.sleep(DIRECT_POLL_MILLIS)
                 }
+                logSteps()
                 Timing.mark("tailcat.main.relay_only", "watched=$DIRECT_WATCH_MILLIS")
             }
             return client

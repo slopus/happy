@@ -824,7 +824,9 @@ class AgentSession internal constructor(
             var restored = false
             suspend fun restoreCache() {
                 if (restored) return
+                val span = Timing.begin("link.cache")
                 traced("AgentSession.readCache") { readCache() }?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
+                span.end("bytes=${cacheFile?.length() ?: 0}")
                 restored = true
             }
             // A team server that wants signing in again (a refused refresh) stops the link at once,
@@ -1065,8 +1067,10 @@ class AgentSession internal constructor(
     private suspend fun readSnapshot() {
         reads.update { it + 1 }
         val span = Timing.begin("link.snapshot")
+        val response = com.slopus.happy.connection.ResponseTiming()
         try {
-            val bootstrap = client.decode<WireDesktopBootstrap>("GET", "/v0/bootstrap/desktop")
+            val bootstrap = withContext(response) { client.decode<WireDesktopBootstrap>("GET", "/v0/bootstrap/desktop") }
+            val decoded = Timing.now()
             val owner = connections.accounts.value.firstOrNull { it.id == connectionId }?.userId
             if (owner != null && bootstrap.profile?.string("userId") != owner) {
                 throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
@@ -1075,7 +1079,7 @@ class AgentSession internal constructor(
             team.bootstrap(bootstrap.teammates, bootstrap.profile)
             catalogLock.withLock { catalogState.update { it.withBootstrap(bootstrap) } }
             feedLibrary.bootstrap(bootstrap.feedUnread, bootstrap.cursor, bootstrap.health?.let(com.slopus.happy.feed.FeedCapabilities::of))
-            span.end()
+            span.end("send=${response.sent - span.startedAt} ${response.describe()} decode=${decoded - response.lastByte} apply=${Timing.now() - decoded}")
         } finally {
             reads.update { it - 1 }
         }

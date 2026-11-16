@@ -28,7 +28,11 @@ only. Before going home, and after each launch, it checks that
 Every run's lines are kept in <out>/runs.jsonl; `report` prints them again.
 For each phase it prints the runs that reached it, the median, min and max
 of its first time in the run, and how many times it came per run (a phase
-seen more than once is a reconnect or a second client).
+seen more than once is a reconnect or a second client). The details of each
+phase's first line print under it per run: link.snapshot's bytes, path, wait
+(request written to first byte: the computer's work and one round trip),
+transfer, kbps, decode and apply. The direct-path watch runs 20 s after the
+connect, so pass --tail 22 to see tailcat.main.direct or relay_only.
 """
 import argparse
 import json
@@ -46,8 +50,9 @@ LINE = re.compile(r"^\s*(\d+\.\d+)\s+(\d+)\s+\d+\s+\w\s+HappyTiming\s*:\s*(.*)$"
 FIELD = re.compile(r"(\w[\w.]*)=(\S+)")
 ACTIVITY = "com.slopus.happy.MainActivity"
 SETTLE_SECONDS = 2.0
-# What arrives just after the end mark (the direct path, a file client) still belongs to the run.
+# What arrives just after the end mark (a file client, the direct path) still belongs to the run; --tail sets it.
 TAIL_SECONDS = 3.0
+NOT_DETAILS = {"phase", "pid", "t", "since_start", "since_foreground", "dur", "net.moved"}
 
 
 class Abort(Exception):
@@ -227,16 +232,20 @@ def summarize(runs, out=sys.stdout):
                 print(f"   run {r['run']}: process died while away (cold, not warm)", file=out)
             if r.get("error"):
                 print(f"   run {r['run']}: {r['error']}", file=out)
-        firsts, counts, durs = {}, {}, {}
+        firsts, counts, durs, details = {}, {}, {}, {}
         for r in valid:
             seen = {}
             for l in r["lines"]:
-                seen.setdefault(l["phase"], []).append((int(l[anchor]), l.get("dur")))
-            for phase, values in seen.items():
-                firsts.setdefault(phase, []).append(values[0][0])
-                counts.setdefault(phase, []).append(len(values))
-                if values[0][1] is not None:
-                    durs.setdefault(phase, []).append(int(values[0][1]))
+                seen.setdefault(l["phase"], []).append(l)
+            for phase, ls in seen.items():
+                first = ls[0]
+                firsts.setdefault(phase, []).append(int(first[anchor]))
+                counts.setdefault(phase, []).append(len(ls))
+                if "dur" in first:
+                    durs.setdefault(phase, []).append(int(first["dur"]))
+                for key, value in first.items():
+                    if key not in NOT_DETAILS:
+                        details.setdefault(phase, {}).setdefault(key, []).append(value)
         totals = [r["am_total"] for r in valid if r.get("am_total") is not None]
         if totals:
             firsts["am_start.TotalTime"] = totals
@@ -246,6 +255,12 @@ def summarize(runs, out=sys.stdout):
             values = firsts[phase]
             dur = f"{statistics.median(durs[phase]):7.0f}" if phase in durs else f"{'':7}"
             print(f"   {phase:34} {len(values):4} {statistics.median(values):7.0f} {min(values):7} {max(values):7} {dur} {statistics.median(counts[phase]):7.1f}", file=out)
+            for key, found in details.get(phase, {}).items():
+                numbers = [int(v) for v in found if re.fullmatch(r"-?\d+", v)]
+                if len(numbers) == len(found):
+                    print(f"     .{key:32} {len(numbers):4} {statistics.median(numbers):7.0f} {min(numbers):7} {max(numbers):7}   runs: {' '.join(found)}", file=out)
+                else:
+                    print(f"     .{key:32} {len(found):4}   {' '.join(found)}", file=out)
 
 
 def signing(args):
@@ -271,6 +286,7 @@ def signing(args):
 
 
 def main():
+    global TAIL_SECONDS
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scenario", choices=["cold", "chat", "warm", "net", "signing", "report"])
     parser.add_argument("path", nargs="?", help="report: a runs.jsonl")
@@ -279,12 +295,14 @@ def main():
     parser.add_argument("--url", help="a conversation's external link, happy://<instanceId>/agents/<agentId>")
     parser.add_argument("--away", type=float, default=60, help="warm: seconds in the background")
     parser.add_argument("--timeout", type=float, default=60, help="seconds a run may take to reach its end mark")
+    parser.add_argument("--tail", type=float, default=TAIL_SECONDS, help="seconds to keep reading after the end mark; 22 sees tailcat.main.direct or relay_only (20 s watch)")
     parser.add_argument("--pause", type=float, default=3, help="seconds between runs")
     parser.add_argument("--settle-after-net", type=float, default=10, help="net: seconds on Wi-Fi again before the next run")
     parser.add_argument("--allow-wifi-toggle", action="store_true")
     parser.add_argument("--apk", help="signing: the APK about to be installed")
     parser.add_argument("--out", default=os.path.join(".context", "connection-timing", time.strftime("%Y%m%d-%H%M%S")))
     args = parser.parse_args()
+    TAIL_SECONDS = args.tail
 
     if args.scenario == "report":
         with open(args.path) as f:

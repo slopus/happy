@@ -1,5 +1,6 @@
 package com.slopus.happy.connection
 
+import com.slopus.happy.diagnostics.Timing
 import kotlinx.coroutines.*
 
 /** Blocking Tailcat IO; kept separate so the real HTTP exchange can run against fake TCP. */
@@ -107,6 +108,7 @@ internal suspend fun exchangeHttp(
     open: () -> HttpFlow,
 ): TransportResponse {
     val epoch = pool.epoch
+    val timing = currentCoroutineContext()[ResponseTiming]
     suspend fun exchange(flow: HttpFlow, reused: Boolean): TransportResponse {
         var received = 0
         var finished = false
@@ -118,10 +120,17 @@ internal suspend fun exchangeHttp(
                     if (progress == null) flow.write(body, timeoutMillis)
                     else progress.write(body) { flow.write(it, timeoutMillis) }
                 }
+                timing?.apply { this.reused = reused; sent = Timing.now(); bytes = 0 }
                 while (true) {
                     val bytes = flow.read(65536, timeoutMillis)
                     received += bytes.size
                     if (bytes.isNotEmpty()) heard()
+                    if (timing != null && bytes.isNotEmpty()) {
+                        val now = Timing.now()
+                        if (timing.bytes == 0L) timing.firstByte = now
+                        timing.lastByte = now
+                        timing.bytes += bytes.size
+                    }
                     parser.append(bytes, bytes.isEmpty())?.let { return@runInterruptible it }
                 }
                 @Suppress("UNREACHABLE_CODE") error("unreachable")
