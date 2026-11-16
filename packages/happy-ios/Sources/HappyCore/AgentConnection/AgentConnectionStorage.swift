@@ -87,15 +87,16 @@ public struct KeychainAgentConnectionCredentialStore: AgentConnectionCredentialS
 /// all Keychain items must succeed before missing accounts are reconciled.
 actor AgentConnectionStorage {
     struct Registry: Codable { var accounts: [AgentConnection] = []; var activeID: String? }
+    static let fileName = "direct-accounts.json"
     private let credentials: any AgentConnectionCredentialStore
     private var file: URL?
     private var registry = Registry()
     private var read = false
     init(credentials: any AgentConnectionCredentialStore, directory: URL?) {
         self.credentials = credentials
-        file = directory?.appendingPathComponent("direct-accounts.json")
+        file = directory?.appendingPathComponent(Self.fileName)
     }
-    func configureDirectory(_ directory: URL?) { file = directory?.appendingPathComponent("direct-accounts.json") }
+    func configureDirectory(_ directory: URL?) { file = directory?.appendingPathComponent(Self.fileName) }
     func load(hiding: Set<String> = []) throws -> (accounts: [AgentConnection], activeID: String?, credentials: [String: AgentConnectionCredentials]) {
         var values = try credentials.all().filter { !hiding.contains($0.key) }
         // The Keychain outlives the app; the registry beside it doesn't. A

@@ -29,6 +29,7 @@ enum CompositionRoot {
                 }
             }
         )
+        account.agentConnections.startup = startup
         account.agentConnections.streamHold = { expired in
             await MainActor.run { () -> (@Sendable () async -> Void)? in
                 let lease = EventStreamLease(expired: expired)
@@ -56,6 +57,14 @@ enum CompositionRoot {
     /// it excluded from backups, off the main thread when it first reads or
     /// writes there (everything in it can be pulled again from the server,
     /// and the keys to read it are device-only anyway).
+    /// The open computer's tunnel, started at launch (`startLink`) and taken by its engine.
+    private static let startup = StartupLink()
+
+    /// Connects the computer that opens, beside the scene and the account's restore.
+    static func startLink() {
+        startup.start(directory: storeDirectory(), credentials: KeychainAgentConnectionCredentialStore(backend: SecurityKeychainBackend()))
+    }
+
     private static func storeDirectory() -> URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Happy", isDirectory: true)

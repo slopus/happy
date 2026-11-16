@@ -48,6 +48,9 @@ public final class AgentConnections {
         didSet { if environment != nil { observeEnvironment() } }
     }
     private var environmentObservers: [NSObjectProtocol] = []
+    /// The open connection's tunnel, connecting since launch: its engine
+    /// takes it, and it is let go for any other (`keepStartup`).
+    public var startup: StartupLink?
 
     public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) }) {
         storage = AgentConnectionStorage(credentials: credentials, directory: directory)
@@ -72,14 +75,17 @@ public final class AgentConnections {
         return meter
     }
 
-    /// A transport to `id`'s computer that counts on its recorder.
-    func transport(_ credential: AgentConnectionCredentials, for id: String) -> any AgentTransport {
-        AgentEndpointTransport(endpoint: endpoint(credential, for: id), metrics: meter(id), make: maker(credential, for: id))
+    /// A transport to `id`'s computer that counts on its recorder; with
+    /// `startup`, over its tunnel when it was made for these credentials.
+    func transport(_ credential: AgentConnectionCredentials, for id: String, startup: StartupLink? = nil) -> any AgentTransport {
+        AgentEndpointTransport(endpoint: endpoint(credential, for: id), metrics: meter(id), make: maker(credential, for: id, startup: startup))
     }
 
     /// `makeTransport`, signing every request in for a signed-in server.
-    private func maker(_ credential: AgentConnectionCredentials, for id: String) -> @Sendable (AgentConnectionCredentials) -> any AgentTransport {
-        let make = makeTransport
+    private func maker(_ credential: AgentConnectionCredentials, for id: String, startup: StartupLink? = nil) -> @Sendable (AgentConnectionCredentials) -> any AgentTransport {
+        let base = makeTransport
+        let make: @Sendable (AgentConnectionCredentials) -> any AgentTransport
+        if let startup { make = { credentials in startup.take(credentials) ?? base(credentials) } } else { make = base }
         guard credential.signIn != nil else { return make }
         let authorization = authorization(credential, for: id), origin = credential.publicUrl ?? ""
         return { SignedInTransport(base: make($0), authorization: authorization, origin: origin) }
@@ -128,6 +134,7 @@ public final class AgentConnections {
             accounts[index].revoked = true
             accounts[index].status = .revoked
         }
+        keepStartup()
         // The folder's gate shuts first: nothing still running writes there again.
         OfflineFile.remove(id)
         onChange?()
@@ -178,7 +185,7 @@ public final class AgentConnections {
         // Signed out: nothing is read or kept until it signs in again.
         if signedOut(id) { return nil }
         if let engine = engines[id] { return engine }
-        guard let client = agentClient(for: id) else { return nil }
+        guard let client = agentClient(for: id, startup: activeID == id ? startup : nil) else { return nil }
         let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id), cloud: HappyCloud.isCloud(server(for: id)), streamHold: streamHold,
                                 heard: { [weak self] news in await self?.heard(news, from: id) })
         engines[id] = engine
@@ -245,7 +252,14 @@ public final class AgentConnections {
         for account in accounts where account.revoked && credentials[account.id]?.signIn?.grant.refreshToken != nil {
             await sessionEnded(account.id)
         }
+        keepStartup()
         onChange?(); startConnections()
+    }
+
+    /// Only the engine of the open connection, in the foreground, takes
+    /// the launch's tunnel; with any other, or none, it goes.
+    func keepStartup() {
+        startup?.keep(foreground ? accounts.first { $0.id == activeID && !$0.revoked }?.id : nil)
     }
 
     public func add(_ value: AgentConnectionCredentials, name: String) async throws -> AgentConnection {
@@ -311,7 +325,7 @@ public final class AgentConnections {
         if !loaded { try await restore() }
         if let id, !accounts.contains(where: { $0.id == id }) { throw AccountSwitchError.unknownAccount }
         try await storage.select(id)
-        activeID = id; onChange?()
+        activeID = id; keepStartup(); onChange?()
         for (accountID, engine) in engines {
             if foreground && accountID == id { await resume(accountID, engine) }
             else { await engine.pause() }
@@ -362,6 +376,7 @@ public final class AgentConnections {
         // What V2 kept to open on it offline goes with it.
         OfflineFile.remove(id)
         if activeID == id { activeID = nil }
+        keepStartup()
         onChange?()
     }
 
@@ -404,6 +419,7 @@ public final class AgentConnections {
         meters.removeValue(forKey: id)
         accounts.removeAll { $0.id == id }
         if activeID == id { activeID = nil }
+        keepStartup()
         onChange?()
         return Teardown(id: id, job: job, engine: engine)
     }
@@ -432,6 +448,7 @@ public final class AgentConnections {
     func open(_ id: String?) {
         guard id.map({ id in accounts.contains { $0.id == id } }) ?? true else { return }
         activeID = id
+        keepStartup()
         onChange?()
         selecting = Task { [previous = selecting] in
             await previous?.value
@@ -446,6 +463,7 @@ public final class AgentConnections {
 
     public func setForeground(_ active: Bool) async {
         foreground = active; generation &+= 1
+        keepStartup()
         if !active { suspended = Set(engines.keys) }
         let pending = jobs; jobs.removeAll()
         // Acquire execution time before waiting for the identity checks to
@@ -599,6 +617,7 @@ public final class AgentConnections {
         let previous = accounts[index]
         guard previous != account else { return }
         accounts[index] = account
+        if account.revoked { keepStartup() }
         onChange?()
         // Status is transient. Persist identity and permanent revocation only.
         if previous.name != account.name || previous.avatar != account.avatar || previous.avatarETag != account.avatarETag || previous.thumbhash != account.thumbhash || previous.revoked != account.revoked {

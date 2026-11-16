@@ -15,6 +15,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // The open computer's tunnel first, beside everything else; not for a launch into the background (a push).
+        if application.applicationState != .background { CompositionRoot.startLink() }
         LegacyFonts.registerBundledFonts()
         HappyCloud.keepStandIns()
         PushNotifications.shared.install()

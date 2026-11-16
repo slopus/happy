@@ -759,9 +759,9 @@ public struct Identity: Equatable, Sendable {
 
 extension AgentConnections {
     /// A client for a paired device, sharing nothing with its identity refresh.
-    public func agentClient(for accountID: String) -> AgentClient? {
+    public func agentClient(for accountID: String, startup: StartupLink? = nil) -> AgentClient? {
         guard let credential = credential(for: accountID) else { return nil }
-        return AgentClient(transport: transport(credential, for: accountID), token: credential.deviceToken, signsIn: credential.signIn != nil)
+        return AgentClient(transport: transport(credential, for: accountID, startup: startup), token: credential.deviceToken, signsIn: credential.signIn != nil)
     }
 }
 

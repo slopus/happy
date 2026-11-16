@@ -385,6 +385,8 @@ public final class AccountController {
                 return
             }
         } catch { }
+        // A Happy account opens, not the connection the launch's tunnel was for.
+        agentConnections.startup?.keep(nil)
         await restoreLegacy()
         // Nothing chosen opens: a paired computer does.
         if fallsBackToAgentConnection, showsAgentConnections, case .signedOut = state, pendingServerConfirmation == nil, let computer = agentConnections.accounts.first(where: { !$0.revoked }) ?? agentConnections.accounts.first {

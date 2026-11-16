@@ -42,6 +42,16 @@ identity, avatar, selection and revocation state. Keychain enumeration recovers
 entries after metadata corruption; Keychain access errors preserve them.
 The legacy registry and RN-compatible shared item keep their current format.
 
+A launch into the foreground connects the open pairing before anything
+else (`StartupLink`, from `application(_:didFinishLaunchingWithOptions:)`):
+it reads `direct-accounts.json`'s open account and its Keychain item off the
+main thread and connects its main Tailcat client, beside the scene, the
+account's restore and home. That account's engine takes the transport
+(`AgentConnections.syncEngine(for:)`), so there is one transport and one main
+client. Until then it is let go when another account opens (a Happy
+account included), the pairing is removed, revoked or signed out, or the app
+leaves the foreground; an engine that asked before it was read makes its own.
+
 `DirectAccounts` connects each stored instance independently on launch and
 foreground. It checks health and refreshes `config.node` then and every ten
 minutes after (in the last minute of the ten, with traffic already moving:
