@@ -23,7 +23,7 @@ import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.browser.browserNetwork
 import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.num
-import com.slopus.happy.chat.markdown.parseMarkdownBlocks
+import com.slopus.happy.chat.markdown.parseMarkdownDocument
 import com.slopus.happy.media.MediaLibrary
 import com.slopus.happy.ui.browser.BrowserPage
 import kotlinx.coroutines.CancellationException
@@ -225,7 +225,7 @@ class ArtifactLoader(
         val body = media.data(self.key) ?: throw IllegalStateException("unreadable")
         val (text, raws, blocks) = withContext(Dispatchers.Default) {
             val text = ArtifactMarkdown.prepare(String(body, Charsets.UTF_8))
-            Triple(text, ArtifactMarkdown.pictures(text), parseMarkdownBlocks(resolve(text)))
+            Triple(text, ArtifactMarkdown.pictures(text), parseMarkdownDocument(resolve(text)))
         }
         val pictures = LinkedHashMap<String, ArtifactMediaItem>()
         for (raw in raws) {

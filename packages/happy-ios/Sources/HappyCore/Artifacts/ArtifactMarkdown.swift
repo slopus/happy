@@ -105,8 +105,15 @@ public enum ArtifactMarkdown {
     /// soft breaks joined, `<img>` and `<video>` written as Markdown
     /// images, a picture inside a paragraph moved out between the words
     /// around it, and a linked picture (`[![a](p)](l)`) shown as itself.
-    /// Code is left as written.
+    /// Code is left as written, and so is the document's frontmatter.
     public static func prepare(_ markdown: String) -> String {
+        if let (frontmatter, body) = MarkdownFrontmatter.split(markdown) {
+            return frontmatter + "\n" + prepareBody(body)
+        }
+        return prepareBody(markdown)
+    }
+
+    private static func prepareBody(_ markdown: String) -> String {
         var out: [String] = []
         var fence: String?
         for line in Markdown.joiningSoftBreaks(markdown).split(separator: "\n", omittingEmptySubsequences: false) {
@@ -136,7 +143,8 @@ public enum ArtifactMarkdown {
     public static func pictures(_ prepared: String) -> [String] {
         var found: [String] = []
         var fence: String?
-        for line in prepared.split(separator: "\n", omittingEmptySubsequences: false) {
+        let body = MarkdownFrontmatter.split(prepared)?.body ?? prepared
+        for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if let open = fence {
                 if trimmed.hasPrefix(open) { fence = nil }

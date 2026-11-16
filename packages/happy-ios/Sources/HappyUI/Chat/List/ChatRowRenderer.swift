@@ -406,7 +406,8 @@ struct MarkdownPiece {
     /// keep theirs, as RN's do. `body` sets paragraphs and lists, `header`
     /// headings (V2 passes desktop's).
     /// `document`: the pictures and links of a document that has files of
-    /// its own (an artifact); nil reads them as a conversation does.
+    /// its own (an artifact); nil reads them as a conversation does. Only
+    /// a document's opening frontmatter is read as YAML.
     /// `links`: what the conversation's Happy links read as, and `server`
     /// the server it is on (`ChatLinks.kind`); without them only web
     /// addresses and settings and file links are links, and no button opens.
@@ -445,7 +446,7 @@ struct MarkdownPiece {
 
         var diagramIndex = 0
         var paragraph: MeasuredText?
-        for block in LegacyMarkdown.parse(markdown) {
+        for block in LegacyMarkdown.parse(markdown, frontmatter: document != nil) {
             paragraph = nil
             switch block {
             case .text(let spans):

@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.layout.ContentScale
 import com.slopus.happy.chat.markdown.MarkdownBlock
-import com.slopus.happy.chat.markdown.parseMarkdown
+import com.slopus.happy.chat.markdown.parseMarkdownDocument
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.Segment
@@ -439,7 +439,7 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
                 mode == Mode.Diff && load.diff != null -> DiffDisplay(load.diff)
                 mode == Mode.Rendered && markdown -> {
                     val blocks by produceState(emptyList<MarkdownBlock>(), load.content) {
-                        value = withContext(Dispatchers.Default) { parseMarkdown(load.content) }
+                        value = withContext(Dispatchers.Default) { parseMarkdownDocument(load.content) }
                     }
                     // A file is a document: iOS's document heading ramp, h1 the largest.
                     androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.chat.LocalMarkdownHeadings provides com.slopus.happy.ui.chat.MarkdownSpec.documentHeaders) {

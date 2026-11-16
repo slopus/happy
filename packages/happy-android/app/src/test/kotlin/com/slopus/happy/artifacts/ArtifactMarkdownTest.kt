@@ -111,4 +111,30 @@ class ArtifactMarkdownTest {
         val table = "| a | ![x](a.png) |\n| --- | --- |"
         assertEquals(table, ArtifactMarkdown.prepare(table))
     }
+
+    @Test fun prepareLeavesFrontmatterAsWritten() {
+        val front = "---\nname: x\ninput:\n  icon: ![a](a.png)\n  html: <img src=\"b.png\">\n---"
+        val prepared = ArtifactMarkdown.prepare(front + "\none\ntwo ![x](c.png)")
+        assertEquals(front + "\none two\n![x](c.png)", prepared)
+        assertEquals(listOf("c.png"), ArtifactMarkdown.pictures(prepared))
+        assertEquals(
+            com.slopus.happy.chat.markdown.MarkdownBlock.CodeBlock("yaml", "name: x\ninput:\n  icon: ![a](a.png)\n  html: <img src=\"b.png\">"),
+            com.slopus.happy.chat.markdown.parseMarkdownDocument(prepared).first(),
+        )
+    }
+
+    @Test fun prepareJoinsAnUnclosedFrontmatterAsBefore() {
+        assertEquals("---\none two", ArtifactMarkdown.prepare("---\none\ntwo"))
+    }
+
+    @Test fun prepareKeepsFrontmatterWithCrlf() {
+        val prepared = ArtifactMarkdown.prepare("---\r\nname: x\r\nkind: y\r\n---\r\none\r\ntwo")
+        assertEquals(
+            listOf(
+                com.slopus.happy.chat.markdown.MarkdownBlock.CodeBlock("yaml", "name: x\nkind: y"),
+                com.slopus.happy.chat.markdown.MarkdownBlock.Text(listOf(com.slopus.happy.chat.markdown.MarkdownSpan(emptySet(), "one two"))),
+            ),
+            com.slopus.happy.chat.markdown.parseMarkdownDocument(prepared),
+        )
+    }
 }

@@ -1,5 +1,6 @@
 package com.slopus.happy.artifacts
 
+import com.slopus.happy.chat.markdown.MarkdownFrontmatter
 import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.nio.ByteBuffer
@@ -149,9 +150,15 @@ object ArtifactMarkdown {
      * line of its own, where its parser looks for one: soft breaks joined,
      * `<img>` and `<video>` written as Markdown images, a picture inside a
      * paragraph moved out between the words around it, and a linked picture
-     * (`[![a](p)](l)`) shown as itself. Code is left as written.
+     * (`[![a](p)](l)`) shown as itself. Code is left as written, and so is
+     * the document's frontmatter.
      */
     fun prepare(markdown: String): String {
+        val split = MarkdownFrontmatter.split(markdown) ?: return prepareBody(markdown)
+        return split.first + "\n" + prepareBody(split.second)
+    }
+
+    private fun prepareBody(markdown: String): String {
         val out = ArrayList<String>()
         var fence: String? = null
         for (text in joiningSoftBreaks(markdown).split('\n')) {
@@ -182,7 +189,7 @@ object ArtifactMarkdown {
     fun pictures(prepared: String): List<String> {
         val found = ArrayList<String>()
         var fence: String? = null
-        for (line in prepared.split('\n')) {
+        for (line in (MarkdownFrontmatter.split(prepared)?.second ?: prepared).split('\n')) {
             val trimmed = line.trim(' ', '\t')
             val open = fence
             if (open != null) {

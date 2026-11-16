@@ -3,7 +3,7 @@ package com.slopus.happy.diff
 import androidx.compose.runtime.Immutable
 import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.MarkdownSpan
-import com.slopus.happy.chat.markdown.parseMarkdown
+import com.slopus.happy.chat.markdown.parseMarkdownDocument
 
 /**
  * Two versions of a Markdown document read as one (desktop fdd502ce,
@@ -46,7 +46,7 @@ data class MarkdownDiff(val blocks: List<Entry>) {
         const val FOLD_MINIMUM = 2
 
         /** Off the main thread: parses, aligns and pairs. */
-        fun compute(old: String, new: String): MarkdownDiff = compute(units(parseMarkdown(old)), units(parseMarkdown(new)))
+        fun compute(old: String, new: String): MarkdownDiff = compute(units(parseMarkdownDocument(old)), units(parseMarkdownDocument(new)))
 
         internal fun compute(before: List<MarkdownBlock>, after: List<MarkdownBlock>): MarkdownDiff {
             val beforeKeys = before.map(::key)

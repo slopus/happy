@@ -145,6 +145,22 @@ class ArtifactScreensTest {
         assertEquals(listOf("guide.md"), files)
     }
 
+    @Test fun aDocumentWithFrontmatter() {
+        val doc = "---\nname: alexa_smart_home_get_device\ninput:\n  endpointId:\n    type: string\n    pattern: ^amzn1.alexa.endpoint.[A-Za-z0-9-]+\$\n" +
+            "    description: Alexa endpoint id, e.g. 'amzn1.alexa.endpoint.<uuid>'.\n---\n\nRead the live state of one Alexa smart-home device\nby its endpoint id.\n\n---\n\nA rule further down is still a rule.\n"
+        val loader = loaded(
+            """{"artifactId":"a1","number":1,"title":"Skill","entry":{"path":"SKILL.md"},"files":[{"path":"SKILL.md","mimeType":"text/markdown","size":1}]}""",
+            mapOf("SKILL.md" to doc.toByteArray()),
+        )
+        showArtifact(loader)
+        rule.node(ArtifactTags.DOCUMENT).assertExists()
+        // The YAML is one code block, as written; nothing of it is a heading or a paragraph.
+        rule.onNodeWithText("pattern: ^amzn1.alexa.endpoint.[A-Za-z0-9-]+\$", substring = true).assertExists()
+        rule.onNodeWithText("Read the live state of one Alexa smart-home device by its endpoint id.").assertExists()
+        settle()
+        shot("artifact-document-frontmatter")
+    }
+
     @Test fun aDocumentDark() {
         val loader = loaded(
             """{"artifactId":"a1","number":1,"title":"Plan","entry":{"path":"plan.md"},"files":[{"path":"plan.md","mimeType":"text/markdown","size":1}]}""",

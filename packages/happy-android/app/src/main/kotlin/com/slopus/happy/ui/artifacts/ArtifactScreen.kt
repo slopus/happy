@@ -56,7 +56,7 @@ import com.slopus.happy.artifacts.ArtifactMediaItem
 import com.slopus.happy.artifacts.Extent
 import com.slopus.happy.artifacts.documentPictureSize
 import com.slopus.happy.chat.markdown.MarkdownBlock
-import com.slopus.happy.chat.markdown.parseMarkdownBlocks
+import com.slopus.happy.chat.markdown.parseMarkdownDocument
 import com.slopus.happy.references.HappyReferences
 import com.slopus.happy.references.References
 import androidx.compose.runtime.produceState
@@ -314,7 +314,7 @@ private fun ArtifactDocument(
     // Its Happy links follow what they name, read again off the main thread as that changes.
     val blocks by produceState(ui.blocks, ui, references) {
         if (references != null && References.mayHold(ui.text)) {
-            value = withContext(Dispatchers.Default) { parseMarkdownBlocks(resolve(ui.text, references)) }
+            value = withContext(Dispatchers.Default) { parseMarkdownDocument(resolve(ui.text, references)) }
         }
     }
     val previous = ui.previous

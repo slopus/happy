@@ -72,8 +72,13 @@ public enum MarkdownBlock: Equatable, Hashable, Sendable {
 
 public enum LegacyMarkdown {
     /// parseMarkdown.ts.
-    public static func parse(_ markdown: String) -> [MarkdownBlock] {
-        parseBlocks(markdown)
+    /// `frontmatter`: the text is a whole document (a file, an artifact),
+    /// whose opening YAML frontmatter is read as a `yaml` code block
+    /// (`MarkdownFrontmatter`). A conversation's messages leave it off: one
+    /// that opens with a rule is not a document, and would change shape as
+    /// it streams once a second rule arrived.
+    public static func parse(_ markdown: String, frontmatter: Bool = false) -> [MarkdownBlock] {
+        parseBlocks(markdown, frontmatter: frontmatter)
     }
 
     /// linkUtils.ts `isHttpMarkdownLink`: only http(s) links open.
@@ -90,10 +95,16 @@ public enum LegacyMarkdown {
 
     // MARK: Blocks (parseMarkdownBlock.ts)
 
-    static func parseBlocks(_ markdown: String) -> [MarkdownBlock] {
+    static func parseBlocks(_ markdown: String, frontmatter: Bool = false) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
         let lines = markdown.jsSplit("\n")
         var index = 0
+        if frontmatter, let close = MarkdownFrontmatter.closingLine(lines) {
+            let yaml = MarkdownFrontmatter.content(lines, close: close)
+            // Frontmatter that says nothing draws nothing.
+            if !trim(yaml).isEmpty { blocks.append(.codeBlock(language: "yaml", content: yaml)) }
+            index = close + 1
+        }
         outer: while index < lines.count {
             let line = lines[index]
             index += 1
@@ -411,6 +422,43 @@ public enum LegacyMarkdown {
     static func number(_ digits: String?) -> Int {
         guard let digits else { return 0 }
         return Int(digits) ?? Int.max
+    }
+}
+
+/// YAML frontmatter: a document whose very first line is exactly `---`,
+/// closed by a later line that is exactly `---` or `...`. Read by
+/// CommonMark it is a rule and a setext heading holding every line of the
+/// YAML; the renderers show it as a `yaml` code block instead. Only the
+/// start of a document opens one, and one that never closes is not one.
+/// Android's `MarkdownFrontmatter` is the same rules.
+public enum MarkdownFrontmatter {
+    /// The index of the line closing the frontmatter `lines` (a document
+    /// split on "\n") open with, nil when they open with none.
+    public static func closingLine(_ lines: [String]) -> Int? {
+        guard let first = lines.first, bare(first.unicodeScalars.first == "\u{FEFF}" ? String(first.unicodeScalars.dropFirst()) : first) == "---" else { return nil }
+        return lines.indices.dropFirst().first { index in
+            let line = bare(lines[index])
+            return line == "---" || line == "..."
+        }
+    }
+
+    /// The YAML between the opening line and the one at `close`.
+    public static func content(_ lines: [String], close: Int) -> String {
+        lines[1..<close].map(bare).joined(separator: "\n")
+    }
+
+    /// The document's frontmatter, fences included and as written, and what
+    /// follows it; nil when it has none. For the passes that rewrite a
+    /// document's Markdown before it is parsed, which leave YAML alone.
+    public static func split(_ markdown: String) -> (frontmatter: String, body: String)? {
+        let lines = markdown.jsSplit("\n")
+        guard let close = closingLine(lines) else { return nil }
+        return (lines[...close].joined(separator: "\n"), lines[(close + 1)...].joined(separator: "\n"))
+    }
+
+    /// A line without the "\r" a CRLF file leaves at its end.
+    static func bare(_ line: String) -> String {
+        line.unicodeScalars.last == "\r" ? String(line.unicodeScalars.dropLast()) : line
     }
 }
 

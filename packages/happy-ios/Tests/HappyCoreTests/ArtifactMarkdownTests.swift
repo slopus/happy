@@ -100,4 +100,24 @@ final class ArtifactMarkdownTests: XCTestCase {
         let table = "| a | ![x](a.png) |\n| --- | --- |"
         XCTAssertEqual(ArtifactMarkdown.prepare(table), table)
     }
+
+    func testPrepareLeavesFrontmatterAsWritten() {
+        let front = "---\nname: x\ninput:\n  icon: ![a](a.png)\n  html: <img src=\"b.png\">\n---"
+        let prepared = ArtifactMarkdown.prepare(front + "\none\ntwo ![x](c.png)")
+        XCTAssertEqual(prepared, front + "\none two\n![x](c.png)")
+        XCTAssertEqual(ArtifactMarkdown.pictures(prepared), ["c.png"])
+        XCTAssertEqual(LegacyMarkdown.parse(prepared, frontmatter: true).first, .codeBlock(language: "yaml", content: "name: x\ninput:\n  icon: ![a](a.png)\n  html: <img src=\"b.png\">"))
+    }
+
+    func testPrepareJoinsAnUnclosedFrontmatterAsBefore() {
+        XCTAssertEqual(ArtifactMarkdown.prepare("---\none\ntwo"), "---\none two")
+    }
+
+    func testPrepareKeepsFrontmatterWithCRLF() {
+        let prepared = ArtifactMarkdown.prepare("---\r\nname: x\r\nkind: y\r\n---\r\none\r\ntwo")
+        XCTAssertEqual(LegacyMarkdown.parse(prepared, frontmatter: true), [
+            .codeBlock(language: "yaml", content: "name: x\nkind: y"),
+            .text([MarkdownSpan(text: "one two")]),
+        ])
+    }
 }

@@ -201,4 +201,97 @@ class MarkdownParserTest {
             text.content,
         )
     }
+
+    // Frontmatter
+
+    private val frontmatter = listOf(
+        "---",
+        "name: alexa_smart_home_get_device",
+        "input:",
+        "  endpointId:",
+        "    type: string",
+        "    pattern: ^amzn1.alexa.endpoint.[A-Za-z0-9-]+$",
+        "---",
+        "",
+        "Read the live state of one device.",
+    ).joinToString("\n")
+
+    private val yaml = "name: alexa_smart_home_get_device\ninput:\n  endpointId:\n    type: string\n    pattern: ^amzn1.alexa.endpoint.[A-Za-z0-9-]+$"
+
+    private fun text(text: String) = MarkdownBlock.Text(spans(text))
+
+    @Test fun `a document's frontmatter is a yaml code block`() {
+        assertEquals(
+            listOf(MarkdownBlock.CodeBlock("yaml", yaml), text("Read the live state of one device.")),
+            parseMarkdownDocument(frontmatter),
+        )
+    }
+
+    @Test fun `frontmatter closed by dots`() {
+        assertEquals(
+            listOf(MarkdownBlock.CodeBlock("yaml", "a: 1"), MarkdownBlock.Header(1, spans("Title"))),
+            parseMarkdownDocument("---\na: 1\n...\n# Title"),
+        )
+    }
+
+    @Test fun `a document without frontmatter is unchanged`() {
+        val markdown = "# Title\n\nWords.\n\n- one\n- two"
+        assertEquals(parseMarkdown(markdown), parseMarkdownDocument(markdown))
+        assertEquals(null, MarkdownFrontmatter.split(markdown))
+    }
+
+    @Test fun `unclosed frontmatter is not frontmatter`() {
+        assertEquals(
+            listOf(MarkdownBlock.HorizontalRule, text("name: x"), text("Words.")),
+            parseMarkdownDocument("---\nname: x\n\nWords."),
+        )
+        assertEquals(listOf(MarkdownBlock.HorizontalRule), parseMarkdownDocument("---"))
+    }
+
+    @Test fun `rules mid document stay rules`() {
+        val rule = MarkdownBlock.HorizontalRule
+        assertEquals(listOf(text("Intro"), rule, text("name: x"), rule, text("Outro")), parseMarkdownDocument("Intro\n---\nname: x\n---\nOutro"))
+        // Nor does a blank first line, or an indented or longer rule, open one.
+        assertEquals(listOf(rule, text("a: 1"), rule), parseMarkdownDocument("\n---\na: 1\n---"))
+        assertEquals(listOf(rule, text("a: 1"), rule), parseMarkdownDocument(" ---\na: 1\n---"))
+        assertEquals(null, MarkdownFrontmatter.split("----\na: 1\n---"))
+        // Only the first closing line closes; the rest of the document is as before.
+        assertEquals(
+            listOf(MarkdownBlock.CodeBlock("yaml", "a: 1"), text("Body"), rule, text("More")),
+            parseMarkdownDocument("---\na: 1\n---\nBody\n---\nMore"),
+        )
+    }
+
+    @Test fun `empty frontmatter draws nothing`() {
+        assertEquals(listOf(text("Body")), parseMarkdownDocument("---\n---\nBody"))
+        assertEquals(listOf(text("Body")), parseMarkdownDocument("---\n\n  \n---\nBody"))
+    }
+
+    @Test fun `frontmatter with CRLF line endings`() {
+        assertEquals(
+            listOf(MarkdownBlock.CodeBlock("yaml", "name: x\nkind: y"), text("Body")),
+            parseMarkdownDocument("---\r\nname: x\r\nkind: y\r\n---\r\n\r\nBody\r\n"),
+        )
+    }
+
+    @Test fun `frontmatter after a byte order mark`() {
+        assertEquals(listOf(MarkdownBlock.CodeBlock("yaml", "a: 1"), text("Body")), parseMarkdownDocument("\uFEFF---\na: 1\n---\nBody"))
+    }
+
+    @Test fun `a message that opens with a rule is not frontmatter`() {
+        // A conversation's parse: the same text is rules and paragraphs, at every length it streams through.
+        val rule = MarkdownBlock.HorizontalRule
+        assertEquals(listOf(rule, text("name: x"), rule, text("Body")), parseMarkdown("---\nname: x\n---\nBody"))
+        assertEquals(listOf(rule, text("name: x"), rule, text("Body")), parseMarkdown("---\nname: x\n---\nBody", null))
+        for (end in 0..frontmatter.length) {
+            assertFalse(parseMarkdown(frontmatter.substring(0, end)).any { it is MarkdownBlock.CodeBlock })
+        }
+    }
+
+    @Test fun `frontmatter keeps yaml that reads as markdown`() {
+        assertEquals(
+            listOf(MarkdownBlock.CodeBlock("yaml", "# comment\nlist:\n  - a\n```\n| x | y |"), text("Body")),
+            parseMarkdownDocument("---\n# comment\nlist:\n  - a\n```\n| x | y |\n---\nBody"),
+        )
+    }
 }

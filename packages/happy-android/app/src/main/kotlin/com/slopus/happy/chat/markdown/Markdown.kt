@@ -53,6 +53,52 @@ fun isHttpMarkdownLink(url: String): Boolean = HTTP_URL.containsMatchIn(url.trim
 fun parseMarkdown(markdown: String): List<MarkdownBlock> = parseMarkdownBlocks(markdown)
 
 /**
+ * [markdown] parsed as a whole document (a file, an artifact): its opening
+ * YAML frontmatter is a `yaml` code block ([MarkdownFrontmatter]). A
+ * conversation's messages are not read this way: one that opens with a rule
+ * is not a document, and would change shape as it streams once a second
+ * rule arrived.
+ */
+fun parseMarkdownDocument(markdown: String): List<MarkdownBlock> = parseMarkdownBlocks(markdown, frontmatter = true)
+
+/**
+ * YAML frontmatter: a document whose very first line is exactly `---`,
+ * closed by a later line that is exactly `---` or `...`. Read by CommonMark
+ * it is a rule and a setext heading holding every line of the YAML; the
+ * renderers show it as a `yaml` code block instead. Only the start of a
+ * document opens one, and one that never closes is not one. iOS's
+ * `MarkdownFrontmatter` is the same rules.
+ */
+object MarkdownFrontmatter {
+    /** The index of the line closing the frontmatter [lines] (a document split on '\n') open with, null when they open with none. */
+    fun closingLine(lines: List<String>): Int? {
+        if (lines.isEmpty() || bare(lines[0].removePrefix("\uFEFF")) != "---") return null
+        for (index in 1 until lines.size) {
+            val line = bare(lines[index])
+            if (line == "---" || line == "...") return index
+        }
+        return null
+    }
+
+    /** The YAML between the opening line and the one at [close]. */
+    fun content(lines: List<String>, close: Int): String = lines.subList(1, close).joinToString("\n", transform = ::bare)
+
+    /**
+     * The document's frontmatter, fences included and as written, and what
+     * follows it; null when it has none. For the passes that rewrite a
+     * document's Markdown before it is parsed, which leave YAML alone.
+     */
+    fun split(markdown: String): Pair<String, String>? {
+        val lines = markdown.split('\n')
+        val close = closingLine(lines) ?: return null
+        return lines.subList(0, close + 1).joinToString("\n") to lines.subList(close + 1, lines.size).joinToString("\n")
+    }
+
+    /** A line without the '\r' a CRLF file leaves at its end. */
+    private fun bare(line: String): String = line.removeSuffix("\r")
+}
+
+/**
  * [markdown] parsed for one connection: a settings link to a page [hasPage]
  * says it hasn't is its label as inert text, inline or asking to be a
  * button (API.md, "Settings links"). Null [hasPage] leaves every link.
@@ -248,10 +294,18 @@ private fun parseTable(lines: List<String>, startIndex: Int): Pair<MarkdownBlock
 
 private fun String.indent(): Int = length - trimStart().length
 
-fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
+fun parseMarkdownBlocks(markdown: String, frontmatter: Boolean = false): List<MarkdownBlock> {
     val blocks = ArrayList<MarkdownBlock>()
     val lines = markdown.split('\n')
     var index = 0
+    if (frontmatter) {
+        MarkdownFrontmatter.closingLine(lines)?.let { close ->
+            val yaml = MarkdownFrontmatter.content(lines, close)
+            // Frontmatter that says nothing draws nothing.
+            if (yaml.isNotBlank()) blocks.add(MarkdownBlock.CodeBlock("yaml", yaml))
+            index = close + 1
+        }
+    }
     outer@ while (index < lines.size) {
         val line = lines[index]
         index++

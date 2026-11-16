@@ -299,6 +299,100 @@ final class MarkdownParserTests: XCTestCase {
             MarkdownSpan(styles: [.code], text: "x"),
         ])
     }
+
+    // MARK: Frontmatter
+
+    private static let frontmatter = [
+        "---",
+        "name: alexa_smart_home_get_device",
+        "input:",
+        "  endpointId:",
+        "    type: string",
+        "    pattern: ^amzn1.alexa.endpoint.[A-Za-z0-9-]+$",
+        "---",
+        "",
+        "Read the live state of one device.",
+    ].joined(separator: "\n")
+
+    private static let yaml = "name: alexa_smart_home_get_device\ninput:\n  endpointId:\n    type: string\n    pattern: ^amzn1.alexa.endpoint.[A-Za-z0-9-]+$"
+
+    func testDocumentFrontmatterIsAYamlCodeBlock() {
+        XCTAssertEqual(LegacyMarkdown.parse(Self.frontmatter, frontmatter: true), [
+            .codeBlock(language: "yaml", content: Self.yaml),
+            .text(plain("Read the live state of one device.")),
+        ])
+    }
+
+    func testFrontmatterClosedByDots() {
+        XCTAssertEqual(LegacyMarkdown.parse("---\na: 1\n...\n# Title", frontmatter: true), [
+            .codeBlock(language: "yaml", content: "a: 1"),
+            .header(level: 1, plain("Title")),
+        ])
+    }
+
+    func testDocumentWithoutFrontmatterIsUnchanged() {
+        let markdown = "# Title\n\nWords.\n\n- one\n- two"
+        XCTAssertEqual(LegacyMarkdown.parse(markdown, frontmatter: true), LegacyMarkdown.parse(markdown))
+        XCTAssertNil(MarkdownFrontmatter.split(markdown))
+    }
+
+    func testUnclosedFrontmatterIsNotFrontmatter() {
+        let markdown = "---\nname: x\n\nWords."
+        XCTAssertEqual(LegacyMarkdown.parse(markdown, frontmatter: true), [
+            .horizontalRule, .text(plain("name: x")), .text(plain("Words.")),
+        ])
+        XCTAssertEqual(LegacyMarkdown.parse("---", frontmatter: true), [.horizontalRule])
+    }
+
+    func testRulesMidDocumentStayRules() {
+        let markdown = "Intro\n---\nname: x\n---\nOutro"
+        let expected: [MarkdownBlock] = [.text(plain("Intro")), .horizontalRule, .text(plain("name: x")), .horizontalRule, .text(plain("Outro"))]
+        XCTAssertEqual(LegacyMarkdown.parse(markdown, frontmatter: true), expected)
+        // Nor does a blank first line, or an indented or longer rule, open one.
+        XCTAssertEqual(LegacyMarkdown.parse("\n---\na: 1\n---", frontmatter: true), [.horizontalRule, .text(plain("a: 1")), .horizontalRule])
+        XCTAssertEqual(LegacyMarkdown.parse(" ---\na: 1\n---", frontmatter: true), [.horizontalRule, .text(plain("a: 1")), .horizontalRule])
+        XCTAssertNil(MarkdownFrontmatter.split("----\na: 1\n---"))
+        // Only the first closing line closes; the rest of the document is as before.
+        XCTAssertEqual(LegacyMarkdown.parse("---\na: 1\n---\nBody\n---\nMore", frontmatter: true), [
+            .codeBlock(language: "yaml", content: "a: 1"), .text(plain("Body")), .horizontalRule, .text(plain("More")),
+        ])
+    }
+
+    func testEmptyFrontmatterDrawsNothing() {
+        XCTAssertEqual(LegacyMarkdown.parse("---\n---\nBody", frontmatter: true), [.text(plain("Body"))])
+        XCTAssertEqual(LegacyMarkdown.parse("---\n\n  \n---\nBody", frontmatter: true), [.text(plain("Body"))])
+    }
+
+    func testFrontmatterWithCRLFLineEndings() {
+        XCTAssertEqual(LegacyMarkdown.parse("---\r\nname: x\r\nkind: y\r\n---\r\n\r\nBody\r\n", frontmatter: true), [
+            .codeBlock(language: "yaml", content: "name: x\nkind: y"),
+            .text(plain("Body")),
+        ])
+    }
+
+    func testFrontmatterAfterAByteOrderMark() {
+        XCTAssertEqual(LegacyMarkdown.parse("\u{FEFF}---\na: 1\n---\nBody", frontmatter: true), [
+            .codeBlock(language: "yaml", content: "a: 1"), .text(plain("Body")),
+        ])
+    }
+
+    func testAMessageThatOpensWithARuleIsNotFrontmatter() {
+        // A conversation's parse: the same text is rules and paragraphs, at every length it streams through.
+        XCTAssertEqual(LegacyMarkdown.parse("---\nname: x\n---\nBody"), [
+            .horizontalRule, .text(plain("name: x")), .horizontalRule, .text(plain("Body")),
+        ])
+        for end in Self.frontmatter.indices {
+            let blocks = LegacyMarkdown.parse(String(Self.frontmatter[..<end]))
+            XCTAssertFalse(blocks.contains { if case .codeBlock = $0 { true } else { false } })
+        }
+    }
+
+    func testFrontmatterKeepsYamlThatReadsAsMarkdown() {
+        let markdown = "---\n# comment\nlist:\n  - a\n```\n| x | y |\n---\nBody"
+        XCTAssertEqual(LegacyMarkdown.parse(markdown, frontmatter: true), [
+            .codeBlock(language: "yaml", content: "# comment\nlist:\n  - a\n```\n| x | y |"), .text(plain("Body")),
+        ])
+    }
 }
 
 /// SimpleSyntaxHighlighter.tsx's tokenizer.
