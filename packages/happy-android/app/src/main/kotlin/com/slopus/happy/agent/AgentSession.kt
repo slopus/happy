@@ -656,6 +656,8 @@ class AgentSession internal constructor(
                 Intent.ARCHIVE -> when (intent.of) {
                     "agent" -> client.send("POST", "/v0/agents/$id/archive", mutation)
                     "bot" -> archiveAt("/v0/bots/$id", "bot")
+                    // With its chats, the work in it stopped and its worktree's folder removed (API.md).
+                    "workspace" -> archiveAt("/v0/workspaces/$id", "workspace")
                     else -> archiveAt("/v0/tasks/$id", "task")
                 }
                 Intent.RENAME -> {
