@@ -9,6 +9,9 @@
     <string name="agent_home_empty_body">このエージェントとチャットを始めると、ここに表示されます。</string>
     <string name="agent_home_revoked">このスマートフォンは Happy Agent で削除されました。使うにはエージェントをもう一度接続してください。</string>
     <string name="agent_home_update_required">このエージェントには新しいバージョンの Happy が必要です。使うにはアプリを更新してください。</string>
+    <string name="agent_home_archive_workspace">ワークスペースをアーカイブ</string>
+    <string name="agent_home_archive_workspace_title">「%1$s」をアーカイブしますか？</string>
+    <string name="agent_home_archive_workspace_message">中のチャットも一緒にアーカイブされ、実行中の作業は止まります。フォルダは削除され、アーカイブしたワークスペースは元に戻せません。</string>
     <string name="agent_artifacts_untitled">無題</string>
     <string name="agent_surface_add_todo">ToDo を追加</string>
     <string name="agent_surface_no_todos">まだ何もありません。</string>

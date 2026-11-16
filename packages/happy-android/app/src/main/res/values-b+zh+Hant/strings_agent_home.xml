@@ -9,6 +9,9 @@
     <string name="agent_home_empty_body">與此代理程式開始聊天，對話會顯示在這裡。</string>
     <string name="agent_home_revoked">此手機已在 Happy Agent 中移除。請重新連線代理程式後再使用。</string>
     <string name="agent_home_update_required">此代理程式需要較新版本的 Happy。請更新 App 後再使用。</string>
+    <string name="agent_home_archive_workspace">封存工作區</string>
+    <string name="agent_home_archive_workspace_title">封存「%1$s」？</string>
+    <string name="agent_home_archive_workspace_message">其中的聊天會一起封存，正在執行的工作會停止。它的資料夾會被刪除，封存後的工作區無法復原。</string>
     <string name="agent_artifacts_untitled">無標題</string>
     <string name="agent_surface_add_todo">新增待辦</string>
     <string name="agent_surface_no_todos">這裡還沒有內容。</string>

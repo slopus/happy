@@ -205,6 +205,51 @@ class AgentHomeLayoutTest {
     }
 
     @Test
+    fun aWorkspaceRowSwipesToArchiveWorkspaceWhichAsksFirstAndAProjectRowHasNoSwipe() {
+        val archived = mutableListOf<String>()
+        val acting = AgentHomeActions(
+            onOpenConversation = { opened += it }, onCompose = {}, onSettings = {}, onSettingsRow = {}, onSwitchAccount = {}, onAdd = {},
+            onArchiveWorkspace = { folder -> folder.archive?.let { archived += it.id } },
+        )
+        rule.setHappyContent { AgentHomeScreen("Studio", feed(sample), AgentLinkStatus.Connected, accounts, acting) }
+        val list = rule.onNode(hasTestTag(AgentHomeTags.LIST))
+        val workspaceTag = AgentHomeTags.row("folder-w1")
+        list.performScrollToNode(hasTestTag(workspaceTag))
+        val row = rule.node(workspaceTag)
+        val inRow = hasAnyAncestor(hasTestTag(workspaceTag))
+        fun swipe() {
+            // From inside the card, as a finger would.
+            row.performTouchInput { swipeLeft(startX = right - (AgentHomeSpec.cardInset * 2).toPx(), endX = left + AgentHomeSpec.cardInset.toPx()) }
+            rule.waitForIdle()
+        }
+        swipe()
+        rule.onNode(hasText("Archive workspace") and inRow, useUnmergedTree = true).assertExists()
+        rule.onNode(hasTestTag(FlatRowTags.ARCHIVE_ACTION) and inRow, useUnmergedTree = true).performClick()
+        rule.waitForIdle()
+        // Nothing archived yet: it asks first, naming the workspace and what goes with it.
+        assertEquals(emptyList<String>(), archived)
+        rule.onNodeWithText("Archive “fix-scroll”?").assertExists()
+        rule.onNodeWithText("Its chats are archived with it and anything running in it stops. Its folder is deleted, and an archived workspace can’t be brought back.").assertExists()
+        rule.onNodeWithText("Cancel").performClick()
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), archived)
+
+        swipe()
+        rule.onNode(hasTestTag(FlatRowTags.ARCHIVE_ACTION) and inRow, useUnmergedTree = true).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Archive").performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("w1"), archived)
+
+        // A project's own row has no swipe: the agent archives a project only as a whole.
+        val projectTag = AgentHomeTags.row("folder-p1")
+        list.performScrollToNode(hasTestTag(projectTag))
+        rule.node(projectTag).performTouchInput { swipeLeft(startX = right - (AgentHomeSpec.cardInset * 2).toPx(), endX = left + AgentHomeSpec.cardInset.toPx()) }
+        rule.waitForIdle()
+        rule.onAllNodes(hasTestTag(FlatRowTags.ARCHIVE_ACTION) and hasAnyAncestor(hasTestTag(projectTag)), useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
     fun theTopBarHasTheMenuAndNameLeftAndSearchSettingsRightAndComposeFloatsBottomEnd() {
         show(feed())
         val bar = rule.node(AgentHomeTags.BAR).bounds

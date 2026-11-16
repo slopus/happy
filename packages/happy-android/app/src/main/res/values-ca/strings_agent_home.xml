@@ -9,6 +9,9 @@
     <string name="agent_home_empty_body">Comença un xat amb aquest agent i apareixerà aquí.</string>
     <string name="agent_home_revoked">Aquest telèfon s\'ha eliminat a Happy Agent. Torna a connectar l\'agent per fer-lo servir.</string>
     <string name="agent_home_update_required">Aquest agent necessita una versió més nova de Happy. Actualitza l\'app per fer-lo servir.</string>
+    <string name="agent_home_archive_workspace">Arxiva l’espai</string>
+    <string name="agent_home_archive_workspace_title">Vols arxivar «%1$s»?</string>
+    <string name="agent_home_archive_workspace_message">Els xats que conté també s’arxiven i el que s’hi executa s’atura. La seva carpeta s’esborra i un espai arxivat no es pot recuperar.</string>
     <string name="agent_artifacts_untitled">Sense títol</string>
     <string name="agent_surface_add_todo">Afegeix una tasca</string>
     <string name="agent_surface_no_todos">Encara no hi ha res aquí.</string>

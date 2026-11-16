@@ -9,6 +9,9 @@
     <string name="agent_home_empty_body">Start a chat with this agent and it shows here.</string>
     <string name="agent_home_revoked">This phone was removed in Happy Agent. Connect the agent again to use it.</string>
     <string name="agent_home_update_required">This agent needs a newer Happy. Update the app to use it.</string>
+    <string name="agent_home_archive_workspace">Archive workspace</string>
+    <string name="agent_home_archive_workspace_title">Archive “%1$s”?</string>
+    <string name="agent_home_archive_workspace_message">Its chats are archived with it and anything running in it stops. Its folder is deleted, and an archived workspace can’t be brought back.</string>
 
     <string name="agent_artifacts_untitled">Untitled</string>
     <string name="agent_surface_add_todo">Add a todo</string>

@@ -55,7 +55,20 @@ sealed interface AgentFeedRow {
      * it and none waits on a question (desktop's project and workspace
      * `activity`).
      */
-    data class Folder(val id: String, val name: String, val depth: Int, val mark: FolderMark? = null, val running: Boolean = false, val lineChanges: WorkspaceLineChanges? = null) : AgentFeedRow {
+    data class Folder(
+        val id: String,
+        val name: String,
+        val depth: Int,
+        val mark: FolderMark? = null,
+        val running: Boolean = false,
+        val lineChanges: WorkspaceLineChanges? = null,
+        /**
+         * What archiving this row archives on the computer: a worktree's
+         * workspace, with its chats; null for a project, which the agent
+         * archives only as a whole project.
+         */
+        val archive: ArchiveTarget? = null,
+    ) : AgentFeedRow {
         override val key get() = "folder-$id"
     }
 
@@ -113,11 +126,12 @@ enum class ConversationKind { Bot, Task, Project, Subtask }
 
 /**
  * What a home row's archive asks the computer to archive
- * ([AgentSession.archive]): a task (`task`, its task ID) or one conversation
- * (`agent`, its agent ID: a project's chat or a subtask). Desktop archives
- * the same ones from a conversation's tab: a task only where the person may
- * (`canArchive`), its subtasks likewise, a bot's subtasks always, and never
- * a bot itself.
+ * ([AgentSession.archive]): a task (`task`, its task ID), one conversation
+ * (`agent`, its agent ID: a project's chat or a subtask) or a worktree's
+ * workspace (`workspace`, its workspace ID, with its chats). Desktop
+ * archives the same ones from a conversation's tab or its sidebar: a task
+ * only where the person may (`canArchive`), its subtasks likewise, a bot's
+ * subtasks always, and never a bot itself.
  */
 @Immutable
 data class ArchiveTarget(val kind: String, val id: String)
@@ -359,11 +373,16 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     }
                     series(project, 1)
                     catalog.workspaces.values
-                        .filter { it.string("projectId") == id && it.string("id") != id && active(it) && it.string("id") !in owned }
+                        // One archiving here is gone at once, with its chats.
+                        .filter { it.string("projectId") == id && it.string("id") != id && active(it) && it.string("id") !in owned && it.string("id") !in removed }
                         .sortedWith(byOrderKey)
                         .forEach { workspace ->
                             val workspaceAt = rows.size
-                            rows += AgentFeedRow.Folder(workspace.string("id").orEmpty(), workspace.string("name").orEmpty(), 1, lineChanges = git[workspace.string("id")]?.takeIf { it.visible })
+                            val workspaceId = workspace.string("id").orEmpty()
+                            rows += AgentFeedRow.Folder(
+                                workspaceId, workspace.string("name").orEmpty(), 1, lineChanges = git[workspaceId]?.takeIf { it.visible },
+                                archive = ArchiveTarget("workspace", workspaceId),
+                            )
                             series(workspace, 2)
                             folderActivity(workspaceAt)
                         }

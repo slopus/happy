@@ -175,16 +175,18 @@ data class AgentCatalog(
     }
 
     /**
-     * A task left or archived, a bot archived or a subtask ([kind] `agent`)
-     * archived here and taken by the computer: out of home until a
-     * snapshot says otherwise, so it doesn't come back between the answer
-     * and the event that says so.
+     * A task left or archived, a bot or a worktree's workspace archived or a
+     * conversation ([kind] `agent`: a project's chat or a subtask) archived
+     * here and taken by the computer: out of home until a snapshot says
+     * otherwise, so it doesn't come back between the answer and the event
+     * that says so.
      */
     fun withoutListed(kind: String, id: String): AgentCatalog = when (kind) {
         "task" -> if (id in memberships || id in tasks) copy(tasks = tasks - id, memberships = memberships - id) else this
         "bot" -> if (id in bots) copy(bots = bots - id) else this
         "agent" -> if (id in agents) copy(agents = agents - id) else this
         "surface" -> withoutSurface(id)
+        "workspace" -> if (id in workspaces) copy(workspaces = workspaces - id) else this
         else -> this
     }
 

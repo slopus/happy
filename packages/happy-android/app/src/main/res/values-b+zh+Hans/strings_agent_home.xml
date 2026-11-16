@@ -9,6 +9,9 @@
     <string name="agent_home_empty_body">与此智能体开始聊天，对话会显示在这里。</string>
     <string name="agent_home_revoked">此手机已在 Happy Agent 中移除。请重新连接智能体后再使用。</string>
     <string name="agent_home_update_required">此智能体需要更新版本的 Happy。请更新应用后再使用。</string>
+    <string name="agent_home_archive_workspace">归档工作区</string>
+    <string name="agent_home_archive_workspace_title">归档“%1$s”？</string>
+    <string name="agent_home_archive_workspace_message">其中的聊天会一起归档，正在运行的工作会停止。它的文件夹会被删除，归档后的工作区无法恢复。</string>
     <string name="agent_artifacts_untitled">无标题</string>
     <string name="agent_surface_add_todo">添加待办</string>
     <string name="agent_surface_no_todos">这里还没有内容。</string>
