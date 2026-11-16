@@ -67,19 +67,21 @@ public final class StartupLink: @unchecked Sendable {
 
     /// The transport `start` made for `credentials`, once: what the open
     /// engine's link is made of. Nil for any other credentials, while it is
-    /// still reading (that engine makes its own), or once let go.
+    /// still reading (that engine makes its own), or once let go. Other
+    /// credentials (the open one's changed since) let it go.
     public func take(_ credentials: AgentConnectionCredentials) -> (any AgentTransport)? {
-        lock.withLock {
-            guard !settled else { return nil }
+        let (taken, dropped): ((any AgentTransport)?, (any AgentTransport)?) = lock.withLock {
+            guard !settled else { return (nil, nil) }
             guard let held = started else {
                 missed.append(credentials)
-                return nil
+                return (nil, nil)
             }
-            guard held.credentials == credentials else { return nil }
             settled = true
             started = nil
-            return held.transport
+            return held.credentials == credentials ? (held.transport, nil) : (nil, held.transport)
         }
+        if let dropped { Task { await dropped.close() } }
+        return taken
     }
 
     /// Only `id`'s engine may take it now; for any other, or none, it is

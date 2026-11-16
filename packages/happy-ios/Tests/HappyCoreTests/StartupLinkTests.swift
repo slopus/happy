@@ -137,6 +137,19 @@ final class StartupLinkTests: XCTestCase {
         XCTAssertNil(link.take(value()))
     }
 
+    func testChangedCredentialsLetItGo() async throws {
+        let folder = try directory()
+        _ = try await paired(in: folder)
+        await link.start(directory: folder, credentials: store).value
+        let tunnel = try XCTUnwrap(made.all.first)
+        // Its public URL changed before the engine asked: that engine makes its own.
+        var changed = value()
+        changed.publicUrl = "https://changed.example"
+        XCTAssertNil(link.take(changed))
+        try await waitFor("let go on other credentials") { await tunnel.closed }
+        XCTAssertNil(link.take(value()))
+    }
+
     func testAnEngineThatAskedFirstMakesItsOwn() async throws {
         let folder = try directory()
         _ = try await paired(in: folder)
