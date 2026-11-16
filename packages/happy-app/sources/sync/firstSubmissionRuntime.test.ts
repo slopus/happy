@@ -34,6 +34,15 @@ beforeEach(() => {
 afterEach(() => { clearFirstSubmissionScope(); vi.unstubAllGlobals(); });
 
 describe('first submission launch errors', () => {
+    it('carries the selected native connection through durable submission and rejects a new account binding', async () => {
+        vi.stubGlobal('fetch', async () => Response.json({ grant: 'a'.repeat(43), expiresAt: '2026-09-11T00:01:00Z',
+            profile: { id: '00000000-0000-4000-8000-000000000001', displayName: 'Work', credentialVersion: 1 } }));
+        machineRPC.mockResolvedValue({ type: 'error', errorMessage: 'must not dispatch' });
+        expect(await firstSubmission.submit({ ...input, expectedCodexAccountProfileId: null }, { images: [] })).toBe(false);
+        expect(firstSubmission.getSnapshot()).toMatchObject({ expectedCodexAccountProfileId: null, failure: 'spawn' });
+        expect(machineRPC).not.toHaveBeenCalled();
+        expect([...saved.values()].join('')).toContain('"expectedCodexAccountProfileId":null');
+    });
     it('surfaces an unavailable bound account through the actual owner/runtime/ops flow without persisting it', async () => {
         const error = 'codex-account-unavailable';
         const instruction = /paws codex account upload/i;

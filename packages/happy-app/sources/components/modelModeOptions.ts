@@ -211,7 +211,7 @@ export function getAvailableModels(
 }
 
 // Session metadata is a startup-time snapshot, including in running sessions.
-// Both pickers supplement it with current suggestions; this is not an access check.
+// Native pickers supplement it with suggestions; managed accounts use their catalog.
 // Preserve catalog labels and custom models.
 export function getSuggestedModelModes(
     flavor: AgentFlavor,
@@ -219,6 +219,7 @@ export function getSuggestedModelModes(
     translate: Translate,
 ): ModelMode[] {
     const models = getAvailableModels(flavor, metadata, translate);
+    if (flavor === 'codex' && metadata?.codexAccountProfileId) return models;
     if (flavor !== 'codex' || !metadata?.models?.some((model) =>
         model.code.startsWith('gpt-6-') || model.code.startsWith('gpt-6.1-') || model.code.startsWith('gpt-5.6-'))) {
         return models;

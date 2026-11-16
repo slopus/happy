@@ -21,7 +21,11 @@ const mocks = vi.hoisted(() => ({
     setSessionType: vi.fn(),
     setWorktreeKey: vi.fn(),
     viewport: { width: 390, height: 900 },
+    codexAccounts: { loading: false, error: null as string | null, bindings: [] as Array<{ machineId: string; profileId: string | null }> },
+    sessionsOverride: null as unknown[] | null,
 }));
+
+vi.mock('@/hooks/useCodexAccounts', () => ({ useCodexAccounts: () => mocks.codexAccounts }));
 
 vi.mock('react-native', async () => {
     const ReactModule = await import('react');
@@ -115,7 +119,7 @@ vi.mock('@/sync/storage', () => {
     return {
         useAllMachines: () => machines,
         useLocalSetting: () => null,
-        useSessions: () => sessions,
+        useSessions: () => mocks.sessionsOverride ?? sessions,
         useSetting: () => settings,
     };
 });
@@ -217,6 +221,8 @@ describe('SessionConfigPanel composer layout', () => {
         mocks.viewport.height = 900;
         vi.useFakeTimers();
         vi.clearAllMocks();
+        mocks.codexAccounts = { loading: false, error: null, bindings: [] };
+        mocks.sessionsOverride = null;
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     });
@@ -267,6 +273,47 @@ describe('SessionConfigPanel composer layout', () => {
         expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-more' })).toHaveLength(0);
 
 
+    });
+
+    it('scopes both the picker and send selection to the machine account binding', async () => {
+        mocks.sessionsOverride = [
+            { id: 'account', activeAt: 10, metadata: { machineId: 'mac', flavor: 'codex',
+                codexAccountProfileId: 'account-a', models: [{ code: 'gpt-5.6-sol', value: 'Sol' }] } },
+            { id: 'native', activeAt: 20, metadata: { machineId: 'mac', flavor: 'codex',
+                models: [{ code: 'deepseek/DeepSeek-V4.1-Flash', value: 'DeepSeek' }] } },
+        ];
+        mocks.codexAccounts.bindings = [{ machineId: 'mac', profileId: 'account-a' }];
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::deepseek/DeepSeek-V4.1-Flash' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::gpt-5.6-sol' }).length).toBeGreaterThan(0);
+        expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-sol');
+        expect(ref.current.getSelection().expectedCodexAccountProfileId).toBe('account-a');
+
+        mocks.codexAccounts.bindings = [];
+        await act(async () => { renderer.update(<SessionConfigPanel ref={ref} layout="composer" />); });
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::deepseek/DeepSeek-V4.1-Flash' }).length).toBeGreaterThan(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::gpt-5.6-sol' })).toHaveLength(0);
+        expect(ref.current.getSelection().expectedCodexAccountProfileId).toBeNull();
+    });
+
+    it.each([
+        { loading: true, error: null },
+        { loading: false, error: 'network-error' },
+    ])('does not offer native models while the binding is unknown: %j', async (status) => {
+        mocks.sessionsOverride = [{ id: 'native', activeAt: 20, metadata: { machineId: 'mac', flavor: 'codex',
+            models: [{ code: 'deepseek/DeepSeek-V4.1-Flash', value: 'DeepSeek' }] } }];
+        mocks.codexAccounts = { ...status, bindings: [] };
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::deepseek/DeepSeek-V4.1-Flash' })).toHaveLength(0);
+        expect(ref.current.getSelection().modelKey).toBeUndefined();
+        expect(ref.current.getSelection().effortKey).toBeNull();
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::gpt-6.1-sol' })).toHaveLength(0);
     });
 
     it('keeps the current model label when it is the only model but effort is editable', async () => {

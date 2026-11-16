@@ -10,6 +10,7 @@ type LiveNewSessionSelection = {
     effortKey?: string | null;
     worktreeKey: string;
     fastMode: boolean;
+    expectedCodexAccountProfileId?: string | null;
 };
 
 export function resolveNewSessionSpawnSettings(args: {
@@ -21,9 +22,13 @@ export function resolveNewSessionSpawnSettings(args: {
 
     return {
         permissionMode: liveSelection?.permissionKey ?? resolvedModes.permissionMode,
-        modelMode: liveSelection?.modelKey ?? resolvedModes.modelMode,
-        effortLevel: liveSelection ? liveSelection.effortKey : resolvedModes.effortLevel,
+        // Persist explicit reset sentinels: undefined/null would later fall back
+        // to settings or code defaults while the new session is hydrating.
+        modelMode: liveSelection ? liveSelection.modelKey ?? 'default' : resolvedModes.modelMode,
+        effortLevel: liveSelection ? liveSelection.effortKey ?? 'default' : resolvedModes.effortLevel,
         worktreeKey: liveSelection?.worktreeKey ?? draftWorktreeKey,
         fastMode: liveSelection?.fastMode ?? false,
+        ...(liveSelection?.expectedCodexAccountProfileId !== undefined
+            ? { expectedCodexAccountProfileId: liveSelection.expectedCodexAccountProfileId } : {}),
     };
 }

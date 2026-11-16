@@ -34,10 +34,12 @@ import { DirectoryRootPicker } from './DirectoryRootPicker';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { useCodexAccounts } from '@/hooks/useCodexAccounts';
 import { useShallow } from 'zustand/react/shallow';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
     getHardcodedPermissionModes,
+    DEFAULT_MODEL_LABEL,
     getSuggestedModelModes,
     getEffortLevelsForModel,
     getSupportsWorktree,
@@ -737,6 +739,7 @@ export interface SessionConfigSelection {
     /** '__none__' | '__new__' | <existing worktree absolute path>. */
     worktreeKey: string;
     fastMode: boolean;
+    expectedCodexAccountProfileId?: string | null;
 }
 
 export interface SessionConfigPanelHandle {
@@ -783,6 +786,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const allMachines = useAllMachines({ includeOffline: true });
         const sessions = useSessions();
         const agentDefaultOverrides = useSetting('agentDefaultOverrides');
+        const codexAccounts = useCodexAccounts();
 
         const draft = useNewSessionDraft(useShallow((s) => ({
             selectedMachineId: s.selectedMachineId,
@@ -996,6 +1000,13 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         }, [availableAgents, selectedAgent, setSelectedAgent]);
 
         // Derive options from agent type
+        const codexAccountProfileId = codexAccounts.loading || codexAccounts.error
+            ? undefined
+            : codexAccounts.bindings.find(binding => binding.machineId === selectedMachineId)?.profileId ?? null;
+        const getNewSessionModels = React.useCallback((agent: string, metadata: Session['metadata']) =>
+            agent === 'codex' && (codexAccountProfileId === undefined || !metadata?.models?.length)
+                ? [{ key: 'default', name: DEFAULT_MODEL_LABEL, description: null }]
+                : getSuggestedModelModes(agent, metadata, t), [codexAccountProfileId]);
         const permissionModes = React.useMemo<PermissionMode[]>(
             () => getHardcodedPermissionModes(selectedAgent, t),
             [selectedAgent],
@@ -1005,22 +1016,23 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 sessions,
                 selectedMachineId,
                 agent: selectedAgent,
+                codexAccountProfileId,
             }),
-            [selectedAgent, selectedMachineId, sessions],
+            [selectedAgent, selectedMachineId, sessions, codexAccountProfileId],
         );
         const modelModes = React.useMemo<ModelMode[]>(
-            () => getSuggestedModelModes(selectedAgent, modelMetadata, t),
-            [modelMetadata, selectedAgent],
+            () => getNewSessionModels(selectedAgent, modelMetadata),
+            [modelMetadata, selectedAgent, getNewSessionModels],
         );
         // A model choice carries its execution agent, so the composer needs only one picker.
         const unifiedModels = React.useMemo(() => availableAgents.flatMap((item) => {
-            const metadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: item.key });
-            const options = getSuggestedModelModes(item.key, metadata, t);
+            const metadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: item.key, codexAccountProfileId });
+            const options = getNewSessionModels(item.key, metadata);
             const concrete = options.filter((model) => model.key !== 'default');
             return (concrete.length ? concrete : options).map((model) => ({
                 ...model, key: `${item.key}::${model.key}`,
             }));
-        }), [availableAgents, sessions, selectedMachineId]);
+        }), [availableAgents, sessions, selectedMachineId, codexAccountProfileId, getNewSessionModels]);
         const configExperience = React.useMemo(
             () => getSessionConfigExperience(selectedAgent),
             [selectedAgent],
@@ -1030,8 +1042,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const currentModelKey = currentModel?.key ?? 'default';
 
         const effortLevels = React.useMemo<EffortLevel[]>(
-            () => getEffortLevelsForModel(selectedAgent, currentModelKey, modelMetadata),
-            [selectedAgent, currentModelKey, modelMetadata],
+            () => selectedAgent === 'codex' && !modelMetadata?.models?.length ? []
+                : getEffortLevelsForModel(selectedAgent, currentModelKey, modelMetadata),
+            [selectedAgent, currentModelKey, modelMetadata, codexAccountProfileId],
         );
         const resolvedModeSelection = React.useMemo(() => (
             resolveNewSessionModeSelection({
@@ -1339,12 +1352,15 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             getSelection: () => ({
                 permissionKey: currentPermission?.key === 'default' ? undefined : currentPermission?.key,
                 modelKey: currentModelKey === 'default' ? undefined : currentModelKey,
-                effortKey: draft.effortLevel ?? resolvedModeSelection.effortLevel ?? null,
+                effortKey: selectedAgent === 'codex' && !modelMetadata?.models?.length ? null
+                    : draft.effortLevel ?? resolvedModeSelection.effortLevel ?? null,
                 worktreeKey,
                 fastMode: supportsFast && fastMode,
+                ...(selectedAgent === 'codex' && codexAccountProfileId !== undefined
+                    ? { expectedCodexAccountProfileId: codexAccountProfileId } : {}),
             }),
             closePickers: dismissPicker,
-        }), [currentPermission?.key, currentModelKey, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, supportsFast, dismissPicker]);
+        }), [currentPermission?.key, currentModelKey, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, supportsFast, dismissPicker, selectedAgent, codexAccountProfileId]);
 
         // Android uses a bottom sheet so options do not expand inside the
         // composer. iOS and desktop sidebars retain their existing inline layout.
@@ -1595,7 +1611,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                             draft.setAgentType(nextAgent);
                                         }
                                         draft.setModelMode(nextModel);
-                                        const nextMetadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: nextAgent });
+                                        const nextMetadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: nextAgent, codexAccountProfileId });
                                         if (nextAgent !== 'codex' || !supportsCodexFast(nextMetadata, nextModel)) setFastMode(false);
                                     }}
                                     onEffortChange={(key) => {

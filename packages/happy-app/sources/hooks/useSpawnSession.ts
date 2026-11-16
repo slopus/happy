@@ -30,6 +30,7 @@ export interface SpawnSessionArgs {
     modelMode?: string | null;
     effortLevel?: string | null;
     fastMode?: boolean;
+    expectedCodexAccountProfileId?: string | null;
     /** Initial prompt to send into the freshly spawned session. */
     prompt: string;
     /** Image attachments to send with the initial message (claude-only). */
@@ -194,6 +195,7 @@ export function useSpawnSession() {
                     approvedNewDirectoryCreation: approved,
                     agent,
                     environmentVariables,
+                    expectedCodexAccountProfileId: args.expectedCodexAccountProfileId,
                     ...(startupTrace ? { traceId: startupTrace.traceId } : {}),
                 });
 

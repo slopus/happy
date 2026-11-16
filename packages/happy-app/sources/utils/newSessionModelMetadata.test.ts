@@ -8,6 +8,7 @@ function session(args: {
     flavor?: string | null;
     activeAt: number;
     models?: Array<{ code: string; value: string; description?: string | null }>;
+    codexAccountProfileId?: string;
 }): Session {
     return {
         id: args.id,
@@ -22,6 +23,7 @@ function session(args: {
             machineId: args.machineId,
             flavor: args.flavor,
             models: args.models,
+            codexAccountProfileId: args.codexAccountProfileId,
         },
         metadataVersion: 1,
         agentState: null,
@@ -68,6 +70,7 @@ describe('getLatestSessionModelMetadata', () => {
             ],
             selectedMachineId: 'mac',
             agent: 'codex',
+            codexAccountProfileId: null,
         });
 
         expect(latest?.models?.map((model) => model.code)).toEqual(['gpt-5.6-sol']);
@@ -81,5 +84,41 @@ describe('getLatestSessionModelMetadata', () => {
             selectedMachineId: 'mac',
             agent: 'codex',
         })).toBeNull();
+    });
+
+    it('does not borrow a newer Magpie catalog for a bound ChatGPT account', () => {
+        const latest = getLatestSessionModelMetadata({
+            sessions: [
+                session({ id: 'account', machineId: 'mac', flavor: 'codex', activeAt: 10,
+                    codexAccountProfileId: 'account-a', models: [{ code: 'gpt-6.1-sol', value: 'Sol' }] }),
+                session({ id: 'native', machineId: 'mac', flavor: 'codex', activeAt: 20,
+                    models: [{ code: 'deepseek/DeepSeek-V4.1-Flash', value: 'DeepSeek' }] }),
+                session({ id: 'other-account', machineId: 'mac', flavor: 'codex', activeAt: 30,
+                    codexAccountProfileId: 'account-b', models: [{ code: 'gpt-other', value: 'Other' }] }),
+            ],
+            selectedMachineId: 'mac', agent: 'codex', codexAccountProfileId: 'account-a',
+        });
+        expect(latest?.models?.map(model => model.code)).toEqual(['gpt-6.1-sol']);
+    });
+
+    it('keeps native Magpie catalogs separate from bound account catalogs', () => {
+        const latest = getLatestSessionModelMetadata({
+            sessions: [
+                session({ id: 'native', machineId: 'mac', flavor: 'codex', activeAt: 10,
+                    models: [{ code: 'group/daily-auto', value: 'Daily' }] }),
+                session({ id: 'account', machineId: 'mac', flavor: 'codex', activeAt: 20,
+                    codexAccountProfileId: 'account-a', models: [{ code: 'gpt-6.1-sol', value: 'Sol' }] }),
+            ],
+            selectedMachineId: 'mac', agent: 'codex', codexAccountProfileId: null,
+        });
+        expect(latest?.models?.map(model => model.code)).toEqual(['group/daily-auto']);
+    });
+
+    it('waits for a known machine connection instead of borrowing any Codex catalog', () => {
+        const sessions = [session({ id: 'native', machineId: 'mac', flavor: 'codex', activeAt: 10,
+            models: [{ code: 'group/daily-auto', value: 'Daily' }] })];
+        expect(getLatestSessionModelMetadata({ sessions, selectedMachineId: 'mac', agent: 'codex' })).toBeNull();
+        expect(getLatestSessionModelMetadata({ sessions, selectedMachineId: null, agent: 'codex', codexAccountProfileId: null })).toBeNull();
+        expect(getLatestSessionModelMetadata({ sessions, selectedMachineId: 'mac', agent: 'codex', codexAccountProfileId: 'new-account' })).toBeNull();
     });
 });

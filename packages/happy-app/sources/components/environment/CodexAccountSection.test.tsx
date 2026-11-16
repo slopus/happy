@@ -72,6 +72,19 @@ describe('Codex account UI with real metadata API and controller', () => {
     async function render() { await act(async () => { renderer = TestRenderer.create(<Harness />); }); }
     async function press(testID: string) { await act(async () => { await renderer.root.findByProps({ testID }).props.onPress(); }); }
     const card = () => renderer.root.findByProps({ testID: `codex-account-${id}` });
+    it('refreshes another mounted controller after an environment binding change without polling', async () => {
+        function Observer() {
+            const accounts = useCodexAccounts();
+            return <div data-testid="binding-observer" data-profile={accounts.bindings.find(binding => binding.machineId === 'b')?.profileId} />;
+        }
+        await act(async () => { renderer = TestRenderer.create(<><Harness /><Observer /></>); });
+        expect(renderer.root.findByProps({ 'data-testid': 'binding-observer' }).props['data-profile']).toBeNull();
+        await press('codex-binding-b'); await press(`codex-binding-option-b-${secondId}`);
+        expect(renderer.root.findByProps({ 'data-testid': 'binding-observer' }).props['data-profile']).toBe(secondId);
+        const count = requests.length;
+        await act(async () => { vi.advanceTimersByTime(60_000); });
+        expect(requests).toHaveLength(count);
+    });
     it('shows metadata and local reset time; copies the exact no-argument command with transient feedback', async () => {
         await render();
         expect(textOf(card())).toContain('Codex · A7F2'); expect(textOf(card())).toContain('68%');

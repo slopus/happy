@@ -37,6 +37,7 @@ export const firstSubmission = new FirstSubmissionOwner({
             const result = await machineSpawnNewSession({ machineId: input.machineId,
                 directory: live.directory ?? input.path ?? '~', agent: input.agent,
                 environmentVariables: live.environmentVariables, approvedNewDirectoryCreation: approved,
+                expectedCodexAccountProfileId: input.expectedCodexAccountProfileId,
                 ...(trace ? { traceId: trace.id } : {}) });
             if (!current()) return { type: 'cancelled' };
             if (result.type === 'success') {

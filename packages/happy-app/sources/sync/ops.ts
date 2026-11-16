@@ -238,6 +238,8 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'ask' | 'codex' | 'claude' | 'gemini' | 'opencode' | 'openclaw';
+    /** Connection used for the selected model catalog; null means native Codex. */
+    expectedCodexAccountProfileId?: string | null;
     environmentVariables?: Record<string, string>;
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
@@ -326,7 +328,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         type: 'spawn-in-directory', directory, traceId, approvedNewDirectoryCreation,
         ...(agent === 'codex' ? {} : { token }), agent, environmentVariables,
         resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId,
-    });
+    }, options.expectedCodexAccountProfileId);
 }
 
 /** Project tasks use the same ephemeral Codex-account grants as ordinary session creation. */
@@ -351,12 +353,14 @@ async function machineStartSession(
     method: 'spawn-happy-session' | 'resume-happy-session' | 'goalTaskLaunch' | 'previewGoalTaskLaunch' | 'goalProjectAuthor',
     isCodex: boolean,
     parameters: Record<string, unknown>,
+    expectedCodexAccountProfileId?: string | null,
 ): Promise<SpawnSessionResult> {
     let grant: string | undefined;
     const redact = (message: string) => grant ? message.replaceAll(grant, '[redacted]') : message;
     let dispatching = false;
     try {
         if (isCodex) {
+            let actualProfileId: string | null = null;
             const { TokenStorage } = await import('@/auth/tokenStorage');
             const credentials = await TokenStorage.getCredentials().catch(() => null);
             // A bound account deliberately overrides the machine-local login.
@@ -364,10 +368,15 @@ async function machineStartSession(
             // normal Paws use does not require duplicating an existing login.
             if (credentials) {
                 try {
-                    grant = (await createCodexSessionGrant(credentials, machineId)).grant;
+                    const authorization = await createCodexSessionGrant(credentials, machineId);
+                    grant = authorization.grant;
+                    actualProfileId = authorization.profile.id;
                 } catch (error) {
                     if (!(error instanceof CodexAccountError) || error.code !== 'codex-account-unbound') throw error;
                 }
+            }
+            if (expectedCodexAccountProfileId !== undefined && actualProfileId !== expectedCodexAccountProfileId) {
+                throw new CodexAccountError('binding-version-conflict');
             }
         }
         dispatching = true;

@@ -27,6 +27,34 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('transparent Codex grants', () => {
+    it.each([null, '00000000-0000-4000-8000-000000000002'])('rejects a changed connection before RPC (expected %s)', async (expectedCodexAccountProfileId) => {
+        expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex', expectedCodexAccountProfileId }))
+            .toMatchObject({ type: 'error', codexAccountErrorCode: 'binding-version-conflict' });
+        expect(machineRPC).not.toHaveBeenCalled();
+    });
+
+    it('does not fall back to native after the selected account is unbound', async () => {
+        vi.stubGlobal('fetch', async () => Response.json({ error: 'codex-account-unbound' }, { status: 409 }));
+        expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex',
+            expectedCodexAccountProfileId: '00000000-0000-4000-8000-000000000001' }))
+            .toMatchObject({ type: 'error', codexAccountErrorCode: 'binding-version-conflict' });
+        expect(machineRPC).not.toHaveBeenCalled();
+    });
+
+    it('starts on the matching selected account without forwarding the expected scope to the daemon', async () => {
+        expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex',
+            expectedCodexAccountProfileId: '00000000-0000-4000-8000-000000000001' }))
+            .toEqual({ type: 'success', sessionId: 'paws-new' });
+        expect(machineRPC.mock.calls[0][2]).not.toHaveProperty('expectedCodexAccountProfileId');
+        expect(machineRPC.mock.calls[0][2].codexSessionGrant).toBe('a'.repeat(43));
+    });
+
+    it('starts on the matching selected native connection without a grant', async () => {
+        vi.stubGlobal('fetch', async () => Response.json({ error: 'codex-account-unbound' }, { status: 409 }));
+        expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex', expectedCodexAccountProfileId: null }))
+            .toEqual({ type: 'success', sessionId: 'paws-new' });
+        expect(machineRPC.mock.calls[0][2]).not.toHaveProperty('codexSessionGrant');
+    });
     it('rejects retired Personal launches and resumes before authorization or RPC', async () => {
         expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'personal' as any, resumeCodexThreadId: 'misleading' }))
             .toEqual({ type: 'error', errorMessage: 'personal-agent-retired' });

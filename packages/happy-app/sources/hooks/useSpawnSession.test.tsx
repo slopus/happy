@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Machine } from '@/sync/storageTypes';
 import type { SpawnSessionResult } from '@/sync/ops';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
-import { useSpawnSession, type SpawnSessionArgs } from './useSpawnSession';
+import { useSpawnSession, configureSpawnedSession, type SpawnSessionArgs } from './useSpawnSession';
+import { resolveNewSessionSpawnSettings } from '@/utils/newSessionSpawnSettings';
+import { resolveMessageModeMeta } from '@/sync/messageMeta';
 import { sessionStartupTraceRuntime } from '@/sync/sessionStartupTraceRuntime';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
@@ -62,6 +64,7 @@ vi.mock('@/sync/storage', () => ({
             updateSessionPermissionMode: mocks.updatePermission,
             updateSessionModelMode: mocks.updateModel,
             updateSessionEffortLevel: mocks.updateEffort,
+            updateSessionFastMode: vi.fn(),
             settings: {
                 sidebarOrganization: {
                     lists: [{ id: 'happy-list', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'machine-1', path: '~/work', defaultAgent: 'codex', createdAt: 1 }],
@@ -142,6 +145,16 @@ function renderHook(): { current: () => HookResult; unmount: () => void } {
 }
 
 describe('useSpawnSession', () => {
+    it('configures explicit native defaults that survive into the first outgoing message', () => {
+        const session: any = { metadata: { flavor: 'codex' } };
+        mocks.updateModel.mockImplementationOnce((_id, modelMode) => { session.modelMode = modelMode; });
+        mocks.updateEffort.mockImplementationOnce((_id, effortLevel) => { session.effortLevel = effortLevel; });
+        const launch = resolveNewSessionSpawnSettings({ draftWorktreeKey: null,
+            resolvedModes: { modelMode: 'gpt-6.1-sol', effortLevel: 'high' },
+            liveSelection: { modelKey: undefined, effortKey: null, worktreeKey: '__none__', fastMode: false } });
+        configureSpawnedSession('new-native', launch);
+        expect(resolveMessageModeMeta(session)).toMatchObject({ model: null, effort: null });
+    });
     const originalConsoleError = console.error;
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 

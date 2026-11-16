@@ -50,7 +50,9 @@ export function resolveMessageModeMeta(
         ?? session.metadata?.currentThoughtLevelCode
         ?? agentOverrides.effortLevel
         ?? codeDefaults.effortLevel;
-    const effort = normalizeModelEffortKey(flavor, modelMode ?? 'default', requestedEffort, session.metadata);
+    const effort = flavor === 'codex' && modelMode === 'default' && session.effortLevel === 'default'
+        ? 'default'
+        : normalizeModelEffortKey(flavor, modelMode ?? 'default', requestedEffort, session.metadata);
     const supportsEffort = !flavor
         || flavor === 'claude'
         || flavor === 'codex';

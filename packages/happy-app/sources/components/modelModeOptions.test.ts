@@ -17,6 +17,13 @@ import {
 const translate = (key: string) => `tr:${key}`;
 
 describe('modelModeOptions', () => {
+    it('offers only the bound ChatGPT account catalog without adding unsupported suggestions', () => {
+        const models = getSuggestedModelModes('codex', {
+            codexAccountProfileId: 'account-a',
+            models: [{ code: 'gpt-6.1-sol', value: 'Sol' }],
+        } as any, translate);
+        expect(models.map(model => model.key)).toEqual(['default', 'gpt-6.1-sol']);
+    });
     it('maps metadata option shape into mode options', () => {
         expect(mapMetadataOptions([
             { code: 'm1', value: 'Model One', description: 'Primary model' },
