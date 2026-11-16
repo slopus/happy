@@ -23,8 +23,9 @@
     <string name="cloud_name_taken">%1$s is taken.</string>
     <string name="cloud_name_reserved">%1$s is reserved.</string>
     <string name="cloud_failed">Something went wrong. Try again.</string>
+    <string name="cloud_unreachable">Happy Cloud couldn\'t be reached. Check your connection and try again.</string>
     <string name="cloud_connecting">Connecting to %1$s…</string>
-    <string name="cloud_session_expired">Your Happy Cloud sign-in lasts an hour, and it\'s up. Sign in again to open, create or join a server. Servers already on this phone stay signed in.</string>
+    <string name="cloud_session_expired">Your Happy Cloud sign-in has ended. Sign in again to open, create or join a server. Servers already on this phone stay signed in.</string>
     <string name="cloud_sign_out">Sign out of Happy Cloud</string>
     <string name="cloud_members">Members</string>
     <string name="cloud_members_sign_in">Sign in to Happy Cloud to see who is on this server.</string>

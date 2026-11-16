@@ -21,8 +21,9 @@
     <string name="cloud_name_taken">%1$s 已被占用。</string>
     <string name="cloud_name_reserved">%1$s 已被保留。</string>
     <string name="cloud_failed">出了点问题，请重试。</string>
+    <string name="cloud_unreachable">无法连接 Happy Cloud。请检查网络连接后重试。</string>
     <string name="cloud_connecting">正在连接到 %1$s…</string>
-    <string name="cloud_session_expired">Happy Cloud 登录有效期为一小时，现已过期。请重新登录以打开、新建或加入服务器。已在此手机上的服务器仍保持登录。</string>
+    <string name="cloud_session_expired">Happy Cloud 登录已结束。请重新登录以打开、新建或加入服务器。已在此手机上的服务器仍保持登录。</string>
     <string name="cloud_sign_out">退出 Happy Cloud</string>
     <string name="cloud_members">成员</string>
     <string name="cloud_members_sign_in">登录 Happy Cloud 以查看此服务器上的成员。</string>

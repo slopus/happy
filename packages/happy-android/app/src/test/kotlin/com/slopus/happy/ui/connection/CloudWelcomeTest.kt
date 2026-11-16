@@ -184,10 +184,19 @@ class CloudWelcomeTest {
         }
     }
 
+    /** Happy Cloud out of reach says so, in its own words rather than a server address's, and signs nothing out. */
     @Test
-    fun theHourUpSaysSoOverContinue() {
+    fun anUnreachableSignInSaysHappyCloudCouldntBeReached() {
+        screen(CloudAccountState.Failed(ServerAuthException.Reason.Unreachable))
+        rule.onNodeWithText("Happy Cloud couldn't be reached. Check your connection and try again.").assertExists()
+        rule.onNodeWithText("Check the address", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Sign in with GitHub").assertExists()
+    }
+
+    @Test
+    fun anEndedSessionSaysSoOverContinue() {
         screen(CloudAccountState.SignedOut(expired = true))
-        rule.onNodeWithText("sign-in lasts an hour", substring = true).assertExists()
+        rule.onNodeWithText("Your Happy Cloud sign-in has ended.", substring = true).assertExists()
         rule.node(CloudTags.PRIMARY).assertExists()
     }
 
@@ -225,6 +234,7 @@ class CloudWelcomeTest {
         answers += PasswordSignIn.Failed(CloudException.Reason.Unreachable)
         rule.node(CloudTags.PRIMARY).performClick()
         rule.onNodeWithText("Too many tries", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Happy Cloud couldn't be reached. Check your connection and try again.").assertExists()
         assertEquals(3, tries.size)
         // The browser's sign-in is still there, under it.
         rule.node(CloudTags.SECONDARY).assertExists()

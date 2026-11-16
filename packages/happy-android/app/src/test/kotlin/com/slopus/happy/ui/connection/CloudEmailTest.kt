@@ -182,7 +182,7 @@ class CloudEmailTest {
             EmailSignIn.InvalidCode to "That code is wrong or has expired.",
             EmailSignIn.Sent to "We sent you a new code.",
             EmailSignIn.Unsupported("Email sign-in is not configured.") to "Email sign-in is not configured.",
-            EmailSignIn.Failed(CloudException.Reason.Unreachable) to "Could not reach the server. Check the address and your connection.",
+            EmailSignIn.Failed(CloudException.Reason.Unreachable) to "Happy Cloud couldn't be reached. Check your connection and try again.",
         )
         for ((answer, text) in said) {
             outcome = answer

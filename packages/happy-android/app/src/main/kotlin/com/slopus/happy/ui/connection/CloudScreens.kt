@@ -549,7 +549,7 @@ fun CloudScreen(
  * the app (Apple has no native sign-in on Android); Google's is its own
  * sheet on the phone. Under them, the quiet Continue with email, which
  * signs in with a code mailed to the person and no browser
- * ([CloudEmailScreen]). Over them, a note: the hour up, or why the last
+ * ([CloudEmailScreen]). Over them, a note: the session ended, or why the last
  * sign-in failed. While the sheet is up or the code is exchanged the one
  * pressed spins.
  *
@@ -591,7 +591,8 @@ private fun CloudWelcome(
         val colors = HappyTheme.colors
         val note = when (state) {
             is CloudAccountState.SignedOut -> if (state.expired) stringResource(R.string.cloud_session_expired) to null else null
-            is CloudAccountState.Failed -> stringResource(failureText(state.reason)) to colors.textDestructive
+            // Out of reach is Happy Cloud's, not a server address's.
+            is CloudAccountState.Failed -> stringResource(if (state.reason == ServerAuthException.Reason.Unreachable) R.string.cloud_unreachable else failureText(state.reason)) to colors.textDestructive
             else -> null
         }
         CloudDeck(
@@ -1066,7 +1067,7 @@ private fun InviterAvatar(name: String, picture: String?, image: suspend (String
 
 /**
  * Continue with email, its first step: the address, then Send code, which
- * mails a one-time code to it (`POST /v1/auth/email/start`) and goes on to
+ * mails a one-time code to it (`POST /v2/auth/email/start`) and goes on to
  * [CloudEmailCodeScreen]. Why it was refused shows under the field. While
  * the service asks to wait ([wait], seconds), Send code says how long.
  */
@@ -1100,7 +1101,7 @@ fun CloudEmailScreen(
 /**
  * Continue with email, its second step: the 6-digit code mailed to [email],
  * typed (or filled in by the keyboard's one-time code) and checked as its
- * sixth digit comes, or with Verify (`POST /v1/auth/email/verify`). The
+ * sixth digit comes, or with Verify (`POST /v2/auth/email/verify`). The
  * field stays enabled through a check, so the keyboard stays up for the
  * next try. Resend code under it waits a minute after each code
  * ([resendWait]); Change email goes back to the address. While the service
@@ -1420,6 +1421,6 @@ internal fun cloudFailureText(reason: CloudException.Reason): Int = when (reason
     CloudException.Reason.Invalid -> R.string.cloud_name_rules
     CloudException.Reason.NotFound -> R.string.cloud_failed
     CloudException.Reason.SignInRequired -> R.string.team_server_error_sign_in_required
-    CloudException.Reason.Unreachable -> R.string.team_server_error_unreachable
+    CloudException.Reason.Unreachable -> R.string.cloud_unreachable
     CloudException.Reason.Failed -> R.string.cloud_failed
 }

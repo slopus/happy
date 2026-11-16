@@ -21,8 +21,9 @@
     <string name="cloud_name_taken">%1$s ya está en uso.</string>
     <string name="cloud_name_reserved">%1$s está reservado.</string>
     <string name="cloud_failed">Algo salió mal. Inténtalo de nuevo.</string>
+    <string name="cloud_unreachable">No se pudo conectar con Happy Cloud. Revisa tu conexión e inténtalo de nuevo.</string>
     <string name="cloud_connecting">Conectando con %1$s…</string>
-    <string name="cloud_session_expired">Tu sesión de Happy Cloud dura una hora y ya terminó. Vuelve a iniciar sesión para abrir, crear o unirte a un servidor. Los servidores que ya están en este teléfono siguen conectados.</string>
+    <string name="cloud_session_expired">Tu sesión de Happy Cloud terminó. Vuelve a iniciar sesión para abrir, crear o unirte a un servidor. Los servidores que ya están en este teléfono siguen conectados.</string>
     <string name="cloud_sign_out">Cerrar sesión en Happy Cloud</string>
     <string name="cloud_members">Miembros</string>
     <string name="cloud_members_sign_in">Inicia sesión en Happy Cloud para ver quién está en este servidor.</string>

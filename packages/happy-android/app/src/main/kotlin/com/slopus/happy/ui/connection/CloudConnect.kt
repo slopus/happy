@@ -84,7 +84,7 @@ val LocalCloudConnect: ProvidableCompositionLocal<(() -> Unit)?> = compositionLo
 
 /**
  * Connecting to Happy Cloud: full screen, on the first screen's gradient.
- * Signed out, or the account's hour up, it opens on a welcome whose Continue
+ * Signed out, or the account's session over, it opens on a welcome whose Continue
  * starts the account's sign-in; signed in, on the account's servers.
  */
 @Composable
@@ -92,7 +92,7 @@ fun rememberCloudConnect(graph: AppGraph, nav: NavHostController): (() -> Unit)?
     val account = graph.cloudAccount ?: return null
     return remember(account, nav) {
         {
-            // A pass whose hour is up signs out here: the + opens on the sign-in, not a picker that would refuse.
+            // A session that is over signs out here: the + opens on the sign-in, not a picker that would refuse.
             account.signedIn()
             nav.navigate(CloudRoute) { launchSingleTop = true }
         }
@@ -380,7 +380,7 @@ private fun CloudInviteEntry(graph: AppGraph, account: CloudAccount, nav: NavHos
         // Restored after the process went: the token went with it.
         if (holder.flow == null) nav.popBackStack()
     }
-    // A pass whose hour is up signs out here, so Join asks for the sign-in rather than failing.
+    // A session that is over signs out here, so Join asks for the sign-in rather than failing.
     LaunchedEffect(Unit) { account.signedIn() }
     val flow = holder.flow ?: return
     val state by account.state.collectAsStateWithLifecycle()
