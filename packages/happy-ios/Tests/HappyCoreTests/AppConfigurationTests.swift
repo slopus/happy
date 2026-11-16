@@ -77,7 +77,7 @@ final class AppConfigurationTests: XCTestCase {
             XCTAssertEqual(settings.map { $0.trimmingCharacters(in: .whitespaces) }, ["MARKETING_VERSION: \"\(version)\""], spec)
         }
         for variant in AppVariant.allCases {
-            XCTAssertEqual(try plist(variant)["CFBundleVersion"] as? String, variant == .production ? "161" : "1")
+            XCTAssertEqual(try plist(variant)["CFBundleVersion"] as? String, variant == .production ? "162" : "1")
         }
     }
 
