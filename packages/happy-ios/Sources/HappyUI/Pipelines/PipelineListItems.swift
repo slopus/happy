@@ -35,6 +35,8 @@ enum PipelineListItems {
     static func runId(_ id: String) -> String { "run:\(id)" }
     /// The run a row's ID names, if it is a run's row.
     static func run(ofRow id: String) -> String? { id.hasPrefix("run:") ? String(id.dropFirst("run:".count)) : nil }
+    /// The pipeline a row's ID names, if it is a pipeline's row.
+    static func pipeline(ofRow id: String) -> String? { id.hasPrefix("pipeline:") ? String(id.dropFirst("pipeline:".count)) : nil }
 
     /// Whether anything shown counts time by the second.
     nonisolated static func ticking(_ state: PipelinesFeed.State) -> Bool {
@@ -85,23 +87,31 @@ enum PipelineListItems {
         let tile = pipeline.enabled
             ? PipelineRows.Tile(icon: Glyphs.icon("pipeline"), ink: Palette.tileTeal, fill: Palette.tileTealFill)
             : PipelineRows.neutral(Glyphs.icon("pipeline"))
-        // Its page comes with the pipeline page; until then the row only reads.
         return PipelineRows.row(pipelineId(pipeline.id), title: pipeline.name, subtitle: parts.joined(separator: " · "), trailing: time, tile: tile,
-                                place: place, environment(input))
+                                place: place, opens: true, environment(input))
     }
 
     nonisolated static func row(_ run: PipelineRunListEntry, place: CardPlace, parent: [String: String], input: PipelineListInput) -> CardItem {
+        row(run, title: run.pipelineName, place: place, parent: parent, agents: input.agents, environment(input))
+    }
+
+    /// A run's row: `title`, then how it stands, its version and who started
+    /// it; on one pipeline's page its title is its state.
+    nonisolated static func row(_ run: PipelineRunListEntry, title: String, place: CardPlace, parent: [String: String], agents: [String: String],
+                                _ env: PipelineCardEnvironment) -> CardItem {
         typealias Text = Strings.Pipelines
         var status = Text.state(run.state)
         if let started = run.startedAt {
-            let end = run.endedAt ?? input.now.timeIntervalSince1970 * 1000
-            status += " · " + Text.elapsed(end - started)
+            let end = run.endedAt ?? env.now.timeIntervalSince1970 * 1000
+            status = (title == status ? "" : status + " · ") + Text.elapsed(end - started)
+        } else if title == status {
+            status = ""
         }
-        var parts = [status, Text.version(run.version), Text.startedBy(run, agent: { input.agents[$0].flatMap { $0.isEmpty ? nil : $0 } }, parent: { parent[$0] })]
+        var parts = [status, Text.version(run.version), Text.startedBy(run, agent: { agents[$0].flatMap { $0.isEmpty ? nil : $0 } }, parent: { parent[$0] })]
         if run.pipelineArchived { parts.append(Text.archived) }
-        let time = Text.ago(Date(timeIntervalSince1970: run.createdAt / 1000), now: input.now, calendar: input.calendar)
-        return PipelineRows.row(runId(run.id), title: run.pipelineName, subtitle: parts.joined(separator: " · "), trailing: time, tile: PipelineRows.tile(run.state),
-                                place: place, opens: true, titleColor: run.pipelineArchived ? Palette.settingsSecondary : Palette.text, environment(input))
+        let time = Text.ago(Date(timeIntervalSince1970: run.createdAt / 1000), now: env.now, calendar: env.calendar)
+        return PipelineRows.row(runId(run.id), title: title, subtitle: parts.filter { !$0.isEmpty }.joined(separator: " · "), trailing: time, tile: PipelineRows.tile(run.state),
+                                place: place, opens: true, titleColor: run.pipelineArchived ? Palette.settingsSecondary : Palette.text, env)
     }
 
     private nonisolated static func environment(_ input: PipelineListInput) -> PipelineCardEnvironment {

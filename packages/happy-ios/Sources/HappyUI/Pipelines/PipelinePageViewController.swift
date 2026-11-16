@@ -35,6 +35,7 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
         var width: CGFloat
         var title: String?
         var live: Bool
+        var more: String?
         var ticking: Bool
         var targets: [String: PipelineRowTarget]
         /// The same items at another width, for a width change.
@@ -52,6 +53,8 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
     private var shownMinute = 0
     private var targets: [String: PipelineRowTarget] = [:]
     private final var replan: (@Sendable (CGFloat) -> [CardItem])?
+    /// The row that, once on screen, asks for the next page; nil once asked.
+    private final var more: String?
     /// What the page is titled when the link says nothing.
     private var pageTitle: String
     private var headerTitle: String?
@@ -83,7 +86,10 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
             guard let self, let target = targets[id] else { return }
             open(target)
         }
-        list.onScroll = { [weak self] in self?.scrolled() }
+        list.onScroll = { [weak self] in
+            self?.checkMore()
+            self?.scrolled()
+        }
 
         var input = initial
         input.env = environment()
@@ -147,7 +153,9 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
             let page = TextSelectionViewController(text: text)
             page.title = title
             navigationController?.pushViewController(page, animated: true)
-        case .node, .command, .abort:
+        case .pipeline(let id):
+            navigationController?.pushViewController(PipelineViewController(session: session, pipelineId: id), animated: true)
+        case .node, .command, .abort, .version, .definitionNode:
             break
         }
     }
@@ -158,6 +166,15 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
     }
 
     func scrolled() {}
+
+    /// The last row read shows and there is more: the page reads the next.
+    func readMore() {}
+
+    private func checkMore() {
+        guard let more, list.frame(of: more) != nil else { return }
+        self.more = nil
+        readMore()
+    }
 
     // MARK: Derivation
 
@@ -200,7 +217,7 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
             input.env.width = width
             return Input.page(input).items
         }
-        return (Output(items: items, width: input.env.width, title: page.title, live: page.live, ticking: Input.ticking(input), targets: page.targets, replan: replan), state)
+        return (Output(items: items, width: input.env.width, title: page.title, live: page.live, more: page.more, ticking: Input.ticking(input), targets: page.targets, replan: replan), state)
     }
 
     private func show(_ output: Output) -> Bool {
@@ -212,7 +229,9 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
             navigationItem.title = headerTitle ?? title
         }
         replan = output.replan
+        more = output.more
         apply(output.items, live: output.live)
+        checkMore()
         return true
     }
 }

@@ -18,6 +18,10 @@ struct PipelineRunInput: Sendable {
 enum PipelineRowTarget: Equatable, Sendable {
     case run(String)
     case node(String)
+    case pipeline(String)
+    case version(Int)
+    /// A node as a version defines it; nil, the latest.
+    case definitionNode(version: Int?, nodeId: String)
     case text(title: String, text: String)
     case command(seq: Int)
     case abort
@@ -30,6 +34,9 @@ struct PipelinePage: Sendable {
     var title: String?
     /// Rows still arrive at its foot, as a running node's log does.
     var live = false
+    /// The last row of a list read a page at a time, while there is more:
+    /// once it shows, the next page is asked for.
+    var more: String?
     var targets: [String: PipelineRowTarget] = [:]
 
     mutating func append(_ item: CardItem, opens target: PipelineRowTarget? = nil) {
@@ -73,6 +80,10 @@ enum PipelineRunItems {
         facts.append { place in
             (PipelineRows.row("run:state", title: Text.state(run.state), subtitle: duration(run.startedAt, run.endedAt, env),
                               trailing: ago(run.createdAt, env), tile: PipelineRows.tile(run.state), place: place, env), nil)
+        }
+        facts.append { place in
+            (PipelineRows.row("run:pipeline", title: Text.pipeline, trailing: state.names[run.pipelineId] ?? Text.version(run.version), place: place, opens: true, env),
+             .pipeline(run.pipelineId))
         }
         let rows: [(String, String, String?)] = [
             ("started-by", Text.startedByLabel, startedBy(run, input)),
