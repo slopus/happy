@@ -96,4 +96,21 @@
     <string name="home_worktree_unreachable">No s\'ha pogut connectar amb la màquina</string>
     <string name="home_worktree_not_git">No és un repositori Git</string>
     <string name="home_worktree_failed">No s\'ha pogut crear el worktree</string>
+    <!-- Filter chips -->
+    <string name="home_filter_all">Tot</string>
+    <string name="home_filter_bots">Bots</string>
+    <string name="home_filter_tasks">Tasques</string>
+    <string name="home_filter_projects">Projectes</string>
+    <string name="home_filter_unread">No llegits</string>
+    <string name="home_filter_empty_all">Cap xat</string>
+    <string name="home_filter_empty_bots">Cap bot</string>
+    <string name="home_filter_empty_tasks">Cap tasca</string>
+    <string name="home_filter_empty_projects">Cap projecte</string>
+    <string name="home_filter_empty_unread">Cap xat no llegit</string>
+    <plurals name="home_filter_unread_desc_with_count">
+        <item quantity="one">%1$s, %2$d xat</item>
+        <item quantity="many">%1$s, %2$d xats</item>
+        <item quantity="other">%1$s, %2$d xats</item>
+    </plurals>
+    <string name="home_filter_badge_overflow">99+</string>
 </resources>

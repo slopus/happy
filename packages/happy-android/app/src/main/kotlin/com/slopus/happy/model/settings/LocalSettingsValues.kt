@@ -1,10 +1,12 @@
 package com.slopus.happy.model.settings
 
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.ui.theme.ThemePreference
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * Device-only preferences: happy-app sync/localSettings.ts
@@ -26,6 +28,7 @@ data class LocalSettingsValues(
     val consoleLoggingEnabled: Boolean = false,
     val verboseLogging: Boolean = false,
     val zenMode: Boolean = false,
+    val homeFilter: HomeFilter = HomeFilter.All,
     /** Open right-sidebar panels (changes, allFiles, sideChat), in tab order. */
     val sidebarPanelsOpen: List<String> = emptyList(),
     val sidebarPanelActive: String? = null,
@@ -48,6 +51,7 @@ data class LocalSettingsValues(
             "consoleLoggingEnabled" to JsonPrimitive(consoleLoggingEnabled),
             "verboseLogging" to JsonPrimitive(verboseLogging),
             "zenMode" to JsonPrimitive(zenMode),
+            "homeFilter" to JsonPrimitive(homeFilter.wire),
             "sidebarPanelsOpen" to JsonArray(sidebarPanelsOpen.map(::JsonPrimitive)),
             "sidebarPanelActive" to sidebarPanelActive.toJson(),
             "acknowledgedCliVersions" to JsonObject(acknowledgedCliVersions.mapValues { JsonPrimitive(it.value) }),
@@ -92,6 +96,7 @@ data class LocalSettingsValues(
                     consoleLoggingEnabled = bool("consoleLoggingEnabled", false),
                     verboseLogging = bool("verboseLogging", false),
                     zenMode = bool("zenMode", false),
+                    homeFilter = (json["homeFilter"] as? JsonPrimitive)?.contentOrNull?.let(HomeFilter::fromWire) ?: HomeFilter.All,
                     sidebarPanelsOpen = json["sidebarPanelsOpen"]?.asArray()?.map { it.asEnum(sidebarPanels) } ?: emptyList(),
                     sidebarPanelActive = json["sidebarPanelActive"]?.orNull { asEnum(sidebarPanels) },
                     acknowledgedCliVersions = record("acknowledgedCliVersions") { asString() },

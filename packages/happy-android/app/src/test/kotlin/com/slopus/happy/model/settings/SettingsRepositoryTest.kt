@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.net.HappyJson
 import com.slopus.happy.ui.theme.ThemePreference
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -95,8 +96,10 @@ class SettingsRepositoryTest {
         assertTrue(settings.values.value.zenMode)
         assertEquals(mapOf("p" to true), settings.values.value.expandedProjects)
         settings.setThemePreference(ThemePreference.Light)
+        settings.setHomeFilter(HomeFilter.Bots)
         val reread = LocalSettings(prefs).values.value
         assertEquals(ThemePreference.Light, reread.themePreference)
+        assertEquals(HomeFilter.Bots, reread.homeFilter)
         assertTrue(reread.zenMode)
         assertEquals(JsonPrimitive(1), reread.unknown["future"])
     }
@@ -105,6 +108,11 @@ class SettingsRepositoryTest {
     fun localSettingsWithABadFieldAreTheDefaults() {
         assertEquals(LocalSettingsValues.Defaults, LocalSettingsValues.parse(json("""{"zenMode":"yes","debugMode":true}""")))
         assertEquals(LocalSettingsValues.Defaults, LocalSettingsValues.parse(json("""{"themePreference":"sepia"}""")))
+        assertEquals(LocalSettingsValues.Defaults.copy(zenMode = true, homeFilter = HomeFilter.All), LocalSettingsValues.parse(json("""{"zenMode":true,"homeFilter":"corrupted"}""")))
+        assertEquals(LocalSettingsValues.Defaults.copy(zenMode = true, homeFilter = HomeFilter.All), LocalSettingsValues.parse(json("""{"zenMode":true,"homeFilter":123}""")))
+        assertEquals(LocalSettingsValues.Defaults.copy(zenMode = true, homeFilter = HomeFilter.All), LocalSettingsValues.parse(json("""{"zenMode":true,"homeFilter":true}""")))
+        assertEquals(LocalSettingsValues.Defaults.copy(zenMode = true, homeFilter = HomeFilter.All), LocalSettingsValues.parse(json("""{"zenMode":true,"homeFilter":null}""")))
         assertEquals(LocalSettingsValues.Defaults.copy(sidebarPanelsOpen = listOf("changes")), LocalSettingsValues.parse(json("""{"sidebarPanelsOpen":["changes"]}""")))
+        assertEquals(LocalSettingsValues.Defaults.copy(homeFilter = HomeFilter.Tasks), LocalSettingsValues.parse(json("""{"homeFilter":"tasks"}""")))
     }
 }

@@ -1,6 +1,7 @@
 package com.slopus.happy.config
 
 import android.content.SharedPreferences
+import com.slopus.happy.model.HomeFilter
 import com.slopus.happy.model.settings.LocalSettingsValues
 import com.slopus.happy.model.settings.LocalSettingsValues.Companion.wire
 import com.slopus.happy.net.HappyJson
@@ -32,6 +33,8 @@ class LocalSettings(private val prefs: SharedPreferences) {
     }
 
     fun setThemePreference(preference: ThemePreference) = change { it.copy(themePreference = preference) }
+
+    fun setHomeFilter(filter: HomeFilter) = change { it.copy(homeFilter = filter) }
 
     @Synchronized
     fun clear() {
