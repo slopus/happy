@@ -35,15 +35,12 @@ import com.slopus.happy.ui.chat.liftBackdrop
 import com.slopus.happy.ui.chat.liftClear
 import com.slopus.happy.ui.chat.linkStatusWords
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -100,6 +97,7 @@ import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.TitleWithStatus
+import com.slopus.happy.ui.components.TopBar
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
@@ -236,7 +234,6 @@ class ConversationScreenActions(
  * say so in bodyLarge, 32 in. A new chat asks what it will be in the middle
  * instead ([NewWorkChoicePanel]).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationScreen(
     state: ConversationState,
@@ -384,7 +381,7 @@ fun ConversationScreen(
                 // Only the transcript runs under the bar; the other states are held below the bar's foot.
                 feathered = phase == TranscriptPhase.Rows,
                 bar = {
-                    TopAppBar(
+                    TopBar(
                         title = {
                             RecomposeProbe.mark(ConversationScreenTags.PROBE_BAR)
                             // One status line, under the title and nowhere else: the
@@ -485,14 +482,6 @@ fun ConversationScreen(
                         actions = {
                             ConversationHeaderActions(state, actions, composes = roleCanCompose)
                         },
-                        // On the glass, light and dark: no colour of its own, scrolled or not.
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = Color.Transparent,
-                            scrolledContainerColor = Color.Transparent,
-                            titleContentColor = colors.text,
-                            navigationIconContentColor = colors.text,
-                            actionIconContentColor = colors.text,
-                        ),
                         // On the content column, so back and the actions' glyphs sit on the messages' keyline.
                         modifier = Modifier.liftBackdrop(lift, blur).contentMaxWidth(LocalWindowLayout.current).testTag(ConversationScreenTags.BAR),
                     )

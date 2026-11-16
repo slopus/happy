@@ -213,7 +213,10 @@ Preserve credential and push compatibility on upgrades.
 5. **Every screen has the standard top app bar** (`Header`, through
    `Screen`/`StackHeader` where it can), and its back button does what the
    system back does. Never hide it, or replace it with a custom or floating
-   bar, without Steve's explicit OK. Steve made two exceptions: the
+   bar, without Steve's explicit OK. It is drawn by `components/TopBar`,
+   Material's small top app bar to the pixel; Material's own `TopAppBar`
+   reads the title's baseline while measuring, which on Compose UI 1.12
+   crashed a retained page shown again (b/549552303), so don't use it. Steve made two exceptions: the
    first screen (`ui/start`): no bar, only a floating ⋮ over the
    full-window gradient; and the QR scanner: no bar, the camera full
    window with a floating close (✕) top right.

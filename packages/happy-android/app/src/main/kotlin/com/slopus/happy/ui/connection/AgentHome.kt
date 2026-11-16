@@ -47,15 +47,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarColors
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -119,6 +115,7 @@ import com.slopus.happy.ui.chat.rememberShownLinkState
 import com.slopus.happy.ui.conversation.linkState
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
+import com.slopus.happy.ui.components.TopBar
 import com.slopus.happy.ui.components.GlassBarLayout
 import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.HappyAlert
@@ -191,20 +188,6 @@ class AgentHomeActions(
     val onOpenPerson: ((userId: String) -> Unit)? = null,
 )
 
-/** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun agentBarColors(container: Color = HappyTheme.colors.surface): TopAppBarColors {
-    val colors = HappyTheme.colors
-    return TopAppBarDefaults.topAppBarColors(
-        containerColor = container,
-        scrolledContainerColor = container,
-        navigationIconContentColor = colors.text,
-        titleContentColor = colors.text,
-        actionIconContentColor = colors.text,
-    )
-}
-
 /** A Material icon button around one of the app's glyphs, at Material's 24. */
 @Composable
 internal fun BarIconButton(icon: Ionicon, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -214,7 +197,7 @@ internal fun BarIconButton(icon: Ionicon, label: String, onClick: () -> Unit, mo
 }
 
 /**
- * A top app bar whose [container] colour runs the whole width (under the
+ * A [TopBar] whose [container] colour runs the whole width (under the
  * status bar too) while the bar itself is held to the content width and
  * centred, so on a wide window its controls line up with the rows beneath
  * rather than sitting out at the glass. A no-op on a phone, where the
@@ -223,7 +206,6 @@ internal fun BarIconButton(icon: Ionicon, label: String, onClick: () -> Unit, mo
  * in ([HomeCardSpec.inset]), so its outer glyphs stand on the rows' content
  * inside the cards, not on the cards' edges; the targets stay 48.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AgentTopBar(
     tag: String,
@@ -236,9 +218,8 @@ internal fun AgentTopBar(
     val layout = LocalWindowLayout.current
     // On glass the glass is the ground ([GlassBarLayout]).
     Box(Modifier.fillMaxWidth().then(if (LocalBarOnGlass.current) Modifier else Modifier.background(container))) {
-        TopAppBar(
+        TopBar(
             modifier = Modifier.contentMaxWidth(layout).testTag(tag).padding(horizontal = inset),
-            colors = agentBarColors(Color.Transparent),
             navigationIcon = navigationIcon,
             title = title,
             actions = actions,
@@ -247,7 +228,7 @@ internal fun AgentTopBar(
 }
 
 /**
- * Home while an agent connection is open: a Material top app bar with the
+ * Home while an agent connection is open: a top bar ([AgentTopBar]) with the
  * account menu (the agent's own picture) as its navigation, the agent's
  * name as its title (the link's status in its place while on its way, [BarTitle]),
  * and search and settings as its actions. No composer. Then the
@@ -257,7 +238,6 @@ internal fun AgentTopBar(
  * own ground ([AgentSearchResults]), so opening and closing it moves
  * nothing and home keeps its scroll.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentHomeScreen(
     name: String,
