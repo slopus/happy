@@ -36,6 +36,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The Pipelines page over an in-memory Happy Cloud server (ui/pipelines/PipelinesFixturesActivity). -->
+        <activity
+            android:name=".ui.pipelines.PipelinesFixturesActivity"
+            android:exported="true" />
         <!-- The plugin pages over an in-memory Happy Cloud server (ui/plugins/PluginsFixturesActivity). -->
         <activity
             android:name=".ui.plugins.PluginsFixturesActivity"

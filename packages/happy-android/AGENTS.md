@@ -2538,6 +2538,39 @@ words are `strings_plugins.xml` in every locale.
   real pages over an in-memory server (`--ez plugins.member true` for a
   member).
 
+### Pipelines
+
+A Happy Cloud server's pipelines, read only (happy-cluster API.md,
+"Pipelines"; desktop's pipeline pages and `pipelineRead.ts`, which the
+readers follow). `pipelines/` is the wire and state, `ui/pipelines/` the
+pages; words are `strings_pipelines.xml` in every locale.
+
+- **Where:** home's Pipelines row under Plugins (`AgentFeedRow.Pipelines`,
+  `MainPanelKey.PIPELINES` on the tablet), shown only while health says
+  `capabilities.pipelines` (`AgentSession.pipelinesAvailable`, a
+  `CapabilityAvailability` kept per connection so the row doesn't come and
+  go). Nothing is probed: without the flag there is no row and no request.
+- **Wire:** `PipelinesBackend` (`ClusterPipelines`). Readers are tolerant
+  as desktop's: what isn't the shape is left out, a name the server leaves
+  out is the ID, `trigger.agentId` may be null. `GET /v0/pipeline-runs`
+  answering 404 means the server doesn't list runs across pipelines; the
+  page says so and doesn't ask again.
+- **Following:** `PipelinesSource` reads the pipelines again on
+  `pipeline.updated` and `pipeline.run.updated`, the newest page of runs on
+  `pipeline.run.updated`, both on `hello` and on Retry. Events are hints.
+  Older pages read stay under a fresh newest page (`pipelineRunsMerge`). A
+  failed read keeps what showed and says it may be out of date.
+- **Page:** the pipelines by name (head version, Disabled, last run's state
+  and when), then every run newest first: state glyph and word, pipeline
+  (a child's ↳, an archived pipeline's quiet), version, who started it (the
+  agent by home's name, a child by its parent's pipeline and node), when,
+  and how long it took or has taken, ticking each second while a run is
+  live. Older runs page in from the button under them.
+- **Fixture:** debug builds have `ui.pipelines.PipelinesFixturesActivity`:
+  the real page over an in-memory server whose queued run starts and running
+  run ends with the events a server sends (`--ez pipelines.open true` opens
+  it at once).
+
 ## Autocomplete
 
 `@` file mentions and `/` commands in the chat composer. Logic is in

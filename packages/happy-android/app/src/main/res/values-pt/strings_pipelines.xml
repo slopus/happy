@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pipelines_title">Pipelines</string>
+    <string name="pipelines_loading">Carregando pipelines…</string>
+    <string name="pipelines_failed">Não foi possível ler os pipelines</string>
+    <string name="pipelines_tap_to_retry">Toque para tentar de novo</string>
+    <string name="pipelines_empty">Ainda não há pipelines</string>
+    <string name="pipelines_empty_footer">Os agentes criam pipelines e os executam. Peça a um agente para configurar um e ele aparecerá aqui.</string>
+    <string name="pipelines_out_of_date">Pode estar desatualizado: a última leitura falhou.</string>
+    <string name="pipelines_version">v%1$d</string>
+    <string name="pipelines_disabled">Desativado</string>
+    <string name="pipelines_never_run">Nunca executado</string>
+    <string name="pipelines_runs">Execuções</string>
+    <string name="pipelines_runs_loading">Lendo as execuções…</string>
+    <string name="pipelines_runs_empty">Ainda não há execuções. Agentes autorizados a iniciar um pipeline o executam com run_pipeline.</string>
+    <string name="pipelines_runs_unlisted">Este servidor mostra as execuções na página de cada pipeline.</string>
+    <string name="pipelines_runs_older">Execuções anteriores</string>
+    <string name="pipelines_state_queued">Na fila</string>
+    <string name="pipelines_state_running">Em execução</string>
+    <string name="pipelines_state_succeeded">Concluída</string>
+    <string name="pipelines_state_failed">Falhou</string>
+    <string name="pipelines_state_aborted">Abortada</string>
+    <string name="pipelines_state_superseded">Substituída</string>
+    <string name="pipelines_started_by_an_agent">Um agente</string>
+    <string name="pipelines_started_from">De %1$s · %2$s</string>
+    <string name="pipelines_started_from_node">Do nó %1$s de uma execução pai</string>
+    <string name="pipelines_started_by_a_parent">Uma execução pai</string>
+    <string name="pipelines_started_by_unknown">Desconhecido</string>
+    <string name="pipelines_child_run">Execução filha</string>
+    <string name="pipelines_archived">Arquivado</string>
+    <string name="pipelines_duration_seconds">%1$d s</string>
+    <string name="pipelines_duration_minutes">%1$d min %2$d s</string>
+    <string name="pipelines_duration_hours">%1$d h %2$d min</string>
+</resources>

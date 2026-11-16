@@ -378,6 +378,7 @@ fun LazyListScope.agentHomeRows(
     onOpenFeed: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
+    onOpenPipelines: () -> Unit = {},
 ) {
     items(items, key = { it.key }, contentType = { (it as? AgentHomeItem.Row)?.row?.let { row -> row::class } ?: it::class }) { item ->
         val motion = if (reduceMotion) Modifier else Modifier.animateItem(
@@ -395,7 +396,7 @@ fun LazyListScope.agentHomeRows(
             // Drawn from what its line shows: a change to nothing on it composes nothing.
             is AgentHomeItem.Row -> AgentHomeCardRow(
                 item.drawn(), motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
-                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed, onOpenTodos, onOpenPlugins,
+                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines,
             )
         }
     }
@@ -420,6 +421,7 @@ internal fun AgentHomeCardRow(
     onOpenFeed: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
+    onOpenPipelines: () -> Unit = {},
 ) {
     HomeCardRow(
         place = HomeCardPlace(item.first, item.last),
@@ -434,6 +436,7 @@ internal fun AgentHomeCardRow(
             is AgentFeedRow.Folder -> FolderRow(row)
             AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), { TileMark(Ionicon.DocumentTextOutline, RowTile.Purple) }, onOpenArtifacts)
             AgentFeedRow.Plugins -> PlaceRow(stringResource(R.string.plugins_title), { TileMark(Ionicon.ExtensionPuzzleOutline, RowTile.Orange) }, onOpenPlugins)
+            AgentFeedRow.Pipelines -> PlaceRow(stringResource(R.string.pipelines_title), { TileMark(Ionicon.GitNetworkOutline, RowTile.Teal) }, onOpenPipelines)
             is AgentFeedRow.Feed -> FeedPlaceRow(row.unread, onOpenFeed)
             AgentFeedRow.Todos -> PlaceRow(stringResource(R.string.agent_search_todos), { TileMark(Ionicon.CheckboxOutline, RowTile.Green) }, onOpenTodos)
             is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
@@ -503,6 +506,7 @@ internal fun AgentFeedRow.panelKey(): String? = when (val row = this) {
     is AgentFeedRow.Surface -> MainPanelKey.surface(row.id)
     AgentFeedRow.Artifacts -> MainPanelKey.ARTIFACTS
     AgentFeedRow.Plugins -> MainPanelKey.PLUGINS
+    AgentFeedRow.Pipelines -> MainPanelKey.PIPELINES
     is AgentFeedRow.Feed -> MainPanelKey.FEED
     AgentFeedRow.Todos -> MainPanelKey.TODOS
     else -> null
@@ -513,7 +517,7 @@ private fun titleStart(row: AgentFeedRow): Dp {
     val (depth, marked) = when (row) {
         is AgentFeedRow.Conversation -> row.depth to AgentHomeSpec.hasMark(row.kind)
         is AgentFeedRow.Folder -> row.depth to (row.mark != null)
-        AgentFeedRow.Artifacts, AgentFeedRow.Plugins, is AgentFeedRow.Feed, AgentFeedRow.Todos, is AgentFeedRow.Surface -> 0 to true
+        AgentFeedRow.Artifacts, AgentFeedRow.Plugins, AgentFeedRow.Pipelines, is AgentFeedRow.Feed, AgentFeedRow.Todos, is AgentFeedRow.Surface -> 0 to true
         is AgentFeedRow.Section -> return 0.dp
     }
     return AgentHomeSpec.markInset + AgentHomeSpec.indent * depth + if (marked) AgentHomeSpec.mark + AgentHomeSpec.markGap else 0.dp
@@ -765,6 +769,7 @@ fun AgentHomeList(
     onOpenFeed: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
+    onOpenPipelines: () -> Unit = {},
 ) {
     val reduceMotion = rememberReduceMotion()
     // The call brings a conversation's row on screen here before it presses it ([VoiceTouch.rows]).
@@ -784,7 +789,7 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed, onOpenTodos, onOpenPlugins)
+        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines)
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }

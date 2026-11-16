@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pipelines_title">Pipelines</string>
+    <string name="pipelines_loading">Cargando pipelines…</string>
+    <string name="pipelines_failed">No se pudieron leer los pipelines</string>
+    <string name="pipelines_tap_to_retry">Toca para reintentar</string>
+    <string name="pipelines_empty">Todavía no hay pipelines</string>
+    <string name="pipelines_empty_footer">Los agentes crean pipelines y los ejecutan. Pide a un agente que configure uno y aparecerá aquí.</string>
+    <string name="pipelines_out_of_date">Puede que esté desactualizado: la última lectura falló.</string>
+    <string name="pipelines_version">v%1$d</string>
+    <string name="pipelines_disabled">Desactivado</string>
+    <string name="pipelines_never_run">Nunca ejecutado</string>
+    <string name="pipelines_runs">Ejecuciones</string>
+    <string name="pipelines_runs_loading">Leyendo las ejecuciones…</string>
+    <string name="pipelines_runs_empty">Todavía no hay ejecuciones. Los agentes que pueden iniciar un pipeline lo ejecutan con run_pipeline.</string>
+    <string name="pipelines_runs_unlisted">Este servidor muestra las ejecuciones en la página de cada pipeline.</string>
+    <string name="pipelines_runs_older">Ejecuciones anteriores</string>
+    <string name="pipelines_state_queued">En cola</string>
+    <string name="pipelines_state_running">En curso</string>
+    <string name="pipelines_state_succeeded">Correcta</string>
+    <string name="pipelines_state_failed">Fallida</string>
+    <string name="pipelines_state_aborted">Abortada</string>
+    <string name="pipelines_state_superseded">Reemplazada</string>
+    <string name="pipelines_started_by_an_agent">Un agente</string>
+    <string name="pipelines_started_from">De %1$s · %2$s</string>
+    <string name="pipelines_started_from_node">Del nodo %1$s de una ejecución padre</string>
+    <string name="pipelines_started_by_a_parent">Una ejecución padre</string>
+    <string name="pipelines_started_by_unknown">Desconocido</string>
+    <string name="pipelines_child_run">Ejecución hija</string>
+    <string name="pipelines_archived">Archivado</string>
+    <string name="pipelines_duration_seconds">%1$d s</string>
+    <string name="pipelines_duration_minutes">%1$d min %2$d s</string>
+    <string name="pipelines_duration_hours">%1$d h %2$d min</string>
+</resources>

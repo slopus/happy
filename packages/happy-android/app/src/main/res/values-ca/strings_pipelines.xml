@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pipelines_title">Pipelines</string>
+    <string name="pipelines_loading">S\'estan carregant els pipelines…</string>
+    <string name="pipelines_failed">No s\'han pogut llegir els pipelines</string>
+    <string name="pipelines_tap_to_retry">Toca per tornar-ho a provar</string>
+    <string name="pipelines_empty">Encara no hi ha pipelines</string>
+    <string name="pipelines_empty_footer">Els agents creen pipelines i els executen. Demana a un agent que en configuri un i apareixerà aquí.</string>
+    <string name="pipelines_out_of_date">Pot ser que no estigui actualitzat: l\'última lectura ha fallat.</string>
+    <string name="pipelines_version">v%1$d</string>
+    <string name="pipelines_disabled">Desactivat</string>
+    <string name="pipelines_never_run">Mai executat</string>
+    <string name="pipelines_runs">Execucions</string>
+    <string name="pipelines_runs_loading">S\'estan llegint les execucions…</string>
+    <string name="pipelines_runs_empty">Encara no hi ha execucions. Els agents que poden iniciar un pipeline l\'executen amb run_pipeline.</string>
+    <string name="pipelines_runs_unlisted">Aquest servidor mostra les execucions a la pàgina de cada pipeline.</string>
+    <string name="pipelines_runs_older">Execucions anteriors</string>
+    <string name="pipelines_state_queued">En cua</string>
+    <string name="pipelines_state_running">En curs</string>
+    <string name="pipelines_state_succeeded">Correcta</string>
+    <string name="pipelines_state_failed">Fallida</string>
+    <string name="pipelines_state_aborted">Avortada</string>
+    <string name="pipelines_state_superseded">Substituïda</string>
+    <string name="pipelines_started_by_an_agent">Un agent</string>
+    <string name="pipelines_started_from">De %1$s · %2$s</string>
+    <string name="pipelines_started_from_node">Del node %1$s d\'una execució pare</string>
+    <string name="pipelines_started_by_a_parent">Una execució pare</string>
+    <string name="pipelines_started_by_unknown">Desconegut</string>
+    <string name="pipelines_child_run">Execució filla</string>
+    <string name="pipelines_archived">Arxivat</string>
+    <string name="pipelines_duration_seconds">%1$d s</string>
+    <string name="pipelines_duration_minutes">%1$d min %2$d s</string>
+    <string name="pipelines_duration_hours">%1$d h %2$d min</string>
+</resources>

@@ -149,6 +149,7 @@ enum class Ionicon(val codepoint: Int) {
     ReloadOutline(0xf51e), // reload-outline
     Remove(0xf520), // remove
     RemoveCircleOutline(0xf522), // remove-circle-outline
+    ReturnDownForwardOutline(0xf53c), // return-down-forward-outline
     ReturnUpBackOutline(0xf53f), // return-up-back-outline
     Search(0xf55f), // search
     ServerOutline(0xf569), // server-outline

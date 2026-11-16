@@ -277,7 +277,7 @@ sealed interface AgentSearchResult {
     ) : AgentSearchResult {
         /** Home's own pages (Artifacts, Activity, Todos), which only the phone has, draw as home draws them. */
         val drawn: AgentSearchResult?
-            get() = local.takeIf { (it as? Home)?.item?.row.let { row -> row == AgentFeedRow.Artifacts || row == AgentFeedRow.Plugins || row is AgentFeedRow.Feed || row == AgentFeedRow.Todos } }
+            get() = local.takeIf { (it as? Home)?.item?.row.let { row -> row == AgentFeedRow.Artifacts || row == AgentFeedRow.Plugins || row == AgentFeedRow.Pipelines || row is AgentFeedRow.Feed || row == AgentFeedRow.Todos } }
     }
 }
 
@@ -519,7 +519,7 @@ private fun localSearch(feed: AgentFeed, query: String, label: (AgentFeedRow) ->
         }
     }
     for (row in feed.rows) {
-        if (row != AgentFeedRow.Artifacts && row != AgentFeedRow.Plugins && row !is AgentFeedRow.Feed && row != AgentFeedRow.Todos) continue
+        if (row != AgentFeedRow.Artifacts && row != AgentFeedRow.Plugins && row != AgentFeedRow.Pipelines && row !is AgentFeedRow.Feed && row != AgentFeedRow.Todos) continue
         val title = label(row) ?: continue
         candidates += Local("home:${row.key}", title, emptyList(), 0) { place -> AgentSearchResult.Home(AgentHomeItem.Row(row, place.first, place.last)) }
     }
@@ -758,6 +758,7 @@ fun AgentSearchResults(
     onOpenFeed: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
+    onOpenPipelines: () -> Unit = {},
     /** Opens what the daemon found that the phone draws no row of; null for what opens nothing (a project, as on home). */
     onOpenHit: (SearchHit) -> (() -> Unit)? = { null },
     /** The team members read so far ([com.slopus.happy.agent.TeamDirectory]), whose pictures People wear. */
@@ -809,6 +810,7 @@ fun AgentSearchResults(
                         onOpenArtifacts = onOpenArtifacts,
                         onOpenTodos = onOpenTodos,
                         onOpenPlugins = onOpenPlugins,
+                        onOpenPipelines = onOpenPipelines,
                         onOpenSurface = onOpenSurface,
                         onOpenFeed = onOpenFeed,
                     )
