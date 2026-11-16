@@ -128,6 +128,26 @@ class HttpsTransportTest {
         }
     }
 
+    @Test fun requestsAskForGzipAndDecodeItButStreamsDoNot() = runBlocking {
+        val (serverKeys, clientRoots) = certificates()
+        server(serverKeys).use { server ->
+            val transport = HttpsTransport(AgentOrigin.parse("https://localhost:${server.port}"), clientRoots.sslSocketFactory())
+            try {
+                val packed = okio.Buffer().also { buffer -> okio.GzipSink(buffer).use { it.write(okio.Buffer().writeUtf8("{\"ok\":true}"), 11) } }
+                server.enqueue(MockResponse.Builder().addHeader("Content-Encoding", "gzip").body(packed).build())
+                assertEquals("{\"ok\":true}", transport.request("GET", "/v0/bootstrap", "token").text)
+                assertEquals("gzip", server.takeRequest().headers["Accept-Encoding"])
+                server.enqueue(MockResponse.Builder().body("plain").build())
+                assertEquals("plain", transport.request("GET", "/v0/x", "token", headers = mapOf("Accept-Encoding" to "identity")).text)
+                assertEquals(listOf("identity"), server.takeRequest().headers.values("Accept-Encoding"))
+                server.enqueue(MockResponse.Builder().addHeader("Content-Type", "text/event-stream").body("data: one\n\n").build())
+                val events = transport.stream("/v0/events/stream", "token")
+                events.close()
+                assertNull(server.takeRequest().headers["Accept-Encoding"])
+            } finally { transport.close() }
+        }
+    }
+
     @Test fun trustedCertificateStillRequiresMatchingHostname() = runBlocking {
         val (serverKeys, clientRoots) = certificates("not-localhost.example")
         server(serverKeys).use { server ->

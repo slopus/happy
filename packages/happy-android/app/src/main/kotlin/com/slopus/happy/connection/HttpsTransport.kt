@@ -102,7 +102,7 @@ class HttpsTransport internal constructor(
     }
 
     override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
-        val head = TailcatHttp.requestHead(method, path, origin.port, credential, body, headers, origin.authority)
+        val head = TailcatHttp.requestHead(method, path, origin.port, credential, body, headers, origin.authority, gzip = true)
         try {
             return withTimeout(if (category == RequestCategory.File) fileTimeoutMillis else requestTimeoutMillis) {
                 val stream = socket(category)

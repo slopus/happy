@@ -209,7 +209,7 @@ class TailcatTransport internal constructor(
         headers: Map<String, String>,
         category: RequestCategory,
     ): TransportResponse {
-        val head = TailcatHttp.requestHead(method, path, port, credential, body, headers, close = false)
+        val head = TailcatHttp.requestHead(method, path, port, credential, body, headers, close = false, gzip = true)
         val progress = kotlinx.coroutines.currentCoroutineContext()[BodyProgress]
         val lease = clients.lease(category)
         val deadline = if (category == RequestCategory.File) fileTimeoutMillis else requestTimeoutMillis
@@ -456,8 +456,12 @@ object TailcatHttp {
     const val PROTOCOL = 35
     const val PROTOCOL_HEADER = "Happy-Protocol"
 
-    /** The request line and headers; refuses anything that could split them. */
-    fun requestHead(method: String, path: String, port: Int, credential: String, body: ByteArray?, headers: Map<String, String>, authority: String = "server.tailcat:$port", close: Boolean = true): ByteArray {
+    /**
+     * The request line and headers; refuses anything that could split them.
+     * [gzip] asks for a compressed answer, which [HttpResponseParser]
+     * decodes; never on a stream, which is read as it comes.
+     */
+    fun requestHead(method: String, path: String, port: Int, credential: String, body: ByteArray?, headers: Map<String, String>, authority: String = "server.tailcat:$port", close: Boolean = true, gzip: Boolean = false): ByteArray {
         fun unsafe(text: String) = text.contains('\r') || text.contains('\n')
         if (method !in methods || !path.startsWith("/") || path.contains(' ') || unsafe(path) || unsafe(credential) ||
             headers.any { (name, value) -> unsafe(name) || name.contains(':') || unsafe(value) }
@@ -469,6 +473,7 @@ object TailcatHttp {
             .append(if (close) "Connection: close\r\n" else "")
             .append("$PROTOCOL_HEADER: $PROTOCOL\r\n")
         if (headers.keys.none { it.equals("Accept", ignoreCase = true) }) head.append("Accept: application/json\r\n")
+        if (gzip && headers.keys.none { it.equals("Accept-Encoding", ignoreCase = true) }) head.append("Accept-Encoding: gzip\r\n")
         head.append("Content-Length: ${body?.size ?: 0}\r\n")
         if (body != null && headers.keys.none { it.equals("Content-Type", ignoreCase = true) }) head.append("Content-Type: application/json\r\n")
         headers.forEach { (name, value) -> head.append("$name: $value\r\n") }
@@ -479,6 +484,7 @@ object TailcatHttp {
 /**
  * Incremental HTTP/1.1 response decoding with strict framing and bounded
  * sizes: any TCP boundaries; length, chunked and close-delimited bodies.
+ * A gzip body is decoded, to at most [limit] bytes.
  */
 class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
     private var data = ByteArray(0)
@@ -488,7 +494,33 @@ class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
 
     private fun completed(status: Int, headers: Map<String, String>, body: ByteArray, exact: Boolean, http11: Boolean): TransportResponse {
         reusable = exact && http11 && headers["connection"]?.split(',')?.none { it.trim().equals("close", ignoreCase = true) } != false
-        return TransportResponse(status, headers, body)
+        return decoded(status, headers, body)
+    }
+
+    /** [body] as if sent plain: no `content-encoding`, and its `content-length` the decoded body's. */
+    private fun decoded(status: Int, headers: Map<String, String>, body: ByteArray): TransportResponse {
+        val coding = headers["content-encoding"]?.trim()?.lowercase()
+        if (coding == null || coding == "identity" || status == 204 || status == 304) return TransportResponse(status, headers, body)
+        // Nothing asked for any other, so nothing can read it.
+        if (coding != "gzip" && coding != "x-gzip") invalid()
+        val plain = java.io.ByteArrayOutputStream()
+        try {
+            java.util.zip.GZIPInputStream(body.inputStream()).use { gzip ->
+                val buffer = ByteArray(65536)
+                while (true) {
+                    val count = gzip.read(buffer)
+                    if (count < 0) break
+                    // A zip bomb.
+                    if (plain.size() + count > limit) invalid()
+                    plain.write(buffer, 0, count)
+                }
+            }
+        } catch (_: java.io.IOException) {
+            // Truncated or corrupt.
+            invalid()
+        }
+        val plainHeaders = headers - "content-encoding"
+        return TransportResponse(status, if ("content-length" in headers) plainHeaders + ("content-length" to plain.size().toString()) else plainHeaders, plain.toByteArray())
     }
 
     private fun invalid(): Nothing = throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
@@ -528,7 +560,7 @@ class HttpResponseParser(private val limit: Int = 8 * 1024 * 1024) {
             return null
         }
         if (body.size > limit) invalid()
-        return if (eof) TransportResponse(status, headers, body) else null
+        return if (eof) decoded(status, headers, body) else null
     }
 
     private fun chunked(status: Int, headers: Map<String, String>, body: ByteArray, eof: Boolean, http11: Boolean): TransportResponse? {
