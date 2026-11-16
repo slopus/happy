@@ -395,6 +395,7 @@ export type Metadata = {
     artifactLeases?: 1 | typeof ARTIFACT_PROTOCOL
     codexSteer?: boolean
     codexAsyncQuestions?: boolean
+    codexModelCatalogRefresh?: boolean
     composerPrediction?: boolean
   },
   machineId?: string,

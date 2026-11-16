@@ -1470,6 +1470,7 @@ failedContinueTask: "未完了の作業を続ける",
             openclaw: 'OpenClaw',
         },
         model: {
+            ...en.agentInput.model,
             title: 'モデル',
             configureInCli: 'CLIの設定でモデルを構成',
         },

@@ -354,6 +354,9 @@ export class CodexAppServerClient {
 
     // Session state
     private accountModelCatalog: Model[] | null = null;
+    private modelCatalogRefresh: Promise<Model[]> | null = null;
+    private modelCatalogConnectionScope: string | null = null;
+    private modelCatalogRefreshEnabled = false;
     private _threadId: string | null = null;
     private _turnId: string | null = null;
     private threadDefaults: {
@@ -451,6 +454,10 @@ export class CodexAppServerClient {
     ) {
         this.sandboxConfig = sandboxConfig;
         this.serviceTier = applicationPolicy?.binding.serviceTier === 'fast' ? 'fast' : 'standard';
+    }
+
+    get supportsModelCatalogRefresh(): boolean {
+        return this.connection.type === 'spawn' && !this.applicationPolicy && this.modelCatalogConnectionScope !== null;
     }
 
     get threadId(): string | null {
@@ -1053,6 +1060,10 @@ export class CodexAppServerClient {
         try {
             await this.connectWithCapabilityFallback(codexCommand);
             if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig();
+            if (this.modelCatalogRefreshEnabled) {
+                try { await this.prepareModelCatalogRefresh(); }
+                catch (error) { logger.debug('[Codex] Model catalog refresh unavailable after reconnect', error); }
+            }
         } catch (error) {
             await this.disconnectInternal({ preserveThreadState: this._threadId !== null });
             throw error;
@@ -1318,6 +1329,7 @@ export class CodexAppServerClient {
 
         this.process = null;
         this.connected = false;
+        this.modelCatalogConnectionScope = null;
         this._turnId = null;
         this.notificationProtocol = 'unknown';
         this.startedTurnIds.clear();
@@ -1406,6 +1418,77 @@ export class CodexAppServerClient {
         return await this.request('model/list', params) as ModelListResponse;
     }
 
+    private async readModelConnectionScope(): Promise<string> {
+        const result = await this.request('config/read', { includeLayers: false, cwd: process.cwd() }) as {
+            config?: Record<string, unknown>;
+        };
+        if (!result.config) throw new Error('Could not verify the model connection.');
+        const config = result.config;
+        const provider = config.model_provider ?? 'openai';
+        const providers = config.model_providers as Record<string, unknown> | undefined;
+        return JSON.stringify({
+            provider,
+            definition: providers?.[String(provider)] ?? null,
+            openaiBaseUrl: config.openai_base_url ?? null,
+            chatgptBaseUrl: config.chatgpt_base_url ?? null,
+            login: config.forced_login_method ?? null,
+        });
+    }
+
+    /** Capture before starting/resuming a thread: config/read re-reads disk later. */
+    async prepareModelCatalogRefresh(): Promise<void> {
+        if (this.connection.type !== 'spawn' || this.applicationPolicy) return;
+        this.modelCatalogConnectionScope = await this.readModelConnectionScope();
+        this.modelCatalogRefreshEnabled = true;
+    }
+
+    /** Read a fresh catalog without restarting or touching the inference thread. */
+    async refreshModelCatalog(): Promise<Model[]> {
+        if (this.modelCatalogRefresh) return this.modelCatalogRefresh;
+        if (!this.connected || !this.supportsModelCatalogRefresh) {
+            throw new Error('Model catalog refresh is unavailable for this connection.');
+        }
+        const expectedEpoch = this.processEpoch;
+        const expectedScope = this.modelCatalogConnectionScope;
+        const refresh = async () => {
+            const probe = new CodexAppServerClient(undefined, { type: 'spawn' }, this.processEnv);
+            probe.serviceTier = this.serviceTier;
+            try {
+                await probe.connect();
+                // Re-read catalog files, but never expose models from a different provider.
+                // Account probes retain the same isolated home and pinned OAuth overrides.
+                const freshScope = await probe.readModelConnectionScope();
+                if (expectedScope !== freshScope) {
+                    throw new Error('The model connection changed. Reconnect this session before refreshing models.');
+                }
+                const models: Model[] = [];
+                let cursor: string | null = null;
+                const seen = new Set<string>();
+                do {
+                    const page = await probe.listModels({ cursor, includeHidden: true, limit: 100 });
+                    models.push(...page.data);
+                    cursor = page.nextCursor ?? null;
+                    if (cursor && seen.has(cursor)) throw new Error('Invalid model catalog pagination.');
+                    if (cursor) seen.add(cursor);
+                } while (cursor);
+                if (!this.connected || this.processEpoch !== expectedEpoch || this.modelCatalogConnectionScope !== expectedScope) {
+                    throw new Error('The model connection changed while refreshing. Please try again.');
+                }
+                if (!models.length) throw new Error('The refreshed model catalog is empty.');
+                if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) this.accountModelCatalog = models;
+                return models;
+            } finally {
+                await probe.disconnect();
+            }
+        };
+        this.modelCatalogRefresh = refresh();
+        try {
+            return await this.modelCatalogRefresh;
+        } finally {
+            this.modelCatalogRefresh = null;
+        }
+    }
+
     private async assertAccountModel(model: string | undefined): Promise<void> {
         if (!this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID || this.applicationPolicy || !model) return;
         if (!this.accountModelCatalog) {
@@ -1421,7 +1504,7 @@ export class CodexAppServerClient {
                 // Do not send a model request when its account catalog is unknown.
                 assertCodexAccountModel(model, null);
             }
-            this.accountModelCatalog = models;
+            this.accountModelCatalog ??= models;
         }
         assertCodexAccountModel(model, this.accountModelCatalog);
     }

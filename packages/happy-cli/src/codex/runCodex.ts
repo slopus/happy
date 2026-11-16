@@ -479,6 +479,7 @@ export async function runCodex(opts: {
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
     let asyncQuestionHandler: ReturnType<typeof createCodexAsyncQuestionHandler> | null = null;
+    let refreshModelsHandler: (() => Promise<{ success: true }>) | null = null;
     let predictionHandlers: ReturnType<typeof createComposerPredictionHandlers> | null = null;
     const mcpAppBindingRegistry = new McpAppBindingRegistry();
     let mcpAppRpcHandlers: ReturnType<typeof registerMcpAppRpcHandlers> | null = null;
@@ -500,6 +501,7 @@ export async function runCodex(opts: {
             rebindMcpAppRpcHandlersOnSessionSwap(mcpAppRpcHandlers, newSession);
             if (client) newSession.rpcHandlerManager.registerHandler<CodexSteerRequest, CodexSteerResponse>('steer', steerHandler);
             if (asyncQuestionHandler) newSession.rpcHandlerManager.registerHandler('codex-async-question', asyncQuestionHandler);
+            if (refreshModelsHandler) newSession.rpcHandlerManager.registerHandler('refreshModels', refreshModelsHandler);
             if (predictionHandlers) {
                 newSession.rpcHandlerManager.registerHandler('composerPrediction', predictionHandlers.request);
                 newSession.rpcHandlerManager.registerHandler('composerPredictionCancel', predictionHandlers.cancel);
@@ -962,6 +964,17 @@ export async function runCodex(opts: {
 
     session.processorStarting?.();
     client = new CodexAppServerClient(applicationPolicy ? undefined : sandboxConfig, applicationPolicy ? { type: 'spawn' } : resolveCodexAppServerConnection(), process.env, applicationPolicy);
+    refreshModelsHandler = async () => {
+        const models = await client.refreshModelCatalog();
+        codexModelCatalog = models;
+        await session.updateMetadataAndAwait(meta => mergeCodexSessionConfigIntoMetadata(meta, {
+            models,
+            currentModel: meta.currentModelCode ?? currentModel ?? models.find(model => model.isDefault)?.model ?? models[0].model,
+            currentEffort: (meta.currentThoughtLevelCode as ReasoningEffort | undefined) ?? currentEffort,
+        }));
+        return { success: true };
+    };
+    session.rpcHandlerManager.registerHandler('refreshModels', refreshModelsHandler);
     const steerHandler = createCodexSteerHandler({
         client: {
             steerTurn: (text, expectedTurnId, images, clientUserMessageId) => client.steerTurn(
@@ -1316,6 +1329,13 @@ export async function runCodex(opts: {
         } catch (error) {
             logger.debug('[Codex] Failed to load model catalog from app-server; using fallback metadata', error);
         }
+
+        try {
+            await client.prepareModelCatalogRefresh();
+        } catch (error) {
+            logger.debug('[Codex] Model catalog refresh unavailable', error);
+        }
+        session.updateMetadata(meta => ({ ...meta, capabilities: { ...meta.capabilities, codexModelCatalogRefresh: client.supportsModelCatalogRefresh } }));
 
         if (opts.resumeThreadId) {
             const resumedThread = await resumeExistingThread({

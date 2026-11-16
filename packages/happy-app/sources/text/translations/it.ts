@@ -1467,6 +1467,7 @@ failedContinueTask: "Continua il lavoro in sospeso",
             openclaw: 'OpenClaw',
         },
         model: {
+            ...en.agentInput.model,
             title: 'MODELLO',
             configureInCli: 'Configura i modelli nelle impostazioni CLI',
         },

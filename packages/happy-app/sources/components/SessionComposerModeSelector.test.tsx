@@ -206,7 +206,7 @@ describe('SessionComposerModeSelector', () => {
 
     it('allows the supplied reset without effort options and disables it when the default model is unavailable', () => {
         const onReset = vi.fn(); let renderer: any;
-        const props = { online: true, model: modelOptions[0], modelOptions, effort: null, effortOptions: [], onModelChange: vi.fn(), onEffortChange: vi.fn() };
+        const props = { online: true, model: modelOptions[0], modelOptions: modelOptions.slice(0, 1), effort: null, effortOptions: [], onModelChange: vi.fn(), onEffortChange: vi.fn() };
         act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} onReset={onReset} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
         const reset = () => renderer.root.findByProps({ testID: 'session-composer-effort-reset' });
@@ -283,6 +283,48 @@ describe('SessionComposerModeSelector', () => {
         expect(renderer.root.findByProps({ testID: 'session-composer-fast-toggle' }).props.disabled).toBe(true);
         expect(renderer.root.findByProps({ testID: 'session-composer-effort-high' }).props.accessibilityLabel).toBe('High');
         expect(renderer.root.findByProps({ testID: 'session-composer-effort-medium' }).props.accessibilityLabel).toBe('Medium');
+        act(() => renderer.unmount());
+    });
+
+    it('refreshes on opening the model list and lets a newly loaded routing group be selected', async () => {
+        let finish!: () => void;
+        const onRefreshModels = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        const onModelChange = vi.fn();
+        const props = { online: true, model: modelOptions[0], modelOptions: modelOptions.slice(0, 1), effort: null, effortOptions: [],
+            onModelChange, onEffortChange: vi.fn(), onRefreshModels };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(onRefreshModels).not.toHaveBeenCalled();
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        expect(onRefreshModels).toHaveBeenCalledTimes(1);
+        expect(renderer.root.findByProps({ testID: 'session-composer-refresh-models' }).props.disabled).toBe(true);
+        const daily = { key: 'group/daily-auto', name: 'group/daily-auto', description: '日常自动路由 · routing group via magpie' };
+        await act(async () => {
+            renderer.update(<SessionComposerModeSelector {...props} modelOptions={[...modelOptions, daily]} />);
+            finish();
+        });
+        expect(onRefreshModels).toHaveBeenCalledTimes(1);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-search' }).props.onChangeText('daily'));
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-group/daily-auto' }).props.onPress());
+        expect(onModelChange).toHaveBeenCalledExactlyOnceWith('group/daily-auto');
+        act(() => renderer.unmount());
+    });
+
+    it('keeps existing choices on refresh failure and retries only on a user action', async () => {
+        const onRefreshModels = vi.fn().mockRejectedValueOnce(new Error('unavailable')).mockResolvedValueOnce(undefined);
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online
+            model={modelOptions[0]} modelOptions={modelOptions} effort={null} effortOptions={[]}
+            onModelChange={vi.fn()} onEffortChange={vi.fn()} onRefreshModels={onRefreshModels} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-refresh-error' })).toBeTruthy();
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-gpt-5.5' })).toBeTruthy();
+        expect(onRefreshModels).toHaveBeenCalledTimes(1);
+        await act(async () => renderer.root.findByProps({ testID: 'session-composer-refresh-models' }).props.onPress());
+        expect(onRefreshModels).toHaveBeenCalledTimes(2);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-refresh-error' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 

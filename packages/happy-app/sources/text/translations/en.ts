@@ -1475,6 +1475,8 @@ failedContinueTask: "Continue unfinished task",
         model: {
             title: 'MODEL',
             configureInCli: 'Configure models in CLI settings',
+            refresh: 'Refresh model list',
+            refreshFailed: 'Could not refresh models. Reconnect this session and try again.',
         },
         effort: {
             title: 'EFFORT',

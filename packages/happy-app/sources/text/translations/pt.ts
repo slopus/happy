@@ -1468,6 +1468,7 @@ failedContinueTask: "Continuar tarefa pendente",
             openclaw: 'OpenClaw',
         },
         model: {
+            ...en.agentInput.model,
             title: 'MODELO',
             configureInCli: 'Configurar modelos nas configurações do CLI',
         },

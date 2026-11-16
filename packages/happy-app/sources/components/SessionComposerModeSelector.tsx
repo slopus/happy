@@ -30,6 +30,7 @@ export type SessionComposerModeSelectorConfig = {
     effortOptions: ModeOption[];
     onReset?: () => void;
     onModelChange: (key: string) => void;
+    onRefreshModels?: () => Promise<void>;
     onEffortChange: (key: string) => void;
     fastMode?: boolean;
     supportsFast?: boolean;
@@ -101,6 +102,29 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const [knobHovered, setKnobHovered] = React.useState(false);
     const [modelsOpen, setModelsOpen] = React.useState(false);
     const [search, setSearch] = React.useState('');
+    const [modelsRefreshing, setModelsRefreshing] = React.useState(false);
+    const [modelRefreshError, setModelRefreshError] = React.useState(false);
+    const refreshingModels = React.useRef(false);
+    const mounted = React.useRef(true);
+    React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+    const refreshModels = async () => {
+        if (!props.onRefreshModels || refreshingModels.current) return;
+        refreshingModels.current = true;
+        setModelsRefreshing(true);
+        setModelRefreshError(false);
+        try {
+            await props.onRefreshModels();
+        } catch {
+            if (mounted.current) setModelRefreshError(true);
+        } finally {
+            refreshingModels.current = false;
+            if (mounted.current) setModelsRefreshing(false);
+        }
+    };
+    const openModels = () => {
+        setModelsOpen(true);
+        void refreshModels();
+    };
     const trackRef = React.useRef<View>(null);
     const [trackWidth, setTrackWidth] = React.useState(0);
     const dragIndex = React.useRef<number | null>(null);
@@ -110,7 +134,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const [anchor, setAnchor] = React.useState<ModePanelAnchor | null>(null);
     const enabled =
         props.online &&
-        (props.modelOptions.length > 1 ||
+        (!!props.onRefreshModels || props.modelOptions.length > 1 ||
             props.effortOptions.length > 1 ||
             (props.supportsFast && !!props.onFastModeChange));
     const close = React.useCallback(() => {
@@ -337,6 +361,17 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             />
                                         </Pressable>
                                         <Text style={styles.modelsTitle}>{t('agentInput.model.title')}</Text>
+                                        {props.onRefreshModels ? <Pressable
+                                            testID="session-composer-refresh-models"
+                                            accessibilityRole="button"
+                                            accessibilityLabel={t('agentInput.model.refresh')}
+                                            accessibilityState={{ disabled: modelsRefreshing, busy: modelsRefreshing }}
+                                            disabled={modelsRefreshing}
+                                            onPress={() => { void refreshModels(); }}
+                                            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.iconButton, hoverTransition, (pressed || hovered) && styles.pressed]}
+                                        >
+                                            <Ionicons name="refresh" size={18} color={theme.colors.textSecondary} />
+                                        </Pressable> : null}
                                         <Pressable
                                             accessibilityRole="button"
                                             accessibilityLabel={t('devTools.close')}
@@ -350,6 +385,8 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             />
                                         </Pressable>
                                     </View>
+                                    {modelsRefreshing ? <Text style={styles.catalogStatus}>{t('common.loading')}</Text> : null}
+                                    {modelRefreshError ? <Text testID="session-composer-model-refresh-error" style={styles.catalogStatus}>{t('agentInput.model.refreshFailed')}</Text> : null}
                                     <TextInput
                                         testID="session-composer-model-search"
                                         value={search}
@@ -465,9 +502,9 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             testID="session-composer-open-models"
                                             accessibilityLabel={t('agentInput.model.title')}
                                             accessibilityRole="button"
-                                            accessibilityState={{ disabled: props.modelOptions.length < 2 }}
-                                            disabled={props.modelOptions.length < 2}
-                                            onPress={() => { finishDrag(false); setModelHovered(false); setModelsOpen(true); }}
+                                            accessibilityState={{ disabled: props.modelOptions.length < 2 && !props.onRefreshModels }}
+                                            disabled={props.modelOptions.length < 2 && !props.onRefreshModels}
+                                            onPress={() => { finishDrag(false); setModelHovered(false); openModels(); }}
                                             onHoverIn={() => setModelHovered(true)}
                                             onHoverOut={() => setModelHovered(false)}
                                             style={({ pressed }) => [styles.center, hoverTransition, (pressed || modelHovered) && styles.centerHover]}
@@ -756,6 +793,7 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
     },
     description: { color: theme.colors.textSecondary, fontSize: 11, ...Typography.default() },
+    catalogStatus: { color: theme.colors.textSecondary, fontSize: 12, paddingHorizontal: 14, paddingBottom: 6, ...Typography.default() },
     modelList: { maxHeight: 300, paddingHorizontal: 7, marginBottom: 8 },
     option: {
         paddingHorizontal: 10,

@@ -51,6 +51,7 @@ export const MetadataSchema = z.object({
         codexCredentialRecovery: z.boolean().optional(),
         codexSteer: z.boolean().optional(),
         codexAsyncQuestions: z.boolean().optional(),
+        codexModelCatalogRefresh: z.boolean().optional(),
         composerPrediction: z.boolean().optional(),
         artifactLeases: z.union([z.literal(1),z.literal(ARTIFACT_PROTOCOL)]).optional(),
     }).optional(),

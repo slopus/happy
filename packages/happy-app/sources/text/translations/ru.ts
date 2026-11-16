@@ -1485,6 +1485,7 @@ failedContinueTask: "Продолжить незавершённую задач�
             openclaw: 'OpenClaw',
         },
         model: {
+            ...en.agentInput.model,
             title: 'МОДЕЛЬ',
             configureInCli: 'Настройте модели в настройках CLI',
         },

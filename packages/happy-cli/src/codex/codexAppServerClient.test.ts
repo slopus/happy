@@ -615,6 +615,140 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('refreshes a cached model catalog in an isolated client without interrupting the active turn', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const config = { model_provider: 'openai', openai_base_url: 'http://local-gateway/v1' };
+        const daily = { model: 'group/daily-auto' };
+        const methods: string[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            if (message.method) methods.push(message.method);
+            if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config } });
+            if (message.method === 'model/list') pushJsonLine(stdout, { id: message.id, result: {
+                data: message.params.cursor ? [daily] : [{ model: 'existing' }],
+                nextCursor: message.params.cursor ? null : 'page-2',
+            } });
+        } }));
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const raw = client as any;
+        raw.connected = true;
+        raw._threadId = 'original-thread';
+        raw._turnId = 'running-turn';
+        vi.spyOn(raw, 'request').mockResolvedValue({ config });
+        const disconnect = vi.spyOn(client, 'disconnect');
+        await client.prepareModelCatalogRefresh();
+        const [first, concurrent] = await Promise.all([client.refreshModelCatalog(), client.refreshModelCatalog()]);
+        expect(first.map(model => model.model)).toEqual(['existing', 'group/daily-auto']);
+        expect(concurrent).toEqual(first);
+        expect(mockSpawn).toHaveBeenCalledTimes(1);
+        expect(raw._threadId).toBe('original-thread');
+        expect(raw._turnId).toBe('running-turn');
+        expect(disconnect).not.toHaveBeenCalled();
+        expect(methods.filter(method => method.startsWith('thread/') || method.startsWith('turn/'))).toEqual([]);
+        expect(mockSpawn.mock.results[0].value.kill).toHaveBeenCalled();
+        raw.connected = false;
+    });
+
+    it('rejects a refreshed catalog when the configured provider changed', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config: { model_provider: 'other' } } });
+        } }));
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const raw = client as any;
+        raw.connected = true;
+        vi.spyOn(raw, 'request').mockResolvedValue({ config: { model_provider: 'original' } });
+        await client.prepareModelCatalogRefresh();
+        // config/read on the original runtime now sees the edited disk too.
+        (raw.request as ReturnType<typeof vi.fn>).mockResolvedValue({ config: { model_provider: 'other' } });
+        await expect(client.refreshModelCatalog()).rejects.toThrow('connection changed');
+        expect(mockSpawn.mock.results[0].value.kill).toHaveBeenCalled();
+        raw.connected = false;
+    });
+
+    it('keeps OAuth overrides and the official catalog when refreshing an account connection', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const config = { ...CODEX_ACCOUNT_CONFIG, model_providers: { [CODEX_ACCOUNT_PROVIDER]: CODEX_ACCOUNT_HTTP_PROVIDER } };
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config } });
+            if (message.method === 'model/list') pushJsonLine(stdout, { id: message.id, result: { data: [{ model: 'gpt-official' }], nextCursor: null } });
+        } }));
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, { HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'profile-a' });
+        const raw = client as any;
+        raw.connected = true;
+        vi.spyOn(raw, 'request').mockResolvedValue({ config });
+        await client.prepareModelCatalogRefresh();
+        raw.accountModelCatalog = [{ model: 'gpt-old' }];
+        expect((await client.refreshModelCatalog()).map(model => model.model)).toEqual(['gpt-official']);
+        await expect(raw.assertAccountModel('gpt-official')).resolves.toBeUndefined();
+        await expect(raw.assertAccountModel('group/daily-auto')).rejects.toThrow();
+        expect(mockSpawn.mock.calls[0][1]).toEqual(expect.arrayContaining(['model_provider="paws_openai_http"', 'forced_login_method="chatgpt"']));
+        expect(mockSpawn.mock.calls[0][2].env.HAPPY_CODEX_ACCOUNT_PROFILE_ID).toBe('profile-a');
+        raw.connected = false;
+    });
+
+    it('closes a failed probe and allows the next explicit refresh to retry', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        let fail = true;
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config: {} } });
+            if (message.method === 'model/list') pushJsonLine(stdout, fail
+                ? { id: message.id, error: { code: -1, message: 'catalog failed' } }
+                : { id: message.id, result: { data: [{ model: 'recovered' }], nextCursor: null } });
+        } }));
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const raw = client as any;
+        raw.connected = true;
+        vi.spyOn(raw, 'request').mockResolvedValue({ config: {} });
+        await client.prepareModelCatalogRefresh();
+        await expect(client.refreshModelCatalog()).rejects.toThrow('catalog failed');
+        expect(mockSpawn.mock.results[0].value.kill).toHaveBeenCalled();
+        fail = false;
+        expect((await client.refreshModelCatalog()).map(model => model.model)).toEqual(['recovered']);
+        expect(mockSpawn).toHaveBeenCalledTimes(2);
+        raw.connected = false;
+    });
+
+    it('does not overwrite a refreshed account catalog with a late old model/list response', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const config = { ...CODEX_ACCOUNT_CONFIG, model_providers: { [CODEX_ACCOUNT_PROVIDER]: CODEX_ACCOUNT_HTTP_PROVIDER } };
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config } });
+            if (message.method === 'model/list') pushJsonLine(stdout, { id: message.id, result: { data: [{ model: 'new-official' }], nextCursor: null } });
+        } }));
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, { HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'profile-a' });
+        const raw = client as any;
+        raw.connected = true;
+        let finishOld!: (value: unknown) => void;
+        vi.spyOn(raw, 'request').mockImplementation(async (method: unknown) => method === 'config/read'
+            ? { config } : await new Promise(resolve => { finishOld = resolve; }));
+        await client.prepareModelCatalogRefresh();
+        const validation = raw.assertAccountModel('new-official');
+        await client.refreshModelCatalog();
+        finishOld({ data: [{ model: 'old-official' }], nextCursor: null });
+        await expect(validation).resolves.toBeUndefined();
+        expect(raw.accountModelCatalog).toEqual([{ model: 'new-official' }]);
+        raw.connected = false;
+    });
+
+    it('discards a probe catalog if the original connection restarts while pages are loading', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const raw = client as any;
+        raw.connected = true;
+        vi.spyOn(raw, 'request').mockResolvedValue({ config: {} });
+        await client.prepareModelCatalogRefresh();
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config: {} } });
+            if (message.method === 'model/list') {
+                raw.processEpoch++;
+                pushJsonLine(stdout, { id: message.id, result: { data: [{ model: 'obsolete' }], nextCursor: null } });
+            }
+        } }));
+        await expect(client.refreshModelCatalog()).rejects.toThrow('connection changed');
+        expect(mockSpawn.mock.results[0].value.kill).toHaveBeenCalled();
+        raw.connected = false;
+    });
+
     it('forces file-only OAuth credentials for a Paws profile launch', async () => {
         const saved = process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID;
         process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID = 'profile-a';

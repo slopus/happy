@@ -748,6 +748,14 @@ export async function sessionRestoreMetadata(
 /**
  * Abort the current session operation
  */
+/** A user action refreshes the catalog on its own execution connection. */
+export async function sessionRefreshModels(sessionId: string): Promise<void> {
+    const result = await apiSocket.sessionRPC<{ success: boolean }, {}>(sessionId, 'refreshModels', {}, {
+        timeoutMs: 30_000, overallTimeoutMs: 30_000,
+    });
+    if (!result?.success) throw new Error('Model catalog refresh failed');
+}
+
 export async function sessionAbort(sessionId: string): Promise<void> {
     await apiSocket.sessionRPC(sessionId, 'abort', {
         reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`

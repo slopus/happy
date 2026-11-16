@@ -40,7 +40,7 @@ import { useComposerPrediction, type ComposerPredictionSource } from '@/hooks/us
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, sessionRefreshModels } from '@/sync/ops';
 import { imageViewer } from '@/sync/imageViewer';
 import { Modal } from '@/modal';
 import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useMachine, useSessionMessages, useSessionUsage, useSetting, useSettingUpdater, useSocketStatus } from '@/sync/storage';
@@ -1758,6 +1758,7 @@ function SessionViewLoaded({
     const handleFastModeChange = React.useCallback((enabled: boolean) => {
         storage.getState().updateSessionFastMode(sessionId, enabled);
     }, [sessionId]);
+    const handleRefreshModels = React.useCallback(() => sessionRefreshModels(sessionId), [sessionId]);
     const modeSelector = React.useMemo(() => ({
         unifiedCodex: session.metadata?.flavor === 'codex',
         online: !isDisconnected,
@@ -1771,11 +1772,12 @@ function SessionViewLoaded({
             storage.getState().updateSessionFastMode(sessionId, false);
         } : undefined,
         onModelChange: handleModelChange,
+        onRefreshModels: session.metadata?.capabilities?.codexModelCatalogRefresh ? handleRefreshModels : undefined,
         onEffortChange: handleEffortChange,
         fastMode: session.fastMode === true,
         supportsFast: nextTurnModes.supportsFast,
         onFastModeChange: handleFastModeChange,
-    }), [handleEffortChange, handleFastModeChange, handleModelChange, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor, sessionId]);
+    }), [handleEffortChange, handleFastModeChange, handleModelChange, handleRefreshModels, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor, session.metadata?.capabilities?.codexModelCatalogRefresh, sessionId]);
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。
