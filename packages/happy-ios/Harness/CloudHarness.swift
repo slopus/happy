@@ -7,7 +7,7 @@ import UIKit
 /// a name or email typed with `-cloudName`) under the account token in
 /// `-cloudToken`, for device screenshots. `-cloudAccounts <origin>` sends
 /// the welcome's sign-ins, and the account they make, to a stand-in for
-/// the accounts service (scripts/cloud-email-mock); on `email`,
+/// the accounts service and the API alike (scripts/cloud-email-mock); on `email`,
 /// `-cloudSend` then taps Send code and `-cloudCode <code>` types the code.
 @MainActor
 final class CloudHarness {
@@ -24,7 +24,8 @@ final class CloudHarness {
     }
 }
 
-/// The accounts service's requests, sent to `origin` instead.
+/// The accounts service's and the API's requests, both sent to `origin`
+/// instead.
 private struct MockAccountsTransport: HTTPTransport {
     let origin: String
     let http = NoRedirectURLSessionTransport()
@@ -32,7 +33,10 @@ private struct MockAccountsTransport: HTTPTransport {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         var request = request
         let url = request.url.absoluteString
-        if url.hasPrefix(HappyCloud.accounts), let moved = URL(string: origin + url.dropFirst(HappyCloud.accounts.count)) { request.url = moved }
+        for real in [HappyCloud.accounts, HappyCloud.api] where url.hasPrefix(real) {
+            if let moved = URL(string: origin + url.dropFirst(real.count)) { request.url = moved }
+            break
+        }
         return try await http.send(request)
     }
 }

@@ -609,12 +609,14 @@ final class HappyCloudUITests: XCTestCase {
     }
 
     /// Signs in to the accounts service as the test account, the way the
-    /// app does, and deletes its servers with these names: each server's
+    /// app does (an identity token, traded at the API for a session), and
+    /// deletes its servers with these names: each server's
     /// owner DELETE (`/v0/server`, confirmed by its name) with that
     /// server's token. A delete that doesn't answer 204, or a server still
     /// listed after, fails the test.
     private nonisolated static func deleteServers(named names: Set<String>, login: String, password: String) async {
         let accounts = "https://auth.happy.engineering"
+        let api = ProcessInfo.processInfo.environment["CLOUD_API"] ?? "https://api.happy-clusters.com"
         func send(_ method: String, _ url: String, token: String? = nil, body: [String: String]? = nil) async -> (Int, Data) {
             var request = URLRequest(url: URL(string: url)!)
             request.httpMethod = method
@@ -627,14 +629,17 @@ final class HappyCloudUITests: XCTestCase {
             guard let (data, response) = try? await URLSession.shared.data(for: request) else { return (0, Data()) }
             return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
         }
+        struct Identity: Decodable { let id_token: String }
         struct Pass: Decodable { let access_token: String }
         struct ServerToken: Decodable { let access_token: String?; let token: String? }
         struct Servers: Decodable { struct Server: Decodable { let id: String; let name: String; let url: String }; let servers: [Server] }
-        let (_, passData) = await send("POST", accounts + "/v1/auth/password", body: ["login": login, "password": password])
-        guard let pass = (try? JSONDecoder().decode(Pass.self, from: passData))?.access_token else { return XCTFail("cleanup: no pass") }
-        let (_, list) = await send("GET", accounts + "/v1/servers", token: pass)
+        let (_, identityData) = await send("POST", accounts + "/v2/auth/password", body: ["login": login, "password": password])
+        guard let identity = (try? JSONDecoder().decode(Identity.self, from: identityData))?.id_token else { return XCTFail("cleanup: no identity token") }
+        let (_, passData) = await send("POST", api + "/v1/session", body: ["id_token": identity])
+        guard let pass = (try? JSONDecoder().decode(Pass.self, from: passData))?.access_token else { return XCTFail("cleanup: no session") }
+        let (_, list) = await send("GET", api + "/v1/servers", token: pass)
         for server in (try? JSONDecoder().decode(Servers.self, from: list))?.servers ?? [] where names.contains(server.name) {
-            let (_, tokenData) = await send("POST", accounts + "/v1/servers/\(server.id)/token", token: pass, body: [:])
+            let (_, tokenData) = await send("POST", api + "/v1/servers/\(server.id)/token", token: pass, body: [:])
             let issued = try? JSONDecoder().decode(ServerToken.self, from: tokenData)
             guard let token = issued?.access_token ?? issued?.token else {
                 XCTFail("cleanup: no token for @\(server.name)")
@@ -644,7 +649,7 @@ final class HappyCloudUITests: XCTestCase {
             print("cleanup: deleted @\(server.name): \(status)")
             if status != 204 { XCTFail("cleanup: deleting @\(server.name) answered \(status)") }
         }
-        let (_, after) = await send("GET", accounts + "/v1/servers", token: pass)
+        let (_, after) = await send("GET", api + "/v1/servers", token: pass)
         let left = (try? JSONDecoder().decode(Servers.self, from: after))?.servers.filter { names.contains($0.name) }.map(\.name) ?? []
         if !left.isEmpty { XCTFail("cleanup: still listed: \(left)") }
     }
@@ -662,7 +667,8 @@ final class HappyCloudUITests: XCTestCase {
     /// the app on Happy Cloud's welcome; the test account signs in, the
     /// invite shows its server, and Join lands on that server's home. The
     /// first launch points the app at the deployment in `CLOUD_ACCOUNTS`,
-    /// `CLOUD_BASE`, `CLOUD_WEB` and `CLOUD_INVITE`, kept for the launch
+    /// `CLOUD_BASE`, `CLOUD_WEB` and `CLOUD_INVITE` (and `CLOUD_API`, else
+    /// `https://api.<CLOUD_BASE>`), kept for the launch
     /// the link makes. Then each link in `INVITE_STATES`
     /// (`name=url,name=url`, `mismatch` joined to see its refusal) opens on
     /// the same layout: the title, the status line and the button sit where
@@ -671,7 +677,8 @@ final class HappyCloudUITests: XCTestCase {
         guard let link = env["INVITE_URL"].flatMap(URL.init(string:)), let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"],
               let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
         else { throw XCTSkip("no invite run") }
-        app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudBase", base, "-HappyCloudWeb", web, "-HappyCloudInvite", invite]
+        app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudAPI", env["CLOUD_API"] ?? "https://api.\(base)", "-HappyCloudBase", base,
+                               "-HappyCloudWeb", web, "-HappyCloudInvite", invite]
         app.launch()
         require(first([element("account-switcher"), app.buttons["start-cloud"]], timeout: 30) != nil, "the app didn't start")
         app.terminate()
@@ -747,7 +754,8 @@ final class HappyCloudUITests: XCTestCase {
         guard let login = env["FIRST_LOGIN"], let password = env["FIRST_PASSWORD"], let link = env["INVITE_URL"].flatMap(URL.init(string:)),
               let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
         else { throw XCTSkip("no first-bootstrap run") }
-        app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudBase", base, "-HappyCloudWeb", web, "-HappyCloudInvite", invite]
+        app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudAPI", env["CLOUD_API"] ?? "https://api.\(base)", "-HappyCloudBase", base,
+                               "-HappyCloudWeb", web, "-HappyCloudInvite", invite]
         app.launch()
         signInWithTestAccount(login: login, password: password)
         let name = element("cloud-create-name")

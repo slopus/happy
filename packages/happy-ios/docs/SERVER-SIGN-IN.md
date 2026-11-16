@@ -81,12 +81,17 @@ checked.
 
 ## Happy Cloud
 
-Happy Cloud has one account service, `https://auth.happy.engineering/`,
-and any number of servers, each a team server at `https://<name>.<base>/`.
-Both are compiled into the app (`HappyCloud.accounts`, `HappyCloud.base`,
+Happy Cloud has one accounts service, `https://auth.happy.engineering/`,
+which only signs people in: it turns a sign-in with Apple, Google, GitHub
+or an emailed code into a five-minute OpenID Connect identity token. The
+cluster's API, `https://api.<base>/`, trades that for the account's
+session and does everything else: the servers, invites and every token
+after sign-in. The servers are team servers at `https://<name>.<base>/`.
+All three are compiled into the app (`HappyCloud.accounts`,
+`HappyCloud.api`, `HappyCloud.base`,
 `Sources/HappyCore/ServerSignIn/HappyCloud.swift`) and can't be edited.
-The contract shared with Android, desktop and the backend is Happy Cloud
-accounts and servers v1, with v4's token lifetimes.
+The contract shared with Android, desktop and the backend is the accounts
+split contract (v1, frozen 2026-11-15).
 
 - **Where.** "Use Happy Cloud", a text action under the first screen's
   Start, and "Connect to Happy Cloud" in the account switcher's menu (the
@@ -108,45 +113,49 @@ accounts and servers v1, with v4's token lifetimes.
   of agents, Programmable permissions, No lock-in, Private open source,
   over the Happy mark, 🤖, 🔒, ✨ and 👐) in the first screen's gallery at
   its place, moving on every 12 s, and Continue where Start is. Continue
-  signs in, or, while the account's pass lasts, goes straight to Join a
-  server. Opened again after the pass ended, a note over Continue says so.
+  signs in, or, while the account's session lasts, goes straight to Join a
+  server. Opened again after the session ended, a note over Continue says so.
 - **Sign in** (`CloudSignInViewController`, `CloudAccount`): "Sign in or
   create your Happy Cloud account.", with four buttons, all native to the
   app (Apple, Google, GitHub, then email); there is no other way and no
-  chooser page. Every way ends in a
-  pass: an account token whose `aud` must be the accounts origin, good for
-  an hour, with no refresh token.
+  chooser page. Every way ends in an identity token from the accounts
+  service, `{ id_token, expires_in }`, whose `aud` must be the app's client,
+  `happy` (read, not verified: the API verifies it), or it is dropped
+  before it goes anywhere. `POST https://api.<base>/v1/session`
+  `{ id_token }` trades it for the account's session (below); a 401 there
+  (`invalid_token`: expired, already used) is a failed sign-in, said as the
+  API words it.
   - *Sign in with Apple* (`CloudApple`): Apple's own button.
     `ASAuthorizationAppleIDProvider` asking for the name and email, its
-    `nonce` the SHA-256 of a fresh random one. `POST /v1/auth/native` gets
+    `nonce` the SHA-256 of a fresh random one. `POST /v2/auth/native` gets
     `provider` `apple`, the identity token, the raw nonce, the
     authorization code and, when Apple gives it (the first time only), the
     person's full name. The `com.apple.developer.applesignin` entitlement
     is on the development and preview apps.
   - *Sign in with GitHub*: authorization code + PKCE S256 at
     `auth.happy.engineering/authorize`, `client_id` `happy`, the usual
-    redirect, `resource` the accounts origin, and `provider=github`, which
+    redirect, `scope=openid` and no `resource`, and `provider=github`, which
     makes the accounts service skip its own chooser and redirect straight
     to GitHub (`provider=apple` would do the same for Apple; an unknown
     name shows the chooser). It opens in `ASWebAuthenticationSession`, the
     app's own sheet, with `prefersEphemeralWebBrowserSession = true`: no
     Safari cookie comes in, so after Back signs the account out Continue can
     pick another GitHub account, and iOS asks no "wants to use … to sign
-    in" first; passwords and passkeys still fill. A refresh token, if one
-    came, is dropped.
+    in" first; passwords and passkeys still fill. The code goes to the
+    accounts service's `/token`, which answers the identity token.
   - *Continue with email* (`CloudEmailViewController`,
     `CloudEmailCodeViewController`, `Screens/CloudEmailSignInScreen.swift`):
     a one-time code by email (WorkOS Magic Auth behind the accounts
     service), with no browser, a filled button 12 under GitHub's, as wide.
     Two steps, each on the gradient like the rest:
     1. *Sign in with email*: the address (`.emailAddress`), then Send code,
-       `POST /v1/auth/email/start` `{ email }`, answered `202 {}`.
+       `POST /v2/auth/email/start` `{ email }`, answered `202 {}`.
     2. *Check your email*: "Enter the 6-digit code we sent to …", a field
        with `.oneTimeCode` and the number pad, so Mail's code fills it. It
        keeps digits only, six at most, and the sixth checks the code at
-       once: `POST /v1/auth/email/verify` `{ email, code }` answers the
-       same account token JSON as `/v1/auth/native`, accepted the same way
-       (the pass, its refresh token dropped), then Join a server in the
+       once: `POST /v2/auth/email/verify` `{ email, code }` answers the
+       same identity token as `/v2/auth/native`, traded for the session the
+       same way, then Join a server in the
        place of the welcome and both steps, as after every sign-in. Resend code waits 60 s
        after each code sent, its title counting down ("Resend code in
        0:42"); Change email goes back to the address, kept.
@@ -163,16 +172,24 @@ accounts and servers v1, with v4's token lifetimes.
   - *A test account* (`CloudTestSignIn`), for testing every surface without
     Apple or GitHub: ten taps on the welcome's Happy mark within four
     seconds open Sign in with a login and password form, which isn't there
-    otherwise. `POST /v1/auth/password` with `{ login, password }` answers
-    the same pass; 401 `invalid_credentials` and 429 `locked`
+    otherwise. `POST /v2/auth/password` with `{ login, password }` answers
+    the same identity token; 401 `invalid_credentials` and 429 `locked`
     (`retryAfter` seconds) are said under it. The password is only in its
     secure field and that request, cleared once signed in. Development and
     preview builds only, as Happy Cloud is. Operators make these accounts;
     see the cloud's TESTAUTH.md.
-  - The pass is held in memory only, with its expiry, and never refreshed.
-    A 401 from any accounts call goes straight back to the welcome, which
-    says the sign-in ended, with no retry. Earlier builds' Keychain item
-    (`happy-ios:cloud-account`) is deleted.
+  - The session (`CloudAccount`) is an access token for the API, an hour,
+    and a refresh token, 30 days, held in memory only and never stored. Its
+    access token goes only to the API. One with a minute or less left is
+    refreshed before use, and a 401 refreshes it once at the API's `/token`
+    (`refresh_token` grant, `client_id` `happy`, `resource` the API) and
+    repeats the request; concurrent requests share one refresh, and a
+    rotated refresh token replaces the old one. The API refusing the
+    refresh, or a second 401, goes back to the welcome, which says the
+    sign-in ended. A refresh that fails on the network, a 5xx or a 429
+    keeps the session: the screen says "Happy Cloud couldn't be reached.
+    Check your connection and try again." and stays. Earlier builds'
+    Keychain item (`happy-ios:cloud-account`) is deleted.
 - **Join a server** (`CloudServersViewController`): "Your account is
   already on these servers. Join as many as you like." Each of the
   account's servers (`GET /v1/servers`) is a row with its picture, its
@@ -187,10 +204,10 @@ accounts and servers v1, with v4's token lifetimes.
   so the list loads again whenever the app comes back to the foreground,
   and the first Bootstrap gives way to the list once the account has a
   server. Back from Join a server,
-  or from that first Bootstrap, signs the account out (forgets the pass),
+  or from that first Bootstrap, signs the account out (revokes the session),
   so Continue can use another. The picture is the ThumbHash at once, then
-  the bytes from the listed image `url` under the account token (only ever
-  on the accounts origin), or the generated placeholder seeded by the
+  the bytes from the listed image `url` under the session's token (only
+  ever on the API's origin), or the generated placeholder seeded by the
   server's name, as desktop's rail and the connection's own avatar are.
 - **Bootstrap a server** (`CloudCreateViewController`): a name under
   `.<base>`, checked as it's typed with `GET /v1/servers/availability`
@@ -200,16 +217,18 @@ accounts and servers v1, with v4's token lifetimes.
   step's place (over Join a server when there is one), so Back never
   returns to a step that is done.
 - **Connecting** (after Bootstrap; Join on the list does the
-  same in place) asks the accounts service for the server's own tokens,
-  `POST /v1/servers/:id/token` under the pass: no browser. The access
+  same in place) asks the API for the server's own tokens,
+  `POST /v1/servers/:id/token` under the session: no browser. The access
   token's `aud` must be `https://<name>.<base>/`, built from the listed
   name and the app's own base, never from the listed `url`. Its refresh
   token is the lasting session, kept as any server's below and refreshed
-  at `auth.happy.engineering/token` (`refresh_token` grant, `client_id`
-  `happy`, `resource` the server) without the account. Then, as after any
-  sign-in, the server is asked who signed in, its installation is
-  recorded, and the connection is added. The account token goes only to
-  the accounts service.
+  at `https://api.<base>/token` (`refresh_token` grant, `client_id`
+  `happy`, `resource` the server) without the account. The access token's
+  `aud` may also name the cluster (`[https://<name>.<base>/,
+  https://<base>/]`); it is enough that one entry names the server. Then,
+  as after any sign-in, the server is asked who signed in, its
+  installation is recorded, and the connection is added. The session's
+  token goes only to the API.
 - **Your name.** A member the server has no profile for yet
   (`GET /v0/authentication` with `userId: null`) is asked "What's your
   name?" before the connection is added. The field is prefilled with the
@@ -249,11 +268,23 @@ accounts and servers v1, with v4's token lifetimes.
 - **Sign-in methods.** Apple and Google natively, GitHub in the app's own
   sheet, straight to GitHub, and a code by email typed in the app.
 - **Sign Out of Happy Cloud**, in the account switcher's menu while the
-  pass is held, forgets the pass. The servers stay connected.
+  session is held, ends it: nothing more goes under it, and its refresh
+  token is revoked at the API, `POST /revoke` (RFC 7009), best effort.
+  Back out of the flow, or another sign-in, does the same
+  (`CloudScreens.account`). The servers stay connected.
 - **Removing a cloud server** drops it on the phone and revokes its
-  session at the accounts service: `POST /revoke` (RFC 7009) with its
+  session at the API: `POST https://api.<base>/revoke` (RFC 7009) with its
   refresh token and `client_id`, best effort
-  (`AgentConnections.revokeIfCloud`).
+  (`AgentConnections.revokeIfCloud`). Only a grant the API issued goes
+  there.
+- **Servers an earlier build joined.** Their refresh tokens came from the
+  accounts service, which refreshes nothing since the split. At launch
+  (`AgentConnections.restore`) a cloud server whose grant doesn't refresh
+  at `https://api.<base>/token` ends like any ended session (below), with
+  nothing sent: home shows "Signed out of @name" with Sign In, which
+  opens Happy Cloud. Nothing stored is rewritten. An earlier build itself
+  is told by the accounts service to update: `410 update_required` on
+  `/v1/auth/*`.
 - **No scanned code.** The scan-only rule exists so that no one can send a
   person's sign-in to a server by a link or a pasted address. Cloud
   addresses come from the app's base, so the rule doesn't apply to them,
@@ -280,7 +311,7 @@ accounts and servers v1, with v4's token lifetimes.
   Happy bot is as before: not renamed here, and onboarding not read.
 - **Roles.** A cloud session reads `GET /v0/permissions` (`Permissions`)
   at once, on `role.*`, on a resync and on every reconnect (a role
-  changed at the accounts service lands with the next token). Only
+  changed in the cluster lands with the next token). Only
   `granted` decides: `Session.gate` (`RoleGate`) is `.open` on a computer
   and, on a cloud server, allows nothing until read and keeps what was
   read if a read fails, so no control is shown only to be refused.
@@ -440,9 +471,11 @@ refusal and WebSocket upgrade:
 - on Happy Cloud, a second Happy `401` after a refresh is also
   `unavailable`. Only the authorization server refusing the refresh token
   ends a Happy Cloud session;
-- the rest, or a refresh the authorization server refuses, sets
-  `ServerAuthorization.state = .needsSignIn`. A refresh that fails only on
-  the network keeps the grant.
+- the rest, or a refresh the authorization server refuses (a 4xx other
+  than 429), sets `ServerAuthorization.state = .needsSignIn`. A refresh
+  that fails on the network, or that the token endpoint answers with a
+  5xx or a 429 (an edge's rate limit or challenge, HTML or JSON), keeps
+  the grant (`OAuthError.network`).
 
 A 403 with Happy's JSON is an ordinary permission error.
 
@@ -621,12 +654,15 @@ the code field, Resend code's and a `429`'s countdowns, Change email, and
 the servers after the right code.
 
 `scripts/cloud-email-mock/server.mjs` plays the accounts service's email
-routes and servers list over plain HTTP on 8790 (a fixed code, `123456`;
-special addresses for each refusal; a `429` after three codes a minute or
-three wrong codes). `scripts/cloud-email-mock/run-device-test.sh` (on a
-Mac) starts it and runs `CloudEmailSignInUITests` on a connected phone or a
-simulator (`DEVICE`) in the chat harness, whose `-cloudAccounts <origin>`
-sends the welcome's sign-ins there, then exports the screenshots. On a
+routes (`/v2/auth/email/*`, identity tokens; `/v1/auth/*` answers `410
+update_required`) and the API's session, `/token`, `/revoke` and servers
+list over plain HTTP on 8790 (a fixed code, `123456`; special addresses
+for each refusal; a `429` after three codes a minute or three wrong
+codes). `scripts/cloud-email-mock/run-device-test.sh` (on a Mac) starts it
+and runs `CloudEmailSignInUITests` on a connected phone or a simulator
+(`DEVICE`) in the chat harness, whose `-cloudAccounts <origin>` sends the
+welcome's sign-ins and the API's calls there, then exports the
+screenshots. On a
 phone whose UI automation can't be turned on, the harness's own
 `-cloudScreen email -cloudName <address> -cloudSend -cloudCode <code>`
 fills the address, taps Send code and types the code through the same
