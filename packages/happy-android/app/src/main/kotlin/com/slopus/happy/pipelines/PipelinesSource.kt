@@ -64,11 +64,7 @@ class PipelinesSource(
     private val pipelinesAsked = Channel<Unit>(Channel.CONFLATED)
     private val runsAsked = Channel<Unit>(Channel.CONFLATED)
 
-    /** The newest page and older pages never land at once. */
-    private val runsLock = Mutex()
-
-    /** The reader paged past the first page: a fresh first page keeps what they read below it. */
-    private var pagedPastFirst = false
+    private val runs = RunPages(scope, backend::runs, { mutableState.value.runs }) { change -> mutableState.update { it.copy(runs = change(it.runs)) } }
 
     init {
         // Subscribed before the first read is sent, so a change between the two is read too.
@@ -81,7 +77,7 @@ class PipelinesSource(
             }
         }
         scope.launch { for (ask in pipelinesAsked) readPipelines() }
-        scope.launch { for (ask in runsAsked) readRuns() }
+        scope.launch { for (ask in runsAsked) runs.newest() }
         refresh()
     }
 
@@ -91,28 +87,7 @@ class PipelinesSource(
     }
 
     /** Reads the next older page of runs, unless one is on its way or every run is in. */
-    fun more() {
-        val runs = mutableState.value.runs
-        if (runs.loadingMore || runs.nextCursor == null) return
-        updateRuns { it.copy(loadingMore = true) }
-        scope.launch {
-            runsLock.withLock {
-                val cursor = mutableState.value.runs.nextCursor ?: return@withLock updateRuns { it.copy(loadingMore = false) }
-                val page = attempt { backend.runs(cursor) }
-                if (page == null) return@withLock updateRuns { it.copy(loadingMore = false, failed = true) }
-                pagedPastFirst = true
-                updateRuns { current ->
-                    val known = current.entries.mapTo(HashSet()) { it.id }
-                    current.copy(
-                        loadingMore = false,
-                        failed = false,
-                        entries = current.entries + page.value?.runs.orEmpty().filter { it.id !in known },
-                        nextCursor = page.value?.nextCursor,
-                    )
-                }
-            }
-        }
-    }
+    fun more() = runs.more()
 
     private suspend fun readPipelines() {
         val read = attempt { backend.pipelines() }
@@ -120,26 +95,6 @@ class PipelinesSource(
             if (read == null) it.copy(loading = false, failed = true) else it.copy(loading = false, failed = false, pipelines = read.value)
         }
     }
-
-    private suspend fun readRuns() = runsLock.withLock {
-        // A server without the list said so once; the next page that opens asks again.
-        if (!mutableState.value.runs.listed) return@withLock
-        val read = attempt { backend.runs(null) } ?: return@withLock updateRuns { it.copy(loading = false, failed = true) }
-        val page = read.value ?: return@withLock updateRuns { it.copy(loading = false, listed = false, failed = false, entries = emptyList(), nextCursor = null) }
-        updateRuns { current ->
-            current.copy(
-                loading = false,
-                listed = true,
-                failed = false,
-                // By ID, so a new run in front moves every row down one.
-                entries = pipelineRunsMerge(current.entries, page.runs, !pagedPastFirst),
-                // Paged past the first page, the cursor already points past what is kept.
-                nextCursor = if (pagedPastFirst) current.nextCursor else page.nextCursor,
-            )
-        }
-    }
-
-    private fun updateRuns(change: (PipelineRuns) -> PipelineRuns) = mutableState.update { it.copy(runs = change(it.runs)) }
 
     /** The cluster's pipeline events (API.md, "Events"): hints to read again, carrying no state. */
     companion object {
@@ -160,4 +115,62 @@ internal suspend fun <T> attempt(read: suspend () -> T): Read<T>? = try {
     throw e
 } catch (_: Exception) {
     null
+}
+
+/**
+ * Runs read a page at a time, newest first (desktop's runs follow): the
+ * newest page again on [newest], older ones on [more], never both at once.
+ * [read] answers null where the server doesn't list them (`404`).
+ */
+internal class RunPages(
+    private val scope: CoroutineScope,
+    private val read: suspend (cursor: String?) -> PipelineRunPage<PipelineRunListEntry>?,
+    private val current: () -> PipelineRuns,
+    private val update: ((PipelineRuns) -> PipelineRuns) -> Unit,
+) {
+    /** The newest page and older pages never land at once. */
+    private val lock = Mutex()
+
+    /** The reader paged past the first page: a fresh first page keeps what they read below it. */
+    private var pagedPastFirst = false
+
+    suspend fun newest() = lock.withLock {
+        // A server without the list said so once; the next page that opens asks again.
+        if (!current().listed) return@withLock
+        val answer = attempt { read(null) } ?: return@withLock update { it.copy(loading = false, failed = true) }
+        val page = answer.value ?: return@withLock update { it.copy(loading = false, listed = false, failed = false, entries = emptyList(), nextCursor = null) }
+        update { runs ->
+            runs.copy(
+                loading = false,
+                listed = true,
+                failed = false,
+                // By ID, so a new run in front moves every row down one.
+                entries = pipelineRunsMerge(runs.entries, page.runs, !pagedPastFirst),
+                // Paged past the first page, the cursor already points past what is kept.
+                nextCursor = if (pagedPastFirst) runs.nextCursor else page.nextCursor,
+            )
+        }
+    }
+
+    fun more() {
+        val runs = current()
+        if (runs.loadingMore || runs.nextCursor == null) return
+        update { it.copy(loadingMore = true) }
+        scope.launch {
+            lock.withLock {
+                val cursor = current().nextCursor ?: return@withLock update { it.copy(loadingMore = false) }
+                val page = attempt { read(cursor) } ?: return@withLock update { it.copy(loadingMore = false, failed = true) }
+                pagedPastFirst = true
+                update { runs ->
+                    val known = runs.entries.mapTo(HashSet()) { it.id }
+                    runs.copy(
+                        loadingMore = false,
+                        failed = false,
+                        entries = runs.entries + page.value?.runs.orEmpty().filter { it.id !in known },
+                        nextCursor = page.value?.nextCursor,
+                    )
+                }
+            }
+        }
+    }
 }

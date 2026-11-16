@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.pipelines.PipelineRunListEntry
+import com.slopus.happy.pipelines.PipelineRuns
 import com.slopus.happy.pipelines.PipelineRunState
 import com.slopus.happy.pipelines.PipelineRunTrigger
 import com.slopus.happy.pipelines.PipelineSummary
@@ -192,7 +193,7 @@ fun PipelinesScreen(
                     ) {
                         state.pipelines.forEach { PipelineRow(it, now, onOpenPipeline) }
                     }
-                    Runs(state, agents, now, onMore, onOpenRun)
+                    RunsGroup(state.runs, agents, now, stringResource(R.string.pipelines_runs_empty), onMore, onOpenRun)
                 }
             }
         }
@@ -224,9 +225,9 @@ private fun PipelineRow(pipeline: PipelineSummary, now: Long, onOpen: ((String) 
     )
 }
 
+/** Runs under Runs, newest first, with Older runs under them while there are more; [empty] where there are none. */
 @Composable
-private fun Runs(state: PipelinesList, agents: AgentNames, now: Long, onMore: () -> Unit, onOpenRun: ((String) -> Unit)?) {
-    val runs = state.runs
+internal fun RunsGroup(runs: PipelineRuns, agents: AgentNames, now: Long, empty: String, onMore: () -> Unit, onOpenRun: ((String) -> Unit)?) {
     val colors = HappyTheme.colors
     val title = stringResource(R.string.pipelines_runs)
     when {
@@ -235,7 +236,7 @@ private fun Runs(state: PipelinesList, agents: AgentNames, now: Long, onMore: ()
         }
         runs.loading -> ItemGroup(title = title) { Item(title = stringResource(R.string.pipelines_runs_loading), loading = true, showChevron = false) }
         runs.entries.isEmpty() -> ItemGroup(title = title, footer = if (runs.failed) stringResource(R.string.pipelines_out_of_date) else null) {
-            Item(title = stringResource(R.string.pipelines_runs_empty), titleColor = colors.textSecondary, titleLines = 0, showChevron = false)
+            Item(title = empty, titleColor = colors.textSecondary, titleLines = 0, showChevron = false)
         }
         else -> {
             val byId = remember(runs.entries) { runs.entries.associateBy { it.id } }
