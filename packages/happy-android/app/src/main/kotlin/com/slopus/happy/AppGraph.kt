@@ -396,6 +396,7 @@ class AppGraph(
         CloudAccount(
             scope = scope,
             origin = origin,
+            api = HappyCloud.api ?: return@let null,
             auth = serverAuth,
             http = okHttp,
         )

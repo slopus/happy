@@ -222,6 +222,36 @@ class ServerAuthTest {
         assertReason(ServerAuthException.Reason.WrongAudience) { auth.refresh(OAuthCredential("jwt", "happy", "$base/oauth/refresh", "r"), origin) }
     }
 
+    /** An identity-only sign-in (OIDC `scope=openid`): the code for the `id_token`, which must name the client; the same callback checks and refusals. */
+    @Test
+    fun anIdentitySignInGetsAnIdTokenForThisClient() = runBlocking {
+        val identity = OAuthMethod(id = "accounts", name = "Accounts", authorizationUrl = "$base/authorize", tokenUrl = "$base/token", clientId = "happy", scope = "openid")
+        val pending = auth.begin(origin, identity, redirect)
+        assertEquals(null, pending.authorizeUrl.toHttpUrl().queryParameter("resource"))
+        assertReason(ServerAuthException.Reason.Expired) { auth.identity(pending, "$redirect?code=abc&state=other") }
+        assertEquals(0, server.requestCount)
+        val token = jwt("happy", tag = "id-1")
+        server.enqueue(json("""{"id_token":"$token","token_type":"Bearer","expires_in":300}"""))
+        assertEquals(token, auth.identity(pending, "$redirect?code=abc&state=${pending.state}"))
+        val body = form(server.takeRequest().also { assertEquals("/token", it.target) }.body!!.utf8())
+        assertEquals(mapOf("grant_type" to "authorization_code", "code" to "abc", "redirect_uri" to redirect, "client_id" to "happy", "code_verifier" to pending.verifier), body)
+        // Another client's, or several of which none is this one: refused. Several naming it: taken.
+        server.enqueue(json("""{"id_token":"${jwt("happy-web")}"}"""))
+        assertReason(ServerAuthException.Reason.WrongAudience) { auth.identity(pending, "$redirect?code=abc&state=${pending.state}") }
+        server.enqueue(json("""{"id_token":"${jwt("https://happy.acme.example/")}"}"""))
+        assertReason(ServerAuthException.Reason.WrongAudience) { auth.identity(pending, "$redirect?code=abc&state=${pending.state}") }
+        val both = jwt("other", "happy")
+        server.enqueue(json("""{"id_token":"$both"}"""))
+        assertEquals(both, auth.identity(pending, "$redirect?code=abc&state=${pending.state}"))
+        // No id_token (an access token is no identity), a refusal, a fault that passes.
+        server.enqueue(json("""{"access_token":"${jwt("happy")}","token_type":"Bearer"}"""))
+        assertReason(ServerAuthException.Reason.InvalidToken) { auth.identity(pending, "$redirect?code=abc&state=${pending.state}") }
+        server.enqueue(json("""{"error":"invalid_grant"}""", 400))
+        assertReason(ServerAuthException.Reason.Denied) { auth.identity(pending, "$redirect?code=abc&state=${pending.state}") }
+        server.enqueue(json("""{"error":"temporarily_unavailable"}""", 503))
+        assertReason(ServerAuthException.Reason.Unreachable) { auth.identity(pending, "$redirect?code=abc&state=${pending.state}") }
+    }
+
     @Test
     fun checkingTheTokenSaysWhetherTheMemberHasAProfile() = runBlocking {
         server.enqueue(json("""{"authenticated":true,"userId":null,"methods":[]}"""))

@@ -330,13 +330,33 @@ class ServerAuthClient(
      * and the `resource` the sign-in started with.
      */
     suspend fun complete(pending: PendingOAuth, callback: String): Pair<OAuthGrant, OAuthCredential> {
+        val method = pending.method
+        val grant = token(method.tokenUrl, exchangeForm(pending, callback)) ?: throw ServerAuthException(ServerAuthException.Reason.Denied)
+        if (!audienceIs(grant.access.value, pending.origin)) throw ServerAuthException(ServerAuthException.Reason.WrongAudience)
+        return grant to OAuthCredential(method.id, method.clientId, method.refreshUrl, grant.refreshToken, method.resource)
+    }
+
+    /**
+     * An identity-only sign-in's answer (OIDC `scope=openid`, no
+     * `resource`): [callback]'s code exchanged, as [complete] does, for the
+     * identity provider's `id_token`, checked (unverified; whoever it goes
+     * to verifies it) to name the method's client among its audiences.
+     */
+    suspend fun identity(pending: PendingOAuth, callback: String): String {
+        val form = exchangeForm(pending, callback)
+        val body = exchange(pending.method.tokenUrl, form) ?: throw ServerAuthException(ServerAuthException.Reason.Denied)
+        return identityToken(parse(body), pending.method.clientId)
+    }
+
+    /** [callback]'s code, checked to be [pending]'s, as the token endpoint's form, with the verifier and the `resource` the sign-in started with. */
+    private fun exchangeForm(pending: PendingOAuth, callback: String): FormBody {
         if (!pending.isCallback(callback)) throw ServerAuthException(ServerAuthException.Reason.Expired)
         val query = query(callback) ?: throw ServerAuthException(ServerAuthException.Reason.Expired)
         if (query["state"] != pending.state) throw ServerAuthException(ServerAuthException.Reason.Expired)
         if (query["error"] != null) throw ServerAuthException(ServerAuthException.Reason.Denied)
         val code = query["code"]?.takeIf { it.isNotEmpty() } ?: throw ServerAuthException(ServerAuthException.Reason.Denied)
         val method = pending.method
-        val form = FormBody.Builder()
+        return FormBody.Builder()
             .add("grant_type", "authorization_code")
             .add("code", code)
             .add("redirect_uri", pending.redirectUri)
@@ -344,9 +364,6 @@ class ServerAuthClient(
             .add("code_verifier", pending.verifier)
             .apply { method.resource?.let { add("resource", it) } }
             .build()
-        val grant = token(method.tokenUrl, form) ?: throw ServerAuthException(ServerAuthException.Reason.Denied)
-        if (!audienceIs(grant.access.value, pending.origin)) throw ServerAuthException(ServerAuthException.Reason.WrongAudience)
-        return grant to OAuthCredential(method.id, method.clientId, method.refreshUrl, grant.refreshToken, method.resource)
     }
 
     /**
@@ -377,11 +394,7 @@ class ServerAuthClient(
      * grant still good: Unreachable.
      */
     private suspend fun token(url: String, form: FormBody): OAuthGrant? {
-        val target = checkedUrl(url) ?: throw ServerAuthException(ServerAuthException.Reason.InvalidToken)
-        val (status, _, body) = call(Request.Builder().url(target).header("Accept", "application/json").post(form).build())
-        if (status == 429) throw ServerAuthException(ServerAuthException.Reason.Unreachable)
-        if (status in 300..499) return null
-        if (status != 200) throw ServerAuthException(ServerAuthException.Reason.Unreachable)
+        val body = exchange(url, form) ?: return null
         val root = parse(body) ?: throw ServerAuthException(ServerAuthException.Reason.InvalidToken)
         val access = (root["access_token"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() && it.length <= 16384 && it.none { c -> c.code <= 32 || c.code >= 127 } }
         val type = (root["token_type"] as? JsonPrimitive)?.contentOrNull
@@ -389,6 +402,16 @@ class ServerAuthClient(
         val expiresIn = (root["expires_in"] as? JsonPrimitive)?.let { it.longOrNull ?: it.contentOrNull?.toLongOrNull() }?.takeIf { it > 0 }
         val refresh = (root["refresh_token"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
         return OAuthGrant(AccessToken(access, expiresIn?.let { now() + it * 1000 }), refresh)
+    }
+
+    /** A token endpoint's 200 body; null when it refused, as [token] says. */
+    private suspend fun exchange(url: String, form: FormBody): ByteArray? {
+        val target = checkedUrl(url) ?: throw ServerAuthException(ServerAuthException.Reason.InvalidToken)
+        val (status, _, body) = call(Request.Builder().url(target).header("Accept", "application/json").post(form).build())
+        if (status == 429) throw ServerAuthException(ServerAuthException.Reason.Unreachable)
+        if (status in 300..499) return null
+        if (status != 200) throw ServerAuthException(ServerAuthException.Reason.Unreachable)
+        return body
     }
 
     private suspend fun call(request: Request): Triple<Int, String?, ByteArray> = withContext(Dispatchers.IO) {
@@ -417,24 +440,42 @@ class ServerAuthClient(
          * that isn't a JWT is for no one.
          */
         internal fun audienceIs(token: String, server: AgentOrigin): Boolean {
-            val parts = token.split('.')
-            if (parts.size != 3) return false
-            val claims = try {
-                parse(Base64.getUrlDecoder().decode(parts[1]))
-            } catch (_: IllegalArgumentException) {
-                null
-            } ?: return false
-            val audiences = when (val aud = claims["aud"]) {
-                is JsonPrimitive -> listOfNotNull(aud.takeIf { it.isString }?.content)
-                is JsonArray -> aud.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
-                else -> emptyList()
-            }
             val base = "${server.value}/".toHttpUrlOrNull() ?: return false
-            return audiences.any { audience ->
+            return audiences(token).any { audience ->
                 val url = audience.toHttpUrlOrNull() ?: return@any false
                 url.scheme == base.scheme && url.host == base.host && url.port == base.port &&
                     url.encodedPath.let { if (it.endsWith("/")) it else "$it/" } == base.encodedPath
             }
+        }
+
+        /** A JWT's `aud`, a string or an array, unverified; none for a token that isn't a JWT. */
+        private fun audiences(token: String): List<String> {
+            val parts = token.split('.')
+            if (parts.size != 3) return emptyList()
+            val claims = try {
+                parse(Base64.getUrlDecoder().decode(parts[1]))
+            } catch (_: IllegalArgumentException) {
+                null
+            } ?: return emptyList()
+            return when (val aud = claims["aud"]) {
+                is JsonPrimitive -> listOfNotNull(aud.takeIf { it.isString }?.content)
+                is JsonArray -> aud.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+                else -> emptyList()
+            }
+        }
+
+        /**
+         * An `{id_token}` answer's token: InvalidToken when there is none
+         * (or it is past any JWT's size), WrongAudience when its `aud`
+         * doesn't name [clientId]. The signature isn't checked; the
+         * cluster, which it goes to, does that.
+         */
+        internal fun identityToken(root: JsonObject?, clientId: String): String {
+            val token = (root?.get("id_token") as? JsonPrimitive)?.takeIf { it.isString }?.content
+                ?.takeIf { it.isNotEmpty() && it.length <= 16384 && it.none { c -> c.code <= 32 || c.code >= 127 } }
+                ?: throw ServerAuthException(ServerAuthException.Reason.InvalidToken)
+            if (clientId !in audiences(token)) throw ServerAuthException(ServerAuthException.Reason.WrongAudience)
+            return token
         }
 
         /** The methods this app can use: `oauth` ones with valid URLs; others are skipped, as API.md asks. */
