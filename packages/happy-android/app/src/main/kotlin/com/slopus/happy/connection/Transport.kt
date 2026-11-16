@@ -1,13 +1,17 @@
 package com.slopus.happy.connection
 
+import com.slopus.happy.diagnostics.Timing
 import io.tailcat.ClientConfiguration
+import io.tailcat.ConnectionPath
 import io.tailcat.DERPMapCache
 import io.tailcat.DERPMapCacheEntry
 import io.tailcat.DERPMapProvider
 import io.tailcat.NodePrivateKey
+import io.tailcat.TailcatAddress
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import kotlin.concurrent.thread
 import io.tailcat.TailcatClient
 import io.tailcat.TailcatConnection
 import kotlinx.coroutines.Dispatchers
@@ -133,8 +137,8 @@ class TailcatTransport internal constructor(
         connectTimeoutMillis: Long = 20_000,
         requestTimeoutMillis: Long = 35_000,
         fileTimeoutMillis: Long = 15 * 60_000,
-    ) : this(port, requestTimeoutMillis, fileTimeoutMillis, { _, key ->
-        TailcatClient.connect(address, tailcatConfiguration(key, connectTimeoutMillis))
+    ) : this(port, requestTimeoutMillis, fileTimeoutMillis, { category, key ->
+        connectTimed(address, tailcatConfiguration(key, connectTimeoutMillis), category)
     })
 
     private val flows = OpenFlows()
@@ -375,7 +379,11 @@ class TailcatTransport internal constructor(
      * doesn't answer within two seconds, every direct path is probed and one
      * that stopped answering dropped, and an expired session rekeys.
      */
-    override suspend fun resumed() = each { idle[it]?.drop(); it.wake() }
+    override suspend fun resumed() {
+        each { idle[it]?.drop(); it.wake() }
+        val main = clients.connected().firstOrNull { it.first != RequestCategory.File }?.second
+        Timing.mark("tailcat.main.woken", "path=${main?.path?.let(::pathName) ?: "none"}")
+    }
 
     /**
      * tailcat-kotlin hears of no network change on its own (tailcat-swift
@@ -402,6 +410,45 @@ class TailcatTransport internal constructor(
         internal fun tailcatConfiguration(key: NodePrivateKey, connectTimeoutMillis: Long): ClientConfiguration =
             // Serve the first request over DERP while this client's direct path is probed.
             ClientConfiguration(privateKey = key, mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis, relayFirst = true)
+
+        private fun pathName(path: ConnectionPath) = if (path is ConnectionPath.Direct) "direct" else "relay"
+
+        /**
+         * [TailcatClient.connect] in HappyTiming: the connect as a span, then
+         * tailcat-kotlin's own startup steps (DERP map, TLS, DERP ready,
+         * WireGuard, meow) from its startup trace, and for the main client
+         * the moment its first direct path takes over from the relay.
+         */
+        @Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
+        private fun connectTimed(address: String, configuration: ClientConfiguration, category: RequestCategory): TailcatClient {
+            val name = if (category == RequestCategory.File) "file" else "main"
+            val trace = io.tailcat.StartupTrace()
+            val span = Timing.begin("tailcat.$name.connect")
+            val client = try {
+                // connect(address) is connectTraced with no trace; tailcat-kotlin keeps the traced one internal.
+                TailcatClient.connectTraced(TailcatAddress.parse(address), configuration, trace)
+            } catch (error: Throwable) {
+                span.end("failed=${error::class.simpleName}")
+                throw error
+            }
+            span.end()
+            trace.snapshot().forEach { Timing.mark("tailcat.$name.${it.name}", at = span.startedAt + it.atMillis) }
+            if (name == "main") thread(isDaemon = true, name = "happy-timing-path") {
+                repeat((DIRECT_WATCH_MILLIS / DIRECT_POLL_MILLIS).toInt()) {
+                    val path = try { client.path } catch (_: Exception) { return@thread }
+                    if (path is ConnectionPath.Direct) {
+                        Timing.mark("tailcat.main.direct", "since_connect=${Timing.now() - span.startedAt}")
+                        return@thread
+                    }
+                    Thread.sleep(DIRECT_POLL_MILLIS)
+                }
+                Timing.mark("tailcat.main.relay_only", "watched=$DIRECT_WATCH_MILLIS")
+            }
+            return client
+        }
+
+        private const val DIRECT_WATCH_MILLIS = 20_000L
+        private const val DIRECT_POLL_MILLIS = 25L
 
         /**
          * One provider for the app (tailcat-kotlin's default map,

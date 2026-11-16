@@ -2,6 +2,7 @@ package com.slopus.happy
 
 import android.content.Intent
 import com.slopus.happy.connection.ServerSignInFlow
+import com.slopus.happy.diagnostics.Timing
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -88,6 +89,7 @@ class MainActivity : ComponentActivity() {
             // Posted, so it runs once the window is attached and lands on its own tree observer.
             window.decorView.post {
                 window.decorView.viewTreeObserver.registerFrameCommitCallback {
+                    Timing.mark("first_frame")
                     FirstFrame.done()
                 }
             }

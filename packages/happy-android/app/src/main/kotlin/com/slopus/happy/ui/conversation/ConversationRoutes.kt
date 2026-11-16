@@ -465,6 +465,8 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         try { kotlinx.coroutines.awaitCancellation() } finally { holder.hold.observe(false) }
     }
     val state by conversation.state.collectAsStateWithLifecycle()
+    com.slopus.happy.diagnostics.TimingMark("chat.rows", state.rows.isNotEmpty())
+    com.slopus.happy.diagnostics.TimingMark("chat.current", state.synced)
     // The model label warns as its account runs low, so the readings are followed while the chat shows.
     com.slopus.happy.ui.components.StartedEffect(session) {
         val following = session.usage.follow()

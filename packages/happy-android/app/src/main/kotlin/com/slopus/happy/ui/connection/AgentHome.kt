@@ -938,6 +938,9 @@ private fun SignedInAgentHome(
     val link = rememberShownLinkState(status.linkState(updating, rememberNetworkPath()))
     // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): home past its loader.
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
+    com.slopus.happy.diagnostics.TimingMark("home.rows", feed.loaded)
+    // Connected, with home's P0 read in (homeUpdating spans the snapshot).
+    com.slopus.happy.diagnostics.TimingMark("home.current", feed.loaded && status == AgentLinkStatus.Connected && !updating)
     val add = LocalAddFlow.current
     val switchAccount = rememberHomeAccountSwitch(graph)
     val microphone = rememberMicrophonePermission()

@@ -13,6 +13,7 @@ import com.slopus.happy.conversation.ModelPreferences
 import com.slopus.happy.conversation.NewSessionStart
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
+import com.slopus.happy.diagnostics.Timing
 import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.documents.DocumentLibrary
 import com.slopus.happy.documents.DocumentStreams
@@ -189,11 +190,12 @@ class AgentSession internal constructor(
                     try { client.send(method, path, body, category = category, onAsked = { signal.complete(Unit) }) }
                     finally { signal.complete(Unit) }
                 }
+                val span = Timing.begin("chat.read")
                 Result.success(coroutineScope {
                     val bootstrap = async { api.bootstrap(agentId) }
                     val messages = async { api.messages(agentId) }
                     bootstrap.await() to messages.await()
-                })
+                }).also { span.end() }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { Result.failure(e) }
         }
@@ -842,6 +844,7 @@ class AgentSession internal constructor(
                     // they would hold up the next value, so a background could not stop the link.
                     on -> try { coroutineScope {
                         launch {
+                            Timing.mark("link.start", "suspended=${suspended.get()}")
                             beginHealth()
                             // Bring up the shared query/stream tunnel while the kept catalog loads.
                             val warmAsked = CompletableDeferred<Unit>()
@@ -856,7 +859,11 @@ class AgentSession internal constructor(
                                 restoreCache()
                                 // Kept through a background: its tunnels check every way to the
                                 // agent before the stream asks them for anything.
-                                if (suspended.getAndSet(false)) linkLock.withLock { route?.second }?.resumed()
+                                if (suspended.getAndSet(false)) {
+                                    val span = Timing.begin("link.resume")
+                                    linkLock.withLock { route?.second }?.resumed()
+                                    span.end()
+                                }
                                 live()
                             } finally { warming.cancel() }
                         }
@@ -882,6 +889,7 @@ class AgentSession internal constructor(
      * made without a network is dropped.
      */
     fun networkReturned() {
+        Timing.mark("net.returned")
         // Every tunnel kept checks its relay and every path first, replacing only what doesn't answer.
         scope.launch {
             linkLock.withLock { route?.second }?.networkChanged()
@@ -902,6 +910,7 @@ class AgentSession internal constructor(
      * (13 s, emulator, Wi-Fi silenced a second after the switch).
      */
     fun networkMoved() {
+        Timing.mark("net.moved")
         scope.launch {
             val transport = linkLock.withLock { route?.second }
             val status = statusState.value
@@ -957,7 +966,8 @@ class AgentSession internal constructor(
                     val owner = this
                     val streamAsked = CompletableDeferred<Unit>()
                     val opening = async {
-                        try { client.events(cursor) { streamAsked.complete(Unit) } }
+                        val span = Timing.begin("link.stream")
+                        try { client.events(cursor) { streamAsked.complete(Unit) }.also { span.end("cursor=${cursor != null}") } }
                         finally { streamAsked.complete(Unit) }
                     }
                     streamAsked.await()
@@ -1054,6 +1064,7 @@ class AgentSession internal constructor(
 
     private suspend fun readSnapshot() {
         reads.update { it + 1 }
+        val span = Timing.begin("link.snapshot")
         try {
             val bootstrap = client.decode<WireDesktopBootstrap>("GET", "/v0/bootstrap/desktop")
             val owner = connections.accounts.value.firstOrNull { it.id == connectionId }?.userId
@@ -1064,6 +1075,7 @@ class AgentSession internal constructor(
             team.bootstrap(bootstrap.teammates, bootstrap.profile)
             catalogLock.withLock { catalogState.update { it.withBootstrap(bootstrap) } }
             feedLibrary.bootstrap(bootstrap.feedUnread, bootstrap.cursor, bootstrap.health?.let(com.slopus.happy.feed.FeedCapabilities::of))
+            span.end()
         } finally {
             reads.update { it - 1 }
         }
@@ -1087,6 +1099,7 @@ class AgentSession internal constructor(
                     }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
+                        Timing.mark("link.hello")
                         documents.streams.opened(event.data)
                         feedLibrary.hello()
                         val wasVerified = phaseState.value == SyncPhase.Verified
@@ -1097,6 +1110,7 @@ class AgentSession internal constructor(
                         if (hello.gap && (resumed || wasVerified)) readSnapshot()
                         resumeAllowed = true
                         phaseState.value = SyncPhase.Verified
+                        Timing.mark("link.verified", "resumed=$resumed")
                         finishHealth(true)
                         intents.setOnline(true)
                         if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)

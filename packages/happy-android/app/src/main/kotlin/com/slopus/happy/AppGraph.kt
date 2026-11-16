@@ -44,6 +44,7 @@ import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.LocalCaches
+import com.slopus.happy.diagnostics.Timing
 import com.slopus.happy.model.settings.LanguageController
 import com.slopus.happy.model.settings.SettingsRepository
 import com.slopus.happy.net.ConnectionStatus
@@ -619,7 +620,11 @@ class AppGraph(
         started = (started + if (value) 1 else -1).coerceAtLeast(0)
         val was = foreground.value
         foreground.value = started > 0
-        if (was && !foreground.value) agentSessions.backgrounded()
+        if (!was && foreground.value) Timing.foreground()
+        if (was && !foreground.value) {
+            Timing.mark("background")
+            agentSessions.backgrounded()
+        }
     }
 
     /** Each agent connection's live link and cached home (AgentSessions). */
