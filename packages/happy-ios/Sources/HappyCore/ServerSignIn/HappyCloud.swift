@@ -1,8 +1,9 @@
 import Foundation
 import HappyWire
 
-/// Happy Cloud: one Happy Cloud account (at `auth.happy.engineering`) and
-/// the servers it belongs to, each a team server at `<name>.<base>`. Both
+/// Happy Cloud: one Happy Cloud account, signed in at
+/// `auth.happy.engineering` and kept by the cluster at `api.<base>`, and
+/// the servers it belongs to, each a team server at `<name>.<base>`. All
 /// are compiled into the app. Cloud servers are the only ones added without
 /// a scanned code: the app builds their addresses from its own base and a
 /// name the accounts service listed, never from anything typed, pasted or
@@ -13,9 +14,14 @@ public enum HappyCloud {
     /// The domain every cloud server is under. Change it here only.
     public static var base: String { stand(in: "HappyCloudBase") ?? "happy-clusters.com" }
     public static let name = "Happy Cloud"
-    /// The accounts service, on its own domain: account sign-in, the
-    /// servers API, and every token. Change it here only.
+    /// The accounts service, on its own domain: sign-in only. It turns a
+    /// sign-in with Apple, Google, GitHub or an emailed code into a
+    /// five-minute identity token for the cluster, and nothing else.
+    /// Change it here only.
     public static var accounts: String { stand(in: "HappyCloudAccounts") ?? "https://auth.happy.engineering" }
+    /// The cluster's API: the account's session, its servers and invites,
+    /// and every token after sign-in, refreshed and revoked here.
+    public static var api: String { stand(in: "HappyCloudAPI") ?? "https://api.\(base)" }
     /// The web app, where a server's settings the phone has no page for
     /// are: `acme`'s under `https://acme.<web>/#/settings/`. Change it here only.
     public static var web: String { stand(in: "HappyCloudWeb") ?? "happybases.com" }
@@ -23,11 +29,12 @@ public enum HappyCloud {
     /// associated domain. Change it here and in the entitlements only.
     public static var invite: String { stand(in: "HappyCloudInvite") ?? "join.happy.engineering" }
 
-    private static let standInKeys = ["HappyCloudAccounts", "HappyCloudBase", "HappyCloudWeb", "HappyCloudInvite"]
+    private static let standInKeys = ["HappyCloudAccounts", "HappyCloudAPI", "HappyCloudBase", "HappyCloudWeb", "HappyCloudInvite"]
 
     /// A debug build's stand-ins for the above, for a scratch deployment:
     /// launched once with `-HappyCloudAccounts <origin>` (and
-    /// `-HappyCloudBase`, `-HappyCloudWeb`, `-HappyCloudInvite`), kept here
+    /// `-HappyCloudAPI`, `-HappyCloudBase`, `-HappyCloudWeb`,
+    /// `-HappyCloudInvite`), kept here
     /// at launch for later launches, such as one from an invite link; an
     /// empty value forgets one. Other builds have none.
     public static func keepStandIns() {
@@ -49,13 +56,13 @@ public enum HappyCloud {
         #endif
     }
 
-    /// How a cloud server's own sign-in is described: on the accounts
-    /// service, for the server (what `/v0/authentication` advertises). The
-    /// app gets its tokens from the accounts API instead of the browser,
-    /// and refreshes them here.
+    /// How a cloud server's own sign-in is described: on the cluster's API,
+    /// for the server (what `/v0/authentication` advertises). The app gets
+    /// its tokens from the API's `POST /v1/servers/:id/token` instead of the
+    /// browser, and refreshes them at its `/token`.
     public static func method(server: String) -> OAuthMethod {
-        OAuthMethod(id: "jwt", name: name, authorizationUrl: accounts + "/authorize", tokenUrl: accounts + "/token",
-                    refreshUrl: accounts + "/token", clientId: "happy", scope: "happy", resource: server + "/")
+        OAuthMethod(id: "jwt", name: name, authorizationUrl: api + "/authorize", tokenUrl: api + "/token",
+                    refreshUrl: api + "/token", clientId: "happy", scope: "happy", resource: server + "/")
     }
 
     /// Offered in development and preview builds only, not yet in the
