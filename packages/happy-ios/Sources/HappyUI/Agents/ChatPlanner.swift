@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import HappyCore
+import HappyIcons
 import HappyLayout
 import UIKit
 
@@ -199,6 +200,10 @@ actor ChatPlanner {
         if case .collaborator(let agentId, let explanation) = item.role {
             return collaborator(item, agentId: agentId, explanation: explanation, key: key, opened: opened, syntax: syntax)
         }
+        if case .own(let explanation, let run) = item.role {
+            if let run { return pipelineNotice(item, run: run, key: key) }
+            return own(item, explanation: explanation, key: key, opened: opened, syntax: syntax)
+        }
         switch item.role {
         case .failure(let failure): return Self.failure(failure, id: item.id, key: key, syntax: syntax)
         case .tool(let tool):
@@ -339,7 +344,7 @@ actor ChatPlanner {
                 selectable.isEmpty ? nil : ChatSelectable(texts: selectable, whole: item.text, frame: bubble, card: false)
             }
             return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight, mine: true, selection: selection)
-        case .collaborator, .failure, .tool, .turnEnd, .trace, .question:
+        case .collaborator, .own, .failure, .tool, .turnEnd, .trace, .question:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])
         }
@@ -552,7 +557,6 @@ actor ChatPlanner {
     /// is, the line is the sender's name and that; without, "Message from"
     /// the sender. A sender nobody here can name shows by its ID's start.
     static func collaborator(_ item: ChatItem, agentId: String, explanation: String?, key: Key, opened: Bool, syntax: CodeSyntaxService) -> ChatRowPlan {
-        let environment = key.environment
         let name = key.references.agents[agentId].map { $0.label.isEmpty ? Strings.untitledAgent : $0.label }
             ?? key.subagentTitles[agentId].map { $0.isEmpty ? Strings.subagent : $0 }
             ?? (agentId.count > 10 ? "\(agentId.prefix(8))…" : agentId)
@@ -565,6 +569,20 @@ actor ChatPlanner {
         // Desktop names a bare ID in the line by its agent's title.
         let line = explanation.map { HappyReferences.plain($0, instanceId: key.references.instanceId, view: key.references.view).replacingOccurrences(of: agentId, with: name) }
             ?? Strings.agentMessageFrom(name)
+        return activity(item, glyph: Glyphs.icon("agents"), verb: verb, line: line, key: key, opened: opened, syntax: syntax)
+    }
+
+    /// The agent's message to itself (desktop #156's `self`): its own one
+    /// line on what it is, or "Message to itself", the message behind it.
+    static func own(_ item: ChatItem, explanation: String?, key: Key, opened: Bool, syntax: CodeSyntaxService) -> ChatRowPlan {
+        let line = explanation.map { HappyReferences.plain($0, instanceId: key.references.instanceId, view: key.references.view) } ?? Strings.agentMessageToItself
+        return activity(item, glyph: Glyphs.icon("agents"), verb: explanation == nil ? Strings.agentMessage : nil, line: line, key: key, opened: opened, syntax: syntax)
+    }
+
+    /// One compact activity line, a glyph, a word and a line, the message
+    /// behind it when it has one: another agent's message, or this one's to itself.
+    private static func activity(_ item: ChatItem, glyph: Icon, verb: String?, line: String, key: Key, opened: Bool, syntax: CodeSyntaxService) -> ChatRowPlan {
+        let environment = key.environment
         let body = item.text
         let opens = !body.isEmpty
         let verbText = verb.map { ChatTextStyles.activityVerb.string($0, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment) }
@@ -580,7 +598,7 @@ actor ChatPlanner {
             textWidth: ChatTextLayout(unwrapped: lineText).size.width,
             opens: opens, body: markdown?.blocks
         )
-        var items: [ChatDrawItem] = [.icon(Glyphs.icon("agents"), size: AgentMessageLayout.Metrics.glyph, frame: layout.glyph, tint: Palette.textSecondary)]
+        var items: [ChatDrawItem] = [.icon(glyph, size: AgentMessageLayout.Metrics.glyph, frame: layout.glyph, tint: Palette.textSecondary)]
         if let verbText, let frame = layout.verb { items.append(.text(ChatTextLayout(verbText, width: frame.width, maxLines: 1), frame)) }
         items.append(.text(ChatTextLayout(lineText, width: layout.text.width, maxLines: 1), layout.text))
         if let frame = layout.chevron {
@@ -595,6 +613,43 @@ actor ChatPlanner {
         // The whole line opens and closes it, a finger's room above and below.
         if opens { hits.insert(ChatHit(frame: layout.header.insetBy(dx: 0, dy: -AgentMessageLayout.Metrics.paddingV), action: .toggleTool(item.id)), at: 0) }
         let spoken = [verb, line].compactMap { $0 }.joined(separator: " ") + (opened && opens ? "\n\n" + HappyReferences.plain(body, instanceId: key.references.instanceId, view: key.references.view) : "")
+        return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken)
+    }
+
+    /// A pipeline's result, told to the agent that started the run
+    /// (`metadata.pipelineRun`): the outcome in its run row's colour, the
+    /// pipeline and its version, the failure's one line under it. A tap
+    /// opens the run; the message is the agent's to read, not the row's.
+    static func pipelineNotice(_ item: ChatItem, run: AgentWire.PipelineRunNotice, key: Key) -> ChatRowPlan {
+        let environment = key.environment
+        let state = PipelineRunState(rawValue: run.state)
+        let tile = state.map(PipelineRows.tile) ?? PipelineRows.neutral(.ionicons("git-network-outline"))
+        let outcome = state.map(Strings.Pipelines.state) ?? run.state.capitalized
+        let line = Strings.Pipelines.notice(name: run.pipelineName ?? run.pipelineId, version: run.version)
+        let verbText = ChatTextStyles.activityVerb.string(outcome, color: tile.ink, lineBreakMode: .byTruncatingTail, in: environment)
+        let lineText = ChatTextStyles.activityText.string(line, color: Palette.text, lineBreakMode: .byTruncatingTail, in: environment)
+        let summary = run.summary.flatMap { $0.isEmpty ? nil : MeasuredText(ChatTextStyles.activityBody.string($0, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1) }
+        let layout = AgentMessageLayout(
+            width: key.width, maxContentWidth: key.maxContentWidth,
+            verbWidth: ChatTextLayout(unwrapped: verbText).size.width, textWidth: ChatTextLayout(unwrapped: lineText).size.width,
+            opens: true, body: summary.map { [.text($0.measurable)] }
+        )
+        var items: [ChatDrawItem] = [.icon(tile.icon, size: AgentMessageLayout.Metrics.glyph, frame: layout.glyph, tint: tile.ink)]
+        if let frame = layout.verb { items.append(.text(ChatTextLayout(verbText, width: frame.width, maxLines: 1), frame)) }
+        items.append(.text(ChatTextLayout(lineText, width: layout.text.width, maxLines: 1), layout.text))
+        if let frame = layout.chevron {
+            items.append(.icon(Glyphs.icon("chevron-right"), size: AgentMessageLayout.Metrics.chevron, frame: frame, tint: Palette.textSecondary))
+        }
+        var bottom = layout.header.maxY
+        if let summary, let placed = layout.body?.blocks.first, case .text(let frame) = placed {
+            let frame = frame.offsetBy(dx: layout.bodyOrigin.x, dy: layout.bodyOrigin.y)
+            items.append(.text(summary.layout(for: frame), frame))
+            bottom = frame.maxY
+        }
+        // The whole row opens the run, a finger's room above and below.
+        let area = CGRect(x: layout.header.minX, y: layout.header.minY, width: layout.header.width, height: bottom - layout.header.minY)
+        let hits = [ChatHit(frame: area.insetBy(dx: 0, dy: -AgentMessageLayout.Metrics.paddingV), action: .openPipelineRun(runId: run.runId, pipelineName: run.pipelineName))]
+        let spoken = [outcome, line, run.summary].compactMap { $0 }.joined(separator: ". ")
         return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken)
     }
 
