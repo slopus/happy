@@ -105,7 +105,7 @@ public struct OAuthAudience: Equatable, Sendable {
     }
 
     public func accepts(_ token: String) -> Bool {
-        audiences(token).contains { value in
+        Self.audiences(token).contains { value in
             guard let parts = URLComponents(string: value), OAuthOrigin(parts) == origin else { return false }
             return Self.directory(parts.percentEncodedPath) == path
         }
@@ -114,7 +114,7 @@ public struct OAuthAudience: Equatable, Sendable {
     private static func directory(_ path: String) -> String { path.hasSuffix("/") ? path : path + "/" }
 
     /// The `aud` of a JWT's payload, unverified; none when it isn't one.
-    private func audiences(_ token: String) -> [String] {
+    static func audiences(_ token: String) -> [String] {
         let segments = token.split(separator: ".", omittingEmptySubsequences: false)
         guard segments.count == 3, let payload = Self.base64URL(segments[1]),
               let claims = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return [] }
@@ -355,7 +355,21 @@ public struct OAuthTokenClient: Sendable {
         return try await post(url, form: form, previous: grant)
     }
 
+    /// Exchanges the code from `callback` for an OpenID Connect identity
+    /// token (`scope=openid`): the `id_token` alone, which must name this
+    /// app's client in `aud`. Nothing is kept.
+    public func identity(_ request: OAuthSignInRequest, callback: URL) async throws -> String {
+        let code = try request.code(from: callback)
+        return try IdentityToken.accept(try await exchange(try OAuthURL.secure(request.method.tokenUrl), form: request.exchangeForm(code: code)),
+                                        clientId: request.method.clientId)
+    }
+
     private func post(_ url: URL, form: [(String, String)], previous: OAuthGrant) async throws -> (OAuthAccess, OAuthGrant) {
+        try accept(try await exchange(url, form: form), previous: previous, typed: true)
+    }
+
+    /// One token endpoint request: the answer's body, or why there is none.
+    private func exchange(_ url: URL, form: [(String, String)]) async throws -> Data {
         let request = HTTPRequest(method: "POST", url: url, headers: ["Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"], body: OAuthForm.encode(form))
         let response: HTTPResponse
         do { response = try await http.send(request) }
@@ -371,7 +385,7 @@ public struct OAuthTokenClient: Sendable {
             }
             throw OAuthError.invalidResponse
         }
-        return try accept(response.body, previous: previous, typed: true)
+        return response.body
     }
 
     /// The tokens in a successful answer, held to the same rules wherever
@@ -390,5 +404,19 @@ public struct OAuthTokenClient: Sendable {
         var grant = previous
         if let refresh = tokens.refresh_token { grant.refreshToken = refresh }
         return (OAuthAccess(token: tokens.access_token, expiresAt: tokens.expires_in.map { now().addingTimeInterval($0) }), grant)
+    }
+}
+
+/// An OpenID Connect identity token (`{ id_token, expires_in }`), as the
+/// accounts service answers a sign-in. It is only handed on, so its
+/// signature isn't checked here, but one whose `aud` isn't this app's
+/// client is dropped before it goes anywhere.
+enum IdentityToken {
+    static func accept(_ body: Data, clientId: String) throws -> String {
+        struct Answer: Decodable { let id_token: String }
+        guard let answer = try? JSONDecoder().decode(Answer.self, from: body), !answer.id_token.isEmpty, answer.id_token.count <= 16384
+        else { throw OAuthError.invalidResponse }
+        guard OAuthAudience.audiences(answer.id_token).contains(clientId) else { throw OAuthError.wrongAudience }
+        return answer.id_token
     }
 }

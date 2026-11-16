@@ -57,6 +57,28 @@ func jwt(_ name: String, aud: Any = "https://happy.acme.example/") -> String {
 }
 private let a1 = jwt("a1"), a2 = jwt("a2")
 
+/// An identity token from the accounts service: for the app's client.
+private func identityAnswer(_ name: String = "id1", aud: Any = "happy") -> String { #"{"id_token":"\#(jwt(name, aud: aud))","expires_in":300}"# }
+
+/// The cluster trades an identity token for a session whose access token
+/// is returned, and checks it was handed the accounts service's (`jti`
+/// `identity`, for the app's client).
+private func sessionAnswer(_ http: ScriptedHTTP, for identity: String = "id1", access name: String = "acc1") -> String {
+    let access = jwt(name, aud: HappyCloud.api + "/")
+    http.on(HappyCloud.api + "/v1/session") { request in
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertNil(request.headers["Authorization"])
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String])
+        XCTAssertEqual(Array(body.keys), ["id_token"])
+        let token = try XCTUnwrap(body["id_token"])
+        let payload = try XCTUnwrap(CanonicalBase64URL.decode(String(token.split(separator: ".")[1])))
+        XCTAssertEqual((try JSONSerialization.jsonObject(with: payload) as? [String: Any])?["jti"] as? String, identity)
+        XCTAssertTrue(OAuthAudience.audiences(token).contains("happy"))
+        return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(access)","refresh_token":"ar1","expires_in":3600}"#.utf8))
+    }
+    return access
+}
+
 final class OAuthTests: XCTestCase {
     func testAuthorizationURLCarriesPKCEScopeAndResourceAndKeepsItsOwnParameters() throws {
         let request = try OAuthSignInRequest(method: acme, audience: server, redirectUri: "happy://oauth/callback", random: fixed)
@@ -443,23 +465,23 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(AppVariant.allCases.filter(HappyCloud.isOffered), [.development, .preview])
     }
 
-    /// The account signs in at the accounts origin for itself and gets a
-    /// one-hour pass: no refresh token, nothing kept. Its API calls carry
-    /// the pass; a 401 or the hour ending means signing in again, never a
-    /// refresh. Each server's token comes from the accounts API, for that
-    /// server, and refreshes at the token endpoint without the account.
-    func testHappyCloudAccountIsAnHourPassThatMintsServerTokens() async throws {
+    /// The account signs in at the accounts origin for an identity token
+    /// alone (`scope=openid`, no resource), which the API trades for the
+    /// account's session. Each server's token comes from the API, for that
+    /// server, and refreshes at the API's token endpoint without the account.
+    func testHappyCloudAccountSignsInForASessionThatMintsServerTokens() async throws {
         let accounts = HappyCloud.accounts
         XCTAssertEqual(accounts, "https://auth.happy.engineering")
-        let pass = jwt("acc1", aud: accounts + "/")
         let http = ScriptedHTTP()
         let clock = Clock()
         let now: @Sendable () -> Date = { clock.now }
-        http.json(accounts + "/token", #"{"access_token":"\#(pass)","token_type":"Bearer","expires_in":3600}"#)
+        http.json(accounts + "/token", identityAnswer())
+        let pass = sessionAnswer(http)
         let request = try CloudAccount.request()
         let query = URLComponents(url: request.url, resolvingAgainstBaseURL: false)!.queryItems!
         XCTAssertEqual(request.url.absoluteString.components(separatedBy: "?").first, accounts + "/authorize")
-        XCTAssertEqual(query.first { $0.name == "resource" }?.value, accounts + "/")
+        XCTAssertNil(query.first { $0.name == "resource" })
+        XCTAssertEqual(query.first { $0.name == "scope" }?.value, "openid")
         XCTAssertEqual(query.first { $0.name == "client_id" }?.value, "happy")
         XCTAssertEqual(query.first { $0.name == "code_challenge_method" }?.value, "S256")
         XCTAssertNil(query.first { $0.name == "provider" })
@@ -473,6 +495,8 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(github.method.tokenUrl, accounts + "/token")
         let account = try await CloudAccount.signIn(request, callback: URL(string: "happy://oauth/callback?code=c&state=\(request.state)")!, http: http, now: now)
         XCTAssertTrue(account.isLive(at: clock.now))
+        XCTAssertEqual(http.form(0), ["grant_type": "authorization_code", "code": "c", "redirect_uri": "happy://oauth/callback", "client_id": "happy", "code_verifier": request.codeVerifier])
+        XCTAssertEqual(http.requests.map(\.url.absoluteString), [accounts + "/token", HappyCloud.api + "/v1/session"])
 
         http.json(accounts + "/v1/servers", #"{"servers":[{"id":"s1","name":"acme","url":"https://acme.example/","role":"owner","createdAt":1}]}"#)
         let servers = try await account.servers()
@@ -520,40 +544,60 @@ final class SignInRequiredTests: XCTestCase {
         http.json(accounts + "/v1/servers/s2/token", #"{"access_token":"\#(jwt("x", aud: "https://other.example/"))","refresh_token":"stolen"}"#)
         await XCTAssertThrowsAsync(try await account.serverToken(for: pictured[0])) { XCTAssertEqual($0 as? OAuthError, .wrongAudience) }
 
-        // A 401 ends the pass: no refresh is tried.
+        // The session lasts as long as its refresh token, at most: then nothing is sent.
         let calls = http.requests.count
-        http.json(accounts + "/v1/servers", status: 401, #"{"code":"unauthorized","error":"A valid account token is required."}"#)
-        await XCTAssertThrowsAsync(try await account.servers()) { XCTAssertEqual($0 as? CloudAccountError, .signInRequired) }
-        XCTAssertEqual(http.requests.count, calls + 1)
-        // So does the hour: nothing is sent.
-        http.json(accounts + "/v1/servers", #"{"servers":[]}"#)
-        clock.now = clock.now.addingTimeInterval(3600)
+        clock.now = clock.now.addingTimeInterval(CloudAccount.lifetime)
         XCTAssertFalse(account.isLive(at: clock.now))
         await XCTAssertThrowsAsync(try await account.servers()) { XCTAssertEqual($0 as? CloudAccountError, .signInRequired) }
-        XCTAssertEqual(http.requests.count, calls + 1)
-        XCTAssertFalse(http.requests.contains { $0.url.absoluteString == accounts + "/token" && http.formOf($0)["grant_type"] == "refresh_token" && http.formOf($0)["resource"] == accounts + "/" })
+        XCTAssertEqual(http.requests.count, calls)
     }
 
-    /// Sign in with Apple: the identity token, the raw nonce and the name
-    /// go to the accounts service, which answers with a pass for itself; a
-    /// refused identity token is a failure, not an ended pass.
+    /// An identity token for another client is dropped before it goes
+    /// anywhere, and a session for anything but the API too; the API
+    /// refusing the identity token is a failure, not an ended session.
+    func testHappyCloudSessionTakesOnlyItsOwnTokens() async throws {
+        let accounts = HappyCloud.accounts
+        let http = ScriptedHTTP()
+        http.json(accounts + "/v2/auth/password", identityAnswer(aud: "happy-web"))
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(login: "qa-ios", password: "pw", http: http)) { XCTAssertEqual($0 as? OAuthError, .wrongAudience) }
+        http.json(accounts + "/v2/auth/password", identityAnswer(aud: ["happy-web", "happy"]))
+        _ = sessionAnswer(http)
+        _ = try await CloudAccount.signIn(login: "qa-ios", password: "pw", http: http)
+        // An access token, the old build's answer, is no identity token.
+        http.json(accounts + "/v2/auth/password", #"{"access_token":"\#(jwt("x", aud: accounts + "/"))","expires_in":3600}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(login: "qa-ios", password: "pw", http: http)) { XCTAssertEqual($0 as? OAuthError, .invalidResponse) }
+        XCTAssertEqual(http.requests.filter { $0.url.absoluteString == HappyCloud.api + "/v1/session" }.count, 1)
+
+        http.json(accounts + "/v2/auth/password", identityAnswer())
+        http.json(HappyCloud.api + "/v1/session", status: 401, #"{"code":"invalid_token","error":"That sign-in has expired."}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(login: "qa-ios", password: "pw", http: http)) {
+            XCTAssertEqual($0 as? CloudAccountError, .refused(status: 401, code: "invalid_token", message: "That sign-in has expired."))
+        }
+        http.json(HappyCloud.api + "/v1/session", #"{"access_token":"\#(jwt("x", aud: accounts + "/"))","refresh_token":"r","expires_in":3600}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(login: "qa-ios", password: "pw", http: http)) { XCTAssertEqual($0 as? OAuthError, .wrongAudience) }
+    }
+
+    /// Sign in with Apple: Apple's identity token, the raw nonce and the
+    /// name go to the accounts service, whose identity token the API trades
+    /// for the session; a refused Apple token is a failure, not an ended
+    /// session.
     func testHappyCloudSignsInWithApple() async throws {
         let accounts = HappyCloud.accounts
         let http = ScriptedHTTP()
-        let pass = jwt("acc1", aud: accounts + "/")
-        http.on(accounts + "/v1/auth/native") { request in
+        _ = sessionAnswer(http)
+        http.on(accounts + "/v2/auth/native") { request in
             let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
             XCTAssertEqual(body, ["provider": "apple", "idToken": "id.token.x", "nonce": "raw", "authorizationCode": "code", "name": "Steve K"])
-            return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(pass)","expires_in":3600}"#.utf8))
+            return HTTPResponse(status: 200, body: Data(identityAnswer().utf8))
         }
         let account = try await CloudAccount.signIn(provider: "apple", idToken: "id.token.x", nonce: "raw", authorizationCode: "code", name: "Steve K", http: http)
         XCTAssertTrue(account.isLive())
-        http.json(accounts + "/v1/auth/native", status: 401, #"{"code":"invalid_token","error":"That sign-in could not be verified."}"#)
+        http.json(accounts + "/v2/auth/native", status: 401, #"{"code":"invalid_token","error":"That sign-in could not be verified."}"#)
         await XCTAssertThrowsAsync(try await CloudAccount.signIn(provider: "apple", idToken: "bad", nonce: "raw", authorizationCode: nil, name: nil, http: http)) {
             XCTAssertEqual($0 as? CloudAccountError, .refused(status: 401, code: "invalid_token", message: "That sign-in could not be verified."))
         }
-        // A pass for anything else is refused.
-        http.json(accounts + "/v1/auth/native", #"{"access_token":"\#(jwt("x", aud: "https://acme.example/"))"}"#)
+        // An identity token for anything else is refused.
+        http.json(accounts + "/v2/auth/native", identityAnswer(aud: "https://acme.example/"))
         await XCTAssertThrowsAsync(try await CloudAccount.signIn(provider: "apple", idToken: "id", nonce: "raw", authorizationCode: nil, name: nil, http: http)) {
             XCTAssertEqual($0 as? OAuthError, .wrongAudience)
         }
@@ -571,47 +615,47 @@ final class SignInRequiredTests: XCTestCase {
     func testHappyCloudSignsInWithGoogle() async throws {
         let accounts = HappyCloud.accounts
         let http = ScriptedHTTP()
-        let pass = jwt("acc-g", aud: accounts + "/")
-        http.on(accounts + "/v1/auth/native") { request in
+        _ = sessionAnswer(http)
+        http.on(accounts + "/v2/auth/native") { request in
             XCTAssertEqual(request.method, "POST")
             XCTAssertEqual(request.headers["Content-Type"], "application/json")
             XCTAssertNil(request.headers["Authorization"])
             let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
             XCTAssertEqual(body, ["provider": "google", "idToken": "google.id.token", "nonce": "raw-nonce"])
-            return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(pass)","expires_in":3600}"#.utf8))
+            return HTTPResponse(status: 200, body: Data(identityAnswer().utf8))
         }
         let account = try await CloudAccount.signIn(provider: "google", idToken: "google.id.token", nonce: "raw-nonce", authorizationCode: nil, name: nil, http: http)
         XCTAssertTrue(account.isLive())
-        XCTAssertEqual(http.requests.count, 1)
-        // A token without the nonce, or for another client, is refused: a failure, not an ended pass.
-        http.json(accounts + "/v1/auth/native", status: 401, #"{"code":"invalid_token","error":"That sign-in could not be verified."}"#)
+        XCTAssertEqual(http.requests.count, 2)
+        // A token without the nonce, or for another client, is refused: a failure, not an ended session.
+        http.json(accounts + "/v2/auth/native", status: 401, #"{"code":"invalid_token","error":"That sign-in could not be verified."}"#)
         await XCTAssertThrowsAsync(try await CloudAccount.signIn(provider: "google", idToken: "bad", nonce: "raw-nonce", authorizationCode: nil, name: nil, http: http)) {
             XCTAssertEqual($0 as? CloudAccountError, .refused(status: 401, code: "invalid_token", message: "That sign-in could not be verified."))
         }
     }
 
     /// A test account signs in with its login and password and gets the
-    /// same one-hour pass; a wrong password and a lockout say which.
+    /// same session; a wrong password and a lockout say which.
     func testHappyCloudTestAccountSignsInWithAPassword() async throws {
         let accounts = HappyCloud.accounts
         let http = ScriptedHTTP()
-        let pass = jwt("acc-qa", aud: accounts + "/")
-        http.on(accounts + "/v1/auth/password") { request in
+        _ = sessionAnswer(http)
+        http.on(accounts + "/v2/auth/password") { request in
             XCTAssertEqual(request.method, "POST")
             XCTAssertNil(request.headers["Authorization"])
             let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
             XCTAssertEqual(body, ["login": "qa-ios", "password": "pw"])
-            return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(pass)","token_type":"Bearer","expires_in":3600}"#.utf8))
+            return HTTPResponse(status: 200, body: Data(identityAnswer().utf8))
         }
         let account = try await CloudAccount.signIn(login: "qa-ios", password: "pw", http: http)
         XCTAssertTrue(account.isLive())
-        XCTAssertEqual(account.expiresAt.timeIntervalSinceNow, 3600, accuracy: 5)
+        XCTAssertEqual(account.expiresAt.timeIntervalSinceNow, CloudAccount.lifetime, accuracy: 5)
 
-        http.json(accounts + "/v1/auth/password", status: 401, #"{"code":"invalid_credentials"}"#)
+        http.json(accounts + "/v2/auth/password", status: 401, #"{"code":"invalid_credentials"}"#)
         await XCTAssertThrowsAsync(try await CloudAccount.signIn(login: "qa-ios", password: "no", http: http)) {
             XCTAssertEqual($0 as? CloudAccountError, .refused(status: 401, code: "invalid_credentials", message: nil))
         }
-        http.json(accounts + "/v1/auth/password", status: 429, #"{"code":"locked","retryAfter":840}"#)
+        http.json(accounts + "/v2/auth/password", status: 429, #"{"code":"locked","retryAfter":840}"#)
         await XCTAssertThrowsAsync(try await CloudAccount.signIn(login: "qa-ios", password: "no", http: http)) {
             XCTAssertEqual($0 as? CloudAccountError, .locked(retryAfter: 840))
         }
@@ -622,7 +666,7 @@ final class SignInRequiredTests: XCTestCase {
     /// refusal keeps its code and words; `429 rate_limited` says when to
     /// ask again, from the body or else the `Retry-After` header.
     func testHappyCloudEmailSignInSendsACode() async throws {
-        let accounts = HappyCloud.accounts, start = accounts + "/v1/auth/email/start"
+        let accounts = HappyCloud.accounts, start = accounts + "/v2/auth/email/start"
         let http = ScriptedHTTP()
         http.on(start) { request in
             XCTAssertEqual(request.method, "POST")
@@ -659,25 +703,24 @@ final class SignInRequiredTests: XCTestCase {
         }
     }
 
-    /// Email sign-in's second half: the address and the code answer the
-    /// same one-hour pass as Apple's, bound to the accounts service. A
-    /// wrong code, an ended sign-in and a lockout each say which, and a 401
-    /// here is a refusal, not an ended pass.
+    /// Email sign-in's second half: the address and the code answer an
+    /// identity token, as Apple's does, for the same session. A wrong code,
+    /// an ended sign-in and a lockout each say which, and a 401 here is a
+    /// refusal, not an ended session.
     func testHappyCloudEmailCodeSignsIn() async throws {
-        let accounts = HappyCloud.accounts, verify = accounts + "/v1/auth/email/verify"
+        let accounts = HappyCloud.accounts, verify = accounts + "/v2/auth/email/verify"
         let http = ScriptedHTTP()
-        let pass = jwt("acc-mail", aud: accounts + "/")
+        let pass = sessionAnswer(http, access: "acc-mail")
         http.on(verify) { request in
             XCTAssertEqual(request.method, "POST")
             XCTAssertNil(request.headers["Authorization"])
             let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
             XCTAssertEqual(body, ["email": "steve@example.com", "code": "123456"])
-            return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(pass)","refresh_token":"r1","token_type":"Bearer","expires_in":3600}"#.utf8))
+            return HTTPResponse(status: 200, body: Data(identityAnswer().utf8))
         }
         let account = try await CloudAccount.signIn(email: "steve@example.com", code: "123456", http: http)
         XCTAssertTrue(account.isLive())
-        XCTAssertEqual(account.expiresAt.timeIntervalSinceNow, 3600, accuracy: 5)
-        // The pass is what the account's calls carry.
+        // The session's token is what the account's calls carry.
         http.json(accounts + "/v1/servers", #"{"servers":[]}"#)
         _ = try await account.servers()
         XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer \(pass)")
@@ -699,8 +742,8 @@ final class SignInRequiredTests: XCTestCase {
         await XCTAssertThrowsAsync(try await CloudAccount.signIn(email: "steve@example.com", code: "000000", http: http)) {
             XCTAssertEqual($0 as? CloudAccountError, .rateLimited(retryAfter: 60, message: "Too many tries."))
         }
-        // A pass for anything else is refused.
-        http.json(verify, #"{"access_token":"\#(jwt("x", aud: "https://acme.example/"))"}"#)
+        // An identity token for anything else is refused.
+        http.json(verify, identityAnswer(aud: "https://acme.example/"))
         await XCTAssertThrowsAsync(try await CloudAccount.signIn(email: "steve@example.com", code: "123456", http: http)) {
             XCTAssertEqual($0 as? OAuthError, .wrongAudience)
         }

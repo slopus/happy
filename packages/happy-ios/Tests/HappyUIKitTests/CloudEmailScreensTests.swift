@@ -111,16 +111,16 @@ final class CloudEmailScreensTests: XCTestCase {
         XCTAssertEqual(screen.field.text.keyboardType, .emailAddress)
         XCTAssertFalse(screen.primary.isEnabled, "nothing typed")
 
-        await http.answer("POST /v1/auth/email/start", 400, #"{"code":"unsupported_provider","error":"Email sign-in is not configured."}"#)
+        await http.answer("POST /v2/auth/email/start", 400, #"{"code":"unsupported_provider","error":"Email sign-in is not configured."}"#)
         type(" steve@example.com ", into: screen.field)
         XCTAssertTrue(screen.primary.isEnabled)
         screen.primary.tapped()
         await settle { !screen.primary.isLoading && !screen.status.string.isEmpty }
         XCTAssertEqual(screen.status.string, "Email sign-in isn’t available yet. Sign in with Apple or GitHub.")
-        let first = await http.bodies("POST /v1/auth/email/start")
+        let first = await http.bodies("POST /v2/auth/email/start")
         XCTAssertEqual(first, [["email": "steve@example.com"]])
 
-        await http.answer("POST /v1/auth/email/start", 429, #"{"code":"rate_limited","error":"Too many codes requested.","retryAfter":45}"#, headers: ["Retry-After": "45"])
+        await http.answer("POST /v2/auth/email/start", 429, #"{"code":"rate_limited","error":"Too many codes requested.","retryAfter":45}"#, headers: ["Retry-After": "45"])
         screen.primary.tapped()
         await settle { screen.status.string == "Too many codes requested." && !screen.primary.isLoading }
         XCTAssertEqual(screen.status.string, "Too many codes requested.")
@@ -131,7 +131,7 @@ final class CloudEmailScreensTests: XCTestCase {
         XCTAssertEqual(screen.primary.title, "Send code")
         XCTAssertTrue(screen.primary.isEnabled)
 
-        await http.answer("POST /v1/auth/email/start", 202, "{}")
+        await http.answer("POST /v2/auth/email/start", 202, "{}")
         screen.primary.tapped()
         await settle { navigation.topViewController is CloudEmailCodeViewController }
         let code = try XCTUnwrap(navigation.topViewController as? CloudEmailCodeViewController)
@@ -161,7 +161,7 @@ final class CloudEmailScreensTests: XCTestCase {
         XCTAssertEqual(screen.secondary?.isEnabled, false)
         XCTAssertFalse(screen.primary.isEnabled)
 
-        await http.answer("POST /v1/auth/email/verify", 400, #"{"code":"invalid_code","error":"That code didn't work."}"#)
+        await http.answer("POST /v2/auth/email/verify", 400, #"{"code":"invalid_code","error":"That code didn't work."}"#)
         type("12 34", into: screen.field)
         XCTAssertEqual(screen.field.text.text, "1234")
         XCTAssertFalse(screen.primary.isEnabled)
@@ -170,10 +170,10 @@ final class CloudEmailScreensTests: XCTestCase {
         await settle { screen.status.string == "That code didn't work." && !screen.primary.isLoading }
         XCTAssertEqual(screen.status.string, "That code didn't work.")
         XCTAssertEqual(screen.field.text.text, "", "a wrong code is cleared for the next")
-        let tried = await http.bodies("POST /v1/auth/email/verify")
+        let tried = await http.bodies("POST /v2/auth/email/verify")
         XCTAssertEqual(tried, [["email": "steve@example.com", "code": "123456"]])
 
-        await http.answer("POST /v1/auth/email/verify", 429, #"{"code":"rate_limited","error":"Too many wrong codes.","retryAfter":30}"#)
+        await http.answer("POST /v2/auth/email/verify", 429, #"{"code":"rate_limited","error":"Too many wrong codes.","retryAfter":30}"#)
         type("222222", into: screen.field)
         await settle { screen.status.string == "Too many wrong codes." && !screen.primary.isLoading }
         XCTAssertEqual(screen.primary.title, "Verify in 0:30")
@@ -186,16 +186,17 @@ final class CloudEmailScreensTests: XCTestCase {
         XCTAssertEqual(screen.secondary?.title, "Resend code")
         XCTAssertEqual(screen.secondary?.isEnabled, true)
 
-        await http.answer("POST /v1/auth/email/start", 202, "{}")
+        await http.answer("POST /v2/auth/email/start", 202, "{}")
         screen.secondary?.tapped()
         await settle { screen.status.string == "We sent a new code." && screen.secondary?.isLoading == false }
         XCTAssertEqual(screen.secondary?.title, "Resend code in 1:00")
         XCTAssertEqual(screen.secondary?.isEnabled, false)
-        let resent = await http.bodies("POST /v1/auth/email/start")
+        let resent = await http.bodies("POST /v2/auth/email/start")
         XCTAssertEqual(resent, [["email": "steve@example.com"]])
 
-        let pass = Self.jwt(audience: HappyCloud.accounts + "/")
-        await http.answer("POST /v1/auth/email/verify", 200, #"{"access_token":"\#(pass)","refresh_token":"r1","token_type":"Bearer","expires_in":3600}"#)
+        let pass = Self.jwt(audience: HappyCloud.api + "/")
+        await http.answer("POST /v2/auth/email/verify", 200, #"{"id_token":"\#(Self.jwt(audience: "happy"))","expires_in":300}"#)
+        await http.answer("POST /v1/session", 200, #"{"access_token":"\#(pass)","refresh_token":"ar1","expires_in":3600}"#)
         await http.answer("GET /v1/servers", 200, #"{"servers":[{"id":"s1","name":"acme","url":"","role":"owner"}]}"#)
         type("123456", into: screen.field)
         // The stack holds the step going out until the push is over.

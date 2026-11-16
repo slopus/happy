@@ -405,25 +405,26 @@ final class CloudScreensTests: XCTestCase {
         let none = await http.requests
         XCTAssertEqual(none.count, 0)
 
-        await http.answer("POST /v1/auth/password", 401, #"{"code":"invalid_credentials"}"#)
+        await http.answer("POST /v2/auth/password", 401, #"{"code":"invalid_credentials"}"#)
         form.login.text.text = " QA-iOS "
         form.password.text.text = "not-it"
         form.button.tapped()
         await settle { screen.problem.string != "" && !form.button.isLoading }
         XCTAssertEqual(screen.problem.string, "That login or password is wrong.")
         let tried = await http.requests.last
-        XCTAssertEqual(tried?.url.absoluteString, HappyCloud.accounts + "/v1/auth/password")
+        XCTAssertEqual(tried?.url.absoluteString, HappyCloud.accounts + "/v2/auth/password")
         XCTAssertNil(tried?.headers["Authorization"])
         XCTAssertEqual(try tried.flatMap { try JSONSerialization.jsonObject(with: $0.body ?? Data()) as? [String: String] }, ["login": "qa-ios", "password": "not-it"])
 
-        await http.answer("POST /v1/auth/password", 429, #"{"code":"locked","retryAfter":600}"#)
+        await http.answer("POST /v2/auth/password", 429, #"{"code":"locked","retryAfter":600}"#)
         form.button.tapped()
         await settle { screen.problem.string == "Too many tries. Try again in 10 min." }
         XCTAssertEqual(screen.problem.string, "Too many tries. Try again in 10 min.")
         await settle { !form.button.isLoading }
 
-        let pass = Self.jwt(audience: HappyCloud.accounts + "/")
-        await http.answer("POST /v1/auth/password", 200, #"{"access_token":"\#(pass)","token_type":"Bearer","expires_in":3600}"#)
+        let pass = Self.jwt(audience: HappyCloud.api + "/")
+        await http.answer("POST /v2/auth/password", 200, #"{"id_token":"\#(Self.jwt(audience: "happy"))","expires_in":300}"#)
+        await http.answer("POST /v1/session", 200, #"{"access_token":"\#(pass)","refresh_token":"ar1","expires_in":3600}"#)
         await http.answer("GET /v1/servers", 200, #"{"servers":[{"id":"s1","name":"acme","url":"","role":"owner"}]}"#)
         form.password.text.text = "right"
         form.button.tapped()

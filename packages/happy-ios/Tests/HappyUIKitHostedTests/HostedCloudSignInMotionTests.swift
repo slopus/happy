@@ -423,7 +423,7 @@ final class HostedCloudSignInMotionTests: XCTestCase {
     /// way.
     func testBetweenTheTwoEmailStepsTheKeyboardStaysUp() async throws {
         let http = SignInHTTP()
-        await http.answer("POST /v1/auth/email/start", 202, "{}")
+        await http.answer("POST /v2/auth/email/start", 202, "{}")
         let welcome = CloudWelcomeViewController(context: context())
         welcome.http = http
         let (window, navigation) = try await present(welcome)
@@ -745,9 +745,10 @@ final class HostedCloudSignInMotionTests: XCTestCase {
     /// down with the push.
     func testSignedInTheServersReplaceEverySignInStep() async throws {
         let http = SignInHTTP()
-        await http.answer("POST /v1/auth/email/start", 202, "{}")
-        let pass = accessToken(for: HappyCloud.accounts + "/")
-        await http.answer("POST /v1/auth/email/verify", 200, #"{"access_token":"\#(pass)","refresh_token":"r1","token_type":"Bearer","expires_in":3600}"#)
+        await http.answer("POST /v2/auth/email/start", 202, "{}")
+        let pass = accessToken(for: HappyCloud.api + "/")
+        await http.answer("POST /v2/auth/email/verify", 200, #"{"id_token":"\#(accessToken(for: "happy"))","expires_in":300}"#)
+        await http.answer("POST /v1/session", 200, #"{"access_token":"\#(pass)","refresh_token":"ar1","expires_in":3600}"#)
         await http.answer("GET /v1/servers", 200, #"{"servers":[{"id":"s1","name":"acme","url":"","role":"owner"}]}"#)
         let welcome = CloudWelcomeViewController(context: context())
         welcome.http = http
