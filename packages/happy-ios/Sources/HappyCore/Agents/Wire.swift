@@ -709,16 +709,54 @@ extension AgentWire {
     /// A message's public provenance (`metadata`): the agent that sent a
     /// message the daemon wrote on its behalf, and that agent's one line on
     /// what it is; on a team's computer, the member who wrote a person's
-    /// message (`userId`, named by `GET /v0/users`).
+    /// message (`userId`, named by `GET /v0/users`); on the notice a cluster
+    /// gives the agent that started a pipeline run once it ends, that run.
     public struct MessageMetadata: Equatable, Sendable, Codable {
         public var senderAgentId: String?
         public var senderAgentExplanation: String?
         public var userId: String?
+        public var pipelineRun: PipelineRunNotice?
 
-        public init(senderAgentId: String? = nil, senderAgentExplanation: String? = nil, userId: String? = nil) {
+        public init(senderAgentId: String? = nil, senderAgentExplanation: String? = nil, userId: String? = nil, pipelineRun: PipelineRunNotice? = nil) {
             self.senderAgentId = senderAgentId
             self.senderAgentExplanation = senderAgentExplanation
             self.userId = userId
+            self.pipelineRun = pipelineRun
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case senderAgentId, senderAgentExplanation, userId, pipelineRun
+        }
+
+        /// A `pipelineRun` this app can't read leaves the message as it
+        /// would be without one.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            senderAgentId = try container.decodeIfPresent(String.self, forKey: .senderAgentId)
+            senderAgentExplanation = try container.decodeIfPresent(String.self, forKey: .senderAgentExplanation)
+            userId = try container.decodeIfPresent(String.self, forKey: .userId)
+            pipelineRun = (try? container.decodeIfPresent(PipelineRunNotice.self, forKey: .pipelineRun)) ?? nil
+        }
+    }
+
+    /// The run a pipeline result notice tells of (`metadata.pipelineRun`):
+    /// enough to draw it without reading the run. `summary` is one line, the
+    /// failing node and why, on a run that failed.
+    public struct PipelineRunNotice: Equatable, Sendable, Codable {
+        public var runId: String
+        public var pipelineId: String
+        public var pipelineName: String?
+        public var version: Int?
+        public var state: String
+        public var summary: String?
+
+        public init(runId: String, pipelineId: String, pipelineName: String? = nil, version: Int? = nil, state: String, summary: String? = nil) {
+            self.runId = runId
+            self.pipelineId = pipelineId
+            self.pipelineName = pipelineName
+            self.version = version
+            self.state = state
+            self.summary = summary
         }
     }
 

@@ -214,6 +214,7 @@ actor ClusterServer: AgentTransport {
             publish(answer.events)
             return ok(answer.body, status: answer.status)
         }
+        if let answer = ClusterChat.answer(method, path) { return ok(answer) }
         switch (method, path) {
         case ("GET", "/v0/bootstrap/desktop"): return ok(Self.bootstrap)
         case ("GET", "/v0/health"):
@@ -412,6 +413,8 @@ actor ClusterServer: AgentTransport {
 /// either `-select <row>` taps a row; a pipeline (`-open pipeline:deploy`,
 /// a version of it `pipeline:deploy:v7`, a node of its head
 /// `pipeline:deploy:migrate`; `-scroll <row>`, `-bottom`, `-select <row>`);
+/// Chief of Staff's chat with what it was told by no person (`-open chat`,
+/// `ClusterChat`; `-earlier` its first turns alone, `-toggle <message>` opens one, `-tap <run>` a result's run);
 /// an existing tenant
 /// whose Policy vault is still flagged (`-policyvault`), or as deployed
 /// before the documents moved to settings (`-production`);
@@ -479,6 +482,13 @@ final class ClusterHarness {
                     try? await Task.sleep(for: .seconds(2))
                     pipelines.list.onSelect?(row)
                 }
+            case "chat":
+                // Chief of Staff's conversation; `-toggle <message>` opens one, `-tap <run>` opens a result's run.
+                let chat = ChatViewController(session: session, agentId: ClusterChat.agentId, title: "Chief of Staff", spaceId: nil, intro: nil)
+                navigation.pushViewController(chat, animated: false)
+                try? await Task.sleep(for: .seconds(1.5))
+                if let id = value("-toggle", in: arguments) { chat.act(.toggleTool(id)) }
+                if let run = value("-tap", in: arguments) { chat.act(.openPipelineRun(runId: run, pipelineName: nil)) }
             case let open? where open.hasPrefix("pipeline:"):
                 // `pipeline:deploy`, `pipeline:deploy:v7` (a version), `pipeline:deploy:migrate` (a node of the head).
                 let parts = open.split(separator: ":").map(String.init)

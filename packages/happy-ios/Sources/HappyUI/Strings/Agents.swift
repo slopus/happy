@@ -71,6 +71,8 @@ extension Strings {
     // A message from another agent (happy-desktop's AgentMessageActivity).
     public static let agentMessage = "Message"
     public static func agentMessageFrom(_ name: String) -> String { "from \(name)" }
+    /// After "Message", on the agent's message to itself.
+    public static let agentMessageToItself = "to itself"
     /// An agent this one spawned that has no title yet (`projectSubagents`).
     public static let subagent = "Subagent"
     public static let untitledAgent = "Untitled agent"

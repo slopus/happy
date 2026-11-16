@@ -1064,6 +1064,7 @@ final class ChatUltraQAProbe: NSObject {
         case .playAttachment(let attachment): "play:\(attachment.ref)"
         case .cancelUpload(let messageId, let piece): "cancelUpload:\(messageId):\(piece)"
         case .openArtifact(let artifact): "artifact:\(artifact.id)"
+        case .openPipelineRun(let runId, _): "pipelineRun:\(runId)"
         case .toggleTurn(let turn): "turn:\(turn)"
         case .openURL(let url): "url:\(url.prefix(60))"
         case .linkButton(let url, _): "linkButton:\(url.prefix(60))"

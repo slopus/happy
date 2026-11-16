@@ -194,7 +194,7 @@ public enum TurnFold {
         let kept = group.indices.filter { index in
             if index == anchor { return true }
             switch group[index].role {
-            case .turnEnd, .user, .collaborator, .failure, .trace: return true
+            case .turnEnd, .user, .collaborator, .own, .failure, .trace: return true
             case .tool(let tool): return tool.isResult
             case .question(let ask): return ask.phase != .answered
             case .agent: return false
@@ -218,7 +218,7 @@ public enum TurnFold {
     /// The work of a turn, which a closed turn hides.
     static func isStep(_ item: ChatItem) -> Bool {
         switch item.role {
-        case .tool, .collaborator: true
+        case .tool, .collaborator, .own: true
         default: false
         }
     }
@@ -227,7 +227,7 @@ public enum TurnFold {
     /// words or one of its steps.
     static func holdsTrace(_ item: ChatItem) -> Bool {
         switch item.role {
-        case .agent, .tool, .collaborator: true
+        case .agent, .tool, .collaborator, .own: true
         default: false
         }
     }

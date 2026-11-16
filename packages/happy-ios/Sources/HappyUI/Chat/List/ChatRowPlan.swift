@@ -328,6 +328,8 @@ enum ChatRowAction: Equatable, Sendable {
     case playAttachment(ChatAttachment)
     /// A V2 artifact's card.
     case openArtifact(Artifact)
+    /// A pipeline result's row: its run's page.
+    case openPipelineRun(runId: String, pipelineName: String?)
     /// A finished V2 turn's "View traces" / "Hide traces", by its run.
     case toggleTurn(String)
 

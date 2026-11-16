@@ -327,6 +327,11 @@ extension Strings {
 
         nonisolated static func versionTitle(_ number: Int, latest: Bool) -> String { latest ? "Version \(number), the latest" : "Version \(number)" }
 
+        /// What a pipeline result's row in a chat names: `Deploy preview · version 7`.
+        nonisolated static func notice(name: String, version: Int?) -> String {
+            version.map { "\(name) · version \($0)" } ?? name
+        }
+
         /// Who made the pipeline: `You`, a teammate's name, or `Someone`.
         nonisolated static func creator(_ id: String, people: [String: String], me: String?) -> String {
             id == me ? "You" : people[id] ?? "Someone"

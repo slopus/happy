@@ -11,6 +11,11 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         /// not the one that manages it: one compact row naming the sender,
         /// opened to read what it said (happy-desktop's `agentMessage` activity).
         case collaborator(agentId: String, explanation: String?)
+        /// The agent's message to itself, which no person wrote: a goal's
+        /// continuation, a message it scheduled for itself, a pipeline's
+        /// result. The same compact row, opened to read it (desktop #156),
+        /// or with `pipelineRun` the run it tells of, which a tap opens.
+        case own(explanation: String?, pipelineRun: AgentWire.PipelineRunNotice?)
         /// A turn that failed: desktop's failure card, its reason the item's
         /// text, with Retry or a switch to the composer's model.
         case failure(Failure)
@@ -2280,6 +2285,15 @@ public actor Conversation {
             // messages are the daemon's housekeeping.
             guard let failure = Failure.of(message) else { return }
             made.items = [ChatItem(id: message.id, role: .failure(failure), pieces: [.text(failure.reason)], delivery: .sent, turn: turn).stamped()]
+            return
+        }
+        if message.role == "user", message.metadata?.senderAgentId == agentId {
+            // Stamped with this agent as its sender: never the person's words.
+            let text = message.content.compactMap { block -> String? in if case .text(let text) = block { text } else { nil } }.joined(separator: "\n")
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let explanation = message.metadata?.senderAgentExplanation.flatMap { $0.isEmpty ? nil : $0 }
+            made.items = [ChatItem(id: message.id, role: .own(explanation: explanation, pipelineRun: message.metadata?.pipelineRun),
+                                   pieces: trimmed.isEmpty ? [] : [.text(trimmed)], delivery: .sent, turn: turn).stamped()]
             return
         }
         if message.role == "user" || message.role == "agent", let sender = Self.collaborator(message, agentId: agentId, parentAgentId: parentAgentId) {
