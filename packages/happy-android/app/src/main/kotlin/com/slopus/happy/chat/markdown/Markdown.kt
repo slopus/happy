@@ -311,11 +311,14 @@ fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
                 all.add(Line(next.groupValues[1].toIntOrNull() ?: 0, raw.indent(), nextTrimmed.substring(next.value.length)))
                 index++
             }
-            val base = all.first().indent
+            val base = all.minOf { it.indent }
             blocks.addLifting(MarkdownBlock.NumberedList(all.map { MarkdownBlock.NumberedItem(it.number, Math.floorDiv(it.indent - base, 2), parseMarkdownSpans(it.content, false)) }))
             continue@outer
         }
 
+        // Depth counts from the list's least indented item, never its first: a list can
+        // open on a nested item (sub-bullets under a numbered line, which the numbered
+        // list doesn't take) and go back out, and a negative depth is no depth at all.
         BULLET.find(trimmed)?.let { first ->
             val all = arrayListOf(line.indent() to trimmed.substring(first.value.length))
             while (index < lines.size) {
@@ -325,7 +328,7 @@ fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
                 all.add(raw.indent() to nextTrimmed.substring(next.value.length))
                 index++
             }
-            val base = all.first().first
+            val base = all.minOf { it.first }
             blocks.addLifting(MarkdownBlock.BulletList(all.map { (indent, content) -> MarkdownBlock.ListItem(Math.floorDiv(indent - base, 2), parseMarkdownSpans(content, false)) }))
             continue@outer
         }
