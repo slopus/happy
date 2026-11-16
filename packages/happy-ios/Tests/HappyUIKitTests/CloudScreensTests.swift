@@ -94,7 +94,7 @@ final class CloudScreensTests: XCTestCase {
         screen.primary.tapped()
         await settle { await http.requests.contains { $0.method == "POST" } }
         let created = await http.requests.first { $0.method == "POST" }
-        XCTAssertEqual(created?.url.absoluteString, HappyCloud.accounts + "/v1/servers")
+        XCTAssertEqual(created?.url.absoluteString, HappyCloud.api + "/v1/servers")
         XCTAssertEqual(created?.headers["Authorization"], "Bearer account")
         XCTAssertEqual(try created.flatMap { try JSONSerialization.jsonObject(with: $0.body ?? Data()) as? [String: String] }, ["name": "happy"])
         await settle { !screen.primary.isLoading }

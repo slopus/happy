@@ -281,7 +281,7 @@ public actor CloudAccount {
 
     private func inviteCall<T: Decodable>(_ path: String, _ invite: CloudInvite, as: T.Type) async throws -> T {
         let body = try JSONEncoder().encode(["token": invite.token])
-        let response = try await send("POST", url: URL(string: HappyCloud.accounts + path)!, body: body, refuse: Self.inviteRefusal)
+        let response = try await send("POST", url: URL(string: HappyCloud.api + path)!, body: body, refuse: Self.inviteRefusal)
         guard let value = try? JSONDecoder().decode(T.self, from: response.body) else { throw CloudAccountError.invalidResponse }
         return value
     }
@@ -301,10 +301,10 @@ public actor CloudAccount {
         }
     }
 
-    /// A server image's bytes. Only from the accounts origin: the account
+    /// A server image's bytes. Only from the API's origin: the session's
     /// token goes nowhere else.
     public func image(_ image: CloudServer.Image) async throws -> Data {
-        guard let url = URL(string: image.url), OAuthOrigin(image.url) == OAuthOrigin(HappyCloud.accounts) else { throw CloudAccountError.invalidResponse }
+        guard let url = URL(string: image.url), OAuthOrigin(image.url) == OAuthOrigin(HappyCloud.api) else { throw CloudAccountError.invalidResponse }
         let response = try await send("GET", url: url, accept: "image/*")
         return response.body
     }
@@ -321,33 +321,73 @@ public actor CloudAccount {
     }
 
     /// A token for `server`, the person's lasting session there: its
-    /// access and refresh tokens, which refresh at the accounts service's
-    /// token endpoint without the account (`POST /v1/servers/:id/token`).
+    /// access and refresh tokens, which refresh at the API's token endpoint
+    /// without the account (`POST /v1/servers/:id/token`).
     public func serverToken(for server: CloudServer) async throws -> (OAuthAccess, OAuthGrant) {
         guard let origin = server.origin else { throw CloudAccountError.invalidResponse }
         let method = HappyCloud.method(server: origin)
         let id = server.id.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-_"))) ?? server.id
-        let response = try await send("POST", url: URL(string: HappyCloud.accounts + "/v1/servers/\(id)/token")!, body: Data("{}".utf8))
+        let response = try await send("POST", url: URL(string: HappyCloud.api + "/v1/servers/\(id)/token")!, body: Data("{}".utf8))
         let grant = OAuthGrant(refreshUrl: method.refreshUrl, clientId: method.clientId, resource: method.resource, audience: origin + "/")
         return try tokens.accept(response.body, previous: grant, typed: false)
     }
 
     private func call<T: Decodable>(_ method: String, _ path: String, body: [String: String]? = nil, as: T.Type) async throws -> T {
-        let response = try await send(method, url: URL(string: HappyCloud.accounts + path)!, body: try body.map { try JSONEncoder().encode($0) })
+        let response = try await send(method, url: URL(string: HappyCloud.api + path)!, body: try body.map { try JSONEncoder().encode($0) })
         guard let value = try? JSONDecoder().decode(T.self, from: response.body) else { throw CloudAccountError.invalidResponse }
         return value
     }
 
-    /// One request under the account's pass. An expired pass or a 401
-    /// ends the account: there is nothing to refresh it with.
+    /// One request under the session. An access token about to run out is
+    /// refreshed first; a 401 refreshes it once and repeats the request. The
+    /// API refusing the refresh, a second 401, or the session running out
+    /// ends the account; a refresh that fails on the network keeps it.
     private func send(_ method: String, url: URL, body: Data? = nil, accept: String = "application/json",
                       refuse: (HTTPResponse) -> any Error = { refusal($0) }) async throws -> HTTPResponse {
-        guard isLive(at: now()) else { throw CloudAccountError.signInRequired }
-        var headers = ["Accept": accept, "Authorization": "Bearer \(access.token)"]
-        if body != nil { headers["Content-Type"] = "application/json" }
-        let response = try await http.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
+        guard !ended, isLive(at: now()) else { throw CloudAccountError.signInRequired }
+        if let expiry = access.expiresAt, expiry.timeIntervalSince(now()) <= 60 { try await refresh(after: access.token) }
+        var used = access.token
+        var response = try await send(method, url: url, body: body, accept: accept, token: used)
+        if response.status == 401 {
+            try await refresh(after: used)
+            used = access.token
+            response = try await send(method, url: url, body: body, accept: accept, token: used)
+            if response.status == 401 { ended = true }
+        }
         guard (200..<300).contains(response.status) else { throw refuse(response) }
         return response
+    }
+
+    private func send(_ method: String, url: URL, body: Data?, accept: String, token: String) async throws -> HTTPResponse {
+        var headers = ["Accept": accept, "Authorization": "Bearer \(token)"]
+        if body != nil { headers["Content-Type"] = "application/json" }
+        return try await http.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
+    }
+
+    /// Whether the session ended: refused at refresh, or refused again
+    /// right after one.
+    private var ended = false
+    private var refreshing: Task<(OAuthAccess, OAuthGrant), any Error>?
+
+    /// A new access token at the API's `/token`, unless one came since
+    /// `used` was sent; concurrent requests share one refresh, and a
+    /// rotated refresh token replaces the old one.
+    private func refresh(after used: String) async throws {
+        guard !ended else { throw CloudAccountError.signInRequired }
+        guard access.token == used else { return }
+        let task = refreshing ?? Task { [tokens, grant] in try await tokens.refresh(grant) }
+        refreshing = task
+        do {
+            let (next, rotated) = try await task.value
+            if refreshing == task { refreshing = nil }
+            access = next
+            grant = rotated
+        } catch {
+            if refreshing == task { refreshing = nil }
+            if error is CancellationError || (error as? OAuthError) == .network { throw error }
+            ended = true
+            throw CloudAccountError.signInRequired
+        }
     }
 
     private static func refusal(_ response: HTTPResponse, endsPass: Bool = true) -> CloudAccountError {
