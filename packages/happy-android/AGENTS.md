@@ -2560,16 +2560,42 @@ pages; words are `strings_pipelines.xml` in every locale.
   `pipeline.run.updated`, both on `hello` and on Retry. Events are hints.
   Older pages read stay under a fresh newest page (`pipelineRunsMerge`). A
   failed read keeps what showed and says it may be out of date.
+  `PipelineRunSource` reads one run again on `pipeline.run.updated` and
+  `pipeline.node.updated` naming it, its parent or a child (an event without
+  `runId` counts), and on `hello`; the version's graph once; its parent and
+  children until they end; its pipeline's name once (`GET /v0/pipelines/:id`,
+  404 for an archived one: the opening page's name or the ID).
+  `PipelineNodeLogSource` reads only what came after (`after`, 500 a page, ten
+  pages a read) on `pipeline.node.log` for its run and node; `changed`
+  entries replace their copy (`pipelineLogMerge`); 404 is a node with no log
+  yet. Abort is `POST …/abort` behind a confirmation, only while queued or
+  running; the run reads aborted only once the next read says so, and a
+  refusal shows the server's words.
 - **Page:** the pipelines by name (head version, Disabled, last run's state
   and when), then every run newest first: state glyph and word, pipeline
   (a child's ↳, an archived pipeline's quiet), version, who started it (the
   agent by home's name, a child by its parent's pipeline and node), when,
   and how long it took or has taken, ticking each second while a run is
-  live. Older runs page in from the button under them.
+  live. Older runs page in from the button under them. A run row opens the
+  run (`PipelineRunRoute`): its state, who started it, when, its group,
+  Abort; the parent run; the nodes in graph order (longest path from the
+  root, ties in definition order: `pipelineNodeOrder`), each with its state,
+  newest status line or kind, and duration, a skipped node or one never
+  reached dimmed; why it failed (the failure code in words, desktop's
+  `pipelineFailureTitle`, then the node, the code and the message's last
+  line); child runs; usage; computers; input and result as JSON. A node opens
+  `PipelineNodeRoute`: its state, status, child run, failure (a traceback in
+  monospace), then its log as a CI log in a lazy list (`m:ss` gutter; output
+  monospace, stderr red; commands with exit code and duration, folded unless
+  running, failed or watched; tool calls; agent messages as Markdown; status
+  lines), then usage, output, input, status history and computers.
 - **Fixture:** debug builds have `ui.pipelines.PipelinesFixturesActivity`:
-  the real page over an in-memory server whose queued run starts and running
-  run ends with the events a server sends (`--ez pipelines.open true` opens
-  it at once).
+  the real pages over an in-memory server with every run readable (a running
+  deploy waiting on a child test run whose log grows, a failed one with a
+  traceback and an agent triage node, an agent pipeline with usage), changing
+  with the events a server sends; Abort works. `--ez pipelines.open true`
+  opens the list, `--es pipelines.run r-failed` a run and with
+  `--es pipelines.node build` its node.
 
 ## Autocomplete
 
