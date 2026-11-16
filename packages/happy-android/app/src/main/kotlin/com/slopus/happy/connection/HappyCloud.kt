@@ -3,10 +3,11 @@ package com.slopus.happy.connection
 import com.slopus.happy.BuildConfig
 
 /**
- * Happy Cloud (accounts contract v1): the accounts service at its own
- * origin, [BuildConfig.HAPPY_CLOUD_ACCOUNTS], where the person signs in and
- * their servers are listed, and the servers under one domain,
- * [BuildConfig.HAPPY_CLOUD_BASE]: the server named `acme` is
+ * Happy Cloud (accounts split, contract v1): the accounts service at its
+ * own origin, [BuildConfig.HAPPY_CLOUD_ACCOUNTS], where the person signs in
+ * for an identity token, the cluster's API at [api], which turns that into
+ * the account's session and lists their servers, and the servers under one
+ * domain, [BuildConfig.HAPPY_CLOUD_BASE]: the server named `acme` is
  * `https://acme.BASE`. The person signs in to their account once, then
  * picks, creates or joins servers; the account gets each server's token
  * ([CloudAccount.serverToken]), and each server is kept as its own
@@ -17,8 +18,15 @@ object HappyCloud {
     /** BASE; null in release builds (`release`, and `bench`, which is release) and when the build's isn't a host. Null leaves out every way in. */
     val base: String? = BuildConfig.HAPPY_CLOUD_BASE.takeIf { offeredIn(BuildConfig.BUILD_TYPE) && serverOf(it, "x") != null }
 
-    /** The accounts service, where the account signs in and servers are listed; null wherever [base] is. */
+    /** The accounts service, where the account signs in for an identity token; null wherever [base] is. */
     val accounts: AgentOrigin? = base?.let { originOf(BuildConfig.HAPPY_CLOUD_ACCOUNTS) }
+
+    /**
+     * The cluster's API ([BuildConfig.HAPPY_CLOUD_API], `https://api.BASE`):
+     * the account's session, its servers and invites, and the token endpoint
+     * every Happy Cloud session refreshes at. Null wherever [base] is.
+     */
+    val api: AgentOrigin? = base?.let { originOf(BuildConfig.HAPPY_CLOUD_API) }
 
     /** The web app's domain, [BuildConfig.HAPPY_CLOUD_WEB]: the server named `acme`'s settings are under `https://acme.WEB/#/settings/`. */
     private val web: String = BuildConfig.HAPPY_CLOUD_WEB

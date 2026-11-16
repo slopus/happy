@@ -47,12 +47,20 @@ val happyCloudBase = providers.environmentVariable("HAPPY_CLOUD_BASE").orNull?.t
     ?: providers.gradleProperty("happy.cloudBase").orNull?.takeIf { it.isNotBlank() }
     ?: "happy-clusters.com"
 
-// Happy Cloud's accounts service, where the person signs in and their servers
-// are listed: its own origin, apart from HAPPY_CLOUD_BASE. HAPPY_CLOUD_ACCOUNTS
+// Happy Cloud's accounts service, where the person signs in for an identity
+// token: its own origin, apart from HAPPY_CLOUD_BASE. HAPPY_CLOUD_ACCOUNTS
 // or -Phappy.cloudAccounts points a build at another one.
 val happyCloudAccounts = providers.environmentVariable("HAPPY_CLOUD_ACCOUNTS").orNull?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.cloudAccounts").orNull?.takeIf { it.isNotBlank() }
     ?: "https://auth.happy.engineering"
+
+// Happy Cloud's API, the cluster's: the account session (from the accounts
+// service's identity token), servers, server tokens and invites, and the one
+// token endpoint every Happy Cloud refresh goes to. HAPPY_CLOUD_API or
+// -Phappy.cloudApi points a build at another one; https://api.BASE otherwise.
+val happyCloudApi = providers.environmentVariable("HAPPY_CLOUD_API").orNull?.takeIf { it.isNotBlank() }
+    ?: providers.gradleProperty("happy.cloudApi").orNull?.takeIf { it.isNotBlank() }
+    ?: "https://api.$happyCloudBase"
 
 // Happy Cloud's web app, where a server's settings the phone has no page for
 // are (<name>.WEB/#/settings/<page>). HAPPY_CLOUD_WEB or -Phappy.cloudWeb points
@@ -151,6 +159,7 @@ android {
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
         buildConfigField("String", "HAPPY_CLOUD_BASE", groovy.json.JsonOutput.toJson(happyCloudBase))
         buildConfigField("String", "HAPPY_CLOUD_ACCOUNTS", groovy.json.JsonOutput.toJson(happyCloudAccounts))
+        buildConfigField("String", "HAPPY_CLOUD_API", groovy.json.JsonOutput.toJson(happyCloudApi))
         buildConfigField("String", "HAPPY_CLOUD_WEB", groovy.json.JsonOutput.toJson(happyCloudWeb))
         buildConfigField("String", "HAPPY_CLOUD_INVITE", groovy.json.JsonOutput.toJson(happyCloudInvite))
         manifestPlaceholders["happyCloudInviteHost"] = happyCloudInvite
