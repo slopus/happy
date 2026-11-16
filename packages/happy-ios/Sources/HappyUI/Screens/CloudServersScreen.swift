@@ -237,6 +237,9 @@ enum CloudScreens {
         switch error {
         case is NameNeeded: Strings.ServerSignIn.nameNeeded
         case let error as CloudAccountError: Strings.HappyCloud.failure(error)
+        // Happy Cloud's API out of reach, or its session's refresh: the
+        // account stays signed in, to try again.
+        case OAuthError.network, is URLError: Strings.HappyCloud.unreachable
         default: Strings.ServerSignIn.failure(error)
         }
     }

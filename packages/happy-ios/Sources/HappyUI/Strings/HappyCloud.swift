@@ -24,6 +24,7 @@ extension Strings {
             return "Too many tries. Try again in \(minutes) min."
         }
         static let signOut = "Sign Out of Happy Cloud"
+        static let unreachable = "Happy Cloud couldn’t be reached. Check your connection and try again."
 
         /// A name as typed, with the `@` people see in front of it dropped.
         static func bareName(_ text: String) -> String {
@@ -40,6 +41,7 @@ extension Strings {
             case CloudAccountError.refused(_, _, let message?): return message
             case CloudAccountError.signInRequired: return "Your Happy Cloud sign-in has ended. Sign in again."
             case CloudAccountError.invalidResponse: return "Happy Cloud answered something unexpected. Try again, or update Happy."
+            case OAuthError.network, is URLError: return unreachable
             default: return Strings.ServerSignIn.failure(error)
             }
         }

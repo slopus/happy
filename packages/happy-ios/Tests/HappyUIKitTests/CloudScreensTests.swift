@@ -494,6 +494,23 @@ final class CloudScreensTests: XCTestCase {
 
     /// Back in the app after accepting an invite link in the browser: the
     /// list loads again and the new server is there.
+    /// The API out of reach, or the session's refresh failing on the
+    /// network, says so over Try Again and keeps the account: no sign-out.
+    func testAnUnreachableAPIKeepsTheAccountAndSaysSo() async throws {
+        let account = CloudAccount.preview(token: "account", http: CloudHTTP())
+        CloudScreens.account = account
+        defer { CloudScreens.account = nil }
+        for error: any Error in [OAuthError.network, URLError(.notConnectedToInternet)] {
+            let screen = CloudServersViewController(context: context(), account: account, load: { throw error })
+            let navigation = UINavigationController(rootViewController: screen)
+            show(navigation)
+            await settle { !screen.status.string.isEmpty }
+            XCTAssertEqual(screen.status.string, "Happy Cloud couldn’t be reached. Check your connection and try again.")
+            XCTAssertTrue(navigation.topViewController === screen, "still on the servers, not signed out")
+            XCTAssertTrue(CloudScreens.account === account)
+        }
+    }
+
     func testTheServersReloadWhenTheAppComesBack() async throws {
         let account = CloudAccount.preview(token: "account", http: CloudHTTP())
         let acme = CloudServer(id: "s1", name: "acme", url: "", role: .owner)
