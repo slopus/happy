@@ -252,6 +252,15 @@ public final class AgentConnections {
         for account in accounts where account.revoked && credentials[account.id]?.signIn?.grant.refreshToken != nil {
             await sessionEnded(account.id)
         }
+        // A Happy Cloud server an earlier build signed in to holds a refresh
+        // token the accounts service issued, which nothing refreshes any
+        // more: it ends here, without asking anyone, for the person to sign
+        // in again (accounts split contract C9).
+        for account in accounts where !account.revoked {
+            guard let credential = credentials[account.id], HappyCloud.isCloud(credential.publicUrl),
+                  let grant = credential.signIn?.grant, grant.refreshToken != nil, grant.refreshUrl != HappyCloud.api + "/token" else { continue }
+            await sessionEnded(account.id)
+        }
         keepStartup()
         onChange?(); startConnections()
     }

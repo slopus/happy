@@ -254,6 +254,39 @@ final class AgentConnectionsTests: XCTestCase {
         XCTAssertNotNil(manager.syncEngine(for: ended.id))
     }
 
+    /// A Happy Cloud server an earlier build signed in to, whose refresh
+    /// token the accounts service issued, is signed out at launch and its
+    /// data erased, with nothing sent; one the API issued, and a team's own
+    /// server, are untouched.
+    func testALaunchEndsCloudSessionsTheAPIDidNotIssue() async throws {
+        let store = InMemoryAgentConnectionCredentialStore()
+        let directory = try directory()
+        let manager = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in IdentityTransport() })
+        await manager.setForeground(false)
+        let method = HappyCloud.method(server: HappyCloud.server(named: "acme"))
+        func record(_ refreshUrl: String) -> ServerSignInRecord {
+            ServerSignInRecord(method: method, grant: OAuthGrant(refreshToken: "r", refreshUrl: refreshUrl, clientId: "happy"), userId: "u1")
+        }
+        let access = OAuthAccess(token: "a", expiresAt: nil)
+        let old = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "acme")), signIn: record("https://auth.happy.engineering/token"), access: access, name: "Acme")
+        let current = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "globex")), signIn: record(HappyCloud.api + "/token"), access: access, name: "Globex")
+        let team = try await manager.addServer(try AgentOrigin("https://happy.acme.example"), signIn: record("https://auth.happy.engineering/token"), access: access, name: "Team")
+        let folder = try XCTUnwrap(OfflineFile.directory(for: old.id))
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("kept".utf8).write(to: folder.appendingPathComponent("direct.sqlite"))
+
+        let relaunched = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in IdentityTransport() })
+        await relaunched.setForeground(false)
+        try await relaunched.restore()
+        XCTAssertTrue(relaunched.signedOut(old.id))
+        XCTAssertNil(relaunched.credential(for: old.id)?.signIn?.grant.refreshToken)
+        XCTAssertEqual(relaunched.credential(for: old.id)?.publicUrl, HappyCloud.server(named: "acme"), "the way back in was lost")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "an ended server's data is still on the phone")
+        XCTAssertFalse(relaunched.signedOut(current.id))
+        XCTAssertEqual(relaunched.credential(for: current.id)?.signIn?.grant.refreshToken, "r")
+        XCTAssertFalse(relaunched.signedOut(team.id), "a team's own server refreshes wherever it says")
+    }
+
     /// A Happy Cloud server wears the placeholder its name picks, as
     /// desktop's rail draws `@acme`; another server is picked by its origin.
     func testACloudServerIsPickedByItsName() async throws {
