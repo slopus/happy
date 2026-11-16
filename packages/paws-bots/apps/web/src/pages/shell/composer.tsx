@@ -1,4 +1,4 @@
-import { listenWindow } from "../../paws/runtime";
+import { listenWindow, ownsHostKeyboard } from "../../paws/runtime";
 import { useLingui } from "@lingui/react/macro";
 import type { AgentSkillCatalogEntry, ThreadMessage } from "@rakazo/contracts";
 import type { ComposerMention, ComposerMentionRange, SlashActionId } from "@rakazo/core";
@@ -344,6 +344,7 @@ const ComposerBody = memo(function Composer({
   useEffect(() => {
     const apple = isApplePlatform();
     function onKey(event: KeyboardEvent) {
+      if (!ownsHostKeyboard(event)) return;
       if (event.repeat || event.altKey || event.shiftKey || event.key?.toLowerCase() !== "d")
         return;
       if (!primaryModifier(event, apple)) return;

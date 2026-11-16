@@ -1,4 +1,4 @@
-import { listenWindow } from "../../paws/runtime";
+import { listenWindow, ownsHostKeyboard } from "../../paws/runtime";
 import { t } from "@lingui/core/macro";
 import { Trans } from "@lingui/react/macro";
 import { PageIcon } from "@rakazo/chat-ui/web";
@@ -128,6 +128,7 @@ export function CommandPalette({
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
+      if (!ownsHostKeyboard(event)) return;
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.repeat) {
         return;
       }

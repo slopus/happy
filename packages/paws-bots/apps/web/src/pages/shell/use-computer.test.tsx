@@ -32,7 +32,7 @@ let state: ComputerState;
 let codes = 0;
 let screenUrlFactory: () => string = () =>
   `wuying://desktop?desktop_id=ecd-1&region_id=cn-hangzhou&auth_code=code-${++codes}&view_only=true`;
-const screenUrl = vi.fn(async () => ({ url: screenUrlFactory() }));
+const screenUrl = vi.fn(async (): Promise<{ url: string | null }> => ({ url: screenUrlFactory() }));
 
 /** The hook with the frame the panel draws: gone while an error replaces the screen. */
 function Harness() {
@@ -454,13 +454,14 @@ async function renderTakingControl(
   } as never;
   const release = vi.fn(async () => ({ ok: true }));
   const heartbeat = vi.fn(async () => ({ ok: true }));
+  const readScreen = vi.fn(async () => ({ url: null }));
   const rpc = {
     computer: {
       release,
       heartbeat,
       boot: vi.fn(async () => held),
       takeover: vi.fn(takeover),
-      screenUrl: vi.fn(async () => ({ url: null })),
+      screenUrl: readScreen,
     },
   } as never;
   const bot = { id: "bot-1" } as never;
@@ -494,6 +495,7 @@ async function renderTakingControl(
   }
   await act(async () => root.render(<Controls />));
   return {
+    readScreen,
     release,
     heartbeat,
     held,
@@ -658,4 +660,60 @@ it("offers Recover for a computer that failed to boot", async () => {
   await act(async () => state.commitComputer({ state: "error", kind: "browser" } as never));
   const buttons = [...container.querySelectorAll("button")].map((button) => button.textContent);
   expect(buttons).toEqual(["Retry screen", "Recover computer"]);
+});
+
+
+it("reads the screen explicitly after takeover even when the thread reader omits ancillary loads", async () => {
+  const { readScreen, takeControl } = await renderTakingControl();
+  await act(async () => { await takeControl(); });
+  expect(readScreen).toHaveBeenCalledWith({ botId: "bot-1" });
+  expect(state.screenUrlLoadedBotId).toBe("bot-1");
+});
+
+it.each([true, false])("reconciles an empty booting read once after running (stream available: %s)", async available => {
+  let finish!: (value: { url: string | null }) => void;
+  screenUrl.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  screenUrl.mockImplementationOnce(async () => ({ url: available ? screenUrlFactory() : null }));
+  await act(async () => state.commitComputer({ botId: "bot-1", state: "booting" } as never));
+  let reading!: Promise<string | null>;
+  await act(async () => { reading = state.refreshComputerScreen("bot-1"); });
+  await act(async () => state.commitComputer({ botId: "bot-1", state: "running" } as never));
+  await act(async () => { finish({ url: null }); await reading; });
+  expect(screenUrl).toHaveBeenCalledTimes(2);
+  expect(Boolean(state.screenUrl)).toBe(available);
+  expect(state.screenUrlLoadedBotId).toBe("bot-1");
+});
+
+it("cancels hidden panel continuation and reads a fresh screen once on return", async () => {
+  let visible = true;
+  let finish!: (value: { url: null }) => void;
+  const running = { botId: "bot-1", state: "running" } as never;
+  const readScreen = vi.fn(async (): Promise<{ url: string | null }> => ({ url: screenUrlFactory() }));
+  readScreen.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const boot = vi.fn(async () => running);
+  const rpc = { computer: { screenUrl: readScreen, boot, heartbeat: vi.fn(async () => ({})) } } as never;
+  const bot = { id: "bot-1" } as never;
+  const refreshThread = vi.fn(async () => {
+    state.commitComputer(running);
+    return { computer: running } as never;
+  });
+  function Controls() {
+    const actual = useComputerState({ rpc, panel: "computer", activeId: "bot-1", activeBotId: { current: "bot-1" } });
+    // Model the visibility supplied by the retained desktop host.
+    state = { ...actual, hostVisible: visible };
+    state.computerVisible.current = visible;
+    useComputerControls({ rpc, state, panel: "computer", active: bot, bots: [bot], botsRef: { current: [bot] }, activeBotId: { current: "bot-1" }, activeGroupId: { current: undefined }, runStatus: undefined, sandboxProvider: undefined, refreshThread, refreshGroupThread: vi.fn(), onUpgrade: vi.fn() });
+    return null;
+  }
+  await act(async () => root.render(<Controls />));
+  expect(readScreen).toHaveBeenCalledTimes(1);
+  visible = false;
+  await act(async () => root.render(<Controls />));
+  await act(async () => { finish({ url: null }); });
+  expect(boot).not.toHaveBeenCalled();
+  visible = true;
+  await act(async () => root.render(<Controls />));
+  expect(readScreen).toHaveBeenCalledTimes(2);
+  expect(state.screenUrl).not.toBeNull();
+  expect(boot).not.toHaveBeenCalled();
 });

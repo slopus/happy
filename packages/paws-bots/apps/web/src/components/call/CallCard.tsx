@@ -1,4 +1,4 @@
-import { listenWindow } from "../../paws/runtime";
+import { listenWindow, ownsHostKeyboard } from "../../paws/runtime";
 import { useLingui } from "@lingui/react/macro";
 import { BotAvatar, Button, cn, defaultBotAvatarValue } from "@rakazo/ui-web";
 import { Captions, ChevronDown, Mic, MicOff, PhoneOff, Settings } from "lucide-react";
@@ -46,6 +46,7 @@ export function CallCard({ onSettings }: { onSettings: () => void }) {
   useEffect(() => {
     if (!onCall) return;
     function onKey(event: KeyboardEvent) {
+      if (!ownsHostKeyboard(event)) return;
       if (event.key !== "Escape" || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target?.isContentEditable || EDITABLE.test(target?.tagName ?? "")) return;

@@ -7,6 +7,7 @@ declare global {
     interface Window { PawsBots?: { mount(element: HTMLElement, options: HostOptions): () => void } }
 }
 export type BotsFrameProps = {
+    active?: boolean;
     runtimeUrl: string;
     ticket: string;
     expiresAt: number;
@@ -89,6 +90,12 @@ export function BotsFrame(props: BotsFrameProps) {
         })().catch(fail);
         return () => { cancelled = true; dispose?.(); releaseAssets?.(); };
     }, [props.runtimeUrl, props.ticket, props.expiresAt, props.onAuthenticated, props.onFailure]);
+    React.useEffect(() => {
+        const host = element.current;
+        if (!host) return;
+        host.dataset.pawsActive = props.active === false ? 'false' : 'true';
+        host.dispatchEvent(new Event('paws-bots-visibility'));
+    }, [props.active]);
     React.useEffect(() => {
         for (const [name, value] of Object.entries(colors)) element.current?.style.setProperty(name, value);
     }, [colors]);

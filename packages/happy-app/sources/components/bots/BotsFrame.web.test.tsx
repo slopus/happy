@@ -17,7 +17,7 @@ describe('Bots workspace mount boundary', () => {
     const dispose = vi.fn(), mountRuntime = vi.fn((_host: unknown, _options: unknown) => dispose), authenticated = vi.fn(), failure = vi.fn();
     beforeEach(() => {
         (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-        vi.clearAllMocks(); nodes = []; host = { style: { setProperty: vi.fn() } };
+        vi.clearAllMocks(); nodes = []; host = { dataset: {}, dispatchEvent: vi.fn(), style: { setProperty: vi.fn() } };
         vi.stubGlobal('window', { PawsBots: { mount: mountRuntime } });
         vi.stubGlobal('document', {
             querySelector: (selector: string) => ({ content: selector.includes('entry') ? '/assets/bots/abc.js' : '/assets/bots/def.css' }),

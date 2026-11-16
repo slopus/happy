@@ -12,6 +12,7 @@ import { useIsTablet } from '@/utils/responsive';
 import { Text } from '@/components/StyledText';
 import { t } from '@/text';
 import { BotsFrame } from './BotsFrame';
+import { BotsActivity } from './BotsActivity';
 
 type Launch = { runtimeUrl: string; ticket: string; expiresAt: number };
 type Runtime = { owner: string; launch: Launch; generation: number };
@@ -19,7 +20,9 @@ type Runtime = { owner: string; launch: Launch; generation: number };
 export function BotsScreen() {
     const { credentials } = useAuth();
     const token = credentials?.token;
-    const focused = useIsFocused();
+    const routeFocused = useIsFocused();
+    const activity = React.useContext(BotsActivity);
+    const focused = activity ?? routeFocused;
     const tablet = useIsTablet();
     const navigation = useNavigation();
     const { theme } = useUnistyles();
@@ -34,11 +37,14 @@ export function BotsScreen() {
     const owner = React.useRef(token);
     owner.current = token;
 
+    const [started, setStarted] = React.useState(focused);
+    React.useEffect(() => { if (focused) setStarted(true); }, [focused]);
+    const enabled = activity === null ? focused : started;
     React.useEffect(() => {
         const current = ++generation.current;
         const abort = new AbortController();
         setRuntime(null); setAuthenticated(false); setError(false);
-        if (!focused || !token) return () => abort.abort();
+        if (!enabled || !token) return () => abort.abort();
         const timeout = setTimeout(() => {
             if (generation.current === current && !abort.signal.aborted) setError(true);
             abort.abort();
@@ -59,10 +65,10 @@ export function BotsScreen() {
             if (!abort.signal.aborted && generation.current === current) setError(true);
         }).finally(() => clearTimeout(timeout));
         return () => { clearTimeout(timeout); abort.abort(); generation.current++; };
-    }, [focused, token, attempt, locale, appearance]);
+    }, [enabled, token, attempt, locale, appearance]);
 
     // Account switches must hide the previous frame synchronously, before effects run.
-    const visible = focused && runtime?.owner === token ? runtime : null;
+    const visible = (activity !== null || focused) && runtime?.owner === token ? runtime : null;
     const isCurrent = React.useCallback(() => !!visible && visible.owner === owner.current && visible.generation === generation.current, [visible]);
     const connected = React.useCallback(() => { if (isCurrent()) setAuthenticated(true); }, [isCurrent]);
     const failed = React.useCallback(() => { if (isCurrent()) setError(true); }, [isCurrent]);
@@ -79,7 +85,7 @@ export function BotsScreen() {
             <Pressable accessibilityRole="button" accessibilityLabel={t('bots.reconnect')} onPress={() => setAttempt(value => value + 1)} style={({ pressed }) => [styles.icon, pressed && styles.pressed]} testID="bots-reconnect"><Feather name="refresh-cw" size={18} color={theme.colors.textSecondary} /></Pressable>
         </View>
         <View style={styles.body}>
-            {visible && !error && <BotsFrame key={visible.generation} {...visible.launch} onAuthenticated={connected} onFailure={failed} />}
+            {visible && !error && <BotsFrame key={visible.generation} {...visible.launch} onAuthenticated={connected} onFailure={failed} active={focused} />}
             {(!authenticated || error) && <View style={styles.overlay} pointerEvents={error ? 'auto' : 'none'}>
                 {error ? <>
                     <Feather name="cloud-off" size={28} color={theme.colors.textSecondary} />

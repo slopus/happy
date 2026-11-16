@@ -1,4 +1,4 @@
-import { listenWindow } from "../paws/runtime";
+import { listenWindow, ownsHostKeyboard } from "../paws/runtime";
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { Bot, Group } from "@rakazo/contracts";
 import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN, GROUP_NAME_MAX_LENGTH } from "@rakazo/contracts";
@@ -274,6 +274,7 @@ export function GroupSettings({
   useEffect(() => {
     if (saving || confirmingDelete || covered) return;
     const onKey = (event: KeyboardEvent) => {
+      if (!ownsHostKeyboard(event)) return;
       if (
         event.key === "Escape" &&
         !event.defaultPrevented &&

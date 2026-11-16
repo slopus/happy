@@ -1,4 +1,4 @@
-import { listenWindow } from "../../paws/runtime";
+import { listenWindow, ownsHostKeyboard } from "../../paws/runtime";
 import type { TaughtSkill } from "@rakazo/contracts";
 import { DEFAULT_COMPUTER_SCREEN, mapTeachPointer, teachCaptureKey } from "@rakazo/core";
 import { useEffect, useRef } from "react";
@@ -135,6 +135,7 @@ export function TeachCaptureOverlay({
     }
 
     function onKeyDown(event: KeyboardEvent) {
+      if (!ownsHostKeyboard(event)) return;
       // Keys aimed at page controls (the Stop teaching button, dialogs) must keep working;
       // only keystrokes with no other target belong to the demo.
       if (

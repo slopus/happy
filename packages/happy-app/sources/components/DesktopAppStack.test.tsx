@@ -111,3 +111,27 @@ describe('desktop app stack presentation', () => {
         expect(renderer.root.findAllByType('Text').map((node: any) => node.children.join(''))).toContain('Workspace content');
     });
 });
+
+it('keeps exactly one Bots workspace when routes are removed and re-created', () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    const mounted = vi.fn(), disposed = vi.fn();
+    function Workspace() { React.useEffect(() => { mounted(); return disposed; }, []); return null; }
+    const home = { key: 'home', name: 'index' };
+    const update = (routes: any[]) => {
+        mocks.state = { key: 'app', index: routes.length - 1, routes, preloadedRoutes: [] };
+        mocks.descriptors = Object.fromEntries(routes.map(route => [route.key, { route, options: {}, render: () => route.name === 'bots' ? <Workspace /> : null }]));
+        act(() => {
+            if (renderer) renderer.update(<DesktopStackNavigator children={null} />);
+            else renderer = TestRenderer.create(<DesktopStackNavigator children={null} />);
+        });
+    };
+    renderer = null;
+    update([home, { key: 'bots-first', name: 'bots' }]);
+    expect(mounted).toHaveBeenCalledTimes(1);
+    update([home]);
+    expect(renderer.root.findByProps({ testID: 'persistent-bots-workspace' }).props.style[1].display).toBe('none');
+    update([home, { key: 'bots-second', name: 'bots' }]);
+    expect(renderer.root.findByProps({ testID: 'persistent-bots-workspace' }).props.style[1].display).toBe('flex');
+    expect(mounted).toHaveBeenCalledTimes(1);
+    expect(disposed).not.toHaveBeenCalled();
+});

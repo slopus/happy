@@ -102,7 +102,7 @@ export function isLocalStorageEvent(event: StorageEvent) { try { return event.st
 
 export function ownsHostKeyboard(event: KeyboardEvent) {
   if (!embedded) return true;
-  if (!active) return false;
+  if (!active || active.root.dataset.pawsActive === "false") return false;
   return event.composedPath().includes(active.root) ||
     (typeof document !== "undefined" && event.target === document.body && active.root.isConnected);
 }

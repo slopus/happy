@@ -15,10 +15,17 @@ export async function loadComputerScreen(options: {
   isCurrent: () => boolean;
   commit: (result: ComputerScreenResult) => void;
   fallbackError: string;
+  timeoutMs?: number;
 }): Promise<string | null> {
   let result: ComputerScreenResult;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
-    const screen = await options.load();
+    const screen = await Promise.race([
+      options.load(),
+      new Promise<never>((_, reject) => {
+        deadline = setTimeout(() => reject(new Error(options.fallbackError)), options.timeoutMs ?? 45_000);
+      }),
+    ]);
     result = { url: screen.url, error: null };
   } catch (error) {
     result = {
@@ -26,6 +33,7 @@ export async function loadComputerScreen(options: {
       error: errorText(error, options.fallbackError),
     };
   }
+  clearTimeout(deadline);
   if (!options.isCurrent()) return null;
   options.commit(result);
   return result.url;

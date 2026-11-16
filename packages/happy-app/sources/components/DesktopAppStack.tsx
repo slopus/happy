@@ -11,6 +11,7 @@ import { DesktopModalSceneContext } from './DesktopModalScene';
 import { DesktopWorkspaceLayoutIsolation } from '@/hooks/useDesktopWorkspaceLayout';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { BotsActivity } from './bots/BotsActivity';
 
 export function focusDesktopModalInitialTarget(
     panel: HTMLElement | null,
@@ -39,6 +40,15 @@ export function DesktopStackNavigator({ children, initialRouteName, screenOption
     const modalDescriptors = React.useMemo(() => Object.fromEntries(Object.entries(descriptors).map(([key, descriptor]) => [key, {
         ...descriptor, options: { ...descriptor.options, headerShown: false },
     }])), [descriptors]);
+    // Keep one renderer outside the route stack. Navigating home or to a session can
+    // remove a Bots route; that must not tear down its authenticated React runtime.
+    const botsRenderer = React.useRef<(() => React.ReactNode) | null>(null);
+    const botsRoute = state.routes.find(route => route.name === 'bots');
+    if (!botsRenderer.current && botsRoute) botsRenderer.current = descriptors[botsRoute.key].render;
+    const botsActive = state.routes[backgroundState.index]?.name === 'bots';
+    const backgroundDescriptors = React.useMemo(() => Object.fromEntries(Object.entries(descriptors).map(([key, descriptor]) => [key,
+        descriptor.route.name === 'bots' ? { ...descriptor, render: () => <React.Fragment /> } : descriptor,
+    ])), [descriptors]);
     const fallbackTitle = t('settings.title');
     const title = current.options.headerTitle || current.options.title || fallbackTitle;
 
@@ -50,7 +60,10 @@ export function DesktopStackNavigator({ children, initialRouteName, screenOption
     }, [visible]);
 
     return <NavigationContent>
-        <NativeStackView {...rest} state={backgroundState} descriptors={descriptors} navigation={navigation} describe={describe} />
+        <NativeStackView {...rest} state={backgroundState} descriptors={backgroundDescriptors} navigation={navigation} describe={describe} />
+        {botsRenderer.current && <View testID="persistent-bots-workspace" style={[StyleSheet.absoluteFill, { display: botsActive ? 'flex' : 'none' }]}>
+            <BotsActivity.Provider value={botsActive}>{botsRenderer.current()}</BotsActivity.Provider>
+        </View>}
         <Modal transparent visible={visible} animationType="fade" onRequestClose={close}>
             <View style={styles.overlay} testID="desktop-modal-root" {...({ onKeyDown: (event: any) => {
                 if (event.nativeEvent.key === 'Escape') {

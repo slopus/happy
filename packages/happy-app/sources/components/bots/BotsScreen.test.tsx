@@ -107,3 +107,28 @@ describe('Bots upstream handoff', () => {
         expect(tree.root.findAllByProps({ accessibilityRole: 'alert' })).toHaveLength(1);
     });
 });
+
+it('keeps one authenticated desktop runtime across blur and return', async () => {
+    const { BotsActivity } = await import('./BotsActivity');
+    mocks.token = 'account-one'; mocks.focused = true; mocks.fetch.mockReset();
+    mocks.fetch.mockResolvedValue(response());
+    vi.stubGlobal('fetch', mocks.fetch);
+    vi.stubGlobal('window', { location: { origin: 'http://localhost:9000' } });
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    try {
+        await act(async () => { tree = TestRenderer.create(<BotsActivity.Provider value={true}><BotsScreen /></BotsActivity.Provider>); });
+        const original = tree.root.findByType('BotsFrame');
+        const connected = original.props.onAuthenticated;
+        await act(async () => connected());
+        for (const active of [false, true, false, true]) {
+            await act(async () => tree.update(<BotsActivity.Provider value={active}><BotsScreen /></BotsActivity.Provider>));
+            expect(tree.root.findByType('BotsFrame')).toBe(original);
+            expect(original.props.active).toBe(active);
+            expect(original.props.onAuthenticated).toBe(connected);
+            expect(mocks.fetch).toHaveBeenCalledTimes(1);
+            expect(tree.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+        }
+    } finally {
+        await act(async () => tree.unmount()); tree = null; vi.unstubAllGlobals();
+    }
+});

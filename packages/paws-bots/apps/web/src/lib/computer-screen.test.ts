@@ -110,7 +110,7 @@ describe("sameEmbeddedComputerScreen", () => {
 
 describe("embedded frame isolation", () => {
   it("sandboxes the vendor page without same-origin access and uses frame state probing", () => {
-    vi.stubGlobal("window", { location: { href: "https://app.example/chat" } });
+    vi.stubGlobal("window", { location: { href: "https://app.example/chat", origin: "https://app.example" } });
     const url = embeddableScreenUrl(
       "embedded-screen://desktop?auth_code=fake-once&desktop_id=ecd-fake",
     );
@@ -126,13 +126,13 @@ describe("embeddableScreenUrl", () => {
   });
 
   it("hides a local screen whose port does not match the page", () => {
-    vi.stubGlobal("window", { location: { href: "http://localhost:5173/" } });
+    vi.stubGlobal("window", { location: { href: "http://localhost:5173/", origin: "http://localhost:5173" } });
     expect(embeddableScreenUrl("http://127.0.0.1:6080/vnc.html")).toBeNull();
     expect(embeddableScreenUrl("http://localhost:6080/vnc.html")).toBeNull();
   });
 
   it("draws an embedded desktop in the page that carries its Web SDK", () => {
-    vi.stubGlobal("window", { location: { href: "http://localhost:5173/chat" } });
+    vi.stubGlobal("window", { location: { href: "http://localhost:5173/chat", origin: "http://localhost:5173" } });
     expect(
       embeddableScreenUrl(
         "embedded-screen://desktop?desktop_id=ecd-1&auth_code=once&view_only=true",
@@ -143,14 +143,14 @@ describe("embeddableScreenUrl", () => {
   });
 
   it("serves the screen proxy from the page origin", () => {
-    vi.stubGlobal("window", { location: { href: "http://localhost:5173/chat" } });
+    vi.stubGlobal("window", { location: { href: "http://localhost:5173/chat", origin: "http://localhost:5173" } });
     expect(embeddableScreenUrl("http://127.0.0.1:5173/novnc/session/view/1.x/vnc.html?a=1")).toBe(
       "http://localhost:5173/novnc/session/view/1.x/vnc.html?a=1",
     );
   });
 
   it("keeps a non-local screen even when the port differs", () => {
-    vi.stubGlobal("window", { location: { href: "http://localhost:5173/" } });
+    vi.stubGlobal("window", { location: { href: "http://localhost:5173/", origin: "http://localhost:5173" } });
     expect(embeddableScreenUrl("https://screen.example:6080/vnc.html")).toBe(
       "https://screen.example:6080/vnc.html",
     );
@@ -163,7 +163,7 @@ describe("screenIframeSandbox", () => {
   });
 
   it("allows scripts and pointer lock only for /novnc/ paths", () => {
-    vi.stubGlobal("window", { location: { href: "http://localhost:5173/" } });
+    vi.stubGlobal("window", { location: { href: "http://localhost:5173/", origin: "http://localhost:5173" } });
     expect(screenIframeSandbox("http://127.0.0.1:5173/novnc/vnc.html")).toBe(
       "allow-scripts allow-pointer-lock",
     );
@@ -284,7 +284,7 @@ describe("screen frame reports", () => {
   });
 
   it("only treats the proxy's own pages as reporting frames", () => {
-    vi.stubGlobal("window", { location: { href: "http://localhost:5173/" } });
+    vi.stubGlobal("window", { location: { href: "http://localhost:5173/", origin: "http://localhost:5173" } });
     expect(isProxiedScreenUrl("http://127.0.0.1:5173/novnc/session/view/1.t/vnc.html")).toBe(true);
     expect(isProxiedScreenUrl("https://screen.example/vnc.html")).toBe(false);
     expect(isProxiedScreenUrl(null)).toBe(false);
@@ -361,7 +361,7 @@ describe("probeScreen", () => {
   });
 
   it("sends the session cookie only for a same-origin http(s) screen", async () => {
-    vi.stubGlobal("window", { location: { href: "http://127.0.0.1:5173/chat" } });
+    vi.stubGlobal("window", { location: { href: "http://127.0.0.1:5173/chat", origin: "http://127.0.0.1:5173" } });
     const sameOrigin = vi.fn(async () => response(200, "<html>"));
     await expect(probeScreen(url, "fallback", sameOrigin)).resolves.toBeNull();
     expect(sameOrigin).toHaveBeenCalledWith(url, {
@@ -393,7 +393,7 @@ describe("probeScreen", () => {
   });
 
   it("keeps cookies off non-http screen schemes, including an embedded login URL", async () => {
-    vi.stubGlobal("window", { location: { href: "https://app.example/chat" } });
+    vi.stubGlobal("window", { location: { href: "https://app.example/chat", origin: "https://app.example" } });
     const embeddedScreen = vi.fn(async () => response(200));
     await probeScreen(
       "embedded-screen://desktop?desktop_id=ecd-1&auth_code=once",
@@ -422,7 +422,7 @@ describe("probeScreen", () => {
   });
 
   it("still treats an opaque redirect as leaving the app when the cookie was sent", async () => {
-    vi.stubGlobal("window", { location: { href: "http://127.0.0.1:5173/chat" } });
+    vi.stubGlobal("window", { location: { href: "http://127.0.0.1:5173/chat", origin: "http://127.0.0.1:5173" } });
     const fetchImpl = vi.fn(async () => response(0, "", "opaqueredirect"));
     await expect(probeScreen(url, "fallback", fetchImpl)).resolves.toBe("fallback");
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -474,7 +474,7 @@ describe("probeScreenStatus", () => {
   });
 
   it("includes the session cookie for a same-origin probe and withholds it elsewhere", async () => {
-    vi.stubGlobal("window", { location: { href: "http://127.0.0.1:5173/chat" } });
+    vi.stubGlobal("window", { location: { href: "http://127.0.0.1:5173/chat", origin: "http://127.0.0.1:5173" } });
     const sameOrigin = vi.fn(async () => ({ status: 204, type: "basic" }) as Response);
     await expect(probeScreenStatus(url, sameOrigin)).resolves.toBe(204);
     expect(sameOrigin).toHaveBeenCalledWith(url, {
@@ -527,4 +527,24 @@ describe("giving a reconnected screen the keyboard back", () => {
     refocus.dropped(false);
     expect(refocus.connected(body, frame, body)).toBe(false);
   });
+});
+
+it('ends a stalled screen read with a retryable error and ignores its late success', async () => {
+  vi.useFakeTimers();
+  const commit = vi.fn();
+  let finish!: (value: { url: string }) => void;
+  const pending = loadComputerScreen({
+    load: () => new Promise(resolve => { finish = resolve; }),
+    isCurrent: () => true,
+    commit,
+    fallbackError: 'Screen request timed out',
+    timeoutMs: 100,
+  });
+  await vi.advanceTimersByTimeAsync(100);
+  expect(await pending).toBeNull();
+  expect(commit).toHaveBeenCalledExactlyOnceWith({ url: null, error: 'Screen request timed out' });
+  finish({ url: 'https://screen.example/late' });
+  await Promise.resolve();
+  expect(commit).toHaveBeenCalledTimes(1);
+  vi.useRealTimers();
 });

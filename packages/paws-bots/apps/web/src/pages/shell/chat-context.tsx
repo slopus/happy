@@ -1,4 +1,4 @@
-import { listenWindow } from "../../paws/runtime";
+import { listenWindow, ownsHostKeyboard } from "../../paws/runtime";
 import { useLingui } from "@lingui/react/macro";
 import type { ReplyPreview, ThreadMessage } from "@rakazo/contracts";
 import {
@@ -112,6 +112,7 @@ export function ComposerReplyPreview({
   const { t } = useLingui();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (!ownsHostKeyboard(event)) return;
       if (
         event.key === "Escape" &&
         !event.defaultPrevented &&
