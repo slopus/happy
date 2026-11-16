@@ -196,8 +196,8 @@ final class AccountSwitcher: NSObject {
             AccountAdding.connectToCloud(context: context, from: controller)
         }
         cloud.accessibilityIdentifier = "account-cloud"
-        // Only while the account's pass is held; it forgets the pass, and
-        // the servers stay.
+        // Only while the account's session is held; it ends the session
+        // (revoked at the API), and the servers stay.
         let cloudSignOut = UIDeferredMenuElement.uncached { completion in
             MainActor.assumeIsolated {
                 guard CloudScreens.account?.isLive() == true else { return completion([]) }

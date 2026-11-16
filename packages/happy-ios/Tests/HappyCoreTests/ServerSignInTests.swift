@@ -783,18 +783,38 @@ final class SignInRequiredTests: XCTestCase {
     }
 
     /// Removing a cloud server revokes its refresh token's family at the
-    /// accounts service; a grant without one sends nothing.
+    /// API; a grant without one, or one the API didn't issue (an earlier
+    /// build's, from the accounts service), sends nothing.
     func testHappyCloudRevokesARemovedServersSession() async throws {
         let http = ScriptedHTTP()
-        http.json(HappyCloud.accounts + "/revoke", "{}")
+        http.json(HappyCloud.api + "/revoke", "{}")
         let server = HappyCloud.server(named: "acme") + "/"
-        await CloudAccount.revoke(OAuthGrant(refreshToken: "sr9", refreshUrl: HappyCloud.accounts + "/token", clientId: "happy", resource: server, audience: server), http: http)
-        XCTAssertEqual(http.requests.count, 1)
+        await CloudAccount.revoke(OAuthGrant(refreshToken: "sr9", refreshUrl: HappyCloud.api + "/token", clientId: "happy", resource: server, audience: server), http: http)
+        XCTAssertEqual(http.requests.map(\.url.absoluteString), [HappyCloud.api + "/revoke"])
         XCTAssertEqual(http.requests[0].method, "POST")
         XCTAssertNil(http.requests[0].headers["Authorization"])
         XCTAssertEqual(http.form(0), ["token": "sr9", "client_id": "happy"])
         await CloudAccount.revoke(OAuthGrant(clientId: "happy", audience: server), http: http)
+        await CloudAccount.revoke(OAuthGrant(refreshToken: "old", refreshUrl: HappyCloud.accounts + "/token", clientId: "happy", resource: server, audience: server), http: http)
         XCTAssertEqual(http.requests.count, 1)
+    }
+
+    /// Signing out of Happy Cloud revokes the account's session at the API,
+    /// once, and nothing more goes under it.
+    func testSigningOutOfHappyCloudRevokesTheSession() async throws {
+        let http = ScriptedHTTP()
+        http.json(HappyCloud.accounts + "/v2/auth/password", identityAnswer())
+        _ = sessionAnswer(http)
+        http.json(HappyCloud.api + "/revoke", "{}")
+        let account = try await CloudAccount.signIn(login: "qa-ios", password: "pw", http: http)
+        await account.signOut()
+        await account.signOut()
+        let revokes = http.requests.filter { $0.url.absoluteString == HappyCloud.api + "/revoke" }
+        XCTAssertEqual(revokes.count, 1)
+        XCTAssertEqual(http.formOf(revokes[0]), ["token": "ar1", "client_id": "happy"])
+        let sent = http.requests.count
+        await XCTAssertThrowsAsync(try await account.servers()) { XCTAssertEqual($0 as? CloudAccountError, .signInRequired) }
+        XCTAssertEqual(http.requests.count, sent)
     }
 
     /// A cloud server signs in from tokens the accounts API issued, for it

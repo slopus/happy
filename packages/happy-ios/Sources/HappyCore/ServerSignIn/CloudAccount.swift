@@ -309,15 +309,25 @@ public actor CloudAccount {
         return response.body
     }
 
-    /// Ends a cloud server's session for good when the person removes it:
-    /// its refresh token's family is revoked at the accounts service
-    /// (RFC 7009, `POST /revoke`, always 200). Best effort: the server is
+    /// Ends a session for good, a cloud server's when the person removes
+    /// it or the account's when they sign out of it: its refresh token's
+    /// family is revoked at the API (RFC 7009, `POST /revoke`, always 200).
+    /// Only a grant the API issued is sent there. Best effort: it is
     /// dropped on the phone either way.
     public static func revoke(_ grant: OAuthGrant, http: any HTTPTransport = NoRedirectURLSessionTransport()) async {
-        guard let token = grant.refreshToken else { return }
+        guard let token = grant.refreshToken, grant.refreshUrl == HappyCloud.api + "/token" else { return }
         let form = OAuthForm.encode([("token", token), ("client_id", grant.clientId)])
-        _ = try? await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.accounts + "/revoke")!,
+        _ = try? await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.api + "/revoke")!,
                                              headers: ["Content-Type": "application/x-www-form-urlencoded"], body: form))
+    }
+
+    /// Signs the account out: nothing more is sent under its session, and
+    /// the session is revoked at the API. The servers already on the phone
+    /// keep their own.
+    public func signOut() async {
+        guard !ended else { return }
+        ended = true
+        await Self.revoke(grant, http: http)
     }
 
     /// A token for `server`, the person's lasting session there: its

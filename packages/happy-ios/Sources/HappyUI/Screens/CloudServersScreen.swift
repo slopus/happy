@@ -48,8 +48,14 @@ protocol CloudTyping: UIViewController {
 /// docs/SERVER-SIGN-IN.md, "Happy Cloud".
 @MainActor
 enum CloudScreens {
-    /// The account's one-hour pass, in memory only, while it lasts.
-    static var account: CloudAccount?
+    /// The account's session, in memory only, while it lasts. One let go
+    /// (signed out, Back, another sign-in) is revoked at the API.
+    static var account: CloudAccount? {
+        didSet {
+            guard let oldValue, oldValue !== account else { return }
+            Task { await oldValue.signOut() }
+        }
+    }
     /// The name Apple gave this sign-in, which it gives only the first
     /// time: what "What's your name?" offers. In memory only.
     static var appleName: String?

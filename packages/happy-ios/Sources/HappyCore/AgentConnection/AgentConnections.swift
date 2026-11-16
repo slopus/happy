@@ -380,7 +380,7 @@ public final class AgentConnections {
         onChange?()
     }
 
-    /// A removed cloud server's session is revoked at the accounts service,
+    /// A removed cloud server's session is revoked at Happy Cloud's API,
     /// not just forgotten here, once its farewell is said.
     private func revokeIfCloud(_ removed: AgentConnectionCredentials?, after farewell: Task<Void, Never>? = nil) {
         guard let removed, HappyCloud.isCloud(removed.publicUrl), let grant = removed.signIn?.grant else { return }
