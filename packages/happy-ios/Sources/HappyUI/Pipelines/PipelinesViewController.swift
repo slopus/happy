@@ -7,9 +7,10 @@ import UltraView
 /// Desktop's Pipelines page on a phone, opened from home's Pipelines row
 /// under Plugins on a Happy Cloud server that runs them: the team's
 /// pipelines on top, then every run of them, newest first, the next page
-/// read once the last run shows. Read only; agents create and run
-/// pipelines. It follows the server's pipeline events while it shows
-/// (`PipelinesFeed`), and a running run's time counts by the second.
+/// read once the last run shows; a run opens its own page. Agents create
+/// and run pipelines; a person reads them and can abort a run. It follows
+/// the server's pipeline events while it shows (`PipelinesFeed`), and a
+/// running run's time counts by the second.
 final class PipelinesViewController: UIViewController {
     private let session: Session
     private let feed: PipelinesFeed
@@ -68,6 +69,10 @@ final class PipelinesViewController: UIViewController {
         view.addSubview(list)
         HeaderBar.edge(list.edge, in: self)
         list.onScroll = { [weak self] in self?.loadMoreIfNeeded() }
+        list.onSelect = { [weak self] id in
+            guard let self, let runId = PipelineListItems.run(ofRow: id) else { return }
+            navigationController?.pushViewController(PipelineRunViewController(session: session, runId: runId), animated: true)
+        }
 
         let pipeline = ApplyPipeline<PipelineListInput, Applied, Output>(
             input: currentInput(),
