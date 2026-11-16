@@ -66,6 +66,9 @@ public actor SyncEngine {
     /// lists them under Artifacts. Kept with the bootstrap, so the row is
     /// there, or not, from the first frame.
     private var plugins = false
+    /// The server runs pipelines (`capabilities.pipelines`, cloud only):
+    /// home lists them under Plugins. Kept beside `plugins`.
+    private var pipelines = false
     private var feedFollowing: Task<Void, Never>?
     /// Everything a Feed row can name (`FeedDirectory`), as last made, and
     /// what it is made from beside the bootstrap.
@@ -444,7 +447,10 @@ public actor SyncEngine {
                 agentIndex = nil
                 cursor = cached.cursor
             }
-            if let kept = try await database.checkpoint("capabilities") { plugins = kept.value["plugins"]?.boolValue == true }
+            if let kept = try await database.checkpoint("capabilities") {
+                plugins = kept.value["plugins"]?.boolValue == true
+                pipelines = kept.value["pipelines"]?.boolValue == true
+            }
             if users.isEmpty, let kept = try await database.checkpoint("users"),
                let list = try? JSONDecoder().decode([Lossy<TeamUser>].self, from: JSONEncoder().encode(kept.value)) {
                 users = Dictionary(list.compactMap(\.value).map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
@@ -759,9 +765,11 @@ public actor SyncEngine {
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(value))
         if cloud, let served = await health.value {
             let plugins = served.capabilities?.plugins == true
-            if plugins != self.plugins {
+            let pipelines = served.capabilities?.pipelines == true
+            if plugins != self.plugins || pipelines != self.pipelines {
                 self.plugins = plugins
-                try? await database.commit(.init(value: .object(["plugins": .bool(plugins)]), cursor: nil), named: "capabilities")
+                self.pipelines = pipelines
+                try? await database.commit(.init(value: .object(["plugins": .bool(plugins), "pipelines": .bool(pipelines)]), cursor: nil), named: "capabilities")
             }
         }
         guard current(generation) else { throw CancellationError() }
@@ -989,7 +997,7 @@ public actor SyncEngine {
     private func derive(publishing: Bool = true) {
         snapshot.loaded = desktop != nil
         if let desktop {
-            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins))
+            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins, pipelines: pipelines))
             agentRows = [:]
             for index in snapshot.allRows.indices {
                 snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }

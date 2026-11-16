@@ -101,6 +101,8 @@ enum Glyphs {
         // Desktop's `feed`: Activity, as GitHub draws its pulse.
         case "feed": .octicons("pulse")
         case "plugin": .ionicons("extension-puzzle-outline")
+        // Desktop's `pipeline`: a fixed graph of steps, branching.
+        case "pipeline": .ionicons("git-network-outline")
         default: .ionicons(name)
         }
     }
