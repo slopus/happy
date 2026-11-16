@@ -1,0 +1,184 @@
+diff --git a/src/commonMain/kotlin/io/tailcat/NetworkTransport.kt b/src/commonMain/kotlin/io/tailcat/NetworkTransport.kt
+index d995081..0d4afe0 100644
+--- a/src/commonMain/kotlin/io/tailcat/NetworkTransport.kt
++++ b/src/commonMain/kotlin/io/tailcat/NetworkTransport.kt
+@@ -74,6 +74,8 @@ internal class NetworkTransport(
+     private val discoPrivate = identity.discoPrivateKey
+     private val discoPublic = identity.discoPublicKey
+     private val nodePublic = identity.publicKey.raw
++    /** The endpoints last advertised, as traced: each new set is traced once. */
++    private var tracedSelf: Set<Endpoint> = emptySet()
+     private var probeBudget = 32
+     private var probeBudgetAt = environment.now()
+     private val relay = (relayFactory ?: { callback -> DerpTransport(nodes, identity, testOnlyPlaintextDERP, trace, relayRecovered, callback) }) {
+@@ -114,8 +116,8 @@ internal class NetworkTransport(
+             }
+         }
+         if (!installed) { created4?.close(); created6?.close(); return }
+-        created4?.let { trace?.mark("udp4Bound", it.localPort.toLong()) }
+-        created6?.let { trace?.mark("udp6Bound", it.localPort.toLong()) }
++        created4?.let { trace?.mark("udp4Bound", it.localPort.toLong()) } ?: trace?.mark("udp4BindFailed")
++        created6?.let { trace?.mark("udp6Bound", it.localPort.toLong()) } ?: trace?.mark("udp6BindFailed")
+         trace?.mark("udpBindDone", id)
+         created4?.let { startThread("tailcat-udp4") { readUdp(it, id) } }
+         created6?.let { startThread("tailcat-udp6") { readUdp(it, id) } }
+@@ -177,7 +179,7 @@ internal class NetworkTransport(
+             try {
+                 val datagram = socket.receive() ?: continue
+                 if (datagram.data.size <= 2048) offer(Event(null, normalize(datagram.source), datagram.data, id))
+-            } catch (_: Exception) { networkChanged(id, socketFailure = true); return }
++            } catch (_: Exception) { trace?.mark("udpReadFailed"); networkChanged(id, socketFailure = true); return }
+         }
+     }
+     private fun normalize(endpoint: Endpoint): Endpoint = try { endpointFromWire(endpoint.wireBytes()) } catch (_: Exception) { endpoint }
+@@ -402,7 +404,9 @@ internal class NetworkTransport(
+             val pending = stun[transaction] ?: return
+             if (pending.first != endpoint || environment.now() - pending.second > 10_000) return
+             stun.remove(transaction)
+-            rememberObserved(Stun.response(packet, transaction.bytes))
++            val mapped = Stun.response(packet, transaction.bytes)
++            trace?.markOnce("stunReply.${endpointClass(mapped.host)}", mapped.port.toLong())
++            rememberObserved(mapped)
+             peers.keys.forEach { invite(it) }
+             return
+         }
+@@ -415,6 +419,7 @@ internal class NetworkTransport(
+             val now = environment.now()
+             when (message) {
+                 is DiscoveryMessage.Ping -> {
++                    trace?.markOnce("pingReceived.${endpoint?.let { endpointClass(it.host) } ?: "relay"}", endpoint?.port?.toLong())
+                     if (!peer.directEnabled) return
+                     if (message.nodeKey != null && !message.nodeKey.contentEquals(key.raw)) return
+                     if (endpoint != null) {
+@@ -427,8 +432,9 @@ internal class NetworkTransport(
+                 }
+                 is DiscoveryMessage.Pong -> {
+                     val transaction = BytesKey(message.transaction)
+-                    val pending = probes[transaction] ?: return
+-                    if (endpoint == null || pending.peer != key || pending.endpoint != endpoint || now - pending.sent > 10_000) return
++                    trace?.markOnce("pongReceived.${endpoint?.let { endpointClass(it.host) } ?: "relay"}", endpoint?.port?.toLong())
++                    val pending = probes[transaction] ?: run { trace?.markOnce("pongUnmatched"); return }
++                    if (endpoint == null || pending.peer != key || pending.endpoint != endpoint || now - pending.sent > 10_000) { trace?.markOnce("pongRejected"); return }
+                     probes.remove(transaction)
+                     bind(peer, endpoint, now)
+                     // A late reply from another endpoint must not churn a healthy selected route: only its own
+@@ -449,6 +455,7 @@ internal class NetworkTransport(
+                     val advertised = message.endpoints.filter { it.port != 0 }
+                     val advertisedSet = advertised.toSet()
+                     val previous = peer.advertisedEndpoints
++                    if (advertisedSet != previous) advertised.forEach { trace?.mark("peerEndpoint.${endpointClass(it.host)}", it.port.toLong()) }
+                     val direct = peer.direct
+                     if (advertisedSet.isNotEmpty()) {
+                         val withdrawn = previous.orEmpty() - advertisedSet
+@@ -547,7 +554,10 @@ internal class NetworkTransport(
+             probeBudget--
+             val transaction = secureRandom(12)
+             probes[BytesKey(transaction)] = Probe(key, endpoint, now)
+-            try { sendUdp(endpoint, Discovery.seal(DiscoveryMessage.Ping(transaction, nodePublic), peer.disco, discoPrivate, discoPublic)) } catch (_: Exception) { }
++            try {
++                sendUdp(endpoint, Discovery.seal(DiscoveryMessage.Ping(transaction, nodePublic), peer.disco, discoPrivate, discoPublic))
++                trace?.markOnce("pingSent.${endpointClass(endpoint.host)}", endpoint.port.toLong())
++            } catch (error: Exception) { trace?.markOnce("pingSendFailed.${endpointClass(endpoint.host)}.${error::class.simpleName}", endpoint.port.toLong()) }
+         }
+         peer.probePending = peer.priorityEndpoints.isNotEmpty()
+         peer.nextProbe = now + if (peer.probePending) 1000 else if (peer.direct != null && now - peer.verified < 30_000) 10_000 else peer.probeInterval
+@@ -560,7 +570,9 @@ internal class NetworkTransport(
+         if (now - peer.lastCall < 1000) return
+         peer.lastCall = now
+         try {
+-            relay.send(key, Discovery.seal(DiscoveryMessage.CallMeMaybe(localEndpoints().take(128)), peer.disco, discoPrivate, discoPublic))
++            val mine = localEndpoints().take(128)
++            if (mine.toSet() != tracedSelf) { tracedSelf = mine.toSet(); trace?.mark("selfEndpoints", mine.size.toLong()); mine.forEach { trace?.mark("selfEndpoint.${endpointClass(it.host)}", it.port.toLong()) } }
++            relay.send(key, Discovery.seal(DiscoveryMessage.CallMeMaybe(mine), peer.disco, discoPrivate, discoPublic))
+             peer.advertisementPending = false
+         } catch (_: Exception) { peer.advertisementPending = true }
+     }
+@@ -595,6 +607,7 @@ internal class NetworkTransport(
+         relayGeneration = connected
+         if (now - lastStun >= 30_000) {
+             lastStun = now
++            trace?.mark("stunSent", stunServers.size.coerceAtMost(64).toLong())
+             for (endpoint in stunServers.take(64)) {
+                 val transaction = secureRandom(12); stun[BytesKey(transaction)] = endpoint to now
+                 try { sendUdp(endpoint, Stun.request(transaction)) } catch (_: Exception) { }
+@@ -607,3 +620,25 @@ internal class NetworkTransport(
+ }
+ 
+ internal const val RECEIVE_CAPACITY = 1024
++
++/** What kind of address [host] is, for a trace that must not carry the address itself. */
++internal fun endpointClass(host: String): String {
++    IpAddress.parse4(host)?.let { b ->
++        val a = b[0].u(); val c = b[1].u()
++        return when {
++            a == 10 || a == 172 && c in 16..31 || a == 192 && c == 168 -> "private4"
++            a == 100 && c in 64..127 -> "cgnat4"
++            a == 169 && c == 254 -> "linklocal4"
++            a == 127 -> "loopback4"
++            else -> "public4"
++        }
++    }
++    val b = IpAddress.parse6(host) ?: return "unknown"
++    return when {
++        b.copyOfRange(0, 10).all { it == 0.toByte() } && b[10] == 0xff.toByte() && b[11] == 0xff.toByte() -> "mapped4." + endpointClass(IpAddress.format4(b.copyOfRange(12, 16)))
++        b[0].u() and 0xe0 == 0x20 -> "global6"
++        b[0].u() and 0xfe == 0xfc -> "ula6"
++        b[0].u() == 0xfe && b[1].u() and 0xc0 == 0x80 -> "linklocal6"
++        else -> "other6"
++    }
++}
+diff --git a/src/commonMain/kotlin/io/tailcat/StartupTrace.kt b/src/commonMain/kotlin/io/tailcat/StartupTrace.kt
+index 2f058d0..b77f0ad 100644
+--- a/src/commonMain/kotlin/io/tailcat/StartupTrace.kt
++++ b/src/commonMain/kotlin/io/tailcat/StartupTrace.kt
+@@ -12,10 +12,11 @@ internal class StartupTrace {
+     private val events = ArrayList<Event>()
+     private val once = mutableSetOf<String>()
+     fun mark(name: String, value: Long? = null) = lock.withLock {
+-        if (events.size < 128) events.add(Event(name, monotonicMillis() - started, value))
++        if (events.size < LIMIT) events.add(Event(name, monotonicMillis() - started, value))
+     }
+     fun markOnce(name: String, value: Long? = null) = lock.withLock {
+-        if (events.size < 128 && once.add(name)) events.add(Event(name, monotonicMillis() - started, value))
++        if (events.size < LIMIT && once.add(name)) events.add(Event(name, monotonicMillis() - started, value))
+     }
+     fun snapshot(): List<Event> = lock.withLock { events.toList() }
++    private companion object { const val LIMIT = 1024 }
+ }
+\ No newline at end of file
+diff --git a/src/jvmTest/kotlin/io/tailcat/EndpointClassTest.kt b/src/jvmTest/kotlin/io/tailcat/EndpointClassTest.kt
+new file mode 100644
+index 0000000..040b636
+--- /dev/null
++++ b/src/jvmTest/kotlin/io/tailcat/EndpointClassTest.kt
+@@ -0,0 +1,14 @@
++package io.tailcat
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++
++class EndpointClassTest {
++    @Test
++    fun namesTheKindOfAddressOnly() {
++        assertEquals(
++            listOf("private4", "private4", "private4", "cgnat4", "public4", "linklocal4", "global6", "ula6", "mapped4.public4", "unknown"),
++            listOf("192.168.1.7", "10.0.0.2", "172.20.1.1", "100.100.1.1", "8.8.8.8", "169.254.3.4", "2001:db8::1", "fd00::5", "::ffff:8.8.4.4", "fe80::1%wlan0").map(::endpointClass),
++        )
++    }
++}
+diff --git a/src/jvmTest/kotlin/io/tailcat/RelayFirstSessionTest.kt b/src/jvmTest/kotlin/io/tailcat/RelayFirstSessionTest.kt
+index ef0724f..de27fda 100644
+--- a/src/jvmTest/kotlin/io/tailcat/RelayFirstSessionTest.kt
++++ b/src/jvmTest/kotlin/io/tailcat/RelayFirstSessionTest.kt
+@@ -190,9 +190,9 @@ class RelayFirstSessionTest {
+         val trace = StartupTrace()
+         trace.markOnce("first")
+         val snapshot = trace.snapshot()
+-        repeat(1000) { trace.markOnce("first"); trace.mark("attempt", it.toLong()) }
++        repeat(2000) { trace.markOnce("first"); trace.mark("attempt", it.toLong()) }
+         assertEquals(1, snapshot.size)
+-        assertEquals(128, trace.snapshot().size)
++        assertEquals(1024, trace.snapshot().size)
+         assertEquals(1, trace.snapshot().count { it.name == "first" })
+     }
+ 

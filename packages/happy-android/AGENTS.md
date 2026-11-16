@@ -2312,7 +2312,9 @@ is `packages/happy-ios`. The wire keeps its own names
   `io.tailcat` group only; the catalog pins the version. When it is
   published, switch the catalog and delete both. `tools/tailcat/patches`
   would hold fixes not yet in tailcat-kotlin, applied on top of the commit
-  (the version's `-p<n>`); there are none today. The pinned commit has
+  (the version's `-p<n>`). `0001` traces direct-path discovery (STUN, the
+  endpoints each side advertises by class and port, pings and pongs) into the
+  startup trace HappyTiming logs; it changes no behaviour. The pinned commit has
   tailcat-swift's recovery fixes to its 7cad775 except SACK (rejoin on a
   restarted computer's `meow\x03`, 15 s unanswered and 5 s owed-data
   rejoins, resend of what each flow owes after a rejoin or a relay

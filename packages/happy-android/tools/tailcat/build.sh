@@ -8,7 +8,7 @@
 #
 # patches/*.patch are applied on top of the commit, in order, and named in
 # the version (-p<count>). They are fixes not yet in tailcat-kotlin itself;
-# drop each one once the pinned commit has it. There are none today.
+# drop each one once the pinned commit has it.
 set -euo pipefail
 COMMIT=705a8682c5ff954b8758f8fa9d91168e9d4612d1
 here="$(cd "$(dirname "$0")" && pwd)"
