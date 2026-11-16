@@ -22,6 +22,7 @@
     <string name="conversation_tool_running">実行中</string>
     <string name="conversation_tool_failed">失敗</string>
     <string name="conversation_from_agent">別のエージェントから</string>
+    <string name="conversation_self_message">自分宛てのメッセージ</string>
     <string name="conversation_failure_resolved">再試行済み</string>
     <string name="conversation_compacting">会話を圧縮中…</string>
     <string name="conversation_compacted">会話を圧縮しました</string>

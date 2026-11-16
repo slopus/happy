@@ -22,6 +22,7 @@
     <string name="conversation_tool_running">執行中</string>
     <string name="conversation_tool_failed">失敗</string>
     <string name="conversation_from_agent">來自另一個代理程式</string>
+    <string name="conversation_self_message">傳給自己的訊息</string>
     <string name="conversation_failure_resolved">已重試</string>
     <string name="conversation_compacting">正在壓縮對話…</string>
     <string name="conversation_compacted">對話已壓縮</string>

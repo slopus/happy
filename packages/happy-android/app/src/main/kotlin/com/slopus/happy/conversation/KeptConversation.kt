@@ -53,8 +53,11 @@ data class KeptConversation(
     companion object {
         /** desktop's window on a conversation nobody reads (connectHappyAgent's `trimHistory`), as iOS keeps. */
         const val KEPT_RUNS = 100
-        /** 2: file blocks keep their kind, size on screen and thumbhash; a phone that kept them without reads them again. */
-        private const val VERSION = 2
+        /**
+         * 2: file blocks keep their kind, size on screen and thumbhash; 3: a message keeps why an agent wrote it
+         * and a pipeline run's result. A phone that kept them without reads them again.
+         */
+        private const val VERSION = 3
 
         fun parse(value: JsonObject?): KeptConversation? {
             val o = value ?: return null
@@ -89,6 +92,8 @@ data class KeptConversation(
             message.runId?.let { put("runId", it) }
             putJsonObject("metadata") {
                 message.senderAgentId?.let { put("senderAgentId", it) }
+                message.senderAgentExplanation?.let { put("senderAgentExplanation", it) }
+                message.pipelineRun?.let { put("pipelineRun", it) }
                 message.userId?.let { put("userId", it) }
             }
             message.failure?.let { put("failure", it) }

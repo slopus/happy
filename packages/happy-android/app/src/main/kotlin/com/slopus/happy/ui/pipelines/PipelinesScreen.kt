@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.pipelines.PipelineRunListEntry
@@ -102,11 +103,11 @@ internal fun stateColor(state: PipelineRunState): Color {
     }
 }
 
-/** A run's state as a glyph: a spinner while it runs. */
+/** A run's state as a glyph, centred in [box] (an [Item]'s icon slot): a spinner while it runs. */
 @Composable
-internal fun StateGlyph(state: PipelineRunState, modifier: Modifier = Modifier) {
+internal fun StateGlyph(state: PipelineRunState, modifier: Modifier = Modifier, box: Dp = ItemSpec.iconSize) {
     val color = stateColor(state)
-    Box(modifier.size(ItemSpec.iconSize), contentAlignment = Alignment.Center) {
+    Box(modifier.size(box), contentAlignment = Alignment.Center) {
         when (state) {
             PipelineRunState.Running -> PageProgressIndicator(Modifier.size(PipelinesSpec.spinner), color = color, strokeWidth = 2.dp)
             PipelineRunState.Queued -> Icon(Ionicon.TimeOutline, PipelinesSpec.stateGlyph, color)

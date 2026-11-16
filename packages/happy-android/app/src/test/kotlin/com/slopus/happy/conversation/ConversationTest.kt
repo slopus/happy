@@ -7,6 +7,8 @@ import com.slopus.happy.analytics.ErrorCode
 import com.slopus.happy.analytics.MessageSource
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.pipelines.PipelineRunNotice
+import com.slopus.happy.pipelines.PipelineRunState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -1057,6 +1059,32 @@ class ConversationTest {
         assertEquals(MediaRef("c", 0, MediaItem("image", "a.png", "image/png")), (ConversationRowBuilder.build(media, "a1", null, false).single() as ConversationRow.Media).items.single())
     }
 
+    @Test fun `what an agent sent itself is never the person's words`() {
+        fun message(status: String = "accepted", metadata: String) =
+            Message.parse(Json.parseToJsonElement("""{"id":"m","role":"user","status":"$status","createdAt":1,"content":[{"type":"text","text":"Pipeline Deploy (version 3) run r1 ended: failed."}],"metadata":$metadata}"""))!!
+        fun row(message: Message) = ConversationRowBuilder.build(message, "a1", "p", false)
+        val run = """{"runId":"r1","pipelineId":"p1","pipelineName":"Deploy","state":"failed","summary":"build: exception; test: timeout","version":3}"""
+        val notice = message(metadata = """{"senderAgentId":"a1","senderAgentExplanation":"Pipeline Deploy failed","pipelineRun":$run}""")
+        val described = row(notice).single() as ConversationRow.SelfNote
+        assertEquals("Pipeline Deploy failed", described.label)
+        assertEquals(PipelineRunNotice("r1", "p1", "Deploy", 3, PipelineRunState.Failed, "build: exception; test: timeout"), described.pipeline)
+        assertEquals("kept as the cluster sent it", notice, Message.parse(KeptConversation.messageJson(notice)))
+        // A cluster that doesn't describe the run yet, a goal's continuation: the plain row, its words behind a tap.
+        val plain = row(message(metadata = """{"senderAgentId":"a1","senderAgentExplanation":"Pipeline Deploy failed"}""")).single() as ConversationRow.SelfNote
+        assertNull(plain.pipeline)
+        assertEquals("Pipeline Deploy (version 3) run r1 ended: failed.", plain.text)
+        assertNull("no explanation: the row says whose it is", (row(message(metadata = """{"senderAgentId":"a1"}""")).single() as ConversationRow.SelfNote).label)
+        assertNull("a state this app doesn't know reads plain", (row(message(metadata = """{"senderAgentId":"a1","pipelineRun":${run.replace("failed", "exploded")}}""")).single() as ConversationRow.SelfNote).pipeline)
+        // A run's result waiting for its turn may be withdrawn: nothing shows. A continuation waiting does.
+        assertEquals(emptyList<ConversationRow>(), row(message("pending", """{"senderAgentId":"a1","pipelineRun":$run}""")))
+        assertTrue(row(message("pending", """{"senderAgentId":"a1"}""")).single() is ConversationRow.SelfNote)
+        // The person's, the manager's and another agent's messages draw as before; so do the agent's own words.
+        assertTrue(row(message(metadata = "{}")).single() is ConversationRow.User)
+        assertTrue(row(message(metadata = """{"senderAgentId":"x9"}""")).single() is ConversationRow.Collaborator)
+        val own = Message("m", "agent", 1, listOf(Block.Text("Done.")), senderAgentId = "a1")
+        assertTrue(row(own).single() is ConversationRow.Text)
+    }
+
     @Test fun `the catalog lists enabled models of enabled providers`() {
         val catalog = ModeCatalog.parse(Json.parseToJsonElement(FakeAgent.CONFIG).jsonObject)
         assertEquals(
@@ -1805,7 +1833,7 @@ class ConversationTest {
         """{"id":"$id","status":"$status","startedAt":1,"messages":[${messages.joinToString(",")}]}"""
 
     private fun kept(hasMore: Boolean, vararg runs: String): JsonObject =
-        Json.parseToJsonElement("""{"version":2,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
+        Json.parseToJsonElement("""{"version":3,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
 
     private val keptTwoRuns get() = kept(
         true,

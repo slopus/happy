@@ -5,14 +5,22 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentFeedSection
+import com.slopus.happy.conversation.Block
+import com.slopus.happy.conversation.ConversationRowBuilder
+import com.slopus.happy.conversation.Message
 import com.slopus.happy.pipelines.ClusterPipelines
 import com.slopus.happy.pipelines.PipelineAcquire
 import com.slopus.happy.pipelines.PipelineAuthor
@@ -37,6 +45,7 @@ import com.slopus.happy.pipelines.PipelinePermissions
 import com.slopus.happy.pipelines.PipelineRun
 import com.slopus.happy.pipelines.PipelineRunEntry
 import com.slopus.happy.pipelines.PipelineRunListEntry
+import com.slopus.happy.pipelines.PipelineRunNotice
 import com.slopus.happy.pipelines.PipelineRunPage
 import com.slopus.happy.pipelines.PipelineRunState
 import com.slopus.happy.pipelines.PipelineRunSummary
@@ -50,10 +59,14 @@ import com.slopus.happy.pipelines.PipelinesBackend
 import com.slopus.happy.pipelines.PipelinesSource
 import com.slopus.happy.ui.RetainedNavHost
 import com.slopus.happy.ui.backdrop
+import com.slopus.happy.ui.chat.MessageCallbacks
+import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.connection.AgentHomeItem
 import com.slopus.happy.ui.connection.AgentHomeList
+import com.slopus.happy.ui.conversation.ConversationRowActions
+import com.slopus.happy.ui.conversation.ConversationRowView
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.page
 import com.slopus.happy.ui.rememberNavMotion
@@ -64,6 +77,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
 /**
@@ -80,10 +94,14 @@ import kotlinx.serialization.json.put
  * (`--ez pipelines.open true` opens the list at once; `--es pipelines.run r-failed`
  * a run, and with `--es pipelines.node build` one of its nodes; `--es pipelines.pipeline
  * p-deploy` a pipeline, with `--ei pipelines.version 2` one of its versions, and
- * with `--es pipelines.node triage` too one of that version's nodes).
+ * with `--es pipelines.node triage` too one of that version's nodes; `--ez pipelines.chat true`
+ * a chat told how its runs ended, and with `--ez pipelines.chat.before true` as it drew before).
  */
 class PipelinesFixturesActivity : ComponentActivity() {
     @Serializable private data object FixtureHomeRoute
+
+    /** A chat where the agent was told how its runs ended; [before] draws its own messages as this app did before it told them apart. */
+    @Serializable private data class FixtureChatRoute(val before: Boolean)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -93,6 +111,8 @@ class PipelinesFixturesActivity : ComponentActivity() {
         val node = intent.getStringExtra("pipelines.node")
         val pipeline = intent.getStringExtra("pipelines.pipeline")
         val version = intent.getIntExtra("pipelines.version", 0)
+        val chat = intent.getBooleanExtra("pipelines.chat", false)
+        val before = intent.getBooleanExtra("pipelines.chat.before", false)
         setContent {
             HappyTheme {
                 val nav = rememberNavController()
@@ -102,6 +122,7 @@ class PipelinesFixturesActivity : ComponentActivity() {
                 val agents = AgentNames { mapOf("a-chief" to "Happy", "a-release" to "Release bot")[it] }
                 val people = PeopleNames { mapOf("u-steve" to "Steve", "u-kirill" to "Kirill")[it] }
                 val start: Any = when {
+                    chat -> FixtureChatRoute(before)
                     pipeline != null && version > 0 && node != null -> PipelineVersionNodeRoute("fixture", pipeline, version, node)
                     pipeline != null && version > 0 -> PipelineVersionRoute("fixture", pipeline, version, backend.nameOf(pipeline))
                     pipeline != null -> PipelineRoute("fixture", pipeline, backend.nameOf(pipeline))
@@ -129,10 +150,69 @@ class PipelinesFixturesActivity : ComponentActivity() {
                                 )
                             }
                         }
+                        page<FixtureChatRoute> { entry ->
+                            NoticeChat(entry.toRoute<FixtureChatRoute>().before, onBack = ::finish) { notice ->
+                                nav.navigate(PipelineRunRoute("fixture", notice.runId, notice.pipelineName))
+                            }
+                        }
                         pipelineRoutes(nav) { PagePipelines(backend, events, agents, people) }
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * An agent's chat after it ran pipelines, drawn by the chat's own rows from
+ * messages as the cluster sends them: the person's request, the agent's
+ * answer, then what the agent was told without a person writing it: a goal's
+ * continuation, a run's result from a cluster that doesn't describe the run
+ * yet (production today), and two that do, one succeeded and one failed with
+ * its summary. A run's card opens the run ([onOpenRun]). [before] drops the
+ * sender from the agent's own messages, which is how this app drew them
+ * before: as the person's.
+ */
+@Composable
+private fun NoticeChat(before: Boolean, onBack: () -> Unit, onOpenRun: (PipelineRunNotice) -> Unit) {
+    val agent = "a-release"
+    val rows = remember(before) {
+        fun self(id: String, at: Long, text: String, explanation: String? = null, run: String? = null) = Message(
+            id, "user", at, listOf(Block.Text(text)),
+            status = "accepted",
+            senderAgentId = agent.takeUnless { before },
+            senderAgentExplanation = explanation.takeUnless { before },
+            pipelineRun = run?.takeUnless { before }?.let { Json.parseToJsonElement(it).jsonObject },
+        )
+        listOf(
+            Message("m1", "user", 1, listOf(Block.Text("Ship main once the tests pass, and answer Ana's invoice email.")), status = "accepted"),
+            Message("m2", "agent", 2, listOf(Block.Text("Started **Deploy production** on main and **Incoming email** for Ana's message. I'll pick up when they finish."))),
+            self("m3", 3, "Continue working toward your goal: ship main and answer Ana."),
+            self(
+                "m4", 4,
+                "Pipeline Nightly backup (version 1) run r-nightly ended: failed. Read it with read_pipeline_run.",
+                explanation = "Pipeline Nightly backup failed",
+            ),
+            self(
+                "m5", 5,
+                "Pipeline Incoming email (version 12) run r-email ended: succeeded.",
+                explanation = "Pipeline Incoming email succeeded",
+                run = """{"pipelineId":"p-email","pipelineName":"Incoming email","runId":"r-email","state":"succeeded","version":12}""",
+            ),
+            self(
+                "m6", 6,
+                "Pipeline Deploy production (version 3) run r-failed ended: failed (build: exception).",
+                explanation = "Pipeline Deploy production failed",
+                run = """{"pipelineId":"p-deploy","pipelineName":"Deploy production","runId":"r-failed","state":"failed","summary":"build: exception","version":3}""",
+            ),
+            Message("m7", "agent", 7, listOf(Block.Text("Ana has her reply. The deploy failed in **build**; I'm reading the run to see why."))),
+        ).flatMap { ConversationRowBuilder.build(it, agent, null, false) }
+    }
+    val actions = remember { ConversationRowActions(MessageCallbacks(), onRetryFailure = {}, loadMedia = { ByteArray(0) }, onOpenPipelineRun = onOpenRun) }
+    val bubble = userMessageBubblePalette(null, HappyTheme.colors.dark)
+    Screen(header = { StackHeader(if (before) "Release bot (before)" else "Release bot", onBack) }) {
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(rows, key = { it.key }) { row -> ConversationRowView(row, bubble, actions) }
         }
     }
 }
