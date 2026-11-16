@@ -387,6 +387,15 @@ class ProseRowsTest {
         assertEquals(2, next.parts.size)
     }
 
+    @Test fun `a list that opens nested and goes back out is laid out from the margin`() {
+        // Production crashed here, reading bullets[-1] on the lane, and crashed again on every launch.
+        val text = "  - first\n- second"
+        val geometry = typesetter.geometry
+        val prose = typesetter.build(ProseSource("depth:0", ProseKind.Answer, text, parseMarkdown(text)), geometry)
+        val markers = prose.pieces.filterNot { it.reveals }.map { it.text.text to it.x }
+        assertEquals(listOf("◦" to geometry.px(16.dp), "•" to 0), markers)
+    }
+
     @Test fun `a new width draws the old layout scaled while the lane lays it out again, never on the main thread`() {
         val row = ConversationRow.Text("width:0", markdown, parseMarkdown(markdown))
         prepare(listOf(row))

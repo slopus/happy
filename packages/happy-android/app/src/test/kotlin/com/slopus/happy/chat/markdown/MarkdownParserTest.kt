@@ -124,6 +124,18 @@ class MarkdownParserTest {
         assertEquals(listOf(MarkdownBlock.CodeBlock(null, "unterminated")), parseMarkdown("```\nunterminated"))
     }
 
+    @Test fun `a list that opens nested counts depth from its least indented item`() {
+        // Sub-bullets under numbered lines open a bullet list of their own on an indented
+        // item, then go back to the margin (iOS 2bde5b424).
+        val blocks = parseMarkdown("1. first\n   - a sub item\n   - another sub item\n- back at the margin\n\n2. next\n\t- tabbed sub item\n- margin again")
+        val bullets = blocks.filterIsInstance<MarkdownBlock.BulletList>().map { list -> list.items.map { it.depth } }
+        assertEquals(listOf(listOf(1, 1, 0), listOf(0, 0)), bullets)
+        assertEquals(
+            MarkdownBlock.NumberedList(listOf(MarkdownBlock.NumberedItem(1, 1, spans("one")), MarkdownBlock.NumberedItem(2, 0, spans("two")))),
+            parseMarkdown("  1. one\n2. two").single(),
+        )
+    }
+
     private fun button(text: String, url: String) = MarkdownSpan(emptySet(), text, url, button = true)
 
     @Test fun `a link's title is not its address`() {
