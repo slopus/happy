@@ -290,16 +290,20 @@ describe('MarkdownView typography scope', () => {
         expect(openExternalUrl).not.toHaveBeenCalled();
     });
 
-    it('opens a chat link to a Skill file outside the project in the independent viewer', () => {
+    it.each(['plain', 'bold', 'italic'])('opens a %s chat link to a Skill file outside the project in the independent viewer', format => {
         const openReference = vi.fn();
         const workspace = { sessionId: 's', enabled: true, root: '/work', openReference } as any;
         const path = '/Users/alice/.codex/skills/design-ops/references/图标/index.md';
+        const linkMarkdown = `[图标索引](${path})`;
+        const markdown = format === 'bold' ? `**刷新后，点击 ${linkMarkdown} 即可。**`
+            : format === 'italic' ? `*打开 ${linkMarkdown}。*` : linkMarkdown;
         act(() => {
             renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={workspace}>
-                <MarkdownView markdown={`[图标索引](${path})`} sessionId="s" />
+                <MarkdownView markdown={markdown} sessionId="s" />
             </FileWorkspaceContext.Provider>);
         });
         const link = textNode(renderer, '图标索引');
+        expect(link).toBeDefined();
         expect(link.props.accessibilityRole).toBe('link');
         act(() => { link.props.onClick(); });
         const href = navigation.push.mock.calls[0]?.[0];

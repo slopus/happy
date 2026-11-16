@@ -1,7 +1,8 @@
 import type { MarkdownSpan } from "./parseMarkdown";
 
-// Updated pattern to handle nested markdown and asterisks
-const pattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\((<[^>\r\n]+>|[^)]+)\))?)|(`(.*?)(?:`|$))/g;
+const spanPattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\((<[^>\r\n]+>|[^)]+)\))?)|(`(.*?)(?:`|$))/g;
+// Within emphasis, preserve bare URLs before interpreting their query characters.
+const emphasisPattern = new RegExp(spanPattern.source + '|(https?://[^\\s<]+)', spanPattern.flags);
 
 function pushTextWithAutoLinks(spans: MarkdownSpan[], text: string, styles: MarkdownSpan['styles']) {
     const urlPattern = /https?:\/\/[^\s<]+/g;
@@ -36,11 +37,22 @@ function pushTextWithAutoLinks(spans: MarkdownSpan[], text: string, styles: Mark
     }
 }
 
-export function parseMarkdownSpans(markdown: string, header: boolean) {
+function pushFormattedSpans(spans: MarkdownSpan[], markdown: string, styles: MarkdownSpan['styles'], header: boolean) {
+    for (const span of parseSpans(markdown, header, emphasisPattern)) {
+        spans.push({ ...span, styles: [...new Set([...styles, ...span.styles])] });
+    }
+}
+
+export function parseMarkdownSpans(markdown: string, header: boolean): MarkdownSpan[] {
+    return parseSpans(markdown, header, spanPattern);
+}
+
+function parseSpans(markdown: string, header: boolean, tokenPattern: RegExp): MarkdownSpan[] {
     const spans: MarkdownSpan[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
-    pattern.lastIndex = 0;
+    // Each recursive emphasis parse owns its cursor, preserving the outer scan.
+    const pattern = new RegExp(tokenPattern);
 
     while ((match = pattern.exec(markdown)) !== null) {
         // Capture the text between the end of the last match and the start of this match as plain text
@@ -50,19 +62,9 @@ export function parseMarkdownSpans(markdown: string, header: boolean) {
         }
 
         if (match[1]) {
-            // Bold
-            if (header) {
-                pushTextWithAutoLinks(spans, match[2], []);
-            } else {
-                pushTextWithAutoLinks(spans, match[2], ['bold']);
-            }
+            pushFormattedSpans(spans, match[2], header ? [] : ['bold'], header);
         } else if (match[3]) {
-            // Italic
-            if (header) {
-                pushTextWithAutoLinks(spans, match[4], []);
-            } else {
-                pushTextWithAutoLinks(spans, match[4], ['italic']);
-            }
+            pushFormattedSpans(spans, match[4], header ? [] : ['italic'], header);
         } else if (match[5]) {
             // Link - handle incomplete links (no URL part)
             if (match[7]) {
@@ -76,6 +78,8 @@ export function parseMarkdownSpans(markdown: string, header: boolean) {
         } else if (match[8]) {
             // Inline code
             spans.push({ styles: ['code'], text: match[9], url: null });
+        } else if (match[10]) {
+            pushTextWithAutoLinks(spans, match[10], []);
         }
 
         lastIndex = pattern.lastIndex;

@@ -7,6 +7,66 @@ const item = (spans: { styles: string[]; text: string; url: string | null }[]) =
 });
 
 describe('parseMarkdown', () => {
+    it.each([
+        { markdown: '**https://example.com/search?q=a*b**', style: 'bold', url: 'https://example.com/search?q=a*b' },
+        { markdown: '*https://example.com/search?filter[name]=alice*', style: 'italic', url: 'https://example.com/search?filter[name]=alice' },
+    ])('preserves the complete bare URL inside $style text', ({ markdown, style, url }) => {
+        expect(parseMarkdown(markdown)).toEqual([
+            { type: 'text', content: [{ styles: [style], text: url, url }] },
+        ]);
+    });
+
+    it('keeps bare URLs and explicit links separate inside emphasis', () => {
+        expect(parseMarkdown('**See https://example.com then [doc](/work/a.md).**')).toEqual([
+            { type: 'text', content: [
+                { styles: ['bold'], text: 'See ', url: null },
+                { styles: ['bold'], text: 'https://example.com', url: 'https://example.com' },
+                { styles: ['bold'], text: ' then ', url: null },
+                { styles: ['bold'], text: 'doc', url: '/work/a.md' },
+                { styles: ['bold'], text: '.', url: null },
+            ] },
+        ]);
+    });
+
+    it('preserves the target of a file link inside a bold instruction', () => {
+        expect(parseMarkdown('**刷新后，点击 [图标索引](/Users/alice/skills/references/图标/index.md) 即可。**')).toEqual([
+            { type: 'text', content: [
+                { styles: ['bold'], text: '刷新后，点击 ', url: null },
+                { styles: ['bold'], text: '图标索引', url: '/Users/alice/skills/references/图标/index.md' },
+                { styles: ['bold'], text: ' 即可。', url: null },
+            ] },
+        ]);
+    });
+
+    it('preserves an angle-delimited file target inside italic text', () => {
+        expect(parseMarkdown('*Open [report](</Volumes/Work Disk/report (final).md:12>).*')).toEqual([
+            { type: 'text', content: [
+                { styles: ['italic'], text: 'Open ', url: null },
+                { styles: ['italic'], text: 'report', url: '/Volumes/Work Disk/report (final).md:12' },
+                { styles: ['italic'], text: '.', url: null },
+            ] },
+        ]);
+    });
+
+    it('continues parsing after a formatted link and keeps inline code literal', () => {
+        expect(parseMarkdown('**[docs](https://example.com)** and **next** with `[raw](/work/a.md)`.')).toEqual([
+            { type: 'text', content: [
+                { styles: ['bold'], text: 'docs', url: 'https://example.com' },
+                { styles: [], text: ' and ', url: null },
+                { styles: ['bold'], text: 'next', url: null },
+                { styles: [], text: ' with ', url: null },
+                { styles: ['code'], text: '[raw](/work/a.md)', url: null },
+                { styles: [], text: '.', url: null },
+            ] },
+        ]);
+    });
+
+    it('keeps formatted header links actionable without overriding header typography', () => {
+        expect(parseMarkdown('# **[index](/work/index.md)**')).toEqual([
+            { type: 'header', level: 1, content: [{ styles: [], text: 'index', url: '/work/index.md' }] },
+        ]);
+    });
+
     it('unwraps angle-delimited link destinations with spaces and parentheses', () => {
         expect(parseMarkdown('[报告](</Volumes/Work Disk/docs/report (final).md:12>)')).toEqual([
             { type: 'text', content: [{ styles: [], text: '报告', url: '/Volumes/Work Disk/docs/report (final).md:12' }] },
