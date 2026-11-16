@@ -371,10 +371,15 @@ class ServerAuthClient(
         return grant.access to credential.copy(refreshToken = grant.refreshToken ?: refreshToken)
     }
 
-    /** A token endpoint's grant; null when it refused (4xx, or a redirect, which is never followed). */
+    /**
+     * A token endpoint's grant; null when it refused (a 4xx, or a redirect,
+     * which is never followed). A 5xx or 429 is a fault that passes, the
+     * grant still good: Unreachable.
+     */
     private suspend fun token(url: String, form: FormBody): OAuthGrant? {
         val target = checkedUrl(url) ?: throw ServerAuthException(ServerAuthException.Reason.InvalidToken)
         val (status, _, body) = call(Request.Builder().url(target).header("Accept", "application/json").post(form).build())
+        if (status == 429) throw ServerAuthException(ServerAuthException.Reason.Unreachable)
         if (status in 300..499) return null
         if (status != 200) throw ServerAuthException(ServerAuthException.Reason.Unreachable)
         val root = parse(body) ?: throw ServerAuthException(ServerAuthException.Reason.InvalidToken)

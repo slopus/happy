@@ -161,8 +161,18 @@ class ServerAuthTest {
         // Refused: sign in again. Unreachable: try later.
         server.enqueue(json("""{"error":"invalid_grant"}""", 400))
         assertReason(ServerAuthException.Reason.SignInRequired) { auth.refresh(rotated, origin) }
-        server.enqueue(json("""{}""", 503))
-        assertReason(ServerAuthException.Reason.Unreachable) { auth.refresh(rotated, origin) }
+        // Any 5xx, a gateway's HTML or empty one too, and a 429 pass: the grant stays.
+        listOf(
+            json("""{"error":"temporarily_unavailable"}""", 503),
+            json("""{"error":"server_error"}""", 500),
+            MockResponse.Builder().code(502).addHeader("Content-Type", "text/html").body("<html>Bad Gateway</html>").build(),
+            MockResponse.Builder().code(504).build(),
+            MockResponse.Builder().code(429).addHeader("Content-Type", "text/html").body("<html>Too Many Requests</html>").build(),
+            json("""{"error":"slow_down"}""", 429),
+        ).forEach { answer ->
+            server.enqueue(answer)
+            assertReason(ServerAuthException.Reason.Unreachable) { auth.refresh(rotated, origin) }
+        }
         assertReason(ServerAuthException.Reason.SignInRequired) { auth.refresh(rotated.copy(refreshUrl = null), origin) }
     }
 
