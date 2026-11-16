@@ -423,7 +423,7 @@ internal fun AgentHomeCardRow(
 ) {
     HomeCardRow(
         place = HomeCardPlace(item.first, item.last),
-        height = if ((item.row as? AgentFeedRow.Conversation)?.owner == null) AgentHomeSpec.rowHeight() else AgentHomeSpec.detailRowHeight(),
+        height = AgentHomeSpec.rowHeight(),
         dividerStart = titleStart(item.row),
         modifier = modifier,
         tag = tag,
@@ -568,19 +568,15 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
                 .weight(1f)
                 .testTag(AgentHomeTags.ROW_TITLE),
         ) {
-            Column {
-                ShimmerText(
-                    text = title,
-                    style = AgentHomeSpec.title,
-                    baseColor = colors.text,
-                    highlightColor = ShimmerSpec.sheen(colors.text, colors.surfaceHigh),
-                    shimmering = row.running,
-                    fade = true,
-                    modifier = if (row.owner == null) Modifier.wrapContentHeight(unbounded = true).agentTitleBaseline() else Modifier,
-                )
-                // A teammate's task: whose it is, as search's detail line.
-                row.owner?.let { Text(it, style = AgentHomeSpec.detail, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            }
+            ShimmerText(
+                text = title,
+                style = AgentHomeSpec.title,
+                baseColor = colors.text,
+                highlightColor = ShimmerSpec.sheen(colors.text, colors.surfaceHigh),
+                shimmering = row.running,
+                fade = true,
+                modifier = Modifier.wrapContentHeight(unbounded = true).agentTitleBaseline(),
+            )
         }
         WorkspaceCounts(row.lineChanges)
         Corner(row.blocked, row.unread)
