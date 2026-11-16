@@ -1,0 +1,73 @@
+diff --git a/src/commonMain/kotlin/io/tailcat/Discovery.kt b/src/commonMain/kotlin/io/tailcat/Discovery.kt
+index e2bd6a5..11806a4 100644
+--- a/src/commonMain/kotlin/io/tailcat/Discovery.kt
++++ b/src/commonMain/kotlin/io/tailcat/Discovery.kt
+@@ -50,7 +50,26 @@ internal object Discovery {
+ 
+ internal object Stun {
+     val cookie = byteArrayOf(0x21, 0x12, 0xa4.toByte(), 0x42)
+-    fun request(transaction: ByteArray): ByteArray { require(transaction.size == 12); return byteArrayOf(0, 1, 0, 0) + cookie + transaction }
++    /**
++     * A binding request as Tailscale's STUN servers (every DERP's) accept it: SOFTWARE "tailnode",
++     * then FINGERPRINT last (net/stun ParseBindingRequest). They ignore a bare request.
++     */
++    fun request(transaction: ByteArray): ByteArray {
++        require(transaction.size == 12)
++        val software = "tailnode".encodeToByteArray()
++        val head = byteArrayOf(0, 1, 0, (4 + software.size + 8).toByte()) + cookie + transaction +
++            byteArrayOf(0x80.toByte(), 0x22, 0, software.size.toByte()) + software
++        val fingerprint = crc32(head) xor 0x5354554e
++        return head + byteArrayOf(0x80.toByte(), 0x28, 0, 4) + ByteArray(4) { (fingerprint ushr (24 - 8 * it)).toByte() }
++    }
++    private fun crc32(data: ByteArray): Int {
++        var crc = -1
++        for (byte in data) {
++            crc = crc xor byte.u()
++            repeat(8) { crc = if (crc and 1 != 0) (crc ushr 1) xor 0xEDB88320.toInt() else crc ushr 1 }
++        }
++        return crc.inv()
++    }
+     fun response(packet: ByteArray, transaction: ByteArray): Endpoint {
+         require(packet.size >= 20 && packet[0] == 1.toByte() && packet[1] == 1.toByte() && packet.copyOfRange(4, 8).contentEquals(cookie))
+         require(transaction.size == 12 && packet.copyOfRange(8, 20).contentEquals(transaction) && packet.size == 20 + packet.be16(2))
+diff --git a/src/jvmTest/kotlin/io/tailcat/StunRequestTest.kt b/src/jvmTest/kotlin/io/tailcat/StunRequestTest.kt
+new file mode 100644
+index 0000000..9da6581
+--- /dev/null
++++ b/src/jvmTest/kotlin/io/tailcat/StunRequestTest.kt
+@@ -0,0 +1,35 @@
++package io.tailcat
++
++import io.tailcat.platform.Endpoint
++import kotlin.test.Test
++import kotlin.test.assertEquals
++
++// Vectors from tailscale.com/net/stun, whose ParseBindingRequest every DERP's STUN server runs.
++class StunRequestTest {
++    private val transaction = ByteArray(12) { it.toByte() }
++
++    @Test
++    fun carriesTheSoftwareAndFingerprintTailscaleServersRequire() {
++        // stun.Request: header, SOFTWARE "tailnode", FINGERPRINT last.
++        assertEquals(
++            "000100142112a442000102030405060708090a0b802200087461696c6e6f6465802800048aabad90",
++            Stun.request(transaction).hex(),
++        )
++    }
++
++    @Test
++    fun readsTheMappedAddressATailscaleServerReplies() {
++        // stun.Response for 203.0.113.7:41641 and [2001:db8::1]:41641.
++        assertEquals(
++            Endpoint("203.0.113.7", 41641),
++            Stun.response("0101000c2112a442000102030405060708090a0b00200008000183bbea12d545".unhex(), transaction),
++        )
++        assertEquals(
++            Endpoint("2001:db8::1", 41641),
++            Stun.response("010100182112a442000102030405060708090a0b00200014000283bb0113a9fa000102030405060708090a0a".unhex(), transaction),
++        )
++    }
++
++    private fun ByteArray.hex() = joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
++    private fun String.unhex() = ByteArray(length / 2) { substring(2 * it, 2 * it + 2).toInt(16).toByte() }
++}

@@ -2314,7 +2314,11 @@ is `packages/happy-ios`. The wire keeps its own names
   would hold fixes not yet in tailcat-kotlin, applied on top of the commit
   (the version's `-p<n>`). `0001` traces direct-path discovery (STUN, the
   endpoints each side advertises by class and port, pings and pongs) into the
-  startup trace HappyTiming logs; it changes no behaviour. The pinned commit has
+  startup trace HappyTiming logs; it changes no behaviour. `0002` sends STUN
+  binding requests the way Tailscale's STUN servers (every DERP's) require,
+  with SOFTWARE `tailnode` and a FINGERPRINT; they drop a bare request, so
+  without it the phone never learns its public endpoint and direct never
+  validates behind NAT. The pinned commit has
   tailcat-swift's recovery fixes to its 7cad775 except SACK (rejoin on a
   restarted computer's `meow\x03`, 15 s unanswered and 5 s owed-data
   rejoins, resend of what each flow owes after a rejoin or a relay
