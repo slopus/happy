@@ -2570,7 +2570,19 @@ pages; words are `strings_pipelines.xml` in every locale.
   entries replace their copy (`pipelineLogMerge`); 404 is a node with no log
   yet. Abort is `POST …/abort` behind a confirmation, only while queued or
   running; the run reads aborted only once the next read says so, and a
-  refusal shows the server's words.
+  refusal shows the server's words. `PipelineSource` reads one pipeline
+  (`GET /v0/pipelines/:id`, its head's definition with it) and its versions
+  on `pipeline.updated`, the newest page of its runs on
+  `pipeline.run.updated`, both on `hello`; an event naming another pipeline
+  is left alone. A 404 is an archived pipeline: its runs still read.
+  `PipelineVersionSource` reads one version once (versions never change).
+  `RunPages` is the runs paging both list sources share.
+- **Definition:** `readDefinition` reads the whole of it (`PipelineDefinition.kt`):
+  types in the schema subset (`PipelineSchema`, with the JSON Schema kept for
+  Show JSON Schema), concurrency, `triggers.agents`, the permission ceiling
+  and each node's, compute, timeout, join, model, effort, source and
+  instructions. A node, edge or type it can't read refuses the version,
+  rather than half drawing it; the pipeline still reads.
 - **Page:** the pipelines by name (head version, Disabled, last run's state
   and when), then every run newest first: state glyph and word, pipeline
   (a child's ↳, an archived pipeline's quiet), version, who started it (the
@@ -2591,14 +2603,26 @@ pages; words are `strings_pipelines.xml` in every locale.
   lines; each row's time on its first baseline), then usage, output, input,
   status history and computers. While the node runs and the log's end is on
   screen the page follows what arrives; the reader scrolling the end away
-  stops it, scrolling back starts it (`followLogEnd`).
+  stops it, scrolling back starts it (`followLogEnd`). A pipeline's row, and
+  the Pipeline row of a run, open `PipelineRoute`: its description, Enabled
+  or Disabled, current version, concurrency in words (mode, group key,
+  batching), then `DefinitionGroups`: the nodes in graph order (kind, where
+  success and failure lead, Root), input and output field by field (name,
+  TypeScript-like type, Required or Optional), who may start it, the
+  ceiling's permissions and each node's, "nothing granted" said plainly;
+  then versions newest first and its runs as the list draws them. A version
+  opens `PipelineVersionRoute` (the same groups for that version), a node
+  `PipelineVersionNodeRoute`: model, where it sits, types, permissions,
+  computers, limits, and its source, instructions or child pipeline.
 - **Fixture:** debug builds have `ui.pipelines.PipelinesFixturesActivity`:
   the real pages over an in-memory server with every run readable (a running
   deploy waiting on a child test run whose log grows, a failed one with a
   traceback and an agent triage node, an agent pipeline with usage), changing
   with the events a server sends; Abort works. `--ez pipelines.open true`
   opens the list, `--es pipelines.run r-failed` a run and with
-  `--es pipelines.node build` its node.
+  `--es pipelines.node build` its node; `--es pipelines.pipeline p-deploy` a
+  pipeline, with `--ei pipelines.version 2` a version, and with
+  `--es pipelines.node triage` that version's node.
 
 ## Autocomplete
 

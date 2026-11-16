@@ -68,6 +68,7 @@ object PipelineRunTags {
     const val SUMMARY = "pipelines.runPage.summary"
     const val DURATION = "pipelines.runPage.duration"
     const val ABORT = "pipelines.runPage.abort"
+    const val PIPELINE = "pipelines.runPage.pipeline"
     const val NODES = "pipelines.runPage.nodes"
     const val INPUT = "pipelines.runPage.input"
     const val RESULT = "pipelines.runPage.result"
@@ -99,8 +100,8 @@ internal fun pipelineTime(at: Long): String {
 }
 
 /**
- * One run of a pipeline, live (desktop's run page, read only): its state
- * and who started it, Abort while it is queued or running (confirmed
+ * One run of a pipeline, live (desktop's run page, read only): its state,
+ * its pipeline (which opens its page, [onOpenPipeline]) and who started it, Abort while it is queued or running (confirmed
  * first; it reads aborted only once the server says so), why it failed in
  * words, the run that started it, its nodes in graph order, the child
  * runs its nodes made, what its agent nodes spent, the computers it held,
@@ -122,6 +123,7 @@ fun PipelineRunScreen(
     onBack: () -> Unit,
     onOpenNode: (nodeId: String) -> Unit,
     onOpenRun: (runId: String) -> Unit,
+    onOpenPipeline: ((pipelineId: String) -> Unit)? = null,
     now: Long = rememberNow(state.live),
 ) {
     val colors = HappyTheme.colors
@@ -150,7 +152,7 @@ fun PipelineRunScreen(
                     )
                 }
                 else -> {
-                    Summary(state, run, agents, now) {
+                    Summary(state, run, agents, now, onOpenPipeline) {
                         scope.launch { if (confirm({ alert = it }, abortTitle, abortMessage, abortConfirm, abortCancel, destructive = true)) onAbort() }
                     }
                     // Why it failed is what a failed run is opened for: right under its state.
@@ -181,7 +183,7 @@ fun PipelineRunScreen(
 
 /** The run's state, who started it and when, its group, and Abort while it may still be aborted. */
 @Composable
-private fun Summary(state: PipelineRunView, run: PipelineRun, agents: AgentNames, now: Long, onAbort: () -> Unit) {
+private fun Summary(state: PipelineRunView, run: PipelineRun, agents: AgentNames, now: Long, onOpenPipeline: ((String) -> Unit)?, onAbort: () -> Unit) {
     val colors = HappyTheme.colors
     val resources = LocalResources.current
     val entry = run.entry
@@ -206,6 +208,13 @@ private fun Summary(state: PipelineRunView, run: PipelineRun, agents: AgentNames
                 }
             },
             modifier = Modifier.testTag(PipelineRunTags.SUMMARY),
+        )
+        Item(
+            title = stringResource(R.string.pipelines_pipeline_title),
+            detail = state.pipelineName ?: run.pipelineId,
+            onClick = onOpenPipeline?.let { { it(run.pipelineId) } },
+            showChevron = onOpenPipeline != null,
+            modifier = Modifier.testTag(PipelineRunTags.PIPELINE),
         )
         Item(title = stringResource(R.string.pipelines_run_started_by), detail = startedBy(run, state.relatives, agents), showChevron = false)
         Item(title = stringResource(R.string.pipelines_run_queued), detail = pipelineTime(entry.createdAt), showChevron = false)

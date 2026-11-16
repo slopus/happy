@@ -2,6 +2,7 @@ package com.slopus.happy.ui.pipelines
 
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertTextEquals
@@ -69,10 +70,10 @@ class PipelineRunScreenTest {
     private val definition = PipelineDefinition(
         "build",
         listOf(
-            PipelineNodeDefinition("triage", PipelineNodeKind.Agent, "anthropic/claude-sonnet-5", null, emptySet()),
-            PipelineNodeDefinition("deploy", PipelineNodeKind.Code, null, null, emptySet()),
-            PipelineNodeDefinition("test", PipelineNodeKind.Pipeline, null, "p-tests", emptySet()),
-            PipelineNodeDefinition("build", PipelineNodeKind.Code, null, null, emptySet()),
+            PipelineNodeDefinition("triage", PipelineNodeKind.Agent, model = "anthropic/claude-sonnet-5"),
+            PipelineNodeDefinition("deploy", PipelineNodeKind.Code),
+            PipelineNodeDefinition("test", PipelineNodeKind.Pipeline, pipelineId = "p-tests"),
+            PipelineNodeDefinition("build", PipelineNodeKind.Code),
         ),
         listOf(PipelineEdge("build", "test", true), PipelineEdge("test", "deploy", true), PipelineEdge("build", "triage", false), PipelineEdge("deploy", "triage", false)),
     )
@@ -103,9 +104,13 @@ class PipelineRunScreenTest {
         val opened = mutableListOf<String>()
         var aborts = 0
         rule.setHappyContent {
-            PipelineRunScreen(running, agents, onRetry = {}, onAbort = { aborts++ }, onBack = {}, onOpenNode = { opened += "node:$it" }, onOpenRun = { opened += "run:$it" }, now = now)
+            PipelineRunScreen(
+                running, agents, onRetry = {}, onAbort = { aborts++ }, onBack = {},
+                onOpenNode = { opened += "node:$it" }, onOpenRun = { opened += "run:$it" }, onOpenPipeline = { opened += "pipeline:$it" }, now = now,
+            )
         }
-        rule.onNodeWithText("Deploy production").assertIsDisplayed()
+        // Its pipeline by name, which opens the pipeline's page.
+        rule.onNode(hasTestTag(PipelineRunTags.PIPELINE)).assertTextContains("Deploy production").performClick()
         rule.node(PipelineRunTags.DURATION).assertTextEquals("1m 33s")
         rule.onNodeWithText("Release bot").assertIsDisplayed()
         // Graph order, not the definition's: build, test, deploy, then triage on deploy's failure.
@@ -117,7 +122,7 @@ class PipelineRunScreenTest {
         rule.node(PipelineRunTags.nodeDuration("deploy")).assertDoesNotExist()
         rule.node(PipelineRunTags.relative("r2")).performScrollTo().performClick()
         rule.node(PipelineRunTags.node("test")).performScrollTo().performClick()
-        assertEquals(listOf("run:r2", "node:test"), opened)
+        assertEquals(listOf("pipeline:p-deploy", "run:r2", "node:test"), opened)
         rule.node(PipelineRunTags.ABORT).performScrollTo().performClick()
         rule.onNodeWithText("Abort this run?").assertIsDisplayed()
         rule.onNodeWithText("Keep running").performClick()

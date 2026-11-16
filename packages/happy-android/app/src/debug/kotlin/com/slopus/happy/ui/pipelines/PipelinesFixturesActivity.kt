@@ -13,9 +13,18 @@ import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentFeedSection
+import com.slopus.happy.pipelines.ClusterPipelines
+import com.slopus.happy.pipelines.PipelineAcquire
+import com.slopus.happy.pipelines.PipelineAuthor
+import com.slopus.happy.pipelines.PipelineCompute
+import com.slopus.happy.pipelines.PipelineComputeGrant
+import com.slopus.happy.pipelines.PipelineConcurrency
+import com.slopus.happy.pipelines.PipelineConcurrencyMode
 import com.slopus.happy.pipelines.PipelineDefinition
+import com.slopus.happy.pipelines.PipelineDetail
 import com.slopus.happy.pipelines.PipelineEdge
 import com.slopus.happy.pipelines.PipelineFailure
+import com.slopus.happy.pipelines.PipelineGrant
 import com.slopus.happy.pipelines.PipelineLease
 import com.slopus.happy.pipelines.PipelineLogEntry
 import com.slopus.happy.pipelines.PipelineLogPage
@@ -24,6 +33,7 @@ import com.slopus.happy.pipelines.PipelineNodeDefinition
 import com.slopus.happy.pipelines.PipelineNodeKind
 import com.slopus.happy.pipelines.PipelineNodeRun
 import com.slopus.happy.pipelines.PipelineNodeState
+import com.slopus.happy.pipelines.PipelinePermissions
 import com.slopus.happy.pipelines.PipelineRun
 import com.slopus.happy.pipelines.PipelineRunEntry
 import com.slopus.happy.pipelines.PipelineRunListEntry
@@ -33,6 +43,9 @@ import com.slopus.happy.pipelines.PipelineRunSummary
 import com.slopus.happy.pipelines.PipelineRunTrigger
 import com.slopus.happy.pipelines.PipelineStatusLine
 import com.slopus.happy.pipelines.PipelineSummary
+import com.slopus.happy.pipelines.PipelineType
+import com.slopus.happy.pipelines.PipelineVersion
+import com.slopus.happy.pipelines.PipelineVersionDetail
 import com.slopus.happy.pipelines.PipelinesBackend
 import com.slopus.happy.pipelines.PipelinesSource
 import com.slopus.happy.ui.RetainedNavHost
@@ -48,6 +61,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -58,12 +72,15 @@ import kotlinx.serialization.json.put
  * row under Plugins. Every run opens: a running deploy waiting on its child
  * test run, whose unit tests print a line every 2.5 s and pass after a
  * minute; a failed deploy with a traceback and an agent node that triaged
- * it; an agent pipeline with its usage. The queued run starts after 5 s.
+ * it; an agent pipeline with its usage. Deploy production's definition grants
+ * secrets, a repository, hosts and a pool of computers, and has a history of three. The queued run starts after 5 s.
  * Each change comes with the `pipeline.*` events a server journals, so the
  * pages follow them as they would a real one, and Abort aborts. Start it with
  * `adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.pipelines.PipelinesFixturesActivity`
  * (`--ez pipelines.open true` opens the list at once; `--es pipelines.run r-failed`
- * a run, and with `--es pipelines.node build` one of its nodes).
+ * a run, and with `--es pipelines.node build` one of its nodes; `--es pipelines.pipeline
+ * p-deploy` a pipeline, with `--ei pipelines.version 2` one of its versions, and
+ * with `--es pipelines.node triage` too one of that version's nodes).
  */
 class PipelinesFixturesActivity : ComponentActivity() {
     @Serializable private data object FixtureHomeRoute
@@ -74,6 +91,8 @@ class PipelinesFixturesActivity : ComponentActivity() {
         val open = intent.getBooleanExtra("pipelines.open", false)
         val run = intent.getStringExtra("pipelines.run")
         val node = intent.getStringExtra("pipelines.node")
+        val pipeline = intent.getStringExtra("pipelines.pipeline")
+        val version = intent.getIntExtra("pipelines.version", 0)
         setContent {
             HappyTheme {
                 val nav = rememberNavController()
@@ -81,7 +100,11 @@ class PipelinesFixturesActivity : ComponentActivity() {
                 val backend = remember { FakePipelines(System.currentTimeMillis()) { type, data -> events.tryEmit(AgentEvent(null, type, data)) } }
                 LaunchedEffect(Unit) { backend.play() }
                 val agents = AgentNames { mapOf("a-chief" to "Happy", "a-release" to "Release bot")[it] }
+                val people = PeopleNames { mapOf("u-steve" to "Steve", "u-kirill" to "Kirill")[it] }
                 val start: Any = when {
+                    pipeline != null && version > 0 && node != null -> PipelineVersionNodeRoute("fixture", pipeline, version, node)
+                    pipeline != null && version > 0 -> PipelineVersionRoute("fixture", pipeline, version, backend.nameOf(pipeline))
+                    pipeline != null -> PipelineRoute("fixture", pipeline, backend.nameOf(pipeline))
                     run != null && node != null -> PipelineNodeRoute("fixture", run, node)
                     run != null -> PipelineRunRoute("fixture", run)
                     open -> PipelinesRoute("fixture")
@@ -106,7 +129,7 @@ class PipelinesFixturesActivity : ComponentActivity() {
                                 )
                             }
                         }
-                        pipelineRoutes(nav) { PagePipelines(backend, events, agents) }
+                        pipelineRoutes(nav) { PagePipelines(backend, events, agents, people) }
                     }
                 }
             }
@@ -127,37 +150,109 @@ private class FakePipelines(private val now: Long, private val emit: (String, Js
     private val digest = "p-digest" to "Weekly digest"
     private val names = mapOf(deploy, email, tests, "p-nightly" to "Nightly backup")
 
-    private fun node(id: String, kind: PipelineNodeKind, model: String? = null, pipeline: String? = null, leases: Set<String> = emptySet()) =
-        PipelineNodeDefinition(id, kind, model, pipeline, leases)
+    /** What the list called a pipeline, archived ones too, as the page that opens one passes it on. */
+    fun nameOf(pipelineId: String): String? = (names + digest)[pipelineId]
 
     private fun success(from: String, to: String) = PipelineEdge(from, to, onSuccess = true)
     private fun failure(from: String, to: String) = PipelineEdge(from, to, onSuccess = false)
 
+    /** A type as a definition writes it, and as the app reads it. */
+    private fun type(schema: String): PipelineType {
+        val json = Json.parseToJsonElement(schema)
+        return PipelineType(ClusterPipelines.schema(json)!!, json)
+    }
+
     private val definitions = mapOf(
         deploy.first to PipelineDefinition(
-            "build",
-            listOf(
-                node("build", PipelineNodeKind.Code, leases = setOf("builder")),
-                node("test", PipelineNodeKind.Pipeline, pipeline = tests.first),
-                node("deploy", PipelineNodeKind.Code, leases = setOf("builder")),
-                node("announce", PipelineNodeKind.Agent, model = "openai/gpt-6.1-terra"),
-                node("triage", PipelineNodeKind.Agent, model = "anthropic/claude-sonnet-5"),
+            root = "build",
+            nodes = listOf(
+                PipelineNodeDefinition(
+                    "build", PipelineNodeKind.Code,
+                    input = type("""{"type":"object","properties":{"branch":{"type":"string"},"sha":{"type":"string"}},"required":["branch","sha"]}"""),
+                    output = type("""{"type":"object","properties":{"apk":{"type":"string"},"sha":{"type":"string"}},"required":["apk","sha"]}"""),
+                    permissions = PipelinePermissions(secrets = listOf("SIGNING_KEY"), repositories = listOf(PipelineGrant("happy/app", write = false))),
+                    compute = PipelineCompute(acquire = listOf(PipelineAcquire("builder", "mac-builders", null)), pass = listOf("builder")),
+                    timeoutSeconds = 1800,
+                    source = "def main(input):\n    sh(\"git clone --depth 1 happy:app .\")\n    sh(f\"git checkout {input['sha']}\")\n    check(sh(\"./gradlew assembleRelease\"))\n    return {\"apk\": \"build/app-release.apk\", \"sha\": input[\"sha\"]}",
+                ),
+                PipelineNodeDefinition(
+                    "test", PipelineNodeKind.Pipeline, pipelineId = tests.first,
+                    input = type("""{"type":"object","properties":{"sha":{"type":"string"}},"required":["sha"]}"""),
+                    output = type("""{"type":"object","properties":{"passed":{"type":"integer"},"failed":{"type":"integer"}},"required":["passed","failed"]}"""),
+                ),
+                PipelineNodeDefinition(
+                    "deploy", PipelineNodeKind.Code,
+                    permissions = PipelinePermissions(secrets = listOf("PLAY_STORE_KEY"), egressHosts = listOf("androidpublisher.googleapis.com")),
+                    compute = PipelineCompute(use = listOf("builder")),
+                    source = "def main(input):\n    upload(\"build/app-release.apk\", track=\"production\")\n    return {\"track\": \"production\"}",
+                    output = type("""{"type":"object","properties":{"track":{"type":"string","enum":["internal","production"]}},"required":["track"]}"""),
+                ),
+                PipelineNodeDefinition(
+                    "announce", PipelineNodeKind.Agent, model = "openai/gpt-6.1-terra",
+                    output = type("""{"type":"object","properties":{"message":{"type":"string"},"channel":{"type":["string","null"]}},"required":["message"]}"""),
+                    permissions = PipelinePermissions(tools = listOf("web_fetch"), egressHosts = listOf("hooks.slack.com")),
+                    instructions = "Write a two-line release note for the **production** release and post it to #releases.",
+                ),
+                PipelineNodeDefinition(
+                    "triage", PipelineNodeKind.Agent, model = "anthropic/claude-sonnet-5", effort = "high",
+                    input = type("""{"type":"object","properties":{"build":{"type":["object","null"],"properties":{"node":{"type":"string"},"code":{"type":"string"},"message":{"type":"string"}},"required":["node","code","message"]},"test":{"type":["object","null"],"properties":{}},"deploy":{"type":["object","null"],"properties":{}}}}"""),
+                    output = type("""{"type":"object","properties":{"summary":{"type":"string"},"owner":{"type":"string"}},"required":["summary"]}"""),
+                    joinAny = true,
+                    timeoutSeconds = 600,
+                    instructions = "A step of the deploy failed. Read its message, find the change that broke it, and name who should fix it.",
+                ),
             ),
-            listOf(
+            edges = listOf(
                 success("build", "test"), success("test", "deploy"), success("deploy", "announce"),
                 failure("build", "triage"), failure("test", "triage"), failure("deploy", "triage"),
+            ),
+            input = type("""{"type":"object","properties":{"branch":{"type":"string"},"sha":{"type":"string"},"notes":{"type":"array","items":{"type":"string"}},"dryRun":{"type":"boolean"}},"required":["branch","sha"]}"""),
+            concurrency = PipelineConcurrency(PipelineConcurrencyMode.Supersede, group = "{{ input.branch }}"),
+            triggerAgents = listOf("a-release", "a-chief"),
+            permissions = PipelinePermissions(
+                tools = listOf("web_fetch"),
+                vaults = listOf(PipelineGrant("release-notes", write = true)),
+                secrets = listOf("SIGNING_KEY", "PLAY_STORE_KEY"),
+                repositories = listOf(PipelineGrant("happy/app", write = false)),
+                pipelines = listOf(tests.first),
+                egressHosts = listOf("androidpublisher.googleapis.com", "hooks.slack.com"),
+                compute = PipelineComputeGrant(pools = listOf("mac-builders"), maxLeases = 1),
             ),
         ),
         tests.first to PipelineDefinition(
             "setup",
-            listOf(node("setup", PipelineNodeKind.Code), node("unit", PipelineNodeKind.Code, leases = setOf("runner")), node("lint", PipelineNodeKind.Code), node("report", PipelineNodeKind.Agent, model = "openai/gpt-6.1-sol")),
+            listOf(
+                PipelineNodeDefinition("setup", PipelineNodeKind.Code, source = "def main(input):\n    return input"),
+                PipelineNodeDefinition("unit", PipelineNodeKind.Code, compute = PipelineCompute(acquire = listOf(PipelineAcquire("runner", null, "linux-ci-4"))), source = "def main(input):\n    return run_tests()"),
+                PipelineNodeDefinition("lint", PipelineNodeKind.Code, source = "def main(input):\n    return lint()"),
+                PipelineNodeDefinition("report", PipelineNodeKind.Agent, model = "openai/gpt-6.1-sol"),
+            ),
             listOf(success("setup", "unit"), success("setup", "lint"), success("unit", "report"), success("lint", "report")),
+            input = type("""{"type":"object","properties":{"sha":{"type":"string"}},"required":["sha"]}"""),
+            concurrency = PipelineConcurrency(PipelineConcurrencyMode.Queue, group = "{{ input.sha }}", batch = true),
         ),
         email.first to PipelineDefinition(
             "classify",
-            listOf(node("classify", PipelineNodeKind.Agent, model = "openai/gpt-6.1-sol"), node("reply", PipelineNodeKind.Agent, model = "anthropic/claude-sonnet-5")),
+            listOf(
+                PipelineNodeDefinition("classify", PipelineNodeKind.Agent, model = "openai/gpt-6.1-sol", output = type("""{"type":"object","properties":{"kind":{"type":"string","enum":["billing","support","spam"]}},"required":["kind"]}""")),
+                PipelineNodeDefinition("reply", PipelineNodeKind.Agent, model = "anthropic/claude-sonnet-5", permissions = PipelinePermissions(agents = listOf("a-chief"))),
+            ),
             listOf(success("classify", "reply")),
+            input = type("""{"type":"object","properties":{"from":{"type":"string"},"subject":{"type":"string"},"body":{"type":"string"}},"required":["from","subject","body"]}"""),
+            triggerAgents = listOf("a-chief"),
         ),
+    )
+
+    /** The history behind each pipeline's head, newest first. */
+    private val versions = mapOf(
+        deploy.first to listOf(
+            PipelineVersion(3, "Supersede runs of the same branch instead of queueing them", PipelineAuthor("u-steve", "a-release"), now - 2 * 24 * 60 * minute),
+            PipelineVersion(2, "Triage failures with an agent", PipelineAuthor("u-kirill", null), now - 9 * 24 * 60 * minute),
+            PipelineVersion(1, "", PipelineAuthor("u-steve", null), now - 30 * 24 * 60 * minute),
+        ),
+        email.first to (12 downTo 1).map { PipelineVersion(it, if (it == 12) "Reply in the sender's language" else "Tune the classifier", PipelineAuthor("u-steve", "a-chief"), now - (13 - it) * 24 * 60 * minute) },
+        tests.first to (7 downTo 1).map { PipelineVersion(it, "Split lint from unit tests".takeIf { _ -> it == 7 }.orEmpty(), PipelineAuthor("u-kirill", null), now - (8 - it) * 3 * 24 * 60 * minute) },
+        "p-nightly" to listOf(PipelineVersion(1, "Back up the vaults every night", PipelineAuthor("u-steve", null), now - 60 * 24 * 60 * minute)),
     )
 
     private fun entry(id: String, state: PipelineRunState, ago: Long, took: Long?, trigger: PipelineRunTrigger?, parent: String? = null, version: Int = 3) =
@@ -377,12 +472,7 @@ private class FakePipelines(private val now: Long, private val emit: (String, Js
     override suspend fun pipelines(): List<PipelineSummary> {
         delay(300)
         fun last(id: String) = runs.firstOrNull { it.pipelineId == id }?.run?.let { PipelineRunSummary(it.id, it.state, it.createdAt, it.endedAt) }
-        return listOf(
-            PipelineSummary(deploy.first, deploy.second, "Builds, tests and ships main.", 3, true, last(deploy.first)),
-            PipelineSummary(email.first, email.second, null, 12, true, last(email.first)),
-            PipelineSummary("p-nightly", "Nightly backup", null, 1, false, null),
-            PipelineSummary(tests.first, tests.second, null, 7, true, last(tests.first)),
-        )
+        return summaries.map { it.copy(lastRun = last(it.id)) }
     }
 
     override suspend fun runs(cursor: String?): PipelineRunPage<PipelineRunListEntry> {
@@ -402,9 +492,37 @@ private class FakePipelines(private val now: Long, private val emit: (String, Js
         return names[pipelineId]
     }
 
-    override suspend fun definition(pipelineId: String, version: Int): PipelineDefinition? {
+    private val summaries = listOf(
+        PipelineSummary(deploy.first, deploy.second, "Builds, tests and ships main.", 3, true, null),
+        PipelineSummary(email.first, email.second, null, 12, true, null),
+        PipelineSummary("p-nightly", "Nightly backup", null, 1, false, null),
+        PipelineSummary(tests.first, tests.second, null, 7, true, null),
+    )
+
+    override suspend fun pipeline(pipelineId: String): PipelineDetail? {
+        delay(300)
+        val summary = summaries.firstOrNull { it.id == pipelineId } ?: return null
+        val head = versions[pipelineId]?.first() ?: return null
+        return PipelineDetail(summary.id, summary.name, summary.description, summary.enabled, PipelineVersionDetail(head, definitions[pipelineId]))
+    }
+
+    override suspend fun versions(pipelineId: String): List<PipelineVersion>? {
         delay(200)
-        return definitions[pipelineId]
+        return versions[pipelineId]
+    }
+
+    /** Every version reads as the head's definition: enough to page through. */
+    override suspend fun version(pipelineId: String, number: Int): PipelineVersionDetail? {
+        delay(200)
+        val version = versions[pipelineId]?.firstOrNull { it.number == number } ?: return null
+        return PipelineVersionDetail(version, definitions[pipelineId])
+    }
+
+    override suspend fun pipelineRuns(pipelineId: String, cursor: String?): PipelineRunPage<PipelineRunEntry>? {
+        delay(300)
+        val own = runs.filter { it.pipelineId == pipelineId }
+        val from = cursor?.let { id -> own.indexOfFirst { it.id == id } } ?: 0
+        return PipelineRunPage(own.drop(from).take(PAGE).map { it.run }, own.getOrNull(from + PAGE)?.id)
     }
 
     override suspend fun log(runId: String, nodeId: String, after: Long): PipelineLogPage? {

@@ -104,33 +104,6 @@ data class PipelineRun(
     fun node(nodeId: String): PipelineNodeRun? = nodes.firstOrNull { it.nodeId == nodeId }
 }
 
-/** One node as the run's version defines it: what the run page needs of the definition. */
-@Immutable
-data class PipelineNodeDefinition(
-    val id: String,
-    val kind: PipelineNodeKind,
-    /** An agent node's model, when the definition names one. */
-    val model: String?,
-    /** A `pipeline` node's pipeline. */
-    val pipelineId: String?,
-    /** The leases it acquires, uses or passes on. */
-    val leases: Set<String>,
-)
-
-@Immutable
-data class PipelineEdge(val from: String, val to: String, val onSuccess: Boolean)
-
-/** A version's graph (happy-cluster pipelines-design.md, §2), as far as the run page reads it. */
-@Immutable
-data class PipelineDefinition(
-    val root: String,
-    /** In the order the definition lists them. */
-    val nodes: List<PipelineNodeDefinition>,
-    val edges: List<PipelineEdge>,
-) {
-    fun node(id: String): PipelineNodeDefinition? = nodes.firstOrNull { it.id == id }
-}
-
 /**
  * The run's nodes in graph order: each in the column of its longest path from
  * the root (desktop's `pipelineGraphLayout`), ties in definition order, so a

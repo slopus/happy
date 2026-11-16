@@ -9,9 +9,11 @@ import com.slopus.happy.chat.long
 import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * A Happy Cloud server's pipelines, read only: the screens see this, and a
@@ -34,8 +36,24 @@ interface PipelinesBackend {
     /** `GET /v0/pipelines/:id`'s name; null for a pipeline archived or gone (`404`). */
     suspend fun pipelineName(pipelineId: String): String?
 
-    /** `GET /v0/pipelines/:id/versions/:number`'s graph; null when it isn't one this app reads. */
-    suspend fun definition(pipelineId: String, version: Int): PipelineDefinition?
+    /** `GET /v0/pipelines/:id` with its head version's definition; null for a pipeline archived or gone (`404`). */
+    suspend fun pipeline(pipelineId: String): PipelineDetail?
+
+    /** `GET /v0/pipelines/:id/versions`, newest first; null for a pipeline archived or gone (`404`). */
+    suspend fun versions(pipelineId: String): List<PipelineVersion>?
+
+    /** `GET /v0/pipelines/:id/versions/:number`; null for one the server doesn't have (`404`). */
+    suspend fun version(pipelineId: String, number: Int): PipelineVersionDetail?
+
+    /** A version's graph; null when it isn't one this app reads, or the server doesn't have it. */
+    suspend fun definition(pipelineId: String, version: Int): PipelineDefinition? = version(pipelineId, version)?.definition
+
+    /**
+     * `GET /v0/pipelines/:id/runs`: the pipeline's runs, newest first, from
+     * [cursor] (the newest page when null), archived pipelines' too; null for
+     * a pipeline the server doesn't have (`404`).
+     */
+    suspend fun pipelineRuns(pipelineId: String, cursor: String?): PipelineRunPage<PipelineRunEntry>?
 
     /** `GET /v0/pipeline-runs/:id/nodes/:nodeId/log` after [after]; null where the node has no log yet (`404`). */
     suspend fun log(runId: String, nodeId: String, after: Long): PipelineLogPage?
@@ -68,8 +86,23 @@ class ClusterPipelines(private val client: AgentClient) : PipelinesBackend {
         client.decode<JsonObject>("GET", "/v0/pipelines/${AgentClient.escape(pipelineId)}")["pipeline"].obj?.get("name").text()
     }
 
-    override suspend fun definition(pipelineId: String, version: Int): PipelineDefinition? =
-        readDefinition(client.decode<JsonObject>("GET", "/v0/pipelines/${AgentClient.escape(pipelineId)}/versions/$version")["version"].obj?.get("definition"))
+    override suspend fun pipeline(pipelineId: String): PipelineDetail? = notFoundIsNull {
+        readPipeline(client.decode<JsonObject>("GET", "/v0/pipelines/${AgentClient.escape(pipelineId)}")) ?: throw IllegalStateException("A pipeline this app can't read")
+    }
+
+    override suspend fun versions(pipelineId: String): List<PipelineVersion>? = notFoundIsNull {
+        readVersions(client.decode<JsonObject>("GET", "/v0/pipelines/${AgentClient.escape(pipelineId)}/versions"))
+    }
+
+    override suspend fun version(pipelineId: String, number: Int): PipelineVersionDetail? = notFoundIsNull {
+        val version = client.decode<JsonObject>("GET", "/v0/pipelines/${AgentClient.escape(pipelineId)}/versions/$number")["version"]
+        versionDetail(version) ?: throw IllegalStateException("A version this app can't read")
+    }
+
+    override suspend fun pipelineRuns(pipelineId: String, cursor: String?): PipelineRunPage<PipelineRunEntry>? = notFoundIsNull {
+        val answer = client.decode<JsonObject>("GET", "/v0/pipelines/${AgentClient.escape(pipelineId)}/runs" + (cursor?.let { "?cursor=${AgentClient.escape(it)}" } ?: ""))
+        PipelineRunPage(answer["runs"].arr.orEmpty().mapNotNull(::runEntry), answer["nextCursor"].text())
+    }
 
     override suspend fun log(runId: String, nodeId: String, after: Long): PipelineLogPage? = notFoundIsNull {
         logPage(client.decode<JsonObject>("GET", "$RUNS/${AgentClient.escape(runId)}/nodes/${AgentClient.escape(nodeId)}/log?after=$after&limit=$LOG_LIMIT"), after)
@@ -238,21 +271,109 @@ class ClusterPipelines(private val client: AgentClient) : PipelinesBackend {
             )
         }
 
+        private fun literal(json: JsonElement): JsonPrimitive? = (json as? JsonPrimitive)?.takeIf { it is JsonNull || it.isString || it.bool != null || it.num != null }
+
+        /** A type in the definition's schema subset; null when it isn't one (desktop's `pipelineSchemaRead`). */
+        fun schema(json: JsonElement?): PipelineSchema? {
+            val schema = json.obj ?: return null
+            val declared = schema["type"]
+            val nullable: Boolean
+            val type: String?
+            if (declared is JsonArray) {
+                if (declared.size != 2 || declared[1].str != "null") return null
+                nullable = true
+                type = declared[0].str
+            } else {
+                nullable = false
+                type = declared.str
+            }
+            return when (type) {
+                "null" -> PipelineSchema.Null
+                "object" -> {
+                    val required = texts(schema["required"]).toSet()
+                    val fields = schema["properties"].obj.orEmpty().map { (name, property) -> PipelineField(name, schema(property) ?: return null, name in required) }
+                    PipelineSchema.ObjectOf(fields, nullable)
+                }
+                "array" -> PipelineSchema.ListOf(schema(schema["items"]) ?: return null, nullable)
+                "string", "number", "integer", "boolean" -> PipelineSchema.Scalar(type, schema["enum"].arr?.mapNotNull(::literal), nullable)
+                else -> null
+            }
+        }
+
+        /** Left out, it is null; written but unreadable, the whole definition is refused (`return null` from it). */
+        private fun type(json: JsonElement?): Result<PipelineType?> {
+            if (json == null) return Result.success(null)
+            val schema = schema(json) ?: return Result.failure(IllegalStateException())
+            return Result.success(PipelineType(schema, json))
+        }
+
+        private fun grants(json: JsonElement?): List<PipelineGrant> = json.arr.orEmpty().mapNotNull { element ->
+            val grant = element.obj ?: return@mapNotNull null
+            val id = grant["id"].str ?: return@mapNotNull null
+            when (grant["access"].str) {
+                "read" -> PipelineGrant(id, write = false)
+                "write" -> PipelineGrant(id, write = true)
+                else -> null
+            }
+        }
+
+        fun permissions(json: JsonElement?): PipelinePermissions {
+            val permissions = json.obj ?: return PipelinePermissions()
+            val compute = permissions["compute"].obj
+            return PipelinePermissions(
+                tools = texts(permissions["tools"]),
+                vaults = grants(permissions["vaults"]),
+                secrets = texts(permissions["secrets"]),
+                repositories = grants(permissions["repositories"]),
+                agents = texts(permissions["agents"]),
+                pipelines = texts(permissions["pipelines"]),
+                egressHosts = texts(permissions["egress"].obj?.get("hosts")),
+                compute = compute?.let { PipelineComputeGrant(texts(it["pools"]), texts(it["computers"]), it["maxLeases"].num?.toInt()) },
+            )
+        }
+
+        private fun compute(json: JsonElement?): PipelineCompute? {
+            val compute = json.obj ?: return null
+            val acquire = compute["acquire"].arr.orEmpty().mapNotNull { element ->
+                val lease = element.obj ?: return@mapNotNull null
+                val name = lease["name"].str ?: return@mapNotNull null
+                val pool = lease["pool"].str
+                val computer = lease["computer"].str
+                if (pool == null && computer == null) null else PipelineAcquire(name, pool, computer.takeIf { pool == null })
+            }
+            return PipelineCompute(acquire, texts(compute["use"]), texts(compute["pass"]))
+        }
+
         private fun nodeDefinition(id: String, json: JsonElement?): PipelineNodeDefinition? {
             val node = json.obj ?: return null
             val kind = PipelineNodeKind.of(node["kind"].str) ?: return null
             val pipelineId = node["pipeline"].str
             if (kind == PipelineNodeKind.Pipeline && pipelineId == null) return null
-            val compute = node["compute"].obj
-            val leases = compute?.get("acquire").arr.orEmpty().mapNotNull { it.obj?.get("name").str } + texts(compute?.get("use")) + texts(compute?.get("pass"))
-            return PipelineNodeDefinition(id, kind, node["model"].text().takeIf { kind == PipelineNodeKind.Agent }, pipelineId.takeIf { kind == PipelineNodeKind.Pipeline }, leases.toSet())
+            val input = type(node["input"]).getOrElse { return null }
+            val output = type(node["output"]).getOrElse { return null }
+            val agent = kind == PipelineNodeKind.Agent
+            return PipelineNodeDefinition(
+                id = id,
+                kind = kind,
+                model = node["model"].text().takeIf { agent },
+                pipelineId = pipelineId.takeIf { kind == PipelineNodeKind.Pipeline },
+                effort = node["effort"].text().takeIf { agent },
+                input = input,
+                output = output,
+                permissions = node["permissions"]?.let(::permissions),
+                compute = compute(node["compute"]),
+                timeoutSeconds = node["timeoutSeconds"].long ?: PipelineNodeDefinition.DEFAULT_TIMEOUT_SECONDS,
+                joinAny = node["join"].str == "any",
+                source = node["source"].str.takeIf { kind == PipelineNodeKind.Code },
+                instructions = node["instructions"].str.takeIf { agent },
+            )
         }
 
         /**
          * A version's `definition`. The cluster stores none that doesn't
-         * validate, so a node or edge this app can't read is a contract it
-         * doesn't know yet, and the whole graph is refused rather than half
-         * read (desktop's `pipelineDefinitionRead`).
+         * validate, so a node, edge or type this app can't read is a contract
+         * it doesn't know yet, and the whole definition is refused rather
+         * than half read (desktop's `pipelineDefinitionRead`).
          */
         fun readDefinition(json: JsonElement?): PipelineDefinition? {
             val definition = json.obj ?: return null
@@ -270,8 +391,58 @@ class ClusterPipelines(private val client: AgentClient) : PipelinesBackend {
                     else -> return null
                 }
             }
-            return PipelineDefinition(root, nodes, edges)
+            val concurrency = definition["concurrency"].obj
+            return PipelineDefinition(
+                root = root,
+                nodes = nodes,
+                edges = edges,
+                input = type(definition["input"]).getOrElse { return null },
+                concurrency = PipelineConcurrency(
+                    mode = when (concurrency?.get("mode").str) {
+                        "supersede" -> PipelineConcurrencyMode.Supersede
+                        "queue" -> PipelineConcurrencyMode.Queue
+                        else -> PipelineConcurrencyMode.Independent
+                    },
+                    group = concurrency?.get("group").text(),
+                    batch = concurrency?.get("batch").bool == true,
+                ),
+                triggerAgents = texts(definition["triggers"].obj?.get("agents")),
+                permissions = permissions(definition["permissions"]),
+            )
         }
+
+        private fun author(json: JsonElement?): PipelineAuthor? {
+            val author = json.obj ?: return null
+            return when (author["kind"].str) {
+                "user" -> author["userId"].text()?.let { PipelineAuthor(it, null) }
+                "agent" -> author["agentId"].text()?.let { PipelineAuthor(author["userId"].text(), it) }
+                else -> null
+            }
+        }
+
+        fun version(json: JsonElement?): PipelineVersion? {
+            val version = json.obj ?: return null
+            val number = version["number"].num?.toInt() ?: return null
+            return PipelineVersion(number, version["message"].str.orEmpty(), author(version["author"]), version["createdAt"].long ?: 0)
+        }
+
+        /** A version with its `definition`; null when the version itself isn't one. */
+        fun versionDetail(json: JsonElement?): PipelineVersionDetail? {
+            val version = version(json) ?: return null
+            return PipelineVersionDetail(version, readDefinition(json.obj?.get("definition")))
+        }
+
+        /** `{ pipeline }`, its `head` the whole head version. */
+        fun readPipeline(answer: JsonElement?): PipelineDetail? {
+            val pipeline = answer.obj?.get("pipeline").obj ?: return null
+            val id = pipeline["id"].str ?: return null
+            val head = versionDetail(pipeline["head"]) ?: return null
+            return PipelineDetail(id, pipeline["name"].text() ?: id, pipeline["description"].text(), pipeline["enabled"].bool != false, head)
+        }
+
+        /** `{ versions }`, newest first. */
+        fun readVersions(answer: JsonElement?): List<PipelineVersion> =
+            answer.obj?.get("versions").arr.orEmpty().mapNotNull(::version).sortedByDescending { it.number }
 
         private fun logEntry(json: JsonElement?): PipelineLogEntry? {
             val entry = json.obj ?: return null

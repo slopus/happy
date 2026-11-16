@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Pipelines (ui/pipelines/): home's Pipelines row on a Happy Cloud server, the list of pipelines and every
-  run of them, a run and a node's log. Words follow desktop's pipeline pages. Translated in values-*/ (AndroidStringsTranslatedTest).
+  run of them, a run and a node's log, a pipeline, its versions and their nodes. Words follow desktop's
+  pipeline pages. Translated in values-*/ (AndroidStringsTranslatedTest).
 -->
 <resources>
     <string name="pipelines_title">Pipelines</string>
@@ -124,4 +125,102 @@
     <string name="pipelines_progress">%1$s · %2$d%%</string>
     <string name="pipelines_statuses">Status history</string>
     <string name="pipelines_statuses_none">It has said nothing yet.</string>
+    <string name="pipelines_pipeline_title">Pipeline</string>
+    <string name="pipelines_pipeline_loading">Loading pipeline…</string>
+    <string name="pipelines_pipeline_failed">Couldn\'t read this pipeline</string>
+    <string name="pipelines_status">Status</string>
+    <string name="pipelines_enabled">Enabled</string>
+    <string name="pipelines_enabled_words">Agents allowed to start it can run it.</string>
+    <string name="pipelines_disabled_words">It refuses new runs; its runs still read.</string>
+    <string name="pipelines_archived_footer">This pipeline was archived: it takes no runs, and the server no longer has its definition. Its runs still read.</string>
+    <string name="pipelines_current_version">Current version</string>
+    <string name="pipelines_concurrency">Concurrency</string>
+    <string name="pipelines_concurrency_independent">Every run starts at once, alongside any already running.</string>
+    <string name="pipelines_concurrency_supersede">A new run aborts the one running and takes its place.</string>
+    <string name="pipelines_concurrency_queue">Runs wait their turn, one at a time.</string>
+    <string name="pipelines_concurrency_group">Grouped by</string>
+    <string name="pipelines_concurrency_batch">Batches</string>
+    <string name="pipelines_concurrency_batch_words">Runs waiting their turn are merged into the next one.</string>
+    <string name="pipelines_root">Root</string>
+    <string name="pipelines_graph_footer">In graph order from the root. Tap a node for its types, permissions and computers.</string>
+    <string name="pipelines_on_success">On success → %1$s</string>
+    <string name="pipelines_on_failure">On failure → %1$s</string>
+    <string name="pipelines_ends_run">Ends the run</string>
+    <string name="pipelines_input_footer">What an agent passes to run_pipeline.</string>
+    <string name="pipelines_output_footer">A run\'s result holds the output of each of these nodes that succeeded.</string>
+    <string name="pipelines_output_footer_one">A run\'s result holds the output of %1$s.</string>
+    <string name="pipelines_type">Type</string>
+    <string name="pipelines_type_any">Not declared.</string>
+    <string name="pipelines_type_from_edge">Whatever the edge into it carries.</string>
+    <string name="pipelines_type_not_declared">Not declared.</string>
+    <string name="pipelines_type_no_fields">An empty object.</string>
+    <string name="pipelines_type_no_fields_of">%1$s returns an empty object.</string>
+    <string name="pipelines_field_required">Required</string>
+    <string name="pipelines_field_optional">Optional</string>
+    <string name="pipelines_schema_show">Show JSON Schema</string>
+    <string name="pipelines_schema_hide">Hide JSON Schema</string>
+    <string name="pipelines_triggers">Who can start it</string>
+    <string name="pipelines_triggers_footer">These agents start it with run_pipeline while it is enabled.</string>
+    <string name="pipelines_triggers_none">No agent may start it yet.</string>
+    <string name="pipelines_permissions">Permissions</string>
+    <string name="pipelines_permissions_footer">The most any node may be granted. Each node holds only what it lists itself.</string>
+    <string name="pipelines_permissions_none">Nothing granted: its nodes can compute and nothing else.</string>
+    <string name="pipelines_node_permissions">Each node\'s permissions</string>
+    <string name="pipelines_nothing_granted">Nothing granted</string>
+    <string name="pipelines_node_permissions_none">None. It can use the computers it holds and nothing else.</string>
+    <string name="pipelines_grant_read">%1$s (read)</string>
+    <string name="pipelines_grant_write">%1$s (read and write)</string>
+    <string name="pipelines_grants_tools">Tools</string>
+    <string name="pipelines_grants_vaults">Vaults</string>
+    <string name="pipelines_grants_secrets">Secrets</string>
+    <string name="pipelines_grants_repositories">Repositories</string>
+    <string name="pipelines_grants_agents">Messages agents</string>
+    <string name="pipelines_grants_pipelines">Runs pipelines</string>
+    <string name="pipelines_grants_hosts">Reaches hosts</string>
+    <string name="pipelines_grants_pools">Compute pools</string>
+    <string name="pipelines_grants_computers">Computers</string>
+    <string name="pipelines_grants_max_leases">Computers at once</string>
+    <string name="pipelines_compute_acquires">Acquires</string>
+    <string name="pipelines_compute_from_pool">%1$s from %2$s</string>
+    <string name="pipelines_compute_on_computer">%1$s on %2$s</string>
+    <string name="pipelines_compute_uses">Uses</string>
+    <string name="pipelines_compute_passes">Hands on</string>
+    <string name="pipelines_compute_none">No computer.</string>
+    <string name="pipelines_versions">Versions</string>
+    <string name="pipelines_versions_loading">Reading the history…</string>
+    <string name="pipelines_version_latest">%1$s · Latest</string>
+    <string name="pipelines_version_no_message">No message</string>
+    <string name="pipelines_version_title">Version %1$d</string>
+    <string name="pipelines_version_by">Published by</string>
+    <string name="pipelines_version_published">Published</string>
+    <string name="pipelines_version_loading">Loading version…</string>
+    <string name="pipelines_version_failed">Couldn\'t read this version</string>
+    <string name="pipelines_version_missing">This server has no such version.</string>
+    <string name="pipelines_version_unreadable">This version is written in a form this app can\'t read yet.</string>
+    <string name="pipelines_author_a_member">A member</string>
+    <string name="pipelines_author_agent_for">%1$s for %2$s</string>
+    <string name="pipelines_node_missing">This version has no such node.</string>
+    <string name="pipelines_effort">Effort</string>
+    <string name="pipelines_model_default">The server\'s default</string>
+    <string name="pipelines_in_graph">In the graph</string>
+    <string name="pipelines_root_words">The root: a run starts here, with the pipeline\'s input.</string>
+    <string name="pipelines_after_success">Leads here when it succeeds</string>
+    <string name="pipelines_after_failure">Leads here when it fails</string>
+    <string name="pipelines_then_on_success">Next when this node succeeds</string>
+    <string name="pipelines_then_on_failure">Next when this node fails</string>
+    <string name="pipelines_ends_run_words">When it succeeds, the run ends here.</string>
+    <string name="pipelines_limits">Limits</string>
+    <string name="pipelines_timeout">Times out after</string>
+    <string name="pipelines_timeout_hours">%1$d h</string>
+    <string name="pipelines_timeout_minutes">%1$d min</string>
+    <string name="pipelines_timeout_seconds">%1$d s</string>
+    <string name="pipelines_join">Runs when</string>
+    <string name="pipelines_join_all">Every edge into it fired</string>
+    <string name="pipelines_join_any">Any edge into it fired</string>
+    <string name="pipelines_source">Source</string>
+    <string name="pipelines_source_none">No source.</string>
+    <string name="pipelines_instructions">Instructions</string>
+    <string name="pipelines_instructions_none">No instructions.</string>
+    <string name="pipelines_child_pipeline">Child pipeline</string>
+    <string name="pipelines_child_pipeline_words">Runs the current version of %1$s as a child run.</string>
 </resources>
