@@ -1243,12 +1243,17 @@ change its wire behaviour on Android alone.
   the code's (`ServerSignInFlow.verify`; a new member's health behind the
   profile gate is checked after the name); a mismatch, or none, drops the
   credential and reads "This code doesn't match the server it points to."
-- **Happy Cloud, the one exception** (accounts contract v1;
+- **Happy Cloud, the one exception** (accounts split, contract v1;
   `connection/HappyCloud.kt`, `connection/CloudAccount.kt`,
   `ui/connection/CloudConnect.kt`, `CloudScreens.kt`): the accounts service
   is its own origin, `BuildConfig.HAPPY_CLOUD_ACCOUNTS`
   (`https://auth.happy.engineering`; `HAPPY_CLOUD_ACCOUNTS` or
-  `-Phappy.cloudAccounts` points a build elsewhere), and servers live under
+  `-Phappy.cloudAccounts` points a build elsewhere), and only signs the
+  person in, for a five-minute identity token. Everything else is the
+  cluster's API, `BuildConfig.HAPPY_CLOUD_API` (`https://api.BASE`;
+  `HAPPY_CLOUD_API` or `-Phappy.cloudApi`): the account's session, its
+  servers, invites, server tokens and every Happy Cloud refresh and revoke.
+  Servers live under
   one domain, `BuildConfig.HAPPY_CLOUD_BASE` (`happy-clusters.com`; `HAPPY_CLOUD_BASE` or
   `-Phappy.cloudBase`): the server named `acme` is `https://acme.BASE`.
   Only `debug` and `preview` builds offer it (`HappyCloud.offeredIn`, by
@@ -1265,17 +1270,22 @@ change its wire behaviour on Android alone.
   the dark theme, the light one with its stroke in the light). Apple and
   GitHub open the **account** sign-in in an Auth Tab (androidx.browser,
   ephemeral; a Custom Tab where there is none): PKCE against the accounts
-  origin's `/authorize` and `/token`, `client_id` `happy`, `resource` the
-  accounts origin, nothing discovered, and `provider=apple` or `github`
-  (`CloudProvider`), which skips the page's chooser. Apple has no native
+  origin's `/authorize` and `/token`, `client_id` `happy`, `scope=openid`
+  and no `resource` (identity only), nothing discovered, and
+  `provider=apple` or `github` (`CloudProvider`), which skips the page's
+  chooser. The code comes back as an `id_token` (`ServerAuthClient.identity`)
+  whose `aud` must name `happy` (unverified; the cluster verifies it), and
+  `POST /v1/session {id_token}` at the API trades it for the account's
+  session, its access token's `aud` checked to be the API's; a 401 there
+  (`invalid_token`) is a failed sign-in. Apple has no native
   sign-in on Android. Google's is native (`connection/GoogleSignIn.kt`,
   `CloudAccount.signInWithGoogle`): Credential Manager's
   `GetSignInWithGoogleOption` for the accounts service's web client
   (`BuildConfig.GOOGLE_SERVER_CLIENT_ID`, one public ID for every variant;
   `HAPPY_CLOUD_GOOGLE_CLIENT_ID` or `-Phappy.cloudGoogleClientId` points a
-  build elsewhere) with a fresh random nonce, then `POST /v1/auth/native`
-  `{provider: "google", idToken, nonce}` (the raw nonce) for the same
-  hour's pass, its `aud` checked as the browser's; a 401 there is the ID
+  build elsewhere) with a fresh random nonce, then `POST /v2/auth/native`
+  `{provider: "google", idToken, nonce}` (the raw nonce) for an identity
+  token, then the same session as the browser's; a 401 there is the ID
   token refused, never a pass ending. Closing the sheet says nothing; no
   Google account or Play services on the phone (`NoCredentialException`
   and the like) opens Google's web sign-in (`provider=google`) in the Auth
@@ -1284,27 +1294,30 @@ change its wire behaviour on Android alone.
   signed with another key (any machine's own debug keystore) gets no Google
   sign-in from the sheet. Under them, the quiet "Continue with email"
   signs in with no browser (WorkOS Magic Auth behind the accounts service):
-  the address (`CloudEmailRoute`, `POST /v1/auth/email/start`), then the
+  the address (`CloudEmailRoute`, `POST /v2/auth/email/start`), then the
   6-digit code mailed to it (`CloudEmailCodeRoute`, `POST
-  /v1/auth/email/verify`, checked as its sixth digit comes; the field
-  carries the one-time-code autofill hint), for the same hour's pass as the
+  /v2/auth/email/verify`, checked as its sixth digit comes; the field
+  carries the one-time-code autofill hint), for the same session as the
   password sign-in below (`CloudAccount.startEmail`/`verifyEmail`,
   `EmailSignIn`). Resend waits 60 s after each code and Change email goes
   back. `invalid_email`, `invalid_code` and `unavailable` read in our words;
   `unsupported_provider` and `429 rate_limited` show the service's own
   `error`, and a 429 holds Send code, Verify and Resend for its
   `Retry-After` (else `retryAfter`, else 60 s), counting down in m:ss. The
-  account
-  token is a pass of about an hour with no refresh (token lifetimes v4): held
-  in memory only, never stored, never refreshed, and only ever sent to the
-  accounts API. Past its hour (two minutes' margin), or on any 401 from the
-  accounts API, the account is signed out with nothing retried, and the +
-  opens on the welcome saying the hour is up (`CloudAccountState.SignedOut`
+  account's session (an hour's access token, a rotating refresh token good
+  for 30 days) is held in memory only, never stored, and only ever sent to
+  the API. Its access token is refreshed at the API's `/token`
+  (`refresh_token` grant, `client_id` `happy`, `resource` the API) two
+  minutes before it runs out and once on a 401, one refresh at a time; one
+  that couldn't be asked (offline, a 5xx, a 429) keeps the session. A
+  refresh refused (`400 invalid_grant`, any 4xx but 429), a second 401, or
+  the 30 days up signs the account out, and the + opens on the welcome
+  saying the sign-in has ended (`CloudAccountState.SignedOut`
   `expired`). Signed in, the + skips the welcome and shows "Join a server"
   (`GET /v1/servers`): each server titled by its `displayName` over `@name`,
   with its picture (the ThumbHash painted first, then the bytes from its
-  `url`, which `CloudAccount.image` fetches with the account token only from
-  the accounts origin; no picture, the placeholder its bare name picks, as
+  `url`, which `CloudAccount.image` fetches under the account's session only
+  from the API; no picture, the placeholder its bare name picks, as
   desktop's rail and iOS's list) and Join, which signs in there without
   leaving the list (one at a time; a name or a failure goes to the sign-in
   screen) and reads Joined once it is on the phone. Continue appears once one
@@ -1323,8 +1336,8 @@ change its wire behaviour on Android alone.
   app, `DeepLink.CloudServerInvite` hands the token to `CloudInvites` (in
   memory only, never a route or saved state; it never prints) and opens
   `CloudInviteRoute`: `CloudInviteFlow` previews it (`POST
-  /v1/invites/preview`, no account token) and shows the server and role
-  with Join. Join accepts (`POST /v1/invites/accept`, the account token)
+  /v1/invites/preview` at the API, no session) and shows the server and role
+  with Join. Join accepts (`POST /v1/invites/accept`, the session)
   and opens the server as Join on the list does; signed out, it goes
   through the Cloud sign-in, which hands back to the invite once signed in
   (`Cloud` pops to `CloudInviteRoute`), and accepts with the same token.
@@ -1335,13 +1348,13 @@ change its wire behaviour on Android alone.
   way to the list, still signed in, once the account has a server.
   Back on Join a server, or on that first Bootstrap, signs the account out,
   so Continue can use another (desktop's); not while a join runs. Joining
-  or creating signs in with no browser: `POST /v1/servers/:id/token` with the account token
+  or creating signs in with no browser: `POST /v1/servers/:id/token` under the account's session
   (`CloudAccount.serverToken`, `ServerSignInFlow.startWith`) gives the server's
   access and refresh tokens, its `aud` checked as any; then as the sign-in
   below (checked with the server, a name if new, kept). That server token is
-  the long-lived session: refreshed at the accounts origin's `/token` with the
-  `refresh_token` grant, `resource` the server, and no account token, so a
-  server stays signed in long after the account's hour. Signing in
+  the long-lived session: refreshed at the API's `/token` with the
+  `refresh_token` grant, `resource` the server, and no account session, so a
+  server stays signed in without the account. Signing in
   again on a cloud server does the same while the account is signed in; signed
   out of it, the server's own browser sign-in opens by itself. Each server is its own connection; one already here
   just opens. The addresses are the app's own, never typed or pasted, so no
@@ -1370,16 +1383,25 @@ change its wire behaviour on Android alone.
   Besides Apple and GitHub, one sign-in is hidden: the welcome's slide art pressed ten
   times within four seconds (`CloudWelcome`) reveal a test account's login
   and password, for people and agents testing without Apple or GitHub.
-  Nothing of it is composed before then. It posts `POST /v1/auth/password`
-  (`CloudAccount.signInWithPassword`) for the same hour's pass, then goes on
+  Nothing of it is composed before then. It posts `POST /v2/auth/password`
+  (`CloudAccount.signInWithPassword`) for an identity token and the same
+  session, then goes on
   as after the browser; a wrong login or password, or a lockout, shows under
   the fields. The password stays in that composition only: never saved with
   the screen, stored or logged. Test accounts exist only when an operator
   creates one. Join a server's ⋮ has "Sign out of Happy Cloud", which
-  forgets the pass; servers on the phone stay signed in. Removing a cloud
-  server (`removeAgentConnection`) first revokes its session at the accounts
-  service (`POST /revoke`, its refresh token and `client_id`, no account
-  token; `CloudAccount.revoke`, best effort, not waited on). A cloud server's
+  revokes the account's session at the API (`POST /revoke`, best effort)
+  and forgets it; servers on the phone stay signed in. Removing a cloud
+  server (`removeAgentConnection`) first revokes its session at the API
+  (`POST /revoke`, its refresh token and `client_id`, no account session;
+  `CloudAccount.revoke`, best effort, not waited on), only for a credential
+  the API issued (`CloudAccount.issued`). A cloud server's credential from
+  an earlier build, refreshed at the accounts service, which no longer
+  does, is ended at launch (`AgentConnections.endSessions`, contract C9):
+  its home asks for signing in again. Any token endpoint's 5xx or 429 is
+  `Unreachable` (`ServerAuthClient.token`) and keeps the grant; only other
+  4xx end a session. Happy Cloud out of reach reads "Happy Cloud couldn't
+  be reached…" (`cloud_unreachable`), never a server address's words. A cloud server's
   Settings has Members (`CloudMembers.kt`, `agent/AgentMembers.kt`). Since
   the roles cutover the team is the server's (members contract): `GET
   /v0/members` with each role's name from `GET /v0/roles` (a built-in one in
@@ -1395,7 +1417,7 @@ change its wire behaviour on Android alone.
   last 30, last active), Tokens per window (input plus output, which
   already hold cache and reasoning, summed over providers and models) and
   Recent activity, their latest ten tasks, each opening its conversation. The
-  accounts service lists servers without a role now (`CloudServer.role` is
+  API lists servers without a role now (`CloudServer.role` is
   optional; the picker shows a role only where one is listed).
   A cloud server's team roles gate what shows (`agent/AgentPermissions.kt`):
   `GET /v0/permissions`'s `granted`, read on every connect, `role.*` and
