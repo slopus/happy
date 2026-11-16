@@ -28,7 +28,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>160</string>
+	<string>161</string>
 	<key>GIDClientID</key>
 	<string>$(HAPPY_GOOGLE_CLIENT).apps.googleusercontent.com</string>
 	<key>HappyAppVariant</key>
