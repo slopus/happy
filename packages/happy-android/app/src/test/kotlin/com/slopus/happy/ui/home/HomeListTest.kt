@@ -201,6 +201,35 @@ class HomeListTest {
         assertSame(live, live.withPresence(com.slopus.happy.sync.SessionPresence(true, 5, true, 5)))
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun leavingTheHappyAccountReleasesItsListAndDoesNotReviveItOnSettingsChanges() = runTest {
+        val snapshots = MutableStateFlow<HomeSnapshot?>(null)
+        val settings = MutableStateFlow(Settings.Defaults)
+        val model = HomeListModel(
+            snapshots = snapshots,
+            settings = settings,
+            localSettings = MutableStateFlow(LocalSettingsValues.Defaults),
+            unreadSessionIds = MutableStateFlow(emptySet()),
+            archivingSessionIds = MutableStateFlow(emptySet()),
+            scope = backgroundScope,
+            dispatcher = UnconfinedTestDispatcher(testScheduler),
+            zone = { zone },
+        )
+        snapshots.value = HomeSnapshot(listOf(cli("account-a", noon)), listOf(online))
+        assertEquals(listOf("chat:account-a:last"), shape(model.state.value!!))
+
+        // Opening an agent connection must release the old sessions and their metadata.
+        snapshots.value = null
+        assertNull(model.state.value)
+        settings.value = Settings.Defaults.copy(hideInactiveSessions = false)
+        assertNull(model.state.value)
+
+        snapshots.value = HomeSnapshot(emptyList(), emptyList(), ready = false)
+        assertNull(model.state.value)
+        snapshots.value = HomeSnapshot(listOf(cli("account-b", noon)), listOf(online))
+        assertEquals(listOf("chat:account-b:last"), shape(model.state.value!!))
+    }
+
     private class FakeActions(
         var kill: OpResult = OpResult(true),
         var archive: OpResult = OpResult(true),

@@ -160,14 +160,21 @@ class MultipleAccountsTest {
         val graph = graph(defaultServer = first.url)
         runBlocking { graph.auth.restore(backup(first)) }
         val account = graph.accountStore.registry.value.activeId!!
+        val home = com.slopus.happy.ui.home.HomeServices.of(graph)
+        syncedTo(graph, setOf("a1"))
+        eventually(message = "Happy home loaded") { home.snapshots.value?.sessions?.any { it.id == "a1" } == true }
+        eventually(message = "Happy list loaded") { home.list.state.value != null }
         // An agent connection opens: no Happy account is open, none is signed out.
         graph.accountStore.select("agent-connection-1")
         runBlocking { graph.auth.reload() }
         assertEquals(AuthState.SignedOut, graph.auth.state.value)
+        eventually(message = "Happy home released on switch") { home.snapshots.value == null }
+        eventually(message = "Happy list released on switch") { home.list.state.value == null }
         assertEquals("agent-connection-1", graph(defaultServer = first.url).accountStore.registry.value.activeId)
         assertEquals(listOf(account), graph.accountStore.registry.value.entries.map { it.id })
         runBlocking { graph.open(account).join() }
         eventually(message = "account again") { openId(graph) == account }
+        eventually(message = "Happy home restored") { home.snapshots.value?.sessions?.any { it.id == "a1" } == true }
     }
 
     @Test

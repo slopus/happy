@@ -27,12 +27,10 @@ import com.slopus.happy.projects.SessionAvatarServices
 import com.slopus.happy.resume.SessionResumer
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.sync.MachineOps
-import com.slopus.happy.sync.MachinePresence
 import com.slopus.happy.sync.OpResult
 import com.slopus.happy.sync.SendException
 import com.slopus.happy.sync.SendOptions
 import com.slopus.happy.sync.SendResult
-import com.slopus.happy.sync.SessionPresence
 import com.slopus.happy.sync.SyncEngine
 import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.session.LiveSessionContinuations
@@ -107,21 +105,23 @@ class HomeServices private constructor(private val graph: AppGraph) {
     @OptIn(ExperimentalCoroutinesApi::class)
     val snapshots: StateFlow<HomeSnapshot?> = graph.account
         .flatMapLatest { account ->
+            // Let go of the previous account's parsed sessions before another home's cache loads.
+            // The store can still point at that account while its sync is stopping.
+            if (account == null) return@flatMapLatest flowOf(null)
             homeSnapshots(
                 graph.store,
-                account?.presence?.sessions ?: flowOf(emptyMap<String, SessionPresence>()),
-                account?.presence?.machines ?: flowOf(emptyMap<String, MachinePresence>()),
+                account.presence.sessions,
+                account.presence.machines,
                 // A full session listing has been stored once: every sync after the first.
-                synced = (account?.isSyncing ?: flowOf(false))
+                synced = account.isSyncing
                     .map { graph.store.cursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT) != null }
                     .flowOn(Dispatchers.IO),
                 projects = ProjectServices.of(graph).projects,
                 sessionAvatars = SessionAvatarServices.of(graph).avatars,
                 gitStatuses = GitStatusServices.of(graph).statuses,
                 // storage.ts updateSessionDraft: a blank draft is no draft.
-                drafts = account?.composer?.mirrors
-                    ?.map { mirrors -> mirrors.mapNotNull { (id, mirror) -> mirror.draft?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap() }
-                    ?: flowOf(emptyMap()),
+                drafts = account.composer.mirrors
+                    .map { mirrors -> mirrors.mapNotNull { (id, mirror) -> mirror.draft?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap() },
             )
         }
         // Deleted here: gone at once, and a list read before the server has it doesn't bring it back.

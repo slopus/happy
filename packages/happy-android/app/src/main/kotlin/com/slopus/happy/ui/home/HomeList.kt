@@ -31,8 +31,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
@@ -238,7 +236,7 @@ fun reuseUnchanged(previous: HomeListState?, next: HomeListState): HomeListState
 /**
  * The home list, derived on [dispatcher] whenever an input changes and
  * diffed against the last one ([reuseUnchanged]). [state] is null until
- * a snapshot that is [HomeSnapshot.ready] is in.
+ * a snapshot that is [HomeSnapshot.ready] is in, and clears when its account closes.
  */
 class HomeListModel(
     snapshots: Flow<HomeSnapshot?>,
@@ -251,21 +249,22 @@ class HomeListModel(
     zone: () -> ZoneId = ZoneId::systemDefault,
 ) {
     val state: StateFlow<HomeListState?> = combine(
-        snapshots.filterNotNull().filter { it.ready },
+        snapshots,
         settings.map { it.sessionListGrouping to it.hideInactiveSessions }.distinctUntilChanged(),
         localSettings.map { values -> values.expandedProjects.filterValues { it }.keys }.distinctUntilChanged(),
         unreadSessionIds,
         archivingSessionIds,
     ) { snapshot, (grouping, archiveHidden), expanded, unread, archiving ->
-        HomeListInputs(snapshot, grouping, archiveHidden, expanded, unread, archiving)
+        // Missing snapshots must reach combine and scan to release the old account's metadata graph.
+        snapshot?.takeIf { it.ready }?.let { HomeListInputs(it, grouping, archiveHidden, expanded, unread, archiving) }
     }
         .distinctUntilChanged()
         .map { inputs ->
+            if (inputs == null) return@map null
             val zoneId = zone()
             deriveHomeList(inputs, zoneId, LocalDate.now(zoneId))
         }
-        .scan(null as HomeListState?) { previous, next -> reuseUnchanged(previous, next) }
-        .filterNotNull()
+        .scan(null as HomeListState?) { previous, next -> next?.let { reuseUnchanged(previous, it) } }
         .distinctUntilChanged { a, b -> a === b }
         .flowOn(dispatcher)
         .stateIn(scope, SharingStarted.Eagerly, null)
