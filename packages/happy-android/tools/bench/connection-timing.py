@@ -33,6 +33,10 @@ phase's first line print under it per run: link.snapshot's bytes, path, wait
 (request written to first byte: the computer's work and one round trip),
 transfer, kbps, decode and apply. The direct-path watch runs 20 s after the
 connect, so pass --tail 22 to see tailcat.main.direct or relay_only.
+chat.current.verified is the first chat.current at or after link.verified:
+the chat's own read can land before the stream's hello reaches it, and the
+resync that hello brings is what makes it current with its events flowing.
+warm waits for both.
 """
 import argparse
 import json
@@ -117,8 +121,8 @@ def from_phase(lines, phase):
     return [] if first is None else lines[first:]
 
 
-def wait_for(epoch, package, end_phase, timeout, start_phase=None):
-    """HappyTiming lines from [epoch] (and from [start_phase], if given) until end_phase and a tail."""
+def wait_for(epoch, package, end_phase, timeout, start_phase=None, also=None):
+    """HappyTiming lines from [epoch] (and from [start_phase], if given) until end_phase (and [also]) and a tail."""
     deadline = time.monotonic() + timeout
     ended = None
     lines, pid = [], None
@@ -127,7 +131,7 @@ def wait_for(epoch, package, end_phase, timeout, start_phase=None):
         lines = lines_since(epoch, pid) if pid else []
         if start_phase:
             lines = from_phase(lines, start_phase)
-        if ended is None and any(l["phase"] == end_phase for l in lines):
+        if ended is None and all(any(l["phase"] == p for l in lines) for p in (end_phase, also) if p):
             ended = time.monotonic()
         if ended is not None and time.monotonic() - ended >= TAIL_SECONDS:
             break
@@ -191,7 +195,7 @@ def run_warm(args, run):
     epoch = device_epoch()
     start(args.package)
     require_focus(args.package, "after coming back")
-    pid, lines = wait_for(epoch, args.package, "chat.current", args.timeout, start_phase="foreground")
+    pid, lines = wait_for(epoch, args.package, "chat.current", args.timeout, start_phase="foreground", also="link.verified")
     return {"anchor": "since_foreground", "end": "chat.current", "pid": pid, "away": args.away,
             "process_died": pid != before, "lines": lines}
 
@@ -237,6 +241,12 @@ def summarize(runs, out=sys.stdout):
             seen = {}
             for l in r["lines"]:
                 seen.setdefault(l["phase"], []).append(l)
+            # The chat's own read can land before the stream's hello reaches it; the
+            # resync that hello brings is what makes it current with events flowing.
+            verified = seen.get("link.verified", [None])[0]
+            after = verified and next((l for l in seen.get("chat.current", []) if int(l["t"]) >= int(verified["t"])), None)
+            if after:
+                seen["chat.current.verified"] = [after]
             for phase, ls in seen.items():
                 first = ls[0]
                 firsts.setdefault(phase, []).append(int(first[anchor]))
