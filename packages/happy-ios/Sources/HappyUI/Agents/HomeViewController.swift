@@ -720,6 +720,7 @@ final class HomeViewController: UIViewController {
         }
         if shown is ArtifactsViewController { return rows.first { $0.targetKind == "artifacts" }?.id }
         if shown is PluginsViewController { return rows.first { $0.targetKind == "plugins" }?.id }
+        if shown is PipelinesViewController { return rows.first { $0.targetKind == "pipelines" }?.id }
         if shown is TodoListsViewController { return rows.first { $0.targetKind == "todos" }?.id }
         if shown is FeedViewController { return rows.first { $0.targetKind == "feed" }?.id }
         return nil
@@ -753,6 +754,9 @@ final class HomeViewController: UIViewController {
         case .space where row.targetKind == "plugins":
             sidebar.selectedRowId = row.id
             show(PluginsViewController(session: session), for: row, animated: animated)
+        case .space where row.targetKind == "pipelines":
+            sidebar.selectedRowId = row.id
+            show(PipelinesViewController(session: session), for: row, animated: animated)
         case .space where row.targetKind == "todos":
             sidebar.selectedRowId = row.id
             show(TodoListsViewController(session: session), for: row, animated: animated)
