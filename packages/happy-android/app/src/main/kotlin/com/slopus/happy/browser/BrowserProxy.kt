@@ -517,7 +517,7 @@ class BrowserProxy(parent: CoroutineScope) {
         var remote = reused ?: upstream { open() }
         var answer = try {
             remote.write(bytes)
-            BrowserRelay.head(remote)
+            targetHead(remote)
         } catch (e: CancellationException) {
             remote.close()
             throw e
@@ -527,7 +527,7 @@ class BrowserProxy(parent: CoroutineScope) {
             remote = upstream { open() }
             try {
                 upstream { remote.write(bytes) }
-                upstream { BrowserRelay.head(remote) }
+                upstream { targetHead(remote) }
             } catch (e: Exception) {
                 remote.close()
                 throw e
@@ -573,7 +573,7 @@ class BrowserProxy(parent: CoroutineScope) {
                     } catch (_: Exception) {
                     }
                 }
-                val (response, bytes) = upstream { BrowserRelay.head(remote) }
+                val (response, bytes) = upstream { targetHead(remote) }
                 onStarted()
                 local.write(response.closedResponse().bytes)
                 if (bytes.isNotEmpty()) local.write(bytes)
@@ -631,6 +631,17 @@ class BrowserProxy(parent: CoroutineScope) {
         if (complete) ByteArray(0) else null
     }
 
+    /**
+     * The target's answer to a request on an open tunnel. A tunnel that
+     * ends before one (Happy Cloud's twin to a port nothing listens on
+     * opens, then ends) is a server that didn't answer, not the computer.
+     */
+    private suspend fun targetHead(remote: TransportSocket): Pair<HttpHead, ByteArray> = try {
+        BrowserRelay.head(remote)
+    } catch (e: BrowserException) {
+        throw if (e.kind == BrowserException.Kind.Unavailable) BrowserException(BrowserException.Kind.Malformed) else e
+    }
+
     private suspend fun <T> upstream(block: suspend () -> T): T = try {
         block()
     } catch (e: CancellationException) {
@@ -683,7 +694,8 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
 
         fun of(error: Throwable): BrowserFailure {
             if (error is BrowserUpstreamException) {
-                val cause = error.cause
+                // Coroutines' stack trace recovery (assertions on, as in tests) may wrap it in a copy of itself.
+                val cause = generateSequence(error.cause) { it.cause }.firstOrNull { it !is BrowserUpstreamException }
                 return when {
                     cause is BrowserException && cause.kind == BrowserException.Kind.Timeout -> failure(504, "Gateway Timeout", "upstream_timeout")
                     cause is BrowserException && cause.kind == BrowserException.Kind.LiveUnavailable -> failure(503, "Service Unavailable", "live_unavailable")

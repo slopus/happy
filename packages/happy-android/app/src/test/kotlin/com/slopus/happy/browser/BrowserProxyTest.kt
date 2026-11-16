@@ -107,6 +107,13 @@ class BrowserProxyTest {
                     output.flush()
                     return
                 }
+                if (text.startsWith("CONNECT localhost:4193 ")) {
+                    output.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
+                    output.flush()
+                    continue
+                }
+                // Happy Cloud's twin to a port nothing listens on: it opens, then ends.
+                if (text.contains("Host: localhost:4193")) return
                 if (text.startsWith("CONNECT localhost:4192 ")) {
                     output.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
                     output.flush()
@@ -455,6 +462,23 @@ class BrowserProxyTest {
             assertTrue(daemon.heads.none { it.contains("/v0/workspaces/") })
         } finally {
             live.close()
+        }
+    }
+
+    /** A tunnel that opened and ended without an answer is the server not responding, not the computer out of reach. */
+    @Test fun aTunnelThatEndsWithoutAnAnswerIsTheServerNotResponding() {
+        val web = proxy.open(BrowserProxy.Scope.Web(client) { BrowserNetwork.network("host") }, webView = true, isolated = true)
+        try {
+            for (request in listOf(Request.Builder().url("http://localhost:4193/"), Request.Builder().url("http://localhost:4193/").header("Connection", "close"))) {
+                through(web).newCall(request.build()).execute().use {
+                    assertEquals(502, it.code)
+                    val error = it.header("X-Happy-Proxy-Error")
+                    assertEquals("browser_proxy_upstream_response_invalid", error)
+                    assertEquals(BrowserProblem.ServerNotResponding, BrowserProblem.response(it.code, error, hasBody = true, link = null))
+                }
+            }
+        } finally {
+            web.close()
         }
     }
 
