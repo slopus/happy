@@ -1,6 +1,13 @@
 package com.slopus.happy.ui.pipelines
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -101,6 +108,8 @@ object PipelineLogSpec {
     val outputRadius = 8.dp
     val note = happyTextStyle(fontSize = 13, lineHeight = 18)
     val head = happyTextStyle(fontSize = 13, lineHeight = 18, family = FontFamily.Monospace, weight = FontWeight.Medium)
+    /** How far below the content's foot the log's end may be and still count as at the end. */
+    val followSlack = 8.dp
 }
 
 /**
@@ -118,7 +127,8 @@ object PipelineLogSpec {
  * when it failed or once watched running; a tool call's name, what it was
  * called on, Done or Failed and its error; an agent's words as Markdown; a
  * status line with how far along. The page is a lazy list, so a long log
- * draws only what shows.
+ * draws only what shows. While the node runs and the log's end is on
+ * screen, the page follows what arrives; scrolled up, it stays put.
  */
 @Composable
 fun PipelineNodeScreen(
@@ -132,10 +142,14 @@ fun PipelineNodeScreen(
 ) {
     val colors = HappyTheme.colors
     val run = state.run
+    val list = rememberLazyListState()
+    val running = run?.node(nodeId)?.state == PipelineNodeState.Running
+    followLogEnd(list, live = running, changed = log.entries.size to log.entries.lastOrNull())
     Screen(header = { StackHeader(nodeId, onBack) }) {
         val top = barInsetTop()
         LazyColumn(
             Modifier.fillMaxSize().background(colors.grouped.background).testTag(PipelineNodeTags.LIST),
+            state = list,
             contentPadding = PaddingValues(top = top, bottom = ItemGroupSpec.listPaddingBottom),
         ) {
             when {
@@ -163,7 +177,7 @@ fun PipelineNodeScreen(
 private fun LazyListScope.nodePage(state: PipelineRunView, run: PipelineRun, nodeId: String, log: PipelineNodeLog, now: Long, onOpenRun: (String) -> Unit) {
     val node = run.node(nodeId)
     val defined = state.definition?.node(nodeId)
-    item("summary") { NodeSummary(state, run, node, defined, now) }
+    item(SUMMARY) { NodeSummary(state, run, node, defined, now) }
     node?.childRunId?.let { child ->
         item("child") {
             ItemGroup(title = stringResource(R.string.pipelines_child_run)) { RelativeRow(child, state.relatives[child], now, null, onOpenRun) }
@@ -335,6 +349,8 @@ private fun LazyListScope.logRows(node: PipelineNodeRun?, log: PipelineNodeLog, 
             }
         }
     }
+    // Where the log ends, which the page follows while the node runs ([followLogEnd]).
+    item(LOG_END) { Spacer(Modifier.fillMaxWidth().height(1.dp)) }
     if (log.failed) {
         item("log-failed") {
             Text(
@@ -351,6 +367,70 @@ private fun LazyListScope.logRows(node: PipelineNodeRun?, log: PipelineNodeLog, 
     }
 }
 
+private const val LOG_END = "log-end"
+private const val SUMMARY = "summary"
+
+/** The log's end is on screen, at most a little below the content's foot. */
+private fun LazyListState.atLogEnd(slack: Int): Boolean {
+    val info = layoutInfo
+    val end = info.visibleItemsInfo.firstOrNull { it.key == LOG_END } ?: return false
+    return end.offset <= info.viewportEndOffset - info.afterContentPadding + slack
+}
+
+/**
+ * Follows the end of a running node's log, as desktop's and iOS's logs do:
+ * while the reader has the log's end on screen, what arrives ([changed])
+ * scrolls the page so the end stays at its foot; once they scroll it away,
+ * the page stays where they put it until they bring the end back. Only the
+ * reader's own scrolling, not content growing under it, decides which;
+ * the page's first layout decides before they have scrolled.
+ */
+@Composable
+private fun followLogEnd(list: LazyListState, live: Boolean, changed: Any?) {
+    val slack = with(LocalDensity.current) { PipelineLogSpec.followSlack.roundToPx() }
+    // Null until the node's page has laid out once; [Follow.revealing] while this scrolls, which is not the reader's.
+    val follow = remember { Follow() }
+    LaunchedEffect(list) {
+        // The first layout of the node's page decides: the log's end on screen, or not.
+        snapshotFlow { list.layoutInfo }.collect { info ->
+            if (follow.following == null && info.visibleItemsInfo.any { it.key == SUMMARY || it.key == LOG_END }) follow.following = list.atLogEnd(slack)
+        }
+    }
+    LaunchedEffect(list) {
+        // After that, where the reader's own scrolling leaves the page (a scroll applies its layout at once).
+        snapshotFlow { list.isScrollInProgress }.collect { scrolling ->
+            if (!scrolling && !follow.revealing && follow.following != null) follow.following = list.atLogEnd(slack)
+        }
+    }
+    LaunchedEffect(changed, live) {
+        if (!live || follow.following != true) return@LaunchedEffect
+        follow.revealing = true
+        try {
+            // Pages down until the end shows (many new rows may lie between; a page skips none), then puts it at the foot.
+            repeat(FOLLOW_STEPS) {
+                withFrameNanos { }
+                val info = list.layoutInfo
+                val foot = info.viewportEndOffset - info.afterContentPadding
+                val end = info.visibleItemsInfo.firstOrNull { it.key == LOG_END }
+                if (end != null) {
+                    if (end.offset != foot) list.scrollBy((end.offset - foot).toFloat())
+                    return@LaunchedEffect
+                }
+                list.scrollBy((foot - info.viewportStartOffset - info.beforeContentPadding).toFloat())
+            }
+        } finally {
+            follow.revealing = false
+        }
+    }
+}
+
+private class Follow {
+    var following by mutableStateOf<Boolean?>(null)
+    var revealing = false
+}
+
+private const val FOLLOW_STEPS = 20
+
 /** `m:ss` since the node started, the gutter CI logs keep. */
 private fun offsetText(at: Long, startedAt: Long?): String {
     if (startedAt == null) return ""
@@ -361,15 +441,16 @@ private fun offsetText(at: Long, startedAt: Long?): String {
 @Composable
 private fun LogRow(entry: PipelineLogEntry, startedAt: Long?, watched: Set<Long>) {
     val colors = HappyTheme.colors
+    // The time sits on the first line of what it stamps, whatever that line's size and margin (an agent's Markdown has both).
     Row {
         Text(
             offsetText(entry.at, startedAt),
             style = PipelineLogSpec.gutter,
             color = colors.textSecondary,
             maxLines = 1,
-            modifier = Modifier.width(PipelineLogSpec.gutterWidth).testTag(PipelineNodeTags.gutter(entry.seq)),
+            modifier = Modifier.alignByBaseline().width(PipelineLogSpec.gutterWidth).testTag(PipelineNodeTags.gutter(entry.seq)),
         )
-        Box(Modifier.weight(1f)) {
+        Box(Modifier.weight(1f).alignByBaseline()) {
             when (entry) {
                 is PipelineLogEntry.Output -> SelectionContainer {
                     Text(entry.text.removeSuffix("\n"), style = PipelineRunSpec.mono, color = if (entry.stderr) colors.textDestructive else colors.text)

@@ -101,8 +101,8 @@ internal fun pipelineTime(at: Long): String {
 /**
  * One run of a pipeline, live (desktop's run page, read only): its state
  * and who started it, Abort while it is queued or running (confirmed
- * first; it reads aborted only once the server says so), the run that
- * started it, its nodes in graph order, why it failed in words, the child
+ * first; it reads aborted only once the server says so), why it failed in
+ * words, the run that started it, its nodes in graph order, the child
  * runs its nodes made, what its agent nodes spent, the computers it held,
  * its input and its result. A node opens its log ([onOpenNode]); a parent
  * or child run opens its own page ([onOpenRun]).
@@ -153,6 +153,8 @@ fun PipelineRunScreen(
                     Summary(state, run, agents, now) {
                         scope.launch { if (confirm({ alert = it }, abortTitle, abortMessage, abortConfirm, abortCancel, destructive = true)) onAbort() }
                     }
+                    // Why it failed is what a failed run is opened for: right under its state.
+                    Failures(run, onOpenNode)
                     run.entry.parentRunId?.let { parent ->
                         val trigger = run.entry.trigger as? PipelineRunTrigger.Pipeline
                         ItemGroup(title = stringResource(R.string.pipelines_run_parent)) {
@@ -164,7 +166,6 @@ fun PipelineRunScreen(
                         }
                     }
                     Nodes(state, run, now, onOpenNode)
-                    Failures(run, onOpenNode)
                     ChildRuns(state, run, now, onOpenRun)
                     val usage = remember(run.nodes) { run.nodes.flatMap { it.usage.orEmpty() } }
                     if (usage.isNotEmpty()) ItemGroup(title = stringResource(R.string.pipelines_usage)) { UsageItems(usage) }

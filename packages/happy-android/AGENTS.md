@@ -2578,17 +2578,20 @@ pages; words are `strings_pipelines.xml` in every locale.
   and how long it took or has taken, ticking each second while a run is
   live. Older runs page in from the button under them. A run row opens the
   run (`PipelineRunRoute`): its state, who started it, when, its group,
-  Abort; the parent run; the nodes in graph order (longest path from the
+  Abort; why it failed, right under that; the parent run; the nodes in graph order (longest path from the
   root, ties in definition order: `pipelineNodeOrder`), each with its state,
   newest status line or kind, and duration, a skipped node or one never
-  reached dimmed; why it failed (the failure code in words, desktop's
+  reached dimmed (why it failed is the failure code in words, desktop's
   `pipelineFailureTitle`, then the node, the code and the message's last
   line); child runs; usage; computers; input and result as JSON. A node opens
   `PipelineNodeRoute`: its state, status, child run, failure (a traceback in
   monospace), then its log as a CI log in a lazy list (`m:ss` gutter; output
   monospace, stderr red; commands with exit code and duration, folded unless
   running, failed or watched; tool calls; agent messages as Markdown; status
-  lines), then usage, output, input, status history and computers.
+  lines; each row's time on its first baseline), then usage, output, input,
+  status history and computers. While the node runs and the log's end is on
+  screen the page follows what arrives; the reader scrolling the end away
+  stops it, scrolling back starts it (`followLogEnd`).
 - **Fixture:** debug builds have `ui.pipelines.PipelinesFixturesActivity`:
   the real pages over an in-memory server with every run readable (a running
   deploy waiting on a child test run whose log grows, a failed one with a
