@@ -147,14 +147,14 @@ class PipelinePageViewController<Input: PipelinePageInput>: UIViewController {
     /// What a tapped row does; a page handles its own targets and passes the rest here.
     func open(_ target: PipelineRowTarget) {
         switch target {
-        case .run(let id):
-            navigationController?.pushViewController(PipelineRunViewController(session: session, runId: id), animated: true)
+        case .run(let id, let pipelineName):
+            navigationController?.pushViewController(PipelineRunViewController(session: session, runId: id, pipelineName: pipelineName), animated: true)
         case .text(let title, let text):
             let page = TextSelectionViewController(text: text)
             page.title = title
             navigationController?.pushViewController(page, animated: true)
-        case .pipeline(let id):
-            navigationController?.pushViewController(PipelineViewController(session: session, pipelineId: id), animated: true)
+        case .pipeline(let id, let name):
+            navigationController?.pushViewController(PipelineViewController(session: session, pipelineId: id, name: name), animated: true)
         case .node, .command, .abort, .version, .definitionNode:
             break
         }

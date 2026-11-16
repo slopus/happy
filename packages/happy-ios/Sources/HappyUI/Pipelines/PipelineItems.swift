@@ -62,7 +62,7 @@ enum PipelineItems {
     nonisolated static func pipeline(_ input: PipelineInput) -> PipelinePage {
         let (state, env) = (input.state, input.env)
         var page = PipelinePage()
-        page.title = state.pipeline?.name
+        page.title = state.name
         if let pipeline = state.pipeline {
             if state.failed { page.append(PipelineRows.note("pipeline:failed", Text.pipelineOutOfDate, env)) }
             header(pipeline, input, into: &page)
@@ -75,6 +75,13 @@ enum PipelineItems {
         } else if state.loading {
             page.append(PipelineRows.note("pipeline:note", Text.pipelineLoading, whole: true, env))
             return page
+        } else if state.missing, state.archived || !state.runs.entries.isEmpty {
+            // Gone from every route but its runs: archived.
+            page.append(PipelineRows.heading("pipeline:heading", Text.pipeline, afterCard: false, env))
+            page.card([{ place in
+                (PipelineRows.row("pipeline:status", title: Text.archived, subtitle: Text.archivedNote, tile: PipelineRows.neutral(.ionicons("archive-outline")),
+                                  place: place, subtitleLines: 0, env), nil)
+            }])
         } else {
             page.append(PipelineRows.note("pipeline:note", state.missing ? Text.pipelineMissing : Text.pipelineUnreadable, env))
         }
@@ -95,7 +102,7 @@ enum PipelineItems {
             rows.append { place in
                 (PipelineRows.row("pipeline:last-run", title: Text.lastRunLabel, subtitle: Text.state(run.state),
                                   trailing: PipelineRunItems.ago(run.endedAt ?? run.createdAt, env), tile: PipelineRows.tile(run.state), place: place, opens: true, env),
-                 .run(run.id))
+                 .run(run.id, pipelineName: pipeline.name))
             }
         }
         if let creator = pipeline.createdBy {
@@ -134,7 +141,7 @@ enum PipelineItems {
             return
         }
         page.card(runs.entries.map { run in { place in
-            (PipelineListItems.row(run, title: Text.state(run.state), place: place, parent: [:], agents: input.names.agents, env), .run(run.id))
+            (PipelineListItems.row(run, title: Text.state(run.state), place: place, parent: [:], agents: input.names.agents, env), .run(run.id, pipelineName: input.state.name))
         } })
         if runs.loadingMore { page.append(PipelineRows.note("runs:more", Text.runsLoadingMore, env)) }
         else if runs.failed { page.append(PipelineRows.note("runs:failed", Text.runsOutOfDate, env)) }
@@ -344,7 +351,7 @@ enum PipelineItems {
         }]
         if let pipeline = node.pipeline {
             facts.append { place in
-                (PipelineRows.row("def-node:pipeline", title: Text.childPipeline, trailing: pipelineName, place: place, opens: true, env), .pipeline(pipeline))
+                (PipelineRows.row("def-node:pipeline", title: Text.childPipeline, trailing: pipelineName, place: place, opens: true, env), .pipeline(pipeline, name: state.names[pipeline]))
             }
         }
         facts.append { place in (PipelineRows.fact("def-node:timeout", Text.timesOut, Text.seconds(node.timeoutSeconds), place: place, env), nil) }

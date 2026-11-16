@@ -25,6 +25,8 @@ final class PipelinesViewController: UIViewController {
     private var hasMore = false
     private var loadingMore = false
     private var shownMinute = 0
+    /// Each row's pipeline's name, for the page it opens: an archived pipeline's can't be read there.
+    private var names: [String: String] = [:]
 
     struct Applied: Sendable {
         var items: [String: CardItem] = [:]
@@ -39,6 +41,7 @@ final class PipelinesViewController: UIViewController {
         var lastRunId: String?
         var hasMore: Bool
         var loadingMore: Bool
+        var names: [String: String]
         /// The same items at another width, for a width change.
         var replan: @Sendable (CGFloat) -> [CardItem]
     }
@@ -72,9 +75,9 @@ final class PipelinesViewController: UIViewController {
         list.onSelect = { [weak self] id in
             guard let self else { return }
             if let runId = PipelineListItems.run(ofRow: id) {
-                navigationController?.pushViewController(PipelineRunViewController(session: session, runId: runId), animated: true)
+                navigationController?.pushViewController(PipelineRunViewController(session: session, runId: runId, pipelineName: names[id]), animated: true)
             } else if let pipelineId = PipelineListItems.pipeline(ofRow: id) {
-                navigationController?.pushViewController(PipelineViewController(session: session, pipelineId: pipelineId), animated: true)
+                navigationController?.pushViewController(PipelineViewController(session: session, pipelineId: pipelineId, name: names[id]), animated: true)
             }
         }
 
@@ -186,9 +189,11 @@ final class PipelinesViewController: UIViewController {
             return PipelineListItems.items(input)
         }
         let runs = input.state.runs
+        let names = Dictionary(runs.entries.map { (PipelineListItems.runId($0.id), $0.pipelineName) } + input.state.pipelines.map { (PipelineListItems.pipelineId($0.id), $0.name) },
+                               uniquingKeysWith: { first, _ in first })
         let output = Output(items: items, width: input.width, ticking: PipelineListItems.ticking(input.state),
                             lastRunId: runs.entries.last.map { PipelineListItems.runId($0.id) },
-                            hasMore: runs.listed && runs.nextCursor != nil, loadingMore: runs.loadingMore, replan: replan)
+                            hasMore: runs.listed && runs.nextCursor != nil, loadingMore: runs.loadingMore, names: names, replan: replan)
         return (output, state)
     }
 
@@ -198,6 +203,7 @@ final class PipelinesViewController: UIViewController {
         lastRunId = output.lastRunId
         hasMore = output.hasMore
         loadingMore = output.loadingMore
+        names = output.names
         list.apply(output.items, animated: true, replan: output.replan)
         loadMoreIfNeeded()
         return true

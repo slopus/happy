@@ -274,7 +274,8 @@ extension Strings {
 
         // The pipeline page, its versions' and its nodes' definitions.
         static let pipelineLoading = "Loading pipeline…"
-        static let pipelineMissing = "This server has no such pipeline. It may have been archived; its runs are below."
+        static let pipelineMissing = "This server has no such pipeline."
+        static let archivedNote = "It no longer runs, and its definition and history can’t be read. Its runs are below."
         static let pipelineUnreadable = "This pipeline couldn’t be read."
         static let pipelineOutOfDate = "This pipeline may be out of date."
         static let definitionLoading = "Reading this version…"
