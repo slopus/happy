@@ -79,7 +79,7 @@ class AgentConnections(
     private val refreshing = mutableMapOf<String, Mutex>()
     /** Each connection's current grant, counted up by every sign-in: a refresh of an older one is dropped. */
     private val generations = mutableMapOf<String, Long>()
-    private val state = MutableStateFlow(readRegistry())
+    private val state = MutableStateFlow(read(registry))
     private val endpointLock = Any()
     private val endpoints = mutableMapOf<String, AgentEndpoint>()
     private val diagnosticTransports = TransportDiagnosticsRegistry()
@@ -434,17 +434,7 @@ class AgentConnections(
         account.avatarFile?.let { File(it).delete() }
     }
 
-    private fun read(id: String): AgentConnectionCredentials? = try {
-        secrets.getItem(id)?.let { json.decodeFromString(AgentConnectionCredentials.serializer(), it) }
-    } catch (_: Exception) {
-        null
-    }
-
-    private fun readRegistry(): List<AgentConnection> = try {
-        registry.getString(KEY, null)?.let { json.decodeFromString<List<AgentConnection>>(it) } ?: emptyList()
-    } catch (_: Exception) {
-        emptyList()
-    }
+    private fun read(id: String): AgentConnectionCredentials? = read(secrets, id)
 
     private fun write(list: List<AgentConnection>) {
         registry.edit().putString(KEY, json.encodeToString(list)).commit()
@@ -460,5 +450,19 @@ class AgentConnections(
         /** A team server's access token is refreshed this long before it expires (edge SSO contract §1). */
         const val REFRESH_MARGIN_MILLIS = 60_000L
         private val json = Json { ignoreUnknownKeys = true }
+
+        /** The connections kept in [registry], as [accounts] starts; readable before any [AgentConnections] is made ([com.slopus.happy.agent.StartupLink]). */
+        fun read(registry: SharedPreferences): List<AgentConnection> = try {
+            registry.getString(KEY, null)?.let { json.decodeFromString<List<AgentConnection>>(it) } ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        /** [id]'s credentials in [secrets]; null when gone or unreadable. Blocks on the Keystore. */
+        fun read(secrets: ExpoSecureStore, id: String): AgentConnectionCredentials? = try {
+            secrets.getItem(id)?.let { json.decodeFromString(AgentConnectionCredentials.serializer(), it) }
+        } catch (_: Exception) {
+            null
+        }
     }
 }

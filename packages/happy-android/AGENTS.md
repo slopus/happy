@@ -678,6 +678,17 @@ resumes from the kept cursor only while the in-memory stream last-heard time
 is less than 30 seconds old (heartbeats count). A cold process or an older
 stream opens without a cursor and reads a new home bootstrap.
 
+**Connecting at process start** (`agent/StartupLink`). A process started for
+the window (its importance foreground in `Application.onCreate`; not a push, a
+broadcast or the file provider) reads which agent connection opens, its
+credentials and the relay map on IO, and connects its main Tailcat client
+then, beside the app graph instead of after it, the window and the
+foreground. The session takes that transport through `AgentSessions`'
+makeTransport (same credentials, once), so there is one transport and one main
+client. Until taken it is closed when another account opens or the connection
+is removed, signed out, ended or revoked. Anything that fails there leaves the
+session to connect as before.
+
 **Tailcat startup order.** `AgentSession.phase` is `Offline`, `P0Connecting`,
 `P0Live` (hello), then `Verified` (home bootstrap landed and owner checked).
 Open the stream first, then a restored visible chat's bootstrap and latest
@@ -946,7 +957,7 @@ provider and ProfileInstaller's initializer are removed for that). Work
 nothing on the first screen shows waits for `LocalAfterStart` (push
 registration, notification channels), and glass blurs
 from the window's second frame (`FirstFrame`). Keep
-`HappyApplication.onCreate` to the debug StrictMode it has. The Baseline and
+`HappyApplication.onCreate` to the debug StrictMode and `StartupLink`'s start. The Baseline and
 startup profiles (`app/src/main/generated/baselineProfiles`) come from
 `benchmark/`'s generator; regenerate them after large UI changes, with only
 the target device's serial:

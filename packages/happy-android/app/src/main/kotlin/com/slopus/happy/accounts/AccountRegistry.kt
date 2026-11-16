@@ -102,7 +102,7 @@ class AccountStore(
     private val defaultServerUrl: String,
     private val importRnServer: () -> ImportedServer,
 ) {
-    private val state = MutableStateFlow(load())
+    private val state = MutableStateFlow(load(prefs))
     val registry: StateFlow<AccountRegistry> = state.asStateFlow()
 
     /**
@@ -233,15 +233,6 @@ class AccountStore(
         save(current.copy(entries = current.entries.map { if (it.id == id) it.copy(display = display) else it }))
     }
 
-    private fun load(): AccountRegistry = try {
-        prefs.getString(KEY, null)?.let { json.decodeFromString(AccountRegistry.serializer(), it) }
-            ?.takeIf { registry -> registry.entries.map { it.id }.toSet().size == registry.entries.size && registry.entries.all { isAccountId(it.id) } }
-            ?: AccountRegistry()
-    } catch (_: Exception) {
-        // Rebuilt from the credentials by the next reconcile.
-        AccountRegistry()
-    }
-
     private fun save(registry: AccountRegistry) {
         // The Happy account open now is the one open last until another opens.
         val value = if (registry.entry(registry.activeId) != null) registry.copy(lastHappyId = registry.activeId) else registry
@@ -257,5 +248,22 @@ class AccountStore(
         private val json = Json { ignoreUnknownKeys = true }
 
         fun isAccountId(id: String) = id.length == 16 && id.all { it in '0'..'9' || it in 'a'..'f' }
+
+        /**
+         * The agent connection open in [prefs], read as the store would read
+         * it, before any store is made ([com.slopus.happy.agent.StartupLink]).
+         * Null for a Happy account or none: [reconcile] keeps an agent
+         * connection's id as it is, and may change only a Happy account's.
+         */
+        fun openAgentId(prefs: SharedPreferences): String? = load(prefs).activeId?.takeUnless(::isAccountId)
+
+        private fun load(prefs: SharedPreferences): AccountRegistry = try {
+            prefs.getString(KEY, null)?.let { json.decodeFromString(AccountRegistry.serializer(), it) }
+                ?.takeIf { registry -> registry.entries.map { it.id }.toSet().size == registry.entries.size && registry.entries.all { isAccountId(it.id) } }
+                ?: AccountRegistry()
+        } catch (_: Exception) {
+            // Rebuilt from the credentials by the next reconcile.
+            AccountRegistry()
+        }
     }
 }

@@ -410,8 +410,13 @@ class TailcatTransport internal constructor(
          * after the first fetch.
          */
         @Volatile private var derpMap = DERPMapProvider()
+        private var derpMapFile: File? = null
 
+        /** Again with the same [file], nothing changes: the process start's connect and the graph share one provider. */
+        @Synchronized
         fun persistDerpMap(file: File) {
+            if (file == derpMapFile) return
+            derpMapFile = file
             derpMap = DERPMapProvider(cache = FileDerpMapCache(file))
         }
     }
