@@ -171,7 +171,7 @@ class PluginsTest {
     fun availabilityStartsFromWhatWasKeptThenFollowsHealth() = runTest {
         val answers = ArrayDeque(listOf<Boolean?>(false, null))
         val kept = mutableListOf<Boolean>()
-        val availability = PluginsAvailability({ answers.removeFirst() }, { true }, { kept += it }, backgroundScope)
+        val availability = com.slopus.happy.agent.CapabilityAvailability({ answers.removeFirst() }, { true }, { kept += it }, backgroundScope)
         runCurrent()
         assertEquals("the last start's answer, before health is read", true, availability.available.value)
         // Not advertised: the fallback asks the server, which has none.
@@ -191,7 +191,7 @@ class PluginsTest {
 
     @Test
     fun withoutTheFallbackOnlyTheFlagCounts() = runTest {
-        val availability = PluginsAvailability(null, { null }, {}, backgroundScope)
+        val availability = com.slopus.happy.agent.CapabilityAvailability(null, { null }, {}, backgroundScope)
         availability.noteHealth(false)
         runCurrent()
         assertEquals(false, availability.available.value)

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pipelines_title">パイプライン</string>
+    <string name="pipelines_loading">パイプラインを読み込み中…</string>
+    <string name="pipelines_failed">パイプラインを読み込めませんでした</string>
+    <string name="pipelines_tap_to_retry">タップして再試行</string>
+    <string name="pipelines_empty">パイプラインはまだありません</string>
+    <string name="pipelines_empty_footer">パイプラインはエージェントが作成して実行します。エージェントに設定を頼むと、ここに表示されます。</string>
+    <string name="pipelines_out_of_date">最新でない可能性があります：前回の読み込みに失敗しました。</string>
+    <string name="pipelines_version">v%1$d</string>
+    <string name="pipelines_disabled">無効</string>
+    <string name="pipelines_never_run">未実行</string>
+    <string name="pipelines_runs">実行</string>
+    <string name="pipelines_runs_loading">実行を読み込み中…</string>
+    <string name="pipelines_runs_empty">実行はまだありません。パイプラインの開始を許可されたエージェントが run_pipeline で実行します。</string>
+    <string name="pipelines_runs_unlisted">このサーバーでは、実行は各パイプラインのページに表示されます。</string>
+    <string name="pipelines_runs_older">以前の実行</string>
+    <string name="pipelines_state_queued">待機中</string>
+    <string name="pipelines_state_running">実行中</string>
+    <string name="pipelines_state_succeeded">成功</string>
+    <string name="pipelines_state_failed">失敗</string>
+    <string name="pipelines_state_aborted">中止</string>
+    <string name="pipelines_state_superseded">置き換え済み</string>
+    <string name="pipelines_started_by_an_agent">エージェント</string>
+    <string name="pipelines_started_from">%1$s · %2$s から</string>
+    <string name="pipelines_started_from_node">親の実行のノード %1$s から</string>
+    <string name="pipelines_started_by_a_parent">親の実行</string>
+    <string name="pipelines_started_by_unknown">不明</string>
+    <string name="pipelines_child_run">子の実行</string>
+    <string name="pipelines_archived">アーカイブ済み</string>
+    <string name="pipelines_duration_seconds">%1$d秒</string>
+    <string name="pipelines_duration_minutes">%1$d分%2$d秒</string>
+    <string name="pipelines_duration_hours">%1$d時間%2$d分</string>
+</resources>

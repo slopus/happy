@@ -193,6 +193,7 @@ object MainPanelKey {
     const val SETTINGS = "settings"
     const val ARTIFACTS = "artifacts"
     const val PLUGINS = "plugins"
+    const val PIPELINES = "pipelines"
     const val FEED = "feed"
     const val TODOS = "todos"
     const val NEW_SESSION = "newSession"
@@ -218,6 +219,7 @@ object MainPanelKey {
             destination.hasRoute<SurfaceRoute>() -> surface(entry.toRoute<SurfaceRoute>().surfaceId)
             destination.hasRoute<AgentArtifactsRoute>() -> ARTIFACTS
             destination.hasRoute<com.slopus.happy.ui.plugins.PluginsRoute>() -> PLUGINS
+            destination.hasRoute<com.slopus.happy.ui.pipelines.PipelinesRoute>() -> PIPELINES
             destination.hasRoute<AgentFeedRoute>() -> FEED
             destination.hasRoute<com.slopus.happy.ui.todos.TodoListsRoute>() -> TODOS
             destination.hasRoute<SettingsRoute>() -> SETTINGS

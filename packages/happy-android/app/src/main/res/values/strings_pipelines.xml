@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pipelines (ui/pipelines/): home's Pipelines row on a Happy Cloud server, the list of pipelines and every
+  run of them. Words follow desktop's pipeline pages. Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="pipelines_title">Pipelines</string>
+    <string name="pipelines_loading">Loading pipelines…</string>
+    <string name="pipelines_failed">Couldn\'t read pipelines</string>
+    <string name="pipelines_tap_to_retry">Tap to try again</string>
+    <string name="pipelines_empty">No pipelines yet</string>
+    <string name="pipelines_empty_footer">Agents create pipelines and run them. Ask an agent to set one up and it appears here.</string>
+    <string name="pipelines_out_of_date">This may be out of date: the last read failed.</string>
+    <string name="pipelines_version">v%1$d</string>
+    <string name="pipelines_disabled">Disabled</string>
+    <string name="pipelines_never_run">Never run</string>
+    <string name="pipelines_runs">Runs</string>
+    <string name="pipelines_runs_loading">Reading the runs…</string>
+    <string name="pipelines_runs_empty">No runs yet. Agents allowed to start a pipeline run it with run_pipeline.</string>
+    <string name="pipelines_runs_unlisted">This server lists runs on each pipeline\'s own page.</string>
+    <string name="pipelines_runs_older">Older runs</string>
+    <string name="pipelines_state_queued">Queued</string>
+    <string name="pipelines_state_running">Running</string>
+    <string name="pipelines_state_succeeded">Succeeded</string>
+    <string name="pipelines_state_failed">Failed</string>
+    <string name="pipelines_state_aborted">Aborted</string>
+    <string name="pipelines_state_superseded">Superseded</string>
+    <string name="pipelines_started_by_an_agent">An agent</string>
+    <string name="pipelines_started_from">From %1$s · %2$s</string>
+    <string name="pipelines_started_from_node">From node %1$s of a parent run</string>
+    <string name="pipelines_started_by_a_parent">A parent run</string>
+    <string name="pipelines_started_by_unknown">Unknown</string>
+    <string name="pipelines_child_run">Child run</string>
+    <string name="pipelines_archived">Archived</string>
+    <string name="pipelines_duration_seconds">%1$ds</string>
+    <string name="pipelines_duration_minutes">%1$dm %2$ds</string>
+    <string name="pipelines_duration_hours">%1$dh %2$dm</string>
+</resources>

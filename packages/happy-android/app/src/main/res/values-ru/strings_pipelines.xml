@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pipelines_title">Пайплайны</string>
+    <string name="pipelines_loading">Загружаем пайплайны…</string>
+    <string name="pipelines_failed">Не удалось загрузить пайплайны</string>
+    <string name="pipelines_tap_to_retry">Нажмите, чтобы повторить</string>
+    <string name="pipelines_empty">Пайплайнов пока нет</string>
+    <string name="pipelines_empty_footer">Пайплайны создают и запускают агенты. Попросите агента настроить пайплайн, и он появится здесь.</string>
+    <string name="pipelines_out_of_date">Возможно, это устарело: последнее обновление не удалось.</string>
+    <string name="pipelines_version">v%1$d</string>
+    <string name="pipelines_disabled">Отключён</string>
+    <string name="pipelines_never_run">Не запускался</string>
+    <string name="pipelines_runs">Запуски</string>
+    <string name="pipelines_runs_loading">Загружаем запуски…</string>
+    <string name="pipelines_runs_empty">Запусков пока нет. Агенты, которым разрешено запускать пайплайн, делают это через run_pipeline.</string>
+    <string name="pipelines_runs_unlisted">Этот сервер показывает запуски на странице каждого пайплайна.</string>
+    <string name="pipelines_runs_older">Более ранние запуски</string>
+    <string name="pipelines_state_queued">В очереди</string>
+    <string name="pipelines_state_running">Выполняется</string>
+    <string name="pipelines_state_succeeded">Успешно</string>
+    <string name="pipelines_state_failed">Ошибка</string>
+    <string name="pipelines_state_aborted">Прерван</string>
+    <string name="pipelines_state_superseded">Заменён</string>
+    <string name="pipelines_started_by_an_agent">Агент</string>
+    <string name="pipelines_started_from">Из %1$s · %2$s</string>
+    <string name="pipelines_started_from_node">Из узла %1$s родительского запуска</string>
+    <string name="pipelines_started_by_a_parent">Родительский запуск</string>
+    <string name="pipelines_started_by_unknown">Неизвестно</string>
+    <string name="pipelines_child_run">Дочерний запуск</string>
+    <string name="pipelines_archived">В архиве</string>
+    <string name="pipelines_duration_seconds">%1$d с</string>
+    <string name="pipelines_duration_minutes">%1$d мин %2$d с</string>
+    <string name="pipelines_duration_hours">%1$d ч %2$d мин</string>
+</resources>

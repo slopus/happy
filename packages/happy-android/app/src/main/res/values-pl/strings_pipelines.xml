@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pipelines_title">Pipeline\'y</string>
+    <string name="pipelines_loading">Wczytywanie pipeline\'ów…</string>
+    <string name="pipelines_failed">Nie udało się wczytać pipeline\'ów</string>
+    <string name="pipelines_tap_to_retry">Dotknij, aby spróbować ponownie</string>
+    <string name="pipelines_empty">Nie ma jeszcze pipeline\'ów</string>
+    <string name="pipelines_empty_footer">Pipeline\'y tworzą i uruchamiają agenci. Poproś agenta o skonfigurowanie jednego, a pojawi się tutaj.</string>
+    <string name="pipelines_out_of_date">To może być nieaktualne: ostatni odczyt się nie powiódł.</string>
+    <string name="pipelines_version">v%1$d</string>
+    <string name="pipelines_disabled">Wyłączony</string>
+    <string name="pipelines_never_run">Nigdy nie uruchomiony</string>
+    <string name="pipelines_runs">Uruchomienia</string>
+    <string name="pipelines_runs_loading">Wczytywanie uruchomień…</string>
+    <string name="pipelines_runs_empty">Nie ma jeszcze uruchomień. Agenci, którzy mogą uruchomić pipeline, robią to przez run_pipeline.</string>
+    <string name="pipelines_runs_unlisted">Ten serwer pokazuje uruchomienia na stronie każdego pipeline\'u.</string>
+    <string name="pipelines_runs_older">Starsze uruchomienia</string>
+    <string name="pipelines_state_queued">W kolejce</string>
+    <string name="pipelines_state_running">W toku</string>
+    <string name="pipelines_state_succeeded">Udane</string>
+    <string name="pipelines_state_failed">Nieudane</string>
+    <string name="pipelines_state_aborted">Przerwane</string>
+    <string name="pipelines_state_superseded">Zastąpione</string>
+    <string name="pipelines_started_by_an_agent">Agent</string>
+    <string name="pipelines_started_from">Z %1$s · %2$s</string>
+    <string name="pipelines_started_from_node">Z węzła %1$s uruchomienia nadrzędnego</string>
+    <string name="pipelines_started_by_a_parent">Uruchomienie nadrzędne</string>
+    <string name="pipelines_started_by_unknown">Nieznane</string>
+    <string name="pipelines_child_run">Uruchomienie podrzędne</string>
+    <string name="pipelines_archived">Zarchiwizowany</string>
+    <string name="pipelines_duration_seconds">%1$d s</string>
+    <string name="pipelines_duration_minutes">%1$d min %2$d s</string>
+    <string name="pipelines_duration_hours">%1$d godz. %2$d min</string>
+</resources>

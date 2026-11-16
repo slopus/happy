@@ -85,6 +85,13 @@ class AgentFeedTest {
     }
 
     @Test
+    fun aServerWithPipelinesListsThemUnderPlugins() {
+        val places = { plugins: Boolean, pipelines: Boolean -> AgentFeed.derive(catalog(sample), plugins = plugins, pipelines = pipelines).rows.map { it.key }.take(5) }
+        assertEquals(listOf("section-places", "artifacts", "plugins", "pipelines", "todos"), places(true, true))
+        assertEquals(listOf("section-places", "artifacts", "pipelines", "todos", "section-bots"), places(false, true))
+    }
+
+    @Test
     fun desktopsHideProjectsLeavesTheProjectsOutLiveAndTheNewerVersionWins() {
         val keys = { catalog: AgentCatalog -> AgentFeed.derive(catalog).rows.map { it.key } }
         val shown = catalog(sample)

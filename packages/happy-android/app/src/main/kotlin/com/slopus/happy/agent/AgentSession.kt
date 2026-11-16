@@ -349,13 +349,20 @@ class AgentSession internal constructor(
     )
 
     /** Whether home lists Plugins: bootstrap health's `capabilities.plugins`. */
-    private val pluginsAvailability = com.slopus.happy.plugins.PluginsAvailability(
+    private val pluginsAvailability = keptCapability(com.slopus.happy.plugins.PluginsAvailability.RESOURCE)
+    val pluginsAvailable: StateFlow<Boolean> get() = pluginsAvailability.available
+
+    /** Whether home lists Pipelines: bootstrap health's `capabilities.pipelines`, never probed. */
+    private val pipelinesAvailability = keptCapability(PIPELINES_AVAILABLE)
+    val pipelinesAvailable: StateFlow<Boolean> get() = pipelinesAvailability.available
+
+    /** A capability kept in the connection's resources under [resource], so home's row doesn't come and go on each start. */
+    private fun keptCapability(resource: String) = CapabilityAvailability(
         probe = null,
-        kept = { withContext(Dispatchers.IO) { (cachedResource(com.slopus.happy.plugins.PluginsAvailability.RESOURCE)?.get("available") as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() } },
-        keep = { value -> withContext(Dispatchers.IO) { keepResource(com.slopus.happy.plugins.PluginsAvailability.RESOURCE, JsonObject(mapOf("available" to kotlinx.serialization.json.JsonPrimitive(value)))) } },
+        kept = { withContext(Dispatchers.IO) { (cachedResource(resource)?.get("available") as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() } },
+        keep = { value -> withContext(Dispatchers.IO) { keepResource(resource, JsonObject(mapOf("available" to kotlinx.serialization.json.JsonPrimitive(value)))) } },
         scope = scope,
     )
-    val pluginsAvailable: StateFlow<Boolean> get() = pluginsAvailability.available
 
     /** A Happy Cloud server's onboarding gates for this person, which its flow over home follows; null on any other server. */
     val onboarding: com.slopus.happy.onboarding.OnboardingSource? =
@@ -391,9 +398,9 @@ class AgentSession internal constructor(
     val feed: StateFlow<AgentFeed> = combine(
         catalogState, intents.pending, gitSnapshots,
         feedLibrary.state.map { if (it.available == true) it.unread else null }.distinctUntilChanged(),
-        combine(team.users, pluginsAvailable, ::Pair),
-    ) { catalog, pending, git, feedUnread, (users, plugins) ->
-        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread, users = users, plugins = plugins)
+        combine(team.users, pluginsAvailable, pipelinesAvailable, ::Triple),
+    ) { catalog, pending, git, feedUnread, (users, plugins, pipelines) ->
+        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread, users = users, plugins = plugins, pipelines = pipelines)
     }
         .distinctUntilChanged()
         .scan(null as AgentFeed?) { previous, next -> AgentFeed.reuse(previous, next) }
@@ -1037,6 +1044,7 @@ class AgentSession internal constructor(
         bootstrapConfig = bootstrap.config ?: JsonObject(emptyMap())
         client.noteHealth(bootstrap.health ?: JsonObject(emptyMap()))
         pluginsAvailability.noteHealth(info.plugins)
+        pipelinesAvailability.noteHealth(info.pipelines)
         avatarHash = info.thumbhash?.takeIf { it != known?.thumbhash || known.avatarFile == null }
         if (known != null) {
             val hasNode = bootstrap.config?.get("node") is JsonObject
@@ -1374,6 +1382,9 @@ class AgentSession internal constructor(
     }
 
     private companion object {
+        /** Where the connection keeps whether it has pipelines. */
+        const val PIPELINES_AVAILABLE = "pipelines-available"
+
         /** Surface events that come together read the snapshot once. */
         const val SNAPSHOT_COALESCE = 300L
         const val INITIAL_BACKOFF = 1_000L
