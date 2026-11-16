@@ -92,7 +92,7 @@ class MessageMetaTest {
     @Test
     fun codexAndAgyAlwaysSendTheDisplayedDefaults() {
         assertEquals(meta("auto", "gpt-6.1-sol", "medium"), mode(metadata("codex")))
-        assertEquals(meta("default", "Gemini 3.8 Flash", "medium"), mode(metadata("agy")))
+        assertEquals(meta("default", "gemini-4-argon-high", "high"), mode(metadata("agy")))
     }
 
     @Test

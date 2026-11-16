@@ -49,7 +49,11 @@ final class AgentDefaultsTests: XCTestCase {
         XCTAssertEqual(AgentDefaults.effortLevels(.claude, model: "x").map(\.name), ["Low", "Medium", "High", "xHigh", "Max"])
         XCTAssertEqual(AgentDefaults.effortLevels(.codex, model: "gpt-6-luna").count, 5)
         XCTAssertEqual(AgentDefaults.effortLevels(.codex, model: "custom").map(\.key), ["low", "medium", "high", "xhigh"])
-        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "GPT-OSS 120B (Medium)"), [])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "gemini-4-argon-high").map(\.key), ["low", "medium", "high"])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "gemini-4-hydrogen-xhigh").map(\.key), ["low", "medium", "high", "xhigh"])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "claude-opus-5-5-high").map(\.key), ["low", "medium", "high"])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "gemini-3.1-pro-high").map(\.key), ["low", "medium", "high"])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "gpt-oss-120b-medium"), [])
     }
 
     func testOptionName() {

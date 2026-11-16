@@ -77,7 +77,7 @@ public enum AgentDefaults {
         case .codex: Config(permissionMode: "auto", modelMode: "gpt-6.1-sol", effortLevel: "medium")
         case .gemini: Config(permissionMode: "default", modelMode: "gemini-2.5-pro", effortLevel: nil)
         case .openclaw: Config(permissionMode: "default", modelMode: "default", effortLevel: nil)
-        case .agy: Config(permissionMode: "default", modelMode: "Gemini 3.8 Flash", effortLevel: "medium")
+        case .agy: Config(permissionMode: "default", modelMode: "gemini-4-argon-high", effortLevel: "high")
         }
     }
 
@@ -241,10 +241,13 @@ public enum AgentDefaults {
             [Option("default", "Default model")]
         case .agy:
             [
-                Option("Gemini 3.8 Flash", "Gemini 3.8 Flash"),
-                Option("Claude Sonnet 4.6 (Thinking)", "Claude Sonnet 4.6 (Thinking)"),
-                Option("Claude Opus 4.6 (Thinking)", "Claude Opus 4.6 (Thinking)"),
-                Option("GPT-OSS 120B (Medium)", "GPT-OSS 120B (Medium)"),
+                Option("gemini-4-argon-high", "Gemini 4 Argon (Default)", "Default · High thinking"),
+                Option("gemini-4-hydrogen-xhigh", "Gemini 4 Hydrogen (XHigh)", "Secondary · Extra high thinking"),
+                Option("claude-opus-5-5-high", "Claude Opus 5.5 (Thinking)", "Anthropic via Antigravity Gateway"),
+                Option("claude-sonnet-5-5-high", "Claude Sonnet 5.5 (Thinking)", "Anthropic via Antigravity Gateway"),
+                Option("gpt-oss-120b-medium", "GPT-OSS 120B (Medium)", "Open weights"),
+                Option("gemini-3.8-flash-high", "Gemini 3.8 Flash (High)", "Fast"),
+                Option("gemini-3.1-pro-high", "Gemini 3.1 Pro (High)", "Optional · Requires Gemini CLI / AI Studio provider on proxy"),
             ]
         }
     }
@@ -281,7 +284,16 @@ public enum AgentDefaults {
             ]
             keys = byModel[model] ?? ["low", "medium", "high", "xhigh"]
         case .agy:
-            keys = model == "Gemini 3.8 Flash" ? ["low", "medium", "high"] : []
+            let byModel: [String: [String]] = [
+                "gemini-4-argon-high": ["low", "medium", "high"],
+                "gemini-4-hydrogen-xhigh": ["low", "medium", "high", "xhigh"],
+                "claude-opus-5-5-high": ["low", "medium", "high"],
+                "claude-sonnet-5-5-high": ["low", "medium", "high"],
+                "gemini-3.8-flash-high": ["low", "medium", "high"],
+                "gemini-3.1-pro-high": ["low", "medium", "high"],
+                "Gemini 3.8 Flash": ["low", "medium", "high"],
+            ]
+            keys = byModel[model] ?? []
         case .gemini, .openclaw:
             keys = []
         }

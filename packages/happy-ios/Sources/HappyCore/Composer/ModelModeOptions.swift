@@ -469,13 +469,14 @@ public enum ModelModeOptions {
     }
 
     static func provider(_ agent: AgentDefaults.Agent, model: String) -> (id: String, name: String)? {
-        switch agent {
+        let lower = model.lowercased()
+        return switch agent {
         case .claude: ("anthropic", "Anthropic")
         case .codex: ("openai", "OpenAI")
         case .agy:
-            if model.hasPrefix("Gemini") {
+            if lower.hasPrefix("gemini") {
                 ("google", "Google")
-            } else if model.hasPrefix("Claude") {
+            } else if lower.hasPrefix("claude") {
                 ("anthropic", "Anthropic")
             } else {
                 ("openai", "OpenAI")

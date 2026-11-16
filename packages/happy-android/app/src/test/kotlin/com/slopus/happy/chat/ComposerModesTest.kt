@@ -1,6 +1,9 @@
 package com.slopus.happy.chat
 
 import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.model.settings.AgentDefaultOverride
+import com.slopus.happy.model.settings.AgentDefaultOverrides
+import com.slopus.happy.model.settings.AgentKey
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.model.settings.ModeOptions
 import com.slopus.happy.sync.AgentModeField
@@ -188,5 +191,29 @@ class ComposerModesTest {
             mapOf(AgentModeField.EFFORT_LEVEL to "low"),
             ComposerModeResolver.patch(AgentModeField.EFFORT_LEVEL, ModeOption("low", "Low"), rig(), ComposerMirror()),
         )
+    }
+
+    @Test
+    fun metadataCatalogCurrentModelBeatsCodeDefaultUnlessOverridden() {
+        val agyWithCatalog = plain("agy") {
+            put(
+                "models",
+                Json.parseToJsonElement(
+                    """[{"code":"gemini-4-argon-high","value":"Gemini 4 Argon (Default)"},{"code":"claude-opus-5-5-high","value":"Claude Opus 5.5 (Thinking)"}]""",
+                ),
+            )
+            put("currentModelCode", "claude-opus-5-5-high")
+            put("currentThoughtLevelCode", "medium")
+        }
+        val reported = ComposerModeResolver.resolve(agyWithCatalog, ComposerMirror(), null, translate)
+        assertEquals("claude-opus-5-5-high", reported.modelMode?.key)
+        assertEquals("medium", reported.effortLevel?.key)
+
+        val overrides = AgentDefaultOverrides(
+            mapOf(AgentKey.Agy to AgentDefaultOverride(modelMode = "gemini-4-argon-high", effortLevel = "high")),
+        )
+        val overridden = ComposerModeResolver.resolve(agyWithCatalog, ComposerMirror(), overrides, translate)
+        assertEquals("gemini-4-argon-high", overridden.modelMode?.key)
+        assertEquals("high", overridden.effortLevel?.key)
     }
 }

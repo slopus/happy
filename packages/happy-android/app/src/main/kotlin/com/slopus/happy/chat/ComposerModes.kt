@@ -8,6 +8,7 @@ import com.slopus.happy.model.qualifyRigModelKey
 import com.slopus.happy.model.rigComposerMode
 import com.slopus.happy.model.rigModels
 import com.slopus.happy.model.rigSelectedModel
+import com.slopus.happy.model.settings.AgentDefaultField
 import com.slopus.happy.model.settings.AgentDefaultOverrides
 import com.slopus.happy.model.settings.AgentDefaults
 import com.slopus.happy.model.settings.ModeOption
@@ -64,8 +65,14 @@ object ComposerModeResolver {
         val flavor = metadata?.flavor
         val rig = metadata.isRig()
         val defaults = AgentDefaults.resolve(overrides, flavor, metadata?.version)
+        val hasMetadataCatalog = !metadata?.models.isNullOrEmpty()
+        val hasExplicitModelOverride = AgentDefaults.hasOverride(overrides, flavor, AgentDefaultField.ModelMode)
+        val hasExplicitEffortOverride = AgentDefaults.hasOverride(overrides, flavor, AgentDefaultField.EffortLevel)
+        val reportedModel = metadata?.currentModelCode
+        val reportedEffort = metadata?.currentThoughtLevelCode
         val sessionModel = if (rig) mirror.modelMode else AgentDefaults.retireModelMode(flavor, mirror.modelMode)
-        val models = ModeOptions.availableModels(flavor, metadata, translate, sessionModel ?: if (rig) null else defaults.modelMode)
+        val fallbackModel = if (hasMetadataCatalog && !hasExplicitModelOverride) (reportedModel ?: defaults.modelMode) else defaults.modelMode
+        val models = ModeOptions.availableModels(flavor, metadata, translate, sessionModel ?: if (rig) null else fallbackModel)
         val modes = ModeOptions.availablePermissionModes(flavor, metadata, translate, mirror.permissionMode)
         val permission = ModeOptions.resolveCurrentOption(
             modes,
@@ -78,13 +85,25 @@ object ComposerModeResolver {
         val rigModelKey = metadata.rigSelectedModel()?.let { (provider, id) -> qualifyRigModelKey(provider, id) }
         val model = ModeOptions.resolveCurrentOption(
             models,
-            listOf(sessionModel, if (rig) rigModelKey else defaults.modelMode, if (rig) null else metadata?.currentModelCode),
+            listOf(sessionModel) + if (rig) {
+                listOf(rigModelKey)
+            } else if (hasMetadataCatalog && !hasExplicitModelOverride) {
+                listOf(reportedModel, defaults.modelMode)
+            } else {
+                listOf(defaults.modelMode, reportedModel)
+            },
         )
         val modelKey = model?.key ?: "default"
         val efforts = ModeOptions.effortLevelsForModel(flavor, modelKey, metadata)
         val effort = ModeOptions.resolveCurrentOption(
             efforts,
-            listOf(mirror.effortLevel, if (rig) rigReasoningSelection(metadata, modelKey, efforts) else defaults.effortLevel),
+            listOf(mirror.effortLevel) + if (rig) {
+                listOf(rigReasoningSelection(metadata, modelKey, efforts))
+            } else if (hasMetadataCatalog && !hasExplicitEffortOverride) {
+                listOf(reportedEffort, defaults.effortLevel)
+            } else {
+                listOf(defaults.effortLevel)
+            },
         )
         return ComposerModes(
             availableModes = modes,
