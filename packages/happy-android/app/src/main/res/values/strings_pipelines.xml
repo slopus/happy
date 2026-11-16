@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Pipelines (ui/pipelines/): home's Pipelines row on a Happy Cloud server, the list of pipelines and every
-  run of them. Words follow desktop's pipeline pages. Translated in values-*/ (AndroidStringsTranslatedTest).
+  run of them, a run and a node's log. Words follow desktop's pipeline pages. Translated in values-*/ (AndroidStringsTranslatedTest).
 -->
 <resources>
     <string name="pipelines_title">Pipelines</string>
@@ -35,4 +35,93 @@
     <string name="pipelines_duration_seconds">%1$ds</string>
     <string name="pipelines_duration_minutes">%1$dm %2$ds</string>
     <string name="pipelines_duration_hours">%1$dh %2$dm</string>
+    <string name="pipelines_run_title">Run</string>
+    <string name="pipelines_run_loading">Loading run…</string>
+    <string name="pipelines_run_failed">Couldn\'t read this run</string>
+    <string name="pipelines_run_missing">Run not found</string>
+    <string name="pipelines_run_missing_footer">This server has no such run.</string>
+    <string name="pipelines_run_started_by">Started by</string>
+    <string name="pipelines_run_queued">Queued</string>
+    <string name="pipelines_run_started">Started</string>
+    <string name="pipelines_run_ended">Ended</string>
+    <string name="pipelines_run_group">Group</string>
+    <string name="pipelines_run_parent">Parent run</string>
+    <string name="pipelines_run_parent_via">Started this run from its node %1$s</string>
+    <string name="pipelines_run_abort">Abort run</string>
+    <string name="pipelines_run_abort_title">Abort this run?</string>
+    <string name="pipelines_run_abort_message">Its running nodes stop, and nothing they finish afterwards is kept. Child runs that nothing else waits for are aborted too.</string>
+    <string name="pipelines_run_abort_confirm">Abort</string>
+    <string name="pipelines_run_abort_cancel">Keep running</string>
+    <string name="pipelines_run_abort_failed">The run was not aborted. Check the connection and try again.</string>
+    <string name="pipelines_run_abort_failed_because">The run was not aborted: %1$s</string>
+    <string name="pipelines_nodes">Nodes</string>
+    <string name="pipelines_nodes_unordered">This version\'s graph couldn\'t be read, so the nodes are in the order they started.</string>
+    <string name="pipelines_node_waiting">Waiting</string>
+    <string name="pipelines_node_skipped">Skipped</string>
+    <string name="pipelines_node_not_run">Didn\'t run</string>
+    <string name="pipelines_kind_code">Code</string>
+    <string name="pipelines_kind_agent">Agent</string>
+    <string name="pipelines_kind_agent_model">Agent · %1$s</string>
+    <string name="pipelines_kind_pipeline">Runs %1$s</string>
+    <string name="pipelines_kind_pipeline_any">Runs a pipeline</string>
+    <string name="pipelines_child_runs">Child runs</string>
+    <string name="pipelines_child_via_node">From its node %1$s</string>
+    <string name="pipelines_child_via_nodes">Shared by its nodes %1$s</string>
+    <string name="pipelines_child_via_run">Started by this run</string>
+    <string name="pipelines_failures">Why it failed</string>
+    <string name="pipelines_failure">Failure</string>
+    <string name="pipelines_failure_no_message">No message.</string>
+    <string name="pipelines_failure_exception">Raised an exception</string>
+    <string name="pipelines_failure_type_error">Didn\'t fit its type</string>
+    <string name="pipelines_failure_invalid_output">Returned an invalid output</string>
+    <string name="pipelines_failure_output_too_large">Output over 1 MiB</string>
+    <string name="pipelines_failure_timeout">Ran out of time</string>
+    <string name="pipelines_failure_compute_unavailable">Computer unavailable</string>
+    <string name="pipelines_failure_permission_denied">Not permitted</string>
+    <string name="pipelines_failure_unsupported">Not supported on this cluster</string>
+    <string name="pipelines_failure_internal_error">The cluster failed</string>
+    <string name="pipelines_failure_no_output">Ended without an output</string>
+    <string name="pipelines_failure_agent_error">The agent\'s turn failed</string>
+    <string name="pipelines_failure_model_unavailable">Model unavailable</string>
+    <string name="pipelines_failure_child_failed">Its child run failed</string>
+    <string name="pipelines_failure_child_aborted">Its child run was aborted</string>
+    <string name="pipelines_failure_child_superseded">Its child run was superseded</string>
+    <string name="pipelines_failure_child_unavailable">Child run unavailable</string>
+    <string name="pipelines_failure_cycle">Would run a pipeline already running above it</string>
+    <string name="pipelines_failure_too_deep">Child runs nested too deep</string>
+    <string name="pipelines_input">Input</string>
+    <string name="pipelines_result">Result</string>
+    <string name="pipelines_output">Output</string>
+    <string name="pipelines_usage">Usage</string>
+    <string name="pipelines_usage_cost">Cost</string>
+    <string name="pipelines_usage_not_priced">Not priced</string>
+    <string name="pipelines_usage_some_unpriced">%1$s (some unpriced)</string>
+    <string name="pipelines_usage_tokens">Tokens</string>
+    <string name="pipelines_usage_tokens_value">%1$s in · %2$s out</string>
+    <string name="pipelines_usage_cached">Cached</string>
+    <string name="pipelines_usage_reasoning">Reasoning</string>
+    <string name="pipelines_usage_model">Model</string>
+    <string name="pipelines_usage_none">No inference yet.</string>
+    <string name="pipelines_computers">Computers</string>
+    <string name="pipelines_lease_held">%1$s · held by %2$s</string>
+    <string name="pipelines_lease_held_nobody">%1$s · held by nobody</string>
+    <string name="pipelines_lease_released">%1$s · released %2$s</string>
+    <string name="pipelines_log">Log</string>
+    <string name="pipelines_log_reading">Reading the log…</string>
+    <string name="pipelines_log_nothing_yet">Nothing logged yet.</string>
+    <string name="pipelines_log_nothing">This node logged nothing.</string>
+    <string name="pipelines_log_skipped">This node was skipped; it did nothing.</string>
+    <string name="pipelines_log_pending">This node hasn\'t started.</string>
+    <string name="pipelines_log_not_run">This node didn\'t run.</string>
+    <string name="pipelines_log_dropped">The server let go of the oldest %1$d entries.</string>
+    <string name="pipelines_log_out_of_date">The log may be out of date: the last read failed.</string>
+    <string name="pipelines_log_exit">Exit %1$d</string>
+    <string name="pipelines_log_exit_unknown">Exit ?</string>
+    <string name="pipelines_log_done">Done</string>
+    <string name="pipelines_log_truncated">Earlier output was cut; this is the last 64 KiB.</string>
+    <string name="pipelines_log_on_lease">on %1$s</string>
+    <string name="pipelines_duration_ms">%1$dms</string>
+    <string name="pipelines_progress">%1$s · %2$d%%</string>
+    <string name="pipelines_statuses">Status history</string>
+    <string name="pipelines_statuses_none">It has said nothing yet.</string>
 </resources>

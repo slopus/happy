@@ -141,19 +141,23 @@ class PipelinesSource(
 
     private fun updateRuns(change: (PipelineRuns) -> PipelineRuns) = mutableState.update { it.copy(runs = change(it.runs)) }
 
-    /** What [read] answered, null when it failed; cancellation goes through. */
-    private class Read<T>(val value: T)
-
-    private suspend fun <T> attempt(read: suspend () -> T): Read<T>? = try {
-        Read(read())
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: Exception) {
-        null
-    }
-
+    /** The cluster's pipeline events (API.md, "Events"): hints to read again, carrying no state. */
     companion object {
         const val PIPELINE_UPDATED = "pipeline.updated"
         const val RUN_UPDATED = "pipeline.run.updated"
+        const val NODE_UPDATED = "pipeline.node.updated"
+        const val NODE_LOG = "pipeline.node.log"
     }
+}
+
+/** What a read answered (null itself, for a `404`); see [attempt]. */
+internal class Read<T>(val value: T)
+
+/** [read]'s answer, null when it failed; cancellation goes through. */
+internal suspend fun <T> attempt(read: suspend () -> T): Read<T>? = try {
+    Read(read())
+} catch (e: CancellationException) {
+    throw e
+} catch (_: Exception) {
+    null
 }
