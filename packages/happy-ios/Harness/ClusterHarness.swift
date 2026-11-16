@@ -405,7 +405,7 @@ actor ClusterServer: AgentTransport {
 /// a server that doesn't serve plugins (`-noplugins`); its pipelines
 /// (`-open pipelines`, `ClusterPipelines`; `-bottom` scrolls to its last run, `-select <row>` taps a row), moving on over the events
 /// stream (`-livepipelines`), or a server without them (`-nopipelines`);
-/// a run (`-open run:r1`; `-scroll <row>` to a row, `-abort` asks to
+/// a run (`-open run:r1`, from its row in the list with `-viarow`; `-scroll <row>` to a row, `-abort` asks to
 /// abort it, `-aborted` aborts it as the confirmation does, refused with
 /// `-abortrefused`) or one node of it (`-open node:r1:migrate`; `-toggle
 /// <seq>` opens or folds a command, `-bottom` to the log's tail); on
@@ -507,9 +507,20 @@ final class ClusterHarness {
                 if let row = value("-select", in: arguments) { page.list.onSelect?(row) }
             case let open? where open.hasPrefix("run:") || open.hasPrefix("node:"):
                 let parts = open.split(separator: ":").map(String.init)
-                navigation.pushViewController(PipelinesViewController(session: session), animated: false)
-                let run = PipelineRunViewController(session: session, runId: parts[1])
-                navigation.pushViewController(run, animated: false)
+                let list = PipelinesViewController(session: session)
+                navigation.pushViewController(list, animated: false)
+                let run: PipelineRunViewController
+                if arguments.contains("-viarow") {
+                    // As a tap on its row in the list, which knows its pipeline's name.
+                    try? await Task.sleep(for: .seconds(1.5))
+                    list.list.onSelect?(PipelineListItems.runId(parts[1]))
+                    try? await Task.sleep(for: .seconds(0.5))
+                    guard let shown = navigation.topViewController as? PipelineRunViewController else { break }
+                    run = shown
+                } else {
+                    run = PipelineRunViewController(session: session, runId: parts[1])
+                    navigation.pushViewController(run, animated: false)
+                }
                 if parts.count == 3 {
                     let node = PipelineNodeViewController(session: session, run: run.feed, nodeId: parts[2])
                     navigation.pushViewController(node, animated: false)

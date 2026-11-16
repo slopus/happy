@@ -23,6 +23,11 @@ public actor PipelineFeed {
         /// The server has no such pipeline: archived, or never there.
         public var missing = false
         public var pipeline: PipelineDetail?
+        /// Its name: the pipeline's once read, else the one it was opened
+        /// with or its runs carry, for an archived pipeline that can't be read.
+        public var name: String?
+        /// Its runs say it is archived.
+        public var archived = false
         /// Newest first, without definitions; empty until read.
         public var versions: [PipelineVersion] = []
         /// Each version's definition as far as it has been read, the head's with the pipeline.
@@ -79,16 +84,17 @@ public actor PipelineFeed {
         var again = false
     }
 
-    public init(pipelineId: String, source: Source) {
+    public init(pipelineId: String, name: String? = nil, source: Source) {
         self.pipelineId = pipelineId
         self.source = source
+        state.name = name
     }
 
     /// The account's own: its client, and its stream's events.
-    public init(pipelineId: String, engine: SyncEngine) {
+    public init(pipelineId: String, name: String? = nil, engine: SyncEngine) {
         let client = engine.client
         let store = engine.spaces
-        self.init(pipelineId: pipelineId, source: Source(
+        self.init(pipelineId: pipelineId, name: name, source: Source(
             pipeline: { try await client.pipeline($0) },
             versions: { try await client.pipelineVersions($0) },
             version: { try await client.pipelineVersion($0, number: $1) },
@@ -173,6 +179,7 @@ public actor PipelineFeed {
         switch detail {
         case .success(let pipeline?):
             state.pipeline = pipeline
+            state.name = pipeline.name
             state.missing = false
             state.failed = false
             if let definition = pipeline.head.definition { state.definitions[pipeline.head.number] = .loaded(definition) }
@@ -202,7 +209,7 @@ public actor PipelineFeed {
         guard active else { return }
         guard !runsRead.reading else { runsRead.again = true; return }
         runsRead = Coalesced(reading: true)
-        let (read, id, name) = (source.runs, pipelineId, state.pipeline?.name ?? pipelineId)
+        let (read, id, name) = (source.runs, pipelineId, state.name ?? pipelineId)
         Task {
             let result = await Self.attempt { try await read(id, name, nil) }
             self.landRuns(result)
@@ -213,6 +220,7 @@ public actor PipelineFeed {
         switch result {
         case .success(let page):
             state.runs.entries = PipelineRunPage.merge(state.runs.entries, page: page.runs, complete: !pagedPastFirst)
+            heard(page.runs)
             if !pagedPastFirst { state.runs.nextCursor = page.nextCursor }
             state.runs.failed = false
         case .failure:
@@ -225,12 +233,18 @@ public actor PipelineFeed {
         if again { loadRuns() }
     }
 
+    /// What its runs say of it, where the pipeline itself can't be read.
+    private func heard(_ runs: [PipelineRunListEntry]) {
+        if runs.contains(where: \.pipelineArchived) { state.archived = true }
+        if state.name == nil, let named = runs.first(where: { $0.pipelineName != pipelineId }) { state.name = named.pipelineName }
+    }
+
     /// Reads the next older page of its runs.
     public func more() {
         guard !state.runs.loadingMore, let cursor = state.runs.nextCursor else { return }
         state.runs.loadingMore = true
         publish()
-        let (read, id, name) = (source.runs, pipelineId, state.pipeline?.name ?? pipelineId)
+        let (read, id, name) = (source.runs, pipelineId, state.name ?? pipelineId)
         Task {
             let result = await Self.attempt { try await read(id, name, cursor) }
             self.landMore(result)
@@ -244,6 +258,7 @@ public actor PipelineFeed {
             let known = Set(state.runs.entries.map(\.id))
             pagedPastFirst = true
             state.runs.entries += page.runs.filter { !known.contains($0.id) }
+            heard(page.runs)
             state.runs.nextCursor = page.nextCursor
             state.runs.failed = false
         case .failure:

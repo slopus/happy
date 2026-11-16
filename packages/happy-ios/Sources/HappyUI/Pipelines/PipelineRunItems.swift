@@ -9,6 +9,9 @@ import UIKit
 /// state, agents' names and the screen's environment.
 struct PipelineRunInput: Sendable {
     var state = PipelineRunFeed.State()
+    /// Its pipeline's name as the row it opened from had it, for an archived
+    /// pipeline the pipelines' list no longer names.
+    var pipelineName: String?
     var agents: [String: String] = [:]
     var env = PipelineCardEnvironment()
 }
@@ -16,9 +19,11 @@ struct PipelineRunInput: Sendable {
 /// What a page's rows do, by row ID: open another run, a node or a
 /// block's whole text, open or fold a command's output, or abort the run.
 enum PipelineRowTarget: Equatable, Sendable {
-    case run(String)
+    /// A run, with its pipeline's name where the row knows it.
+    case run(String, pipelineName: String? = nil)
     case node(String)
-    case pipeline(String)
+    /// A pipeline, with its name where the row knows it: an archived one's can't be read.
+    case pipeline(String, name: String? = nil)
     case version(Int)
     /// A node as a version defines it; nil, the latest.
     case definitionNode(version: Int?, nodeId: String)
@@ -82,8 +87,8 @@ enum PipelineRunItems {
                               trailing: ago(run.createdAt, env), tile: PipelineRows.tile(run.state), place: place, env), nil)
         }
         facts.append { place in
-            (PipelineRows.row("run:pipeline", title: Text.pipeline, trailing: state.names[run.pipelineId] ?? Text.version(run.version), place: place, opens: true, env),
-             .pipeline(run.pipelineId))
+            (PipelineRows.row("run:pipeline", title: Text.pipeline, trailing: state.names[run.pipelineId] ?? input.pipelineName ?? Text.version(run.version), place: place, opens: true, env),
+             .pipeline(run.pipelineId, name: state.names[run.pipelineId] ?? input.pipelineName))
         }
         let rows: [(String, String, String?)] = [
             ("started-by", Text.startedByLabel, startedBy(run, input)),

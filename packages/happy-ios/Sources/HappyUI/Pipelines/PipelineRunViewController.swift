@@ -13,9 +13,9 @@ import UIKit
 final class PipelineRunViewController: PipelinePageViewController<PipelineRunInput> {
     let feed: PipelineRunFeed
 
-    init(session: Session, runId: String) {
+    init(session: Session, runId: String, pipelineName: String? = nil) {
         feed = PipelineRunFeed(runId: runId, engine: session.engine)
-        super.init(session: session, input: PipelineRunInput(), title: Strings.Pipelines.run)
+        super.init(session: session, input: PipelineRunInput(pipelineName: pipelineName), title: Strings.Pipelines.run)
     }
 
     deinit {

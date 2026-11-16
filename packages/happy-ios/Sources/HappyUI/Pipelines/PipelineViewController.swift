@@ -19,8 +19,9 @@ final class PipelineViewController: PipelinePageViewController<PipelineInput> {
     /// The page that made the feed finishes it.
     private let owns: Bool
 
-    convenience init(session: Session, pipelineId: String) {
-        self.init(session: session, feed: PipelineFeed(pipelineId: pipelineId, engine: session.engine), screen: .pipeline, owns: true)
+    /// `name` is what the row it opened from called it: an archived pipeline can't be read, its name with it.
+    convenience init(session: Session, pipelineId: String, name: String? = nil) {
+        self.init(session: session, feed: PipelineFeed(pipelineId: pipelineId, name: name, engine: session.engine), screen: .pipeline, owns: true)
     }
 
     init(session: Session, feed: PipelineFeed, screen: PipelineScreen, owns: Bool = false) {
@@ -92,7 +93,7 @@ final class PipelineViewController: PipelinePageViewController<PipelineInput> {
             navigationController?.pushViewController(PipelineViewController(session: session, feed: feed, screen: .version(number)), animated: true)
         case .definitionNode(let number, let nodeId):
             navigationController?.pushViewController(PipelineViewController(session: session, feed: feed, screen: .node(version: number, nodeId: nodeId)), animated: true)
-        case .pipeline(let id) where id == feed.pipelineId:
+        case .pipeline(let id, _) where id == feed.pipelineId:
             // A node running this pipeline's own page: back to it rather than another copy.
             if let page = navigationController?.viewControllers.first(where: { ($0 as? PipelineViewController)?.feed === feed && ($0 as? PipelineViewController)?.screen == .pipeline }) {
                 navigationController?.popToViewController(page, animated: true)
