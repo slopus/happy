@@ -175,7 +175,9 @@ public enum OAuthError: Error, Equatable, Sendable {
     case invalidResponse
     /// An RFC 6749 error, from the redirect or the token endpoint.
     case server(code: String, description: String?)
-    /// The token endpoint couldn't be reached.
+    /// The token endpoint couldn't be reached, or answered with a fault of
+    /// its own (any 5xx, `temporarily_unavailable` and `server_error`
+    /// included): the grant stands for the next try.
     case network
     /// No refresh URL or token was recorded: sign in again.
     case refreshUnavailable
@@ -360,6 +362,9 @@ public struct OAuthTokenClient: Sendable {
         catch is CancellationError { throw CancellationError() }
         catch { throw OAuthError.network }
         struct Failure: Decodable { let error: String; let error_description: String? }
+        // A fault on the server's side, a gateway's HTML page or an OAuth
+        // body alike, says nothing about the grant.
+        if response.status >= 500 { throw OAuthError.network }
         guard (200..<300).contains(response.status) else {
             if let failure = try? JSONDecoder().decode(Failure.self, from: response.body), !failure.error.isEmpty {
                 throw OAuthError.server(code: failure.error, description: failure.error_description)

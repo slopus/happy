@@ -959,6 +959,13 @@ final class SignedInTransportTests: XCTestCase {
         await XCTAssertThrowsAsync(try await auth.bearer()) { XCTAssertEqual($0 as? OAuthError, .network) }
         var state = await auth.state
         XCTAssertEqual(state, .signedIn)
+        // A fault at the token endpoint, in OAuth's words or a gateway's, is one too.
+        for (status, body) in [(503, #"{"error":"temporarily_unavailable"}"#), (500, #"{"error":"server_error"}"#), (502, "<html>Bad Gateway</html>"), (504, "")] {
+            http.json(acme.refreshUrl!, status: status, body)
+            await XCTAssertThrowsAsync(try await auth.bearer()) { XCTAssertEqual($0 as? OAuthError, .network, "\(status)") }
+            state = await auth.state
+            XCTAssertEqual(state, .signedIn, "\(status)")
+        }
         http.json(acme.refreshUrl!, status: 400, #"{"error":"invalid_grant"}"#)
         await XCTAssertThrowsAsync(try await auth.bearer())
         state = await auth.state
