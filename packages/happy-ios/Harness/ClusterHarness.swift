@@ -103,11 +103,13 @@ actor ClusterServer: AgentTransport {
     let servesPlugins: Bool
     /// Health says it runs pipelines; off (`-nopipelines`), as deployed before them.
     let servesPipelines: Bool
-    /// The events stream opens and, five seconds on, the pipelines move on
-    /// (`-livepipelines`); otherwise the stream can't be reached.
+    /// The events stream opens, the running migration logs a line a
+    /// second, and ten seconds on the pipelines move on (`-livepipelines`);
+    /// otherwise the stream can't be reached.
     let livePipelines: Bool
     private var pipelines = ClusterPipelines()
     private var streams: [AsyncThrowingStream<Data, Error>.Continuation] = []
+    private var cursor = 1
     /// An existing tenant while the move to the settings rolls out
     /// (`-policyvault`): its Policy vault still flagged, beside the config
     /// routes and `policy.edit`.
@@ -155,10 +157,11 @@ actor ClusterServer: AgentTransport {
     }
 
     init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil, servesPlugins: Bool = true, servesPipelines: Bool = true, livePipelines: Bool = false,
-         policyVault: Bool = false, production: Bool = false, invites: String? = nil) {
+         refusesAbort: Bool = false, policyVault: Bool = false, production: Bool = false, invites: String? = nil) {
         self.manager = manager
         self.servesPipelines = servesPipelines
         self.livePipelines = livePipelines
+        pipelines.refusesAbort = refusesAbort
         self.invites = invites
         self.servesPlugins = servesPlugins
         self.policyVault = policyVault
@@ -207,13 +210,15 @@ actor ClusterServer: AgentTransport {
         func refuse(_ status: Int, _ code: String, _ error: String) -> HTTP1Response { ok(#"{"code":"\#(code)","error":"\#(error)"}"#, status: status) }
         let sent = body.flatMap { try? JSONValue.decode($0) }
         let installation = path.hasPrefix("/v0/plugins/installations/") ? path.dropFirst("/v0/plugins/installations/".count).split(separator: "/").map(String.init) : []
+        if servesPipelines, let answer = pipelines.answer(method, path) {
+            publish(answer.events)
+            return ok(answer.body, status: answer.status)
+        }
         switch (method, path) {
         case ("GET", "/v0/bootstrap/desktop"): return ok(Self.bootstrap)
         case ("GET", "/v0/health"):
             let served = ["\"vaults\":true"] + (servesPlugins ? ["\"plugins\":true"] : []) + (servesPipelines ? ["\"pipelines\":true"] : [])
             return ok(#"{"ready":true,"capabilities":{\#(served.joined(separator: ","))}}"#)
-        case let (method, path) where servesPipelines && pipelines.answer(method, path) != nil:
-            return ok(pipelines.answer(method, path) ?? "")
         case ("GET", "/v0/onboarding") where nameless:
             return ok(#"{"completed":false,"steps":{"profile":{"done":true},"chiefOfStaff":{"done":false}},"member":{"completed":false,"steps":{"profile":{"done":\#(profileName != nil)}}}}"#)
         case ("GET", "/v0/onboarding"): return ok(onboarding)
@@ -337,17 +342,34 @@ actor ClusterServer: AgentTransport {
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
         streams.append(continuation)
         continuation.yield(Data("event: hello\ndata: {\"cursor\":\"cursor-1\",\"resumed\":true}\n\n".utf8))
-        if streams.count == 1 { Task { try? await Task.sleep(for: .seconds(5)); self.advancePipelines() } }
+        if streams.count == 1 {
+            Task {
+                for _ in 0..<8 {
+                    try? await Task.sleep(for: .seconds(1))
+                    self.publish(self.pipelines.tick())
+                }
+                try? await Task.sleep(for: .seconds(2))
+                self.advancePipelines()
+            }
+        }
         return HTTP1Stream(status: 200, body: body)
     }
 
     /// The pipelines move on, and the stream says which runs changed.
     private func advancePipelines() {
         pipelines.advance()
-        for (index, run) in ["r12", "r1", "r2", "r3"].enumerated() {
+        publish(["r12", "r1", "r2", "r3"].map { run in
             let pipeline = ["r12": "triage", "r1": "deploy", "r2": "build", "r3": "sweep"][run] ?? ""
-            let event = #"{"cursor":"cursor-\#(index + 2)","type":"pipeline.run.updated","occurredAt":\#(Int64(Date().timeIntervalSince1970 * 1000)),"payload":{"pipelineId":"\#(pipeline)","runId":"\#(run)"}}"#
-            for stream in streams { stream.yield(Data("event: pipeline.run.updated\ndata: \(event)\n\n".utf8)) }
+            return ("pipeline.run.updated", #"{"pipelineId":"\#(pipeline)","runId":"\#(run)"}"#)
+        } + [("pipeline.node.log", #"{"runId":"r1","nodeId":"migrate"}"#)])
+    }
+
+    /// Journals `events` on every open stream.
+    private func publish(_ events: [(type: String, payload: String)]) {
+        for (type, payload) in events {
+            cursor += 1
+            let event = #"{"cursor":"cursor-\#(cursor)","type":"\#(type)","occurredAt":\#(Int64(Date().timeIntervalSince1970 * 1000)),"payload":\#(payload)}"#
+            for stream in streams { stream.yield(Data("event: \(type)\ndata: \(event)\n\n".utf8)) }
         }
     }
     func reset() async {}
@@ -381,8 +403,13 @@ actor ClusterServer: AgentTransport {
 /// a member yet to give their name on a server without gates (`-nameless`);
 /// onboarding's gates as `-gates profile:required,avatar,…` (`ClusterServer.Gate`);
 /// a server that doesn't serve plugins (`-noplugins`); its pipelines
-/// (`-open pipelines`, `ClusterPipelines`; `-bottom` scrolls to its last run), moving on over the events
+/// (`-open pipelines`, `ClusterPipelines`; `-bottom` scrolls to its last run, `-select <row>` taps a row), moving on over the events
 /// stream (`-livepipelines`), or a server without them (`-nopipelines`);
+/// a run (`-open run:r1`; `-scroll <row>` to a row, `-abort` asks to
+/// abort it, `-aborted` aborts it as the confirmation does, refused with
+/// `-abortrefused`) or one node of it (`-open node:r1:migrate`; `-toggle
+/// <seq>` opens or folds a command, `-bottom` to the log's tail); on
+/// either `-select <row>` taps a row;
 /// an existing tenant
 /// whose Policy vault is still flagged (`-policyvault`), or as deployed
 /// before the documents moved to settings (`-production`);
@@ -400,7 +427,7 @@ final class ClusterHarness {
         let server = ClusterServer(manager: !arguments.contains("-member"), installed: !arguments.contains("-fresh"), nameless: arguments.contains("-nameless"),
                                    gates: arguments.firstIndex(of: "-gates").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil },
                                    servesPlugins: !arguments.contains("-noplugins"), servesPipelines: !arguments.contains("-nopipelines"),
-                                   livePipelines: arguments.contains("-livepipelines"), policyVault: arguments.contains("-policyvault"),
+                                   livePipelines: arguments.contains("-livepipelines"), refusesAbort: arguments.contains("-abortrefused"), policyVault: arguments.contains("-policyvault"),
                                    production: arguments.contains("-production"), invites: value("-invites", in: arguments))
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/cluster",
@@ -444,6 +471,33 @@ final class ClusterHarness {
                         try? await Task.sleep(for: .seconds(2))
                         pipelines.list.scroll(to: id, animated: false)
                     }
+                }
+                // `-select <row>`: as a tap on that row.
+                if let row = value("-select", in: arguments) {
+                    try? await Task.sleep(for: .seconds(2))
+                    pipelines.list.onSelect?(row)
+                }
+            case let open? where open.hasPrefix("run:") || open.hasPrefix("node:"):
+                let parts = open.split(separator: ":").map(String.init)
+                navigation.pushViewController(PipelinesViewController(session: session), animated: false)
+                let run = PipelineRunViewController(session: session, runId: parts[1])
+                navigation.pushViewController(run, animated: false)
+                if parts.count == 3 {
+                    let node = PipelineNodeViewController(session: session, run: run.feed, nodeId: parts[2])
+                    navigation.pushViewController(node, animated: false)
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if let seq = value("-toggle", in: arguments).flatMap(Int.init) { node.open(.command(seq: seq)) }
+                    if arguments.contains("-bottom") {
+                        try? await Task.sleep(for: .seconds(0.5))
+                        node.list.list.scrollToBottom(animated: false)
+                    }
+                    if let row = value("-select", in: arguments) { node.list.onSelect?(row) }
+                } else {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if let row = value("-scroll", in: arguments) { run.list.scroll(to: row, animated: false) }
+                    if arguments.contains("-abort") { run.open(.abort) }
+                    if arguments.contains("-aborted") { await run.feed.abort() }
+                    if let row = value("-select", in: arguments) { run.list.onSelect?(row) }
                 }
             case "instructions", "security":
                 let page = PolicyDocumentViewController(document: open == "security" ? .security : .instructions, session: session)

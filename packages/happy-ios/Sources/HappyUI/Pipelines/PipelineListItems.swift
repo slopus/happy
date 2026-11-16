@@ -33,18 +33,8 @@ struct PipelineListInput: Sendable {
 enum PipelineListItems {
     static func pipelineId(_ id: String) -> String { "pipeline:\(id)" }
     static func runId(_ id: String) -> String { "run:\(id)" }
-
-    /// A state's tile: its glyph, ink and fill (desktop's state tones).
-    nonisolated static func tile(_ state: PipelineRunState) -> (icon: Icon, ink: ColorToken, fill: ColorToken) {
-        switch state {
-        case .queued: (.ionicons("time-outline"), Palette.settingsSecondary, Palette.surfaceHighest)
-        case .running: (.ionicons("play-circle-outline"), Palette.tileBlue, Palette.tileBlueFill)
-        case .succeeded: (.ionicons("checkmark-circle-outline"), Palette.tileGreen, Palette.tileGreenFill)
-        case .failed: (.ionicons("close-circle-outline"), Palette.tileRed, Palette.tileRedFill)
-        case .aborted: (.ionicons("remove-circle-outline"), Palette.settingsSecondary, Palette.surfaceHighest)
-        case .superseded: (.ionicons("play-skip-forward"), Palette.settingsSecondary, Palette.surfaceHighest)
-        }
-    }
+    /// The run a row's ID names, if it is a run's row.
+    static func run(ofRow id: String) -> String? { id.hasPrefix("run:") ? String(id.dropFirst("run:".count)) : nil }
 
     /// Whether anything shown counts time by the second.
     nonisolated static func ticking(_ state: PipelinesFeed.State) -> Bool {
@@ -92,14 +82,12 @@ enum PipelineListItems {
         if !pipeline.enabled { parts.append(Text.disabled) }
         parts.append(pipeline.lastRun.map { Text.lastRun($0.state) } ?? Text.neverRun)
         let time = pipeline.lastRun.map { Text.ago(Date(timeIntervalSince1970: ($0.endedAt ?? $0.createdAt) / 1000), now: input.now, calendar: input.calendar) }
-        let look = pipeline.enabled
-            ? (ink: Palette.tileTeal, fill: Palette.tileTealFill)
-            : (ink: Palette.settingsSecondary, fill: Palette.surfaceHighest)
-        var item = card(id: pipelineId(pipeline.id), title: pipeline.name, muted: false, subtitle: parts.joined(separator: " · "), time: time,
-                        icon: Glyphs.icon("pipeline"), ink: look.ink, fill: look.fill, place: place, input: input)
+        let tile = pipeline.enabled
+            ? PipelineRows.Tile(icon: Glyphs.icon("pipeline"), ink: Palette.tileTeal, fill: Palette.tileTealFill)
+            : PipelineRows.neutral(Glyphs.icon("pipeline"))
         // Its page comes with the pipeline page; until then the row only reads.
-        item.opens = false
-        return item
+        return PipelineRows.row(pipelineId(pipeline.id), title: pipeline.name, subtitle: parts.joined(separator: " · "), trailing: time, tile: tile,
+                                place: place, environment(input))
     }
 
     nonisolated static func row(_ run: PipelineRunListEntry, place: CardPlace, parent: [String: String], input: PipelineListInput) -> CardItem {
@@ -112,40 +100,13 @@ enum PipelineListItems {
         var parts = [status, Text.version(run.version), Text.startedBy(run, agent: { input.agents[$0].flatMap { $0.isEmpty ? nil : $0 } }, parent: { parent[$0] })]
         if run.pipelineArchived { parts.append(Text.archived) }
         let time = Text.ago(Date(timeIntervalSince1970: run.createdAt / 1000), now: input.now, calendar: input.calendar)
-        let look = tile(run.state)
-        var item = card(id: runId(run.id), title: run.pipelineName, muted: run.pipelineArchived, subtitle: parts.joined(separator: " · "), time: time,
-                        icon: look.icon, ink: look.ink, fill: look.fill, place: place, input: input)
-        // The run page comes next; until then the row only reads.
-        item.opens = false
-        return item
+        return PipelineRows.row(runId(run.id), title: run.pipelineName, subtitle: parts.joined(separator: " · "), trailing: time, tile: PipelineRows.tile(run.state),
+                                place: place, opens: true, titleColor: run.pipelineArchived ? Palette.settingsSecondary : Palette.text, environment(input))
     }
 
-    /// One row: a tile, the title with a time at its end, and a line under it.
-    private nonisolated static func card(id: String, title: String, muted: Bool, subtitle: String, time: String?, icon: Icon, ink: ColorToken, fill: ColorToken,
-                                         place: CardPlace, input: PipelineListInput) -> CardItem {
-        typealias M = CardListMetrics
-        let titleFont = CardFont(.regular, M.titleSize, scale: input.scale)
-        let small = CardFont(.regular, M.subtitleSize, scale: input.scale)
-        let timeSize = time.map { CardText.measure($0, font: small, width: 10_000, maxLines: 1, scale: input.displayScale) }
-        let layout = CardRowLayout(
-            width: input.width, maxWidth: input.maxWidth, place: place, leading: CGSize(width: M.tile, height: M.tile),
-            title: CardText.measurable(title, font: titleFont, maxLines: 1, scale: input.displayScale),
-            subtitle: CardText.measurable(subtitle, font: small, maxLines: 2, scale: input.displayScale),
-            trailing: timeSize, titleLine: CardText.line(titleFont, scale: input.displayScale), hairline: 1 / max(1, input.displayScale), scale: input.displayScale
-        )
-        var drawing = CardDrawing(dark: input.dark, displayScale: input.displayScale)
-        if let frame = layout.leading {
-            drawing.marks.append(.tile(frame, radius: M.tileRadius, fill))
-            drawing.icon(icon, size: M.tileGlyph, ink, in: frame)
-        }
-        drawing.text(title, titleFont, muted ? Palette.settingsSecondary : Palette.text, layout.title)
-        if let frame = layout.subtitle { drawing.text(subtitle, small, Palette.settingsSecondary, frame, wraps: true) }
-        if let time, let frame = layout.trailing { drawing.text(time, small, Palette.settingsSecondary, frame) }
-        drawing.rule(layout.separator)
-        var item = CardItem(id: id, kind: .row, size: layout.size, card: layout.card, place: place, drawing: drawing)
-        item.accessibilityLabel = title
-        item.accessibilityValue = ([subtitle] + (time.map { [$0] } ?? [])).joined(separator: ", ")
-        return item
+    private nonisolated static func environment(_ input: PipelineListInput) -> PipelineCardEnvironment {
+        PipelineCardEnvironment(width: input.width, maxWidth: input.maxWidth, height: input.height, scale: input.scale,
+                                displayScale: input.displayScale, dark: input.dark, now: input.now, calendar: input.calendar)
     }
 }
 #endif
