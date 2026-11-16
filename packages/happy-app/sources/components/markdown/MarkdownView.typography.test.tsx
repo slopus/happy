@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
 
+const navigation = vi.hoisted(() => ({ push: vi.fn(), navigate: vi.fn() }));
+
 vi.mock('react-native', () => ({
     Image: 'Image',
     Platform: { OS: 'web' },
@@ -48,7 +50,8 @@ vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: vi.fn() } }));
 vi.mock('@/components/OtaPreviewCard', () => ({ OtaPreviewCard: 'OtaPreviewCard' }));
 vi.mock('@/components/FinanceChartCard', () => ({ FinanceChartCard: 'FinanceChartCard' }));
 vi.mock('@/components/IndependentSessionCard', () => ({ IndependentSessionCard: 'IndependentSessionCard' }));
-vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('expo-router', () => ({ useRouter: () => navigation }));
+vi.mock('@/hooks/useDesktopFileWorkspaceAvailable', () => ({ useDesktopFileWorkspaceAvailable: () => true }));
 vi.mock('expo-web-browser', () => ({}));
 vi.mock('./MermaidRenderer', () => ({ MermaidRenderer: 'MermaidRenderer' }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
@@ -68,6 +71,7 @@ import { MarkdownView } from './MarkdownView';
 import { FileWorkspaceContext } from '@/components/fileWorkspace/context';
 import { FileWorkspaceController } from '@/components/fileWorkspace/controller';
 import { openExternalUrl } from '@/utils/openExternalUrl';
+import { decodeFilePath } from '@/utils/filePathEncoding';
 
 const MARKDOWN = [
     '# Heading',
@@ -125,6 +129,7 @@ describe('MarkdownView typography scope', () => {
 
     beforeEach(() => {
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+        vi.clearAllMocks();
     });
 
     afterEach(() => {
@@ -285,7 +290,41 @@ describe('MarkdownView typography scope', () => {
         expect(openExternalUrl).not.toHaveBeenCalled();
     });
 
-    it('keeps restricted previews and paths outside the workspace inert while preserving external links', () => {
+    it('opens a chat link to a Skill file outside the project in the independent viewer', () => {
+        const openReference = vi.fn();
+        const workspace = { sessionId: 's', enabled: true, root: '/work', openReference } as any;
+        const path = '/Users/alice/.codex/skills/design-ops/references/图标/index.md';
+        act(() => {
+            renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={workspace}>
+                <MarkdownView markdown={`[图标索引](${path})`} sessionId="s" />
+            </FileWorkspaceContext.Provider>);
+        });
+        const link = textNode(renderer, '图标索引');
+        expect(link.props.accessibilityRole).toBe('link');
+        act(() => { link.props.onClick(); });
+        const href = navigation.push.mock.calls[0]?.[0];
+        expect(href).toMatch(/^\/session\/s\/file\?path=/);
+        expect(decodeFilePath(new URL(href, 'https://paws.test').searchParams.get('path')!)).toBe(path);
+        expect(openReference).not.toHaveBeenCalled();
+        expect(navigation.navigate).not.toHaveBeenCalled();
+        expect(openExternalUrl).not.toHaveBeenCalled();
+    });
+
+    it('keeps chat links inside the project in the current workspace', () => {
+        const openReference = vi.fn();
+        const workspace = { sessionId: 's', enabled: true, root: '/work', openReference } as any;
+        act(() => {
+            renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={workspace}>
+                <MarkdownView markdown="[说明](/work/README.md)" sessionId="s" />
+            </FileWorkspaceContext.Provider>);
+        });
+        act(() => { textNode(renderer, '说明').props.onClick(); });
+        expect(openReference).toHaveBeenCalledExactlyOnceWith('/work/README.md');
+        expect(navigation.push).not.toHaveBeenCalled();
+        expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    it('keeps restricted previews and their outside paths inert while preserving external links', () => {
         const openReference = vi.fn();
         const workspace = { enabled: true, root: '/work', openReference } as any;
         const markdown = '[本地](/work/字幕.md) [越界](/outside/secret.md) [网站](https://example.com)';

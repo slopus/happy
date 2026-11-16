@@ -23,6 +23,7 @@ import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 import { isHttpMarkdownLink } from './linkUtils';
 import { openExternalUrl } from '@/utils/openExternalUrl';
+import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import { hapticsLight } from '../haptics';
 import {
     MAX_IMAGE_STYLE_OPTION_COUNT,
@@ -49,6 +50,7 @@ export type MarkdownViewVariant = 'default' | 'foldedPrompt';
 
 const MarkdownImagesContext = React.createContext<Record<string, string | null> | undefined>(undefined);
 const MarkdownFileLinksContext = React.createContext(false);
+const MarkdownOutsideWorkspaceLinksContext = React.createContext(false);
 const MarkdownTypographyContext = React.createContext<MarkdownTypographyMode>('default');
 
 function useMarkdownTypographyMode(): MarkdownTypographyMode {
@@ -88,14 +90,20 @@ export const MarkdownView = React.memo((props: {
     const selectable = Platform.OS === 'web' || !markdownCopyV2;
     const router = useRouter();
     const workspace = useFileWorkspace();
+    const openSessionFile = useOpenSessionFile(props.sessionId);
     const fileLinksEnabled = !!workspace?.enabled && !!props.sessionId && (props.fileLinks ?? !props.readOnly);
 
     const handleLinkPress = React.useCallback((url: string) => {
-        if (fileLinksEnabled && workspace && parseSessionFileLink(url, { sessionRoot: workspace.root })?.withinSessionRoot) { void workspace.openReference(url); return; }
+        const file = fileLinksEnabled && workspace ? parseSessionFileLink(url, { sessionRoot: workspace.root }) : null;
+        if (file?.withinSessionRoot && workspace) { void workspace.openReference(url); return; }
+        // Chat may reference Skill files or other projects. The independent
+        // viewer uses the existing readFile permission boundary; document
+        // previews remain scoped to their workspace.
+        if (file && !props.readOnly) { openSessionFile(url); return; }
         if (!isHttpMarkdownLink(url)) { return; }
 
         void openExternalUrl(url);
-    }, [workspace, fileLinksEnabled]);
+    }, [workspace, fileLinksEnabled, props.readOnly, openSessionFile]);
 
     const handleLongPress = React.useCallback(() => {
         try {
@@ -108,7 +116,7 @@ export const MarkdownView = React.memo((props: {
     }, [props.markdown, router]);
     const renderContent = () => {
         return (
-            <MarkdownImagesContext.Provider value={props.imageUrls}><MarkdownFileLinksContext.Provider value={fileLinksEnabled}><MarkdownTypographyContext.Provider value={props.typography ?? 'default'}>
+            <MarkdownImagesContext.Provider value={props.imageUrls}><MarkdownFileLinksContext.Provider value={fileLinksEnabled}><MarkdownOutsideWorkspaceLinksContext.Provider value={!props.readOnly}><MarkdownTypographyContext.Provider value={props.typography ?? 'default'}>
                 <View style={{ width: '100%' }}>
                     {blocks.map((block, index) => {
                     const nextBlock = blocks[index + 1];
@@ -159,7 +167,7 @@ export const MarkdownView = React.memo((props: {
                     return element;
                     })}
                 </View>
-            </MarkdownTypographyContext.Provider></MarkdownFileLinksContext.Provider></MarkdownImagesContext.Provider>
+            </MarkdownTypographyContext.Provider></MarkdownOutsideWorkspaceLinksContext.Provider></MarkdownFileLinksContext.Provider></MarkdownImagesContext.Provider>
         );
     }
 
@@ -632,10 +640,12 @@ function RenderSpans(props: RenderSpanProps) {
     const typography = useMarkdownTypography();
     const workspace = useFileWorkspace();
     const linkFiles = React.useContext(MarkdownFileLinksContext);
+    const allowOutsideWorkspace = React.useContext(MarkdownOutsideWorkspaceLinksContext);
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
-                const isExternalLink = isHttpMarkdownLink(span.url) || !!(linkFiles && workspace && parseSessionFileLink(span.url, { sessionRoot: workspace.root })?.withinSessionRoot);
+                const file = linkFiles && workspace ? parseSessionFileLink(span.url, { sessionRoot: workspace.root }) : null;
+                const isExternalLink = isHttpMarkdownLink(span.url) || !!(file && (file.withinSessionRoot || allowOutsideWorkspace));
                 return (
                     <Text
                         key={index}
