@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -201,6 +202,8 @@ class Conversation(
     private val record: (AnalyticsEvent) -> Unit = Analytics::record,
     private val errorShown: (ErrorArea, ErrorCode) -> Unit = Analytics::errorShown,
     private val initialRead: suspend () -> Pair<Bootstrap, MessagesPage>? = { null },
+    /** Group tool calls ([ToolSections]), as the phone's Appearance says; null keeps every call a row of its own. */
+    private val grouped: StateFlow<Boolean>? = null,
 ) {
     /**
      * A send on its way: the person's [text], its pictures and its [files].
@@ -273,6 +276,12 @@ class Conversation(
     private val runInfo = HashMap<String, RunInfo>()
     /** Finished turns opened on their work ([toggleTurn]). */
     private val expanded = HashSet<String>()
+    /** Turns shown before they ended: one that then ends was watched to its end. */
+    private val unended = HashSet<String>()
+    /** Turns watched to their end, which keep their rows under Group tool calls until folded ([TurnFold]'s quiet). */
+    private val settling = HashSet<String>()
+    /** The tool sections seen ending, by key: they stay ended ([ToolSections]). */
+    private val sectionsEnded = HashSet<String>()
     /** A person's long messages opened past their first lines ([toggleMessage]), by row key. */
     private val opened = HashSet<String>()
     private val messages = HashMap<String, Message>()
@@ -338,6 +347,8 @@ class Conversation(
             }
             // Preferences changed on another device: an unpicked new chat follows them.
             preferences?.let { flow -> launch { flow.collect { if (adoptStartMode()) publish() } } }
+            // Group tool calls turned on or off: the rows follow at once.
+            grouped?.let { flow -> launch { flow.drop(1).collect { publish() } } }
             if (created) reload() else readSkills()
             signals.collect { signal ->
                 // The computer's models changed, or may have while away: the pickers read them again.
@@ -793,7 +804,8 @@ class Conversation(
     /** Opens a finished turn on its work, or folds it again. */
     fun toggleTurn(turn: String) {
         scope.launch(lane) {
-            if (!expanded.remove(turn)) expanded += turn
+            // A turn watched to its end folds first; after that it opens and folds as any.
+            if (!(grouped?.value == true && settling.remove(turn)) && !expanded.remove(turn)) expanded += turn
             publish()
         }
     }
@@ -1714,6 +1726,9 @@ class Conversation(
         val rows = ArrayList<ConversationRow>()
         val lastRun = lastTurn()
         val waiting = base.question
+        val grouped = grouped?.value == true
+        // Under Group tool calls, the calls of a turn opened on its traces are each a row.
+        val apart = HashSet<String>()
         for ((runId, ids) in runs) {
             val streaming = working && runId == lastRun
             val turn = ArrayList<ConversationRow>()
@@ -1730,6 +1745,7 @@ class Conversation(
             }
             // Ended: how, after how long, and the answer to copy (desktop's `turnStatus`); then it folds.
             val endedAt = info?.endedAt
+            if (endedAt == null) unended += runId else if (unended.remove(runId)) settling += runId
             if (endedAt != null) {
                 val at = turn.indexOfLast { it is ConversationRow.Text }
                 val answer = (turn.getOrNull(at) as? ConversationRow.Text)?.text
@@ -1746,7 +1762,16 @@ class Conversation(
                 if (ended.complete && answer != null) turn[at] = (turn[at] as ConversationRow.Text).copy(copies = false)
                 turn += ended
             }
-            rows += TurnFold.fold(runId, turn, runId in expanded)
+            if (grouped) {
+                // One copy button a turn: its end's, or, where the end offers none, its last words'. A turn still
+                // running shows none, so words never lose a button (and their row its height) as more come.
+                val end = turn.lastOrNull() as? ConversationRow.TurnEnd
+                val last = if (end != null && !end.complete) turn.indexOfLast { it is ConversationRow.Text } else -1
+                for (i in turn.indices) (turn[i] as? ConversationRow.Text)?.takeIf { it.copies && i != last }?.let { turn[i] = it.copy(copies = false) }
+            }
+            val folded = TurnFold.fold(runId, turn, runId in expanded, grouped, quiet = grouped && runId in settling)
+            if (grouped && runId in expanded) folded.forEach { apart += it.key }
+            rows += folded
         }
         // A question waiting on the person is pinned to the end, under the work; a secret's form stays over the composer.
         if (waiting != null && waiting.secret == null) {
@@ -1756,6 +1781,13 @@ class Conversation(
                 else -> AskPhase.Pending
             }
             rows += ConversationRow.Ask(ConversationRowBuilder.askKey(waiting.id), waiting, phase)
+        }
+        if (grouped) {
+            // What follows the work (a person's sends) ends none of it: their rows come after.
+            val sections = ToolSections.group(rows, working, sectionsEnded, apart) { row -> messages[row.key.substringBeforeLast(':')]?.createdAt?.takeIf { it > 0 } }
+            rows.clear()
+            // A question answered before this showed it is one line; one that settled here stays the card it was.
+            sections.mapTo(rows) { if (it is ConversationRow.Ask && it.phase == AskPhase.Answered && it.question.id !in answered) it.copy(line = true) else it }
         }
         for (id in pending) messages[id]?.let { rows += sentAt(builder.rows(it, agentId, parentAgentId, false)) }
         for (send in outgoing) {

@@ -76,7 +76,7 @@ class AgentSettingsIndexTest {
         rule.waitForIdle()
         assertEquals(
             listOf(
-                AgentSettingsTags.APPEARANCE, AgentPagesTags.HIDE_PROJECTS_ROW, AgentSettingsTags.PROFILE, AgentSettingsTags.ASK_NAME, AgentSettingsTags.ASK_AVATAR,
+                AgentSettingsTags.APPEARANCE, AgentPagesTags.HIDE_PROJECTS_ROW, AgentPagesTags.GROUP_TOOL_CALLS_ROW, AgentSettingsTags.PROFILE, AgentSettingsTags.ASK_NAME, AgentSettingsTags.ASK_AVATAR,
                 AgentVoiceTags.ROW, DataStorageTags.ROW, AgentSharingTags.ROW, AgentSharingTags.row(AutoJoinKind.Tasks), AgentSharingTags.row(AutoJoinKind.Surfaces),
                 AgentVoiceTags.SUPPORT, AgentAgentsTags.ROW, AgentUsageTags.ROW, PrivacyTags.ROW, com.slopus.happy.ui.settings.SettingsPageTags.ADD_AGENT,
                 SettingsTags.WHATS_NEW, SettingsTags.GITHUB, SettingsTags.REPORT_ISSUE, SettingsTags.PRIVACY, SettingsTags.TERMS, SettingsTags.VERSION,

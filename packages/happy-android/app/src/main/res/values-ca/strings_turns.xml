@@ -88,4 +88,21 @@
     <string name="agent_settings_completion_sound_focused">Amb el focus</string>
     <string name="agent_settings_completion_sound_never">Mai</string>
     <string name="agent_settings_completion_sound_footer">Un so quan una conversa acaba. En aquest telèfon sona mentre aquesta connexió és oberta, així que «Amb el focus» és el mateix que «Sempre». Cada connexió guarda la teva tria, a tots els dispositius on la facis servir.</string>
+    <string name="turn_kind_read">Lectura</string>
+    <string name="turn_kind_edit">Edició</string>
+    <string name="turn_kind_explore">Exploració</string>
+    <string name="turn_kind_search">Cerca</string>
+    <string name="turn_kind_type">Escriptura</string>
+    <string name="turn_kind_wait">Espera</string>
+    <string name="turn_kind_ask">Pregunta</string>
+    <string name="turn_kind_create">Creació</string>
+    <string name="turn_kind_update">Actualització</string>
+    <string name="turn_kind_open">Obertura</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="one">+%1$d més</item>
+        <item quantity="many">+%1$d més</item>
+        <item quantity="other">+%1$d més</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">Agrupa les crides a eines</string>
+    <string name="agent_settings_group_tool_calls_footer">Una sèrie de crides a eines es mostra en una línia: la crida en curs mentre s\'executa i, després, què ha fet i quant ha trigat.</string>
 </resources>

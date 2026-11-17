@@ -88,4 +88,21 @@
     <string name="agent_settings_completion_sound_focused">Quando em foco</string>
     <string name="agent_settings_completion_sound_never">Nunca</string>
     <string name="agent_settings_completion_sound_footer">Um som quando uma conversa termina. Neste telefone ele toca enquanto esta conexão está aberta, então «Quando em foco» é o mesmo que «Sempre». Cada conexão guarda sua escolha, em todos os dispositivos em que você a usa.</string>
+    <string name="turn_kind_read">Leitura</string>
+    <string name="turn_kind_edit">Edição</string>
+    <string name="turn_kind_explore">Exploração</string>
+    <string name="turn_kind_search">Pesquisa</string>
+    <string name="turn_kind_type">Digitação</string>
+    <string name="turn_kind_wait">Espera</string>
+    <string name="turn_kind_ask">Pergunta</string>
+    <string name="turn_kind_create">Criação</string>
+    <string name="turn_kind_update">Atualização</string>
+    <string name="turn_kind_open">Abertura</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="one">+%1$d mais</item>
+        <item quantity="many">+%1$d mais</item>
+        <item quantity="other">+%1$d mais</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">Agrupar chamadas de ferramentas</string>
+    <string name="agent_settings_group_tool_calls_footer">Uma sequência de chamadas de ferramentas aparece em uma linha: a chamada em andamento enquanto roda e, depois, o que fez e quanto tempo levou.</string>
 </resources>

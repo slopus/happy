@@ -84,4 +84,19 @@
     <string name="agent_settings_completion_sound_focused">聚焦時</string>
     <string name="agent_settings_completion_sound_never">永不</string>
     <string name="agent_settings_completion_sound_footer">對話結束時播放提示音。在這支手機上，它會在此連線開啟時播放，因此「聚焦時」與「一律」相同。每個連線都會保存你的選擇，在你使用它的每部裝置上皆生效。</string>
+    <string name="turn_kind_read">讀取</string>
+    <string name="turn_kind_edit">編輯</string>
+    <string name="turn_kind_explore">探索</string>
+    <string name="turn_kind_search">搜尋</string>
+    <string name="turn_kind_type">輸入</string>
+    <string name="turn_kind_wait">等待</string>
+    <string name="turn_kind_ask">提問</string>
+    <string name="turn_kind_create">建立</string>
+    <string name="turn_kind_update">更新</string>
+    <string name="turn_kind_open">開啟</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="other">+%1$d 項</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">合併工具呼叫</string>
+    <string name="agent_settings_group_tool_calls_footer">連續的工具呼叫顯示為一行：執行時顯示目前的呼叫，結束後顯示做了什麼以及花了多久。</string>
 </resources>

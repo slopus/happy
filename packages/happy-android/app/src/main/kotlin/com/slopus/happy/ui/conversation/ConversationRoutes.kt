@@ -292,6 +292,7 @@ internal fun AgentSession.makeConversation(
     preferences = modelPreferences,
     onStarted = ::recordStart,
     address = { ChatAddress.of(catalog.value, agentId) },
+    grouped = toolCallsGrouped,
 )
 
 /** Which settings pages this connection has ([com.slopus.happy.ui.connection.SettingsLinks]): a link to any other reads as its words. */

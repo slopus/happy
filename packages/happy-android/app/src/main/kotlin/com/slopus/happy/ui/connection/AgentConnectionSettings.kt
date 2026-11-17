@@ -118,6 +118,7 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable
     return listOfNotNull(
         row(AgentSettingsTags.APPEARANCE, stringResource(R.string.settings_appearance), Ionicon.ColorPaletteOutline),
         row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance).takeIf { projectsAvailable },
+        row(AgentPagesTags.GROUP_TOOL_CALLS_ROW, stringResource(R.string.agent_settings_group_tool_calls), Ionicon.LayersOutline, AgentSettingsPlace.Appearance),
         row(AgentSettingsTags.PROFILE, stringResource(R.string.settings_account_profile), Ionicon.PersonCircleOutline),
         row(AgentSettingsTags.ASK_NAME, stringResource(R.string.agent_settings_edit_name), Ionicon.CreateOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_name_prefix)),
         row(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), Ionicon.ImageOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_avatar_prefix)),
@@ -532,6 +533,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
     val sound = session?.completionSound?.collectAsStateWithLifecycle()?.value ?: CompletionSound.Always
     val projectsHidden = session?.projectsHidden?.collectAsStateWithLifecycle()?.value ?: false
+    val toolCallsGrouped by graph.toolCallsGrouped.enabled.collectAsStateWithLifecycle()
     // Read every time the page shows, as iOS's Profile row is.
     LaunchedEffect(session) { session?.profile?.refresh() }
     val scope = rememberCoroutineScope()
@@ -582,7 +584,10 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
         accountActions = rememberAccountsCardActions(graph),
         aboutActions = rememberAboutActions(graph, nav),
         person = AgentPerson(personState.name, personPhoto, rememberPersonSeed(graph, connectionId)),
-        appearance = agentAppearanceSections(theme, graph.localSettings::setThemePreference, projectsHidden, { session?.setProjectsHidden(it) }, sound, { session?.setCompletionSound(it) }, projectsAvailable = !cloud).flatMap { it.rows },
+        appearance = agentAppearanceSections(
+            theme, graph.localSettings::setThemePreference, projectsHidden, { session?.setProjectsHidden(it) }, sound, { session?.setCompletionSound(it) },
+            projectsAvailable = !cloud, toolCallsGrouped = toolCallsGrouped, onToolCallsGrouped = graph.toolCallsGrouped::set,
+        ).flatMap { it.rows },
         scroll = scroll,
         voice = rememberAgentVoiceSummary(graph.offers, graph.subscription),
         daemonVersion = agent.daemonVersion,

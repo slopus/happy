@@ -223,6 +223,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             is ConversationRow.User -> UserRow(row, bubble, actions, content)
             is ConversationRow.Text -> TextRow(row, actions, content)
             is ConversationRow.Tool -> ToolLine(row.tool, content, onOpen = actions.opener(row.tool))
+            is ConversationRow.Section -> ToolSectionRow(row, actions, content)
             is ConversationRow.Reasoning -> ReasoningProse(row, content)
             is ConversationRow.Picture -> Box(content.fillMaxWidth().padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)) {
                 InlinePictures(row.key, listOf(row.image), actions, MediaFlow.tool, alignEnd = false)
@@ -263,7 +264,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.SelfNote -> SelfNoteRow(row, actions, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
-            is ConversationRow.Ask -> AskRow(row, actions.asks, content)
+            is ConversationRow.Ask -> if (row.line) AnsweredLine(row, content) else AskRow(row, actions.asks, content)
             is ConversationRow.TurnEnd -> TurnEndRow(row, content)
             is ConversationRow.Trace -> TraceRow(row, actions.onToggleTurn, content)
             is ConversationRow.Notice -> Text(

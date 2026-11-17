@@ -156,6 +156,9 @@ class AppGraph(
     /** Animated Avatars, kept on this phone for every account (not cleared with local settings). */
     val liveAvatars = LiveAvatarsSetting(context.getSharedPreferences(LiveAvatarsSetting.PREFS_NAME, Context.MODE_PRIVATE))
 
+    /** Group tool calls in Happy Agent chats, kept on this phone for every connection (not cleared with local settings). */
+    val toolCallsGrouped = com.slopus.happy.config.ToolCallsGroupedSetting(context.getSharedPreferences(com.slopus.happy.config.ToolCallsGroupedSetting.PREFS_NAME, Context.MODE_PRIVATE))
+
     /** Where Happy account [publicId] keeps its attachments for good, a folder of its own (no backup: the server has them); gone with its sign-out. */
     fun legacyMediaDirectory(publicId: String?): File? =
         publicId?.filter { it.isLetterOrDigit() || it == '-' || it == '_' }?.takeIf { it.isNotEmpty() }?.let { File(appContext.noBackupFilesDir, "legacy-media/$it") }
@@ -642,6 +645,7 @@ class AppGraph(
         network = appContext.defaultNetwork(),
         chime = CompletionChime(appContext)::play,
         makeTransport = { startup?.take(it) ?: agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
+        toolCallsGrouped = toolCallsGrouped.enabled,
     ).also { startup?.follow(openAgentId, agentConnections.accounts) }
 
     /** This installation's id: the push relay's `deviceId`, and the device environment reports name. */

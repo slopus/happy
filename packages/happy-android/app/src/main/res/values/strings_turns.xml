@@ -109,4 +109,23 @@
     <string name="agent_settings_completion_sound_focused">When focused</string>
     <string name="agent_settings_completion_sound_never">Never</string>
     <string name="agent_settings_completion_sound_footer">A chime when a conversation finishes. On this phone it plays while this connection is open, so When focused is the same as Always. Each connection keeps your choice, on every device you use it from.</string>
+    <!-- A tool section's summary (desktop's AgentToolSection): each kind of step a run of calls was made of, counted ("Read 3"). -->
+    <string name="turn_kind_read">Read</string>
+    <string name="turn_kind_edit">Edit</string>
+    <string name="turn_kind_explore">Explore</string>
+    <string name="turn_kind_search">Search</string>
+    <string name="turn_kind_type">Type</string>
+    <string name="turn_kind_wait">Wait</string>
+    <string name="turn_kind_ask">Ask</string>
+    <string name="turn_kind_create">Create</string>
+    <string name="turn_kind_update">Update</string>
+    <string name="turn_kind_open">Open</string>
+    <!-- Kinds past the fourth, counted together: "+5 more". -->
+    <plurals name="turn_kinds_more">
+        <item quantity="one">+%1$d more</item>
+        <item quantity="other">+%1$d more</item>
+    </plurals>
+    <!-- An agent connection's Appearance: desktop's Group tool calls, a run of tool calls as one line in a chat. -->
+    <string name="agent_settings_group_tool_calls">Group tool calls</string>
+    <string name="agent_settings_group_tool_calls_footer">A run of tool calls shows as one line: the call under way while it runs, then what it did and how long it took.</string>
 </resources>

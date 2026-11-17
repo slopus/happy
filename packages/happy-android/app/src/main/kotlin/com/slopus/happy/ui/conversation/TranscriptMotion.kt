@@ -137,7 +137,11 @@ internal class TranscriptMotion(private val list: LazyListState) {
         entering.clear()
         delays.clear()
         flown.clear()
-        for (i in 0 until end) if (next[i].key !in before && !next[i].streams()) entering += next[i].key
+        for (i in 0 until end) if (next[i].key !in before && !next[i].streams()) {
+            entering += next[i].key
+            // A live tool section's line comes in a character at a time ([ToolSectionRow]): it takes its room, unfaded.
+            if ((next[i] as? ConversationRow.Section)?.live == true) flown += next[i].key
+        }
         if (entering.isEmpty()) return
         height = -1f
         started = false

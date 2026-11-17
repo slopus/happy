@@ -139,15 +139,25 @@ object TurnRowSpec {
  * A tool call's one line: its mark, or a spinner while it runs, its verb
  * and its subject (a builtin summary starts directly after the glyph lane). [bottom] is what it keeps under itself: its own 6, or
  * less where what it showed follows. A tap opens the call ([onOpen], its
- * own screen), running or done; a long press copies the subject.
+ * own screen), running or done; a long press copies the subject, unless
+ * it isn't [interactive]. As a tool section's line ([motion],
+ * [ToolSectionRow]) it is all textSecondary, a failure and its counts too,
+ * and its glyph and characters arrive and leave as the motion says.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowSpec.paddingV, onOpen: (() -> Unit)? = null) {
+internal fun ToolLine(
+    tool: ToolUse,
+    modifier: Modifier = Modifier,
+    bottom: Dp = TurnRowSpec.paddingV,
+    onOpen: (() -> Unit)? = null,
+    motion: LineMotion? = null,
+    interactive: Boolean = true,
+) {
     val colors = HappyTheme.colors
     val res = LocalContext.current.resources
     val words = remember(tool, res) { ToolWords.of(tool, res) }
-    val ink = if (tool.failed) TurnRowSpec.failedInk(colors) else colors.textSecondary
+    val ink = if (tool.failed && motion == null) TurnRowSpec.failedInk(colors) else colors.textSecondary
     val spoken = if (tool.running) {
         stringResource(R.string.turn_is_running, ToolWords.humanize(tool.name, res)) + ", " + words.subject
     } else if (words.verb.isEmpty()) {
@@ -165,7 +175,7 @@ fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowS
             .fillMaxWidth()
             .then(
                 // A long press copies what scrolled out of the line.
-                if (copies || onOpen != null) {
+                if (interactive && (copies || onOpen != null)) {
                     Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = if (onOpen != null) ripple() else null,
@@ -191,7 +201,11 @@ fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowS
             .testTag(TurnRowTags.TOOL),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(TurnRowSpec.lane).testTag(TurnRowTags.TOOL_GLYPH), contentAlignment = Alignment.Center) {
+        val glyphMotion = motion?.let { rememberPiece(if (tool.running) "spinner" else words.glyph.toString(), it) }
+        Box(
+            Modifier.size(TurnRowSpec.lane).then(if (motion != null && glyphMotion != null) Modifier.arrivingGlyph(glyphMotion, motion) else Modifier).testTag(TurnRowTags.TOOL_GLYPH),
+            contentAlignment = Alignment.Center,
+        ) {
             if (tool.running) {
                 // Desktop's 12 circle spinner in the glyph's lane.
                 CircularProgressIndicator(Modifier.size(TurnRowSpec.glyph), color = colors.textSecondary, strokeWidth = 1.5.dp)
@@ -203,26 +217,40 @@ fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowS
             }
         }
         Spacer(Modifier.width(TurnRowSpec.gap))
+        // As one line arriving, the verb, its subject and the counts are one run of characters.
         if (words.verb.isNotEmpty()) {
-            Text(words.verb, style = TurnRowSpec.verb, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(TurnRowTags.TOOL_VERB))
+            ArrivingWords(words.verb, 0, motion, Modifier.testTag(TurnRowTags.TOOL_VERB)) { text, layout, arriving ->
+                Text(text, style = TurnRowSpec.verb, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, onTextLayout = { layout[0] = it }, modifier = arriving)
+            }
             Spacer(Modifier.width(TurnRowSpec.gap))
         }
         val counted = words.added != null || words.deleted != null
-        Text(
-            words.subject,
-            style = if (words.mono) TurnRowSpec.subjectMono else TurnRowSpec.subject,
-            color = ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = !counted).testTag(TurnRowTags.TOOL_SUBJECT),
-        )
+        var lead = words.verb.length
+        ArrivingWords(words.subject, lead, motion, Modifier.weight(1f, fill = !counted).testTag(TurnRowTags.TOOL_SUBJECT)) { text, layout, arriving ->
+            Text(
+                text,
+                style = if (words.mono) TurnRowSpec.subjectMono else TurnRowSpec.subject,
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { layout[0] = it },
+                modifier = arriving,
+            )
+        }
+        lead += words.subject.length
         words.added?.let {
             Spacer(Modifier.width(TurnRowSpec.gap))
-            Text("+${ToolWords.compact(it)}", style = TurnRowSpec.count, color = gitAddedColor(colors), maxLines = 1, modifier = Modifier.testTag(TurnRowTags.TOOL_ADDED))
+            val added = "+${ToolWords.compact(it)}"
+            ArrivingWords(added, lead, motion, Modifier.testTag(TurnRowTags.TOOL_ADDED)) { text, layout, arriving ->
+                Text(text, style = TurnRowSpec.count, color = if (motion != null) ink else gitAddedColor(colors), maxLines = 1, onTextLayout = { layout[0] = it }, modifier = arriving)
+            }
+            lead += added.length
         }
         words.deleted?.let {
             Spacer(Modifier.width(TurnRowSpec.gap))
-            Text("\u2212${ToolWords.compact(it)}", style = TurnRowSpec.count, color = gitRemovedColor(colors), maxLines = 1, modifier = Modifier.testTag(TurnRowTags.TOOL_DELETED))
+            ArrivingWords("\u2212${ToolWords.compact(it)}", lead, motion, Modifier.testTag(TurnRowTags.TOOL_DELETED)) { text, layout, arriving ->
+                Text(text, style = TurnRowSpec.count, color = if (motion != null) ink else gitRemovedColor(colors), maxLines = 1, onTextLayout = { layout[0] = it }, modifier = arriving)
+            }
         }
     }
 }

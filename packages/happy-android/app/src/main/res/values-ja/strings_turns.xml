@@ -84,4 +84,19 @@
     <string name="agent_settings_completion_sound_focused">フォーカス時</string>
     <string name="agent_settings_completion_sound_never">鳴らさない</string>
     <string name="agent_settings_completion_sound_footer">会話が終わったときにチャイムを鳴らします。このスマートフォンではこの接続を開いている間に鳴るため、「フォーカス時」は「常に」と同じです。選択は接続ごとに保存され、その接続を使うすべてのデバイスに適用されます。</string>
+    <string name="turn_kind_read">読み込み</string>
+    <string name="turn_kind_edit">編集</string>
+    <string name="turn_kind_explore">探索</string>
+    <string name="turn_kind_search">検索</string>
+    <string name="turn_kind_type">入力</string>
+    <string name="turn_kind_wait">待機</string>
+    <string name="turn_kind_ask">質問</string>
+    <string name="turn_kind_create">作成</string>
+    <string name="turn_kind_update">更新</string>
+    <string name="turn_kind_open">開く</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="other">+%1$d 件</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">ツール呼び出しをまとめる</string>
+    <string name="agent_settings_group_tool_calls_footer">連続したツール呼び出しを1行で表示します。実行中は現在の呼び出しを、終了後は内容とかかった時間を表示します。</string>
 </resources>

@@ -1881,6 +1881,31 @@ and failures. `Conversation.toggleTurn` opens or folds it, and
 `FoldHold` in ConversationScreen keeps the trace row where it was on screen.
 Words are in `strings_turns.xml`.
 
+**Group tool calls** (desktop's tool sections, an agent connection's
+Appearance switch kept on the phone, `ToolCallsGroupedSetting`, on unless
+turned off; off draws every call as its own row exactly as before).
+`conversation/ToolSections` turns each run of one-line calls between two
+of the agent's other rows into one `ConversationRow.Section`, keyed by its
+first call, after `TurnFold`; a call with media or an artifact keeps its
+row and breaks the run. Live (a call running, or the agent working with
+nothing after it), the line is the latest call; ended, "Read 3 · Explore
+2 · Edit · 3m 12s" (`ToolWords.kind`, at most four kinds then "+N more",
+the kinds cut before the duration, no duration under a second); a run of
+one call stays that call's line. A section seen ending stays ended
+(`Conversation.sectionsEnded`); a turn's end ends all of its sections, so
+a stopped turn never spins. `ToolSectionRow` draws it as `ToolLine`'s 32
+in every state, all textSecondary (failures and edit counts too), and a
+new call or the summary replaces the line letter by letter
+(`ArrivalSpec`, desktop's ArrivingText: each character drawn from the
+text's own layout, only alpha, rise and scale moving). Under the switch a
+file edit folds with its turn, a turn watched to its end keeps its rows
+with "Hide traces" above how it ended (`TurnFold`'s quiet, desktop's
+settling turn) so nothing above moves, View traces shows every call of
+the turn as its own row, and a question answered before the chat showed
+it is one grey line (`AnsweredLine`); one that settled on screen stays its
+card. `ToolSectionsFixturesActivity` (debug) runs it over a scripted
+computer.
+
 A tap on a tool line opens the call (`ToolCallRoute`, `ToolCallScreen`;
 iOS ToolDetailViewController, 1575b41b8). It is titled with the line's
 subject, under a header card (kind, tool name, status pill), then what the

@@ -90,4 +90,22 @@
     <string name="agent_settings_completion_sound_focused">Gdy na pierwszym planie</string>
     <string name="agent_settings_completion_sound_never">Nigdy</string>
     <string name="agent_settings_completion_sound_footer">Sygnał, gdy rozmowa się kończy. Na tym telefonie gra, gdy to połączenie jest otwarte, więc „Gdy na pierwszym planie” działa jak „Zawsze”. Każde połączenie pamięta Twój wybór na każdym urządzeniu, na którym go używasz.</string>
+    <string name="turn_kind_read">Odczyt</string>
+    <string name="turn_kind_edit">Edycja</string>
+    <string name="turn_kind_explore">Przegląd</string>
+    <string name="turn_kind_search">Wyszukiwanie</string>
+    <string name="turn_kind_type">Wpisywanie</string>
+    <string name="turn_kind_wait">Czekanie</string>
+    <string name="turn_kind_ask">Pytanie</string>
+    <string name="turn_kind_create">Tworzenie</string>
+    <string name="turn_kind_update">Aktualizacja</string>
+    <string name="turn_kind_open">Otwarcie</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="one">+%1$d więcej</item>
+        <item quantity="few">+%1$d więcej</item>
+        <item quantity="many">+%1$d więcej</item>
+        <item quantity="other">+%1$d więcej</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">Grupuj wywołania narzędzi</string>
+    <string name="agent_settings_group_tool_calls_footer">Seria wywołań narzędzi to jeden wiersz: w trakcie bieżące wywołanie, potem co zostało zrobione i ile to trwało.</string>
 </resources>

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import com.slopus.happy.R
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.Presentation
+import com.slopus.happy.conversation.Question
 import com.slopus.happy.conversation.ToolHint
 import com.slopus.happy.conversation.ToolUse
 import com.slopus.happy.model.compactCount
@@ -158,6 +159,40 @@ data class ToolWords(
             if (matches("(read|view|cat|open)", lower)) return say(R.string.turn_reading, R.string.turn_read)
             if (matches("(write|edit|patch|update|apply)", lower)) return say(R.string.turn_editing, R.string.turn_edited)
             return say(R.string.turn_tool, R.string.turn_used)
+        }
+
+        /**
+         * `agentActivityKindName`: the kind of step a call was, in the word its
+         * line leads with once done ("Read", "Edit", "Bash"), else its own name;
+         * how it ended is left out, so a failed read is still a read. A tool
+         * section's summary counts its calls by it.
+         */
+        fun kind(tool: ToolUse, res: Resources): String {
+            val name = tool.name
+            val lower = name.lowercase()
+            val p = tool.presentation
+            if (name == Question.TOOL_NAME) return res.getString(R.string.turn_kind_ask)
+            when (p) {
+                is Presentation.Search -> return res.getString(R.string.turn_kind_search)
+                is Presentation.Exploration -> return res.getString(R.string.turn_kind_explore)
+                else -> Unit
+            }
+            if (p is Presentation.Artifact || matches("^(create_artifact|edit_artifact_files|update_artifact)$", lower)) {
+                return res.getString(
+                    when (lower) {
+                        "edit_artifact_files" -> R.string.turn_kind_open
+                        "create_artifact" -> R.string.turn_kind_create
+                        else -> R.string.turn_kind_update
+                    },
+                )
+            }
+            if (p is Presentation.Terminal || matches("stdin|terminal_?input|taskinput", lower)) return res.getString(R.string.turn_kind_type)
+            if (lower == "wait_agent") return res.getString(R.string.turn_kind_wait)
+            if (p is Presentation.Command || matches("(bash|exec|shell|command|run)", lower)) return verb(name, "completed", p, res)
+            if (matches("(grep|find|glob|^ls$|list|search)", lower)) return res.getString(R.string.turn_kind_explore)
+            if (matches("(read|view|cat|open)", lower)) return res.getString(R.string.turn_kind_read)
+            if (matches("(write|edit|patch|update|apply)", lower)) return res.getString(R.string.turn_kind_edit)
+            return humanize(name, res)
         }
 
         /** `toolGlyph`. */

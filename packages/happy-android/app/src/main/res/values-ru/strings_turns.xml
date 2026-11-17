@@ -90,4 +90,22 @@
     <string name="agent_settings_completion_sound_focused">Когда в фокусе</string>
     <string name="agent_settings_completion_sound_never">Никогда</string>
     <string name="agent_settings_completion_sound_footer">Сигнал, когда разговор завершается. На этом телефоне он звучит, пока это подключение открыто, поэтому «Когда в фокусе» — то же, что «Всегда». Каждое подключение хранит ваш выбор на всех устройствах, где вы им пользуетесь.</string>
+    <string name="turn_kind_read">Чтение</string>
+    <string name="turn_kind_edit">Правка</string>
+    <string name="turn_kind_explore">Обзор</string>
+    <string name="turn_kind_search">Поиск</string>
+    <string name="turn_kind_type">Ввод</string>
+    <string name="turn_kind_wait">Ожидание</string>
+    <string name="turn_kind_ask">Вопрос</string>
+    <string name="turn_kind_create">Создание</string>
+    <string name="turn_kind_update">Обновление</string>
+    <string name="turn_kind_open">Открытие</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="one">+%1$d ещё</item>
+        <item quantity="few">+%1$d ещё</item>
+        <item quantity="many">+%1$d ещё</item>
+        <item quantity="other">+%1$d ещё</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">Группировать вызовы инструментов</string>
+    <string name="agent_settings_group_tool_calls_footer">Серия вызовов инструментов показывается одной строкой: пока она идёт — текущий вызов, затем — что было сделано и сколько это заняло.</string>
 </resources>

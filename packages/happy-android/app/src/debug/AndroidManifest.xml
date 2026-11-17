@@ -36,6 +36,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- A Happy Agent chat's Group tool calls over an in-memory computer (ui/conversation/ToolSectionsFixturesActivity). -->
+        <activity
+            android:name=".ui.conversation.ToolSectionsFixturesActivity"
+            android:exported="true" />
         <!-- The Pipelines page over an in-memory Happy Cloud server (ui/pipelines/PipelinesFixturesActivity). -->
         <activity
             android:name=".ui.pipelines.PipelinesFixturesActivity"

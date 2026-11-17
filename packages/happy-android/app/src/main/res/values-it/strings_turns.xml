@@ -88,4 +88,21 @@
     <string name="agent_settings_completion_sound_focused">Quando in primo piano</string>
     <string name="agent_settings_completion_sound_never">Mai</string>
     <string name="agent_settings_completion_sound_footer">Un suono quando una conversazione finisce. Su questo telefono suona mentre questa connessione è aperta, quindi «Quando in primo piano» equivale a «Sempre». Ogni connessione ricorda la tua scelta, su ogni dispositivo da cui la usi.</string>
+    <string name="turn_kind_read">Lettura</string>
+    <string name="turn_kind_edit">Modifica</string>
+    <string name="turn_kind_explore">Esplorazione</string>
+    <string name="turn_kind_search">Ricerca</string>
+    <string name="turn_kind_type">Digitazione</string>
+    <string name="turn_kind_wait">Attesa</string>
+    <string name="turn_kind_ask">Domanda</string>
+    <string name="turn_kind_create">Creazione</string>
+    <string name="turn_kind_update">Aggiornamento</string>
+    <string name="turn_kind_open">Apertura</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="one">+%1$d altri</item>
+        <item quantity="many">+%1$d altri</item>
+        <item quantity="other">+%1$d altri</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">Raggruppa le chiamate agli strumenti</string>
+    <string name="agent_settings_group_tool_calls_footer">Una serie di chiamate agli strumenti appare come una riga: la chiamata in corso mentre lavora, poi cosa ha fatto e quanto ci ha messo.</string>
 </resources>

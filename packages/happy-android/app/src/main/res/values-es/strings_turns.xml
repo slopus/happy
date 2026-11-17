@@ -88,4 +88,21 @@
     <string name="agent_settings_completion_sound_focused">Con el foco</string>
     <string name="agent_settings_completion_sound_never">Nunca</string>
     <string name="agent_settings_completion_sound_footer">Un sonido cuando una conversación termina. En este teléfono suena mientras esta conexión está abierta, así que «Con el foco» equivale a «Siempre». Cada conexión guarda tu elección, en todos los dispositivos donde la uses.</string>
+    <string name="turn_kind_read">Lectura</string>
+    <string name="turn_kind_edit">Edición</string>
+    <string name="turn_kind_explore">Exploración</string>
+    <string name="turn_kind_search">Búsqueda</string>
+    <string name="turn_kind_type">Escritura</string>
+    <string name="turn_kind_wait">Espera</string>
+    <string name="turn_kind_ask">Pregunta</string>
+    <string name="turn_kind_create">Creación</string>
+    <string name="turn_kind_update">Actualización</string>
+    <string name="turn_kind_open">Apertura</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="one">+%1$d más</item>
+        <item quantity="many">+%1$d más</item>
+        <item quantity="other">+%1$d más</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">Agrupar llamadas a herramientas</string>
+    <string name="agent_settings_group_tool_calls_footer">Una serie de llamadas a herramientas se muestra en una línea: la llamada en curso mientras se ejecuta y, después, qué hizo y cuánto tardó.</string>
 </resources>

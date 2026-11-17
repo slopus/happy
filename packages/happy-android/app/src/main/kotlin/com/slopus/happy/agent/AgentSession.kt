@@ -106,6 +106,8 @@ class AgentSession internal constructor(
     private val openChat: () -> String? = { null },
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     initiallyActive: Boolean = false,
+    /** Appearance's Group tool calls, which this connection's chats follow ([com.slopus.happy.conversation.ToolSections]). */
+    val toolCallsGrouped: StateFlow<Boolean> = MutableStateFlow(false),
 ) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
     private val linkLock = Mutex()

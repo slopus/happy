@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
@@ -52,6 +53,8 @@ class AgentSessions(
      */
     private val stagedFiles: File? = null,
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
+    /** Appearance's Group tool calls, which every connection's chats follow. */
+    private val toolCallsGrouped: StateFlow<Boolean> = MutableStateFlow(false),
     private val makeTransport: (AgentConnectionCredentials) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
 ) {
     private val sessions = HashMap<String, AgentSession>()
@@ -179,6 +182,7 @@ class AgentSessions(
                     openChat = { openChat?.takeIf { it.first == connectionId }?.second },
                     clock = clock,
                     initiallyActive = openId.value == connectionId && foreground.value && connections.accounts.value.none { it.id == connectionId && it.signInRequired },
+                    toolCallsGrouped = toolCallsGrouped,
                 )
             }
         }

@@ -84,4 +84,19 @@
     <string name="agent_settings_completion_sound_focused">聚焦时</string>
     <string name="agent_settings_completion_sound_never">从不</string>
     <string name="agent_settings_completion_sound_footer">对话结束时播放提示音。在这部手机上，它会在此连接打开时播放，因此“聚焦时”与“始终”相同。每个连接都会保存你的选择，在你使用它的每台设备上都生效。</string>
+    <string name="turn_kind_read">读取</string>
+    <string name="turn_kind_edit">编辑</string>
+    <string name="turn_kind_explore">探索</string>
+    <string name="turn_kind_search">搜索</string>
+    <string name="turn_kind_type">输入</string>
+    <string name="turn_kind_wait">等待</string>
+    <string name="turn_kind_ask">提问</string>
+    <string name="turn_kind_create">创建</string>
+    <string name="turn_kind_update">更新</string>
+    <string name="turn_kind_open">打开</string>
+    <plurals name="turn_kinds_more">
+        <item quantity="other">+%1$d 项</item>
+    </plurals>
+    <string name="agent_settings_group_tool_calls">合并工具调用</string>
+    <string name="agent_settings_group_tool_calls_footer">连续的工具调用显示为一行：运行时显示当前调用，结束后显示做了什么以及用了多久。</string>
 </resources>

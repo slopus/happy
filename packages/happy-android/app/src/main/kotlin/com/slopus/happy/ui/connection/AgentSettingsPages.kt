@@ -109,6 +109,7 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
         val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
         val hidden = session?.projectsHidden?.collectAsStateWithLifecycle()?.value ?: false
         val sound = session?.completionSound?.collectAsStateWithLifecycle()?.value ?: CompletionSound.Always
+        val grouped by graph.toolCallsGrouped.enabled.collectAsStateWithLifecycle()
         ProvideRowReveal(route.reveal) {
             AgentAppearanceScreen(
                 theme = theme,
@@ -119,6 +120,8 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
                 completionSound = sound,
                 onCompletionSound = { session?.setCompletionSound(it) },
                 projectsAvailable = session?.client?.cloud == false,
+                toolCallsGrouped = grouped,
+                onToolCallsGrouped = graph.toolCallsGrouped::set,
             )
         }
     }
@@ -212,6 +215,8 @@ object AgentPagesTags {
     fun theme(theme: ThemePreference) = "agentPages.theme.${theme.name}"
     const val HIDE_PROJECTS = "agentPages.hideProjects"
     const val HIDE_PROJECTS_ROW = "agentPages.hideProjectsRow"
+    const val GROUP_TOOL_CALLS = "agentPages.groupToolCalls"
+    const val GROUP_TOOL_CALLS_ROW = "agentPages.groupToolCallsRow"
     fun sound(sound: CompletionSound) = "agentPages.sound.${sound.name}"
     const val PICTURE = "agentPages.picture"
     const val CHANGE_PHOTO = "agentPages.changePhoto"
@@ -240,7 +245,9 @@ internal fun AgentPage(title: String, onBack: () -> Unit, listModifier: Modifier
  * A connection's look on this phone (iOS's `appearanceRows`): the theme,
  * Adaptive, Light or Dark with a check on the chosen one; and, self-hosted only, Hide projects,
  * the desktop's own setting, which home follows here and Happy Desktop
- * there. Deliberately no renderer or layout choice. Then desktop's
+ * there. Deliberately no renderer or layout choice. Then desktop's Group
+ * tool calls, kept on this phone and on unless turned off, which its chats
+ * follow ([com.slopus.happy.conversation.ToolSections]). Then desktop's
  * Completion sound (Always, When focused, Never), the connection's own
  * setting too, which the chime follows here ([com.slopus.happy.agent.CompletionWatch]).
  */
@@ -254,8 +261,10 @@ fun AgentAppearanceScreen(
     completionSound: CompletionSound = CompletionSound.Always,
     onCompletionSound: (CompletionSound) -> Unit = {},
     projectsAvailable: Boolean = true,
+    toolCallsGrouped: Boolean = true,
+    onToolCallsGrouped: (Boolean) -> Unit = {},
 ) {
-    val sections = agentAppearanceSections(theme, onTheme, projectsHidden, onProjectsHidden, completionSound, onCompletionSound, projectsAvailable)
+    val sections = agentAppearanceSections(theme, onTheme, projectsHidden, onProjectsHidden, completionSound, onCompletionSound, projectsAvailable, toolCallsGrouped, onToolCallsGrouped)
     AgentPage(stringResource(R.string.settings_appearance), onBack) {
         for (section in sections) SettingsCard(section)
     }
@@ -271,6 +280,8 @@ fun agentAppearanceSections(
     completionSound: CompletionSound = CompletionSound.Always,
     onCompletionSound: (CompletionSound) -> Unit = {},
     projectsAvailable: Boolean = true,
+    toolCallsGrouped: Boolean = true,
+    onToolCallsGrouped: (Boolean) -> Unit = {},
 ): List<SettingsSection> = listOfNotNull(
     SettingsSection(
         listOf(
@@ -301,6 +312,20 @@ fun agentAppearanceSections(
         ),
         footer = stringResource(R.string.settings_hide_projects_footer),
     ).takeIf { projectsAvailable },
+    SettingsSection(
+        listOf(
+            SettingsEntry(
+                id = AgentPagesTags.GROUP_TOOL_CALLS_ROW,
+                title = stringResource(R.string.agent_settings_group_tool_calls),
+                icon = { SettingsTile(Ionicon.LayersOutline, SettingsTiles.purple) },
+                toggle = toolCallsGrouped,
+                onToggle = onToolCallsGrouped,
+                toggleTag = AgentPagesTags.GROUP_TOOL_CALLS,
+                chevron = false,
+            ),
+        ),
+        footer = stringResource(R.string.agent_settings_group_tool_calls_footer),
+    ),
     SettingsSection(
         listOf(
             CompletionSound.Always to R.string.agent_settings_completion_sound_always,
