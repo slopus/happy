@@ -1785,9 +1785,11 @@ class Conversation(
         if (grouped) {
             // What follows the work (a person's sends) ends none of it: their rows come after.
             val sections = ToolSections.group(rows, working, sectionsEnded, apart) { row -> messages[row.key.substringBeforeLast(':')]?.createdAt?.takeIf { it > 0 } }
+                // A question answered before this showed it is one line; one that settled here stays the card it was.
+                .map { if (it is ConversationRow.Ask && it.phase == AskPhase.Answered && it.question.id !in answered) it.copy(line = true) else it }
+            // Cleared only once the sections are a list of their own: with no call to group, ToolSections.group hands back rows itself.
             rows.clear()
-            // A question answered before this showed it is one line; one that settled here stays the card it was.
-            sections.mapTo(rows) { if (it is ConversationRow.Ask && it.phase == AskPhase.Answered && it.question.id !in answered) it.copy(line = true) else it }
+            rows += sections
         }
         for (id in pending) messages[id]?.let { rows += sentAt(builder.rows(it, agentId, parentAgentId, false)) }
         for (send in outgoing) {

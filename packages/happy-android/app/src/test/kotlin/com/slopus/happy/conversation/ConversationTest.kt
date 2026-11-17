@@ -190,6 +190,9 @@ class ConversationTest {
         // An older computer unless a test says otherwise: pictures inline, files in the workspace.
         route: AttachmentRoute = AttachmentRoute().apply { markMissing() },
         kept: MutableMap<String, java.io.File> = HashMap(),
+        // Appearance's Group tool calls; off unless a test says otherwise.
+        grouped: kotlinx.coroutines.flow.StateFlow<Boolean>? = null,
+        // Last, so a test's trailing lambda stays this one.
         created: (JsonObject) -> Unit = {},
     ) = Conversation(
         api = ConversationApi(null, agent.request, fileRequest = agent.fileRequest),
@@ -214,6 +217,7 @@ class ConversationTest {
         cloudFiles = cloudFiles,
         attachmentRoute = route,
         keepAttachment = { id, file -> kept[id] = file },
+        grouped = grouped,
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -383,6 +387,18 @@ class ConversationTest {
         assertEquals(listOf("m3:user", "m2:2", "m2:1", "m2:0", "m1:user"), state.rows.map { it.key })
         assertEquals(Delivery.Pending, (state.rows[0] as ConversationRow.User).delivery)
         assertEquals(Presentation.Command("ls", null), (state.rows[2] as ConversationRow.Tool).tool.presentation)
+    }
+
+    @Test fun `Group tool calls keeps a turn that called nothing`() = runTest {
+        val agent = FakeAgent()
+        agent.page = """{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":2,"reason":"completed","messages":[
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}},
+            {"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"Hello"}],"metadata":{}}
+        ]}],"hasMore":false}"""
+        val chat = conversation(agent, grouped = kotlinx.coroutines.flow.MutableStateFlow(true))
+        advanceUntilIdle()
+        // Newest first: how the turn ended, the answer, the person's message. With no call to group, nothing changes.
+        assertEquals(listOf("r1:status", "m2:0", "m1:user"), chat.state.value.rows.map { it.key })
     }
 
     @Test fun `a person's message opens whole and is cut back by its key, pending or in a run`() = runTest {
