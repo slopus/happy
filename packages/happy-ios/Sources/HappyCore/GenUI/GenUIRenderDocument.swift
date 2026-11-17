@@ -46,7 +46,7 @@ public struct GenUIRenderDocument: Equatable, Sendable {
             viewers[group] = (items.arrayValue ?? []).compactMap(GenUIViewerItem.parse)
         }
         return GenUIRenderDocument(
-            version: json["genuiRender"]?.numberValue.map { Int($0) },
+            version: json["genuiRender"].map { $0.numberValue.flatMap(Int.init(exactly:)) ?? -1 },
             compiler: json["compiler"]?.stringValue,
             fallback: json["fallback"]?.stringValue ?? "",
             root: json["root"]?.stringValue,
@@ -422,7 +422,7 @@ public struct GenUIImage: Equatable, Sendable {
         guard let file = props["file"]?.stringValue, let width = props["width"]?.numberValue, let height = props["height"]?.numberValue,
               let thumbhash = props["thumbhash"]?.stringValue, let alt = props["alt"]?.stringValue else { return nil }
         var viewer: (String, Int)?
-        if let group = props["viewer"]?["group"]?.stringValue, let index = props["viewer"]?["index"]?.numberValue { viewer = (group, Int(index)) }
+        if let group = props["viewer"]?["group"]?.stringValue, let index = props["viewer"]?["index"]?.numberValue.flatMap(Int.init(exactly:)) { viewer = (group, index) }
         self.init(
             file: file, width: width, height: height, thumbhash: thumbhash, alt: alt, shape: GenUIShape(props["shape"]),
             role: Role(props["role"]) ?? .figure, overlay: props["overlay"]?.stringValue, viewer: viewer
@@ -541,7 +541,7 @@ public struct GenUIPlot: Equatable, Sendable {
             switch json?.stringValue {
             case "muted": self = .muted
             case let name?: self = .named(name)
-            case nil: self = .index(json?.numberValue.map { Int($0) } ?? 1)
+            case nil: self = .index(json?.numberValue.flatMap(Int.init(exactly:)) ?? 1)
             }
         }
     }

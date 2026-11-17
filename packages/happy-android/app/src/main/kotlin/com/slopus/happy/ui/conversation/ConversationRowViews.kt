@@ -229,6 +229,9 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                 InlinePictures(row.key, listOf(row.image), actions, MediaFlow.tool, alignEnd = false)
             }
             is ConversationRow.Media -> ToolResult(row.tool, actions, content) { MediaRow(row, actions, it) }
+            is ConversationRow.GenUi -> ToolResult(row.tool, actions, content) {
+                com.slopus.happy.ui.genui.GenUiMessageBlock(row.key, row.document, actions.genUi, it)
+            }
             is ConversationRow.Artifact -> ToolResult(row.tool, actions, content) {
                 Column(it) {
                     val page = row.page

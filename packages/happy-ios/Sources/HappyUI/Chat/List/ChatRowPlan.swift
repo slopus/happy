@@ -202,6 +202,7 @@ enum ChatEmbed: Equatable, Sendable {
     case page(InlinePage)
     /// A `gen_ui` artifact's document (`GenUIBlockView`).
     case genUI(GenUIEmbed)
+    case genUIMessage(GenUIMessageEmbed)
 }
 
 /// An artifact's page shown inline in a V2 conversation: the

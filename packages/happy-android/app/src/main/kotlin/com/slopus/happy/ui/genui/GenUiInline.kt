@@ -94,6 +94,9 @@ class GenUiInline(
 
     private val files = ArtifactClient(client)
 
+    /** Choice state scoped to this connection, conversation and tool result; no artifact is read. */
+    fun messageState(identity: String): GenUiState = GenUiState.message(client, agentId, identity)
+
     /** Where a block's secret form saves. */
     val secrets = GenUiSecretApi(client)
     private val blocks = mutableStateMapOf<String, Block>()

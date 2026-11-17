@@ -78,7 +78,14 @@ final class GenUIAnswers {
     /// shows. A version never changes, so they are kept while it is among
     /// the client's latest `limit`.
     static func of(_ client: AnyObject, artifactId: String, version: Int) -> GenUIAnswers {
-        let key = "\(artifactId)/\(version)"
+        of(client, key: "\(artifactId)/\(version)")
+    }
+
+    static func message(_ client: AnyObject, identity: String) -> GenUIAnswers {
+        of(client, key: identity)
+    }
+
+    private static func of(_ client: AnyObject, key: String) -> GenUIAnswers {
         let versions = clients.object(forKey: client) ?? {
             let versions = Versions()
             clients.setObject(versions, forKey: client)
@@ -235,6 +242,7 @@ final class GenUIBlockView: UIView {
     var identity: String? { shown?.identity }
     /// The version a conversation shows in it (`apply(_: GenUIEmbed)`).
     var conversationVersion: (artifactId: String, version: Int)?
+    var conversationMessage: String?
 
     override init(frame: CGRect) {
         super.init(frame: frame)

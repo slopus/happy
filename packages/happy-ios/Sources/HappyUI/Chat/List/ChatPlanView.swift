@@ -315,6 +315,11 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(embed)
                 order.append(view)
+            case .embed(.genUIMessage(let embed), let frame):
+                let view = take(&genUIs, &genUIIndex) { GenUIBlockView() }
+                view.setLayoutFrame(frame)
+                view.apply(embed)
+                order.append(view)
             case .delivery(let mark, let frame):
                 let view = take(&deliveries, &deliveryIndex) { ChatDeliveryView() }
                 view.setLayoutFrame(frame)

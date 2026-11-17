@@ -60,6 +60,8 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         case file(Media)
         /// An artifact a tool made or changed, as a card that opens it.
         case artifact(Artifact)
+        /// A compiled document carried by the tool call itself; no artifact or files.
+        case genUI(toolCallId: String, document: GenUIRenderDocument)
         /// A sidebar Prioritizing proposed (a `sidebar_proposal` artifact),
         /// drawn by the sidebar's own rows and answered where it stands.
         case sidebarProposal(artifactId: String)
@@ -2513,6 +2515,9 @@ public actor Conversation {
     /// and files, an artifact's card, a sidebar proposal. Nil for
     /// a call that showed nothing, which is a tool row.
     private static func shows(_ presentation: AgentWire.Presentation, toolCallId id: String, shown: inout [String: Media]) -> [ChatItem.Piece]? {
+        if presentation.type == "gen_ui" {
+            return [.genUI(toolCallId: id, document: GenUIMessage.document(presentation.document))]
+        }
         if presentation.type == "artifact", let artifactId = presentation.artifactId, presentation.artifactType == "sidebar_proposal" {
             return [.sidebarProposal(artifactId: artifactId)]
         }

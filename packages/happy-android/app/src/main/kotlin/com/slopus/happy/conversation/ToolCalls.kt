@@ -65,7 +65,7 @@ enum class ToolKind {
             is Presentation.Exploration -> Exploration
             is Presentation.Search -> Search
             is Presentation.AgentSpawn -> Subagent
-            is Presentation.Media -> Media
+            is Presentation.Media, is Presentation.GenUi -> Media
             is Presentation.Artifact -> Artifact
             is Presentation.UserInput -> Question
             null -> when (name) {

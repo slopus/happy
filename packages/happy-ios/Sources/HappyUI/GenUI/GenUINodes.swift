@@ -87,6 +87,7 @@ struct GenUIRuns: Equatable, Sendable {
     var sends: Bool
     /// A form to open the secret actions in.
     var forms: Bool
+    var messageOnly = false
 
     init(host: GenUIHost, sends: Bool, forms: Bool = false) {
         self.host = host
@@ -98,6 +99,7 @@ struct GenUIRuns: Equatable, Sendable {
     static let reporting = GenUIRuns(host: GenUIHost(server: .happyAgent, origin: true, secretActions: true, plugins: true), sends: true, forms: true)
 
     func callAsFunction(_ action: GenUIAction) -> Bool {
+        if messageOnly && !GenUIMessage.enables(action) { return false }
         guard host.enables(action) else { return false }
         switch action {
         case .message: return sends

@@ -2293,6 +2293,19 @@ extension ChatViewController: PageHosting {
     }
 }
 
+extension ChatViewController: GenUIMessageActing {
+    func genUIMessage(run action: GenUIAction, agentId: String) {
+        guard agentId == media.agentId, !previewing, GenUIMessage.enables(action) else { return }
+        if GenUIActionRunner.run(action, session: session, from: self, agentId: agentId) { return }
+        guard case .message(let text) = action else { return }
+        Haptics.play(.send)
+        followsNewest = true
+        ultra.revealNextSend(animated: true)
+        let conversation = conversation
+        Task { await conversation.send(text: text) }
+    }
+}
+
 extension ChatViewController: GenUIActing {
     /// A `message` goes as the person's next message here, the origin
     /// agent's own conversation (the only place it is enabled).

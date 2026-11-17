@@ -54,7 +54,7 @@ data class ToolUse(
     val failed: Boolean get() = status == "failed"
 
     /** A file edit, presented media or an artifact is a result to open: it stays when its turn folds. */
-    val isResult: Boolean get() = presentation is Presentation.FileDiff || presentation is Presentation.Media || presentation is Presentation.Artifact
+    val isResult: Boolean get() = presentation is Presentation.FileDiff || presentation is Presentation.Media || presentation is Presentation.Artifact || presentation is Presentation.GenUi
 }
 
 /**
@@ -133,6 +133,9 @@ sealed interface ConversationRow {
      * as the tool asked (0: justified rows), under the [tool]'s line.
      */
     data class Media(override val key: String, val items: List<MediaRef>, val columns: Int = 0, val tool: ToolUse? = null) : ConversationRow
+
+    /** Direct message content, measured by the native renderer without a catalog lookup. */
+    data class GenUi(override val key: String, val document: com.slopus.happy.genui.RenderDocument, val tool: ToolUse) : ConversationRow
 
     /**
      * An artifact a tool made or changed, under the [tool]'s line; `shows: "latest"` follows it, else it opens [version].
@@ -435,6 +438,7 @@ class ConversationRowBuilder(
             val skill = if (call.name == Conversation.READ_SKILL) (call.arguments as? JsonObject)?.get("name").str else null
             val tool = ToolUse(call.name, call.status, call.presentation, skill, call.id, ToolHint.of(call), ToolSummary.of(call.name, call.arguments))
             return when (val p = call.presentation) {
+                is Presentation.GenUi -> listOf(ConversationRow.GenUi(key, com.slopus.happy.genui.GenUiMessage.document(p.document), tool))
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     listOf(ConversationRow.Tool(key, call.id, tool))
                 } else {

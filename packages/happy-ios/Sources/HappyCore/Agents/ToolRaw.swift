@@ -16,7 +16,7 @@ import HappyWire
 /// bounded raw data, including historical calls.
 public enum ToolRaw {
     /// Presentations that say everything the call's screen shows.
-    static let complete: Set<String> = ["exec_command", "file_diff", "media", "artifact", "background_terminal_interaction", "compaction"]
+    static let complete: Set<String> = ["exec_command", "file_diff", "media", "artifact", "gen_ui", "background_terminal_interaction", "compaction"]
 
     public static let maxString = 32 * 1024
     /// What a cut string ends with.

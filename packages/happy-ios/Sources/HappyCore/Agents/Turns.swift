@@ -34,7 +34,7 @@ extension ChatItem {
         public var failed: Bool { status == "failed" }
         /// A file edit, presented media or a published artifact is a result
         /// the reader can open: it stays when the turn folds.
-        public var isResult: Bool { ["file_diff", "media", "artifact"].contains(presentation?.type) }
+        public var isResult: Bool { ["file_diff", "media", "artifact", "gen_ui"].contains(presentation?.type) }
     }
 
     /// How a turn ended (desktop's `turnStatus` row, `TurnSummary`).
@@ -349,7 +349,7 @@ public enum ToolSections {
     /// A call that is one line and nothing else, which can share a section.
     static func joins(_ item: ChatItem) -> Bool {
         guard case .tool(let tool) = item.role, item.pieces.isEmpty else { return false }
-        return !["media", "artifact", "page", "preview"].contains(tool.presentation?.type)
+        return !["media", "artifact", "gen_ui", "page", "preview"].contains(tool.presentation?.type)
     }
 
     /// When the agent did what follows a run: its next words or step, or

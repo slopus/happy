@@ -59,7 +59,7 @@ object ToolSections {
     fun joins(row: ConversationRow, apart: Set<String> = emptySet()): Boolean {
         if (row !is ConversationRow.Tool || row.key in apart) return false
         val shown = row.tool.presentation
-        return shown !is Presentation.Media && shown !is Presentation.Artifact
+        return shown !is Presentation.Media && shown !is Presentation.Artifact && shown !is Presentation.GenUi
     }
 
     /**
@@ -69,7 +69,7 @@ object ToolSections {
     private fun endedAt(row: ConversationRow, at: (ConversationRow) -> Long?): Long? = when (row) {
         is ConversationRow.TurnEnd -> row.endedAt
         is ConversationRow.Text, is ConversationRow.Reasoning, is ConversationRow.Tool, is ConversationRow.Media,
-        is ConversationRow.Artifact, is ConversationRow.Picture, is ConversationRow.Collaborator -> at(row)
+        is ConversationRow.Artifact, is ConversationRow.GenUi, is ConversationRow.Picture, is ConversationRow.Collaborator -> at(row)
         else -> null
     }
 }

@@ -59,6 +59,7 @@ object TurnFold {
         is ConversationRow.Tool, is ConversationRow.Section, is ConversationRow.Collaborator -> true
         is ConversationRow.Media -> row.tool != null
         is ConversationRow.Artifact -> row.tool != null
+        is ConversationRow.GenUi -> true
         else -> false
     }
 

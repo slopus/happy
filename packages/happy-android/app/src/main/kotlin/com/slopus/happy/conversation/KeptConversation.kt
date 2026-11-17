@@ -181,6 +181,10 @@ data class KeptConversation(
                 put("items", JsonArray(presentation.items.map(::mediaJson)))
                 if (presentation.columns > 0) putJsonObject("layout") { put("type", "columns"); put("columns", presentation.columns) }
             }
+            is Presentation.GenUi -> buildJsonObject {
+                put("type", "gen_ui")
+                presentation.document?.let { put("document", it) }
+            }
             is Presentation.Artifact -> buildJsonObject {
                 put("type", "artifact")
                 put("artifactId", presentation.artifactId)

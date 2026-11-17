@@ -257,8 +257,13 @@ class GenUiState {
          * so its state is kept for the process.
          */
         fun of(computer: Any?, artifactId: String, version: Int): GenUiState {
+            return state(computer, "$artifactId/$version")
+        }
+
+        fun message(computer: Any, agentId: String, identity: String): GenUiState = state(computer, "message/$agentId/$identity")
+
+        private fun state(computer: Any?, key: String): GenUiState {
             computer ?: return GenUiState()
-            val key = "$artifactId/$version"
             return synchronized(shared) {
                 val versions = shared.getOrPut(computer) { android.util.LruCache(64) }
                 versions.get(key) ?: GenUiState().also { versions.put(key, it) }

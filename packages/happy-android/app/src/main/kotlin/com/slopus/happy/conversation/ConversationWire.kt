@@ -108,6 +108,8 @@ sealed interface Presentation {
     /** [columns] is the grid the producer asked for (`layout` `{type: "columns", columns}`, 1 or 2), else 0: justified rows. */
     data class Media(val items: List<MediaItem>, val columns: Int = 0) : Presentation
     data class Artifact(val artifactId: String, val artifactType: String?, val title: String?, val version: Int?, val shows: String? = null) : Presentation
+    /** A compiled render document carried by this tool call, without an artifact. */
+    data class GenUi(val document: JsonElement?) : Presentation
     /** An answered question as the person was shown it, and the values they gave (`user_input`). */
     data class UserInput(val prompts: List<Question.Prompt>, val answers: Map<String, List<String>>) : Presentation
     /**
@@ -167,6 +169,7 @@ sealed interface Presentation {
                 )
                 "media" -> Media(o["items"].arr.orEmpty().mapNotNull(MediaItem::parse), columns(o["layout"]))
                 "artifact" -> Artifact(o["artifactId"].str ?: return null, o["artifactType"].str, o["title"].str, o["version"].num?.toInt(), o["shows"].str)
+                "gen_ui" -> GenUi(o["document"])
                 "user_input" -> UserInput(
                     o["questions"].arr.orEmpty().mapNotNull { value ->
                         val q = value.obj ?: return@mapNotNull null

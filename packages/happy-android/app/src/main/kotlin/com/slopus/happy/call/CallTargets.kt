@@ -380,7 +380,7 @@ data class CallTargetState(
 /** What the agent itself does in a run: its words, a tool call and what it presented, the run's end or failure. */
 private val ConversationRow.isStep: Boolean get() = when (this) {
     is ConversationRow.Text, is ConversationRow.Tool, is ConversationRow.Section, is ConversationRow.Media, is ConversationRow.Artifact,
-    is ConversationRow.Failure, is ConversationRow.TurnEnd -> true
+    is ConversationRow.GenUi, is ConversationRow.Failure, is ConversationRow.TurnEnd -> true
     else -> false
 }
 

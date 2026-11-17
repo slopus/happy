@@ -70,6 +70,7 @@ extension GenUIBlockView {
     /// read through the computer the conversation is on, a tile opening
     /// the viewer on its group.
     func apply(_ embed: GenUIEmbed) {
+        conversationMessage = nil
         accessibilityIdentifier = "chat-gen-ui"
         let files = GenUIChatFiles(view: self, artifactId: embed.artifactId, version: embed.version)
         interaction.onAction = { [weak self] key, action in
@@ -92,7 +93,12 @@ extension GenUIBlockView {
     /// A conversation's version's answers on its computer, shared with its
     /// artifact page, once the view is in the conversation to ask.
     func sharesAnswers() {
-        guard let shown = conversationVersion, let client = GenUIChatFiles.host(self)?.pageClient else { return }
+        guard let client = GenUIChatFiles.host(self)?.pageClient else { return }
+        if let identity = conversationMessage {
+            interaction.use(.message(client, identity: identity))
+            return
+        }
+        guard let shown = conversationVersion else { return }
         interaction.use(.of(client, artifactId: shown.artifactId, version: shown.version))
     }
 

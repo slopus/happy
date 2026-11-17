@@ -366,6 +366,7 @@ actor ChatPlanner {
             case card(ChatMediaPlan.Card)
             case page(InlinePage)
             case genUI(GenUIEmbed)
+            case genUIMessage(GenUIMessageEmbed)
             case proposal(String)
             /// Words the planner writes, read but not selectable.
             case line(MarkdownPiece)
@@ -408,6 +409,12 @@ actor ChatPlanner {
                     drafts.append(.page(InlinePage(artifactId: artifact.id, title: artifact.title, page: page)))
                     parts.append(.page(height: key.pageHeights[artifact.id] ?? Self.pageHeight))
                 }
+            case .genUI(let toolCallId, let document):
+                let inner = MessageLayout.agentInner(width: key.width, maxContentWidth: key.maxContentWidth)
+                let embed = GenUIMessageEmbed(agentId: key.agentId, toolCallId: toolCallId, document: document, width: inner, environment: environment)
+                drafts.append(.genUIMessage(embed))
+                parts.append(.page(height: embed.height))
+                spoken.append(document.fallback)
             case .sidebarProposal(let artifactId):
                 // Drawn by the sidebar's own rows once it is read.
                 if let shown = proposals[artifactId], shown.status != .loading, shown.status != .missing {
@@ -472,6 +479,8 @@ actor ChatPlanner {
                 items.append(.embed(.page(page), frame: frame))
             case (.page(let frame), .genUI(let embed)):
                 items.append(.embed(.genUI(embed), frame: frame))
+            case (.page(let frame), .genUIMessage(let embed)):
+                items.append(.embed(.genUIMessage(embed), frame: frame))
             case (.markdown(let placed, let origin), .line(let markdown)):
                 items += markdown.draw(placed, origin: origin).items
             case (.proposal(let layout, let frame), .proposal(let artifactId)):

@@ -379,6 +379,8 @@ extension AgentWire {
         public var items: [MediaItem]?
         /// `columns` or a `tree`, kept as sent; `MediaLayout` reads it.
         public var layout: JSONValue?
+        /// A direct `gen_ui` result: the compiled document, not an artifact reference.
+        public var document: JSONValue?
         public var artifactId: String?
         public var artifactType: String?
         public var title: String?
@@ -411,7 +413,7 @@ extension AgentWire {
         public var tokensBefore: Double?
         public var tokensAfter: Double?
         private enum CodingKeys: String, CodingKey {
-            case type, items, layout, artifactId, artifactType, title, version, shows, command, input, query, operations, files, model, output
+            case type, items, layout, document, artifactId, artifactType, title, version, shows, command, input, query, operations, files, model, output
             case target, sources, omittedFiles, agentId, tokensBefore, tokensAfter
         }
 
@@ -493,8 +495,9 @@ extension AgentWire {
         public init(type: String, items: [MediaItem]? = nil, layout: JSONValue? = nil, artifactId: String? = nil, artifactType: String? = nil, title: String? = nil, version: Int? = nil, shows: String? = nil,
                     command: String? = nil, input: String? = nil, query: String? = nil, operations: [Operation]? = nil, files: [DiffFile]? = nil, model: SpawnModel? = nil,
                     tokensBefore: Double? = nil, tokensAfter: Double? = nil,
-                    output: String? = nil, target: String? = nil, sources: [Source]? = nil, omittedFiles: Int? = nil, agentId: String? = nil) {
+                    output: String? = nil, target: String? = nil, sources: [Source]? = nil, omittedFiles: Int? = nil, agentId: String? = nil, document: JSONValue? = nil) {
             self.type = type; self.items = items; self.layout = layout; self.artifactId = artifactId; self.artifactType = artifactType
+            self.document = document
             self.title = title; self.version = version; self.shows = shows
             self.command = command; self.input = input; self.query = query; self.operations = operations; self.files = files; self.model = model
             self.tokensBefore = tokensBefore; self.tokensAfter = tokensAfter
