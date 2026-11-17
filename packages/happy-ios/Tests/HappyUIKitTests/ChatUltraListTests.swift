@@ -51,5 +51,15 @@ final class ChatUltraListTests: XCTestCase {
         view.canvas.onAction?(.toggleTool("tool"))
         XCTAssertEqual(actions, 1, "departed renderers cannot act on an old account")
     }
+
+    /// A table's or code block's strip has no edge effect of its own: one
+    /// laid out under the bar stayed there as the list carried it down.
+    func testScrollerHasNoEdgeEffectOfItsOwn() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("edge effects are iOS 26's") }
+        let scroller = ChatScrollerView()
+        for edge in [scroller.topEdgeEffect, scroller.leftEdgeEffect, scroller.bottomEdgeEffect, scroller.rightEdgeEffect] {
+            XCTAssertTrue(edge.isHidden)
+        }
+    }
 }
 #endif

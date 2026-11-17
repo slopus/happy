@@ -505,6 +505,14 @@ final class ChatScrollerView: UIScrollView {
         alwaysBounceVertical = false
         scrollsToTop = false
         contentInsetAdjustmentBehavior = .never
+        // iOS 26 shades a scroll view under the bar with an edge of its own,
+        // laid out where the bar met it. A strip in a row is carried by the
+        // list, not scrolled, so that shade stayed where the bar had been and
+        // veiled the table or code once it came back down into view. The
+        // list's own edge shades it under the bar.
+        if #available(iOS 26.0, *) {
+            for edge in [topEdgeEffect, leftEdgeEffect, bottomEdgeEffect, rightEdgeEffect] { edge.isHidden = true }
+        }
         addSubview(content)
     }
 
