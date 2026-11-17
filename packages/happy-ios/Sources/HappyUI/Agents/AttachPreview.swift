@@ -62,13 +62,14 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
     private let check = LibraryCheckView()
     private let drag = UIPanGestureRecognizer()
     private let composer: AttachPreviewComposer?
-    /// The caption: the menu's own card, its send beside the text.
+    /// The caption: the menu's own card, its send beside the text. One
+    /// line at rest; typed, as many as `AttachPreviewFootLayout` leaves.
     private let card = AgentInputCardView(configuration: AgentInputCardConfiguration(
         placeholder: Strings.Composer.inputPlaceholder,
         primaryAction: .send,
         primaryAccessibilityLabel: Strings.AttachMenu.send,
         compact: true,
-        compactLines: 5
+        compactLines: 1
     ))
     private let cropButton = PhotoEditorButton.plain("crop.rotate", identifier: "attach-preview-crop", label: Strings.PhotoEditor.crop)
     private let drawButton = PhotoEditorButton.plain("pencil.tip.crop.circle", identifier: "attach-preview-draw", label: Strings.PhotoEditor.draw)
@@ -76,7 +77,6 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
     /// glass, with white artwork at 28 points and 44-point touch targets.
     private lazy var toolbar = PhotoEditorGroup([cropButton, drawButton])
     private var tools: [PhotoEditorButton] { [cropButton, drawButton] }
-    private var pictureArea: CGRect?
     /// Over the pictures while the caption is typed; a tap puts the
     /// keyboard away (`TGPhotoCaptionInputMixin`'s dismiss view).
     private let typingDim = UIView()
@@ -268,7 +268,6 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
             let page = AttachPreviewPage(item: shown, index: number)
             page.frame = layout.page(number)
             page.onTap = { [weak self] in self?.checkTapped() }
-            page.pictureArea = pictureArea
             page.onPlay = { [weak self, weak page] in
                 guard let self, let page else { return }
                 play(page)
@@ -312,23 +311,33 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
     }
 
     /// Telegram's foot (`AttachPreviewFootLayout`): the caption over the
-    /// tool row, and over the keyboard while typing. The whole photo fits
-    /// above it; typing dims it and hides the tools, Back and check.
+    /// tool row, and over the keyboard while typing. Typing lifts the
+    /// pictures by half the keyboard, dims them and hides the tools, Back
+    /// and check; the caption grows into the room the keyboard leaves.
     private func placeFoot() {
         guard composer != nil else { return }
         let bounds = view.bounds, safe = LayoutInsets(view.safeAreaInsets)
         let inset = MobileComposerMetrics.mobile.shellInset
         let width = AttachPreviewFootLayout.cardWidth(size: bounds.size, safeArea: safe, inset: inset)
+        let lines = card.textView.isFirstResponder ? captionLines(width: width, cap: AttachPreviewFootLayout.captionCap(size: bounds.size, keyboard: keyboard)) : 1
+        if card.configuration.compactLines != lines { card.configuration.compactLines = lines }
         let foot = AttachPreviewFootLayout(size: bounds.size, safeArea: safe, keyboard: keyboard, inset: inset, cardHeight: card.height(fitting: width), tools: tools.count)
         back.setLayoutFrame(foot.back)
         toolbar.frame = foot.group
         toolbar.place(foot.tools.map { $0.offsetBy(dx: -foot.group.minX, dy: -foot.group.minY) })
         card.frame = foot.card
-        pictureArea = foot.pictures
-        for page in pages.values { page.pictureArea = foot.pictures }
+        // By its centre: a drag to close moves it by its transform.
+        pager.center.y = pagerLayout.pager.midY + foot.lift
         typingDim.alpha = foot.typing ? 1 : 0
         for control in [back, check, checkButton] as [UIView] { control.alpha = foot.typing ? 0 : 1 }
         showTools()
+    }
+
+    /// The most lines the caption shows within `cap`.
+    private func captionLines(width: CGFloat, cap: CGFloat) -> Int {
+        var lines = 1
+        while lines < 40, card.compactHeight(lines: lines + 1, fitting: width) <= cap { lines += 1 }
+        return lines
     }
 
     @objc private func keyboardChanged(_ note: Notification) {
@@ -781,11 +790,6 @@ final class AttachPreviewPage: UIScrollView, UIScrollViewDelegate {
     var onTap: (() -> Void)?
     var onPlay: (() -> Void)?
     var onRelease: ((Int) -> Void)?
-    /// Nil for a plain gallery; the attach viewer reserves its caption
-    /// and toolbar before fitting the picture.
-    var pictureArea: CGRect? {
-        didSet { if pictureArea != oldValue { reset() } }
-    }
     /// The library's request for its picture.
     var request: Int?
     /// The video, once read.
@@ -866,7 +870,7 @@ final class AttachPreviewPage: UIScrollView, UIScrollViewDelegate {
         imageView.frame = fitted
         contentSize = fitted.size
         // Videos play where they are; only photos zoom.
-        maximumZoomScale = item.duration == nil ? AttachPreviewLayout.maximumZoom(natural, in: pictureArea?.size ?? bounds.size) : 1
+        maximumZoomScale = item.duration == nil ? AttachPreviewLayout.maximumZoom(natural, in: bounds.size) : 1
         setNeedsLayout()
     }
 
@@ -885,8 +889,7 @@ final class AttachPreviewPage: UIScrollView, UIScrollViewDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let area = pictureArea ?? bounds
-        imageView.frame = AttachPreviewLayout.zoomed(imageView.frame.size, in: area.size).offsetBy(dx: area.minX, dy: area.minY)
+        imageView.frame = AttachPreviewLayout.zoomed(imageView.frame.size, in: bounds.size)
         playerView?.frame = imageView.frame
         guard item.duration != nil else { return }
         playButton.frame = AttachPreviewLayout.play(in: imageView.frame)
@@ -898,8 +901,7 @@ final class AttachPreviewPage: UIScrollView, UIScrollViewDelegate {
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { item.duration == nil ? imageView : nil }
 
     private func fitted(_ natural: CGSize) -> CGRect {
-        let area = pictureArea ?? bounds
-        return AttachPreviewLayout.fit(natural, in: area.size).offsetBy(dx: area.minX, dy: area.minY)
+        AttachPreviewLayout.fit(natural, in: bounds.size)
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {

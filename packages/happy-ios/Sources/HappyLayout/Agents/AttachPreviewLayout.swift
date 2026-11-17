@@ -198,9 +198,17 @@ public enum AttachPreviewMotion {
 }
 
 /// Telegram's gallery foot: a separate Back at the left of the glass
-/// tool group, the caption 10 above its 49-point row. Typing hides that
-/// row. Happy fits the whole picture above the caption, as requested,
-/// rather than allowing a tall image to extend underneath the controls.
+/// tool group, the caption 10 above its 49-point row. The picture is
+/// fitted to the whole screen under all of it, as Telegram's gallery
+/// fits it (`TGModernGalleryZoomableItemView`).
+///
+/// Typing the caption (`TGPhotoCaptionInputMixin`, `TGMediaPickerGallery-
+/// InterfaceView.keyboardHeightChanged`): the row hides, the caption rides
+/// 8 over the keyboard, and the pictures keep their size, lifted by half
+/// the keyboard (`scrollViewOffsetRequested(-keyboardHeight / 2)`) and
+/// dimmed, the caption over them. The caption shows one line at rest and
+/// grows with its text while typed, up to what the keyboard leaves less
+/// 100, never under 60 (`LegacyMessageInputPanel.maxInputPanelHeight`).
 public struct AttachPreviewFootLayout: Equatable, Sendable {
     public enum Metrics {
         public static let bar: CGFloat = 49
@@ -209,10 +217,11 @@ public struct AttachPreviewFootLayout: Equatable, Sendable {
         /// The caption over the bar, and over the keyboard.
         public static let overBar: CGFloat = 10
         public static let overKeyboard: CGFloat = 8
-        /// The caption grows to a third of what the keyboard leaves at most.
-        public static let shortest: CGFloat = 44
         public static let side: CGFloat = 26
-        public static let pictureInset: CGFloat = 12
+        /// The caption's cap: never under 60, else what the keyboard
+        /// leaves less 100.
+        public static let captionShortest: CGFloat = 60
+        public static let captionClearance: CGFloat = 100
     }
 
     /// The row through the screen's foot (transparent, on viewer black).
@@ -222,14 +231,20 @@ public struct AttachPreviewFootLayout: Equatable, Sendable {
     public var card: CGRect
     public var back: CGRect
     public var group: CGRect
-    /// The whole photo fits here, clear of the caption and top check.
-    public var pictures: CGRect
+    /// The pictures' offset down from where they rest: minus half the
+    /// keyboard while typing, else 0.
+    public var lift: CGFloat
     /// The keyboard is up for the caption: no tools, the pictures dimmed.
     public var typing: Bool
 
     /// The caption's width, for the height it asks at.
     public static func cardWidth(size: CGSize, safeArea: LayoutInsets, inset: CGFloat) -> CGFloat {
         max(0, size.width - safeArea.left - safeArea.right - 2 * inset)
+    }
+
+    /// The tallest the caption grows with `keyboard` up.
+    public static func captionCap(size: CGSize, keyboard: CGFloat) -> CGFloat {
+        max(Metrics.captionShortest, size.height - keyboard - Metrics.captionClearance)
     }
 
     /// `keyboard` is how much of the screen's foot it covers; `cardHeight`
@@ -244,12 +259,9 @@ public struct AttachPreviewFootLayout: Equatable, Sendable {
         back = CGRect(x: safeArea.left + Metrics.side, y: top, width: Metrics.tool, height: Metrics.tool)
         group = CGRect(x: left, y: top, width: width, height: Metrics.tool)
         tools = (0..<count).map { CGRect(x: left + CGFloat($0) * (Metrics.tool + Metrics.toolGap), y: top, width: Metrics.tool, height: Metrics.tool) }
-        let height = min(cardHeight, max(Metrics.shortest, (size.height - keyboard) / 3))
+        let height = min(cardHeight, Self.captionCap(size: size, keyboard: keyboard))
         let bottom = typing ? size.height - keyboard - Metrics.overKeyboard : barTop - Metrics.overBar
         card = CGRect(x: safeArea.left + inset, y: bottom - height, width: Self.cardWidth(size: size, safeArea: safeArea, inset: inset), height: height)
-        let pictureTop = safeArea.top + Metrics.tool + Metrics.pictureInset
-        pictures = CGRect(x: safeArea.left + Metrics.pictureInset, y: pictureTop,
-                          width: max(0, size.width - safeArea.left - safeArea.right - 2 * Metrics.pictureInset),
-                          height: max(0, card.minY - Metrics.pictureInset - pictureTop))
+        lift = typing ? -keyboard / 2 : 0
     }
 }

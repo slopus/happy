@@ -131,9 +131,9 @@ final class HostedPhotoEditorTests: XCTestCase {
         page.onTap?()
         XCTAssertNil(preview.shownNumber)
         XCTAssertEqual(preview.chromeAlpha, 1)
-        let caption = try XCTUnwrap(views(preview.view).compactMap { $0 as? UITextView }.first)
+        // Fitted to the whole screen, as Telegram's gallery fits it.
         let picture = page.pictureFrame(in: preview.view, natural: nil)
-        XCTAssertLessThan(picture.maxY, caption.convert(caption.bounds, to: preview.view).minY)
+        XCTAssertEqual(picture.width, preview.view.bounds.width, accuracy: 1)
     }
 
     func testDismissingThePresenterRemovesViewerAndItsKeyboard() async throws {
@@ -159,7 +159,8 @@ final class HostedPhotoEditorTests: XCTestCase {
         let page = try XCTUnwrap(preview.currentPage)
         let tool = try control("attach-preview-crop", in: preview.view)
         XCTAssertTrue(caption.isFirstResponder)
-        XCTAssertGreaterThan(page.pictureFrame(in: preview.view, natural: nil).width, 1)
+        // The picture keeps its size, up by half the keyboard (Telegram's `keyboardHeightChanged`).
+        XCTAssertEqual(page.pictureFrame(in: preview.view, natural: nil).width, preview.view.bounds.width, accuracy: 1)
         XCTAssertEqual(tool.superview?.alpha, 0)
     }
 

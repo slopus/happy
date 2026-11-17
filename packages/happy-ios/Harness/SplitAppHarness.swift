@@ -450,6 +450,9 @@ final class SplitAppHarness {
                 try? await Task.sleep(for: .milliseconds(500))
                 shell.setSidebarHidden(true)
             }
+            if arguments.contains("-attachPreviewTour") {
+                await AttachPreviewTour.run(window: window, caption: option("-caption") ?? "A caption long enough to wrap onto a second line here")
+            }
             if arguments.contains("-resizeLoop") { await Self.resizeLoop(window) }
             if arguments.contains("-lowPowerTour") { await Self.lowPowerTour(window: window, home: home, context: context) }
             if arguments.contains("-tabTour") { await Self.tabTour(shell: shell, home: home, context: context) }

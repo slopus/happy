@@ -20,6 +20,9 @@ final class FixtureAttachLibrary: AttachLibrary {
     private var pending: (items: [AttachLibraryItem], change: AttachLibraryChange)?
     private var loadedOnce = false
     private let total: Int
+    /// Width over height of the pictures shown (1 is square; a phone's
+    /// screenshot is about 0.46).
+    private let aspect: CGFloat
     private var next = 0
     private var made = 0
     private var requests: Set<Int> = []
@@ -34,18 +37,21 @@ final class FixtureAttachLibrary: AttachLibrary {
     private(set) var commits = 0
     private static let queue = DispatchQueue(label: "engineering.happy.fixture-library", qos: .userInitiated, attributes: .concurrent)
 
-    init(access: AttachLibraryAccess, grant: AttachLibraryAccess = .authorized, count: Int = 60) {
+    init(access: AttachLibraryAccess, grant: AttachLibraryAccess = .authorized, count: Int = 60, aspect: CGFloat = 1) {
         self.access = access
         self.grant = grant
         total = count
+        self.aspect = aspect
     }
 
     /// From the launch arguments the harness and UI tests pass:
-    /// `-attachLibrary authorized|limited|denied|notDetermined`.
+    /// `-attachLibrary authorized|limited|denied|notDetermined`, or
+    /// `screenshots`: authorized, every picture a phone screenshot's shape.
     static func fromArguments(_ arguments: [String]) -> FixtureAttachLibrary? {
         guard let index = arguments.firstIndex(of: "-attachLibrary"), arguments.indices.contains(index + 1) else { return nil }
         switch arguments[index + 1] {
         case "authorized": return FixtureAttachLibrary(access: .authorized)
+        case "screenshots": return FixtureAttachLibrary(access: .authorized, aspect: 1179.0 / 2556.0)
         case "limited": return FixtureAttachLibrary(access: .limited, count: 7)
         case "denied": return FixtureAttachLibrary(access: .denied)
         case "notDetermined": return FixtureAttachLibrary(access: .notDetermined)
@@ -134,8 +140,9 @@ final class FixtureAttachLibrary: AttachLibrary {
         next += 1
         let token = next
         requests.insert(token)
+        let aspect = aspect
         Self.queue.async {
-            let made = Self.picture(picture, pixels: size)
+            let made = Self.picture(picture, pixels: size, aspect: aspect)
             let image = made.preparingForDisplay() ?? made
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { [weak self] in
@@ -224,9 +231,10 @@ final class FixtureAttachLibrary: AttachLibrary {
     func manageLimited(from host: UIViewController) { limitedManaged += 1 }
 
     /// Picture `index`: a soft two-colour gradient with a shape on it, the
-    /// same every time.
-    nonisolated static func picture(_ index: Int, pixels size: CGSize) -> UIImage {
+    /// same every time; `aspect` (width over height) under 1 draws it taller.
+    nonisolated static func picture(_ index: Int, pixels size: CGSize, aspect: CGFloat = 1) -> UIImage {
         let side = max(1, min(size.width, size.height))
+        let height = (side / max(0.01, min(1, aspect))).rounded()
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
@@ -234,12 +242,12 @@ final class FixtureAttachLibrary: AttachLibrary {
         let hue = hues[index % hues.count]
         let top = UIColor(hue: hue, saturation: 0.45, brightness: 0.95, alpha: 1)
         let bottom = UIColor(hue: (hue + 0.08).truncatingRemainder(dividingBy: 1), saturation: 0.7, brightness: 0.7, alpha: 1)
-        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: height), format: format).image { context in
             let cg = context.cgContext
             let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [top.cgColor, bottom.cgColor] as CFArray, locations: [0, 1])!
-            cg.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: side, y: side), options: [])
+            cg.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: side, y: height), options: [])
             UIColor(white: 1, alpha: 0.35).setFill()
-            let shape = CGRect(x: side * 0.25, y: side * 0.3, width: side * 0.5, height: side * 0.5)
+            let shape = CGRect(x: side * 0.25, y: side * 0.3 + (height - side) / 2, width: side * 0.5, height: side * 0.5)
             switch index % 3 {
             case 0: cg.fillEllipse(in: shape)
             case 1: cg.fill(shape.insetBy(dx: side * 0.05, dy: side * 0.05))

@@ -137,30 +137,35 @@ final class AttachPreviewFootLayoutTests: XCTestCase {
     private let phone = CGSize(width: 402, height: 874)
     private let safe = LayoutInsets(top: 62, bottom: 34)
 
-    func testBackAndToolsShareTheBottomRowAndThePictureClearsTheCaption() {
+    func testBackAndToolsShareTheBottomRowAndThePicturesRestWhereTheyAre() {
         let foot = AttachPreviewFootLayout(size: phone, safeArea: safe, keyboard: 0, inset: 8, cardHeight: 50, tools: 2)
         XCTAssertEqual(foot.bar, CGRect(x: 0, y: 791, width: 402, height: 83))
         XCTAssertEqual(foot.tools, [CGRect(x: 152, y: 793.5, width: 44, height: 44), CGRect(x: 206, y: 793.5, width: 44, height: 44)])
         XCTAssertEqual(foot.card, CGRect(x: 8, y: 731, width: 386, height: 50))
         XCTAssertEqual(foot.back, CGRect(x: 26, y: 793.5, width: 44, height: 44))
         XCTAssertEqual(foot.group, CGRect(x: 152, y: 793.5, width: 98, height: 44))
-        XCTAssertEqual(foot.pictures, CGRect(x: 12, y: 118, width: 378, height: 601))
+        XCTAssertEqual(foot.lift, 0)
         XCTAssertFalse(foot.typing)
     }
 
-    func testTypingTheCaptionAndWholePictureStayAboveTheKeyboard() {
+    /// Telegram's `keyboardHeightChanged`: the pictures keep their size and
+    /// go up by half the keyboard; the caption rides 8 over it.
+    func testTypingLiftsThePicturesByHalfTheKeyboard() {
         let foot = AttachPreviewFootLayout(size: phone, safeArea: safe, keyboard: 336, inset: 8, cardHeight: 50, tools: 2)
         XCTAssertTrue(foot.typing)
         XCTAssertEqual(foot.card, CGRect(x: 8, y: 480, width: 386, height: 50))
-        XCTAssertEqual(foot.pictures, CGRect(x: 12, y: 118, width: 378, height: 350))
+        XCTAssertEqual(foot.lift, -168)
         // The bar stays where it was, under the keyboard.
         XCTAssertEqual(foot.bar.minY, 791)
     }
 
-    func testALongCaptionStopsAtAThirdOfWhatTheKeyboardLeaves() {
-        let foot = AttachPreviewFootLayout(size: phone, safeArea: safe, keyboard: 336, inset: 8, cardHeight: 400, tools: 2)
-        XCTAssertEqual(foot.card.height, (874 - 336) / 3)
+    /// `LegacyMessageInputPanel.maxInputPanelHeight`: what the keyboard
+    /// leaves less 100, never under 60.
+    func testALongCaptionStopsAHundredShortOfWhatTheKeyboardLeaves() {
+        let foot = AttachPreviewFootLayout(size: phone, safeArea: safe, keyboard: 336, inset: 8, cardHeight: 900, tools: 2)
+        XCTAssertEqual(foot.card.height, 874 - 336 - 100)
         XCTAssertEqual(foot.card.maxY, 874 - 336 - 8)
+        XCTAssertEqual(AttachPreviewFootLayout.captionCap(size: CGSize(width: 874, height: 402), keyboard: 300), 60)
     }
 
     func testTurnedTheCaptionKeepsInsideTheSideInsets() {

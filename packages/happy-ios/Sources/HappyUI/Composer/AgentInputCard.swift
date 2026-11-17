@@ -1044,6 +1044,17 @@ public final class AgentInputCardView: UIView {
         return AgentInputCardLayout(layoutInput(width: width, textContentHeight: 0, hasText: false, compact: false)).size.height
     }
 
+    /// The compact card's height at `width` with its text `lines` tall:
+    /// what an owner fits `compactLines` to the room it has with. Measures
+    /// nothing.
+    public func compactHeight(lines: Int, fitting width: CGFloat) -> CGFloat {
+        syncTextSize()
+        let cap = AgentInputCardLayout.compactTextCap(lineHeight: inputLineHeight, lines: lines, metrics: metrics)
+        var input = layoutInput(width: width, textContentHeight: cap - 2, hasText: true, compact: true)
+        input.compactLines = lines
+        return AgentInputCardLayout(input).size.height
+    }
+
     /// The compact card is drawn (never the flat panel).
     private var isCompact: Bool {
         configuration.compact && configuration.desktop == nil
