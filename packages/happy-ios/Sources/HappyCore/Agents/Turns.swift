@@ -99,6 +99,9 @@ extension ChatItem {
         /// The options the person ticked, not yet sent, by prompt ID: the
         /// screen's own, set on the item before it is planned.
         public var picked: [String: [String]] = [:]
+        /// Answered, it is one grey line rather than its card (Group tool
+        /// calls, `ToolSections`).
+        public var line = false
 
         public init(question: AgentWire.Question, phase: Phase) {
             self.question = question
@@ -132,6 +135,46 @@ extension ChatItem {
             if current.contains(label) { picked[promptId] = current.filter { $0 != label } }
             else { picked[promptId] = many ? current + [label] : [label] }
             return picked
+        }
+    }
+
+    /// A run of tool calls between two pieces of the agent's words, drawn
+    /// as one line (desktop's `ConversationToolSection`): while it runs, its
+    /// latest call; once over, what it was made of and how long it took.
+    public struct Section: Equatable, Sendable {
+        /// Every call of the run, in order: `.tool` items.
+        public var members: [ChatItem]
+        /// It may yet take another call.
+        public var live: Bool
+        /// From its first call to what the agent did next, when both are timed.
+        public var durationMs: Double?
+
+        public init(members: [ChatItem], live: Bool, durationMs: Double? = nil) {
+            self.members = members
+            self.live = live
+            self.durationMs = durationMs
+        }
+
+        public var latest: ChatItem { members[members.count - 1] }
+
+        /// Its line sums the run up. A run of one call never is: that call
+        /// is all there is to say.
+        public var sums: Bool { !live && members.count > 1 }
+
+        /// What a run was made of (`sectionKinds`), from each call's kind
+        /// in order: each kind with its count, the most frequent first and
+        /// otherwise in the order they first ran, a kind run once without
+        /// its number, and past four kinds the rest counted as "+N more".
+        public static func kinds(_ names: [String]) -> [String] {
+            var counts: [(name: String, count: Int)] = []
+            for name in names {
+                if let index = counts.firstIndex(where: { $0.name == name }) { counts[index].count += 1 } else { counts.append((name, 1)) }
+            }
+            // Stable, so kinds that ran equally often keep their first order.
+            let sorted = counts.enumerated().sorted { ($0.element.count, -$0.offset) > ($1.element.count, -$1.offset) }.map(\.element)
+            let named = sorted.count > 4 ? Array(sorted.prefix(3)) : sorted
+            let rest = sorted.dropFirst(named.count).reduce(0) { $0 + $1.count }
+            return named.map { $0.count > 1 ? "\($0.name) \($0.count)" : $0.name } + (rest > 0 ? ["+\(rest) more"] : [])
         }
     }
 
@@ -186,6 +229,14 @@ public enum TurnFold {
         return MediaRuns.join(result)
     }
 
+    /// The items as a transcript shows them: with Group tool calls
+    /// (`grouped`) each run of calls one section (`ToolSections`), then
+    /// every finished turn folded unless opened.
+    public static func shown(_ items: [ChatItem], working: Bool, queued: Int, grouped: Bool, expanded: Set<String>, memory: inout ToolSections.Memory) -> [ChatItem] {
+        let items = grouped ? ToolSections.group(items, working: working, queued: queued, opened: expanded, memory: &memory) : items
+        return fold(items, expanded: expanded)
+    }
+
     static func fold(turn: String, _ group: [ChatItem], open: Bool) -> [ChatItem] {
         guard let status = group.firstIndex(where: { if case .turnEnd = $0.role { true } else { false } }),
               case .turnEnd(let ended) = group[status].role else { return group }
@@ -197,7 +248,7 @@ public enum TurnFold {
             case .turnEnd, .user, .collaborator, .own, .failure, .trace: return true
             case .tool(let tool): return tool.isResult
             case .question(let ask): return ask.phase != .answered
-            case .agent: return false
+            case .agent, .section: return false
             }
         }
         guard kept.count < group.count else { return group }
@@ -218,7 +269,7 @@ public enum TurnFold {
     /// The work of a turn, which a closed turn hides.
     static func isStep(_ item: ChatItem) -> Bool {
         switch item.role {
-        case .tool, .collaborator, .own: true
+        case .tool, .section, .collaborator, .own: true
         default: false
         }
     }
@@ -227,9 +278,101 @@ public enum TurnFold {
     /// words or one of its steps.
     static func holdsTrace(_ item: ChatItem) -> Bool {
         switch item.role {
-        case .agent, .tool, .collaborator, .own: true
+        case .agent, .tool, .section, .collaborator, .own: true
         default: false
         }
+    }
+}
+
+/// Group tool calls (desktop's `conversationToolSections`): each run of
+/// one-line tool calls is one row, its first call's, drawing the run as one
+/// line (`ChatItem.Section`), and an answered question is one line too.
+/// Applied before `TurnFold`, which folds a section as the step it is.
+///
+/// Which calls a section holds is read from the items alone. A call that
+/// shows something under its line (pictures, files, an artifact, a page)
+/// keeps its own row and ends the run, as does anything that isn't a call
+/// and a turn's edge. A section is live while one of its calls runs, or
+/// while the turn runs and nothing but queued messages follows it; a
+/// turn's end closes every section before it. Once a screen has seen a
+/// section end, `memory` keeps it ended: the turn going on never opens it
+/// again, only a call of its own still under way.
+///
+/// A turn opened with "View traces" (`opened`) has no sections: every call
+/// is its own row until it is folded again.
+public enum ToolSections {
+    /// What a screen remembers between passes. It changes what a row shows,
+    /// never which rows there are or how tall they are.
+    public struct Memory: Equatable, Sendable {
+        /// The sections seen to end, by row ID.
+        public var ended: Set<String> = []
+        /// The questions seen waiting: answered here, each stays its card
+        /// until the screen is opened again, so nothing above it moves.
+        public var asked: Set<String> = []
+
+        public init() {}
+    }
+
+    /// `items` with each run of calls one section row. `queued` is how many
+    /// of the last items are messages waiting for the turn to take them.
+    public static func group(_ items: [ChatItem], working: Bool, queued: Int = 0, opened: Set<String> = [], memory: inout Memory) -> [ChatItem] {
+        let end = max(0, items.count - queued)
+        // Everything up to the last turn's end belongs to a turn that is over.
+        let settled = items.lastIndex { if case .turnEnd = $0.role { true } else { false } } ?? -1
+        var result: [ChatItem] = []
+        result.reserveCapacity(items.count)
+        var index = 0
+        while index < items.count {
+            let lead = items[index]
+            guard joins(lead), !opened.contains(lead.turn ?? "") else {
+                result.append(line(lead, memory: &memory))
+                index += 1
+                continue
+            }
+            var next = index + 1
+            while next < end, joins(items[next]), items[next].turn == lead.turn { next += 1 }
+            let members = Array(items[index..<next])
+            let running = members.contains { if case .tool(let tool) = $0.role { tool.running } else { false } }
+            let live = next > settled && (running || (working && next >= end && !memory.ended.contains(lead.id)))
+            if !live { memory.ended.insert(lead.id) }
+            var duration: Double?
+            if !live, let started = lead.madeAt, let ended = (next < end ? endedAt(items[next]) : nil) ?? members.last?.madeAt, ended > started {
+                duration = ended - started
+            }
+            let section = ChatItem.Section(members: members, live: live, durationMs: duration)
+            result.append(ChatItem(id: lead.id, role: .section(section), pieces: [], delivery: .sent, turn: lead.turn, madeAt: lead.madeAt))
+            index = next
+        }
+        return result
+    }
+
+    /// A call that is one line and nothing else, which can share a section.
+    static func joins(_ item: ChatItem) -> Bool {
+        guard case .tool(let tool) = item.role, item.pieces.isEmpty else { return false }
+        return !["media", "artifact", "page", "preview"].contains(tool.presentation?.type)
+    }
+
+    /// When the agent did what follows a run: its next words or step, or
+    /// its turn's end. A person's message times nothing.
+    static func endedAt(_ item: ChatItem) -> Double? {
+        switch item.role {
+        case .turnEnd(let ended): ended.endedAt
+        case .user: nil
+        default: item.madeAt
+        }
+    }
+
+    /// An answered question as one line, unless it was seen waiting here.
+    static func line(_ item: ChatItem, memory: inout Memory) -> ChatItem {
+        guard case .question(var ask) = item.role else { return item }
+        guard ask.phase == .answered else {
+            memory.asked.insert(item.id)
+            return item
+        }
+        guard !memory.asked.contains(item.id) else { return item }
+        ask.line = true
+        // Read from nothing but the item: made again, the same making.
+        return item.derived(3) { $0.role = .question(ask) }
     }
 }
 
@@ -280,8 +423,9 @@ public enum MediaRuns {
         return columns
     }
 
-    /// A row a run goes on across: an exploration.
+    /// A row a run goes on across: an exploration, or a section of them.
     static func passesOver(_ item: ChatItem) -> Bool {
+        if case .section(let section) = item.role { return section.members.allSatisfy(passesOver) }
         guard case .tool(let tool) = item.role else { return false }
         return tool.presentation?.type == "exploration"
     }

@@ -65,7 +65,7 @@ public struct Shared: Equatable, Sendable {
     static func of(item: ChatItem) -> Shared {
         var shared = Shared()
         switch item.role {
-        case .collaborator, .own, .failure, .turnEnd, .question, .trace: return shared
+        case .collaborator, .own, .failure, .turnEnd, .question, .trace, .section: return shared
         // A tool call's pieces are what it showed.
         case .user, .agent, .tool: break
         }

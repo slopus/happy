@@ -47,6 +47,36 @@ public struct ToolRowLayout: Equatable, Sendable {
     }
 }
 
+/// A run of tool calls summed up on its one line (Group tool calls,
+/// desktop's `tool-section.css`): the row a call's line is, its glyph in
+/// the same lane, then what the run was made of in the room its duration
+/// leaves, and the duration at its own width right after it. A narrow row
+/// cuts the kinds, never the time. The duration's words open with their
+/// separator, so nothing stands between the two.
+public struct ToolSectionLayout: Equatable, Sendable {
+    public typealias Metrics = AgentMessageLayout.Metrics
+
+    public var size: CGSize
+    public var glyph: CGRect
+    public var kinds: CGRect
+    public var duration: CGRect?
+
+    public init(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, kindsWidth: CGFloat, durationWidth: CGFloat?) {
+        typealias M = Metrics
+        let column = ChatColumn(rowWidth: width, maxContentWidth: maxContentWidth)
+        let left = column.x + MessageLayout.Metrics.marginH
+        let right = column.x + column.width - MessageLayout.Metrics.marginH
+        let top = M.paddingV
+        glyph = CGRect(x: left, y: top + (M.lineHeight - M.glyph) / 2, width: M.glyph, height: M.glyph)
+        let x = glyph.maxX + M.gap
+        let time = durationWidth.map { min(ceil($0), max(0, right - x)) }
+        let kinds = CGRect(x: x, y: top, width: min(ceil(kindsWidth), max(0, right - x - (time ?? 0))), height: M.lineHeight)
+        self.kinds = kinds
+        duration = time.map { CGRect(x: kinds.maxX, y: top, width: $0, height: M.lineHeight) }
+        size = CGSize(width: max(0, width), height: top + M.lineHeight + M.paddingV)
+    }
+}
+
 /// A call whose result is something to look at, desktop's media and
 /// artifact rows (`agent-activity-row.css`, `toolResultHeight`): its line,
 /// then what it showed 8 under it in the row's own flow, laid out as an

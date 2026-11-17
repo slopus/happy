@@ -404,4 +404,23 @@ public enum StreamingRevealMotion {
     /// More characters than this in one frame (a long reply arriving whole)
     /// fade in a line at a time instead of one by one.
     public static let glyphsPerFrame = 48
+
+    /// One line replacing another in place (a tool section's line, desktop's
+    /// `ArrivingText`): the old character at each place rises 6 further,
+    /// shrinks to half and fades in this long, as the new one comes in.
+    public static let leaveDuration = 0.16
+    /// However long a line is, its last character starts within this long.
+    public static let lineLongest = 0.36
+    /// The place whose character starts halfway through `lineLongest`.
+    public static let lineHalf = 18.0
+
+    /// When the character at `place` starts moving, in seconds after its
+    /// line does (`arrivingTextDelay`). It depends on the place alone, so
+    /// the character leaving a place and the one taking it start together
+    /// whatever the two lines' lengths; the first come 20 ms apart and the
+    /// rest ever closer.
+    public static func lineDelay(_ place: Int) -> Double {
+        let place = Double(max(0, place))
+        return lineLongest * place / (place + lineHalf)
+    }
 }

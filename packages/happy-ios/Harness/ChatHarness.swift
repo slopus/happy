@@ -73,6 +73,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var chatHeader: ChatHeaderHarness?
     private var avatarSpeeds: AvatarSpeedHarness?
     private var agentChat: AgentChatHarness?
+    private var toolSections: ToolSectionsHarness?
     private var genUIChat: GenUIChatHarness?
     private var agentFeed: AgentFeedHarness?
     private var cluster: ClusterHarness?
@@ -164,6 +165,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "agentChat" {
             agentChat = AgentChatHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "toolSections" {
+            toolSections = ToolSectionsHarness(window: window, arguments: arguments)
             return
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "genuiChat" {

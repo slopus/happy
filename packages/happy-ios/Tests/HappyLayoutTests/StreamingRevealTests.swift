@@ -192,4 +192,14 @@ final class StreamingRevealTests: XCTestCase {
         let map = RevealMap(lines: [.init(frame: CGRect(x: 0, y: 0, width: 30, height: 20), ends: [10, 10, 20])], size: CGSize(width: 30, height: 20))
         XCTAssertEqual(map.glyphs(from: 0, to: 3).map(\.index), [0, 2])
     }
+
+    /// A line replacing another: each place's turn depends on the place
+    /// alone, 20 ms apart at first, the last within 0.36 s however long.
+    func testALineReplacesAnotherOnOneClockOfPlaces() {
+        XCTAssertEqual(StreamingRevealMotion.lineDelay(0), 0)
+        XCTAssertEqual(StreamingRevealMotion.lineDelay(1), 0.36 / 19, accuracy: 1e-9)
+        XCTAssertEqual(StreamingRevealMotion.lineDelay(18), 0.18, accuracy: 1e-9)
+        XCTAssertLessThan(StreamingRevealMotion.lineDelay(10_000), 0.36)
+        XCTAssertLessThan(StreamingRevealMotion.lineDelay(3) - StreamingRevealMotion.lineDelay(2), StreamingRevealMotion.lineDelay(1))
+    }
 }

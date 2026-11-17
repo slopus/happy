@@ -66,6 +66,8 @@ final class WarmChats {
     /// What rows are laid out at: the sidebar's width and text, which a
     /// pushed conversation has too.
     private var layout: (width: CGFloat, environment: TextEnvironment?)?
+    /// Settings › Appearance › Group tool calls, as a screen opening now reads it.
+    var groupsToolCalls: @Sendable () -> Bool = { true }
     private var references = References()
     /// The server and installation the conversations are on, which their
     /// screens plan with too (`ChatPlanner.Key`), so what is planned here is taken.
@@ -345,8 +347,9 @@ final class WarmChats {
         var references = references
         references.subagents = chat.snapshot.subagentTitles
         references.instanceId = instanceId
-        // As its screen opens it: every finished turn folded.
-        let items = TurnFold.fold(chat.snapshot.items, expanded: [])
+        // As its screen opens it: runs of calls grouped, every finished turn folded.
+        var memory = ToolSections.Memory()
+        let items = TurnFold.shown(chat.snapshot.items, working: chat.snapshot.working, queued: chat.snapshot.queued, grouped: groupsToolCalls(), expanded: [], memory: &memory)
         // Only the work of what its messages link, as its screen narrows it.
         if chat.linked?.items != items || chat.linked?.agents != references.agents {
             chat.linked = (items, references.agents, items.reduce(into: Set<String>()) { $0.formUnion(references.agents(in: $1.text)) })

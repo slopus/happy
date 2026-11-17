@@ -28,6 +28,9 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         case question(Ask)
         /// A finished turn's fold control, placed by `TurnFold`.
         case trace(Trace)
+        /// A run of tool calls drawn as one line (Group tool calls),
+        /// placed by `ToolSections`.
+        case section(Section)
     }
 
     public enum Delivery: Equatable, Sendable {
@@ -100,8 +103,12 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
     /// On a team's computer, the member who wrote a person's message, by
     /// their user ID; nil for one still on its way and outside a team.
     public var author: String? { didSet { revision = 0 } }
+    /// When the agent's message it came from was made, in ms: what a tool
+    /// section's duration is read from (`ToolSections`). Nil for a
+    /// person's message and anything not made from one of the agent's.
+    public var madeAt: Double? { didSet { revision = 0 } }
 
-    public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil, time: Double? = nil, author: String? = nil) {
+    public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil, time: Double? = nil, author: String? = nil, madeAt: Double? = nil) {
         self.id = id
         self.role = role
         self.pieces = pieces
@@ -109,6 +116,7 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         self.turn = turn
         self.time = time
         self.author = author
+        self.madeAt = madeAt
     }
 
     /// This item stamped as a making of its own.
@@ -131,7 +139,7 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
 
     public static func == (lhs: ChatItem, rhs: ChatItem) -> Bool {
         if lhs.revision != 0, lhs.revision == rhs.revision { return true }
-        return lhs.id == rhs.id && lhs.role == rhs.role && lhs.pieces == rhs.pieces && lhs.delivery == rhs.delivery && lhs.turn == rhs.turn && lhs.time == rhs.time && lhs.author == rhs.author
+        return lhs.id == rhs.id && lhs.role == rhs.role && lhs.pieces == rhs.pieces && lhs.delivery == rhs.delivery && lhs.turn == rhs.turn && lhs.time == rhs.time && lhs.author == rhs.author && lhs.madeAt == rhs.madeAt
     }
 
     /// Stamps unique across the app, so items of two conversations are never
@@ -2313,13 +2321,13 @@ public actor Conversation {
                 guard case .compaction(let compaction) = block else { return nil }
                 return compaction
             }.enumerated().map { index, compaction in
-                ChatItem(id: index == 0 ? message.id : "\(message.id)/\(index)", role: .tool(Self.compactionTool(compaction)), pieces: [], delivery: .sent, turn: turn).stamped()
+                ChatItem(id: index == 0 ? message.id : "\(message.id)/\(index)", role: .tool(Self.compactionTool(compaction)), pieces: [], delivery: .sent, turn: turn, madeAt: message.createdAt).stamped()
             }
             if !compactions.isEmpty { made.items = compactions; return }
             // Only a failure is shown, as desktop's card; other service
             // messages are the daemon's housekeeping.
             guard let failure = Failure.of(message) else { return }
-            made.items = [ChatItem(id: message.id, role: .failure(failure), pieces: [.text(failure.reason)], delivery: .sent, turn: turn).stamped()]
+            made.items = [ChatItem(id: message.id, role: .failure(failure), pieces: [.text(failure.reason)], delivery: .sent, turn: turn, madeAt: message.createdAt).stamped()]
             return
         }
         if message.role == "user", message.metadata?.senderAgentId == agentId {
@@ -2328,7 +2336,7 @@ public actor Conversation {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             let explanation = message.metadata?.senderAgentExplanation.flatMap { $0.isEmpty ? nil : $0 }
             made.items = [ChatItem(id: message.id, role: .own(explanation: explanation, pipelineRun: message.metadata?.pipelineRun),
-                                   pieces: trimmed.isEmpty ? [] : [.text(trimmed)], delivery: .sent, turn: turn).stamped()]
+                                   pieces: trimmed.isEmpty ? [] : [.text(trimmed)], delivery: .sent, turn: turn, madeAt: message.createdAt).stamped()]
             return
         }
         if message.role == "user" || message.role == "agent", let sender = Self.collaborator(message, agentId: agentId, parentAgentId: parentAgentId) {
@@ -2337,7 +2345,7 @@ public actor Conversation {
             let text = message.content.compactMap { block -> String? in if case .text(let text) = block { text } else { nil } }.joined(separator: "\n")
             let body = message.role == "agent" ? Self.inboundText(text, agentId: sender.agentId) : text
             let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-            made.items = [ChatItem(id: message.id, role: .collaborator(agentId: sender.agentId, explanation: sender.explanation), pieces: trimmed.isEmpty ? [] : [.text(trimmed)], delivery: .sent, turn: turn).stamped()]
+            made.items = [ChatItem(id: message.id, role: .collaborator(agentId: sender.agentId, explanation: sender.explanation), pieces: trimmed.isEmpty ? [] : [.text(trimmed)], delivery: .sent, turn: turn, madeAt: message.createdAt).stamped()]
             return
         }
         // The agent that manages this one gives it its work: desktop reads
@@ -2369,7 +2377,7 @@ public actor Conversation {
                 if !segmentLayout, let kept = old?.segments[segment], kept.key == key {
                     item = kept.item
                 } else {
-                    let made = ChatItem(id: segment, role: role, pieces: pieces, delivery: delivery, turn: turn, time: time, author: author)
+                    let made = ChatItem(id: segment, role: role, pieces: pieces, delivery: delivery, turn: turn, time: time, author: author, madeAt: agentRole ? message.createdAt : nil)
                     item = made.stamped()
                 }
                 // Made from shown media, which may move: made again each time.
@@ -2398,7 +2406,7 @@ public actor Conversation {
                 return nil
             }
             block.decided = true
-            block.row = (ChatItem(id: block.callId, role: role, pieces: showing, delivery: .sent, turn: turn).stamped(), showing)
+            block.row = (ChatItem(id: block.callId, role: role, pieces: showing, delivery: .sent, turn: turn, madeAt: message.createdAt).stamped(), showing)
             return block.row?.item
         }
         for (index, block) in message.content.enumerated() {

@@ -190,6 +190,7 @@ final class Session {
         store = engine.spaces
         images = Images(client: client, offline: offline)
         warm = WarmChats(client: client, store: store, syntax: syntax, persistence: engine)
+        warm.groupsToolCalls = { [localSettings] in localSettings.groupsToolCalls }
         warm.server = server
         warm.instanceId = instanceId
         models = ModelState(client: client, offline: offline, store: store, cloud: isCloud)

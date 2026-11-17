@@ -20,6 +20,8 @@ enum SettingsIndex {
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
     /// On Appearance, this phone's own: whether a shimmer still runs in Low Power Mode.
     static var shimmerInLowPower: Entry { Entry(id: "shimmer-in-low-power", title: Strings.LowPowerShimmer.title, glyph: "flash-outline", tile: .orange) }
+    /// On Appearance, this phone's own: whether a run of tool calls is one line in a chat.
+    static var groupToolCalls: Entry { Entry(id: "group-tool-calls", title: Strings.ToolSections.title, glyph: "layers-outline", tile: .indigo) }
     static var connection: Entry { Entry(id: "connection", title: Strings.Connection.title, glyph: "pulse-outline", tile: .teal) }
     static var computes: Entry { Entry(id: "computes", title: Strings.Compute.title, glyph: "server-outline", tile: .blue) }
     static var account: Entry { Entry(id: "account", title: Strings.Settings.account, glyph: "person-circle-outline", tile: .blue) }
@@ -65,7 +67,7 @@ enum SettingsIndex {
     /// is Data and Storage's. Disconnect is left
     /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [appearance, hideProjects, shimmerInLowPower, profile, changeAgentName, changeAgentAvatar, agentVoice, dataStorage, connection, supportBoba, agents, usage, dictationOpensTask, multilingualDictation, privacySettings, analytics, connectAgent, addAccount] + aboutRows
+        [appearance, hideProjects, shimmerInLowPower, groupToolCalls, profile, changeAgentName, changeAgentAvatar, agentVoice, dataStorage, connection, supportBoba, agents, usage, dictationOpensTask, multilingualDictation, privacySettings, analytics, connectAgent, addAccount] + aboutRows
     }
 
     /// Cloud has no project settings; paired and self-hosted agents keep them.

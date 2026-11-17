@@ -210,7 +210,8 @@ actor ChatPlanner {
             return item.pieces.isEmpty ? Self.tool(tool, id: item.id, key: key) : Self.toolResult(tool, item: item, key: key, syntax: syntax, proposals: proposals)
         case .turnEnd(let ended): return Self.turnEnd(ended, id: item.id, key: key, copied: copied)
         case .trace(let trace): return Self.trace(trace, id: item.id, key: key)
-        case .question(let ask): return Self.question(ask, id: item.id, key: key)
+        case .question(let ask): return ask.line ? Self.questionLine(ask, id: item.id, key: key) : Self.question(ask, id: item.id, key: key)
+        case .section(let section): return Self.section(section, id: item.id, key: key)
         default: break
         }
         guard !item.pieces.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
@@ -344,7 +345,7 @@ actor ChatPlanner {
                 selectable.isEmpty ? nil : ChatSelectable(texts: selectable, whole: item.text, frame: bubble, card: false)
             }
             return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight, mine: true, selection: selection)
-        case .collaborator, .own, .failure, .tool, .turnEnd, .trace, .question:
+        case .collaborator, .own, .failure, .tool, .turnEnd, .trace, .question, .section:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])
         }

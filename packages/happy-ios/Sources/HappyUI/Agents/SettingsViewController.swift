@@ -656,8 +656,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     /// A computer's look on this phone: the theme, whether home shows
     /// projects (desktop's account setting, which home follows; there is
-    /// deliberately no renderer or layout choice here), and whether a
-    /// shimmer runs in Low Power Mode (the phone's own, for every profile).
+    /// deliberately no renderer or layout choice here), whether a shimmer
+    /// runs in Low Power Mode and whether a chat groups its tool calls (the
+    /// phone's own, for every profile).
     private func appearanceRows() -> [[SettingsRow]] {
         typealias Row = SettingsRow
         guard let id = shown?.id else { return [] }
@@ -676,6 +677,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             [Row(SettingsIndex.shimmerInLowPower, accessory: .toggle, isOn: ShimmerClock.shared.shimmersInLowPower, toggled: { on in
                 ShimmerClock.shared.shimmersInLowPower = on
             })].withFooter(Strings.LowPowerShimmer.description),
+            // This phone's: a chat open under Settings reads it as it comes back.
+            [Row(SettingsIndex.groupToolCalls, accessory: .toggle, isOn: context.account.localSettings.groupsToolCalls, toggled: { [weak self] on in
+                self?.context.account.localSettings.groupsToolCalls = on
+            })].withFooter(Strings.ToolSections.description),
         ]
     }
 

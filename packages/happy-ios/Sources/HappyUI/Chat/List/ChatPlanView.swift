@@ -72,6 +72,7 @@ final class ChatPlanView: UIView {
     private var pages: [InlinePageView] = []
     private var genUIs: [GenUIBlockView] = []
     private var deliveries: [ChatDeliveryView] = []
+    private var toolLines: [ChatToolLineView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -176,6 +177,7 @@ final class ChatPlanView: UIView {
         var pageIndex = 0
         var genUIIndex = 0
         var deliveryIndex = 0
+        var toolLineIndex = 0
         var order: [UIView] = []
         for item in items {
             switch item {
@@ -318,6 +320,11 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(mark)
                 order.append(view)
+            case .toolLine(let line, let frame):
+                let view = take(&toolLines, &toolLineIndex) { ChatToolLineView() }
+                view.setLayoutFrame(frame)
+                view.apply(line)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -379,6 +386,10 @@ final class ChatPlanView: UIView {
         }
         for view in genUIs[genUIIndex...] { view.isHidden = true }
         for view in deliveries[deliveryIndex...] {
+            view.apply(nil)
+            view.isHidden = true
+        }
+        for view in toolLines[toolLineIndex...] {
             view.apply(nil)
             view.isHidden = true
         }
@@ -463,7 +474,7 @@ extension ChatDrawItem {
         case .box(let box), .pulse(let box): box.frame
         case .text(_, let frame), .icon(_, _, let frame, _), .spinner(let frame, _, _), .shimmer(_, let frame), .sheen(_, let frame, _), .elapsed(_, let frame, _),
              .diff(_, let frame, _, _, _, _), .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),
-             .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame), .delivery(_, let frame): frame
+             .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame), .delivery(_, let frame), .toolLine(_, let frame): frame
         }
     }
 }

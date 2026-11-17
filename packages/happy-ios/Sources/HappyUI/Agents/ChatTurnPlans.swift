@@ -165,6 +165,25 @@ struct ToolWords: Equatable {
         return .ionicons("flash-outline")
     }
 
+    /// The kind of step a call was, in the word its line leads with once
+    /// done (`agentActivityKindName`): "Read", "Edit", "Bash"; a call with
+    /// no such word by its own name. How it ended is left out, so a failed
+    /// read is still a read. What a tool section's summary counts.
+    static func kind(_ tool: ChatItem.Tool) -> String {
+        let verb = switch verb(tool.name, status: "completed", presentation: tool.presentation) {
+        case W.exploring, W.explored: "Explore"
+        case W.typing, W.typed: "Type"
+        case W.reading: W.read
+        case W.editing, W.edited: W.edit
+        case W.waiting, W.waited: "Wait"
+        case W.used, W.tool: W.tool
+        case W.created: "Create"
+        case W.updated: "Update"
+        case let other: other
+        }
+        return verb == W.tool ? humanize(tool.name) : verb
+    }
+
     /// `humanizeToolName`.
     static func humanize(_ name: String) -> String {
         if let known = W.toolNames[name] { return known }
@@ -242,15 +261,17 @@ struct ToolLine {
     var added: NSAttributedString?
     var deleted: NSAttributedString?
 
-    init(_ tool: ChatItem.Tool, environment: TextEnvironment?) {
+    /// `quiet`: one grey sentence, as a tool section draws its call: a
+    /// failure and an edit's counts in the same grey as the rest.
+    init(_ tool: ChatItem.Tool, environment: TextEnvironment?, quiet: Bool = false) {
         self.tool = tool
         words = ToolWords(tool)
-        ink = tool.failed ? Palette.activityFailedLine : Palette.textSecondary
+        ink = tool.failed && !quiet ? Palette.activityFailedLine : Palette.textSecondary
         verb = ChatTextStyles.activityVerb.string(words.verb, color: ink, lineBreakMode: .byTruncatingTail, in: environment)
         let subjectStyle = words.mono ? ChatTextStyles.toolSubjectMono : ChatTextStyles.activityText
         subject = subjectStyle.string(words.subject, color: ink, lineBreakMode: .byTruncatingTail, in: environment)
-        added = words.added.map { ChatTextStyles.toolCount.string("+\(ToolWords.compact($0))", color: Palette.gitAddedText, in: environment) }
-        deleted = words.deleted.map { ChatTextStyles.toolCount.string("\u{2212}\(ToolWords.compact($0))", color: Palette.gitRemovedText, in: environment) }
+        added = words.added.map { ChatTextStyles.toolCount.string("+\(ToolWords.compact($0))", color: quiet ? ink : Palette.gitAddedText, in: environment) }
+        deleted = words.deleted.map { ChatTextStyles.toolCount.string("\u{2212}\(ToolWords.compact($0))", color: quiet ? ink : Palette.gitRemovedText, in: environment) }
     }
 
     func layout(_ key: ChatPlanner.Key) -> ToolRowLayout {
@@ -297,6 +318,73 @@ extension ChatPlanner {
         let line = ToolLine(tool, environment: key.environment)
         let layout = line.layout(key)
         return ChatRowPlan(id: id, size: layout.size, items: line.draw(layout), hits: line.hits(layout, id: id), accessibilityLabel: line.spoken)
+    }
+
+    /// A run of tool calls as one grey line (Group tool calls,
+    /// `AgentToolSection`): while it runs, its latest call, which a tap
+    /// opens; once over, what it was made of and how long it took. A run
+    /// of one call stays that call's line. The line is a call's row
+    /// whatever it shows, so nothing around it moves (`ChatToolLine`).
+    static func section(_ section: ChatItem.Section, id: String, key: Key) -> ChatRowPlan {
+        let environment = key.environment
+        let ink = Palette.textSecondary
+        guard section.sums else {
+            guard case .tool(let tool) = section.latest.role else { return ChatRowPlan(id: id, size: CGSize(width: key.width, height: 0), items: []) }
+            let line = ToolLine(tool, environment: environment, quiet: true)
+            let layout = line.layout(key)
+            var runs: [ChatToolLine.Run] = []
+            func run(_ string: NSAttributedString?, _ frame: CGRect?) {
+                guard let string, let frame, frame.width > 0, string.length > 0 else { return }
+                runs.append(.init(text: ChatTextLayout(string, width: frame.width, maxLines: 1), frame: frame))
+            }
+            run(line.verb, layout.verb)
+            run(line.subject, layout.text)
+            run(line.added, layout.added)
+            run(line.deleted, layout.deleted)
+            // A call left running when its turn stopped is not still going.
+            let glyph: ChatToolLine.Glyph = section.live && tool.running ? .spinner(ink) : .icon(line.words.glyph, ink)
+            let shown = ChatToolLine(row: id, shows: section.latest.id, live: section.live, glyph: glyph, glyphFrame: layout.glyph, runs: runs)
+            return ChatRowPlan(id: id, size: layout.size, items: [.toolLine(shown, frame: CGRect(origin: .zero, size: layout.size))],
+                               hits: line.hits(layout, id: section.latest.id), accessibilityLabel: line.spoken)
+        }
+        let kinds = ChatItem.Section.kinds(section.members.compactMap { if case .tool(let tool) = $0.role { ToolWords.kind(tool) } else { nil } }).joined(separator: " · ")
+        // A run over within the second says no time rather than "0s".
+        let time = section.durationMs.flatMap { $0 >= 1_000 ? " · " + ChatItem.TurnEnd.duration($0) : nil }
+        let kindsText = ChatTextStyles.activityText.string(kinds, color: ink, lineBreakMode: .byTruncatingTail, in: environment)
+        let timeText = time.map { ChatTextStyles.activityText.string($0, color: ink, lineBreakMode: .byClipping, in: environment) }
+        let layout = ToolSectionLayout(
+            width: key.width, maxContentWidth: key.maxContentWidth,
+            kindsWidth: ChatTextLayout(unwrapped: kindsText).size.width, durationWidth: timeText.map { ChatTextLayout(unwrapped: $0).size.width }
+        )
+        var runs = [ChatToolLine.Run(text: ChatTextLayout(kindsText, width: layout.kinds.width, maxLines: 1), frame: layout.kinds)]
+        if let timeText, let frame = layout.duration { runs.append(.init(text: ChatTextLayout(timeText, width: frame.width, maxLines: 1), frame: frame)) }
+        let shown = ChatToolLine(row: id, shows: "summary", live: false, glyph: .icon(.ionicons("flash-outline"), ink), glyphFrame: layout.glyph, runs: runs)
+        return ChatRowPlan(id: id, size: layout.size, items: [.toolLine(shown, frame: CGRect(origin: .zero, size: layout.size))],
+                           hits: [], accessibilityLabel: kinds + (time ?? ""))
+    }
+
+    /// An answered question as one grey line (Group tool calls,
+    /// `AnsweredQuestionLine`): each question's header, then what was
+    /// answered to it, ending in an ellipsis where the row is too narrow.
+    static func questionLine(_ ask: ChatItem.Ask, id: String, key: Key) -> ChatRowPlan {
+        let environment = key.environment
+        let ink = Palette.textSecondary
+        let string = NSMutableAttributedString()
+        func add(_ words: String, _ style: ChatTextStyle) {
+            string.append(style.string(words, color: ink, lineBreakMode: .byTruncatingTail, in: environment))
+        }
+        for (index, prompt) in ask.question.questions.enumerated() {
+            if index > 0 { add(" · ", ChatTextStyles.activityText) }
+            add(prompt.header.flatMap { $0.isEmpty ? nil : $0 } ?? prompt.question, ChatTextStyles.activityVerb)
+            let answer = (ask.question.answers?[prompt.id] ?? []).joined(separator: ", ")
+            if !answer.isEmpty { add(" " + answer, ChatTextStyles.activityText) }
+        }
+        let layout = ToolRowLayout(width: key.width, maxContentWidth: key.maxContentWidth, verbWidth: 0, textWidth: ChatTextLayout(unwrapped: string).size.width)
+        let items: [ChatDrawItem] = [
+            .icon(.ionicons("help-circle-outline"), size: 12, frame: layout.glyph, tint: ink),
+            .text(ChatTextLayout(string, width: layout.text.width, maxLines: 1), layout.text),
+        ]
+        return ChatRowPlan(id: id, size: layout.size, items: items, hits: [ChatHit(frame: layout.text, action: .copyMenu(string.string), hold: true)], accessibilityLabel: string.string)
     }
 
     /// A call that showed the person something (desktop's media and

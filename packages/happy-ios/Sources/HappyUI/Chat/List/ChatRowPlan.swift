@@ -191,6 +191,9 @@ enum ChatDrawItem {
     case embed(ChatEmbed, frame: CGRect)
     /// A person's own message's clock or checks (`ChatDeliveryView`).
     case delivery(ChatDeliveryMark, frame: CGRect)
+    /// A tool section's one line (`ChatToolLineView`): it keeps what it
+    /// showed and replaces it letter by letter.
+    case toolLine(ChatToolLine, frame: CGRect)
 }
 
 /// What an embedded view shows.

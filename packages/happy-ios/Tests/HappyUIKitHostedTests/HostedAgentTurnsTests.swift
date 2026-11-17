@@ -188,9 +188,10 @@ final class HostedAgentTurnsTests: XCTestCase {
 
     /// The row the list keeps in place across a change: the first under the
     /// bar before it that is still there after, passing over a turn's
-    /// control, which goes over or under its rows. Where it was, and is.
+    /// control, which goes over or under its rows, unless the control is the
+    /// first row, the one tapped. Where it was, and is.
     private func keptRow(_ before: [(String, CGRect)], in chat: ChatViewController) -> (String, CGRect, CGRect)? {
-        for (id, frame) in before where !id.hasSuffix(":trace") && !id.hasSuffix(":status") {
+        for (index, (id, frame)) in before.enumerated() where (index == 0 || !id.hasSuffix(":trace")) && !id.hasSuffix(":status") {
             if let now = onScreen(id, in: chat) { return (id, frame, now) }
         }
         return nil
@@ -198,11 +199,13 @@ final class HostedAgentTurnsTests: XCTestCase {
 
     // MARK: Turns
 
-    /// Running, each tool call is its own line; ended, they fold behind the
-    /// answer, "View traces" over it and "Completed in 12s" under it.
+    /// Ungrouped and running, each tool call is its own line; ended, they
+    /// fold behind the answer, "View traces" over it and "Completed in 12s"
+    /// under it.
     func testALiveTurnShowsItsToolCallsThenFoldsThemWhenItEnds() async throws {
         let computer = TurnsComputer(runs: [TurnsComputer.work("live", took: nil, answer: nil)])
         let session = try await session(computer)
+        session.localSettings.groupsToolCalls = false
         let (chat, _) = try await open(session)
         try await until("the running turn's tool rows") { plan(chat, "live-1") != nil && plan(chat, "live-3") != nil }
         XCTAssertEqual(plan(chat, "live-1")?.accessibilityLabel, "Shell pnpm test --filter happy-ios")
@@ -227,6 +230,42 @@ final class HostedAgentTurnsTests: XCTestCase {
         // The status copies the answer.
         let copy = try XCTUnwrap(plan(chat, "live:status")?.hits.first)
         XCTAssertEqual(copy.action, .copyMessage(id: "live:status", text: "The cache test passes now."))
+    }
+
+    /// Grouped, the run of calls is one line on the lead call's row: the
+    /// latest call while it runs. Ended, it folds with its turn, the edit
+    /// too; opened, every call is its own row again.
+    func testAGroupedTurnShowsItsLatestCallThenFoldsWhole() async throws {
+        let computer = TurnsComputer(runs: [TurnsComputer.work("live", took: nil, answer: nil)])
+        let session = try await session(computer)
+        let (chat, _) = try await open(session)
+        func line(_ id: String) -> ChatToolLine? {
+            plan(chat, id)?.items.lazy.compactMap { if case .toolLine(let line, _) = $0 { line } else { nil } }.first
+        }
+        try await until("the running section") { line("live-1") != nil }
+        XCTAssertEqual(line("live-1")?.shows, "live-3", "the section shows its latest call")
+        XCTAssertTrue(line("live-1")?.live == true)
+        XCTAssertTrue({ if case .spinner = line("live-1")?.glyph { true } else { false } }(), "a running call spins")
+        XCTAssertNil(plan(chat, "live-2"))
+        XCTAssertNil(plan(chat, "live-3"))
+
+        let ended = TurnsComputer.work("live", took: 12_400, answer: "The cache test passes now.")
+        await computer.set(runs: [ended], pendingQuestion: nil)
+        await session.store.externalEvent(.object(["type": .string("message.updated"), "payload": .object([
+            "agentId": .string("a"), "runId": .string("live"), "message": ended["messages"]?.arrayValue?[1] ?? .null,
+        ])]))
+        await session.store.externalEvent(.object(["type": .string("run.finished"), "payload": .object([
+            "agentId": .string("a"), "run": .object(["id": .string("live"), "status": .string("completed"), "reason": .string("completed"), "startedAt": .number(1_000), "endedAt": .number(13_400)]),
+        ])]))
+        try await until("the turn folds") { plan(chat, "live:status") != nil }
+        XCTAssertEqual(chat.plans.map(\.id), ["u-live", "live:trace", "m-live/4", "live:status"])
+        XCTAssertEqual(plan(chat, "live:trace")?.accessibilityLabel, "View traces, 3 tools")
+
+        chat.act(.toggleTurn("live"))
+        try await until("the turn opens") { plan(chat, "live-2") != nil }
+        XCTAssertNotNil(plan(chat, "live-1"))
+        XCTAssertNotNil(plan(chat, "live-3"))
+        XCTAssertNil(line("live-1"), "opened, a call is a row of its own")
     }
 
     /// "View traces" opens the turn in place: the rows the reader looks
@@ -291,7 +330,7 @@ final class HostedAgentTurnsTests: XCTestCase {
     // MARK: Questions
 
     /// A question waiting is pinned to the end, ticked, sent once with
-    /// Submit, and read again later stands answered in its turn.
+    /// Submit, and read again later stands answered in its turn, one line.
     func testAQuestionIsAnsweredOnceAndStandsAnsweredWhenReadAgain() async throws {
         let asking = TurnsComputer.run("q-run", asked: "Add a cache", took: nil, [
             TurnsComputer.text("Before I start:"),
@@ -346,8 +385,9 @@ final class HostedAgentTurnsTests: XCTestCase {
         XCTAssertNil(plan(again, "q"))
         again.act(.toggleTurn("q-run"))
         try await until("the answered question") { plan(again, "q") != nil }
+        // Grouped, as by default, it is a line: its header, then the answer.
         let settled = try XCTUnwrap(plan(again, "q")?.accessibilityLabel)
-        XCTAssertTrue(settled.contains("Answered") && settled.contains("Postgres"), settled)
+        XCTAssertEqual(settled, "Database Postgres")
         XCTAssertFalse(plan(again, "q")?.hits.contains { if case .questionOption = $0.action { true } else { false } } ?? true, "an answered question takes no ticks")
     }
 
