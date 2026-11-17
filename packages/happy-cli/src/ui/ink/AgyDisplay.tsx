@@ -14,14 +14,25 @@ interface AgyDisplayProps {
   messageBuffer: MessageBuffer;
   logPath?: string;
   currentModel?: string;
+  availableModels?: string[];
+  onSelectModel?: (model: string) => void;
   onExit?: () => void;
 }
 
-export const AgyDisplay: React.FC<AgyDisplayProps> = ({ messageBuffer, logPath, currentModel, onExit }) => {
+export const AgyDisplay: React.FC<AgyDisplayProps> = ({
+  messageBuffer,
+  logPath,
+  currentModel,
+  availableModels = [],
+  onSelectModel,
+  onExit,
+}) => {
   const [messages, setMessages] = useState<BufferedMessage[]>([]);
   const [confirmationMode, setConfirmationMode] = useState<boolean>(false);
   const [actionInProgress, setActionInProgress] = useState<boolean>(false);
   const [model, setModel] = useState<string | undefined>(currentModel);
+  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
+  const [cursorIndex, setCursorIndex] = useState<number>(0);
   const confirmationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { stdout } = useStdout();
   const terminalWidth = stdout.columns || 80;
@@ -92,6 +103,10 @@ export const AgyDisplay: React.FC<AgyDisplayProps> = ({ messageBuffer, logPath, 
 
     // Handle Ctrl-C
     if (key.ctrl && input === 'c') {
+      if (pickerOpen) {
+        setPickerOpen(false);
+        return;
+      }
       if (confirmationMode) {
         // Second Ctrl-C, exit
         resetConfirmation();
@@ -105,11 +120,44 @@ export const AgyDisplay: React.FC<AgyDisplayProps> = ({ messageBuffer, logPath, 
       return;
     }
 
+    if (pickerOpen && availableModels.length > 0) {
+      if (key.escape || (!key.ctrl && !key.meta && input === 'm') || input === 'q') {
+        setPickerOpen(false);
+        return;
+      }
+      if (key.upArrow || input === 'k') {
+        setCursorIndex(prev => (prev - 1 + availableModels.length) % availableModels.length);
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setCursorIndex(prev => (prev + 1) % availableModels.length);
+        return;
+      }
+      if (key.return) {
+        const chosen = availableModels[cursorIndex];
+        setPickerOpen(false);
+        if (chosen) {
+          setModel(chosen);
+          onSelectModel?.(chosen);
+        }
+        return;
+      }
+      return;
+    }
+
+    if (!key.ctrl && !key.meta && input === 'm' && availableModels.length > 0) {
+      if (confirmationMode) resetConfirmation();
+      const idx = model ? availableModels.indexOf(model) : -1;
+      setCursorIndex(idx >= 0 ? idx : 0);
+      setPickerOpen(true);
+      return;
+    }
+
     // Any other key cancels confirmation
     if (confirmationMode) {
       resetConfirmation();
     }
-  }, [confirmationMode, actionInProgress, onExit, setConfirmationWithTimeout, resetConfirmation]));
+  }, [confirmationMode, actionInProgress, pickerOpen, availableModels, cursorIndex, model, onSelectModel, onExit, setConfirmationWithTimeout, resetConfirmation]));
 
   const getMessageColor = (type: BufferedMessage['type']): string => {
     switch (type) {
@@ -154,7 +202,27 @@ export const AgyDisplay: React.FC<AgyDisplayProps> = ({ messageBuffer, logPath, 
         </Box>
 
         <Box flexDirection="column" height={terminalHeight - 10} overflow="hidden">
-          {messages.length === 0 ? (
+          {pickerOpen && availableModels.length > 0 ? (
+            <Box flexDirection="column">
+              <Text color="cyan" bold>Select Antigravity Model (↑/↓ to move, Enter to confirm, Esc to cancel):</Text>
+              {(() => {
+                const visibleRows = Math.max(5, terminalHeight - 12);
+                const half = Math.floor(visibleRows / 2);
+                const start = Math.max(0, Math.min(cursorIndex - half, availableModels.length - visibleRows));
+                const slice = availableModels.slice(start, start + visibleRows);
+                return slice.map((item, idx) => {
+                  const realIdx = start + idx;
+                  const isCursor = realIdx === cursorIndex;
+                  const isActive = item === model;
+                  return (
+                    <Text key={item} color={isCursor ? 'greenBright' : isActive ? 'cyan' : 'white'} bold={isCursor || isActive}>
+                      {isCursor ? '❯ ' : '  '}{item}{isActive ? '  ✓' : ''}
+                    </Text>
+                  );
+                });
+              })()}
+            </Box>
+          ) : messages.length === 0 ? (
             <Text color="gray" dimColor>Waiting for messages...</Text>
           ) : (
             messages
@@ -207,7 +275,7 @@ export const AgyDisplay: React.FC<AgyDisplayProps> = ({ messageBuffer, logPath, 
           ) : (
             <>
               <Text color="blueBright" bold>
-                🪐 Agy Agent Running • Ctrl-C to exit
+                🪐 Agy Agent Running • Press m to switch model • Ctrl-C to exit
               </Text>
               {model && (
                 <Text color="gray" dimColor>

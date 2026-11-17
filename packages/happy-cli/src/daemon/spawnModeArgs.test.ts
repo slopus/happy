@@ -38,5 +38,23 @@ describe('daemon spawn mode arguments', () => {
   it('uses the same Codex default rule for resume launches', () => {
     expect(shouldForwardDaemonPermissionMode('codex', 'default')).toBe(true);
     expect(shouldForwardDaemonPermissionMode('claude', 'default')).toBe(false);
+    expect(shouldForwardDaemonPermissionMode('agy', 'default')).toBe(false);
+  });
+
+  it('forwards explicit agy model, effort, and non-default permission selections', () => {
+    const args: string[] = [];
+
+    appendDaemonSpawnModeArgs(args, {
+      directory: '/repo',
+      permissionMode: 'bypassPermissions',
+      modelMode: 'Gemini 4 Argon',
+      effortLevel: 'high',
+    }, 'agy');
+
+    expect(args).toEqual([
+      '--permission-mode', 'bypassPermissions',
+      '--model', 'Gemini 4 Argon',
+      '--effort', 'high',
+    ]);
   });
 });

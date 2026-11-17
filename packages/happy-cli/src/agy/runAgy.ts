@@ -35,14 +35,20 @@ import { AgyBackend } from './AgyBackend';
 import {
   DEFAULT_AGY_EFFORT,
   DEFAULT_AGY_MODEL,
+  discoverAgyModelOptions,
   normalizeAgyEffort,
+  normalizeAgyModelAlias,
   resolveAgyModelName,
 } from './constants';
+import type { PermissionMode } from '@/api/types';
 
 export interface RunAgyOptions {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  model?: string;
+  effort?: string;
+  permissionMode?: PermissionMode;
 }
 
 export async function runAgy(opts: RunAgyOptions): Promise<void> {
@@ -68,11 +74,18 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     metadata: initialMachineMetadata,
   });
 
+  let selectedModel = opts.model ? normalizeAgyModelAlias(opts.model) : DEFAULT_AGY_MODEL;
+  let selectedEffort = opts.effort ? normalizeAgyEffort(opts.effort) : DEFAULT_AGY_EFFORT;
+  let displayedModel = resolveAgyModelName(selectedModel, selectedEffort);
+  const discoveredModels = discoverAgyModelOptions();
+
   const { state, metadata } = createSessionMetadata({
     flavor: 'agy',
     machineId: settings.machineId,
     startedBy: opts.startedBy,
   });
+  metadata.models = discoveredModels;
+  metadata.currentModelCode = displayedModel;
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
     log(`Happy Session ID: ${response.id}`);
@@ -112,13 +125,9 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   let thinking = false;
   let errorReportedForCurrentTurn = false;
 
-  let selectedModel = DEFAULT_AGY_MODEL;
-  let selectedEffort = DEFAULT_AGY_EFFORT;
-  let displayedModel = resolveAgyModelName(selectedModel, selectedEffort);
-
   const backend = new AgyBackend({
     cwd: process.cwd(),
-    permissionMode: 'default',
+    permissionMode: opts.permissionMode ?? 'default',
     model: selectedModel,
     effort: selectedEffort,
     log,
@@ -168,12 +177,43 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
   backend.onMessage(onBackendMessage);
 
+  const availableModelCodes = discoveredModels.map((item) => item.code);
+  let lastRemoteModel: string | undefined = undefined;
+  let lastRemoteEffort: string | null | undefined = undefined;
+
+  const syncDisplayedModel = (nextModel: string, nextEffort?: string) => {
+    selectedModel = normalizeAgyModelAlias(nextModel);
+    if (nextEffort !== undefined) {
+      selectedEffort = normalizeAgyEffort(nextEffort);
+      backend.setEffort(selectedEffort);
+    }
+    backend.setModel(selectedModel);
+    displayedModel = resolveAgyModelName(selectedModel, selectedEffort);
+    if (hasTTY) {
+      messageBuffer.addMessage(`[MODEL:${displayedModel}]`, 'system');
+    }
+    try {
+      session.updateMetadata((curr) => ({
+        ...curr,
+        models: discoveredModels,
+        currentModelCode: displayedModel,
+      }));
+    } catch {
+      // Ignore metadata update race before first flush.
+    }
+  };
+
   if (hasTTY) {
     const DisplayComponent = () =>
       React.createElement(AgyDisplay, {
         messageBuffer,
         logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
         currentModel: displayedModel,
+        availableModels: availableModelCodes,
+        onSelectModel: (chosen: string) => {
+          syncDisplayedModel(chosen);
+          messageBuffer.addMessage(`Switched model to ${displayedModel}`, 'status');
+        },
         onExit: async () => {
           logger.debug('[agy] Exiting agent via Ctrl-C');
           shouldExit = true;
@@ -203,22 +243,64 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
         backend.setPermissionMode(mode);
       }
     }
-    let selectionChanged = false;
-    if (message.meta?.hasOwnProperty('model') && message.meta.model) {
-      selectedModel = message.meta.model;
-      backend.setModel(selectedModel);
-      selectionChanged = true;
+
+    const incomingModel = message.meta?.hasOwnProperty('model') ? message.meta.model : undefined;
+    const incomingEffort = message.meta?.hasOwnProperty('effort') ? message.meta.effort : undefined;
+    const remoteModelChanged = incomingModel && incomingModel !== lastRemoteModel;
+    const remoteEffortChanged = incomingEffort !== undefined && incomingEffort !== lastRemoteEffort;
+
+    if (incomingModel !== undefined) {
+      lastRemoteModel = incomingModel ?? undefined;
     }
-    if (message.meta?.hasOwnProperty('effort')) {
-      selectedEffort = normalizeAgyEffort(message.meta.effort);
-      backend.setEffort(selectedEffort);
-      selectionChanged = true;
+    if (incomingEffort !== undefined) {
+      lastRemoteEffort = incomingEffort;
     }
-    if (selectionChanged) {
-      displayedModel = resolveAgyModelName(selectedModel, selectedEffort);
-      if (hasTTY) {
-        messageBuffer.addMessage(`[MODEL:${displayedModel}]`, 'system');
+
+    // Legacy un-updated clients default to bare "Gemini 3.8 Flash" on every
+    // message until the user picks from metadata.models. Ignore that initial
+    // fallback so the session keeps its configured/default Gemini 4 model.
+    const isStaleLegacyDefault =
+      incomingModel === 'Gemini 3.8 Flash' &&
+      !availableModelCodes.includes('Gemini 3.8 Flash');
+
+    if ((remoteModelChanged || remoteEffortChanged) && !isStaleLegacyDefault) {
+      const nextModel = incomingModel ? normalizeAgyModelAlias(incomingModel) : selectedModel;
+      const nextEffort = incomingEffort !== undefined ? normalizeAgyEffort(incomingEffort) : selectedEffort;
+      syncDisplayedModel(nextModel, nextEffort);
+    }
+
+    const trimmedText = message.content.text.trim();
+    if (/^\/models$/i.test(trimmedText)) {
+      const listText = availableModelCodes
+        .map((code, idx) => `${idx + 1}. ${code}${code === displayedModel ? ' ✓ (current)' : ''}`)
+        .join('\n');
+      const reply = `Available Antigravity models:\n${listText}\n\nUse \`/model <number or name>\` (e.g. \`/model argon high\` or \`/model 1\`) or the model picker to switch.`;
+      messageBuffer.addMessage(reply, 'status');
+      session.sendSessionEvent({ type: 'message', message: reply });
+      session.sendSessionEvent({ type: 'ready' });
+      return;
+    }
+
+    const slashModelMatch = /^\/model\s+(.+)$/i.exec(trimmedText);
+    if (slashModelMatch) {
+      const rawArg = slashModelMatch[1].trim();
+      const numericIndex = /^\d+$/.test(rawArg) ? Number(rawArg) - 1 : -1;
+      if (numericIndex >= 0 && numericIndex < availableModelCodes.length) {
+        syncDisplayedModel(availableModelCodes[numericIndex]);
+      } else {
+        const parts = rawArg.split(/\s+/);
+        const maybeEffort = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+        if (['low', 'medium', 'high', 'xhigh'].includes(maybeEffort)) {
+          syncDisplayedModel(parts.slice(0, -1).join(' '), maybeEffort);
+        } else {
+          syncDisplayedModel(rawArg);
+        }
       }
+      const confirmMsg = `Switched Antigravity model to: ${displayedModel}`;
+      messageBuffer.addMessage(confirmMsg, 'status');
+      session.sendSessionEvent({ type: 'message', message: confirmMsg });
+      session.sendSessionEvent({ type: 'ready' });
+      return;
     }
 
     messageBuffer.addMessage(message.content.text, 'user');
