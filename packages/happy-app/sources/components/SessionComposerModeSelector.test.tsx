@@ -90,7 +90,7 @@ describe('SessionComposerModeSelector', () => {
                     metadata: {
                         flavor: 'codex',
                         currentModelCode: 'gpt-6-astra',
-                        models: [{ code: 'gpt-6-astra', value: 'gpt-6-astra' }],
+                        models: [{ code: 'gpt-6-astra', value: 'gpt-6-astra' }, { code: model, value: model }],
                     },
                 } as any,
                 agentDefaultOverrides: {},

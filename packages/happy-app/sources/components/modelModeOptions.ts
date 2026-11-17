@@ -108,7 +108,6 @@ const CODEX_CURRENT_MODELS: ModelMode[] = [
 
 export function getCodexModelModes(): ModelMode[] {
     return [
-        { key: 'default', name: DEFAULT_MODEL_LABEL, description: null },
         ...CODEX_CURRENT_MODELS,
         { key: 'gpt-5.6-sol', name: 'gpt-5.6-sol', description: null },
         { key: 'gpt-5.6-terra', name: 'gpt-5.6-terra', description: null },
@@ -202,36 +201,19 @@ export function getAvailableModels(
     if (isRetiredAgentFlavor(flavor)) return [];
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
-        if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
-            return [{ key: 'default', name: DEFAULT_MODEL_LABEL, description: null }, ...metadataModels];
-        }
-        return metadataModels;
+        return flavor === 'codex' ? metadataModels.filter(model => model.key !== 'default') : metadataModels;
     }
     return getHardcodedModelModes(flavor, translate);
 }
 
-// Session metadata is a startup-time snapshot, including in running sessions.
-// Native pickers supplement it with suggestions; managed accounts use their catalog.
-// Preserve catalog labels and custom models.
+// A catalog belongs to this session's connection. Never add models from another
+// provider or a hardcoded newer release: visibility does not establish support.
 export function getSuggestedModelModes(
     flavor: AgentFlavor,
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): ModelMode[] {
-    const models = getAvailableModels(flavor, metadata, translate);
-    if (flavor === 'codex' && metadata?.codexAccountProfileId) return models;
-    if (flavor !== 'codex' || !metadata?.models?.some((model) =>
-        model.code.startsWith('gpt-6-') || model.code.startsWith('gpt-6.1-') || model.code.startsWith('gpt-5.6-'))) {
-        return models;
-    }
-    const byKey = new Map(models.map((model) => [model.key, model]));
-    const current = CODEX_CURRENT_MODELS.map((model) => byKey.get(model.key) ?? model);
-    const currentKeys = new Set(current.map((model) => model.key));
-    return [
-        ...models.filter((model) => model.key === 'default'),
-        ...current,
-        ...models.filter((model) => model.key !== 'default' && !currentKeys.has(model.key)),
-    ];
+    return getAvailableModels(flavor, metadata, translate);
 }
 
 export function getAvailablePermissionModes(

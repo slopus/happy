@@ -4,7 +4,7 @@ import { resolveRunningSessionTurnModes } from './runningSessionTurnModes';
 const translate = (key: string) => key;
 
 describe('resolveRunningSessionTurnModes', () => {
-    it('shows current Codex models in an existing session with a startup-time catalog', () => {
+    it('keeps the running connection catalog without fabricated suggestions', () => {
         const session = {
             modelMode: null, effortLevel: 'medium',
             metadata: {
@@ -19,11 +19,11 @@ describe('resolveRunningSessionTurnModes', () => {
         } as any;
         const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate });
         expect(result.availableModels.map((model) => model.key)).toEqual([
-            'default', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna',
+            'gpt-6-astra',
             'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna',
         ]);
         expect(result.modelMode?.key).toBe('gpt-6-astra');
-        expect(result.availableModels[1].description).toBe('Frontier intelligence');
+        expect(result.availableModels[0].description).toBe('Frontier intelligence');
         for (const modelMode of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna']) {
             const selected = resolveRunningSessionTurnModes({
                 session: { ...session, modelMode }, agentDefaultOverrides: {}, translate,
@@ -32,6 +32,18 @@ describe('resolveRunningSessionTurnModes', () => {
             expect(selected.effortLevel?.key).toBe('medium');
             expect(selected.availableEffortLevels.some((level) => level.key === 'ultra')).toBe(false);
         }
+    });
+
+    it('labels a native reset honestly without exposing it as a model choice', async () => {
+        const { resolveMessageModeMeta } = await import('@/sync/messageMeta');
+        const session = { modelMode: 'default', effortLevel: 'medium', metadata: {
+            flavor: 'codex', currentModelCode: 'gemini-custom',
+            models: [{ code: 'gemini-custom', value: 'Gemini Custom' }],
+        } } as any;
+        const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate });
+        expect(result.modelMode).toEqual({ key: 'default', name: 'agentInput.model.cliAutomatic' });
+        expect(result.availableModels.map(model => model.key)).toEqual(['gemini-custom']);
+        expect(resolveMessageModeMeta(session).model).toBeNull();
     });
 
     it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('resets stale ultra for %s in both picker and outgoing message', async (modelMode) => {
@@ -78,7 +90,7 @@ describe('resolveRunningSessionTurnModes', () => {
             translate,
         });
 
-        expect(result.availableModels.some((model) => model.key === 'gpt-future')).toBe(false);
+        expect(result.availableModels.map(model => model.key)).toEqual(['gpt-future']);
         expect(result.modelMode).toEqual({ key: 'gpt-future', name: 'gpt-future' });
         expect(result.effortLevel?.key).toBe('high');
     });
@@ -95,6 +107,14 @@ describe('resolveRunningSessionTurnModes', () => {
         const withoutExplicitEffort = { ...session, effortLevel: null };
         expect(resolveRunningSessionTurnModes({ session: withoutExplicitEffort, agentDefaultOverrides: {}, translate }).effortLevel?.key).toBe('high');
         expect(resolveMessageModeMeta(withoutExplicitEffort).effort).toBe('high');
+    });
+
+    it('does not offer fallback GPT models while the session catalog is unknown', () => {
+        const result = resolveRunningSessionTurnModes({
+            session: { modelMode: null, effortLevel: null, metadata: { flavor: 'codex' } } as any,
+            agentDefaultOverrides: {}, translate,
+        });
+        expect(result.availableModels).toEqual([]);
     });
 
     it('uses Codex model and effort defaults', () => {

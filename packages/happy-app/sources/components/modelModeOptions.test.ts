@@ -22,7 +22,7 @@ describe('modelModeOptions', () => {
             codexAccountProfileId: 'account-a',
             models: [{ code: 'gpt-6.1-sol', value: 'Sol' }],
         } as any, translate);
-        expect(models.map(model => model.key)).toEqual(['default', 'gpt-6.1-sol']);
+        expect(models.map(model => model.key)).toEqual(['gpt-6.1-sol']);
     });
     it('maps metadata option shape into mode options', () => {
         expect(mapMetadataOptions([
@@ -43,7 +43,6 @@ describe('modelModeOptions', () => {
     it('builds codex model fallbacks', () => {
         const models = getCodexModelModes();
         expect(models.map((model) => model.key)).toEqual([
-            'default',
             'gpt-6-astra',
             'gpt-6.1-sol',
             'gpt-6-sol',
@@ -56,12 +55,11 @@ describe('modelModeOptions', () => {
             'gpt-5.4-mini',
             'gpt-5.3-codex-spark',
         ]);
-        expect(models[0].name).toBe('default model');
-        expect(models[1].name).toBe('gpt-6-astra');
-        expect(models[2].name).toBe('gpt-6.1-sol');
+        expect(models[0].name).toBe('gpt-6-astra');
+        expect(models[1].name).toBe('gpt-6.1-sol');
     });
 
-    it('shows new Codex suggestions despite a stale session catalog without changing live options', () => {
+    it('preserves the connection catalog without injecting unsupported newer models', () => {
         const metadata = { models: [
             { code: 'gpt-6-astra', value: 'Astra', description: 'From catalog' },
             { code: 'gpt-5.6-sol', value: 'Older Sol' },
@@ -69,11 +67,11 @@ describe('modelModeOptions', () => {
         ] } as any;
         const models = getSuggestedModelModes('codex', metadata, translate);
         expect(models.map((model) => model.key)).toEqual([
-            'default', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'custom-model',
+            'gpt-6-astra', 'gpt-5.6-sol', 'custom-model',
         ]);
-        expect(models[1]).toEqual({ key: 'gpt-6-astra', name: 'Astra', description: 'From catalog' });
+        expect(models[0]).toEqual({ key: 'gpt-6-astra', name: 'Astra', description: 'From catalog' });
         expect(getAvailableModels('codex', metadata, translate).map((model) => model.key))
-            .toEqual(['default', 'gpt-6-astra', 'gpt-5.6-sol', 'custom-model']);
+            .toEqual(['gpt-6-astra', 'gpt-5.6-sol', 'custom-model']);
     });
 
     it('preserves fresh model descriptions without duplicates or mutating metadata', () => {
@@ -84,15 +82,15 @@ describe('modelModeOptions', () => {
         ] } as any;
         const original = JSON.stringify(metadata);
         const models = getSuggestedModelModes('codex', metadata, translate);
-        expect(models.map((model) => model.key)).toEqual(['default', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna']);
-        expect(models[3].description).toBe('Live description');
+        expect(models.map((model) => model.key)).toEqual(['gpt-6-sol', 'gpt-6-luna']);
+        expect(models[0].description).toBe('Live description');
         expect(JSON.stringify(metadata)).toBe(original);
     });
 
-    it('supplements a catalog containing only GPT-6.1 Sol', () => {
+    it('does not expand a catalog containing only GPT-6.1 Sol', () => {
         const metadata = { models: [{ code: 'gpt-6.1-sol', value: 'GPT-6.1 Sol' }] } as any;
         expect(getSuggestedModelModes('codex', metadata, translate).map((model) => model.key))
-            .toEqual(['default', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna']);
+            .toEqual(['gpt-6.1-sol']);
     });
 
     it('leaves custom provider catalogs alone and uses current fallbacks without metadata', () => {
@@ -167,7 +165,7 @@ describe('modelModeOptions', () => {
         ]);
     });
 
-    it('adds codex default model option when metadata models are present', () => {
+    it('offers concrete codex models without a default reset option', () => {
         const models = getAvailableModels('codex', {
             models: [
                 { code: 'gpt-5.4', value: 'gpt-5.4', description: 'Latest' },
@@ -175,7 +173,6 @@ describe('modelModeOptions', () => {
         } as any, translate);
 
         expect(models).toEqual([
-            { key: 'default', name: 'default model', description: null },
             { key: 'gpt-5.4', name: 'gpt-5.4', description: 'Latest' },
         ]);
     });

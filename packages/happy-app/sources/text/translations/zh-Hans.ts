@@ -1663,6 +1663,7 @@ failedContinueTask: "继续未完成的任务",
             refreshFailed: '无法刷新模型目录，请重新连接此会话后重试。',
             title: '模型',
             configureInCli: '在 CLI 设置中配置模型',
+            cliAutomatic: 'CLI 自动选择',
         },
         effort: {
             title: '工作量',

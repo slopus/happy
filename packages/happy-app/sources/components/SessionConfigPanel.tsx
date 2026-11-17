@@ -39,7 +39,6 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
     getHardcodedPermissionModes,
-    DEFAULT_MODEL_LABEL,
     getSuggestedModelModes,
     getEffortLevelsForModel,
     getSupportsWorktree,
@@ -823,10 +822,10 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             draft.setWorktreeKey(worktreeKey === '__none__' ? null : worktreeKey);
         }, [worktreeKey]);
 
-        // Picker indices are local UI state; selected values that affect sends
+        // Picker selections are local UI state; selected values that affect sends
         // are persisted through the shared new-session draft store.
         const [permissionIndex, setPermissionIndex] = React.useState(0);
-        const [modelIndex, setModelIndex] = React.useState(0);
+        const [selectedModelKey, setSelectedModelKey] = React.useState<string | null>(null);
         const [effortIndex, setEffortIndex] = React.useState(0);
         const { fastMode, setFastMode } = draft;
         const [hoveredComposerControl, setHoveredComposerControl] = React.useState<'machine' | 'path' | 'permission' | null>(null);
@@ -1005,7 +1004,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             : codexAccounts.bindings.find(binding => binding.machineId === selectedMachineId)?.profileId ?? null;
         const getNewSessionModels = React.useCallback((agent: string, metadata: Session['metadata']) =>
             agent === 'codex' && (codexAccountProfileId === undefined || !metadata?.models?.length)
-                ? [{ key: 'default', name: DEFAULT_MODEL_LABEL, description: null }]
+                ? [{ key: 'default', name: t('agentInput.model.cliAutomatic'), description: null }]
                 : getSuggestedModelModes(agent, metadata, t), [codexAccountProfileId]);
         const permissionModes = React.useMemo<PermissionMode[]>(
             () => getHardcodedPermissionModes(selectedAgent, t),
@@ -1029,23 +1028,17 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             const metadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: item.key, codexAccountProfileId });
             const options = getNewSessionModels(item.key, metadata);
             const concrete = options.filter((model) => model.key !== 'default');
-            return (concrete.length ? concrete : options).map((model) => ({
-                ...model, key: `${item.key}::${model.key}`,
-            }));
+            // Without a concrete catalog this is an agent launch entry, not
+            // an extra default-model choice beside supported models.
+            return (concrete.length ? concrete : [{
+                key: 'default', name: `${item.label} · ${t('agentInput.model.cliAutomatic')}`,
+            }]).map((model) => ({ ...model, key: `${item.key}::${model.key}` }));
         }), [availableAgents, sessions, selectedMachineId, codexAccountProfileId, getNewSessionModels]);
         const configExperience = React.useMemo(
             () => getSessionConfigExperience(selectedAgent),
             [selectedAgent],
         );
 
-        const currentModel = modelModes[modelIndex] ?? modelModes[0];
-        const currentModelKey = currentModel?.key ?? 'default';
-
-        const effortLevels = React.useMemo<EffortLevel[]>(
-            () => selectedAgent === 'codex' && !modelMetadata?.models?.length ? []
-                : getEffortLevelsForModel(selectedAgent, currentModelKey, modelMetadata),
-            [selectedAgent, currentModelKey, modelMetadata, codexAccountProfileId],
-        );
         const resolvedModeSelection = React.useMemo(() => (
             resolveNewSessionModeSelection({
                 agent: selectedAgent,
@@ -1057,6 +1050,17 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 effortMetadata: modelMetadata,
             })
         ), [agentDefaultOverrides, draft.effortLevel, draft.modelMode, draft.permissionMode, modelMetadata, modelModes, selectedAgent]);
+
+        const currentModel = modelModes.find(model => model.key === (selectedModelKey ?? resolvedModeSelection.modelMode))
+            ?? modelModes.find(model => model.key === resolvedModeSelection.modelMode)
+            ?? modelModes[0];
+        const currentModelKey = currentModel?.key ?? 'default';
+
+        const effortLevels = React.useMemo<EffortLevel[]>(
+            () => selectedAgent === 'codex' && !modelMetadata?.models?.length ? []
+                : getEffortLevelsForModel(selectedAgent, currentModelKey, modelMetadata),
+            [selectedAgent, currentModelKey, modelMetadata, codexAccountProfileId],
+        );
 
         const supportsWorktree = configExperience.showWorktree && getSupportsWorktree(selectedAgent);
         const showModel = configExperience.showModeDetails && modelModes.length > 1;
@@ -1074,18 +1078,27 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             }
         }, [activePicker, configExperience.isAskMode]);
 
-        // Reset indices when agent/default settings change.
+        const modelSelectionScope = JSON.stringify([
+            selectedMachineId, selectedAgent, codexAccountProfileId, resolvedModeSelection.modelMode,
+        ]);
+        const previousModelSelectionScope = React.useRef<string | null>(null);
+
+        // Reset on a new selection/connection, but retain identity on catalog reorder.
         React.useEffect(() => {
             const defaultPermIdx = permissionModes.findIndex(m => m.key === resolvedModeSelection.permissionMode);
             setPermissionIndex(defaultPermIdx >= 0 ? defaultPermIdx : 0);
 
             const defaultModelIdx = modelModes.findIndex(m => m.key === resolvedModeSelection.modelMode);
-            setModelIndex(defaultModelIdx >= 0 ? defaultModelIdx : 0);
+            const fallbackKey = modelModes[defaultModelIdx >= 0 ? defaultModelIdx : 0]?.key ?? null;
+            const scopeChanged = previousModelSelectionScope.current !== modelSelectionScope;
+            previousModelSelectionScope.current = modelSelectionScope;
+            setSelectedModelKey(previous => !scopeChanged && modelModes.some(model => model.key === previous)
+                ? previous : fallbackKey);
 
             if (!supportsWorktree) setWorktreeKey('__none__');
-        }, [permissionModes, modelModes, supportsWorktree, resolvedModeSelection.permissionMode, resolvedModeSelection.modelMode]);
+        }, [permissionModes, modelModes, modelSelectionScope, supportsWorktree, resolvedModeSelection.permissionMode, resolvedModeSelection.modelMode]);
 
-        // Wait for the model index to follow the draft before validating its effort.
+        // Wait for the selected model to follow the draft before validating its effort.
         // Otherwise an intermediate model/agent render can overwrite a valid choice.
         React.useEffect(() => {
             if (currentModelKey !== resolvedModeSelection.modelMode) return;
@@ -1304,7 +1317,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 case 'model': {
                     const next = modelModes.findIndex((mode) => mode.key === key);
                     if (next >= 0) {
-                        setModelIndex(next);
+                        setSelectedModelKey(key);
                         draft.setModelMode(modelModes[next]?.key ?? 'default');
                         if (!supportsCodexFast(modelMetadata, key)) setFastMode(false);
                     }
@@ -1597,7 +1610,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                         draft.setEffortLevel('medium');
                                         setFastMode(false);
                                         const modelIndex = modelModes.findIndex(mode => mode.key === 'gpt-6.1-sol');
-                                        if (selectedAgent === 'codex' && modelIndex >= 0) setModelIndex(modelIndex);
+                                        if (selectedAgent === 'codex' && modelIndex >= 0) setSelectedModelKey('gpt-6.1-sol');
                                     } : undefined}
                                     onModelChange={(key) => {
                                         const separator = key.indexOf('::');
@@ -1606,7 +1619,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                         const nextModel = key.slice(separator + 2);
                                         if (nextAgent === selectedAgent) {
                                             const nextIndex = modelModes.findIndex((mode) => mode.key === nextModel);
-                                            if (nextIndex >= 0) setModelIndex(nextIndex);
+                                            if (nextIndex >= 0) setSelectedModelKey(nextModel);
                                         } else {
                                             draft.setAgentType(nextAgent);
                                         }

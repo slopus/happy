@@ -235,6 +235,50 @@ describe('SessionConfigPanel composer layout', () => {
         vi.useRealTimers();
     });
 
+    it('keeps the selected model identity when the connection catalog is reordered', async () => {
+        const models = [
+            { code: 'gpt-5.6-sol', value: 'Sol' },
+            { code: 'gpt-5.6-terra', value: 'Terra' },
+        ];
+        mocks.sessionsOverride = [{ id: 'native', activeAt: 20, metadata: {
+            machineId: 'mac', flavor: 'codex', models,
+        } }];
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::default' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-codex::gpt-5.6-terra' }).props.onPress());
+        expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-terra');
+        mocks.sessionsOverride = [{ id: 'native', activeAt: 21, metadata: {
+            machineId: 'mac', flavor: 'codex', models: [...models].reverse(),
+        } }];
+        act(() => renderer.update(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />));
+        // The mocked draft setters do not rerender; the local selection must
+        // still track the model code rather than its previous array position.
+        expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-terra');
+    });
+
+    it('retains an explicit agent launch entry when no model catalog exists', async () => {
+        mocks.sessionsOverride = [];
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        const launch = renderer.root.findByProps({ testID: 'session-composer-model-codex::default' });
+        expect(launch.props.accessibilityLabel.toLowerCase()).toContain('codex');
+        expect(launch.props.accessibilityLabel).toContain('agentInput.model.cliAutomatic');
+        expect(launch.props.accessibilityLabel).not.toContain('default model');
+        act(() => launch.props.onPress());
+        expect(mocks.setModelMode).toHaveBeenCalledWith('default');
+        expect(ref.current.getSelection().modelKey).toBeUndefined();
+        expect(ref.current.getSelection().effortKey).toBeNull();
+    });
+
     it('keeps every editable new-session setting in the composer footer', async () => {
         const ref = React.createRef<any>();
         await act(async () => {
