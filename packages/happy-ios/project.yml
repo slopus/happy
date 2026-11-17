@@ -111,7 +111,7 @@ targets:
           INFOPLIST_FILE: App/Info-Production.plist
           CODE_SIGN_ENTITLEMENTS: App/Happy-Production.entitlements
           HAPPY_GOOGLE_CLIENT: 902947412706-3a9fl74rsj3566r0a9i2310mgeu1qd09
-          CURRENT_PROJECT_VERSION: "162"
+          CURRENT_PROJECT_VERSION: "163"
   HappyMac:
     # Genuine AppKit/macOS SDK target. No UIKit, Catalyst or iPad binary.
     type: application
