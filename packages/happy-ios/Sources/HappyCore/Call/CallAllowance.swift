@@ -85,7 +85,7 @@ public struct DefaultsCallUsageStore: CallUsageStore {
 
 /// The voice time a device has on agent calls, counted here: 20 free
 /// minutes in any 30 days, rolling, or, while the subscription gives a
-/// month (`Subscription.month()`), 2 hours in that month instead, not on
+/// month (`Subscription.month()`), the build's paid hours in that month instead, not on
 /// top. Provisional, like the public agent it goes with
 /// (`PublicAgentCallGrants`): nothing on a server counts or enforces it.
 /// Not a number of calls, and no other cap.
@@ -93,37 +93,40 @@ public struct DefaultsCallUsageStore: CallUsageStore {
 public final class CallAllowance {
     public static let freeSeconds: Double = 20 * 60
     public static let window: Double = 30 * 86_400
-    public static let paidSeconds: Double = 2 * 3600
+    public static var paidSeconds: Double { Double(AppVariant.current().monthlyVoiceHours) * 3600 }
     /// How long calls are kept at least, past the 30 days: two months.
     public static let kept: Double = 62 * 86_400
 
     private let store: any CallUsageStore
     private let free: Double
+    private let paid: Double
     private let window: Double
     private let period: @MainActor () -> ProMonth?
     private var usage: CallUsage
 
     public init(store: any CallUsageStore = DefaultsCallUsageStore(), free: Double = CallAllowance.freeSeconds, window: Double = CallAllowance.window,
+                variant: AppVariant = .current(),
                 period: @escaping @MainActor () -> ProMonth? = { nil }) {
         self.store = store
         self.free = free
+        self.paid = Double(variant.monthlyVoiceHours) * 3600
         self.window = window
         self.period = period
         usage = store.load()
     }
 
     /// The voice time there is in all: the paid month's hours, or the free minutes.
-    public var total: Double { period() != nil ? Self.paidSeconds : free }
+    public var total: Double { period() != nil ? paid : free }
 
     public func remaining(at now: Double) -> Double {
-        if let month = period() { return max(0, Self.paidSeconds - usage.used(since: month.start)) }
+        if let month = period() { return max(0, paid - usage.used(since: month.start)) }
         return max(0, free - usage.used(at: now, window: window))
     }
 
     /// When some time is back, once it has all been used: as older calls
     /// pass out of the 30 days, or the paid month's end (none in grace).
     public func freeAgain(after now: Double) -> Double? {
-        if let month = period() { return usage.used(since: month.start) < Self.paidSeconds ? now : month.end }
+        if let month = period() { return usage.used(since: month.start) < paid ? now : month.end }
         return usage.freeAgain(after: now, free: free, window: window)
     }
 

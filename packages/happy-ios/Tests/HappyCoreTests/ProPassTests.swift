@@ -164,6 +164,28 @@ final class ProPassTests: XCTestCase {
 
     // MARK: The allowance
 
+    func testPreviewHasTenHoursWhileOtherBuildsKeepTwoAndUsageSurvivesTheIncrease() {
+        let store = MemoryUsageStore()
+        var month: ProMonth? = ProMonth(start: 1_000, end: 2_000_000_000)
+        let previous = CallAllowance(store: store, variant: .production, period: { month })
+        previous.record(call: "existing", from: 1_000, to: 8_200)
+        for variant in AppVariant.allCases {
+            let allowance = CallAllowance(store: store, variant: variant, period: { month })
+            XCTAssertEqual(allowance.total, variant == .preview ? 36_000 : 7_200)
+            XCTAssertEqual(allowance.remaining(at: 8_200), variant == .preview ? 28_800 : 0)
+            XCTAssertEqual(allowance.freeAgain(after: 8_200), variant == .preview ? 8_200 : month?.end)
+        }
+        let preview = CallAllowance(store: store, variant: .preview, period: { month })
+        preview.record(call: "remaining", from: 8_200, to: 37_000)
+        XCTAssertEqual(preview.remaining(at: 37_000), 0)
+        XCTAssertEqual(preview.freeAgain(after: 37_000), month?.end)
+        month = ProMonth(start: 37_000, end: 3_000_000_000)
+        XCTAssertEqual(preview.remaining(at: 37_000), 36_000)
+        month = nil
+        XCTAssertEqual(preview.total, 1_200)
+        XCTAssertEqual(preview.remaining(at: 37_000), 0)
+    }
+
     func testASubscriberHasTwoHoursInTheirMonthReplacingTheFreeTime() {
         var month: ProMonth? = ProMonth(start: 1_000, end: 2_000_000_000)
         let allowance = CallAllowance(store: MemoryUsageStore(), period: { month })
