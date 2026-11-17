@@ -1405,6 +1405,7 @@ function SpaceShell() {
           recordingSkill={recordingSkill}
           teachBusy={teachBusy}
           hasControl={computerControls.hasControl}
+          changingControl={computerControls.changingControl}
           composerRunning={composerRunning}
           sending={sending}
           booting={booting}

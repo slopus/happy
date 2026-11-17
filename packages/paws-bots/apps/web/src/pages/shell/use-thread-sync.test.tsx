@@ -171,7 +171,10 @@ it("refreshes a group's computer screen when control changes for that computer",
   subscription.onEvent(released("bot-computer"), snapshot);
   await flush();
   expect(input.computerState.refreshComputerScreen).toHaveBeenCalledTimes(1);
-  expect(input.computerState.refreshComputerScreen).toHaveBeenCalledWith("bot-computer");
+  expect(input.computerState.refreshComputerScreen).toHaveBeenCalledWith("bot-computer",
+    undefined,
+    true,
+  );
   subscription.onEvent(released("bot-other"), snapshot);
   await flush();
   expect(input.computerState.refreshComputerScreen).toHaveBeenCalledTimes(1);

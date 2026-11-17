@@ -59,7 +59,9 @@ function computer(state: ComputerStatus["state"]): ComputerStatus {
 async function render(
   state: ComputerStatus["state"],
   onStart = vi.fn(),
-  options: { hasControl?: boolean; shared?: boolean } = {},
+  options: { hasControl?: boolean; shared?: boolean ;
+    changingControl?: boolean;
+  } = {},
 ) {
   await act(async () => {
     root.render(
@@ -70,6 +72,7 @@ async function render(
         recordingSkill={null}
         teachBusy={false}
         hasControl={options.hasControl ?? false}
+        changingControl={options.changingControl}
         composerRunning={false}
         sending={false}
         booting={false}
@@ -133,4 +136,13 @@ it("says sign-ins are shared while someone in a shared space has control", async
   expect(note()).toBeNull();
   await render("running", vi.fn(), { shared: true });
   expect(note()).toBeNull();
+});
+it("shows a disabled progress control while takeover or handback is pending", async () => {
+  await render("running", vi.fn(), { hasControl: true, changingControl: true });
+  const pending = container.querySelector<HTMLButtonElement>(
+    'button[aria-busy="true"]',
+  );
+  expect(pending?.disabled).toBe(true);
+  expect(pending?.textContent).toBe("Connecting…");
+  expect(container.textContent).not.toContain("Hand back control");
 });

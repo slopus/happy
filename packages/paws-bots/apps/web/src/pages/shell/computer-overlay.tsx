@@ -7,7 +7,11 @@ import type { ReactNode } from "react";
 import { TeachCaptureOverlay } from "../../components/teach/TeachCaptureOverlay";
 import { TeachComputerOverlayControl } from "../../components/teach/TeachComputerOverlay";
 import { TeachRecordingChrome, TeachStopButton } from "../../components/teach/TeachRecordingChrome";
-import { screenFrames, screenIframeSandbox } from "../../lib/computer-screen";
+import {
+  proxiedScreenCapability,
+  screenFrames,
+  screenIframeSandbox,
+} from "../../lib/computer-screen";
 import {
   DARWIN_WINDOW_CONTROLS_WIDTH_PX,
   desktopBridge,
@@ -24,6 +28,7 @@ type ComputerOverlayProps = {
   recordingSkill: TaughtSkill | null;
   teachBusy: boolean;
   hasControl: boolean;
+  changingControl?: boolean;
   composerRunning: boolean;
   sending: boolean;
   booting: boolean;
@@ -51,6 +56,7 @@ export function ComputerOverlay({
   recordingSkill,
   teachBusy,
   hasControl,
+  changingControl = false,
   composerRunning,
   sending,
   booting,
@@ -69,6 +75,15 @@ export function ComputerOverlay({
   onRefreshTeaching,
   onClose,
 }: ComputerOverlayProps) {
+  // A granted lease is not yet an input-capable screen. Keep the transition visible
+  // while the old view frame covers the new connection.
+  const switchingControl =
+    changingControl ||
+    Boolean(
+      hasControl &&
+        (heldScreen ||
+          proxiedScreenCapability(embeddedScreenUrl)?.policy === "view"),
+    );
   return (
     <div className="fixed inset-0 z-30 bg-background">
       <div
@@ -134,6 +149,16 @@ export function ComputerOverlay({
             ) : null}
             {recordingSkill ? (
               <TeachStopButton busy={teachBusy} onStop={onStopTeaching} />
+            ) : switchingControl ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled
+                aria-busy="true"
+              >
+                <Trans>Connecting…</Trans>
+              </Button>
             ) : hasControl ? (
               <ComputerReleaseActions
                 takeoverRequested={Boolean(computer?.takeoverRequested)}
@@ -195,7 +220,10 @@ export function ComputerOverlay({
                   className={`h-full w-full border-0 bg-black${frame.held ? " absolute inset-0" : ""}`}
                   allow="clipboard-read; clipboard-write; fullscreen"
                   style={{
-                    pointerEvents: frame.held || recordingSkill || !hasControl ? "none" : "auto",
+                    pointerEvents:
+                      frame.held || recordingSkill || !hasControl || switchingControl
+                        ? "none"
+                        : "auto",
                   }}
                 />
               ))}

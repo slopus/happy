@@ -282,7 +282,7 @@ export function useThreadSync({
       fetchFresh(queryClient, queries.skills.list.queryOptions({ input: { botId: id } })).catch(
         () => null,
       ),
-      refreshComputerScreen(id).catch(() => null),
+      refreshComputerScreen(id, undefined, true).catch(() => null),
     ]).then(([routines, skills]) => {
       if (
         activeBotId.current !== id ||
@@ -461,7 +461,7 @@ export function useThreadSync({
           if (event.type === "computer.takeover.granted" && computerRef.current?.shared) {
             void snapshotRefresh.invalidate().catch(() => undefined);
           }
-          void refreshComputerScreen(active.id).catch(() => undefined);
+          void refreshComputerScreen(active.id, undefined, true).catch(() => undefined);
         }
         if (isRunTerminalEvent(event)) refreshRoutineHistory(event.runId);
       },
@@ -552,7 +552,7 @@ export function useThreadSync({
         // The event does not say which tab sent it, so every tab showing this computer refreshes.
         const computerBotId = computerBotIdRef.current;
         if (isComputerStatusEvent(event) && computerBotId && event.botId === computerBotId) {
-          void refreshComputerScreen(computerBotId).catch(() => undefined);
+          void refreshComputerScreen(computerBotId, undefined, true).catch(() => undefined);
         }
         if (isRunTerminalEvent(event)) refreshRoutineHistory(event.runId);
       },

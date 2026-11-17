@@ -82,6 +82,7 @@ import {
   computerScreens,
   ensureManagedScreen,
   managedScreen,
+  releaseManagedScreenControl,
   setInteractiveScreen,
 } from "./screens.js";
 import {
@@ -917,7 +918,21 @@ app.post("/computers/:id/screen-mode", async (c) => {
     const id = c.req.param("id");
     const { botId, spaceId, screenId, screenLeaseId } = identityHeaders(c);
     const { container, info } = await managedContainer(id, botId, spaceId);
-    const { layout, viewToken } = await withComputerScreenLock(id, async () => {
+    const result = await withComputerScreenLock(id, async () => {
+      if (
+        !body.interactive &&
+        body.revokeControl !== false &&
+        (await releaseManagedScreenControl(
+          id,
+          container,
+          botId,
+          screenId,
+          screenLeaseId,
+          body.controlToken,
+        ))
+      ) {
+        return null;
+      }
       const screen = await ensureManagedScreen(
         id,
         container,
@@ -946,6 +961,8 @@ app.post("/computers/:id/screen-mode", async (c) => {
       }
       return screen;
     });
+    if (!result) return c.json({ ok: true });
+    const { layout, viewToken } = result;
     const screenUrl = await publishedScreenUrl(
       container,
       info,

@@ -1409,6 +1409,47 @@ describe("screen release status", () => {
     },
   );
 
+  it("hands back an existing control lease without rebuilding the desktop", async () => {
+    const { supervisorApp } = await import("./index.js");
+    const container = managedContainer(
+      vi.fn(async (options: { Cmd: string[] }) => ({
+        start: async () =>
+          Readable.from(
+            options.Cmd.join(" ").includes("RAKAZO_CONTROL_RELEASED")
+              ? [Buffer.from("RAKAZO_CONTROL_RELEASED\n")]
+              : [],
+          ),
+        inspect: async () => ({ ExitCode: 0 }),
+      })),
+    );
+    const inspect = await container.inspect();
+    container.inspect.mockResolvedValue({
+      ...inspect,
+      State: { Running: true, StartedAt: "boot-1" },
+    } as never);
+    mocks.docker.getContainer.mockReturnValue(container);
+    const post = (interactive: boolean) =>
+      supervisorApp.request("/computers/fast-handback/screen-mode", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          interactive,
+          controlToken: "human-control",
+          ...(interactive ? { revokeControl: false } : {}),
+        }),
+      });
+    expect((await post(true)).status).toBe(200);
+    container.exec.mockClear();
+    expect((await post(false)).status).toBe(200);
+    const commands = container.exec.mock.calls.map(([options]) =>
+      options.Cmd.join(" "),
+    );
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toContain("RAKAZO_CONTROL_RELEASED");
+    expect(commands[0]).not.toContain("browser_running");
+    expect(commands[0]).not.toContain("xdpyinfo");
+  });
+
   it("restores active control on every screen ensure and fails visibly if restoration fails", async () => {
     const { supervisorApp } = await import("./index.js");
     let failControl = false;

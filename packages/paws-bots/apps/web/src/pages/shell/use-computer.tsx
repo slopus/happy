@@ -425,7 +425,37 @@ export function useComputerState({
     }
   }
 
-  async function refreshComputerScreen(id: string, request?: number) {
+  // SSE, the thread snapshot and the explicit control action can all request the same
+  // screen together. Each read runs setup under the supervisor's computer lock.
+  const pendingScreens = useRef(new Map<string, Promise<string | null>>());
+  function refreshComputerScreen(
+    id: string,
+    request?: number,
+    coalesce = false,
+  ): Promise<string | null> {
+    const status = computerRef.current;
+    const key = JSON.stringify([
+      id,
+      status?.state,
+      status?.controlHolder,
+      status?.controlBotId,
+      status?.controlLeaseId,
+      status?.controlledByOther,
+    ]);
+    const pending = pendingScreens.current.get(key);
+    if (coalesce && request === undefined && pending) return pending;
+    const read = readComputerScreen(id, request);
+    pendingScreens.current.set(key, read);
+    void read
+      .finally(() => {
+        if (pendingScreens.current.get(key) === read)
+          pendingScreens.current.delete(key);
+      })
+      .catch(() => undefined);
+    return read;
+  }
+
+  async function readComputerScreen(id: string, request?: number) {
     if (!computerVisible.current) return null;
     const read = request ?? ++screenRequest.current;
     const issuedState = computerRef.current?.botId === id ? computerRef.current.state : undefined;
@@ -585,6 +615,8 @@ export function useComputerControls({
     computerVisible,
     refreshComputerScreen,
   } = state;
+  const [changingControl, setChangingControl] = useState(false);
+  const controlActionPending = useRef(false);
   const [keepComputerRecovery, setKeepComputerRecovery] = useState(false);
   const recoveryHoldTimer = useRef<number | undefined>(undefined);
   const showComputerRecoveryHint = computersAreUnavailable(sandboxProvider) || keepComputerRecovery;
@@ -668,7 +700,7 @@ export function useComputerControls({
   async function refreshComputerFor(targetBotId: string) {
     if (activeBotId.current === targetBotId) {
       await refreshThread(targetBotId);
-      await refreshComputerScreen(targetBotId);
+      await refreshComputerScreen(targetBotId, undefined, true);
       return;
     }
     if (computerBotIdRef.current !== targetBotId) return;
@@ -676,7 +708,7 @@ export function useComputerControls({
     if (computerBotIdRef.current !== targetBotId) return;
     commitComputer(status);
     cacheComputerFor(targetBotId, { computer: status });
-    await refreshComputerScreen(targetBotId);
+    await refreshComputerScreen(targetBotId, undefined, true);
   }
 
   useEffect(() => {
@@ -837,6 +869,11 @@ export function useComputerControls({
       return true;
     }
     const needsTakeover = takeControl && !userHoldsComputerControl(targetComputer, id);
+    if (takeControl && controlActionPending.current) return false;
+    if (needsTakeover) {
+      controlActionPending.current = true;
+      setChangingControl(true);
+    }
     try {
       await bootComputer({
         botId: id,
@@ -848,6 +885,11 @@ export function useComputerControls({
     } catch {
       // computerError already set in bootComputer
       return false;
+    } finally {
+      if (needsTakeover) {
+        controlActionPending.current = false;
+        setChangingControl(false);
+      }
     }
   }
   const openComputerRef = useRef(openComputer);
@@ -858,7 +900,9 @@ export function useComputerControls({
 
   async function releaseComputer(reason?: ComputerReleaseReason) {
     const botId = computerBotIdRef.current ?? activeBotId.current;
-    if (!botId) return;
+    if (!botId || controlActionPending.current) return;
+    controlActionPending.current = true;
+    setChangingControl(true);
     // Hand back and I'm done end whatever control this person holds on the bot's screen. Nothing
     // changes here until the server answers; the screen then follows its state.
     try {
@@ -873,6 +917,9 @@ export function useComputerControls({
       if (computerBotIdRef.current !== botId && activeBotId.current !== botId) return;
       setComputerError(t`Could not continue`);
       setComputerErrorFromScreen(false);
+    } finally {
+      controlActionPending.current = false;
+      setChangingControl(false);
     }
   }
 
@@ -1010,6 +1057,7 @@ export function useComputerControls({
     showComputerRecoveryHint,
     showingRecoveryHint,
     embeddedScreenUrl,
+    changingControl,
     hasControl,
     computerScreenError,
     computerBooting,

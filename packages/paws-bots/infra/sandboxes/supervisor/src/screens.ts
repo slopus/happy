@@ -83,6 +83,56 @@ async function recentManagedScreen(
   };
 }
 
+/** Revoke an existing screen without relaunching its browser or view transport first.
+ * A missing/restarted registry falls back to full setup, which resets old transports.
+ * The caller holds the computer lock, just as for ensureManagedScreen.
+ */
+export async function releaseManagedScreenControl(
+  id: string,
+  container: Docker.Container,
+  botId: string | undefined,
+  screenId: string | undefined,
+  screenLeaseId: string | undefined,
+  controlToken: string | undefined,
+): Promise<boolean> {
+  const info = await container.inspect();
+  const startedAt = info.State?.StartedAt;
+  const assigned = currentComputerScreens(
+    computerScreens,
+    computerScreenBoots,
+    id,
+    startedAt,
+  );
+  const screenKey = screenId || botId || id;
+  const slot = assigned?.get(screenKey);
+  if (
+    !startedAt ||
+    computerScreenBoots.get(id) !== startedAt ||
+    !assigned ||
+    !slot ||
+    slot.releasing
+  )
+    return false;
+  // Keep the same execution fence as full setup; an old request cannot revoke a new run.
+  const index = nextScreenIndex(
+    assigned,
+    screenKey,
+    screenLeaseId,
+    teamScreenLimit,
+  );
+  const changed = await setInteractiveScreen(
+    container,
+    false,
+    controlToken,
+    screenPorts(index),
+  );
+  if (changed) {
+    delete slot.controlled;
+    delete slot.controlToken;
+  }
+  return true;
+}
+
 export async function ensureManagedScreen(
   id: string,
   container: Docker.Container,

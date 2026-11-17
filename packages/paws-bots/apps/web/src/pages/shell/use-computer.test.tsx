@@ -501,6 +501,7 @@ async function renderTakingControl(
     held,
     takeControl: () => controls.openComputer("bot-1", true),
     handBack: (reason?: "done" | "skipped") => controls.releaseComputer(reason),
+  changingControl: () => controls.changingControl,
   };
 }
 
@@ -716,4 +717,91 @@ it("cancels hidden panel continuation and reads a fresh screen once on return", 
   expect(readScreen).toHaveBeenCalledTimes(2);
   expect(state.screenUrl).not.toBeNull();
   expect(boot).not.toHaveBeenCalled();
+});
+it("coalesces concurrent reads of the same computer authority", async () => {
+  await act(async () => state.setComputerOpen(true));
+  let finish!: (value: { url: string }) => void;
+  screenUrl.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  let reads!: Promise<unknown>[];
+  await act(async () => {
+    reads = [
+      state.refreshComputerScreen("bot-1", undefined, true),
+      state.refreshComputerScreen("bot-1", undefined, true),
+    ];
+  });
+  expect(screenUrl).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    finish({ url: screenUrlFactory() });
+    await Promise.all(reads);
+  });
+  expect(state.screenUrl).not.toBeNull();
+});
+
+it("shows a pending handback and ignores a second press until the server answers", async () => {
+  const { release, takeControl, handBack, changingControl } =
+    await renderTakingControl();
+  await act(async () => {
+    await takeControl();
+  });
+  let finish!: (value: { ok: boolean }) => void;
+  release.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = handBack();
+  });
+  expect(changingControl()).toBe(true);
+  await act(async () => {
+    await handBack();
+  });
+  expect(release).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    finish({ ok: true });
+    await pending;
+  });
+  expect(changingControl()).toBe(false);
+});
+
+it("never reuses a view read across a change of control authority", async () => {
+  let finishView!: (value: { url: string }) => void;
+  screenUrl.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishView = resolve;
+      }),
+  );
+  let view!: Promise<unknown>;
+  await act(async () => {
+    view = state.refreshComputerScreen("bot-1", undefined, true);
+  });
+  await act(async () =>
+    state.commitComputer({
+      botId: "bot-1",
+      state: "running",
+      controlHolder: "user",
+      controlBotId: "bot-1",
+      controlLeaseId: "lease-new",
+    } as never),
+  );
+  screenUrl.mockImplementationOnce(async () => ({
+    url: "https://screen.test/novnc/session/control/123.token/",
+  }));
+  await act(async () => {
+    await state.refreshComputerScreen("bot-1", undefined, true);
+  });
+  await act(async () => {
+    finishView({ url: "https://screen.test/novnc/session/view/123.token/" });
+    await view;
+  });
+  expect(screenUrl).toHaveBeenCalledTimes(2);
+  expect(state.screenUrl).toContain("/control/");
 });
