@@ -449,11 +449,24 @@ Conversation history is preserved on the server, but in-flight tool calls are in
 
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       let verbose = false;
+      let model: string | undefined = undefined;
+      let effort: string | undefined = undefined;
+      let permissionMode: StartOptions['permissionMode'] = undefined;
       for (let i = 1; i < args.length; i++) {
-        if (args[i] === '--started-by') {
+        if (args[i] === '--started-by' && i + 1 < args.length) {
           startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--happy-starting-mode' && i + 1 < args.length) {
+          i++;
         } else if (args[i] === '--verbose') {
           verbose = true;
+        } else if (args[i] === '--model' && i + 1 < args.length) {
+          model = args[++i];
+        } else if (args[i] === '--effort' && i + 1 < args.length) {
+          effort = args[++i];
+        } else if (args[i] === '--permission-mode' && i + 1 < args.length) {
+          permissionMode = args[++i] as StartOptions['permissionMode'];
+        } else if (args[i] === '--yolo' || args[i] === '--dangerously-skip-permissions') {
+          permissionMode = 'bypassPermissions';
         }
       }
 
@@ -464,6 +477,9 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         credentials,
         startedBy,
         verbose,
+        model,
+        effort,
+        permissionMode,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

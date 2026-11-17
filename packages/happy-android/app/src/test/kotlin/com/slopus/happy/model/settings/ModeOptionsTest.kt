@@ -52,7 +52,7 @@ class ModeOptionsTest {
         assertEquals("most capable", ModeOptions.modelModes("codex")[0].description)
         assertEquals(6, ModeOptions.modelModes("gemini").size)
         assertEquals(listOf("default"), ModeOptions.modelModes("openclaw").map { it.key })
-        assertEquals("Gemini 3.8 Flash", ModeOptions.modelModes("agy")[0].name)
+        assertEquals("Gemini 4 Neon", ModeOptions.modelModes("agy")[0].name)
     }
 
     @Test
@@ -85,7 +85,13 @@ class ModeOptionsTest {
         assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), ModeOptions.effortLevelsForModel("codex", "gpt-6.1-terra").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh", "max"), ModeOptions.effortLevelsForModel("codex", "gpt-6-luna").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh"), ModeOptions.effortLevelsForModel("codex", "my-model").map { it.key })
+        assertEquals(listOf("low", "medium", "high", "xhigh"), ModeOptions.effortLevelsForModel("agy", "Gemini 4 Neon").map { it.key })
+        assertEquals(listOf("low", "medium", "high"), ModeOptions.effortLevelsForModel("agy", "Gemini 4 Carbon").map { it.key })
+        assertEquals(listOf("low", "medium", "high"), ModeOptions.effortLevelsForModel("agy", "Gemini 4 Argon").map { it.key })
+        assertEquals(listOf("low", "medium", "high", "xhigh"), ModeOptions.effortLevelsForModel("agy", "Gemini 4 Hydrogen").map { it.key })
         assertEquals(listOf("low", "medium", "high"), ModeOptions.effortLevelsForModel("agy", "Gemini 3.8 Flash").map { it.key })
+        assertEquals(emptyList<ModeOption>(), ModeOptions.effortLevelsForModel("agy", "Orchestrator (Neon)"))
+        assertEquals(emptyList<ModeOption>(), ModeOptions.effortLevelsForModel("agy", "Orchestrator (Carbon)"))
         assertEquals(emptyList<ModeOption>(), ModeOptions.effortLevelsForModel("agy", "GPT-OSS 120B (Medium)"))
         assertEquals(emptyList<ModeOption>(), ModeOptions.effortLevelsForModel("gemini", "gemini-2.5-pro"))
     }

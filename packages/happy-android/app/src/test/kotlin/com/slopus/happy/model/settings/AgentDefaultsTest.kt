@@ -74,6 +74,9 @@ class AgentDefaultsTest {
     fun otherAgentsAreNotGated() {
         assertEquals("gpt-6.1-sol", AgentDefaults.codeDefaults("codex", "1.2.0").modelMode)
         assertEquals("Gemini 3.8 Flash", AgentDefaults.codeDefaults("agy").modelMode)
+        assertEquals("Gemini 3.8 Flash", AgentDefaults.codeDefaults("agy", "1.2.6").modelMode)
+        assertEquals("Gemini 4 Hydrogen", AgentDefaults.codeDefaults("agy", "1.2.7-beta.0").modelMode)
+        assertEquals("Gemini 4 Hydrogen", AgentDefaults.codeDefaults("agy", "1.2.7").modelMode)
         for (flavor in listOf("gemini", "openclaw", "agy")) assertEquals("default", AgentDefaults.resolve(null, flavor, "1.0.0").permissionMode)
         assertEquals(AgentKey.Claude, AgentKey.normalize("something-else"))
         assertEquals(AgentKey.Claude, AgentKey.normalize(null))

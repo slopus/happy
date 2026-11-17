@@ -95,7 +95,7 @@ object AgentDefaults {
         AgentKey.Codex to AgentDefaultConfig("auto", "gpt-6.1-sol", "medium"),
         AgentKey.Gemini to AgentDefaultConfig("default", "gemini-2.5-pro", null),
         AgentKey.Openclaw to AgentDefaultConfig("default", "default", null),
-        AgentKey.Agy to AgentDefaultConfig("default", "Gemini 3.8 Flash", "medium"),
+        AgentKey.Agy to AgentDefaultConfig("default", "Gemini 4 Hydrogen", "medium"),
     )
 
     /** `auto` first shipped in happy-cli 1.2.1-beta.2, for Claude and Codex alike. */
@@ -104,6 +104,10 @@ object AgentDefaults {
     /** Opus 5.5 needs the Agent SDK happy-cli 1.2.6-beta.0 first requires. */
     const val CLI_VERSION_WITH_OPUS_5_5 = "1.2.6-beta.0"
     private const val CLAUDE_MODEL_BEFORE_OPUS_5_5 = "claude-opus-5"
+
+    /** Gemini 4 model+effort expansion in agy requires happy-cli 1.2.7-beta.0 or newer. */
+    const val CLI_VERSION_WITH_AGY_GEMINI_4 = "1.2.7-beta.0"
+    private const val AGY_MODEL_BEFORE_GEMINI_4 = "Gemini 3.8 Flash"
 
     /** Offered once, no longer accepted: what they meant. */
     private val retiredPermissionModes = mapOf("dontAsk" to "acceptEdits")
@@ -124,9 +128,15 @@ object AgentDefaults {
     // The opposite of the auto gate on an unknown version: a missing or
     // mangled version keeps the old model, since a wrong guess fails every turn.
     private fun codeDefaultModelMode(agent: AgentKey, modelMode: String, cliVersion: String?): String {
-        if (agent != AgentKey.Claude || modelMode != "claude-opus-5-5") return modelMode
-        if (cliVersion.isNullOrEmpty() || !Versions.isWellFormed(cliVersion)) return CLAUDE_MODEL_BEFORE_OPUS_5_5
-        return if (Versions.compareWithPrerelease(cliVersion, CLI_VERSION_WITH_OPUS_5_5) >= 0) modelMode else CLAUDE_MODEL_BEFORE_OPUS_5_5
+        if (agent == AgentKey.Claude && modelMode == "claude-opus-5-5") {
+            if (cliVersion.isNullOrEmpty() || !Versions.isWellFormed(cliVersion)) return CLAUDE_MODEL_BEFORE_OPUS_5_5
+            return if (Versions.compareWithPrerelease(cliVersion, CLI_VERSION_WITH_OPUS_5_5) >= 0) modelMode else CLAUDE_MODEL_BEFORE_OPUS_5_5
+        }
+        if (agent == AgentKey.Agy && modelMode == "Gemini 4 Hydrogen") {
+            if (cliVersion.isNullOrEmpty() || !Versions.isWellFormed(cliVersion)) return AGY_MODEL_BEFORE_GEMINI_4
+            return if (Versions.compareWithPrerelease(cliVersion, CLI_VERSION_WITH_AGY_GEMINI_4) >= 0) modelMode else AGY_MODEL_BEFORE_GEMINI_4
+        }
+        return modelMode
     }
 
     /** getCodeAgentDefaults. */

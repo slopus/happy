@@ -16,7 +16,7 @@ export function appendDaemonSpawnModeArgs(
   options: SpawnSessionOptions,
   agent: string,
 ): void {
-  if (agent !== 'claude' && agent !== 'codex') return;
+  if (agent !== 'claude' && agent !== 'codex' && agent !== 'agy') return;
 
   if (shouldForwardDaemonPermissionMode(agent, options.permissionMode)) {
     args.push('--permission-mode', options.permissionMode);

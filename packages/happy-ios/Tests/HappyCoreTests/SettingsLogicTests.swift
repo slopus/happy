@@ -15,6 +15,9 @@ final class AgentDefaultsTests: XCTestCase {
         XCTAssertEqual(AgentDefaults.codeDefaults(.codex, cliVersion: "1.2.0").permissionMode, "default")
         XCTAssertEqual(AgentDefaults.codeDefaults(.codex, cliVersion: "garbage").permissionMode, "default")
         XCTAssertEqual(AgentDefaults.codeDefaults(.codex, cliVersion: "1.2.1-beta.2").permissionMode, "auto")
+        XCTAssertEqual(AgentDefaults.codeDefaults(.agy, cliVersion: "1.2.6").modelMode, "Gemini 3.8 Flash")
+        XCTAssertEqual(AgentDefaults.codeDefaults(.agy, cliVersion: "1.2.7-beta.0").modelMode, "Gemini 4 Hydrogen")
+        XCTAssertEqual(AgentDefaults.codeDefaults(.agy, cliVersion: nil).modelMode, "Gemini 3.8 Flash")
     }
 
     func testOverridesWinAndRetiredKeysMapForward() {
@@ -49,6 +52,11 @@ final class AgentDefaultsTests: XCTestCase {
         XCTAssertEqual(AgentDefaults.effortLevels(.claude, model: "x").map(\.name), ["Low", "Medium", "High", "xHigh", "Max"])
         XCTAssertEqual(AgentDefaults.effortLevels(.codex, model: "gpt-6-luna").count, 5)
         XCTAssertEqual(AgentDefaults.effortLevels(.codex, model: "custom").map(\.key), ["low", "medium", "high", "xhigh"])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "Gemini 4 Neon").map(\.key), ["low", "medium", "high", "xhigh"])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "Gemini 4 Carbon").map(\.key), ["low", "medium", "high"])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "Gemini 4 Hydrogen").map(\.key), ["low", "medium", "high", "xhigh"])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "Orchestrator (Neon)"), [])
+        XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "Orchestrator (Carbon)"), [])
         XCTAssertEqual(AgentDefaults.effortLevels(.agy, model: "GPT-OSS 120B (Medium)"), [])
     }
 

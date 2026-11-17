@@ -473,7 +473,7 @@ public enum ModelModeOptions {
         case .claude: ("anthropic", "Anthropic")
         case .codex: ("openai", "OpenAI")
         case .agy:
-            if model.hasPrefix("Gemini") {
+            if model.hasPrefix("Gemini") || model.hasPrefix("Orchestrator") {
                 ("google", "Google")
             } else if model.hasPrefix("Claude") {
                 ("anthropic", "Anthropic")
