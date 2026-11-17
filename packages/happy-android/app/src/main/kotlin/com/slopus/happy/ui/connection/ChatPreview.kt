@@ -329,6 +329,7 @@ fun BoxScope.ChatPreviewOverlay(
                 .offset { IntOffset(card.left.toInt(), (card.bottom + with(density) { ChatPreviewSpec.spacing.toPx() }).toInt()) }
                 .width(minOf(with(density) { card.width.toDp() }, ChatPreviewSpec.menuWidth))
                 .height(ChatPreviewSpec.menuHeight)
+                .testTag(ChatPreviewTags.ARCHIVE)
                 .graphicsLayer {
                     translationY = -distance * (1 - place.value)
                     alpha = shown.value
@@ -340,8 +341,7 @@ fun BoxScope.ChatPreviewOverlay(
                     preview.close()
                     archive(held.row)
                 }
-                .padding(horizontal = ChatPreviewSpec.menuPadding)
-                .testTag(ChatPreviewTags.ARCHIVE),
+                .padding(horizontal = ChatPreviewSpec.menuPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(label, style = ChatPreviewSpec.menuText, color = colors.status.error, modifier = Modifier.weight(1f))
