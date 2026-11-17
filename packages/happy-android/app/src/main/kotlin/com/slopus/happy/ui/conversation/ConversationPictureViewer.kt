@@ -197,9 +197,13 @@ interface ViewerSource {
  * iOS's `AttachPreviewViewController` has it) takes the top right for the
  * picture in view, and the close button moves to the top left. A
  * [bottom] (the attach sheet's caption and edits, Telegram's
- * `PhotoViewer` picking) reserves its measured height below the picture,
- * including the caption keyboard, and supplies the viewer's Back. [onImageTap]
- * lets the picker toggle selection instead of closing the viewer. The
+ * `PhotoViewer` picking) reserves its height with the keyboard down below
+ * the picture, and supplies the viewer's Back. Typing a caption moves
+ * nothing: the keyboard and the caption riding it cover the picture's foot,
+ * as Telegram-Android's `CaptionContainerView` slides over a picture laid
+ * out on the whole screen; a tap on the picture then puts the keyboard
+ * away. [onImageTap] lets the picker toggle selection instead of closing
+ * the viewer. The
  * position ("2 of 5") is the page's state for TalkBack, as iOS gives it to
  * VoiceOver.
  */
@@ -219,7 +223,8 @@ fun PictureViewer(
     val leave by rememberUpdatedState(onClose)
     val showing by rememberUpdatedState(items)
     val tapImage by rememberUpdatedState(onImageTap)
-    var footHeight by remember { mutableIntStateOf(0) }
+    // The foot's height while the keyboard is down: what the picture leaves room for.
+    var footRest by remember { mutableIntStateOf(0) }
     val origins = ViewerOrigins.Shared
     val pager = rememberPagerState(initialPage = index.coerceIn(0, items.lastIndex)) { items.size }
     val zooms = remember(items) { List(items.size) { PageZoom() } }
@@ -322,7 +327,8 @@ fun PictureViewer(
         val density = LocalDensity.current
         val focus = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
-        val typing = bottom != null && WindowInsets.ime.getBottom(density) > 0
+        val ime = WindowInsets.ime
+        val typing = bottom != null && ime.getBottom(density) > 0
         LaunchedEffect(motion.leaving) {
             if (motion.leaving && bottom != null) {
                 focus.clearFocus(force = true)
@@ -347,7 +353,7 @@ fun PictureViewer(
         ) {
             HorizontalPager(
                 state = pager,
-                modifier = Modifier.fillMaxSize().padding(bottom = with(density) { footHeight.toDp() }).testTag(PictureViewerTags.PAGER),
+                modifier = Modifier.fillMaxSize().padding(bottom = with(density) { footRest.toDp() }).testTag(PictureViewerTags.PAGER),
                 pageSpacing = PictureViewing.PAGE_GAP.dp,
                 beyondViewportPageCount = 1,
                 userScrollEnabled = pages,
@@ -384,11 +390,11 @@ fun PictureViewer(
                         LaunchedEffect(pager.settledPage == page) { if (pager.settledPage != page) zoom.reset() }
                         PicturePage(item, source, zoom, current, motion, scope, flight.takeIf { flying }, { shown.value }, reservedFoot = bottom != null, onTap = {
                             val select = tapImage
-                            if (select != null) select(item)
-                            else if (typing) {
+                            if (typing) {
                                 focus.clearFocus(force = true)
                                 keyboard?.hide()
-                            } else close()
+                            } else if (select != null) select(item)
+                            else close()
                         })
                     }
                 }
@@ -410,7 +416,7 @@ fun PictureViewer(
                 Icon(MaterialSymbols.Close, stringResource(R.string.conversation_picture_close))
             }
             corner?.invoke(items[pager.currentPage], controls.corner(Alignment.TopEnd))
-            bottom?.invoke(items[pager.currentPage], controls.align(Alignment.BottomCenter).onSizeChanged { footHeight = it.height }, close)
+            bottom?.invoke(items[pager.currentPage], controls.align(Alignment.BottomCenter).onSizeChanged { if (ime.getBottom(density) == 0) footRest = it.height }, close)
         }
     }
 }

@@ -280,14 +280,20 @@ class AttachSheetDeviceTest {
         capture("41-viewer-tap-picked")
         node(PictureViewerTags.IMAGE).performTouchInput { click() }
         rule.waitUntil(5_000) { !picked() }
-        node(AttachTags.PREVIEW_CAPTION).performClick().performTextInput("Caption over the keyboard")
+        node(AttachTags.PREVIEW_CAPTION).performClick()
+        // The keyboard is up (the edits go with it) before anything is typed, as a person's would be.
         waitGone(AttachTags.PREVIEW_CROP)
+        // Through the keyboard: the viewer's own window takes it.
+        device.executeShellCommand("input text Caption%sover%sthe%skeyboard,%slong%senough%sto%swrap%sonto%sa%ssecond%sline")
+        rule.waitUntil(5_000) { node(AttachTags.PREVIEW_CAPTION).fetchSemanticsNode().config.getOrElse(SemanticsProperties.EditableText) { androidx.compose.ui.text.AnnotatedString("") }.text.endsWith("line") }
         capture("42-viewer-keyboard")
+        // Telegram-Android's: the photo keeps its place, the keyboard and the caption riding it cover its foot.
         val typingImage = node(PictureViewerTags.IMAGE).fetchSemanticsNode().boundsInRoot
-        val typingCaption = node(AttachTags.PREVIEW_CAPTION_BAR).fetchSemanticsNode().boundsInRoot
-        assertTrue("photo clears typing caption", typingImage.bottom <= typingCaption.top)
-        device.pressBack()
+        assertEquals("photo keeps its place while typing", image, typingImage)
+        // A tap on the photo puts the keyboard away, and picks nothing.
+        node(PictureViewerTags.IMAGE).performTouchInput { click(Offset(centerX, height * 0.25f)) }
         waitFor(AttachTags.PREVIEW_CROP)
+        assertTrue("the tap that put the keyboard away picks nothing", !picked())
         node(PictureViewerTags.CLOSE).performClick()
         waitGone(PictureViewerTags.VIEWER)
         node(AttachTags.PREVIEW_FOOT).assertDoesNotExist()
