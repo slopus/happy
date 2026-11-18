@@ -52,13 +52,15 @@ import { canCreateProjectConversation, canConfirmProjectDeliverable, openProject
 import { getProjectPreviewMachineId } from '@/sync/projectGoals';
 import { selectProjectMachine } from './projectMachine';
 import { useProjectNavigation } from './useProjectNavigation';
+import { useTaskCardSelection } from './useTaskCardSelection';
+import { readTaskCardHistory } from './taskCardHistory';
 import { useRememberProjectLocation } from '@/hooks/useRememberProjectLocation';
 import { useProjectData } from './useProjectData';
 import { getDirectoryCache } from '@/components/fileWorkspace/directoryCache';
 import { ProjectDeliveryEditor } from './ProjectDeliveryEditor';
 import { projectCacheKey, projectHistorySchema, readProjectCache, writeProjectCache, isProjectSessionDeleted, subscribeProjectSessionDeletions, getProjectSessionDeletionRevision } from '@/sync/projectWorkspaceCache';
 import { mergeProjectTaskHistory } from '@/sync/mergeProjectTaskHistory';
-import { projectSessionMatchesTask } from '@/sync/projectGoals';
+import { latestProjectTaskConversation, projectSessionMatchesTask } from '@/sync/projectGoals';
 
 const requestId = () => `goal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 function accountKey() { const a = getRuntimeAccountSelection(); return JSON.stringify([a?.key, a?.generation, a?.serverUrl]); }
@@ -203,6 +205,34 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const location = JSON.stringify([params.project, params.feature, params.task, params.conversation, params.author, params.view, params.file]);
     const latestLocation = React.useRef(location); latestLocation.current = location;
     const go = (values: Record<string, string | undefined>) => { navigationEpoch.current++; setActionError(null); navigate({ conversation: undefined, author: undefined, view: undefined, file: undefined, ...values }); };
+    const selectDesktopTask = useTaskCardSelection({
+        selectedId: params.conversation ? params.task : undefined,
+        context: JSON.stringify([accountKey(), machineId, scope, location, navigationEpoch.current, focused.current]),
+        resolve: async id => {
+            const target = feature?.tasks.find(value => value.id === id);
+            if (!feature || !target) throw new Error(t('projectGoals.sessionUnavailable'));
+            const owner = accountKey();
+            const key = projectCacheKey('history', machineId, feature.featurePath, id);
+            const directory = target.indexPath.replace(/[\\/][^\\/]+$/, '');
+            const merge = (known: GoalTaskSession[]) => mergeProjectTaskHistory(known, Object.values(storage.getState().sessions), {
+                machineId, featurePath: feature.featurePath, taskId: id, directory,
+            });
+            const known = merge([...(data.board?.sessions[id] ?? []), ...(readProjectCache(key, projectHistorySchema)?.value.sessions ?? [])]);
+            const latest = latestProjectTaskConversation(known, directory);
+            if (latest || data.offline) return latest?.sessionId;
+            const page = await readTaskCardHistory(async cursor => {
+                const result = await loadProjectTaskHistory(machineId, feature.featurePath, id, cursor);
+                if (accountKey() !== owner) throw new Error('Project conversation account changed');
+                return result;
+            }, sessions => latestProjectTaskConversation(merge(sessions), directory));
+            const sessions = merge(page.sessions);
+            writeProjectCache(key, { sessions, nextCursor: page.nextCursor });
+            return latestProjectTaskConversation(sessions, directory)?.sessionId;
+        },
+        commit: (task, conversation) => { if (alive.current && focused.current) go({ task, conversation }); },
+        onError: error => setActionError(error instanceof Error ? error.message : String(error)),
+    });
+    const selectTaskCard = (id: string) => { if (mobile) go({ task: id }); else void selectDesktopTask(id); };
     const chooseProject = (project: GoalProject) => go({ project: project.projectPath, feature: project.features.length ? undefined : project.direct?.featurePath, task: undefined });
     const chooseFeature = (feature: GoalBoardCatalogEntry) => go({ feature: feature.featurePath, task: undefined });
     const organize = async () => {
@@ -345,11 +375,11 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 editDelivery={setDeliveryTasks} openCardConversation={openCardConversation} featureTitle={feature.title} catalogScrollPosition={scrollPosition} onCatalogScroll={offset => { scrollPosition.current = offset; catalogStates.set(scope, { query, status: statusFilter, scroll: offset }); }} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter}
                 deselectTask={() => go({ task: undefined, view: 'files' })} openGlobalConversation={() => { void openGlobalConversation(); }} globalBusy={busy} allTasks={tasks} conversationId={params.conversation} agent={agent} offline={data.offline}
                 mobileView={params.view} readerPath={params.file} changeView={view => navigate({ view })} openReader={file => navigate({ file, view: 'reader' })} closeReader={navigation.back}
-                refresh={data.refresh} selectTask={id => go({ task: id })} selectConversation={id => navigate({ conversation: id, ...(mobile ? { view: id ? 'chat' : 'details' } : {}) })} />
+                refresh={data.refresh} selectTask={selectTaskCard} selectConversation={id => navigate({ conversation: id, ...(mobile ? { view: id ? 'chat' : 'details' } : {}) })} />
             : <ScopeCatalog enabled={scopeDesktop} initialTab={params.view === 'files' ? 'files' : undefined} scopePath={params.feature ?? project?.projectPath} machineId={machineId} title={feature?.title ?? project?.title ?? ''} connecting={data.status === 'connecting'} conversationId={params.conversation ?? params.author} agent={agent} offline={data.offline} revision={JSON.stringify([feature?.revision, (selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])} surface={surface} selectConversation={id => navigate({ conversation: id, author: undefined })}><ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: scrollPosition.current, animated: false })} onScroll={event => { scrollPosition.current = event.nativeEvent.contentOffset.y; catalogStates.set(scope, { query, status: statusFilter, scroll: scrollPosition.current }); }} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={[styles.catalogContent, mobile && styles.mobileCatalog]}>
                 <CatalogHeading title={feature ? feature.title : params.feature ? t('projectGoals.loadingTasks') : project ? project.title : t('projectGoals.allProjects')} subtitle={feature ? `${tasks.length} ${t('projectGoals.tasks')}` : project ? project.summary || t('projectGoals.subprojects') : t('projectGoals.galleryDescription')} query={query} setQuery={setQuery} />
                 {params.task && feature && !task && <Text style={styles.error}>{t('projectGoals.taskMissing')}</Text>}
-                {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards machineId={machineId} featurePath={feature.featurePath} onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={id => go({ task: id })} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
+                {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards machineId={machineId} featurePath={feature.featurePath} onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={selectTaskCard} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
                     : project ? <ProjectFeatureLibrary machineId={machineId} entries={[...(project.direct ? [project.direct] : []), ...project.features]} query={query} projectPath={project.projectPath} onSelect={chooseFeature} />
                         : <ProjectLibrary key={machineId} machineId={machineId} projects={data.projects} loaded={data.loaded} query={query} onSelect={chooseProject} onOpenItem={item => {
                             if (item.kind === 'file') setSavedFile(item);
@@ -545,7 +575,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const catalogScroll = React.useRef<ScrollView>(null);
     const catalog = <ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: props.catalogScrollPosition.current, animated: false })} onScroll={event => props.onCatalogScroll(event.nativeEvent.contentOffset.y)} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface, borderRadius: 13 }]} contentContainerStyle={styles.taskCatalogContent}>
         <CatalogHeading title={props.featureTitle} subtitle={`${allTasks.length} ${t('projectGoals.tasks')}`} query={props.query} setQuery={props.setQuery} />
-        <TaskCards machineId={machineId} featurePath={featurePath} onDelivery={target => props.editDelivery([target])} tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={id => { if (id !== task.id) selectTask(id); else if (showChat) props.openGlobalConversation(); else props.deselectTask(); }} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
+        <TaskCards machineId={machineId} featurePath={featurePath} onDelivery={target => props.editDelivery([target])} tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={selectTask} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
     </ScrollView>;
     if (mobile && props.mobileView === 'reader' && props.readerPath) {
         const artifact = task.artifacts.find(value => value.path === props.readerPath && value.relation === 'output');
