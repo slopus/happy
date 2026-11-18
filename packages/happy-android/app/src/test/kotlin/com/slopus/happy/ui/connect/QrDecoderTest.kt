@@ -80,6 +80,22 @@ class QrDecoderTest {
         assertTrue(frames.all { it.closed })
     }
 
+    @Test
+    fun aFrameZXingCantTakeIsSkippedAndClosed() {
+        val decoded = mutableListOf<String>()
+        val analyzer = QrAnalyzer { decoded += it }
+        val frames = listOf(
+            // A stride narrower than the picture: PlanarYUVLuminanceSource refuses the crop.
+            FakeImage(frame(null), 320, 640, 480),
+            // A Y plane shorter than its rows say: reading the last rows runs off the end.
+            FakeImage(frame(null).copyOf(640 * 200), 640, 640, 480),
+            FakeImage(frame(link), 640, 640, 480),
+        )
+        frames.forEach(analyzer::analyze)
+        assertEquals(listOf(link), decoded)
+        assertTrue(frames.all { it.closed })
+    }
+
     private class FakeImage(bytes: ByteArray, private val stride: Int, private val w: Int, private val h: Int) : ImageProxy {
         var closed = false
         private val plane = object : ImageProxy.PlaneProxy {

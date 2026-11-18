@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connect
 
+import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.google.zxing.BarcodeFormat
@@ -41,6 +42,9 @@ class QrDecoder {
 /**
  * Decodes each camera frame until one holds a QR code, then hands its text
  * to [onDecoded] once (on the analysis thread) and ignores later frames.
+ * A frame that isn't what ZXing takes (a Y plane shorter than its rows say,
+ * a stride narrower than the picture) is skipped, never thrown on the
+ * analysis thread, where it would end the app; every frame is closed.
  */
 class QrAnalyzer(private val onDecoded: (String) -> Unit) : ImageAnalysis.Analyzer {
     private val decoder = QrDecoder()
@@ -52,11 +56,16 @@ class QrAnalyzer(private val onDecoded: (String) -> Unit) : ImageAnalysis.Analyz
     override fun analyze(image: ImageProxy) {
         image.use {
             if (decoded) return
-            val plane = image.planes[0]
-            val buffer = plane.buffer.duplicate().apply { rewind() }
-            if (luminance.size != buffer.remaining()) luminance = ByteArray(buffer.remaining())
-            buffer.get(luminance)
-            val text = decoder.decode(luminance, plane.rowStride, image.width, image.height) ?: return
+            val text = try {
+                val plane = image.planes[0]
+                val buffer = plane.buffer.duplicate().apply { rewind() }
+                if (luminance.size != buffer.remaining()) luminance = ByteArray(buffer.remaining())
+                buffer.get(luminance)
+                decoder.decode(luminance, plane.rowStride, image.width, image.height)
+            } catch (e: RuntimeException) {
+                Log.w("QrScanner", "Frame skipped", e)
+                null
+            } ?: return
             decoded = true
             onDecoded(text)
         }
