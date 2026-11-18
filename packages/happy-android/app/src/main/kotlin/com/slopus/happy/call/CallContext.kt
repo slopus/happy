@@ -25,8 +25,12 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import java.time.Instant
 import java.time.ZoneId
+import java.time.chrono.IsoChronology
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.time.format.FormatStyle
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 import kotlin.coroutines.CoroutineContext
 
 /** What a call adds to the hosted agent's context as things change: JSON lines it reads without answering. Nothing here asks it to speak. */
@@ -37,12 +41,13 @@ data class CallUpdate(val context: List<String> = emptyList()) {
 /**
  * Lives only during one call, bound to one connection (iOS `CallContext`).
  * It owns the opaque references the hosted agent knows conversations by, the
- * focus, and the last four conversations visited or messaged during the
- * call, which are the ones it hears from; it runs the tools one at a
- * time. A followed conversation says only what its agent writes from then on,
- * each piece once it is complete and whole, and an error that stopped it:
- * never its words as they stream, its tools, its state or the person's
- * messages.
+ * focus, and the last ten conversations visited or messaged during the
+ * call, which are the ones it hears from, each on its own: never the ones
+ * under or over it; it runs the tools one at a time. A followed conversation
+ * says only what its agent writes from then on, each piece once it is
+ * complete and whole, its status as it changes and an error that stopped it:
+ * never its words as they stream, its tools or the person's messages. One
+ * let go is said to be, and why.
  *
  * The call starts with the directory: home's bots, tasks, subtasks and
  * project conversations, in its order and nesting, as plain lines that give
@@ -66,6 +71,8 @@ class CallContext(
     private val toolDeadlineMillis: Long = Limits.TOOL_DEADLINE_MS,
     /** The person's clock, which times are said in. */
     private val zone: ZoneId = ZoneId.systemDefault(),
+    /** Times said on a 24-hour clock, as the phone shows them. */
+    private val hours24: Boolean = usesHours24(Locale.getDefault()),
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
     /** How long a read of a conversation that isn't current goes on making it current, after its answer. */
     private val refreshMillis: Long = Limits.REFRESH_MS,
@@ -112,7 +119,7 @@ class CallContext(
         const val SETTLE_MS = 1_000L
         const val PAGE = 50
         /** Conversations the call hears from: the last ones visited or messaged, the one on screen included. */
-        const val VISITED = 4
+        const val VISITED = 10
         /** The agent's messages looked at per change, newest last. */
         const val MESSAGES = 20
         const val TEXT_BYTES = 8 * 1024
@@ -148,6 +155,8 @@ class CallContext(
     /** Home's conversations as last seen, in order and by ID. */
     private var entries: List<CallTarget> = emptyList()
     private var directory: Map<String, CallTarget> = emptyMap()
+    /** Every conversation home listed this call, as it last did: what one that went away is named by. */
+    private val lastListed = HashMap<String, CallTarget>()
     /** The directory as the agent has it: from the first context, then as each `directory` update left it. */
     private var listed: List<Listing> = emptyList()
     /** The first context's, which nothing can lose. */
@@ -204,6 +213,8 @@ class CallContext(
         var errors: Set<String> = emptySet(),
         /** The errors this call told of, by turn, with the event that told it. */
         var told: Map<String, String> = emptyMap(),
+        /** Its status as last seen ([statusOf]). */
+        var status: String = "",
     )
 
     /** A conversation as the agent's directory has it: what a rename or a move changes. */
@@ -230,8 +241,8 @@ class CallContext(
 
     /**
      * Where what the refresh of a read that went out `refreshing` found goes, as a line of context the agent reads
-     * without answering (`conversation_update`, `conversation_current`, `conversation_unconfirmed`). Nothing once the
-     * call has ended.
+     * without answering (`conversation_update`, `conversation_current`, `conversation_unconfirmed`), and what a
+     * tool stopped following (`unfollowed`). Nothing once the call has ended.
      */
     suspend fun onReading(handler: (String) -> Unit) = withContext(lane) { onReading = handler }
 
@@ -265,7 +276,7 @@ class CallContext(
             if (directory[focused] == null) targets.unlisted(focused)?.let { drafts[focused] = it }
             state = targets.state(focused)?.also { if (heard[focused] == null) listen(it) }
         }
-        val header = "Now: ${local(now(), zone)} (the person's local time)\nfocusRevision: $focusRevision" +
+        val header = "Now: ${today(now(), zone, hours24)} (the person's local time)\nfocusRevision: $focusRevision" +
             person?.let { "\n" + personText(it) }.orEmpty()
         val turns = state?.let(::recent)?.toMutableList() ?: mutableListOf()
         var budget = Limits.DIRECTORY_BYTES
@@ -288,7 +299,7 @@ class CallContext(
         if (state == null || focused == null) return "On screen: no conversation (home, Settings or another screen)."
         val target = state.target
         val lines = ArrayList<String>()
-        lines += "On screen: ${target.title} — ${target.kind.wire}, ref ${ref(focused)}" +
+        lines += "On screen: ${target.title} — ${kindText(directory[focused] ?: target)}, ref ${ref(focused)}" +
             if (target.parents.isEmpty()) "" else ", under ${target.parents.joinToString(" > ") { it.title }}"
         lines += "Working: ${yes(state.working)}. Needs the person: ${yes(state.needsInput)}."
         state.messages.lastOrNull { it.role == CallMessage.Role.User && (it.time ?: 0L) > 0 }?.let { last ->
@@ -322,15 +333,15 @@ class CallContext(
         return lines.joinToString("\n")
     }
 
-    /** "5 minutes ago (2026-11-06T09:15:00+01:00)". */
-    private fun said(millis: Long): String = "${ago((now() - millis) / 1000)} (${local(millis, zone)})"
+    /** "5 minutes ago (today at 9:15 AM)". */
+    private fun said(millis: Long): String = "${ago((now() - millis) / 1000)} (${local(millis, now(), zone, hours24)})"
 
     // What changes
 
     /**
      * Something on screen changed which conversation is in front. A
-     * conversation becomes the latest visited; the fifth one back is no
-     * longer heard from. Settings or home in front keep them all.
+     * conversation becomes the latest visited; the eleventh one back is no
+     * longer heard from (`unfollowed`). Settings or home in front keep them all.
      */
     suspend fun focusChanged(agentId: String?): CallUpdate = withContext(lane) {
         if (closed || agentId == focus) return@withContext CallUpdate()
@@ -343,25 +354,38 @@ class CallContext(
         moveFocus(agentId)
     }
 
-    /** The focus moves, by the person or by a tool. One the agent has no reference for yet comes with it. */
+    /**
+     * The focus moves, by the person or by a tool. One the agent has no reference for yet comes with it, and what
+     * that stopped following after it.
+     */
     private fun moveFocus(agentId: String?): CallUpdate {
         if (closed || agentId == focus) return CallUpdate()
         focus = agentId
         focusRevision += 1
         val event = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("focus"), "focusRevision" to JsonPrimitive(focusRevision), "title" to JsonNull)
-        if (agentId != null) {
-            visit(agentId)
-            (directory[agentId] ?: drafts[agentId])?.let { event.putAll(address(it)) }
-        }
-        return CallUpdate(listOf(CallJson.encode(JsonObject(event))))
+        if (agentId == null) return CallUpdate(listOf(CallJson.encode(JsonObject(event))))
+        (directory[agentId] ?: drafts[agentId])?.let { event.putAll(address(it)) }
+        return CallUpdate(listOf(CallJson.encode(JsonObject(event))) + visit(agentId))
+    }
+
+    /** The focus a tool moved, its answer saying so: only what that stopped following goes, as context. */
+    private fun movedByTool(agentId: String?) {
+        moveFocus(agentId).context.drop(1).forEach(::tell)
+    }
+
+    /** A line of context from a tool, apart from its answer. */
+    private fun tell(line: String) {
+        if (!closed) onReading?.invoke(line)
     }
 
     /**
      * One visited conversation's newest state. The first one the call sees
      * is what was there already, and says nothing; after it, each of its
      * agent's messages once it is complete ([CallMessage.final]), whole
-     * (`assistant_text`), never while it grows; and a turn an error ended
-     * (`session_error`). Nothing is told twice.
+     * (`assistant_text`), never while it grows; a turn an error ended
+     * (`session_error`); and its status once it changes (`status`). Its
+     * tools, their results and anything else it does go nowhere. Nothing is
+     * told twice.
      */
     suspend fun targetChanged(state: CallTargetState): CallUpdate = withContext(lane) { changed(state) }
 
@@ -407,6 +431,14 @@ class CallContext(
         }
         known.errors = state.turns.filter { it.ended == "error" }.mapTo(HashSet()) { it.id }
         known.told = toldErrors.filterKeys { it in known.errors }
+        val status = statusOf(state)
+        if (status != known.status) {
+            known.status = status
+            val event = LinkedHashMap(address)
+            event["event"] = JsonPrimitive("status")
+            event["status"] = JsonPrimitive(status)
+            context += CallJson.encode(JsonObject(event))
+        }
         return CallUpdate(context)
     }
 
@@ -462,6 +494,7 @@ class CallContext(
         for (entry in now) byId.putIfAbsent(entry.agentId, entry)
         entries = byId.values.toList()
         directory = byId
+        lastListed.putAll(byId)
         // Made by its first message: home's from now on.
         drafts.keys.removeAll { it in byId }
         place(entries)
@@ -476,17 +509,24 @@ class CallContext(
     suspend fun directoryChanged(now: List<CallTarget>): Boolean = withContext(lane) {
         if (closed || !begun) return@withContext false
         see(now)
-        entries.map(::Listing) != listed
+        entries.map(::Listing) != listed || gone().isNotEmpty()
     }
 
-    /** Home read again, and what changed since the agent's directory was last put right: one `directory` event, or nothing. Never the whole directory again. */
+    /**
+     * Home read again, and what changed since the agent's directory was last put right: one `directory` event, or
+     * nothing. Never the whole directory again. A followed conversation home no longer lists (archived, deleted,
+     * left) is let go, and the agent told so after it (`unfollowed`).
+     */
     suspend fun directoryUpdate(): CallUpdate = withContext(lane) {
         if (closed || !begun) return@withContext CallUpdate()
         val now = targets.directory()
         if (closed) return@withContext CallUpdate()
         see(now)
-        CallUpdate(listOfNotNull(news(listed)))
+        CallUpdate(listOfNotNull(news(listed)) + gone().mapNotNull { unfollow(it, GONE_REASON) })
     }
+
+    /** The followed conversations home no longer lists: new work on its way there isn't one. */
+    private fun gone(): List<String> = visited.filter { directory[it] == null && drafts[it] == null }
 
     /**
      * The `directory` event that brings the agent's directory, as it was at
@@ -520,6 +560,7 @@ class CallContext(
                 "ref" to JsonPrimitive(ref(entry.agentId)), "title" to JsonPrimitive(entry.title), "kind" to JsonPrimitive(entry.kind.wire),
             )
             if (entry.parents.isNotEmpty()) value["parents"] = JsonArray(entry.parents.map { JsonPrimitive(it.title) })
+            entry.owner?.let { value["owner"] = JsonPrimitive(it) }
             // Sorted by its reference it would sit elsewhere: new work the call started before home had it, or one
             // placed by a moved neighbour.
             val own = key(index)!!
@@ -611,13 +652,14 @@ class CallContext(
                 if (depth < common) return@forEachIndexed
                 val indent = "  ".repeat(depth)
                 if (parent.agentId != null) {
-                    chunk.append("\n$indent- ${parent.title} — ${parent.kind}, ref ${ref(parent.agentId)}")
+                    val owner = directory[parent.agentId]?.owner?.let { ", owner $it" }.orEmpty()
+                    chunk.append("\n$indent- ${parent.title} — ${parent.kind}$owner, ref ${ref(parent.agentId)}")
                     under += parent.agentId
                 } else {
                     chunk.append("\n$indent- ${parent.title} — ${parent.kind}")
                 }
             }
-            val line = "- ${entry.title} — ${entry.kind.wire}, ref ${ref(entry.agentId)}"
+            val line = "- ${entry.title} — ${kindText(entry)}, ref ${ref(entry.agentId)}"
             chunk.append("\n${"  ".repeat(entry.parents.size)}$line")
             if (taken == 0 && text.utf8Size() + chunk.toString().utf8Size() > bytes) {
                 flat = true
@@ -713,7 +755,7 @@ class CallContext(
                 val page = matching.drop(start).take(Limits.PAGE)
                 // A directory query: what it gives, the agent has.
                 told += page.map { it.agentId }
-                val value = linkedMapOf<String, JsonElement>("conversations" to JsonArray(page.map(::row)), "now" to JsonPrimitive(local(now(), zone)))
+                val value = linkedMapOf<String, JsonElement>("conversations" to JsonArray(page.map(::row)), "now" to JsonPrimitive(today(now(), zone, hours24)))
                 if (start + page.size < matching.size) value["nextCursor"] = JsonPrimitive((start + page.size).toString())
                 CallToolResult.json(JsonObject(value))
             }
@@ -809,7 +851,7 @@ class CallContext(
                         if (!targets.open(id)) return CallToolResult.refused("It didn't open.")
                         // In front now as far as the call goes, with the revision the next step takes. The screen says so
                         // too; whichever of the two comes second says nothing.
-                        moveFocus(id)
+                        movedByTool(id)
                         CallToolResult.json(JsonObject(mapOf(
                             "opened" to JsonPrimitive(true), "ref" to JsonPrimitive(ref(id)), "focusRevision" to JsonPrimitive(focusRevision),
                         )))
@@ -822,7 +864,7 @@ class CallContext(
                             is CallScreenMove.Moved -> {
                                 // Where it landed is the focus now; the screen says so too, and whichever of the two comes second says nothing.
                                 val landed = shown()
-                                moveFocus(landed)
+                                movedByTool(landed)
                                 val value = linkedMapOf<String, JsonElement>(
                                     "home" to JsonPrimitive(moved.atHome), "focusRevision" to JsonPrimitive(focusRevision), "title" to JsonNull,
                                 )
@@ -887,7 +929,7 @@ class CallContext(
             CallSendOutcome.Queued -> {
                 told += id
                 // Heard from from now on, as a visited one is: its reply comes as it is written.
-                visit(id)
+                visit(id).forEach(::tell)
                 CallToolResult.json(JsonObject(linkedMapOf<String, JsonElement>(
                     "status" to JsonPrimitive("queued"), "ref" to JsonPrimitive(ref(id)), "delivery" to JsonPrimitive(QUEUED),
                 ).apply {
@@ -930,6 +972,8 @@ class CallContext(
         return when (val outcome = targets.send(work.agentId, text, messageId, asked.change)) {
             CallSendOutcome.Queued -> {
                 told += work.agentId
+                // Heard from once home lists it, as a messaged one is.
+                visit(work.agentId).forEach(::tell)
                 val value = linkedMapOf<String, JsonElement>(
                     "status" to JsonPrimitive("queued"), "ref" to JsonPrimitive(ref(work.agentId)), "started" to JsonPrimitive(kind.wire),
                     "title" to JsonPrimitive(work.title), "delivery" to JsonPrimitive(QUEUED),
@@ -1010,6 +1054,7 @@ class CallContext(
             "title" to JsonPrimitive(state.target.title),
             "parents" to JsonArray(state.target.parents.map { JsonPrimitive(it.title) }),
         )
+        (directory[state.target.agentId] ?: state.target).owner?.let { name["owner"] = JsonPrimitive(it) }
         name.putAll(extra)
         val items = CallRead.items(state)
         val references = CallRead.references(items.map { it.id })
@@ -1119,29 +1164,51 @@ class CallContext(
     }
 
     /**
-     * [agentId] becomes the latest visited or messaged; the oldest past the limit is forgotten, so following it again
-     * starts from what is there then. The one on screen never drops out while it is in front.
+     * [agentId] alone, never what sits under or over it, becomes the latest visited or messaged; the oldest past the
+     * limit is forgotten, so following it again starts from what is there then, and the agent is told
+     * (`unfollowed`, returned). The one on screen never drops out while it is in front.
      */
-    private fun visit(agentId: String) {
+    private fun visit(agentId: String): List<String> {
         visited.remove(agentId)
         visited.add(0, agentId)
+        val dropped = ArrayList<String>()
         while (visited.size > Limits.VISITED) {
             val oldest = visited.indexOfLast { it != focus }.takeIf { it >= 0 } ?: break
-            heard.remove(visited.removeAt(oldest))
+            unfollow(visited[oldest], CROWDED_REASON)?.let(dropped::add)
         }
+        return dropped
+    }
+
+    /**
+     * [agentId] no longer followed, and why ([reason], after "because"), as the agent is told it:
+     * `{"event":"unfollowed","title":…,"parents":[…],"text":"Stopped following \"…\" because …"}`, named as other
+     * updates name it. Null for one the call never knew the name of.
+     */
+    private fun unfollow(agentId: String, reason: String): String? {
+        visited.remove(agentId)
+        heard.remove(agentId)
+        val target = directory[agentId] ?: drafts[agentId] ?: lastListed[agentId] ?: return null
+        val event = address(target)
+        event["event"] = JsonPrimitive("unfollowed")
+        event["text"] = JsonPrimitive("Stopped following \"${target.title}\" because $reason.")
+        return CallJson.encode(JsonObject(event))
     }
 
     /**
      * What is there when the call first sees a conversation is had: the
-     * agent's complete messages and the errors so far. One still being
-     * written is new, and goes once it is complete.
+     * agent's complete messages, the errors so far and its status. One still
+     * being written is new, and goes once it is complete.
      */
     private fun listen(state: CallTargetState) {
         heard[state.target.agentId] = Heard(
             had = state.messages.filter { it.role == CallMessage.Role.Assistant && it.final }.mapTo(HashSet()) { it.id },
             errors = state.turns.filter { it.ended == "error" }.mapTo(HashSet()) { it.id },
+            status = statusOf(state),
         )
     }
+
+    /** Its kind as the directory says it, with whose it is when it isn't the person's: "task, owner Steve". */
+    private fun kindText(target: CallTarget): String = target.kind.wire + target.owner?.let { ", owner $it" }.orEmpty()
 
     /** One of `listConversations`' answers. */
     private fun row(target: CallTarget): JsonObject {
@@ -1152,6 +1219,7 @@ class CallContext(
             "status" to JsonPrimitive(target.status.wire),
         )
         if (target.parents.isNotEmpty()) value["parents"] = JsonArray(target.parents.map { JsonPrimitive(it.title) })
+        target.owner?.let { value["owner"] = JsonPrimitive(it) }
         if (target.workspace.isNotEmpty()) value["workspace"] = JsonPrimitive(target.workspace.joinToString(" / "))
         target.activityAt?.takeIf { it > 0 }?.let { value["lastActivity"] = moment(it) }
         return JsonObject(value)
@@ -1159,7 +1227,7 @@ class CallContext(
 
     /** A moment as the agent says it: how long ago, and when on the person's clock, to the minute. */
     private fun moment(millis: Long): JsonObject =
-        JsonObject(mapOf("ago" to JsonPrimitive(ago((now() - millis) / 1000)), "at" to JsonPrimitive(local(millis, zone))))
+        JsonObject(mapOf("ago" to JsonPrimitive(ago((now() - millis) / 1000)), "at" to JsonPrimitive(local(millis, now(), zone, hours24))))
 
     /**
      * A conversation as read: [name], then whether it works or waits for the person, and the turns [shown] of [items],
@@ -1479,11 +1547,56 @@ class CallContext(
             }
         }
 
-        /** ISO 8601 in [zone], with its offset, to the minute: 2026-11-06T09:15:00+01:00. */
-        fun local(millis: Long, zone: ZoneId): String =
-            Instant.ofEpochMilli(millis).truncatedTo(ChronoUnit.MINUTES).atZone(zone).format(LOCAL)
+        /**
+         * When [millis] was on the person's clock, as said aloud, by its day as seen from [now]: "today at 3:42 PM",
+         * "yesterday at 9:10 AM", "tomorrow at …", "Monday at 2:05 PM" within the week, "Nov 6 at …" this year, else
+         * "Nov 6, 2025 at …"; "15:42" on a 24-hour clock (iOS `CallContext.local`).
+         */
+        fun local(millis: Long, now: Long, zone: ZoneId, hours24: Boolean): String {
+            val at = Instant.ofEpochMilli(millis).atZone(zone)
+            val today = Instant.ofEpochMilli(now).atZone(zone)
+            val days = ChronoUnit.DAYS.between(at.toLocalDate(), today.toLocalDate())
+            val day = when {
+                days == 0L -> "today"
+                days == 1L -> "yesterday"
+                days == -1L -> "tomorrow"
+                days in 2L..6L -> at.format(WEEKDAY)
+                at.year == today.year -> at.format(MONTH_DAY)
+                else -> at.format(DATE)
+            }
+            return "$day at ${at.format(if (hours24) HOURS_24 else HOURS_12)}"
+        }
 
-        private val LOCAL = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX")
+        /** Now on the person's clock, with its date: "Tuesday, Nov 17, 2026 at 3:42 PM". */
+        fun today(now: Long, zone: ZoneId, hours24: Boolean): String {
+            val at = Instant.ofEpochMilli(now).atZone(zone)
+            return "${at.format(WEEKDAY)}, ${at.format(DATE)} at ${at.format(if (hours24) HOURS_24 else HOURS_12)}"
+        }
+
+        /** Whether [locale] tells the time on a 24-hour clock: what the phone shows when the person chose neither. */
+        fun usesHours24(locale: Locale): Boolean =
+            DateTimeFormatterBuilder.getLocalizedDateTimePattern(null, FormatStyle.SHORT, IsoChronology.INSTANCE, locale).let { 'H' in it || 'k' in it }
+
+        // The words are the context's, English; only the clock is the person's.
+        private val WEEKDAY = DateTimeFormatter.ofPattern("EEEE", Locale.US)
+        private val MONTH_DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
+        private val DATE = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
+        private val HOURS_12 = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+        private val HOURS_24 = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+
+        /** Why a followed conversation was let go, after "because". */
+        val CROWDED_REASON = "${Limits.VISITED} other conversations were opened or messaged more recently"
+        const val GONE_REASON = "it is no longer in the sidebar (archived, deleted or left)"
+
+        /**
+         * Its status as a `status` update says it: `needs_input` while a question or a review waits for the person,
+         * `working` while its agent runs, else `idle`.
+         */
+        fun statusOf(state: CallTargetState): String = when {
+            state.needsInput -> CallTarget.Status.NeedsInput.wire
+            state.working -> "working"
+            else -> CallTarget.Status.Idle.wire
+        }
 
         fun models(list: List<CallModel>): JsonArray = JsonArray(list.take(Limits.MODELS).map {
             JsonObject(mapOf("id" to JsonPrimitive(it.id), "name" to JsonPrimitive(it.name), "efforts" to JsonArray(it.efforts.map(::JsonPrimitive))))

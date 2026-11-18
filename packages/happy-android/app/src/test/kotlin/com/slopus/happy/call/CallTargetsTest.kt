@@ -142,6 +142,38 @@ class CallTargetsTest {
         assertEquals(CallTarget.Status.Running, state.target.status)
     }
 
+    /** What a followed conversation tells the call: its words and its status as they change, never its tools or their output. */
+    @Test
+    fun aFollowedConversationSaysItsWordsAndStatusNeverItsTools() = kotlinx.coroutines.runBlocking {
+        val context = CallContext(FakeCallTargets(listOf(target), mutableMapOf("a" to read(emptyList(), working = false)), "a"))
+        context.initial()
+        val rows = mutableListOf<ConversationRow>(user("u1", "fix it"))
+        val working = context.targetChanged(read(rows))
+        assertEquals(listOf("""{"event":"status","parents":[],"status":"working","title":"A"}"""), working.context)
+        rows += listOf(said("a1:0", "Looking"), tool("t1"), ConversationRow.Tool("t2", "t2", ToolUse("exec_command", "completed")))
+        assertEquals(listOf("""{"event":"assistant_text","parents":[],"text":"Looking","title":"A"}"""), context.targetChanged(read(rows)).context)
+        rows += listOf(tool("t3"), said("a2:0", "Fixed."), end("r1", "Fixed."))
+        val done = context.targetChanged(read(rows, working = false)).context
+        assertEquals(
+            listOf(
+                """{"event":"assistant_text","finishedTurn":true,"parents":[],"text":"Fixed.","title":"A"}""",
+                """{"event":"status","parents":[],"status":"idle","title":"A"}""",
+            ),
+            done,
+        )
+        assertTrue(done.none { "exec_command" in it || "t3" in it })
+        // The same state again says nothing.
+        assertTrue(context.targetChanged(read(rows, working = false)).isEmpty)
+    }
+
+    /** A teammate's task says whose it is, and so does every subtask under it; the person's own and a bot say nothing. */
+    @Test
+    fun aTeammatesWorkSaysWhoseItIs() {
+        val list = CallTarget.owned(CallTarget.from(sidebar()), mapOf("t1-agent" to "Steve", "t2-agent" to ""))
+        assertEquals(listOf(null, "Steve", "Steve", "Steve", "a teammate", null, null), list.map { it.owner })
+        assertEquals(CallTarget.from(sidebar()), CallTarget.owned(CallTarget.from(sidebar()), emptyMap()))
+    }
+
     companion object {
         /**
          * Home from a bootstrap: a bot, a task with a subtask with its own,

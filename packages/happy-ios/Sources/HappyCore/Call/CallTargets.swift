@@ -47,14 +47,20 @@ public struct CallTarget: Equatable, Sendable {
     /// When the sidebar says it last did something (ms since 1970, to the
     /// minute), what it orders by; nil when it doesn't say.
     public var activityAt: Double?
+    /// Whose it is, by name, when that isn't the person on the call: a
+    /// teammate's task, or a subtask under one (`owned`). Nil for the
+    /// person's own, outside a team, and where the computer says no owner.
+    /// Only the call says it; the sidebar doesn't show it.
+    public var owner: String?
 
-    public init(agentId: String, title: String, kind: Kind, status: Status, parents: [Parent] = [], activityAt: Double? = nil) {
+    public init(agentId: String, title: String, kind: Kind, status: Status, parents: [Parent] = [], activityAt: Double? = nil, owner: String? = nil) {
         self.agentId = agentId
         self.title = title
         self.kind = kind
         self.status = status
         self.parents = parents
         self.activityAt = activityAt
+        self.owner = owner
     }
 
     /// The project and worktree it runs in, outermost first: the headings
@@ -112,6 +118,21 @@ public struct CallTarget: Equatable, Sendable {
         case .none: .idle
         }
         return CallTarget(agentId: agentId, title: clean(row.label), kind: kind, status: status, activityAt: row.activityTime)
+    }
+
+    /// `list` with whose each is (`owner`): `owners`, the teammates' tasks'
+    /// names by their conversation's ID; a subtask is whose the nearest
+    /// conversation over it is. A teammate whose name isn't known yet is
+    /// "a teammate".
+    public static func owned(_ list: [CallTarget], owners: [String: String]) -> [CallTarget] {
+        guard !owners.isEmpty else { return list }
+        return list.map { target in
+            guard let owner = owners[target.agentId] ?? target.parents.reversed().lazy.compactMap({ $0.agentId.flatMap { owners[$0] } }).first else { return target }
+            var owned = target
+            let name = clean(owner)
+            owned.owner = name.isEmpty ? "a teammate" : name
+            return owned
+        }
     }
 
     /// A label on one line, without control characters, cut at `titleBytes`.

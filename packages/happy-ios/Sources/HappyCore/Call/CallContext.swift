@@ -17,11 +17,13 @@ public struct CallUpdate: Equatable, Sendable {
 
 /// Lives only during one call, bound to one account. It owns the opaque
 /// references the hosted agent knows conversations by, the focus, and the
-/// last four conversations visited or messaged during the call, which are
-/// the ones it hears from; it runs the tools one at a time. A followed
-/// conversation says only what its agent writes from then on, each piece
-/// once it is complete and whole, and an error that stopped it: never its
-/// words as they stream, its tools, its state or the person's messages.
+/// last ten conversations visited or messaged during the call, which are
+/// the ones it hears from, each on its own: never the ones under or over
+/// it; it runs the tools one at a time. A followed conversation says only
+/// what its agent writes from then on, each piece once it is complete and
+/// whole, its status as it changes and an error that stopped it: never its
+/// words as they stream, its tools or the person's messages. One let go is
+/// said to be, and why.
 ///
 /// The call starts with the directory: the sidebar's bots, tasks, subtasks
 /// and project conversations, in its order and nesting, as plain lines
@@ -71,7 +73,7 @@ public actor CallContext {
         public static let page = 50
         /// Conversations the call hears from: the last ones visited or
         /// messaged, the one on screen included.
-        public static let visited = 4
+        public static let visited = 10
         /// The agent's messages looked at per change, newest last.
         public static let messages = 20
         public static let textBytes = 8 * 1024
@@ -114,6 +116,8 @@ public actor CallContext {
     private let targets: any CallTargets
     private let now: @Sendable () -> Double
     private let timeZone: TimeZone
+    /// Times said on a 24-hour clock, as the phone shows them.
+    private let hours24: Bool
     private let toolDeadline: Duration
     private var refs: [String: String] = [:]
     private var agents: [String: String] = [:]
@@ -126,6 +130,9 @@ public actor CallContext {
     /// The sidebar's conversations as last seen, in order and by ID.
     private var entries: [CallTarget] = []
     private var directory: [String: CallTarget] = [:]
+    /// Every conversation the sidebar listed this call, as it last did:
+    /// what one that went away is named by.
+    private var lastListed: [String: CallTarget] = [:]
     /// The directory as the agent has it: from the first context, then as
     /// each `directory` update left it.
     private var listed: [Listing] = []
@@ -190,6 +197,8 @@ public actor CallContext {
         var errors: Set<String> = []
         /// The errors this call told of, by turn, with the event that told it.
         var told: [String: String] = [:]
+        /// Its status as last seen (`statusOf`).
+        var status = ""
     }
 
     /// A conversation as the agent's directory has it: what a rename or a
@@ -210,11 +219,12 @@ public actor CallContext {
     }
 
     public init(targets: any CallTargets, now: @escaping @Sendable () -> Double = { Date().timeIntervalSince1970 },
-                timeZone: TimeZone = .current, toolDeadline: Duration = Limits.toolDeadline,
+                timeZone: TimeZone = .current, hours24: Bool = CallContext.usesHours24(.current), toolDeadline: Duration = Limits.toolDeadline,
                 refresh: Duration = Limits.refresh, freshWait: Duration = Limits.freshWait) {
         self.targets = targets
         self.now = now
         self.timeZone = timeZone
+        self.hours24 = hours24
         self.toolDeadline = toolDeadline
         self.refreshLimit = refresh
         self.freshWait = freshWait
@@ -233,7 +243,8 @@ public actor CallContext {
     /// Where what the refresh of a read that went out `refreshing` found
     /// goes, as a line of context the agent reads without answering
     /// (`conversation_update`, `conversation_current`,
-    /// `conversation_unconfirmed`). Nothing once the call has ended.
+    /// `conversation_unconfirmed`), and what a tool stopped following
+    /// (`unfollowed`). Nothing once the call has ended.
     public func onReading(_ handler: @escaping @Sendable (String) -> Void) {
         onReading = handler
     }
@@ -264,14 +275,14 @@ public actor CallContext {
         focus = await targets.focused()
         var focused: CallTargetState?
         if let focus {
-            visit(focus)
+            _ = visit(focus)
             if directory[focus] == nil, let draft = await targets.unlisted(focus) { drafts[focus] = draft }
             if let state = await targets.state(of: focus) {
                 focused = state
                 if heard[focus] == nil { listen(state) }
             }
         }
-        let header = "Now: \(Self.local(now(), in: timeZone)) (the person's local time)\nfocusRevision: \(focusRevision)"
+        let header = "Now: \(Self.today(now(), in: timeZone, hours24: hours24)) (the person's local time)\nfocusRevision: \(focusRevision)"
             + (person.map { "\n" + Self.personText($0) } ?? "")
         var turns = focused.map(Self.recent) ?? []
         var budget = Limits.directoryBytes
@@ -340,7 +351,7 @@ public actor CallContext {
     private func screen(_ state: CallTargetState?, turns: [CallTurn]) -> String {
         guard let state, let focus else { return "On screen: no conversation (home, Settings or another screen)." }
         let target = state.target
-        var lines = ["On screen: \(target.title) — \(target.kind.rawValue), ref \(ref(focus))"
+        var lines = ["On screen: \(target.title) — \(Self.kindText(directory[focus] ?? target)), ref \(ref(focus))"
             + (target.parents.isEmpty ? "" : ", under \(target.parents.map(\.title).joined(separator: " > "))")]
         lines.append("Working: \(state.working ? "yes" : "no"). Needs the person: \(state.needsInput ? "yes" : "no").")
         if let last = state.messages.last(where: { $0.role == .user && ($0.time ?? 0) > 0 }), let at = last.time {
@@ -376,9 +387,9 @@ public actor CallContext {
         return lines.joined(separator: "\n")
     }
 
-    /// "5 minutes ago (2026-11-06T09:15:00+01:00)".
+    /// "5 minutes ago (today at 9:15 AM)".
     private func said(_ ms: Double) -> String {
-        "\(Self.ago(now() - ms / 1000)) (\(Self.local(ms / 1000, in: timeZone)))"
+        "\(Self.ago(now() - ms / 1000)) (\(Self.local(ms / 1000, now: now(), in: timeZone, hours24: hours24)))"
     }
 
     /// One turn of the first context: who asked, the agent's last words,
@@ -407,8 +418,9 @@ public actor CallContext {
     // MARK: What changes
 
     /// Something on screen changed which conversation is in front. A
-    /// conversation becomes the latest visited; the fifth one back is no
-    /// longer heard from. Settings or home in front keep them all.
+    /// conversation becomes the latest visited; the eleventh one back is no
+    /// longer heard from (`unfollowed`). Settings or home in front keep
+    /// them all.
     public func focusChanged(to agentId: String?) async -> CallUpdate {
         guard !closed, agentId != focus else { return CallUpdate() }
         // Newer than the directory as last seen: as the sidebar has it now.
@@ -421,24 +433,36 @@ public actor CallContext {
     }
 
     /// The focus moves, by the person or by a tool. One the agent has no
-    /// reference for yet comes with it.
+    /// reference for yet comes with it, and what that stopped following
+    /// after it.
     private func moveFocus(to agentId: String?) -> CallUpdate {
         guard !closed, agentId != focus else { return CallUpdate() }
         focus = agentId
         focusRevision += 1
         var event: [String: Any] = ["event": "focus", "focusRevision": focusRevision, "title": NSNull()]
-        if let agentId {
-            visit(agentId)
-            if let entry = directory[agentId] ?? drafts[agentId] { event.merge(address(entry)) { _, new in new } }
-        }
-        return CallUpdate(context: [Self.string(event)])
+        guard let agentId else { return CallUpdate(context: [Self.string(event)]) }
+        if let entry = directory[agentId] ?? drafts[agentId] { event.merge(address(entry)) { _, new in new } }
+        return CallUpdate(context: [Self.string(event)] + visit(agentId))
+    }
+
+    /// The focus a tool moved, its answer saying so: only what that
+    /// stopped following goes, as context.
+    private func movedByTool(to agentId: String?) {
+        for line in moveFocus(to: agentId).context.dropFirst() { tell(line) }
+    }
+
+    /// A line of context from a tool, apart from its answer.
+    private func tell(_ line: String) {
+        if !closed { onReading?(line) }
     }
 
     /// One visited conversation's newest state. The first one the call
     /// sees is what was there already, and says nothing; after it, each of
     /// its agent's messages once it is complete (`CallMessage.final`), whole
-    /// (`assistant_text`), never while it grows; and a turn an error ended
-    /// (`session_error`). Nothing is told twice.
+    /// (`assistant_text`), never while it grows; a turn an error ended
+    /// (`session_error`); and its status once it changes (`status`). Its
+    /// tools, their results and anything else it does go nowhere. Nothing
+    /// is told twice.
     public func targetChanged(_ state: CallTargetState) -> CallUpdate {
         let id = state.target.agentId
         // Gone from the sidebar: never told of again, and nothing about it goes.
@@ -477,6 +501,14 @@ public actor CallContext {
         }
         known.errors = Set(state.turns.filter { $0.ended == "error" }.map(\.id))
         known.told = known.told.filter { known.errors.contains($0.key) }
+        let status = Self.statusOf(state)
+        if status != known.status {
+            known.status = status
+            var event = address
+            event["event"] = "status"
+            event["status"] = status
+            context.append(Self.string(event))
+        }
         heard[id] = known
         return CallUpdate(context: context)
     }
@@ -526,6 +558,7 @@ public actor CallContext {
         var seen = Set<String>()
         entries = now.filter { seen.insert($0.agentId).inserted }
         directory = Dictionary(entries.map { ($0.agentId, $0) }, uniquingKeysWith: { first, _ in first })
+        lastListed.merge(directory) { _, new in new }
         // Made by its first message: the sidebar's from now on.
         for id in drafts.keys where directory[id] != nil { drafts[id] = nil }
         place(entries)
@@ -538,18 +571,27 @@ public actor CallContext {
     public func directoryChanged(_ now: [CallTarget]) -> Bool {
         guard !closed, begun else { return false }
         see(now)
-        return entries.map(Listing.init) != listed
+        return entries.map(Listing.init) != listed || !gone().isEmpty
     }
 
     /// The sidebar read again, and what changed since the agent's
     /// directory was last put right: one `directory` event, or nothing.
-    /// Never the whole directory again.
+    /// Never the whole directory again. A followed conversation the
+    /// sidebar no longer lists (archived, deleted, left) is let go, and
+    /// the agent told so after it (`unfollowed`).
     public func directoryUpdate() async -> CallUpdate {
         guard !closed, begun else { return CallUpdate() }
         let now = await targets.directory()
         guard !closed else { return CallUpdate() }
         see(now)
-        return CallUpdate(context: news(since: listed).map { [$0] } ?? [])
+        let news = news(since: listed).map { [$0] } ?? []
+        return CallUpdate(context: news + gone().compactMap { unfollow($0, because: Self.goneReason) })
+    }
+
+    /// The followed conversations the sidebar no longer lists: new work on
+    /// its way there isn't one.
+    private func gone() -> [String] {
+        visited.filter { directory[$0] == nil && drafts[$0] == nil }
     }
 
     /// The `directory` event that brings the agent's directory, as it was
@@ -580,6 +622,7 @@ public actor CallContext {
             }
             var value: [String: Any] = ["ref": ref(entry.agentId), "title": entry.title, "kind": entry.kind.rawValue]
             if !entry.parents.isEmpty { value["parents"] = entry.parents.map(\.title) }
+            if let owner = entry.owner { value["owner"] = owner }
             // Sorted by its reference it would sit elsewhere: new work the call
             // started before the sidebar had it, or one placed by a moved neighbour.
             let own = key(index)!
@@ -684,13 +727,14 @@ public actor CallContext {
             for (depth, parent) in entry.parents.enumerated().dropFirst(common) {
                 let indent = String(repeating: "  ", count: depth)
                 if let agentId = parent.agentId {
-                    chunk += "\n\(indent)- \(parent.title) — \(parent.kind), ref \(ref(agentId))"
+                    let owner = directory[agentId]?.owner.map { ", owner \($0)" } ?? ""
+                    chunk += "\n\(indent)- \(parent.title) — \(parent.kind)\(owner), ref \(ref(agentId))"
                     under.append(agentId)
                 } else {
                     chunk += "\n\(indent)- \(parent.title) — \(parent.kind)"
                 }
             }
-            let line = "- \(entry.title) — \(entry.kind.rawValue), ref \(ref(entry.agentId))"
+            let line = "- \(entry.title) — \(Self.kindText(entry)), ref \(ref(entry.agentId))"
             chunk += "\n\(String(repeating: "  ", count: entry.parents.count))\(line)"
             if taken == 0, text.utf8.count + chunk.utf8.count > bytes {
                 flat = true
@@ -775,7 +819,7 @@ public actor CallContext {
             let page = matching.dropFirst(start).prefix(Limits.page)
             // A directory query: what it gives, the agent has.
             told.formUnion(page.map(\.agentId))
-            var value: [String: Any] = ["conversations": page.map { row($0) }, "now": Self.local(now(), in: timeZone)]
+            var value: [String: Any] = ["conversations": page.map { row($0) }, "now": Self.today(now(), in: timeZone, hours24: hours24)]
             if start + page.count < matching.count { value["nextCursor"] = String(start + page.count) }
             return .json(value)
 
@@ -874,7 +918,7 @@ public actor CallContext {
                 // In front now as far as the call goes, with the revision the
                 // next step takes. The screen says so too; whichever of the two
                 // comes second says nothing.
-                _ = moveFocus(to: id)
+                movedByTool(to: id)
                 return .json(["opened": true, "ref": ref(id), "focusRevision": focusRevision])
             case .back, .home:
                 if destination == .back, Self.revision(arguments["focusRevision"]) != focusRevision { return Self.stale }
@@ -886,7 +930,7 @@ public actor CallContext {
                     // Where it landed is the focus now; the screen says so too, and
                     // whichever of the two comes second says nothing.
                     let landed = await shown()
-                    _ = moveFocus(to: landed)
+                    movedByTool(to: landed)
                     var value: [String: Any] = ["home": atHome, "focusRevision": focusRevision, "title": NSNull()]
                     if let landed, let entry = directory[landed] ?? drafts[landed] {
                         value.merge(address(entry)) { _, new in new }
@@ -910,6 +954,7 @@ public actor CallContext {
     private func read(_ state: CallTargetState, _ request: CallRead.Request = .init(), adding extra: [String: Any] = [:]) -> [String: Any] {
         // Asked for by its reference, it is named by its title alone.
         var name: [String: Any] = ["title": state.target.title, "parents": state.target.parents.map(\.title)]
+        if let owner = (directory[state.target.agentId] ?? state.target).owner { name["owner"] = owner }
         name.merge(extra) { _, new in new }
         let items = CallRead.items(state)
         let references = CallRead.references(items.map(\.id))
@@ -1100,7 +1145,7 @@ public actor CallContext {
         switch await targets.send(id, text: text, id: messageId, change: asked.change) {
         case .queued:
             // Heard from from now on, as a visited one is: its reply comes as it is written.
-            visit(id)
+            for line in visit(id) { tell(line) }
             var value: [String: Any] = ["status": "queued", "ref": ref(id), "delivery": Self.queued]
             // Sent to what was on screen: named, so the agent can say where it went.
             if target.isEmpty { value["title"] = state.target.title }
@@ -1145,6 +1190,8 @@ public actor CallContext {
         switch await targets.send(work.agentId, text: text, id: messageId, change: asked.change) {
         case .queued:
             told.insert(work.agentId)
+            // Heard from once the sidebar lists it, as a messaged one is.
+            for line in visit(work.agentId) { tell(line) }
             var value: [String: Any] = [
                 "status": "queued", "ref": ref(work.agentId), "started": kind.rawValue, "title": work.title, "delivery": Self.queued,
             ]
@@ -1338,33 +1385,71 @@ public actor CallContext {
         return directory[id] == nil && drafts[id] == nil ? nil : id
     }
 
-    /// `agentId` becomes the latest visited or messaged; the oldest past
-    /// the limit is forgotten, so following it again starts from what is
-    /// there then. The one on screen never drops out while it is in front.
-    private func visit(_ agentId: String) {
+    /// `agentId` alone, never what sits under or over it, becomes the
+    /// latest visited or messaged; the oldest past the limit is forgotten,
+    /// so following it again starts from what is there then, and the agent
+    /// is told (`unfollowed`, returned). The one on screen never drops out
+    /// while it is in front.
+    private func visit(_ agentId: String) -> [String] {
         visited.removeAll { $0 == agentId }
         visited.insert(agentId, at: 0)
+        var dropped: [String] = []
         while visited.count > Limits.visited, let oldest = visited.lastIndex(where: { $0 != focus }) {
-            heard[visited.remove(at: oldest)] = nil
+            if let line = unfollow(visited[oldest], because: Self.crowdedReason) { dropped.append(line) }
         }
+        return dropped
+    }
+
+    /// `agentId` no longer followed, and why (`reason`, after "because"),
+    /// as the agent is told it: `{"event":"unfollowed","title":…,
+    /// "parents":[…],"text":"Stopped following \"…\" because …"}`, named as
+    /// other updates name it. Nil for one the call never knew the name of.
+    private func unfollow(_ agentId: String, because reason: String) -> String? {
+        visited.removeAll { $0 == agentId }
+        heard[agentId] = nil
+        guard let target = directory[agentId] ?? drafts[agentId] ?? lastListed[agentId] else { return nil }
+        var event = address(target)
+        event["event"] = "unfollowed"
+        event["text"] = "Stopped following \"\(target.title)\" because \(reason)."
+        return Self.string(event)
     }
 
     /// What is there when the call first sees a conversation is had: the
-    /// agent's complete messages and the errors so far. One still being
-    /// written is new, and goes once it is complete.
+    /// agent's complete messages, the errors so far and its status. One
+    /// still being written is new, and goes once it is complete.
     private func listen(_ state: CallTargetState) {
         var known = Heard()
         for message in state.messages where message.role == .assistant && message.final {
             known.had.insert(message.id)
         }
         known.errors = Set(state.turns.filter { $0.ended == "error" }.map(\.id))
+        known.status = Self.statusOf(state)
         heard[state.target.agentId] = known
+    }
+
+    /// Why a followed conversation was let go, after "because".
+    static let crowdedReason = "\(Limits.visited) other conversations were opened or messaged more recently"
+    static let goneReason = "it is no longer in the sidebar (archived, deleted or left)"
+
+    /// Its status as a `status` update says it: `needs_input` while a
+    /// question or a review waits for the person, `working` while its agent
+    /// runs, else `idle`.
+    static func statusOf(_ state: CallTargetState) -> String {
+        if state.needsInput { return CallTarget.Status.needsInput.rawValue }
+        return state.working ? "working" : CallTarget.Status.idle.rawValue
+    }
+
+    /// Its kind as the directory says it, with whose it is when it isn't
+    /// the person's: "task, owner Steve".
+    static func kindText(_ target: CallTarget) -> String {
+        target.kind.rawValue + (target.owner.map { ", owner \($0)" } ?? "")
     }
 
     /// One of `listConversations`' answers.
     private func row(_ target: CallTarget) -> [String: Any] {
         var value: [String: Any] = ["ref": ref(target.agentId), "title": target.title, "kind": target.kind.rawValue, "status": target.status.rawValue]
         if !target.parents.isEmpty { value["parents"] = target.parents.map(\.title) }
+        if let owner = target.owner { value["owner"] = owner }
         if !target.workspace.isEmpty { value["workspace"] = target.workspace.joined(separator: " / ") }
         if let at = target.activityAt, at > 0 { value["lastActivity"] = when(at) }
         return value
@@ -1523,7 +1608,7 @@ public actor CallContext {
     /// A moment as the agent says it: how long ago, and when on the
     /// person's clock, to the minute.
     private func when(_ ms: Double) -> [String: Any] {
-        ["ago": Self.ago(now() - ms / 1000), "at": Self.local(ms / 1000, in: timeZone)]
+        ["ago": Self.ago(now() - ms / 1000), "at": Self.local(ms / 1000, now: now(), in: timeZone, hours24: hours24)]
     }
 
     /// "just now", "5 minutes ago", "2 hours ago", "yesterday", "3 days ago".
@@ -1540,12 +1625,48 @@ public actor CallContext {
         }
     }
 
-    /// ISO 8601 in `zone`, with its offset, to the minute: 2026-11-06T09:15:00+01:00.
-    static func local(_ seconds: Double, in zone: TimeZone) -> String {
-        let formatter = ISO8601DateFormatter()
+    /// When `seconds` was on the person's clock, as said aloud, by its day
+    /// as seen from `now`: "today at 3:42 PM", "yesterday at 9:10 AM",
+    /// "tomorrow at …", "Monday at 2:05 PM" within the week, "Nov 6 at …"
+    /// this year, else "Nov 6, 2025 at …"; "15:42" on a 24-hour clock
+    /// (Android `CallContext.local`).
+    static func local(_ seconds: Double, now: Double, in zone: TimeZone, hours24: Bool) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let at = Date(timeIntervalSince1970: seconds)
+        let today = Date(timeIntervalSince1970: now)
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: at), to: calendar.startOfDay(for: today)).day ?? 0
+        let day = switch days {
+        case 0: "today"
+        case 1: "yesterday"
+        case -1: "tomorrow"
+        case 2...6: format(at, "EEEE", in: zone)
+        default: format(at, calendar.component(.year, from: at) == calendar.component(.year, from: today) ? "MMM d" : "MMM d, yyyy", in: zone)
+        }
+        return "\(day) at \(format(at, hours24 ? "HH:mm" : "h:mm a", in: zone))"
+    }
+
+    /// Now on the person's clock, with its date: "Tuesday, Nov 17, 2026 at 3:42 PM".
+    static func today(_ now: Double, in zone: TimeZone, hours24: Bool) -> String {
+        let at = Date(timeIntervalSince1970: now)
+        return "\(format(at, "EEEE, MMM d, yyyy", in: zone)) at \(format(at, hours24 ? "HH:mm" : "h:mm a", in: zone))"
+    }
+
+    /// Whether `locale` tells the time on a 24-hour clock: what the phone
+    /// shows, the person's own choice included.
+    public static func usesHours24(_ locale: Locale) -> Bool {
+        let pattern = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale) ?? ""
+        return pattern.contains("H") || pattern.contains("k")
+    }
+
+    /// `date` in `pattern`. The words are the context's, English; only the
+    /// clock is the person's.
+    private static func format(_ date: Date, _ pattern: String, in zone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = zone
-        formatter.formatOptions = [.withFullDate, .withTime, .withColonSeparatorInTime, .withDashSeparatorInDate, .withTimeZone, .withColonSeparatorInTimeZone]
-        return formatter.string(from: Date(timeIntervalSince1970: (seconds / 60).rounded(.down) * 60))
+        formatter.dateFormat = pattern
+        return formatter.string(from: date)
     }
 
     static func data(_ value: [String: Any]) -> Data {

@@ -26,6 +26,12 @@ data class CallTarget(
     val parents: List<Parent> = emptyList(),
     /** When home says it last did something (ms since 1970), what it orders by; null when it doesn't say. */
     val activityAt: Long? = null,
+    /**
+     * Whose it is, by name, when that isn't the person on the call: a teammate's task, or a subtask under one
+     * ([owned]). Null for the person's own, outside a team, and where the computer says no owner. Only the call
+     * says it; home doesn't show it.
+     */
+    val owner: String? = null,
 ) {
     /**
      * The project and worktree it runs in, outermost first: the headings it
@@ -120,6 +126,18 @@ data class CallTarget(
                 if (seen.add(target.agentId)) result += target
             }
             return result
+        }
+
+        /**
+         * [list] with whose each is ([owner]): [owners], the teammates' tasks' names by their conversation's ID; a
+         * subtask is whose the nearest conversation over it is. A teammate whose name isn't known yet is "a teammate".
+         */
+        fun owned(list: List<CallTarget>, owners: Map<String, String>): List<CallTarget> {
+            if (owners.isEmpty()) return list
+            return list.map { target ->
+                val owner = owners[target.agentId] ?: target.parents.asReversed().firstNotNullOfOrNull { parent -> parent.agentId?.let(owners::get) }
+                if (owner == null) target else target.copy(owner = clean(owner).ifEmpty { "a teammate" })
+            }
         }
 
         /** A label on one line, without control characters, cut at [TITLE_BYTES]. */

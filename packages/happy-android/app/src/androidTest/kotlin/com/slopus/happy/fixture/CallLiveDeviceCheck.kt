@@ -230,9 +230,9 @@ class CallLiveDeviceCheck {
     /**
      * A conversation's new words reaching a real call (iOS `CallLiveCheck`'s
      * incoming part), with no LLM step needed to drive them: the call visits
-     * five disposable conversations in turn, the first one's agent writes a
-     * reply in pieces while it is followed, then it drops out as the fifth is
-     * visited, writes while it isn't heard, and is visited again. What went
+     * eleven disposable conversations in turn, the first one's agent writes a
+     * reply in pieces while it is followed, then it drops out as the eleventh
+     * is visited, writes while it isn't heard, and is visited again. What went
      * into the call's context is checked against what should have: the
      * pieces as `assistant_text` deltas with one `final`, nothing while it
      * was out, no replay of what it wrote then, and the next new words
@@ -245,10 +245,11 @@ class CallLiveDeviceCheck {
         assumeTrue("no agent ID in this build", agentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
         CallProbe.reset()
-        val five = conversations + CallTarget("task-3", "Fix login redirect", CallTarget.Kind.Task, status = CallTarget.Status.Idle)
-        val states = five.associate { it.agentId to CallTargetState(it, listOf(CallMessage("m0-${it.agentId}", CallMessage.Role.Assistant, "Earlier: ${it.title} was set up.", 1_755_400_000_000L))) }.toMutableMap()
+        val eleven = conversations + CallTarget("task-3", "Fix login redirect", CallTarget.Kind.Task, status = CallTarget.Status.Idle) +
+            (4..9).map { CallTarget("task-$it", "Fixture task $it", CallTarget.Kind.Task, status = CallTarget.Status.Idle) }
+        val states = eleven.associate { it.agentId to CallTargetState(it, listOf(CallMessage("m0-${it.agentId}", CallMessage.Role.Assistant, "Earlier: ${it.title} was set up.", 1_755_400_000_000L))) }.toMutableMap()
         val targets = object : CallTargets {
-            override suspend fun directory() = five
+            override suspend fun directory() = eleven
             override suspend fun state(agentId: String): CallTargetState? = states[agentId]
             override suspend fun focused(): String? = null
             override suspend fun open(agentId: String) = agentId in states
@@ -312,7 +313,8 @@ class CallLiveDeviceCheck {
             until(1_000) { false }
             val streamed = updates().filter { "m1-bot-0" in it }
             log.append("STREAMED ${streamed.size}\n")
-            for (id in listOf("task-0", "task-1", "task-2", "task-3")) { visit(id); until(300) { false } }
+            val others = (0..9).map { "task-$it" }
+            for (id in others) { visit(id); until(300) { false } }
             val followed = runBlocking { context.followed() }
             log.append("FOLLOWED $followed\n")
             val beforeOut = updates().size
@@ -337,7 +339,7 @@ class CallLiveDeviceCheck {
             until(4_000) { false }
             device.takeScreenshot(File(dir, "incoming.png"))
             assertTrue("deltas then one final: $streamed", streamed.size == pieces.size && streamed.count { "\"final\":true" in it } == 1)
-            assertTrue("bot-0 dropped out after four more visits: $followed", followed == listOf("task-3", "task-2", "task-1", "task-0"))
+            assertTrue("bot-0 dropped out after ten more visits: $followed", followed == others.reversed())
             assertTrue("nothing sent while it was out", whileOut == 0)
             assertTrue("no replay on the way back: $replayed", replayed.none { "assistant_text" in it })
             assertTrue("new words after the way back: $again", again.size == 1 && "\"final\":true" in again.single())

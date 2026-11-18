@@ -16,6 +16,10 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var userId: String?
     /// The person's own picture's ThumbHash, for the faces that are theirs.
     public var profilePhoto: String?
+    /// The tasks that are another member's: who owns each, by user ID, by
+    /// the task's conversation. Empty outside a team. Only a voice call
+    /// says it (`CallTarget.owner`); no row draws it.
+    public var taskOwners: [String: String] = [:]
     public var error: String?
     /// The stream is down and being opened again, however it failed: it is
     /// asked again with backoff for as long as the engine runs, so it is on
@@ -1056,6 +1060,13 @@ public actor SyncEngine {
             shownRows = Dictionary(snapshot.rows.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
             snapshot.userId = desktop.profile?.userId
             snapshot.profilePhoto = desktop.profile?.photo?.thumbhash
+            snapshot.taskOwners = [:]
+            if let me = desktop.profile?.userId {
+                for task in desktop.tasks ?? [] {
+                    guard let owner = task.ownerUserId, owner != me, let agentId = task.agent?.id else { continue }
+                    snapshot.taskOwners[agentId] = owner
+                }
+            }
         }
         shareDirectory()
         if publishing { publish() }

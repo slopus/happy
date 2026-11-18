@@ -111,7 +111,7 @@ class CallController(
         val account = sessions.session(connection) ?: return
         connectionId = connection
         val targets = ConnectionCallTargets(account, appContext.resources::failureText, Typesetter.of(appContext)) { screen }
-        val context = CallContext(targets)
+        val context = CallContext(targets, hours24 = android.text.format.DateFormat.is24HourFormat(appContext))
         val history = CallHistory(sessions.keptFile(connection, HISTORY_FILE)?.let(::FileCallHistoryStore))
         val call = CallSession(
             scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
@@ -147,10 +147,13 @@ class CallController(
         val settle = DirectorySettle(calling) {
             if (session !== call) return@DirectorySettle
             val update = context.directoryUpdate()
-            if (session === call) call.deliver(update)
+            if (session !== call) return@DirectorySettle
+            call.deliver(update)
+            // One gone from home is let go; new work a message started is held once home lists it.
+            hold(context.followed(), targets)
         }
         account.feed.onEach { feed ->
-            if (session === call && context.directoryChanged(CallTarget.from(feed)) && session === call) settle.changed()
+            if (session === call && context.directoryChanged(targets.list(feed)) && session === call) settle.changed()
         }.launchIn(calling)
         call.state.onEach { state ->
             if (session !== call) return@onEach

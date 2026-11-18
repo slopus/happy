@@ -56,6 +56,8 @@ class CallContextTest {
     private fun obj(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
     private fun call(id: String, name: String, json: String) = CallToolCall(id, name, obj(json))
     private fun events(update: CallUpdate) = update.context.map(::obj)
+    /** [events] but the status changes. */
+    private fun said(update: CallUpdate) = events(update).filter { it.str("event") != "status" }
     private fun JsonObject.str(key: String) = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
     private fun JsonObject.strings(key: String) = this[key]?.jsonArray?.map { it.jsonPrimitive.content }
     private fun JsonObject.turns() = this["turns"]!!.jsonArray.map { it.jsonObject }
@@ -68,13 +70,13 @@ class CallContextTest {
     @Test
     fun theFirstSnapshotHoldsTheFocusWithItsLastFiveTurnsThePendingMessageOneOfThem() = runBlocking {
         val utc = java.time.ZoneOffset.UTC
-        val context = CallContext(backend(), now = { 1_700_000_000_000 }, zone = utc)
+        val context = CallContext(backend(), now = { 1_700_000_000_000 }, zone = utc, hours24 = false)
         val text = context.initial()
         // Plain lines, as Happy Agent's own tools write them: the focus, its turns (three finished, the steered one
         // whole, and the message waiting), the directory once.
         assertEquals(
             """
-            |Now: 2023-11-14T22:13:00Z (the person's local time)
+            |Now: Tuesday, Nov 14, 2023 at 10:13 PM (the person's local time)
             |focusRevision: 0
             |
             |On screen: Backend — bot, ref s1
@@ -259,25 +261,32 @@ class CallContextTest {
         assertNull(read["pendingUserMessage"])
     }
 
-    // The last four visited
+    // The last ten visited
 
     @Test
-    fun theLastFourVisitedAreHeardAndTheFifthIsLetGo() = runBlocking {
-        val ids = listOf("v1", "v2", "v3", "v4", "v5")
+    fun theLastTenVisitedAreHeardAndTheEleventhIsLetGoSayingSo() = runBlocking {
+        val ids = (1..11).map { "v$it" }
         val context = CallContext(FakeCallTargets(ids.map { CallTarget(it, it.uppercase(), CallTarget.Kind.Task, CallTarget.Status.Idle) }, mutableMapOf(), null))
         context.initial()
-        for (id in ids) context.focusChanged(id)
-        assertEquals(listOf("v5", "v4", "v3", "v2"), context.followed())
-        // The fifth one back is no longer heard from.
+        for (id in ids.dropLast(1)) assertEquals(listOf("focus"), events(context.focusChanged(id)).map { it.str("event") })
+        // The eleventh one back is no longer heard from, and the agent is told, after the focus.
+        val dropped = events(context.focusChanged("v11"))
+        assertEquals(listOf("focus", "unfollowed"), dropped.map { it.str("event") })
+        assertEquals("V1", dropped[1].str("title"))
+        assertEquals(
+            "Stopped following \"V1\" because 10 other conversations were opened or messaged more recently.",
+            dropped[1].str("text"),
+        )
+        assertEquals(ids.drop(1).reversed(), context.followed())
         val first = CallTarget("v1", "V1", CallTarget.Kind.Task, CallTarget.Status.Idle)
         val hi = CallMessage("m", CallMessage.Role.Assistant, "hi")
         assertTrue(context.targetChanged(CallTargetState(first, listOf(hi))).isEmpty)
-        // Visiting one again makes it the latest.
-        context.focusChanged("v2")
-        assertEquals(listOf("v2", "v5", "v4", "v3"), context.followed())
+        // Visiting one again makes it the latest, and lets nothing go.
+        assertEquals(1, context.focusChanged("v2").context.size)
+        assertEquals(listOf("v2", "v11", "v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3"), context.followed())
         // Back after it was let go, what it says then is what was there: nothing is replayed.
-        context.focusChanged("v1")
-        assertEquals(listOf("v1", "v2", "v5", "v4"), context.followed())
+        assertEquals("V3", events(context.focusChanged("v1"))[1].str("title"))
+        assertEquals(listOf("v1", "v2", "v11", "v10", "v9", "v8", "v7", "v6", "v5", "v4"), context.followed())
         assertTrue(context.targetChanged(CallTargetState(first, listOf(hi))).isEmpty)
         val next = events(context.targetChanged(CallTargetState(first, listOf(hi, CallMessage("m2", CallMessage.Role.Assistant, "new")))))
         assertEquals(listOf("new"), next.map { it.str("text") })
@@ -360,12 +369,12 @@ class CallContextTest {
         fun state(text: String, working: Boolean = true) =
             CallTargetState(backendTarget, old + CallMessage("r", CallMessage.Role.Assistant, text, final = !working), working = working)
         // The first sight is what was there: nothing goes.
-        assertTrue(context.targetChanged(CallTargetState(backendTarget, old)).isEmpty)
+        assertTrue(context.targetChanged(CallTargetState(backendTarget, old, working = true)).isEmpty)
         for (text in listOf("Look", "Looking", "Looking at it")) assertTrue(text, context.targetChanged(state(text)).isEmpty)
         // A pause is no end: the same words, still being written, a while later.
         delay(600)
         assertTrue(context.targetChanged(state("Looking at it")).isEmpty)
-        val done = events(context.targetChanged(state("Looking at it. Done.", working = false)))
+        val done = said(context.targetChanged(state("Looking at it. Done.", working = false)))
         assertEquals(listOf("assistant_text"), done.map { it.str("event") })
         assertEquals("Looking at it. Done.", done.single().str("text"))
         // By its title, never an ID or a reference.
@@ -385,13 +394,13 @@ class CallContextTest {
         context.initial()
         fun state(messages: List<CallMessage>, working: Boolean = true) = CallTargetState(backendTarget, messages, working = working)
         context.targetChanged(state(emptyList()))
-        assertTrue(context.targetChanged(state(listOf(CallMessage("p1", CallMessage.Role.Assistant, "Let me check the logs", final = false)))).isEmpty)
-        val checked = events(context.targetChanged(state(listOf(
+        assertTrue(said(context.targetChanged(state(listOf(CallMessage("p1", CallMessage.Role.Assistant, "Let me check the logs", final = false))))).isEmpty())
+        val checked = said(context.targetChanged(state(listOf(
             CallMessage("p1", CallMessage.Role.Assistant, "Let me check the logs."),
             CallMessage("p2", CallMessage.Role.Assistant, "They show", final = false),
         ))))
         assertEquals(listOf("Let me check the logs."), checked.map { it.str("text") })
-        val rest = events(context.targetChanged(state(listOf(
+        val rest = said(context.targetChanged(state(listOf(
             CallMessage("p1", CallMessage.Role.Assistant, "Let me check the logs."),
             CallMessage("u", CallMessage.Role.User, "and?"),
             CallMessage("p2", CallMessage.Role.Assistant, "They show a timeout."),
@@ -446,7 +455,7 @@ class CallContextTest {
         context.initial()
         context.focusChanged("b")
         context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("w", CallMessage.Role.Assistant, "Halfway", final = false)), working = true))
-        val next = events(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("w", CallMessage.Role.Assistant, "Halfway there")))))
+        val next = said(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("w", CallMessage.Role.Assistant, "Halfway there")))))
         assertEquals(listOf("Halfway there"), next.map { it.str("text") })
     }
 
@@ -459,19 +468,21 @@ class CallContextTest {
         context.initial()
         // The error that was there when the call began isn't news.
         assertTrue(context.targetChanged(state).isEmpty)
-        // Working, needing the person, the person's messages and their delivery: none of it goes.
+        // Working and needing the person go as its status, once each; the person's messages and their delivery don't.
         state = state.copy(working = true, target = backendTarget.copy(status = CallTarget.Status.Running),
             messages = listOf(CallMessage("u", CallMessage.Role.User, "do it", delivery = CallMessage.Delivery.Queued)))
-        assertTrue(context.targetChanged(state).isEmpty)
+        assertEquals(listOf("""{"event":"status","parents":[],"status":"working","title":"Backend"}"""), context.targetChanged(state).context)
         state = state.copy(needsInput = true, target = backendTarget.copy(status = CallTarget.Status.NeedsInput),
             messages = listOf(CallMessage("u", CallMessage.Role.User, "do it", delivery = CallMessage.Delivery.Failed)))
+        assertEquals(listOf("needs_input"), events(context.targetChanged(state)).map { it.str("status") })
         assertTrue(context.targetChanged(state).isEmpty)
         state = state.copy(working = false, needsInput = false, turns = state.turns + CallTurn("new", "do it", ended = "error", error = "The model refused"))
         val stopped = events(context.targetChanged(state))
-        assertEquals(listOf("session_error"), stopped.map { it.str("event") })
-        assertEquals("The model refused", stopped.single().str("reason"))
-        assertEquals("Backend", stopped.single().str("title"))
-        assertNull(stopped.single()["target"])
+        assertEquals(listOf("session_error", "status"), stopped.map { it.str("event") })
+        assertEquals("idle", stopped[1].str("status"))
+        assertEquals("The model refused", stopped[0].str("reason"))
+        assertEquals("Backend", stopped[0].str("title"))
+        assertNull(stopped[0]["target"])
         assertTrue(context.targetChanged(state).isEmpty)
         // Stopped by the person is no error.
         assertTrue(context.targetChanged(state.copy(turns = state.turns + CallTurn("stop", "x", ended = "abort"))).isEmpty)
@@ -483,13 +494,13 @@ class CallContextTest {
         val context = CallContext(backend())
         context.initial()
         context.targetChanged(CallTargetState(backendTarget))
-        val midRun = events(context.targetChanged(CallTargetState(backendTarget, listOf(
+        val midRun = said(context.targetChanged(CallTargetState(backendTarget, listOf(
             CallMessage("p1", CallMessage.Role.Assistant, "Checking.", turn = "r9"),
             CallMessage("p2", CallMessage.Role.Assistant, "Still", final = false, turn = "r9"),
         ), working = true)))
         assertEquals(listOf("Checking."), midRun.map { it.str("text") })
         assertNull(midRun.single()["finishedTurn"])
-        val ended = events(context.targetChanged(CallTargetState(backendTarget, listOf(
+        val ended = said(context.targetChanged(CallTargetState(backendTarget, listOf(
             CallMessage("p1", CallMessage.Role.Assistant, "Checking.", turn = "r9"),
             CallMessage("p2", CallMessage.Role.Assistant, "Still fine.", turn = "r9"),
         ), listOf(CallTurn("r9", reply = "Still fine.")))))
@@ -517,20 +528,77 @@ class CallContextTest {
         assertTrue(targets.opened.isEmpty())
         // What is there when it is first seen is had; its reply, once complete, goes.
         assertTrue(context.targetChanged(CallTargetState(docsTarget, working = true)).isEmpty)
-        val reply = events(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "Done")))))
+        val reply = said(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "Done")))))
         assertEquals(listOf("Done"), reply.map { it.str("text") })
     }
 
-    /** Messaged conversations count among the four, but the one on screen never drops out while it is in front. */
+    /**
+     * Messaged conversations count among the ten, but the one on screen never drops out while it is in front. One
+     * a message pushed out is told of as context, apart from the message's answer.
+     */
     @Test
-    fun messagedConversationsAreAmongTheFourButNeverPushOutTheScreen() = runBlocking {
-        val list = (1..5).map { CallTarget("v$it", "V$it", CallTarget.Kind.Task, CallTarget.Status.Idle) }
+    fun messagedConversationsAreAmongTheTenButNeverPushOutTheScreen() = runBlocking {
+        val list = (1..11).map { CallTarget("v$it", "V$it", CallTarget.Kind.Task, CallTarget.Status.Idle) }
         val targets = FakeCallTargets(list, list.associateTo(HashMap()) { it.agentId to CallTargetState(it) }, "v1")
         val context = CallContext(targets)
+        val told = readings(context)
         context.initial()
         context.focusChanged("v1")
-        for (ref in listOf("s2", "s3", "s4", "s5")) context.tool("message", """{"to":"$ref","text":"go"}""")
-        assertEquals(listOf("v5", "v4", "v3", "v1"), context.followed())
+        for (ref in CallContext.spread(list.size).drop(1).map { "s$it" }) {
+            assertEquals("queued", obj(context.tool("message", """{"to":"$ref","text":"go"}""").text).str("status"))
+        }
+        assertEquals(listOf("v11", "v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v1"), context.followed())
+        waitFor { told.size == 1 }
+        assertEquals("unfollowed", line(told.single()).str("event"))
+        assertEquals("V2", line(told.single()).str("title"))
+    }
+
+    @Test
+    fun oneGoneFromHomeIsLetGoSayingSo() = runBlocking {
+        val targets = backend()
+        val context = CallContext(targets)
+        context.initial()
+        context.focusChanged("b")
+        assertEquals(listOf("b", "a"), context.followed())
+        // Archived: home lists it no more.
+        targets.setDirectory(listOf(backendTarget))
+        assertTrue(context.directoryChanged(listOf(backendTarget)))
+        val update = events(context.directoryUpdate())
+        assertEquals(listOf("directory", "unfollowed"), update.map { it.str("event") })
+        assertEquals(listOf("s2"), update[0].strings("removed"))
+        assertEquals("Docs", update[1].str("title"))
+        assertEquals("Stopped following \"Docs\" because it is no longer in the sidebar (archived, deleted or left).", update[1].str("text"))
+        assertEquals(listOf("a"), context.followed())
+        // Said once.
+        assertTrue(context.directoryUpdate().isEmpty)
+    }
+
+    @Test
+    fun newWorkAMessageStartedIsFollowed() = runBlocking {
+        val targets = backend(focus = null)
+        val context = CallContext(targets)
+        context.initial()
+        val started = obj(context.tool("message", """{"to":"new-task","text":"draft the notes"}""").text)
+        assertEquals("queued", started.str("status"))
+        assertEquals(listOf(targets.sends.single().agentId), context.followed())
+    }
+
+    /** Following is per conversation: a task's subtasks aren't heard from because the task is, nor the task because its subtask is. */
+    @Test
+    fun followingATaskOrItsSubtaskFollowsThatOneAlone() = runBlocking {
+        val sibling = CallTarget("d", "Benchmark the cache", CallTarget.Kind.Subtask, CallTarget.Status.Running, fixTarget.parents)
+        val list = listOf(releaseTarget, fixTarget, sibling)
+        val targets = FakeCallTargets(list, list.associateTo(HashMap()) { it.agentId to CallTargetState(it) }, "t")
+        val context = CallContext(targets)
+        context.initial()
+        assertEquals(listOf("t"), context.followed())
+        val words = listOf(CallMessage("w", CallMessage.Role.Assistant, "Benchmarked"))
+        context.targetChanged(CallTargetState(fixTarget))
+        assertTrue(context.targetChanged(CallTargetState(fixTarget, words)).isEmpty)
+        context.focusChanged("c")
+        assertEquals(listOf("c", "t"), context.followed())
+        context.targetChanged(CallTargetState(sibling))
+        assertTrue(context.targetChanged(CallTargetState(sibling, words)).isEmpty)
     }
 
     // Reading current state
@@ -1156,19 +1224,62 @@ class CallContextTest {
             turns = listOf(CallTurn("r", "ship it", "Shipped", endedAt = now - 300_000)),
             mode = CallMode(opus.id, opus.name, "high"), models = listOf(opus, sonnet),
         )
-        val context = CallContext(FakeCallTargets(listOf(chat), mutableMapOf("c" to state), null), now = { now }, zone = java.time.ZoneId.of("Europe/Berlin"))
+        val context = CallContext(FakeCallTargets(listOf(chat), mutableMapOf("c" to state), null), now = { now }, zone = java.time.ZoneId.of("Europe/Berlin"), hours24 = true)
         context.initial()
         val read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
-        assertEquals(obj("""{"ago":"2 hours ago","at":"2025-11-06T11:00:00+01:00"}"""), read["lastUserMessage"])
-        assertEquals(obj("""{"ago":"5 minutes ago","at":"2025-11-06T12:55:00+01:00"}"""), read["lastAgentReply"])
+        assertEquals(obj("""{"ago":"2 hours ago","at":"today at 11:00"}"""), read["lastUserMessage"])
+        assertEquals(obj("""{"ago":"5 minutes ago","at":"today at 12:55"}"""), read["lastAgentReply"])
         assertEquals("App / Feature", read.str("workspace"))
         assertEquals(obj("""{"id":"claude-opus-4-5","name":"Claude Opus 4.5","effort":"high"}"""), read["model"])
         assertEquals(listOf("low", "medium", "high", "max"), read["models"]!!.jsonArray[0].jsonObject.strings("efforts"))
         val listed = obj(context.tool("listConversations", "{}").text)
         val row = listed["conversations"]!!.jsonArray[0].jsonObject
-        assertEquals(obj("""{"ago":"5 minutes ago","at":"2025-11-06T12:55:00+01:00"}"""), row["lastActivity"])
+        assertEquals(obj("""{"ago":"5 minutes ago","at":"today at 12:55"}"""), row["lastActivity"])
         assertEquals("App / Feature", row.str("workspace"))
-        assertEquals("2025-11-06T13:00:00+01:00", listed.str("now"))
+        assertEquals("Thursday, Nov 6, 2025 at 13:00", listed.str("now"))
+    }
+
+    /** Times as said on the person's clock, by their day: never an ISO stamp or a number. */
+    @Test
+    fun timesAreSaidByTheirDayOnThePersonsClock() {
+        val berlin = java.time.ZoneId.of("Europe/Berlin")
+        val now = java.time.ZonedDateTime.of(2026, 11, 17, 15, 42, 0, 0, berlin).toInstant().toEpochMilli()
+        fun at(days: Long, hour: Int, minute: Int) =
+            java.time.ZonedDateTime.of(2026, 11, 17, hour, minute, 0, 0, berlin).minusDays(days).toInstant().toEpochMilli()
+        assertEquals("today at 3:42 PM", CallContext.local(now, now, berlin, false))
+        assertEquals("today at 15:42", CallContext.local(now, now, berlin, true))
+        assertEquals("yesterday at 9:10 AM", CallContext.local(at(1, 9, 10), now, berlin, false))
+        assertEquals("tomorrow at 00:05", CallContext.local(at(-1, 0, 5), now, berlin, true))
+        assertEquals("Sunday at 2:05 PM", CallContext.local(at(2, 14, 5), now, berlin, false))
+        assertEquals("Wednesday at 2:05 PM", CallContext.local(at(6, 14, 5), now, berlin, false))
+        assertEquals("Nov 10 at 2:05 PM", CallContext.local(at(7, 14, 5), now, berlin, false))
+        assertEquals("Nov 6 at 9:15 AM", CallContext.local(at(11, 9, 15), now, berlin, false))
+        assertEquals("Dec 31, 2025 at 23:59", CallContext.local(at(321, 23, 59), now, berlin, true))
+        // Midnight is a day boundary on the person's clock, not UTC's.
+        assertEquals("yesterday at 11:30 PM", CallContext.local(at(1, 23, 30), at(0, 0, 30), berlin, false))
+        assertEquals("Tuesday, Nov 17, 2026 at 3:42 PM", CallContext.today(now, berlin, false))
+        assertTrue(CallContext.usesHours24(java.util.Locale.GERMANY))
+        assertFalse(CallContext.usesHours24(java.util.Locale.US))
+    }
+
+    /** In a team, the conversations that are another member's say whose, wherever the call lists them; the person's own don't. */
+    @Test
+    fun aTeammatesConversationsSayWhoseTheyAre() = runBlocking {
+        val steve = releaseTarget.copy(owner = "Steve")
+        val fix = fixTarget.copy(owner = "Steve")
+        val targets = FakeCallTargets(listOf(backendTarget, steve, fix), mutableMapOf("c" to CallTargetState(fix)), "c")
+        val context = CallContext(targets)
+        val text = context.initial()
+        assertTrue(text, text.contains("On screen: Fix cache race — subtask, owner Steve, ref s3, under Release notes"))
+        assertTrue(text, text.contains("- Backend — bot, ref s1\n- Release notes — task, owner Steve, ref s2\n  - Fix cache race — subtask, owner Steve, ref s3"))
+        val rows = obj(context.tool("listConversations", "{}").text)["conversations"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(null, "Steve", "Steve"), rows.map { it.str("owner") })
+        assertEquals("Steve", obj(context.tool("readConversation", """{"ref":"s3"}""").text).str("owner"))
+        // New work of a teammate's comes with whose it is.
+        val added = CallTarget("n", "Review", CallTarget.Kind.Task, CallTarget.Status.Idle, owner = "Ada")
+        targets.setDirectory(listOf(backendTarget, steve, fix, added))
+        val update = events(context.directoryUpdate()).single()
+        assertEquals("Ada", update["added"]!!.jsonArray.single().jsonObject.str("owner"))
     }
 
     @Test
@@ -1362,7 +1473,7 @@ class CallContextTest {
         assertEquals("s2", focus[0].str("ref"))
         // Its words after that: by name alone.
         context.targetChanged(CallTargetState(fixTarget, working = true))
-        val words = events(context.targetChanged(CallTargetState(fixTarget, listOf(CallMessage("m", CallMessage.Role.Assistant, "Fixed.")))))
+        val words = said(context.targetChanged(CallTargetState(fixTarget, listOf(CallMessage("m", CallMessage.Role.Assistant, "Fixed.")))))
         assertEquals(listOf("assistant_text"), words.map { it.str("event") })
         assertNull(words[0]["ref"])
         // listConversations gives references too: what it listed comes without one.
