@@ -1,10 +1,13 @@
 {
-  "version": 5,
-  "about": "Happy product analytics catalog shared by Happy Desktop, happy-ios and happy-android. Every event and property a client may send. Values are closed enums, counts, booleans, versions, or the model rule; nothing else may leave a client. Clients send only the events listed for them. Optional properties may be omitted; nullable properties may be null.",
+  "version": 6,
+  "about": "Happy product analytics catalog shared by Happy Desktop, happy-ios and happy-android. Every event and property a client may send. Values are closed enums, counts, booleans, versions, the model rule, or app_crashed's code identifiers (class_name, frame_list, signal); nothing else may leave a client. Clients send only the events listed for them. Optional properties may be omitted; nullable properties may be null.",
   "types": {
     "count": "integer 0..1000000",
     "version": "string matching ^[0-9]+(\\.[0-9]+){0,3}$, at most 32 characters. Clients strip any prerelease or build suffix (everything from the first '-' or '+') before sending; a value that still does not match is sent as null.",
-    "os_version": "string matching ^[0-9]+(\\.[0-9]+)?$ (major.minor only)"
+    "os_version": "string matching ^[0-9]+(\\.[0-9]+)?$ (major.minor only)",
+    "class_name": "string matching ^[A-Za-z_$][A-Za-z0-9_$.]{0,127}$: a class name as the runtime names it (possibly obfuscated by R8), never a message.",
+    "frame_list": "1 to 5 stack frames joined by single spaces, at most 400 characters. Each is one of: iOS binary+offset, ^[A-Za-z0-9_.$-]{1,64}\\+0x[0-9a-f]{1,12}$; Android class.method:line, ^[A-Za-z0-9_$.<>-]{1,128}:[0-9]{1,7}$ (the line R8 leaves, retraced with the build's mapping; 0 when unknown). No file names, paths or arguments.",
+    "signal": "integer 1..64, a POSIX signal number"
   },
   "shared_enums": {
     "provider_kind": [
@@ -330,7 +333,7 @@
         "ios",
         "android"
       ],
-      "fires": "A process of the app died abnormally. Mobile: read at the next launch from the OS's own exit records (MetricKit, ApplicationExitInfo); only the exception type or signal (mapped to reason) and the app version are read, never the stack, symbols, termination text or memory regions. Desktop: a renderer or child process that dies is reported by the main process to the reloaded window in memory; a main-process crash is not reported. Nothing is written to disk.",
+      "fires": "A process of the app died abnormally. Mobile: read at the next launch from the OS's own exit records (MetricKit, ApplicationExitInfo); only the closed fields above are read, and never the termination text, messages, memory regions, file paths or thread names. On Android a JVM crash's exception_class, cause_class and crash_frames are written by the crashing process's uncaught-exception handler to one small file in the app's no-backup storage, only while analytics is on, then read and deleted at the next start (or deleted when analytics is turned off); they are sent only when the system's record says that process crashed. Desktop: a renderer or child process that dies is reported by the main process to the reloaded window in memory; a main-process crash is not reported, and nothing is written to disk.",
       "properties": {
         "process": {
           "enum": [
@@ -355,6 +358,38 @@
         "crashed_version": {
           "type": "version",
           "nullable": true
+        },
+        "exception_class": {
+          "type": "class_name",
+          "nullable": true,
+          "optional": true,
+          "clients": [
+            "android"
+          ]
+        },
+        "cause_class": {
+          "type": "class_name",
+          "nullable": true,
+          "optional": true,
+          "clients": [
+            "android"
+          ]
+        },
+        "crash_frames": {
+          "type": "frame_list",
+          "nullable": true,
+          "optional": true,
+          "clients": [
+            "android"
+          ]
+        },
+        "signal": {
+          "type": "signal",
+          "nullable": true,
+          "optional": true,
+          "clients": [
+            "android"
+          ]
         }
       }
     },
@@ -1121,5 +1156,5 @@
     "opt_out": "Turning analytics off stops sending at once, stops analytics-only observers, and deletes all analytics-only stored state: the install id, queue, dedupe set and throttle times. Turning it back on starts with a new install id.",
     "transport": "Every request uses credentials omit, no referrer, redirect error, and only an https host (or a loopback http capture host in debug)."
   },
-  "storage": "Nothing is saved to disk except the random install id, which is deleted on opt-out. Queues, dedupe sets and throttle times live in memory only; unsent events are lost when the app quits."
+  "storage": "Nothing is saved to disk except the random install id, which is deleted on opt-out, and on Android the last JVM crash's app_crashed class names and frames (see app_crashed), kept only until the next start or opt-out. Queues, dedupe sets and throttle times live in memory only; unsent events are lost when the app quits."
 }

@@ -41,6 +41,9 @@ class AnalyticsCatalogTest {
                 "bool" -> Rule.Bool
                 "version" -> Rule.Version
                 "os_version" -> Rule.OsVersion
+                "class_name" -> Rule.ClassName
+                "frame_list" -> Rule.FrameList
+                "signal" -> Rule.Signal
                 else -> error("unknown type $type")
             }
         }
@@ -110,6 +113,9 @@ class AnalyticsCatalogTest {
             ErrorArea.entries.forEach { area -> ErrorCode.entries.forEach { add(AnalyticsEvent.ErrorShown(area, it)) } }
             CrashProcess.entries.forEach { process -> CrashReason.entries.forEach { add(AnalyticsEvent.AppCrashed(process, it, "1.8.0")) } }
             add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.Crash, null))
+            add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.Crash, "2026.11.1", CrashSignature("java.lang.IllegalArgumentException", "android.content.ActivityNotFoundException", "g80.a:29 yk6.invoke:1214")))
+            add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.Crash, "2026.11.1", CrashSignature("o3.f", null, null)))
+            add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.NativeCrash, "2026.11.1", signal = 11))
             PairingMethod.entries.forEach { method ->
                 PairingStart.entries.forEach { start ->
                     add(AnalyticsEvent.MobilePairingCompleted(method, start))

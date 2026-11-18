@@ -55,7 +55,8 @@ final class AnalyticsCatalogContractTests: XCTestCase {
         let events = try XCTUnwrap(catalog["events"]?.objectValue).filter { forIOS($0.value) }
         XCTAssertEqual(Set(AnalyticsSchema.events.keys), Set(events.keys), "the iOS events")
         for (name, spec) in events {
-            let properties = try XCTUnwrap(spec["properties"]?.objectValue, name)
+            // A property may be another client's alone (its own "clients"), as a common one may.
+            let properties = try XCTUnwrap(spec["properties"]?.objectValue, name).filter { forIOS($0.value) }
             let swift = try XCTUnwrap(AnalyticsSchema.events[name], name)
             XCTAssertEqual(Set(swift.keys), Set(properties.keys), "\(name)'s properties")
             for (property, propertySpec) in properties {

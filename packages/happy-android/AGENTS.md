@@ -1069,10 +1069,18 @@ prefs: the queue, `error_shown`'s throttle and the failure cards seen live
 in memory. `Retired` deletes what earlier builds kept
 (`noBackupFilesDir/analytics`, the day counts), and `AppGraph` the old
 per-account `feature-flags` prefs. `app_crashed` reads only the reason,
-importance and the crashed version of the system's last `ApplicationExitInfo`;
+importance, status (a native crash's signal) and the crashed version of the
+system's last `ApplicationExitInfo`;
 a process leaves its version with the system
 (`setProcessStateSummary`) only while analytics is on, so a run with
-analytics off is never reported, and the trace is never read.
+analytics off is never reported, and the trace is never read. A JVM
+crash's class names and frames (`CrashSignature`, catalog v6) come from the
+module's own uncaught-exception handler, chained ahead of the platform's: it
+writes them to `noBackupFilesDir/crash_signature` only while analytics is
+on, the next start reads and deletes the file, and they go only with that
+same process's crash. Frames start at the first outside the platform and
+the libraries; in a store build they are R8's names and lines, retraced
+with the build's mapping. Turning analytics off deletes the file.
 
 Fewer events and more privacy: an event is only what no other event
 answers. Nothing is counted on the phone, and no screen, view, navigation,

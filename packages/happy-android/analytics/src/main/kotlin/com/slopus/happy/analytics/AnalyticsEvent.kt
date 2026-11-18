@@ -65,9 +65,30 @@ sealed interface AnalyticsEvent {
         override val properties get() = mapOf("area" to area.wire, "code" to code.wire)
     }
 
-    data class AppCrashed(val process: CrashProcess, val reason: CrashReason, val crashedVersion: String?) : AnalyticsEvent {
+    /**
+     * A process that died ([AppExits]). A JVM crash also carries what its
+     * uncaught-exception handler wrote down ([CrashSignature]); a native
+     * crash, its signal. Each is left out when there is none.
+     */
+    data class AppCrashed(
+        val process: CrashProcess,
+        val reason: CrashReason,
+        val crashedVersion: String?,
+        val signature: CrashSignature? = null,
+        val signal: Int? = null,
+    ) : AnalyticsEvent {
         override val name get() = "app_crashed"
-        override val properties get() = mapOf("process" to process.wire, "reason" to reason.wire, "crashed_version" to crashedVersion)
+        override val properties get() = buildMap {
+            put("process", process.wire)
+            put("reason", reason.wire)
+            put("crashed_version", crashedVersion)
+            signature?.let {
+                put("exception_class", it.exceptionClass)
+                it.causeClass?.let { cause -> put("cause_class", cause) }
+                it.frames?.let { frames -> put("crash_frames", frames) }
+            }
+            signal?.let { put("signal", it) }
+        }
     }
 
     /** How a phone pairing ended: linked, failed with a reason, or left. */

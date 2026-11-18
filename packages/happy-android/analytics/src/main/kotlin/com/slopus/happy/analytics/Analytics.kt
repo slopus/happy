@@ -69,6 +69,7 @@ object Analytics {
         flags: (Set<String>) -> Unit,
     ) {
         val manager = context.getSystemService(ActivityManager::class.java)
+        val signatures = CrashSignatures(File(context.noBackupFilesDir, CrashSignatures.FILE)).also { it.install() }
         val consent = combine(switch.on, accountsOptedOut) { on, out -> if (!on) false else out?.not() }
             .stateIn(scope, SharingStarted.Eagerly, null)
         val client = AnalyticsClient(
@@ -82,8 +83,15 @@ object Analytics {
             configuration = configuration,
             links = links,
             network = network,
-            crash = { manager?.let { AppExits.last(it, context.packageName) } },
-            mark = { version -> manager?.let { AppExits.mark(it, version) } },
+            crash = {
+                val kept = signatures.take()
+                manager?.let { AppExits.last(it, context.packageName, kept) }
+            },
+            mark = { version ->
+                manager?.let { AppExits.mark(it, version) }
+                // Only where the system keeps exit records to tell it with.
+                signatures.arm(version != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            },
             flags = flags.takeIf { target.asksFlags },
         )
         this.client = client
@@ -297,8 +305,8 @@ internal object Retired {
  * outside any flow: every record, error, exposure, incident, open, flag
  * answer and send made in it checks it is still the one on before it
  * keeps or sends anything, a request on its way is cancelled, and what it
- * had (the queue, the throttle, the cards seen, the crash mark, the flags
- * and the install id) is deleted without waiting for that request. If
+ * had (the queue, the throttle, the cards seen, the crash mark and any
+ * crash signature kept, the flags and the install id) is deleted without waiting for that request. If
  * [consent] is still or again true, a new generation starts with a new
  * install id, and none starts while the old id couldn't be deleted; nor
  * may analytics be turned back on then ([allow]). A [revoke] holds
