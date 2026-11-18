@@ -142,25 +142,18 @@ class CallTargetsTest {
         assertEquals(CallTarget.Status.Running, state.target.status)
     }
 
-    /** What a followed conversation tells the call: its words and its status as they change, never its tools or their output. */
+    /** What a followed conversation tells the call: its words, never its state, its tools or their output. */
     @Test
-    fun aFollowedConversationSaysItsWordsAndStatusNeverItsTools() = kotlinx.coroutines.runBlocking {
+    fun aFollowedConversationSaysItsWordsNeverItsStateOrTools() = kotlinx.coroutines.runBlocking {
         val context = CallContext(FakeCallTargets(listOf(target), mutableMapOf("a" to read(emptyList(), working = false)), "a"))
         context.initial()
         val rows = mutableListOf<ConversationRow>(user("u1", "fix it"))
-        val working = context.targetChanged(read(rows))
-        assertEquals(listOf("""{"event":"status","parents":[],"status":"working","title":"A"}"""), working.context)
+        assertTrue(context.targetChanged(read(rows)).isEmpty)
         rows += listOf(said("a1:0", "Looking"), tool("t1"), ConversationRow.Tool("t2", "t2", ToolUse("exec_command", "completed")))
         assertEquals(listOf("""{"event":"assistant_text","parents":[],"text":"Looking","title":"A"}"""), context.targetChanged(read(rows)).context)
         rows += listOf(tool("t3"), said("a2:0", "Fixed."), end("r1", "Fixed."))
         val done = context.targetChanged(read(rows, working = false)).context
-        assertEquals(
-            listOf(
-                """{"event":"assistant_text","finishedTurn":true,"parents":[],"text":"Fixed.","title":"A"}""",
-                """{"event":"status","parents":[],"status":"idle","title":"A"}""",
-            ),
-            done,
-        )
+        assertEquals(listOf("""{"event":"assistant_text","finishedTurn":true,"parents":[],"text":"Fixed.","title":"A"}"""), done)
         assertTrue(done.none { "exec_command" in it || "t3" in it })
         // The same state again says nothing.
         assertTrue(context.targetChanged(read(rows, working = false)).isEmpty)

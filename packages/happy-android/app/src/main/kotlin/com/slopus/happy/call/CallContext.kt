@@ -45,9 +45,9 @@ data class CallUpdate(val context: List<String> = emptyList()) {
  * call, which are the ones it hears from, each on its own: never the ones
  * under or over it; it runs the tools one at a time. A followed conversation
  * says only what its agent writes from then on, each piece once it is
- * complete and whole, its status as it changes and an error that stopped it:
- * never its words as they stream, its tools or the person's messages. One
- * let go is said to be, and why.
+ * complete and whole, and an error that stopped it: never its words as they
+ * stream, its tools, its state or the person's messages; a read says its
+ * state as it is then. One let go is said to be, and why.
  *
  * The call starts with the directory: home's bots, tasks, subtasks and
  * project conversations, in its order and nesting, as plain lines that give
@@ -213,8 +213,6 @@ class CallContext(
         var errors: Set<String> = emptySet(),
         /** The errors this call told of, by turn, with the event that told it. */
         var told: Map<String, String> = emptyMap(),
-        /** Its status as last seen ([statusOf]). */
-        var status: String = "",
     )
 
     /** A conversation as the agent's directory has it: what a rename or a move changes. */
@@ -382,10 +380,10 @@ class CallContext(
      * One visited conversation's newest state. The first one the call sees
      * is what was there already, and says nothing; after it, each of its
      * agent's messages once it is complete ([CallMessage.final]), whole
-     * (`assistant_text`), never while it grows; a turn an error ended
-     * (`session_error`); and its status once it changes (`status`). Its
-     * tools, their results and anything else it does go nowhere. Nothing is
-     * told twice.
+     * (`assistant_text`), never while it grows; and a turn an error ended
+     * (`session_error`). Its state, tools, their results and anything else it
+     * does go nowhere: a read says its state as it is then. Nothing is told
+     * twice.
      */
     suspend fun targetChanged(state: CallTargetState): CallUpdate = withContext(lane) { changed(state) }
 
@@ -431,14 +429,6 @@ class CallContext(
         }
         known.errors = state.turns.filter { it.ended == "error" }.mapTo(HashSet()) { it.id }
         known.told = toldErrors.filterKeys { it in known.errors }
-        val status = statusOf(state)
-        if (status != known.status) {
-            known.status = status
-            val event = LinkedHashMap(address)
-            event["event"] = JsonPrimitive("status")
-            event["status"] = JsonPrimitive(status)
-            context += CallJson.encode(JsonObject(event))
-        }
         return CallUpdate(context)
     }
 
@@ -1196,14 +1186,13 @@ class CallContext(
 
     /**
      * What is there when the call first sees a conversation is had: the
-     * agent's complete messages, the errors so far and its status. One still
-     * being written is new, and goes once it is complete.
+     * agent's complete messages and the errors so far. One still being
+     * written is new, and goes once it is complete.
      */
     private fun listen(state: CallTargetState) {
         heard[state.target.agentId] = Heard(
             had = state.messages.filter { it.role == CallMessage.Role.Assistant && it.final }.mapTo(HashSet()) { it.id },
             errors = state.turns.filter { it.ended == "error" }.mapTo(HashSet()) { it.id },
-            status = statusOf(state),
         )
     }
 
@@ -1230,20 +1219,27 @@ class CallContext(
         JsonObject(mapOf("ago" to JsonPrimitive(ago((now() - millis) / 1000)), "at" to JsonPrimitive(local(millis, now(), zone, hours24))))
 
     /**
-     * A conversation as read: [name], then whether it works or waits for the person, and the turns [shown] of [items],
-     * each with its reference, oldest first, the one waiting for an answer apart; where to read on back from
-     * (`continueFrom`) when older ones are here. Never its kind, status or reference beyond what [name] holds: the
-     * directory has those.
+     * A conversation as read: [name], then whether it works or waits for the person (its `status`), who wrote last
+     * and when, and the turns [shown] of [items], each with its reference, oldest first, the one waiting for an answer
+     * apart; where to read on back from (`continueFrom`) when older ones are here. Never its kind or reference beyond
+     * what [name] holds: the directory has those.
      */
     private fun body(state: CallTargetState, items: List<CallRead.Item>, references: List<String>, shown: IntRange, words: Int, name: Map<String, JsonElement>): JsonObject {
         val value = LinkedHashMap(name)
         value["working"] = JsonPrimitive(state.working)
         value["needsInput"] = JsonPrimitive(state.needsInput)
-        state.messages.lastOrNull { it.role == CallMessage.Role.User && (it.time ?: 0L) > 0 }?.let { last ->
+        value["status"] = JsonPrimitive(statusOf(state))
+        val lastUser = state.messages.lastOrNull { it.role == CallMessage.Role.User && (it.time ?: 0L) > 0 }
+        lastUser?.let { last ->
             val said = moment(last.time!!)
             value["lastUserMessage"] = last.by?.let { JsonObject(said + ("by" to JsonPrimitive(it))) } ?: said
         }
-        state.exchanges.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { value["lastAgentReply"] = moment(it) }
+        val lastReply = state.exchanges.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()
+        lastReply?.let { value["lastAgentReply"] = moment(it) }
+        // The newer of the two, and who wrote it.
+        listOfNotNull(lastUser?.let { it.time!! to (it.by ?: "the person") }, lastReply?.let { it to "the agent" }).maxByOrNull { it.first }?.let { (at, by) ->
+            value["lastMessage"] = JsonObject(moment(at) + ("by" to JsonPrimitive(by)))
+        }
         if (state.target.workspace.isNotEmpty()) value["workspace"] = JsonPrimitive(state.target.workspace.joinToString(" / "))
         state.mode?.let { value["model"] = JsonObject(mapOf("id" to JsonPrimitive(it.modelId), "name" to JsonPrimitive(it.model), "effort" to JsonPrimitive(it.effort))) }
         if (state.models.isNotEmpty()) value["models"] = models(state.models)
@@ -1589,8 +1585,8 @@ class CallContext(
         const val GONE_REASON = "it is no longer in the sidebar (archived, deleted or left)"
 
         /**
-         * Its status as a `status` update says it: `needs_input` while a question or a review waits for the person,
-         * `working` while its agent runs, else `idle`.
+         * Its status as a read says it: `needs_input` while a question or a review waits for the person, `working`
+         * while its agent runs, else `idle`.
          */
         fun statusOf(state: CallTargetState): String = when {
             state.needsInput -> CallTarget.Status.NeedsInput.wire

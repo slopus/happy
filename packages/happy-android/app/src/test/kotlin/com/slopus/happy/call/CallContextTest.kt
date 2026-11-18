@@ -56,8 +56,6 @@ class CallContextTest {
     private fun obj(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
     private fun call(id: String, name: String, json: String) = CallToolCall(id, name, obj(json))
     private fun events(update: CallUpdate) = update.context.map(::obj)
-    /** [events] but the status changes. */
-    private fun said(update: CallUpdate) = events(update).filter { it.str("event") != "status" }
     private fun JsonObject.str(key: String) = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
     private fun JsonObject.strings(key: String) = this[key]?.jsonArray?.map { it.jsonPrimitive.content }
     private fun JsonObject.turns() = this["turns"]!!.jsonArray.map { it.jsonObject }
@@ -369,12 +367,12 @@ class CallContextTest {
         fun state(text: String, working: Boolean = true) =
             CallTargetState(backendTarget, old + CallMessage("r", CallMessage.Role.Assistant, text, final = !working), working = working)
         // The first sight is what was there: nothing goes.
-        assertTrue(context.targetChanged(CallTargetState(backendTarget, old, working = true)).isEmpty)
+        assertTrue(context.targetChanged(CallTargetState(backendTarget, old)).isEmpty)
         for (text in listOf("Look", "Looking", "Looking at it")) assertTrue(text, context.targetChanged(state(text)).isEmpty)
         // A pause is no end: the same words, still being written, a while later.
         delay(600)
         assertTrue(context.targetChanged(state("Looking at it")).isEmpty)
-        val done = said(context.targetChanged(state("Looking at it. Done.", working = false)))
+        val done = events(context.targetChanged(state("Looking at it. Done.", working = false)))
         assertEquals(listOf("assistant_text"), done.map { it.str("event") })
         assertEquals("Looking at it. Done.", done.single().str("text"))
         // By its title, never an ID or a reference.
@@ -394,13 +392,13 @@ class CallContextTest {
         context.initial()
         fun state(messages: List<CallMessage>, working: Boolean = true) = CallTargetState(backendTarget, messages, working = working)
         context.targetChanged(state(emptyList()))
-        assertTrue(said(context.targetChanged(state(listOf(CallMessage("p1", CallMessage.Role.Assistant, "Let me check the logs", final = false))))).isEmpty())
-        val checked = said(context.targetChanged(state(listOf(
+        assertTrue(context.targetChanged(state(listOf(CallMessage("p1", CallMessage.Role.Assistant, "Let me check the logs", final = false)))).isEmpty)
+        val checked = events(context.targetChanged(state(listOf(
             CallMessage("p1", CallMessage.Role.Assistant, "Let me check the logs."),
             CallMessage("p2", CallMessage.Role.Assistant, "They show", final = false),
         ))))
         assertEquals(listOf("Let me check the logs."), checked.map { it.str("text") })
-        val rest = said(context.targetChanged(state(listOf(
+        val rest = events(context.targetChanged(state(listOf(
             CallMessage("p1", CallMessage.Role.Assistant, "Let me check the logs."),
             CallMessage("u", CallMessage.Role.User, "and?"),
             CallMessage("p2", CallMessage.Role.Assistant, "They show a timeout."),
@@ -455,7 +453,7 @@ class CallContextTest {
         context.initial()
         context.focusChanged("b")
         context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("w", CallMessage.Role.Assistant, "Halfway", final = false)), working = true))
-        val next = said(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("w", CallMessage.Role.Assistant, "Halfway there")))))
+        val next = events(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("w", CallMessage.Role.Assistant, "Halfway there")))))
         assertEquals(listOf("Halfway there"), next.map { it.str("text") })
     }
 
@@ -468,21 +466,19 @@ class CallContextTest {
         context.initial()
         // The error that was there when the call began isn't news.
         assertTrue(context.targetChanged(state).isEmpty)
-        // Working and needing the person go as its status, once each; the person's messages and their delivery don't.
+        // Working, needing the person, the person's messages and their delivery: none of it goes.
         state = state.copy(working = true, target = backendTarget.copy(status = CallTarget.Status.Running),
             messages = listOf(CallMessage("u", CallMessage.Role.User, "do it", delivery = CallMessage.Delivery.Queued)))
-        assertEquals(listOf("""{"event":"status","parents":[],"status":"working","title":"Backend"}"""), context.targetChanged(state).context)
+        assertTrue(context.targetChanged(state).isEmpty)
         state = state.copy(needsInput = true, target = backendTarget.copy(status = CallTarget.Status.NeedsInput),
             messages = listOf(CallMessage("u", CallMessage.Role.User, "do it", delivery = CallMessage.Delivery.Failed)))
-        assertEquals(listOf("needs_input"), events(context.targetChanged(state)).map { it.str("status") })
         assertTrue(context.targetChanged(state).isEmpty)
         state = state.copy(working = false, needsInput = false, turns = state.turns + CallTurn("new", "do it", ended = "error", error = "The model refused"))
         val stopped = events(context.targetChanged(state))
-        assertEquals(listOf("session_error", "status"), stopped.map { it.str("event") })
-        assertEquals("idle", stopped[1].str("status"))
-        assertEquals("The model refused", stopped[0].str("reason"))
-        assertEquals("Backend", stopped[0].str("title"))
-        assertNull(stopped[0]["target"])
+        assertEquals(listOf("session_error"), stopped.map { it.str("event") })
+        assertEquals("The model refused", stopped.single().str("reason"))
+        assertEquals("Backend", stopped.single().str("title"))
+        assertNull(stopped.single()["target"])
         assertTrue(context.targetChanged(state).isEmpty)
         // Stopped by the person is no error.
         assertTrue(context.targetChanged(state.copy(turns = state.turns + CallTurn("stop", "x", ended = "abort"))).isEmpty)
@@ -494,13 +490,13 @@ class CallContextTest {
         val context = CallContext(backend())
         context.initial()
         context.targetChanged(CallTargetState(backendTarget))
-        val midRun = said(context.targetChanged(CallTargetState(backendTarget, listOf(
+        val midRun = events(context.targetChanged(CallTargetState(backendTarget, listOf(
             CallMessage("p1", CallMessage.Role.Assistant, "Checking.", turn = "r9"),
             CallMessage("p2", CallMessage.Role.Assistant, "Still", final = false, turn = "r9"),
         ), working = true)))
         assertEquals(listOf("Checking."), midRun.map { it.str("text") })
         assertNull(midRun.single()["finishedTurn"])
-        val ended = said(context.targetChanged(CallTargetState(backendTarget, listOf(
+        val ended = events(context.targetChanged(CallTargetState(backendTarget, listOf(
             CallMessage("p1", CallMessage.Role.Assistant, "Checking.", turn = "r9"),
             CallMessage("p2", CallMessage.Role.Assistant, "Still fine.", turn = "r9"),
         ), listOf(CallTurn("r9", reply = "Still fine.")))))
@@ -528,7 +524,7 @@ class CallContextTest {
         assertTrue(targets.opened.isEmpty())
         // What is there when it is first seen is had; its reply, once complete, goes.
         assertTrue(context.targetChanged(CallTargetState(docsTarget, working = true)).isEmpty)
-        val reply = said(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "Done")))))
+        val reply = events(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "Done")))))
         assertEquals(listOf("Done"), reply.map { it.str("text") })
     }
 
@@ -581,24 +577,6 @@ class CallContextTest {
         val started = obj(context.tool("message", """{"to":"new-task","text":"draft the notes"}""").text)
         assertEquals("queued", started.str("status"))
         assertEquals(listOf(targets.sends.single().agentId), context.followed())
-    }
-
-    /** Following is per conversation: a task's subtasks aren't heard from because the task is, nor the task because its subtask is. */
-    @Test
-    fun followingATaskOrItsSubtaskFollowsThatOneAlone() = runBlocking {
-        val sibling = CallTarget("d", "Benchmark the cache", CallTarget.Kind.Subtask, CallTarget.Status.Running, fixTarget.parents)
-        val list = listOf(releaseTarget, fixTarget, sibling)
-        val targets = FakeCallTargets(list, list.associateTo(HashMap()) { it.agentId to CallTargetState(it) }, "t")
-        val context = CallContext(targets)
-        context.initial()
-        assertEquals(listOf("t"), context.followed())
-        val words = listOf(CallMessage("w", CallMessage.Role.Assistant, "Benchmarked"))
-        context.targetChanged(CallTargetState(fixTarget))
-        assertTrue(context.targetChanged(CallTargetState(fixTarget, words)).isEmpty)
-        context.focusChanged("c")
-        assertEquals(listOf("c", "t"), context.followed())
-        context.targetChanged(CallTargetState(sibling))
-        assertTrue(context.targetChanged(CallTargetState(sibling, words)).isEmpty)
     }
 
     // Reading current state
@@ -689,7 +667,7 @@ class CallContextTest {
         assertEquals("Backend", read.str("title"))
         assertEquals(3, read.turns().size)
         assertEquals(CallContext.REFRESHING_NOTE, read.str("note"))
-        assertNull(read["status"])
+        assertEquals("idle", read.str("status"))
         assertTrue(all.isEmpty())
         context.close()
     }
@@ -1229,6 +1207,9 @@ class CallContextTest {
         val read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         assertEquals(obj("""{"ago":"2 hours ago","at":"today at 11:00"}"""), read["lastUserMessage"])
         assertEquals(obj("""{"ago":"5 minutes ago","at":"today at 12:55"}"""), read["lastAgentReply"])
+        // Its state as it is now: the newer of the two, by whom, and its status.
+        assertEquals(obj("""{"ago":"5 minutes ago","at":"today at 12:55","by":"the agent"}"""), read["lastMessage"])
+        assertEquals("idle", read.str("status"))
         assertEquals("App / Feature", read.str("workspace"))
         assertEquals(obj("""{"id":"claude-opus-4-5","name":"Claude Opus 4.5","effort":"high"}"""), read["model"])
         assertEquals(listOf("low", "medium", "high", "max"), read["models"]!!.jsonArray[0].jsonObject.strings("efforts"))
@@ -1305,6 +1286,7 @@ class CallContextTest {
         assertEquals("Ada Lovelace", body["turns"]!!.jsonArray[0].jsonObject.str("userBy"))
         assertEquals("the person", body["pendingUserMessage"]!!.jsonObject.str("by"))
         assertEquals("the person", body["lastUserMessage"]!!.jsonObject.str("by"))
+        assertEquals("the person", body["lastMessage"]!!.jsonObject.str("by"))
         // Outside a team nothing has an author, and nothing says who.
         assertTrue(CallTargetState(chat, messages = listOf(CallMessage("m", CallMessage.Role.User, "hi"))).named(emptyMap(), null).messages.all { it.by == null })
     }
@@ -1473,7 +1455,7 @@ class CallContextTest {
         assertEquals("s2", focus[0].str("ref"))
         // Its words after that: by name alone.
         context.targetChanged(CallTargetState(fixTarget, working = true))
-        val words = said(context.targetChanged(CallTargetState(fixTarget, listOf(CallMessage("m", CallMessage.Role.Assistant, "Fixed.")))))
+        val words = events(context.targetChanged(CallTargetState(fixTarget, listOf(CallMessage("m", CallMessage.Role.Assistant, "Fixed.")))))
         assertEquals(listOf("assistant_text"), words.map { it.str("event") })
         assertNull(words[0]["ref"])
         // listConversations gives references too: what it listed comes without one.

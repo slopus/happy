@@ -21,9 +21,9 @@ public struct CallUpdate: Equatable, Sendable {
 /// the ones it hears from, each on its own: never the ones under or over
 /// it; it runs the tools one at a time. A followed conversation says only
 /// what its agent writes from then on, each piece once it is complete and
-/// whole, its status as it changes and an error that stopped it: never its
-/// words as they stream, its tools or the person's messages. One let go is
-/// said to be, and why.
+/// whole, and an error that stopped it: never its words as they stream, its
+/// tools, its state or the person's messages; a read says its state as it
+/// is then. One let go is said to be, and why.
 ///
 /// The call starts with the directory: the sidebar's bots, tasks, subtasks
 /// and project conversations, in its order and nesting, as plain lines
@@ -197,8 +197,6 @@ public actor CallContext {
         var errors: Set<String> = []
         /// The errors this call told of, by turn, with the event that told it.
         var told: [String: String] = [:]
-        /// Its status as last seen (`statusOf`).
-        var status = ""
     }
 
     /// A conversation as the agent's directory has it: what a rename or a
@@ -459,10 +457,10 @@ public actor CallContext {
     /// One visited conversation's newest state. The first one the call
     /// sees is what was there already, and says nothing; after it, each of
     /// its agent's messages once it is complete (`CallMessage.final`), whole
-    /// (`assistant_text`), never while it grows; a turn an error ended
-    /// (`session_error`); and its status once it changes (`status`). Its
-    /// tools, their results and anything else it does go nowhere. Nothing
-    /// is told twice.
+    /// (`assistant_text`), never while it grows; and a turn an error ended
+    /// (`session_error`). Its state, tools, their results and anything else
+    /// it does go nowhere: a read says its state as it is then. Nothing is
+    /// told twice.
     public func targetChanged(_ state: CallTargetState) -> CallUpdate {
         let id = state.target.agentId
         // Gone from the sidebar: never told of again, and nothing about it goes.
@@ -501,14 +499,6 @@ public actor CallContext {
         }
         known.errors = Set(state.turns.filter { $0.ended == "error" }.map(\.id))
         known.told = known.told.filter { known.errors.contains($0.key) }
-        let status = Self.statusOf(state)
-        if status != known.status {
-            known.status = status
-            var event = address
-            event["event"] = "status"
-            event["status"] = status
-            context.append(Self.string(event))
-        }
         heard[id] = known
         return CallUpdate(context: context)
     }
@@ -1415,15 +1405,14 @@ public actor CallContext {
     }
 
     /// What is there when the call first sees a conversation is had: the
-    /// agent's complete messages, the errors so far and its status. One
-    /// still being written is new, and goes once it is complete.
+    /// agent's complete messages and the errors so far. One still being
+    /// written is new, and goes once it is complete.
     private func listen(_ state: CallTargetState) {
         var known = Heard()
         for message in state.messages where message.role == .assistant && message.final {
             known.had.insert(message.id)
         }
         known.errors = Set(state.turns.filter { $0.ended == "error" }.map(\.id))
-        known.status = Self.statusOf(state)
         heard[state.target.agentId] = known
     }
 
@@ -1431,9 +1420,9 @@ public actor CallContext {
     static let crowdedReason = "\(Limits.visited) other conversations were opened or messaged more recently"
     static let goneReason = "it is no longer in the sidebar (archived, deleted or left)"
 
-    /// Its status as a `status` update says it: `needs_input` while a
-    /// question or a review waits for the person, `working` while its agent
-    /// runs, else `idle`.
+    /// Its status as a read says it: `needs_input` while a question or a
+    /// review waits for the person, `working` while its agent runs, else
+    /// `idle`.
     static func statusOf(_ state: CallTargetState) -> String {
         if state.needsInput { return CallTarget.Status.needsInput.rawValue }
         return state.working ? "working" : CallTarget.Status.idle.rawValue
@@ -1469,22 +1458,34 @@ public actor CallContext {
     }
 
     /// A conversation as read: `name`, then whether it works or waits for
-    /// the person, and the turns `shown` of `items`, each with its
-    /// reference, oldest first, the one waiting for an answer apart; where
-    /// to read on back from (`continueFrom`) when older ones are here.
-    /// Never its kind, status or reference beyond what `name` holds: the
-    /// directory has those.
+    /// the person (its `status`), who wrote last and when, and the turns
+    /// `shown` of `items`, each with its reference, oldest first, the one
+    /// waiting for an answer apart; where to read on back from
+    /// (`continueFrom`) when older ones are here. Never its kind or
+    /// reference beyond what `name` holds: the directory has those.
     private func body(_ state: CallTargetState, items: [CallRead.Item], references: [String], shown: Range<Int>, words: Int,
                       as name: [String: Any]) -> [String: Any] {
         var value = name
         value["working"] = state.working
         value["needsInput"] = state.needsInput
+        value["status"] = Self.statusOf(state)
+        var newest: (at: Double, by: String)?
         if let last = state.messages.last(where: { $0.role == .user && ($0.time ?? 0) > 0 }), let at = last.time {
             var said = when(at)
             if let by = last.by { said["by"] = by }
             value["lastUserMessage"] = said
+            newest = (at, last.by ?? "the person")
         }
-        if let at = state.exchanges.filter({ $0.reply?.isEmpty == false }).compactMap(\.endedAt).filter({ $0 > 0 }).max() { value["lastAgentReply"] = when(at) }
+        if let at = state.exchanges.filter({ $0.reply?.isEmpty == false }).compactMap(\.endedAt).filter({ $0 > 0 }).max() {
+            value["lastAgentReply"] = when(at)
+            if at > newest?.at ?? 0 { newest = (at, "the agent") }
+        }
+        // The newer of the two, and who wrote it.
+        if let newest {
+            var said = when(newest.at)
+            said["by"] = newest.by
+            value["lastMessage"] = said
+        }
         if !state.target.workspace.isEmpty { value["workspace"] = state.target.workspace.joined(separator: " / ") }
         if let mode = state.mode { value["model"] = ["id": mode.modelId, "name": mode.model, "effort": mode.effort] }
         if !state.models.isEmpty { value["models"] = Self.models(state.models) }

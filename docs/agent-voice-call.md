@@ -438,10 +438,6 @@ line, keys sorted):
 - `{"event":"session_error","title":…,"parents":[…],"reason":"…"}`: a turn
   that an error ended (`reason` up to 1 KB). A turn the person stopped is no
   error.
-- `{"event":"status","title":…,"parents":[…],"status":"working"}`: its
-  status changed since the call last saw it: `working` (its agent runs),
-  `needs_input` (a question or a review waits for the person, in the app)
-  or `idle`. After the words and the error the same change brought.
 - `{"event":"unfollowed","title":"Fix cache race","parents":["Release notes"],"text":"Stopped following \"Fix cache race\" because 10 other conversations were opened or messaged more recently."}`:
   it is no longer followed. The other reason is `it is no longer in the
   sidebar (archived, deleted or left)`.
@@ -485,18 +481,19 @@ Android has no run on a row: there a turn's rows come together with its
 end after them, so its words are of that run, and words with a step after
 them (a tool call, a picture, more words, a failure, the end) are complete.
 
-Nothing else (besides the directory's changes, above): no tool calls or
-results, no thinking, no pictures or files a tool presented, no other
+Nothing else (besides the directory's changes, above): no working, status
+or needs-input changes, no tool calls or results, no thinking, no pictures or files a tool presented, no other
 agent's reports or the agent's messages to itself, no runs, no messages of
 the person's, and no prompt asking the agent to speak. A conversation's state is read on demand
-(`readConversation`). Every update is silent: none starts a turn. A resync
-(below) tells the words and errors again, never a status.
+(`readConversation`), as it is then: a pushed state would sit in the
+agent's context long after it stopped being true. Every update is silent:
+none starts a turn.
 
 The first time the call sees a followed conversation, what is there already
 counts as known and nothing is sent: history is never replayed. A reply
 still being written at that moment is new, and goes whole once it is
-complete; its status then is had too. One that dropped out of the ten and
-is visited or messaged again starts over the same way.
+complete. One that dropped out of the ten and is visited or messaged
+again starts over the same way.
 
 **The focus.** `{"event":"focus","focusRevision":3,"title":"Fix cache race","parents":["Release notes"]}`,
 or `"title":null` for home, Settings or anything else that isn't a
@@ -554,7 +551,10 @@ the person's) cut after a whole word, ending `… (cut, N more words)`;
 "Older turns aren't shown." when there are more.
 
 **History** (`readConversation`, JSON): the conversation's `title` and
-`parents`, whose it is (`owner`, a teammate's only), `working`, `needsInput`, when the person last wrote there
+`parents`, whose it is (`owner`, a teammate's only), `working`, `needsInput`
+and the two as one `status` (`working`, `needs_input` or `idle`), who wrote
+last and when (`lastMessage`, `{ago,at,by}`: the newer of the two below,
+`by` the person as `lastUserMessage` names them, or `the agent`), when the person last wrote there
 (`lastUserMessage`, the newest message of theirs in what was read) and when
 the agent last answered (`lastAgentReply`, the end of the newest turn's
 answer with words), its `workspace` (the project and worktree headings it
@@ -563,8 +563,7 @@ none is given, and the computer gives the phone no folder paths), its `model`
 (`{id,name,effort}`, what its next message goes with), the `models` it can
 switch to (`[{id,name,efforts}]`, at most 30: the composer's model
 picker's, each shown account's switched-on models less those it hides),
-then its turns. Never its reference, kind or status: the directory has
-those. Each turn is one exchange: a message of the person's and the
+then its turns. Never its reference or kind: the directory has those. Each turn is one exchange: a message of the person's and the
 agent's last words after it, before the person's next, however many runs
 that took (`CallTargetState.exchanges` on both). Its words are the last the
 agent wrote anywhere in it (a run's copy text, never its commentary between
@@ -946,11 +945,11 @@ on: it is still the relay's voice prompt (it names `messageClaudeCode` and
 ```text
 You are Happy, a voice companion for the person's coding agents on their computer. Speak briefly and plainly: one or two sentences unless asked for more.
 
-What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, what you and the person said in earlier calls, the conversation on screen with its last turns and the models it can switch to, the conversations the person sees in the app as indented lines, each with its ref, the refs that start new work, and the destinations navigate takes. Updates are JSON objects with an "event": directory (the app's conversations changed since: added ones with their ref, title, kind and parents, removed refs, renamed ones with their new title, moved ones with where they sit now; more counts changes left out, which listConversations finds), focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn), session_error, status (a followed conversation now working, needs_input or idle), unfollowed (you no longer hear from that conversation, and why: mention it if the person was waiting on it), and after a read with "refreshing" true, conversation_update (what is new since: its new or changed turns, as a read gives them, and whether it is working or needs the person), conversation_current (nothing new since) or conversation_unconfirmed (the computer didn't answer in time). A ref stays its conversation's for the whole call, and is an order key: sorted as text, refs give the app's order, so s49 sits between s4 and s5; one with "after" sits right after that ref instead. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the ten conversations most recently visited or messaged, each on its own: never its subtasks or the task it sits under. A conversation that is another team member's says whose (owner). Use refs (such as s3 or s49) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
+What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, what you and the person said in earlier calls, the conversation on screen with its last turns and the models it can switch to, the conversations the person sees in the app as indented lines, each with its ref, the refs that start new work, and the destinations navigate takes. Updates are JSON objects with an "event": directory (the app's conversations changed since: added ones with their ref, title, kind and parents, removed refs, renamed ones with their new title, moved ones with where they sit now; more counts changes left out, which listConversations finds), focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn), session_error, unfollowed (you no longer hear from that conversation, and why: mention it if the person was waiting on it), and after a read with "refreshing" true, conversation_update (what is new since: its new or changed turns, as a read gives them, and whether it is working or needs the person), conversation_current (nothing new since) or conversation_unconfirmed (the computer didn't answer in time). A ref stays its conversation's for the whole call, and is an order key: sorted as text, refs give the app's order, so s49 sits between s4 and s5; one with "after" sits right after that ref instead. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the ten conversations most recently visited or messaged, each on its own: never its subtasks or the task it sits under. A conversation that is another team member's says whose (owner). Use refs (such as s3 or s49) in tools, never titles. Titles like "New Task" are work that hasn't been named yet. Updates never say whether a conversation is working or waiting: read it for its state now.
 
 Tools:
 - listConversations: find conversations, ones started since the call began too, with when each last did something; query is a case-insensitive substring of the title.
-- readConversation: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call. Each turn has a ref (t:3f), never a conversation's: to read further back, pass from (a turn's ref, or how many turns back with 0 the newest; continueFrom gives the next) and, for a range, backTo. A message cut in the middle has cut with its whole length in words: to hear it all, read that turn alone (from and backTo its ref) with a higher words. A read with "refreshing" true is what the phone had, last brought up to date at "checked", because the computer didn't answer in time: answer from it. Anything newer comes later as a conversation_update, an update like any other.
+- readConversation: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), its status now (working, needs_input or idle), who wrote last and when, when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call. Each turn has a ref (t:3f), never a conversation's: to read further back, pass from (a turn's ref, or how many turns back with 0 the newest; continueFrom gives the next) and, for a range, backTo. A message cut in the middle has cut with its whole length in words: to hear it all, read that turn alone (from and backTo its ref) with a higher words. A read with "refreshing" true is what the phone had, last brought up to date at "checked", because the computer didn't answer in time: answer from it. Anything newer comes later as a conversation_update, an update like any other.
 - message: send words to a conversation's agent, or start new work with them. to is the conversation's ref, new-task or new-bot; leave it out for the conversation on screen.
 - navigate: change the screen. to is one of the context's destinations: happy://home, happy://back, or happy://conversation/ followed by a ref, such as happy://conversation/s3. happy://call/restart restarts the call instead (see Cues).
 
@@ -1118,7 +1117,7 @@ What the phone answers (JSON in the tool result):
 | Tool | Success | Refusal (`isError`) |
 | --- | --- | --- |
 | listConversations | `{"conversations":[{ref,title,kind,status,parents?,owner?,workspace?,lastActivity?:{ago,at}}],"now","nextCursor"?}`; `kind` is `bot`, `task`, `subtask` or `conversation` | query or cursor not a string, a cursor it didn't give |
-| readConversation | `{title,parents,owner?,working,needsInput,turns:[{ref,user?,userBy?,assistant?,ended,error?,cut?:{user?:{words,leftOut},assistant?:{words,leftOut}}}],olderTurns,continueFrom?,pendingUserMessage?:{ref,text,by?,delivery?,cut?:{words,leftOut}}}`, also `lastUserMessage?:{ago,at,by?}`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]`; current within 0.7 s, as it is then; not, also `refreshing:true`, `checked?:{ago,at}` and `note`, what is new following as a `conversation_update` line of context | no such conversation (or not listed now), can't be read now, a new-work ref; `from` or `backTo` not a turn's ref or a number (or an `s` ref), a ref that fits no turn or several, `from` past the oldest; `words` not a number |
+| readConversation | `{title,parents,owner?,working,needsInput,status,turns:[{ref,user?,userBy?,assistant?,ended,error?,cut?:{user?:{words,leftOut},assistant?:{words,leftOut}}}],olderTurns,continueFrom?,pendingUserMessage?:{ref,text,by?,delivery?,cut?:{words,leftOut}}}`, also `lastMessage?:{ago,at,by}`, `lastUserMessage?:{ago,at,by?}`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]`; current within 0.7 s, as it is then; not, also `refreshing:true`, `checked?:{ago,at}` and `note`, what is new following as a `conversation_update` line of context | no such conversation (or not listed now), can't be read now, a new-work ref; `from` or `backTo` not a turn's ref or a number (or an `s` ref), a ref that fits no turn or several, `from` past the oldest; `words` not a number |
 | message | `{"status":"queued","ref":…,"delivery":"on the person's device, not confirmed delivered or read"}`, with `model` and `effort` when it switched them, and the `title` when `to` was left out; to `new-task` or `new-bot` also `"started":"task"\|"bot"`, the `title`, the new work's own `ref`, and always the `model` and `effort` it starts on | `{"status":"uncertain",…}` after 8 s; no conversation on screen and no `to`; no such conversation; can't take a message; waits for the person; empty; over 8 KiB; call ended; a model or effort it doesn't offer, with the `models` it does (nothing is sent) |
 | navigate to `happy://conversation/<ref>` | `{"opened":true,"ref":…,"focusRevision":…}`, the revision the next step takes | stale focus, no such conversation, a new-work ref, didn't open |
 | navigate to `happy://back` | `{"home":…,"focusRevision":…,"title":…\|null,"parents"?,"ref"?}`: where it landed | stale focus; at home, nothing to go back to; an alert is open |
