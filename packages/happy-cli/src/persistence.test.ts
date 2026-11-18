@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +11,8 @@ import {
     releaseDaemonLock,
     SandboxConfigSchema,
     type PersistedSession,
+    writeCredentialsDataKey,
+    writeCredentialsLegacy,
 } from './persistence';
 import { resolveLocalReconnectableSession } from './resume/localResumeStore';
 
@@ -19,6 +21,8 @@ const mockConfiguration = vi.hoisted(() => ({
     daemonStateFile: '',
     isDaemonProcess: false,
     logsDir: '/tmp',
+    happyHomeDir: '',
+    privateKeyFile: '',
     sessionsFile: '',
 }));
 
@@ -104,6 +108,37 @@ describe('SandboxConfigSchema', () => {
                 denyReadPaths: [123],
             }),
         ).toThrow();
+    });
+});
+
+describe('credential file permissions', () => {
+    let testDir: string;
+
+    beforeEach(() => {
+        testDir = mkdtempSync(join(tmpdir(), 'happy-credentials-'));
+        mockConfiguration.happyHomeDir = join(testDir, '.happy');
+        mockConfiguration.privateKeyFile = join(mockConfiguration.happyHomeDir, 'access.key');
+    });
+
+    afterEach(() => {
+        rmSync(testDir, { recursive: true, force: true });
+    });
+
+    it.each([
+        ['legacy', () => writeCredentialsLegacy({ secret: new Uint8Array(32), token: 'token' })],
+        ['data-key', () => writeCredentialsDataKey({ publicKey: new Uint8Array(32), machineKey: new Uint8Array(32), token: 'token' })],
+    ])('stores %s credentials in a private directory and file', async (_variant, writeCredentials) => {
+        await writeCredentials();
+
+        expect(statSync(mockConfiguration.happyHomeDir).mode & 0o777).toBe(0o700);
+        expect(statSync(mockConfiguration.privateKeyFile).mode & 0o777).toBe(0o600);
+
+        chmodSync(mockConfiguration.happyHomeDir, 0o755);
+        chmodSync(mockConfiguration.privateKeyFile, 0o644);
+        await writeCredentials();
+
+        expect(statSync(mockConfiguration.happyHomeDir).mode & 0o777).toBe(0o700);
+        expect(statSync(mockConfiguration.privateKeyFile).mode & 0o777).toBe(0o600);
     });
 });
 
