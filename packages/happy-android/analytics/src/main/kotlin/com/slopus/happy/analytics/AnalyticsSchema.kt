@@ -73,6 +73,7 @@ object AnalyticsSchema {
             "reason" to oneOf<CrashReason>(),
             "crashed_version" to Field(Rule.Version, nullable = true),
         ),
+        "rn_import_failed" to mapOf("reason" to oneOf<RnImportError>()),
         "mobile_pairing_completed" to pairing,
         "mobile_pairing_failed" to pairing + ("error_code" to oneOf<PairingError>()),
         "mobile_pairing_cancelled" to pairing,

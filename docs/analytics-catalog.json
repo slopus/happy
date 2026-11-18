@@ -358,6 +358,28 @@
         }
       }
     },
+    "rn_import_failed": {
+      "tier": "error",
+      "clients": [
+        "android"
+      ],
+      "fires": "At a start, the React Native app's account item was found on the phone and couldn't be opened here, so the person is signed out (or, server_unconfirmed, held until they confirm the server it came from). Sent with the start's first events, only if that start sends. Only the reason; never the item, its key, the token or the server.",
+      "properties": {
+        "reason": {
+          "enum": [
+            "key_missing",
+            "key_invalidated",
+            "decrypt_failed",
+            "auth_required",
+            "malformed_item",
+            "keystore",
+            "invalid_credentials",
+            "server_unconfirmed",
+            "unknown"
+          ]
+        }
+      }
+    },
     "onboarding_setup_result": {
       "tier": "error",
       "clients": [

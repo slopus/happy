@@ -149,25 +149,39 @@ class ExpoSecureStore(
     /** The keys of this keychain service's items. */
     fun keys(): List<String> = prefs.all.keys.filter { it.startsWith("$keychainService-") }.map { it.removePrefix("$keychainService-") }
 
-    /** getItemImpl / readJSONEncodedItem. Throws [GeneralSecurityException] on anything else that fails. */
-    fun getItem(key: String): String? {
+    /** Whether there is an item under [key], readable or not. */
+    fun contains(key: String): Boolean = prefs.contains(prefsKey(key)) || prefs.contains(key)
+
+    /**
+     * getItemImpl / readJSONEncodedItem. Throws [GeneralSecurityException] on anything else that fails.
+     * [unreadable] is told why an item that is there reads as absent, or fails.
+     */
+    fun getItem(key: String, unreadable: (UnreadableItem) -> Unit = {}): String? {
         val stored = prefs.getString(prefsKey(key), null) ?: prefs.getString(key, null) ?: return null
-        val envelope = SecureStoreEnvelope.decode(stored) ?: throw GeneralSecurityException("Could not parse the SecureStore item for $key")
+        val envelope = SecureStoreEnvelope.decode(stored) ?: run {
+            unreadable(UnreadableItem.Malformed)
+            throw GeneralSecurityException("Could not parse the SecureStore item for $key")
+        }
         if (envelope.requireAuthentication) {
             // Needs a biometric prompt; happy-app never stores such items.
+            unreadable(UnreadableItem.AuthRequired)
             return null
         }
         return try {
             when (envelope.scheme) {
                 SCHEME_AES -> {
                     val secretKey = keys.secretKey(aesAlias(envelope.usesKeystoreSuffix)) ?: run {
+                        unreadable(UnreadableItem.KeyMissing)
                         deleteItem(key)
                         return null
                     }
                     decrypt(envelope, secretKey)
                 }
                 SCHEME_HYBRID -> {
-                    val privateKey = keys.privateKey(hybridAlias(envelope.usesKeystoreSuffix)) ?: return null
+                    val privateKey = keys.privateKey(hybridAlias(envelope.usesKeystoreSuffix)) ?: run {
+                        unreadable(UnreadableItem.KeyMissing)
+                        return null
+                    }
                     val encryptedKey = envelope.encryptedSecretKey ?: throw GeneralSecurityException("Hybrid item without a key")
                     val aesKey = rsaCipher().run {
                         init(Cipher.DECRYPT_MODE, privateKey)
@@ -175,12 +189,17 @@ class ExpoSecureStore(
                     }
                     decrypt(envelope, SecretKeySpec(aesKey, "AES"))
                 }
-                else -> throw GeneralSecurityException("The item for key $key has an unknown encoding scheme ${envelope.scheme}")
+                else -> {
+                    unreadable(UnreadableItem.Malformed)
+                    throw GeneralSecurityException("The item for key $key has an unknown encoding scheme ${envelope.scheme}")
+                }
             }
         } catch (_: KeyPermanentlyInvalidatedException) {
+            unreadable(UnreadableItem.KeyInvalidated)
             null
         } catch (_: BadPaddingException) {
             // A key from a previous install: the value can never be read again.
+            unreadable(UnreadableItem.DecryptFailed)
             deleteItem(key)
             null
         }
@@ -258,6 +277,18 @@ class ExpoSecureStore(
         const val SCHEME_HYBRID = "hybrid"
         private const val MIN_TAG_LENGTH_BITS = 96
     }
+}
+
+/** Why an item that is there can't be read ([ExpoSecureStore.getItem]). */
+enum class UnreadableItem {
+    /** No Keystore key for it (reinstalled, or restored without it): deleted, as in expo. */
+    KeyMissing,
+    KeyInvalidated,
+    /** The key doesn't open it: deleted, as in expo. */
+    DecryptFailed,
+    AuthRequired,
+    /** Not expo's envelope, or an unknown scheme. */
+    Malformed,
 }
 
 /** One stored value, as expo-secure-store serialises it. */

@@ -1,10 +1,12 @@
 package com.slopus.happy
 
 import android.content.Context
+import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import com.slopus.happy.accounts.AccountDisplay
 import com.slopus.happy.accounts.AccountRemovals
 import com.slopus.happy.accounts.AccountStore
+import com.slopus.happy.accounts.CredentialLocation
 import com.slopus.happy.accounts.RnServerConfigImporter
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.call.CallController
@@ -15,6 +17,7 @@ import com.slopus.happy.analytics.AnalyticsAgent
 import com.slopus.happy.analytics.AnalyticsBuild
 import com.slopus.happy.analytics.AnalyticsEvent
 import com.slopus.happy.analytics.AnalyticsReasons
+import com.slopus.happy.analytics.RnImportError
 import com.slopus.happy.analytics.AnalyticsSwitch
 import com.slopus.happy.analytics.AnalyticsTarget
 import com.slopus.happy.analytics.accountsOptedOut
@@ -36,6 +39,7 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.auth.SecureStoreCredentialStore
 import com.slopus.happy.auth.SecureStoreKeys
+import com.slopus.happy.auth.UnreadableCredentials
 import com.slopus.happy.auth.tokenSubject
 import com.slopus.happy.config.FeatureFlags
 import com.slopus.happy.config.LiveAvatarsSetting
@@ -170,18 +174,25 @@ class AppGraph(
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+    /** Why the React Native app's credential item last read as signed out ([rnImportFailure]). */
+    @Volatile private var rnCredentialsUnreadable: UnreadableCredentials? = null
+
+    /** The React Native app's credential item, which the first Happy account keeps. */
+    private val rnCredentials = SecureStoreCredentialStore(
+        ExpoSecureStore(
+            prefs = context.getSharedPreferences(ExpoSecureStore.PREFS_NAME, Context.MODE_PRIVATE),
+            keys = secureStoreKeys,
+            defaultPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE),
+        ),
+        unreadable = { rnCredentialsUnreadable = it },
+    )
+
     /**
      * The Happy accounts signed in here. The first keeps the React Native
      * app's credential item and server setting, so an upgrade stays signed in.
      */
     val accountStore = AccountStore(
-        shared = SecureStoreCredentialStore(
-            ExpoSecureStore(
-                prefs = context.getSharedPreferences(ExpoSecureStore.PREFS_NAME, Context.MODE_PRIVATE),
-                keys = secureStoreKeys,
-                defaultPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE),
-            ),
-        ),
+        shared = rnCredentials,
         own = ExpoSecureStore(
             prefs = context.getSharedPreferences(AccountStore.CREDENTIALS_PREFS_NAME, Context.MODE_PRIVATE),
             keys = secureStoreKeys,
@@ -190,7 +201,32 @@ class AppGraph(
         prefs = context.getSharedPreferences(AccountStore.PREFS_NAME, Context.MODE_PRIVATE),
         defaultServerUrl = defaultServerUrl,
         importRnServer = { RnServerConfigImporter.read(File(appContext.filesDir, "mmkv"), defaultServerUrl) },
-    ).also { it.reconcile() }
+    )
+
+    /** Why this start couldn't open the React Native app's account; null when it did, or there was none to open. */
+    internal val rnImportFailure: RnImportError? = reconcileAtStart()
+
+    /**
+     * The first reconcile, which imports the React Native app's account the
+     * first time its item is found. It never stops the graph (and the
+     * analytics that would say why) from being built.
+     */
+    private fun reconcileAtStart(): RnImportError? {
+        val importing = rnCredentials.isStored() && accountStore.registry.value.entries.none { it.location == CredentialLocation.Shared }
+        try {
+            accountStore.reconcile()
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not reconcile the accounts at start", e)
+            return if (importing) RnImportError.Unknown else null
+        }
+        if (!importing) return null
+        val imported = accountStore.registry.value.entries.firstOrNull { it.location == CredentialLocation.Shared }
+        return when {
+            imported == null -> AnalyticsReasons.rnImport(rnCredentialsUnreadable)
+            !imported.serverConfirmed -> RnImportError.ServerUnconfirmed
+            else -> null
+        }
+    }
 
     private val removals = AccountRemovals(context.getSharedPreferences(AccountRemovals.PREFS_NAME, Context.MODE_PRIVATE))
 
@@ -700,6 +736,7 @@ class AppGraph(
             links = link,
             network = appContext.networkPath(),
             flags = featureFlags::set,
+            launch = listOfNotNull(rnImportFailure?.let(AnalyticsEvent::RnImportFailed)),
         )
     }
 
@@ -939,6 +976,8 @@ sealed interface OpenAccount {
         override val key: String get() = "agent:$id"
     }
 }
+
+private const val TAG = "AppGraph"
 
 /**
  * Preferences that hold this account's data or choices and go with it on

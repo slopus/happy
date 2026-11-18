@@ -621,7 +621,12 @@ expo-secure-store 55.0.9's Android storage (`SecureStoreModule.kt`,
   with `usesKeystoreSuffix: false`). The hybrid RSA scheme (API < 23) is
   read-only, as in expo.
 - Failure handling matches expo: a missing Keystore key or one that no
-  longer opens the value deletes the entry.
+  longer opens the value deletes the entry. Any other failure of a read (a
+  Keystore `ProviderException`, `IllegalStateException`, …) reads as signed
+  out and leaves the item, as tokenStorage.ts's catch does; it never stops
+  `AppGraph` from being built. A start that finds the item and can't open
+  it (or can't trust its server) sends `rn_import_failed` with the reason
+  (`RnUpgradeTest`).
 
 If expo-secure-store is upgraded in happy-app, diff its Android sources
 against this file. `ExpoSecureStoreTest` runs a copy of expo's read and write code

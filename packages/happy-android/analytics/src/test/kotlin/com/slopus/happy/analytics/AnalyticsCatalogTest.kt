@@ -110,6 +110,7 @@ class AnalyticsCatalogTest {
             ErrorArea.entries.forEach { area -> ErrorCode.entries.forEach { add(AnalyticsEvent.ErrorShown(area, it)) } }
             CrashProcess.entries.forEach { process -> CrashReason.entries.forEach { add(AnalyticsEvent.AppCrashed(process, it, "1.8.0")) } }
             add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.Crash, null))
+            RnImportError.entries.forEach { add(AnalyticsEvent.RnImportFailed(it)) }
             PairingMethod.entries.forEach { method ->
                 PairingStart.entries.forEach { start ->
                     add(AnalyticsEvent.MobilePairingCompleted(method, start))

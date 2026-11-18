@@ -69,6 +69,9 @@ Errors and results:
 - `app_crashed`: the app died abnormally. Reported at the next launch from
   the OS's exit records, of which only the exception type or signal and the
   app version are read.
+- `rn_import_failed` (Android): at a start, the React Native app's account
+  was on the phone but couldn't be opened, with why; the person is signed
+  out, or held until they confirm its server (`server_unconfirmed`).
 - `mobile_pairing_failed`: a phone pairing ended unlinked, with why.
 - `sign_in_failed`: creating, restoring or signing in to an account failed.
   Leaving the flow sends nothing.
