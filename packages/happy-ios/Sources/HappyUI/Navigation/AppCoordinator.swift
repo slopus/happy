@@ -322,7 +322,6 @@ public final class AppCoordinator {
         ThemeController.apply(from: context, to: window)
         let session: AccountSession?
         if case .signedIn(let value) = state { session = value } else { session = nil }
-        VoiceCoordinator.shared.accountDidChange(to: session)
         let identity = session.map(ObjectIdentifier.init)
         let pending = context.account.pendingServerConfirmation
         let agentConnectionID = context.account.agentConnections.activeID

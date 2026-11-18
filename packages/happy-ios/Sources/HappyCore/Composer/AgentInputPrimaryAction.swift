@@ -1,14 +1,12 @@
 import Foundation
 
 /// agentInputPrimaryAction.ts: what the composer's one round button does.
-/// Send, stop and voice share it.
+/// Send, stop and dictation share it.
 public enum AgentInputPrimaryAction: String, Equatable, Sendable {
     case send
     case stop
     /// The agent refuses steering while it works; pressing shakes the card.
     case blocked
-    /// Starts or reopens the foreground voice conversation.
-    case voice
     /// Telegram's microphone in send's place while there is nothing to
     /// send: hold to dictate (`RecordButton`).
     case record
@@ -26,7 +24,6 @@ public enum AgentInputPrimaryAction: String, Equatable, Sendable {
         isSendDisabled: Bool,
         showAbortButton: Bool,
         canAbort: Bool,
-        canVoice: Bool = false,
         canRecord: Bool = false
     ) -> AgentInputPrimaryAction {
         if showAbortButton && canAbort && !hasComposerContent {
@@ -40,9 +37,6 @@ public enum AgentInputPrimaryAction: String, Equatable, Sendable {
         }
         if !isSendDisabled && canRecord {
             return .record
-        }
-        if !isSendDisabled && canVoice {
-            return .voice
         }
         return .idle
     }

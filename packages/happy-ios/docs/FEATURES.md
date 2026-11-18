@@ -231,15 +231,7 @@ accident.
 
 ### Voice
 
-- **Off for now** (`LegacyVoice`, user request): no microphone in a session's composer, and nothing below runs; the code stays. An agent connection's call is apart and on.
-- Native microphone and speaker conversation uses the official ElevenLabs Swift SDK 3.4.0 through SwiftPM, with its LiveKit WebRTC transport. The authenticated account server grants a short-lived conversation token; no provider API key or RevenueCat SDK is embedded in the app.
-- Free allowance, subscription requirements, hard time limits and conversation limits remain server controlled. A valid backend grant connects without a purchase configuration. Backend denial shows the matching reason; subscription denial opens Support Us.
-- The empty iPhone composer starts voice. Its active status row reopens listening/speaking, microphone mute and stop controls. Dismissing controls keeps the foreground call active. Backgrounding, account switch/sign-out, audio interruption, audio reset and headphone removal stop capture and playback.
-- Available sessions, focus, recent visible messages, completion signals and pending permission requests update the context. Client tools validate arguments, send text through the existing outbox and answer existing permission requests through the existing session RPCs. The voice prompt requires explicit user approval for permissions.
-- Settings show server usage, sync `voiceAssistantLanguage`, search supported languages and support a user's explicitly configured public ElevenLabs agent through Direct Connection. The current Swift SDK maps Brazilian Portuguese to its supported Portuguese enum.
-- Voice requests stay on the active account's own confirmed server. This intentionally avoids silently signing the same account into Happy Cloud when a custom server is active.
-- Voice is a Happy account's only: credentials, usage and sessions come from its server, so a computer's Settings has no Voice page.
-- Status rows reuse the existing measured GroupedList/ItemRow and composer layout; no decorative waveform or separate speech-to-text substitute is used. Live microphone/speaker verification depends on the configured backend and available audio device; verification evidence is recorded with the change.
+- **Deleted** (Kirill): a Happy account's sessions have no voice. The relay's ElevenLabs conversation, its composer microphone, status screen, Settings' Voice Assistant page, server grant and usage, and client tools are gone; the account's synced voice settings stay, unread. An agent connection's call (`HappyCore/Call`, `HappyUI/Call`, see AGENTS.md) is the app's voice.
 
 ## Platform
 

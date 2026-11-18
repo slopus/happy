@@ -33,7 +33,7 @@ private struct Unreachable: AgentTransport {
 
 /// One Settings for both kinds of profile: a computer's page and a Happy
 /// account's in the same order and the same cards, Support us on both,
-/// Voice and Backup & Restore in settings' cards, and no connected
+/// Backup & Restore in settings' cards, and no connected
 /// services or Manage Accounts left. Pictures go to the repository's
 /// `.context/evidence/settings-unified`.
 @MainActor
@@ -143,7 +143,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         XCTAssertEqual(settings.shownRowIDs, [
             ["account:\(id)", SettingsIndex.connectAgent.id],
             ["account", "backup-restore"],
-            ["appearance", "language", "voice", "agents", "data-storage"],
+            ["appearance", "language", "agents", "data-storage"],
             ["scan-terminal", "enter-terminal"],
             ["support-us"],
             [SettingsIndex.privacySettings.id],
@@ -160,7 +160,6 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         for gone in Self.removed { XCTAssertNil(settings.shownRow(gone), "\(gone) is still on the page") }
         // Signing it out is its row's hold too, as Manage Accounts did.
         XCTAssertEqual(settings.shownRow("account:\(id)")?.menu.map(\.title), [Strings.signOut])
-        XCTAssertEqual(settings.shownRow("voice")?.title, Strings.Voice.title)
         XCTAssertFalse(AccountSwitcher(context: context, controller: settings).menuElements().contains { menu in
             (menu as? UIMenu)?.children.contains { ($0 as? UIAction)?.identifier.rawValue == "account-manage" || ($0 as? UIAction)?.title == "Manage Accounts" } == true
         }, "the switcher still offers Manage Accounts")
@@ -191,9 +190,6 @@ final class HostedSettingsUnifiedTests: XCTestCase {
             SettingsIndex.aboutRows.map(\.id),
             ["disconnect"],
         ])
-        // The relay's Voice runs on a Happy account's server and sessions; a
-        // computer has neither, so its page has the agent call's Voice instead.
-        XCTAssertNil(settings.shownRow("voice"))
         for gone in Self.removed { XCTAssertNil(settings.shownRow(gone), "\(gone) is still on the page") }
         XCTAssertEqual(settings.shownRow("account:\(computer)")?.menu.map(\.title), [Strings.disconnect])
         // Support Happy's boba row is its Support us; no second one.
@@ -287,57 +283,6 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         XCTAssertTrue(told)
     }
 
-    // MARK: Voice
-
-    /// Voice's values are the account's synced settings, where
-    /// `VoiceContext` reads them when the microphone is pressed.
-    func testTheVoicePageKeepsItsValues() async throws {
-        let (account, context, _) = try await rig()
-        let session = try XCTUnwrap(account.session)
-        var latest = SettingsSnapshot()
-        let observation = session.store.observeSettings { latest = $0 }
-        let settings = SettingsViewController(context: context, computer: nil)
-        let (navigation, window) = try await host(settings)
-        _ = try await until { settings.shownRow("voice") != nil }
-        settings.tapRow("voice")
-        let opened = try await until { navigation.topViewController is VoiceSettingsViewController && navigation.transitionCoordinator == nil }
-        XCTAssertTrue(opened, "Voice didn't open: \(navigation.viewControllers)")
-        let voice = try XCTUnwrap(navigation.topViewController as? VoiceSettingsViewController)
-        // Voice in a Happy account's sessions is off (`LegacyVoice`): said so, its settings kept.
-        XCTAssertEqual(voice.shownRowIDs, [["voice-off"], ["voice-language"], ["voice-agent-id", "voice-direct"]])
-        XCTAssertEqual(voice.shownFooters.count, 2)
-
-        // A switch is kept.
-        XCTAssertEqual(voice.shownRow("voice-direct")?.isOn, false)
-        voice.shownRow("voice-direct")?.toggled?(true)
-        let kept = try await until { AccountSettings(latest).bool("voiceBypassToken") }
-        XCTAssertTrue(kept, "Direct Connection didn't reach the account's settings")
-        XCTAssertEqual(voice.shownRow("voice-direct")?.isOn, true)
-
-        // A language is kept, and shows on the page it came back to.
-        voice.tapRow("voice-language")
-        let languages = try await until { navigation.topViewController is VoiceLanguageViewController && navigation.transitionCoordinator == nil }
-        XCTAssertTrue(languages)
-        let list = try XCTUnwrap(navigation.topViewController as? VoiceLanguageViewController)
-        XCTAssertEqual(list.shownRowIDs.first?.count, VoiceLanguage.all.count)
-        list.tapRow("voice-language:de-DE")
-        let back = try await until { navigation.topViewController === voice && navigation.transitionCoordinator == nil }
-        XCTAssertTrue(back)
-        let chosen = try await until { AccountSettings(latest).string("voiceAssistantLanguage") == "de-DE" && voice.shownRow("voice-language")?.value == "Deutsch" }
-        XCTAssertTrue(chosen, "the language wasn't kept: \(String(describing: voice.shownRow("voice-language")?.value))")
-
-        // A page opened afresh reads them back.
-        let again = VoiceSettingsViewController(context: context, session: session)
-        again.loadsUsage = false
-        navigation.pushViewController(again, animated: false)
-        let reread = try await until { again.shownRow("voice-direct")?.isOn == true && again.shownRow("voice-language")?.value == "Deutsch" }
-        XCTAssertTrue(reread)
-        navigation.popViewController(animated: false)
-
-        try await capture(window, "voice")
-        withExtendedLifetime(observation) {}
-    }
-
     // MARK: Account, Backup & Restore
 
     func testBackupShowsTheKeyAndRestoreIsReachable() async throws {
@@ -401,7 +346,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         _ = try await until { settings.shownRow("backup-restore") != nil }
         let search = try XCTUnwrap(settings.navigationItem.searchController)
         settings.willPresentSearchController(search)
-        for (query, id) in [("secret", "secret-key"), ("voice", "voice"), ("manage subscriptions", "manage-subscriptions"), ("link new", "link-device")] {
+        for (query, id) in [("secret", "secret-key"), ("manage subscriptions", "manage-subscriptions"), ("link new", "link-device")] {
             search.searchBar.text = query
             settings.updateSearchResults(for: search)
             XCTAssertTrue(settings.shownRowIDs.joined().contains(id), "\(query): \(settings.shownRowIDs)")

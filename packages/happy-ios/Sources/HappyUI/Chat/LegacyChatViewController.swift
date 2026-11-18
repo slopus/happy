@@ -533,7 +533,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         #endif
         // In its window now, which a later layout may not follow.
         ultraKeyboard?.refresh()
-        VoiceCoordinator.shared.focus(account: account, sessionId: chatId)
         takeComposeFocus()
         keyboardPushed = false
     }
@@ -1327,7 +1326,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         let actions = account.actions
         Task.detached(priority: .userInitiated) { actions.markRead(sessionId: id) }
         account.spawnRequests.release(sessionId: id)
-        VoiceCoordinator.shared.focus(account: account, sessionId: id)
         // The shell keeps the sidebar's row on the tab shown.
         if let navigation = navigationController {
             navigation.delegate?.navigationController?(navigation, didShow: self, animated: false)

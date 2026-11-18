@@ -7,7 +7,6 @@ import UIKit
 /// has Support Happy's boba row instead). Subscribe pushes Support Happy's
 /// page (`SupportViewController`, always, on sale or not); Restore
 /// restores, on the tap only; a subscriber is thanked. Nothing restores or charges on opening it.
-/// The relay's voice access remains the server's decision.
 ///
 /// happy-app's SettingsView opens its hosted voluntary_support paywall;
 /// its title, subtitle, heart and unavailable copy are retained here.

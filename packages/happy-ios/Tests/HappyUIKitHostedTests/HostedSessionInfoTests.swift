@@ -320,7 +320,7 @@ final class HostedSessionInfoTests: XCTestCase {
         window.layoutIfNeeded()
         let routes: [Route] = [
             .session(id: Self.sessionId), .sessionInfo(id: Self.sessionId), .sessionChanges(id: Self.sessionId),
-            .machine(id: "test-mac"), .settings, .settingsAppearance, .settingsLanguage, .settingsVoice,
+            .machine(id: "test-mac"), .settings, .settingsAppearance, .settingsLanguage,
         ]
         for route in routes {
             let top = try XCTUnwrap(navigation.topViewController)

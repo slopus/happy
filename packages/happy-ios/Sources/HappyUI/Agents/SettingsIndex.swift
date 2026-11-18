@@ -27,7 +27,6 @@ enum SettingsIndex {
     static var account: Entry { Entry(id: "account", title: Strings.Settings.account, glyph: "person-circle-outline", tile: .blue) }
     static var backupRestore: Entry { Entry(id: "backup-restore", title: Strings.BackupRestore.title, glyph: "key-outline", tile: .green) }
     static var language: Entry { Entry(id: "language", title: Strings.SettingsLanguage.title, glyph: "language-outline", tile: .green) }
-    static var voice: Entry { Entry(id: "voice", title: Strings.Voice.title, glyph: "mic-outline", tile: .orange) }
     static var agents: Entry { Entry(id: "agents", title: Strings.Settings.agents, glyph: "options-outline", tile: .teal) }
     static var providers: Entry { Entry(id: "providers", title: Strings.Providers.title, glyph: "key-outline", tile: .indigo) }
     /// A Happy Cloud server's two documents every agent follows.
@@ -79,7 +78,7 @@ enum SettingsIndex {
     /// their order: the same places as a computer's, with the account's own
     /// pages beside them. Sign out is left out, as Disconnect is.
     static var happyAccount: [Entry] {
-        [account, backupRestore, appearance, language, voice, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs, privacySettings, analytics] + aboutRows
+        [account, backupRestore, appearance, language, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs, privacySettings, analytics] + aboutRows
     }
 
     /// The About page's rows.

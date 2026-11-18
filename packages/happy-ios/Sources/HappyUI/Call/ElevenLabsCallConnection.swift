@@ -4,10 +4,9 @@ import ElevenLabs
 import HappyCore
 import UIKit
 
-/// The hosted call agent over the official SDK. Apart from the relay's
-/// `ElevenLabsVoiceConnection` on purpose: the call's own prompt goes as
-/// the agent's prompt override, with its one variable,
-/// `initialConversationContext`; no greeting or relay tools are sent. Tool
+/// The hosted call agent over the official SDK. The call's own prompt goes
+/// as the agent's prompt override, with its one variable,
+/// `initialConversationContext`; no greeting is sent. Tool
 /// calls are answered one at a time, by their provider ID, and an ID seen
 /// before is never run again.
 @MainActor

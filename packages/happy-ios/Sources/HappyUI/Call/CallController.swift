@@ -10,7 +10,6 @@ import UIKit
 /// audio interruption or a lost route, and when the connection changes.
 /// What each call said is kept for the connection's next one
 /// (`CallHistory`), and a call that ends unasked plays `CallDropSound`.
-/// Apart from the relay's `VoiceCoordinator`: one call at a time, the newer wins.
 @MainActor
 final class CallController {
     static let shared = CallController()
@@ -61,15 +60,6 @@ final class CallController {
             let lost = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue
             MainActor.assumeIsolated { if lost { self?.hangUp(.interrupted) } }
         })
-        // One call at a time: the relay's starting ends this one.
-        observers.append(center.addObserver(forName: .voiceStateChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                switch VoiceCoordinator.shared.state {
-                case .connecting, .active: if self?.state.isLive == true { self?.close() }
-                default: break
-                }
-            }
-        })
     }
 
     var isShowing: Bool { state.isShown }
@@ -96,10 +86,8 @@ final class CallController {
         let targets = SessionCallTargets(session: account, shell: shell)
         let context = CallContext(targets: targets)
         let history = CallHistory(store: account.offline.map { OfflineCallHistoryStore(offline: $0) })
-        // The relay's call stops once this one really starts: a connection that can't call leaves it alone.
         let call = CallSession(grants: Self.grants, allowance: allowance, permission: {
-            VoiceCoordinator.shared.stop()
-            return await AVAudioApplication.requestRecordPermission()
+            await AVAudioApplication.requestRecordPermission()
         }, history: history) { grant, request, events in
             try await ElevenLabsCallConnection.connect(grant: grant, request: request, events: events)
         }

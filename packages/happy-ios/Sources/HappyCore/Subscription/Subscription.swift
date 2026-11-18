@@ -5,7 +5,7 @@ import HappyWire
 /// The app's one subscription: RevenueCat's `pro`, bought through the App
 /// Store (`SubscriptionStore`) and told to RevenueCat's REST API
 /// (`RevenueCatAPI`), without its SDK. Everything that sells it or asks
-/// about it asks here: voice's sheets and hours, the relay's voice, Support
+/// about it asks here: voice's sheets and hours, Support
 /// us, Settings.
 ///
 /// **Whose it is.** This install's own anonymous customer

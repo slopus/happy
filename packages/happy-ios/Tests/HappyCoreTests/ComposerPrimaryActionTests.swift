@@ -9,7 +9,6 @@ final class ComposerPrimaryActionTests: XCTestCase {
         isSendDisabled: Bool = false,
         showAbortButton: Bool = false,
         canAbort: Bool = true,
-        canVoice: Bool = false,
         canRecord: Bool = false
     ) -> AgentInputPrimaryAction {
         AgentInputPrimaryAction.resolve(
@@ -18,7 +17,6 @@ final class ComposerPrimaryActionTests: XCTestCase {
             isSendDisabled: isSendDisabled,
             showAbortButton: showAbortButton,
             canAbort: canAbort,
-            canVoice: canVoice,
             canRecord: canRecord
         )
     }
@@ -39,20 +37,8 @@ final class ComposerPrimaryActionTests: XCTestCase {
         XCTAssertEqual(resolve(), .idle)
     }
 
-    func testVoiceOnAnEmptyComposerWhenDictationIsAvailable() {
-        XCTAssertEqual(resolve(canVoice: true), .voice)
-    }
-
-    func testStopAheadOfVoiceWhileThinking() {
-        XCTAssertEqual(resolve(showAbortButton: true, canVoice: true), .stop)
-    }
-
-    func testSendAheadOfVoiceWithContent() {
-        XCTAssertEqual(resolve(hasComposerContent: true, canVoice: true), .send)
-    }
-
     func testStopForABlankComposerWhenSteeringIsBlocked() {
-        XCTAssertEqual(resolve(isSendBlocked: true, showAbortButton: true, canVoice: true), .stop)
+        XCTAssertEqual(resolve(isSendBlocked: true, showAbortButton: true), .stop)
     }
 
     func testBlockedSendForContent() {

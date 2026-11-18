@@ -11,8 +11,6 @@ enum OfferSheet: Equatable {
     case welcome
     /// Voice's time is used; when some is back, if that is known. Its start is greyed out.
     case used(freeAgain: Date?)
-    /// The relay's voice refused without the subscription: voice's sheet with no free way on.
-    case required
 }
 
 /// How an offer sheet was closed.
@@ -27,7 +25,7 @@ enum OfferResult: Equatable {
 
 /// The app's one subscription (`Subscription`) and its offer sheets, one
 /// at a time, for everything that sells it: the agent call's welcome and
-/// used-up sheet, the relay's voice; Support Happy's page and Settings buy
+/// used-up sheet; Support Happy's page and Settings buy
 /// and restore through it too. Built once,
 /// with the build's RevenueCat key; without one it sells nothing.
 @MainActor

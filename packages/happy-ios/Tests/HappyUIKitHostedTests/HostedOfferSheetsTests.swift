@@ -125,7 +125,7 @@ final class HostedOfferSheetsTests: XCTestCase {
             try await Task.sleep(for: .seconds(1))
             capture(window, "welcome")
             // Another while one is up: not shown, nothing more.
-            let second = await offers.ask(.required, over: top)
+            let second = await offers.ask(.used(freeAgain: nil), over: top)
             XCTAssertEqual(second, .dismissed)
             sheet.close.sendActions(for: .primaryActionTriggered)
             var result = await answer.value
@@ -145,16 +145,6 @@ final class HostedOfferSheetsTests: XCTestCase {
             try await Task.sleep(for: .seconds(1))
             capture(window, "used")
             sheet.session.sendActions(for: .touchUpInside)
-            sheet.close.sendActions(for: .primaryActionTriggered)
-            result = await answer.value
-            XCTAssertEqual(result, .dismissed)
-            try await closed(top)
-
-            (sheet, answer) = try await open(.required, offers, over: top, as: CallSheetViewController.self)
-            XCTAssertNil(sheet.session.superview, "the relay's refusal offers a free way on")
-            XCTAssertNotNil(sheet.subscribe)
-            try await Task.sleep(for: .seconds(1))
-            capture(window, "required")
             sheet.close.sendActions(for: .primaryActionTriggered)
             result = await answer.value
             XCTAssertEqual(result, .dismissed)

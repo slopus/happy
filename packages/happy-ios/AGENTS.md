@@ -153,16 +153,13 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   - artifacts and the recent-sessions screen, which have no entry point;
   - web and desktop-only UI (command palette, shortcut hints, sidebar
     navigator, web tab bar), purchases and analytics.
-- **Voice in a Happy account's sessions is off** (`LegacyVoice`, user
-  request): the relay's ElevenLabs voice (`HappyUI/Voice`, `HappyCore/Voice`)
-  stays in the tree, out of reach. The session composer shows no microphone,
-  `VoiceCoordinator.start` says so before any context, status screen,
-  microphone, grant or provider, and Settings' Voice Assistant says so with
-  no usage request or Upgrade (`HostedLegacyVoiceGateTests`). Don't delete
-  the engine, or turn it back on, without the user. DEBUG runs can
-  (`HAPPY_RELAY_VOICE=1`) to look into it.
+- **A Happy account's sessions have no voice** (Kirill): the relay's
+  ElevenLabs voice, its composer microphone, status screen, Settings' Voice
+  Assistant page, grant, usage and client tools, is deleted. Its synced
+  settings (`voiceAssistantLanguage`, `voiceCustomAgentId`,
+  `voiceBypassToken`) stay in the account's settings, unread.
 - **An agent connection's voice call** (`HappyCore/Call`, `HappyUI/Call`) is
-  apart from that relay voice: home's three-bar button beside compose starts
+  the app's only voice: home's three-bar button beside compose starts
   it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
   Steve's permission) sits above the navigation bar and pushes the window
   down by its height. It talks to a hosted ElevenLabs agent of its own
@@ -201,8 +198,7 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   (`conversation_update`, or a line that nothing is new or it didn't come
   current). Nothing another conversation says is ever a cue: the agent
   speaks of it when the person asks, or when it bears on what it is saying.
-  It ends on background, interruption, lost route, account change and when
-  the relay's voice starts. For launch it connects to a public agent by its
+  It ends on background, interruption, lost route and account change. For launch it connects to a public agent by its
   ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.
   The ID is injected at build time (`HAPPY_CALL_AGENT_V3_ID`, from the ignored
   `Config/Call.local.xcconfig`, the command line or the environment) and is

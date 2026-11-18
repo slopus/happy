@@ -547,7 +547,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             [
                 Row(Index.appearance, action: { [weak self] in self?.push(.settingsAppearance, for: id) }),
                 Row(Index.language, action: { [weak self] in self?.open(.language) }),
-                Row(Index.voice, action: { [weak self] in self?.open(.voice) }),
                 Row(Index.agents, action: { [weak self] in self?.push(.settingsAgents, for: id) }),
                 Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
             ],
@@ -590,7 +589,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     /// The pages a row opens in settings' cards.
     enum Page: CaseIterable {
-        case appearance, agents, supportUs, account, backup, voice, language, dataStorage, agentVoice, privacy
+        case appearance, agents, supportUs, account, backup, language, dataStorage, agentVoice, privacy
     }
 
     /// Whether `profile`'s page has `page`: a computer's look, or a Happy
@@ -602,7 +601,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // An agent connection's is Support Happy, the boba row.
         case .supportUs: !profile.isAgentConnection
         case .dataStorage: profile.isAgentConnection || activeSession != nil
-        case .account, .backup, .voice, .language: !profile.isAgentConnection && activeSession != nil
+        case .account, .backup, .language: !profile.isAgentConnection && activeSession != nil
         }
     }
 
@@ -614,7 +613,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         case .supportUs: SupportUsViewController()
         case .account: activeSession.map { AccountSettingsViewController(context: context, session: $0) }
         case .backup: activeSession.map { BackupSettingsViewController(context: context, session: $0) }
-        case .voice: activeSession.map { VoiceSettingsViewController(context: context, session: $0) }
         case .agentVoice: AgentVoiceViewController(status: voiceStatus)
         case .language: activeSession.map { SettingsLanguageViewController(session: $0) }
         case .dataStorage:

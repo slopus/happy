@@ -32,8 +32,7 @@ public protocol CallGrantSource: Sendable {
 }
 
 /// The hosted agent these calls use: a versioned ElevenLabs agent with
-/// its own prompt and the four tools of `CallTool` (v3), apart from the
-/// relay's (`HappyAPI.voiceAgentID`, which stays as it is).
+/// its own prompt and the four tools of `CallTool` (v3).
 public enum CallAgent {
     /// The build's `HappyCallAgentID`, from `HAPPY_CALL_AGENT_V3_ID`: set
     /// only in an ignored `Config/Call.local.xcconfig` or on the build's

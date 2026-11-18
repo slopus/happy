@@ -7,8 +7,7 @@ import UIKit
 /// (`StartViewController`): its Grain Gradient behind, its words and pill
 /// on it, centred. The welcome a device sees before its first call; the
 /// same screen once its time is used (`CallAllowance`), its start greyed
-/// out; and the relay's voice refused without the subscription, with no
-/// start at all. The podcast mic, a headline and what voice does; at the
+/// out. The podcast mic, a headline and what voice does; at the
 /// bottom the subscription where one is on offer (`Offers`) with Restore
 /// Purchases, then "Start Voice Session". Closed by its ✕ or a swipe down,
 /// which starts nothing.
@@ -77,7 +76,6 @@ final class CallSheetViewController: OfferSheetViewController {
             subscribed
                 ? freeAgain.map { Strings.Offer.paidUsedNote(Self.when($0, now: Date())) } ?? Strings.Offer.paidUsedNote
                 : freeAgain.map { Strings.Call.usedNote(Self.when($0, now: Date())) } ?? Strings.Call.usedNoteLater
-        case .required: Strings.Voice.subscriptionRequired
         }
         let benefits = UIStackView(arrangedSubviews: [
             Benefit(symbol: "text.bubble", title: Strings.Call.welcomeAsk),
@@ -98,7 +96,7 @@ final class CallSheetViewController: OfferSheetViewController {
         switch screen {
         case .welcome:
             session.addAction(UIAction { [weak self] _ in self?.finish(.start) }, for: .touchUpInside)
-        case .used, .required:
+        case .used:
             session.isEnabled = false
         }
         drawFooter()
@@ -220,7 +218,7 @@ final class CallSheetViewController: OfferSheetViewController {
         }
         restore = offers.canRestore && offer != .subscribed ? OfferLink.restore(for: self) : nil
         if let restore { footer.addArrangedSubview(restore) }
-        if screen != .required { footer.addArrangedSubview(centred(session, width: Metrics.button)) }
+        footer.addArrangedSubview(centred(session, width: Metrics.button))
         var notes: [String] = []
         if unconfirmed { notes.append(Strings.Offer.unconfirmedNote) }
         if case .preview = offer { notes.append(Strings.Call.upgradePreviewNote) }

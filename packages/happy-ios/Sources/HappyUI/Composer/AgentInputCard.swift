@@ -2057,9 +2057,6 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         case .blocked:
             iconView.icon = .ionicons("lock-closed")
             iconView.size = AgentInputCardLayout.Metrics.lockIconSize
-        case .voice:
-            iconView.icon = .ionicons("mic-outline")
-            iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
         case .send, .idle:
             // HomeDock draws Ionicons' arrow; AgentInput Octicons'.
             iconView.icon = style == .newSession ? .ionicons("arrow-up") : .octicons("arrow-up")
@@ -2159,7 +2156,7 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             layer.borderWidth = 1
             layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
             iconView.tintColor = UIColor(Palette.textSecondary)
-        case .send, .voice, .record:
+        case .send, .record:
             backgroundColor = UIColor(Palette.surfaceHighest)
             iconView.tintColor = UIColor(Palette.text)
         case .idle:

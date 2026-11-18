@@ -1,9 +1,7 @@
 import Foundation
 
-/// A voice call with an agent connection's agents: ElevenLabs' new hosted
-/// agent (not the relay's, `Voice/`), its audio, context and five client
-/// tools all on this phone. Nothing here is shared with the relay's voice
-/// or with any other voice provider.
+/// A voice call with an agent connection's agents: ElevenLabs' hosted
+/// agent, its audio, context and client tools all on this phone.
 
 public enum CallActivity: Equatable, Sendable {
     case listening

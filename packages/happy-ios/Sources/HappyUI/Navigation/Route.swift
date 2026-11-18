@@ -28,8 +28,6 @@ enum Route: Hashable {
     case settingsAppearance
     case settingsLanguage
     case settingsAgents
-    case settingsVoice
-    case settingsVoiceLanguage
     case supportUs
     case changelog
     case developer
@@ -79,10 +77,6 @@ enum Screens {
             return SettingsLanguageViewController(session: session)
         case .settingsAgents:
             return SettingsAgentsViewController(context: context, session: session)
-        case .settingsVoice:
-            return VoiceSettingsViewController(context: context, session: session)
-        case .settingsVoiceLanguage:
-            return VoiceLanguageViewController(session: session)
         case .supportUs:
             return SupportUsViewController()
         case .changelog:
