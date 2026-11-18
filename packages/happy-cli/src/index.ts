@@ -29,7 +29,11 @@ import { handleSandboxCommand } from './commands/sandbox'
 import { handleServerCommand } from './commands/server'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
+import os from 'node:os'
+import { join } from 'node:path'
+import { createRequire } from 'node:module'
+import { projectPath } from '@/projectPath'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
@@ -125,6 +129,40 @@ Conversation history is preserved on the server, but in-flight tool calls are in
   } else if (subcommand === 'bye') {
     console.log('Bye!');
     process.exit(0);
+  } else if (subcommand === 'update' || subcommand === 'upgrade') {
+    // Delegate straight to claude. Without this branch it falls through to the
+    // session launcher, which appends Happy's hook `--settings` — an option
+    // claude's update command doesn't accept, so it always fails.
+    //
+    // This resolves the claude binary rather than going through
+    // claude_local_launcher.cjs: the launcher sets DISABLE_AUTOUPDATER=1 and
+    // replaces global.fetch to report progress over fd 3, and neither belongs in
+    // a one-shot update that isn't part of a session.
+    const require_ = createRequire(import.meta.url)
+    const { findGlobalClaudeCliPath } = require_(join(projectPath(), 'scripts', 'claude_version_utils.cjs'))
+    const found = findGlobalClaudeCliPath()
+    if (!found?.path) {
+      console.error(chalk.red('Error:'), 'Could not find the claude CLI. Install it with: npm install -g @anthropic-ai/claude-code')
+      process.exit(1)
+    }
+    // A JS entrypoint has to go to node; a native binary runs on its own.
+    const isJsFile = found.path.endsWith('.js') || found.path.endsWith('.cjs')
+    const rest = [subcommand, ...args.slice(1)]
+    const result = spawnSync(
+      isJsFile ? process.execPath : found.path,
+      isJsFile ? [found.path, ...rest] : rest,
+      { stdio: 'inherit', windowsHide: true }
+    )
+    if (result.error) {
+      console.error(chalk.red('Error:'), result.error.message)
+      process.exit(1)
+    }
+    if (result.signal) {
+      // Report the signal the way a shell would, so Ctrl+C stays distinguishable
+      // from claude exiting 1 on its own.
+      process.exit(128 + (os.constants.signals[result.signal] ?? 0))
+    }
+    process.exit(result.status ?? 1)
   } else if (subcommand === 'resume') {
     try {
       await handleResumeCommand(args.slice(1));
