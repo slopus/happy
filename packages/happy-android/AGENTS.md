@@ -2131,6 +2131,8 @@ normalization as the photo picker.
 
 The composer's label slot holds two chips, as iOS does (e2238fdc4,
 083c30df4): the model (bold) and its effort (`ConversationModelChips`).
+When both don't fit, only the model gives way: its name is cut and the
+effort keeps its width (iOS `AgentInputCardLayout.middle`).
 Each opens its own list (`ui/conversation/ModelPicker`), in Android's
 menu card instead of iOS glass. The list's trailing edge sits on the
 chip's, 10 dp above it, and it opens scrolled to the checked line.
