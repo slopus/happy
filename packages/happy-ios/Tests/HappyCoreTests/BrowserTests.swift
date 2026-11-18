@@ -16,6 +16,26 @@ final class BrowserTests: XCTestCase {
         XCTAssertEqual(BrowserPolicy.route(URL(string: "tel:1234")!), .system)
     }
 
+    /// A relay chat's or a signed-out screen's link has no agent connection
+    /// to open through: a page goes to Safari, never to an error page.
+    func testWithoutAConnectionPagesOpenInTheSystemBrowser() throws {
+        for link in ["https://github.com/slopus/happy", "https://happy.engineering/terms/", "http://Mac.local:3000/", "http://192.168.1.2:5173/", "https://8.8.8.8/"] {
+            let url = try XCTUnwrap(URL(string: link))
+            XCTAssertEqual(BrowserPolicy.route(url, connected: false), .system, link)
+            XCTAssertEqual(BrowserPolicy.route(url, connected: true), .web, link)
+        }
+        for host in ["localhost", "a.localhost", "127.0.0.1", "127.1", "0x7f000001", "0.0.0.0", "[::1]", "[::]", "[::ffff:127.0.0.1]"] {
+            let url = try XCTUnwrap(URL(string: "http://\(host):5173/"))
+            XCTAssertEqual(BrowserPolicy.route(url, connected: false), .web, host)
+            XCTAssertEqual(BrowserPolicy.route(url, connected: true), .web, host)
+        }
+        for link in ["mailto:steve@example.com", "tel:1234"] {
+            let url = try XCTUnwrap(URL(string: link))
+            XCTAssertEqual(BrowserPolicy.route(url, connected: false), .system, link)
+            XCTAssertEqual(BrowserPolicy.route(url, connected: true), .system, link)
+        }
+    }
+
     func testAuthority() {
         XCTAssertEqual(BrowserPolicy.Authority(url: URL(string: "https://EXAMPLE.com")!)?.text, "example.com:443")
         XCTAssertEqual(BrowserPolicy.Authority(url: URL(string: "http://[::1]:5173")!)?.text, "[::1]:5173")

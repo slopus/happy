@@ -14,6 +14,28 @@ public enum BrowserPolicy {
         return .web
     }
 
+    /// Where a link opens when `connected` says whether an agent
+    /// connection is there to open it through. Without one (a Happy
+    /// account's relay chats, whose legacy CLI has no proxy, or signed
+    /// out) the in-app browser can only fail, so a page goes to the
+    /// system's browser, as happy-app opened every link. A loopback page
+    /// stays: there it would be the phone's own, so it says there is no
+    /// connection instead.
+    public static func route(_ url: URL, connected: Bool) -> Route {
+        guard route(url) == .web, !connected else { return route(url) }
+        guard let authority = Authority(url: url) else { return .system }
+        return isPhoneOwn(authority) ? .web : .system
+    }
+
+    /// The phone's own machine as a link names it: its loopback or `0.0.0.0`.
+    private static func isPhoneOwn(_ authority: Authority) -> Bool {
+        var host = authority.host
+        if host.hasPrefix("::ffff:") { host.removeFirst(7) }
+        if ["localhost", "::1", "0.0.0.0", "::"].contains(host) || host.hasSuffix(".localhost") { return true }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count == 4 && parts[0] == "127" && parts.allSatisfy { UInt8($0) != nil }
+    }
+
     /// Addresses WebKit resolves inside the page, with nothing to fetch:
     /// a blank or srcdoc frame, data and blob URLs, `javascript:` links.
     public static func isInPage(_ url: URL) -> Bool {

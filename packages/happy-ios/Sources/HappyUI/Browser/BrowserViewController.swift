@@ -629,8 +629,9 @@ extension UIViewController {
     func openBrowser(_ url: URL, session: Session? = nil, agentID: String? = nil) {
         // A share link is a Happy link, opened in the app and never in a browser.
         if HappyShareLink.parse(url.absoluteString) != nil { return openHappyLink(url.absoluteString) }
-        guard BrowserPolicy.route(url) != .system else { UIApplication.shared.open(url); return }
-        let browser = BrowserViewController(url: url, session: session ?? browserConnection(), agentID: agentID)
+        let session = session ?? browserConnection()
+        guard BrowserPolicy.route(url, connected: session != nil) != .system else { UIApplication.shared.open(url); return }
+        let browser = BrowserViewController(url: url, session: session, agentID: agentID)
         if let navigationController { navigationController.pushViewController(browser, animated: true) }
         else {
             let navigation = UINavigationController(rootViewController: browser)

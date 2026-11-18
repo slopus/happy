@@ -43,6 +43,12 @@ append a second HTTP error response to its bytes.
   workspace explicitly marked local `compute.type: host`, never an arbitrary
   runner. Without a usable connection or route, loading fails with retry and
   **never creates a direct WebKit view**.
+- With no agent connection at all when a link opens (a Happy account's
+  relay chats, whose legacy CLI has no proxy, or signed out), there is
+  nothing to open it through, so `openBrowser` hands an http(s) link to the
+  system's browser, as happy-app did (`BrowserPolicy.route(_:connected:)`).
+  A loopback or `0.0.0.0` link is the exception: there it would be the
+  phone's own, so it still opens the browser's unavailable page.
 - A chat link opens in its agent's own network, the one its commands run
   in, as desktop's does: `GET /v0/workspaces/:ws/agents/:id/proxy` names it
   (`networkId`), and each target opens authenticated
@@ -272,8 +278,9 @@ a pinned version whose URL has since changed is refused inside the tunnel.
 
 The daemon exposes no unscoped host CONNECT endpoint, so host fallback needs a
 local host workspace. Legacy relay chats have no workspace-to-agent-connection
-mapping: the active agent connection can supply a host fallback, or the browser
-shows the unavailable state. No device-local localhost or public fallback occurs.
+mapping: their links open in the system's browser, a loopback one in the
+browser's unavailable state. Once a page is open in the browser, no
+device-local localhost or public fallback occurs.
 
 Hosted tests use real WebKit and the loopback listener against a byte-level fake
 daemon: artifact PUT and live SSE, relative JavaScript and WebSocket, a live
