@@ -820,6 +820,55 @@ final class CallContextTests: XCTestCase {
         await context.close()
     }
 
+    /// A read its deadline cut off while it waited: what the refresh
+    /// finds goes on as a line of context, never lost.
+    func testAReadPastItsDeadlineLeavesWhatTheRefreshFindsToContext() async throws {
+        let targets = backend(focus: nil)
+        try await kept(targets)
+        await targets.setRefresh("a", .to(try await answered(targets), after: .milliseconds(200)))
+        let context = CallContext(targets: targets, toolDeadline: .milliseconds(100), refresh: .seconds(2), freshWait: .milliseconds(400))
+        let readings = await reading(context)
+        _ = await context.initial()
+        let result = await tool(context, "readConversation", #"{"ref":"s1"}"#)
+        XCTAssertTrue(result.isError)
+        await waitFor { await !readings.all.isEmpty }
+        try? await Task.sleep(for: .milliseconds(100))
+        let all = await readings.all
+        XCTAssertEqual(all.count, 1)
+        let line = try contextObject(all.first)
+        XCTAssertEqual(line["event"] as? String, "conversation_update")
+        XCTAssertEqual((line["turns"] as? [[String: Any]])?.last?["assistant"] as? String, "Done: the cache is fixed.")
+        await context.close()
+    }
+
+    /// An update as long as a read could be goes within what the call
+    /// keeps waiting: the older turns give way, so it is never let go.
+    func testAnUpdateFitsWhatTheCallKeeps() async throws {
+        let targets = backend(focus: nil)
+        try await kept(targets)
+        let current = await targets.state(of: "a")
+        var newer = try XCTUnwrap(current)
+        newer.turns = (1...5).map { CallTurn(id: "l\($0)", user: thousandWords, reply: thousandWords) }
+        newer.unanswered = nil
+        await targets.setRefresh("a", .to(newer, after: .milliseconds(100)))
+        let context = CallContext(targets: targets, refresh: .seconds(2), freshWait: .milliseconds(20))
+        let readings = await reading(context)
+        _ = await context.initial()
+        _ = await tool(context, "readConversation", #"{"ref":"s1","words":5000}"#)
+        await waitFor { await !readings.all.isEmpty }
+        let first = await readings.all.first
+        let text = try XCTUnwrap(first)
+        let pendingBytes = await MainActor.run { CallSession.pendingBytes }
+        XCTAssertLessThanOrEqual(text.utf8.count, CallContext.Limits.updateBytes)
+        XCTAssertLessThan(CallContext.Limits.updateBytes, pendingBytes)
+        let line = try contextObject(text)
+        XCTAssertEqual(line["event"] as? String, "conversation_update")
+        let turns = try XCTUnwrap(line["turns"] as? [[String: Any]])
+        XCTAssertTrue((1..<5).contains(turns.count), "\(turns.count)")
+        XCTAssertNotNil(line["continueFrom"])
+        await context.close()
+    }
+
     /// What a refresh finds after the call ended is told to nobody.
     func testARefreshThatEndsAfterTheCallSaysNothing() async throws {
         let targets = backend(focus: nil)

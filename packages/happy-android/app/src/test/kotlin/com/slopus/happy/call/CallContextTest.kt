@@ -743,6 +743,47 @@ class CallContextTest {
         context.close()
     }
 
+    /** A read its deadline cut off while it waited: what the refresh finds goes on as a line of context, never lost. */
+    @Test
+    fun aReadPastItsDeadlineLeavesWhatTheRefreshFindsToContext() = runBlocking {
+        val targets = backend(focus = null)
+        kept(targets)
+        targets.refresh["a"] = FakeCallTargets.Refresh.To(answered(targets), 200)
+        val context = CallContext(targets, toolDeadlineMillis = 100, refreshMillis = 2_000, freshWaitMillis = 400)
+        val all = readings(context)
+        context.initial()
+        assertTrue(context.tool("readConversation", """{"ref":"s1"}""").isError)
+        waitFor { all.isNotEmpty() }
+        delay(100)
+        assertEquals(1, all.size)
+        val line = line(all.first())
+        assertEquals("conversation_update", line.str("event"))
+        assertEquals("Done: the cache is fixed.", line.turns().last().str("assistant"))
+        context.close()
+    }
+
+    /** An update as long as a read could be goes within what the call keeps waiting: the older turns give way, so it is never let go. */
+    @Test
+    fun anUpdateFitsWhatTheCallKeeps() = runBlocking {
+        val targets = backend(focus = null)
+        kept(targets)
+        val newer = targets.states["a"]!!.copy(turns = (1..5).map { CallTurn("l$it", thousandWords, thousandWords) }, unanswered = null)
+        targets.refresh["a"] = FakeCallTargets.Refresh.To(newer, 100)
+        val context = CallContext(targets, refreshMillis = 2_000, freshWaitMillis = 20)
+        val all = readings(context)
+        context.initial()
+        context.tool("readConversation", """{"ref":"s1","words":5000}""")
+        waitFor { all.isNotEmpty() }
+        val text = all.first()
+        assertTrue("${text.toByteArray().size}", text.toByteArray().size <= CallContext.Limits.UPDATE_BYTES)
+        assertTrue(CallContext.Limits.UPDATE_BYTES < CallSession.PENDING_BYTES)
+        val line = line(text)
+        assertEquals("conversation_update", line.str("event"))
+        assertTrue("${line.turns().size}", line.turns().size in 1 until 5)
+        assertTrue(line["continueFrom"] != null)
+        context.close()
+    }
+
     /** What a refresh finds after the call ended is told to nobody. */
     @Test
     fun aRefreshThatEndsAfterTheCallSaysNothing() = runBlocking {

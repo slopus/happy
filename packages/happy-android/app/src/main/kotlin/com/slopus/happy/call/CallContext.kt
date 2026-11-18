@@ -87,6 +87,11 @@ class CallContext(
          */
         const val READ_BYTES = 56 * 1024
         /**
+         * What a read's refresh finds after it answered, as a line of context: half of what the call keeps waiting
+         * ([CallSession.PENDING_BYTES]), so it goes beside other lines and is never let go.
+         */
+        const val UPDATE_BYTES = 16 * 1024
+        /**
          * Turns the first context shows, the person's message still waiting for an answer
          * counted as one: each the person's message and the agent's last
          * words, or as much of the pair as there is.
@@ -172,10 +177,14 @@ class CallContext(
      * of it, and the most words a message of it was read with. Another read of one joins its refresh.
      */
     private val reading = HashMap<String, Pending>()
+    private var waits = 0
 
     private class Pending(val refresh: Deferred<CallTargetState?>, var given: CallTargetState, var words: Int) {
-        /** A read is waiting for the refresh ([Limits.FRESH_WAIT_MS]): what it finds meanwhile is that read's answer, never told after it. */
-        var awaited = false
+        /**
+         * The read waiting for the refresh ([Limits.FRESH_WAIT_MS]), if one is: what it finds meanwhile is that read's
+         * answer, never told after it. Only that read takes it; one its deadline cancelled lets it go on.
+         */
+        var waiter: Int? = null
         var arrived: Arrived? = null
     }
 
@@ -746,15 +755,22 @@ class CallContext(
                     }
                     refresh
                 }
-                reading.getValue(id).awaited = true
+                val waiter = ++waits
+                reading.getValue(id).waiter = waiter
                 val inTime = try {
                     withTimeoutOrNull(freshWaitMillis) { Arrived(refresh.await()) }
-                } catch (_: kotlinx.coroutines.CancellationException) {
-                    return CallToolResult.refused("The call has ended.")
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    // Past its deadline: what the refresh finds goes on as context, as for a read that didn't wait.
+                    reading[id]?.takeIf { it.refresh === refresh && it.waiter == waiter }?.let { pending ->
+                        pending.waiter = null
+                        pending.arrived?.let { refreshed(id, it.state, refresh) }
+                    }
+                    throw e
                 }
-                val waited = reading[id]
-                if (closed || waited == null) return CallToolResult.refused("The call has ended.")
-                waited.awaited = false
+                if (closed) return CallToolResult.refused("The call has ended.")
+                // A read joined by the next one leaves the refresh to that one.
+                val waited = reading[id]?.takeIf { it.refresh === refresh && it.waiter == waiter } ?: return CallToolResult.json(value)
+                waited.waiter = null
                 val fresh = (waited.arrived ?: inTime)?.state
                 if (fresh != null && fresh.fresh) {
                     // In time: the read is what the computer has, and nothing follows it.
@@ -1011,12 +1027,12 @@ class CallContext(
         return if (!state.fresh && items.isEmpty()) JsonObject(value - "turns" - "olderTurns") else value
     }
 
-    /** [range] of [items] within [Limits.READ_BYTES] on the wire: the older turns give way first, then the newest's words. */
-    private fun within(state: CallTargetState, items: List<CallRead.Item>, references: List<String>, range: IntRange, wordsAsked: Int, name: Map<String, JsonElement>): JsonObject {
+    /** [range] of [items] within [bytes] on the wire: the older turns give way first, then the newest's words. */
+    private fun within(state: CallTargetState, items: List<CallRead.Item>, references: List<String>, range: IntRange, wordsAsked: Int, name: Map<String, JsonElement>, bytes: Int = Limits.READ_BYTES): JsonObject {
         var shown = range
         var words = wordsAsked
         var value = body(state, items, references, shown, words, name)
-        while (escapedSize(CallJson.encode(value)) > Limits.READ_BYTES) {
+        while (escapedSize(CallJson.encode(value)) > bytes) {
             if (shown.count() > 1) shown = shown.first + 1..shown.last
             else if (words > CallRead.MIN_WORDS) words = maxOf(CallRead.MIN_WORDS, words / 2)
             else break
@@ -1035,7 +1051,7 @@ class CallContext(
     private fun refreshed(id: String, state: CallTargetState?, refresh: Deferred<CallTargetState?>) {
         // A read that had it in time took it, and a later read's refresh is its own.
         val pending = reading[id]?.takeIf { it.refresh === refresh } ?: return
-        if (pending.awaited && !closed) {
+        if (pending.waiter != null && !closed) {
             pending.arrived = Arrived(state)
             return
         }
@@ -1084,7 +1100,7 @@ class CallContext(
         val references = CallRead.references(items.map { it.id })
         // The newest five at most; continueFrom reads back from there.
         val oldest = maxOf(changed ?: items.size, items.size - CallRead.TURNS)
-        return within(state, items, references, oldest until items.size, words, name)
+        return within(state, items, references, oldest until items.size, words, name, Limits.UPDATE_BYTES)
     }
 
     /** What a turn says, as a read tells it. */

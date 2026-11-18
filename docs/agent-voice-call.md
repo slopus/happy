@@ -635,7 +635,8 @@ current for 0.7 s at most (`freshWait`):
   a line of context, never a cue, `conversation_update`: the turns from the
   oldest new or changed one to the newest, at most the newest five, in a
   read's shape (refs, `cut`, `continueFrom`, `pendingUserMessage`) and cut
-  at the most `words` a read of it asked for, with `working`, `needsInput`,
+  at the most `words` a read of it asked for, within 16 KB (`updateBytes`,
+  half of what the call keeps waiting, so it is never let go), with `working`, `needsInput`,
   when each side last wrote and a `note` that it needs no answer. The
   prompt has the agent use it when the person asks, or when it bears on
   what it is already saying; never announce it.

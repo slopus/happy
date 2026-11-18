@@ -44,6 +44,10 @@ public actor CallContext {
         /// which LiveKit takes up to 64,000 bytes, its envelope beside it.
         /// A read pages and cuts its messages by words (`CallRead`) within it.
         public static let readBytes = 56 * 1024
+        /// What a read's refresh finds after it answered, as a line of
+        /// context: half of what the call keeps waiting (`CallSession.pendingBytes`),
+        /// so it goes beside other lines and is never let go.
+        public static let updateBytes = 16 * 1024
         /// Turns the first context shows, the person's message still waiting
         /// for an answer counted as one: each the person's message and the
         /// agent's last words, or as much of the pair as there is.
@@ -153,15 +157,17 @@ public actor CallContext {
     /// Conversations read while they weren't current, being made current.
     /// Another read of one joins its refresh.
     private var reading: [String: Pending] = [:]
+    private var waits = 0
     private struct Pending {
         var refresh: Task<CallTargetState?, Never>
         /// What the agent was last given of it.
         var given: CallTargetState
         /// The most words a message of it was read with.
         var words: Int
-        /// A read is waiting for the refresh (`freshWait`): what it finds
-        /// meanwhile is that read's answer, never told after it.
-        var awaited = false
+        /// The read waiting for the refresh (`freshWait`), if one is: what
+        /// it finds meanwhile is that read's answer, never told after it.
+        /// Only that read takes it; one its deadline left behind doesn't.
+        var waiter: Int?
         var arrived: Arrived?
     }
     /// A refresh that came in, `state` nil when it couldn't be read.
@@ -816,10 +822,20 @@ public actor CallContext {
                     await self?.refreshed(id, state, by: refresh)
                 }
             }
-            reading[id]?.awaited = true
+            waits += 1
+            let waiter = waits
+            reading[id]?.waiter = waiter
             let inTime = await Self.within(freshWait, refresh)
-            guard !closed, var pending = reading[id] else { return .refused("The call has ended.") }
-            pending.awaited = false
+            guard !closed else { return .refused("The call has ended.") }
+            // Past its deadline a read joined by the next one leaves the refresh to that one.
+            guard var pending = reading[id], pending.refresh == refresh, pending.waiter == waiter else { return .json(value) }
+            pending.waiter = nil
+            if Task.isCancelled {
+                // Past its deadline: what the refresh finds goes on as context, as for a read that didn't wait.
+                reading[id] = pending
+                if let arrived = pending.arrived { refreshed(id, arrived.state, by: refresh) }
+                return .refused("No answer in time.")
+            }
             let arrived = pending.arrived ?? inTime.map { Arrived(state: $0) }
             if let fresh = arrived?.state, fresh.fresh {
                 // In time: the read is what the computer has, and nothing follows it.
@@ -914,13 +930,13 @@ public actor CallContext {
         return value
     }
 
-    /// `shown` of `items` within `Limits.readBytes` on the wire: the older
-    /// turns give way first, then the newest's words.
+    /// `shown` of `items` within `bytes` on the wire: the older turns give
+    /// way first, then the newest's words.
     private func within(_ state: CallTargetState, items: [CallRead.Item], references: [String], shown: Range<Int>, words: Int,
-                        as name: [String: Any]) -> [String: Any] {
+                        as name: [String: Any], bytes: Int = Limits.readBytes) -> [String: Any] {
         var shown = shown, words = words
         var value = body(state, items: items, references: references, shown: shown, words: words, as: name)
-        while Self.escapedSize(Self.data(value)) > Limits.readBytes {
+        while Self.escapedSize(Self.data(value)) > bytes {
             if shown.count > 1 { shown = shown.dropFirst() }
             else if words > CallRead.minWords { words = max(CallRead.minWords, words / 2) }
             else { break }
@@ -940,7 +956,7 @@ public actor CallContext {
     private func refreshed(_ id: String, _ state: CallTargetState?, by refresh: Task<CallTargetState?, Never>) {
         // A read that had it in time took it, and a later read's refresh is its own.
         guard let pending = reading[id], pending.refresh == refresh else { return }
-        if pending.awaited, !closed {
+        if pending.waiter != nil, !closed {
             reading[id]?.arrived = Arrived(state: state)
             return
         }
@@ -994,7 +1010,7 @@ public actor CallContext {
         let references = CallRead.references(items.map(\.id))
         // The newest five at most; continueFrom reads back from there.
         let oldest = max(changed ?? items.count, items.count - CallRead.turns)
-        return within(state, items: items, references: references, shown: oldest..<items.count, words: words, as: name)
+        return within(state, items: items, references: references, shown: oldest..<items.count, words: words, as: name, bytes: Limits.updateBytes)
     }
 
     /// `task`'s value if it comes within `limit`, else nil, leaving it to go on.
