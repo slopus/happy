@@ -155,7 +155,11 @@ final class CallController {
         let settle = DirectorySettle { [weak self, weak call] in
             guard let self, let call, self.session === call else { return }
             let update = await context.directoryUpdate()
-            if self.session === call { self.deliver(update) }
+            guard self.session === call else { return }
+            self.deliver(update)
+            // One gone from the sidebar is let go; new work a message
+            // started is held once the sidebar lists it.
+            await Self.hold(await context.followed, in: targets)
         }
         directorySettle = settle
         directoryWatch = targets.watchDirectory { [weak self, weak call, weak settle] rows in

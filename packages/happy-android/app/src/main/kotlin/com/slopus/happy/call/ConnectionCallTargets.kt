@@ -1,7 +1,9 @@
 package com.slopus.happy.call
 
+import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.string
 import com.slopus.happy.conversation.NewTask
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.FailureReason
@@ -18,6 +20,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -96,9 +99,26 @@ class ConnectionCallTargets(
 
     val focusedNow: String? get() = screen()?.focused
 
-    private fun target(agentId: String): CallTarget? = CallTarget.from(session.feed.value).firstOrNull { it.agentId == agentId }
+    private fun target(agentId: String): CallTarget? = list(session.feed.value).firstOrNull { it.agentId == agentId }
 
-    override suspend fun directory(): List<CallTarget> = CallTarget.from(session.feed.value)
+    override suspend fun directory(): List<CallTarget> = list(session.feed.value)
+
+    /** Home's conversations as the call has them: whose each is said where it isn't the person's ([CallTarget.owned]). */
+    fun list(feed: AgentFeed): List<CallTarget> = CallTarget.owned(CallTarget.from(feed), owners())
+
+    /** A team's tasks that are another member's, their names by the task's conversation; empty outside a team. */
+    private fun owners(): Map<String, String> {
+        val catalog = session.catalog.value
+        val me = catalog.userId ?: return emptyMap()
+        val owned = catalog.tasks.values.mapNotNull { task ->
+            val owner = task.string("ownerUserId")?.takeIf { it != me } ?: return@mapNotNull null
+            val agentId = (task["agent"] as? JsonObject)?.string("id") ?: return@mapNotNull null
+            agentId to owner
+        }
+        if (owned.isEmpty()) return emptyMap()
+        val names = session.team.names(owned.mapTo(HashSet()) { it.second })
+        return owned.associate { (agentId, owner) -> agentId to (names[owner] ?: "") }
+    }
 
     override suspend fun state(agentId: String): CallTargetState? = onMain {
         val target = target(agentId) ?: run {

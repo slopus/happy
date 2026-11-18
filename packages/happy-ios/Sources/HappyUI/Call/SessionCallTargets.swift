@@ -76,14 +76,21 @@ final class SessionCallTargets: CallTargets {
     /// Home's rows, then the spaces sidebar's, once each.
     private var allRows: [Row] { session.home.allRows + session.snapshot.allRows }
 
-    /// Every conversation the rows open, in their order and nesting, once each.
-    var rows: [CallTarget] { CallTarget.list(allRows) }
+    /// Every conversation the rows open, in their order and nesting, once
+    /// each, with whose each is where it isn't the person's
+    /// (`CallTarget.owned`): a member not named yet is "a teammate".
+    var rows: [CallTarget] {
+        CallTarget.owned(CallTarget.list(allRows), owners: session.home.taskOwners.mapValues { names[$0] ?? "" })
+    }
 
     private func target(_ agentId: String) -> CallTarget? {
         rows.first { $0.agentId == agentId }
     }
 
-    func directory() async -> [CallTarget] { rows }
+    func directory() async -> [CallTarget] {
+        await name(Set(session.home.taskOwners.values))
+        return rows
+    }
 
     func state(of agentId: String) async -> CallTargetState? {
         guard let target = target(agentId) else {
@@ -152,18 +159,22 @@ final class SessionCallTargets: CallTargets {
     /// know yet asked for once (`GET /v0/users`). Outside a team no
     /// message has an author, and nothing is asked.
     private func named(_ state: CallTargetState) async -> CallTargetState {
+        await name(state.authors)
+        return state.named(names, me: session.home.userId)
+    }
+
+    /// The members of `ids` not named yet, asked for once.
+    private func name(_ ids: Set<String>) async {
         let me = session.home.userId
-        let missing = state.authors.subtracting(names.keys).subtracting(asked).filter { $0 != me }
-        if !missing.isEmpty {
-            asked.formUnion(missing)
-            if let users = try? await session.client.teamUsers(Array(missing)) {
-                for user in users { names[user.id] = user.name }
-            } else {
-                // Asked again next time: until then they are "a teammate".
-                asked.subtract(missing)
-            }
+        let missing = ids.subtracting(names.keys).subtracting(asked).filter { $0 != me }
+        guard !missing.isEmpty else { return }
+        asked.formUnion(missing)
+        if let users = try? await session.client.teamUsers(Array(missing)) {
+            for user in users { names[user.id] = user.name }
+        } else {
+            // Asked again next time: until then they are "a teammate".
+            asked.subtract(missing)
         }
-        return state.named(names, me: me)
     }
 
     /// `state` with the model its next message goes with (the
