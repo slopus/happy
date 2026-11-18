@@ -34,6 +34,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.withResumed
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
@@ -124,7 +125,12 @@ fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) 
     }
     page<ChiefOfStaffRoute> { entry ->
         val route = entry.toRoute<ChiefOfStaffRoute>()
-        ChiefOfStaffEntry(graph, nav, route)
+        val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+        val api = remember(session) { session?.let { ConversationApi(it.conversationRequest()) } }
+        // Its name as the computer calls it, read live from the bot whose systemKey is chief_of_staff (desktop ca4c303f).
+        val chief by remember(session) { session?.feed?.map { it.chiefOfStaffName() } ?: flowOf(null) }
+            .collectAsStateWithLifecycle(initialValue = remember(session) { session?.feed?.value?.chiefOfStaffName() })
+        ChiefOfStaffEntry(nav, entry, api, chief)
     }
     page<ConversationDetailsRoute> { entry ->
         val route = entry.toRoute<ConversationDetailsRoute>()
@@ -168,6 +174,8 @@ fun NavHostController.openConversationInPlace(connectionId: String, agentId: Str
  * chat takes this screen's place, so Back returns to where this was opened.
  */
 fun NavHostController.openChiefOfStaff(connectionId: String, prefix: String) {
+    // The first action owns the lookup even if a second tap requests a different edit.
+    if (currentBackStackEntry?.destination?.hasRoute<ChiefOfStaffRoute>() == true) return
     navigate(ChiefOfStaffRoute(connectionId, prefix))
 }
 
@@ -581,21 +589,23 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
  * computer, it says so with Retry, and never opens another chat.
  */
 @Composable
-private fun ChiefOfStaffEntry(graph: AppGraph, nav: NavHostController, route: ChiefOfStaffRoute) {
-    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+internal fun ChiefOfStaffEntry(nav: NavHostController, entry: NavBackStackEntry, api: ConversationApi?, chief: String? = null) {
+    val route = entry.toRoute<ChiefOfStaffRoute>()
     val missing = stringResource(R.string.conversation_chief_missing)
     val unavailable = stringResource(R.string.conversation_unavailable)
     var attempt by rememberSaveable { mutableIntStateOf(0) }
     val resources = LocalResources.current
     var problem by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(session, attempt) {
+    LaunchedEffect(entry, api, attempt) {
+        // The exit animation can compose an entry again after it was popped.
+        if (nav.backStackEntries.value.none { it === entry }) return@LaunchedEffect
         problem = null
-        if (session == null) {
+        if (api == null) {
             problem = unavailable
             return@LaunchedEffect
         }
         val agentId = try {
-            ConversationApi(session.conversationRequest()).chiefOfStaffAgentId()
+            api.chiefOfStaffAgentId()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -606,14 +616,19 @@ private fun ChiefOfStaffEntry(graph: AppGraph, nav: NavHostController, route: Ch
             problem = missing
             return@LaunchedEffect
         }
-        nav.navigate(ConversationRoute(route.connectionId, agentId, route.prefix)) {
-            popUpTo<ChiefOfStaffRoute> { inclusive = true }
+        // Retained pages may still run after Back or under another page. Wait
+        // for this entry to be visible again; a popped entry never resumes.
+        entry.lifecycle.withResumed {
+            if (nav.currentBackStackEntry === entry) {
+                nav.navigate(ConversationRoute(route.connectionId, agentId, route.prefix)) {
+                    popUpTo(entry.destination.id) { inclusive = true }
+                }
+            }
         }
     }
-    // Its name as the computer calls it, read live from the bot whose systemKey is chief_of_staff (desktop ca4c303f).
-    val chief by remember(session) { session?.feed?.map { feed -> feed.chiefOfStaffName() } ?: flowOf(null) }
-        .collectAsStateWithLifecycle(initialValue = remember(session) { session?.feed?.value?.chiefOfStaffName() })
-    ChiefOfStaffScreen(problem, onRetry = { attempt++ }, onBack = { nav.popBackStack() }, name = chief)
+    ChiefOfStaffScreen(problem, onRetry = { attempt++ }, onBack = {
+        if (nav.currentBackStackEntry === entry) nav.popBackStack()
+    }, name = chief)
 }
 
 /** [agentId]'s presented media, read into the connection's library once and kept (iOS ba7b68346); null where the session keeps nothing. */
