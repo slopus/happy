@@ -71,7 +71,11 @@ Errors and results:
   app version are read.
 - `mobile_pairing_failed`: a phone pairing ended unlinked, with why.
 - `sign_in_failed`: creating, restoring or signing in to an account failed.
-  Leaving the flow sends nothing.
+  Leaving the flow sends nothing. On Android a Happy account's code is the
+  step that failed: the key (`invalid_token`), the server's answer
+  (`rejected`, `rate_limited`, `server_error`, `invalid_response`, which
+  also covers a QR approval that doesn't open), the network
+  (`unreachable`), or keeping the credentials (`storage_failed`).
 - `voice_session_error`: voice failed to start or dropped.
 - `paywall_error`: a purchase or restore failed, or a restore found nothing.
 

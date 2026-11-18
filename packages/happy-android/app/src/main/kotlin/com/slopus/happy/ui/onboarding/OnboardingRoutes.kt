@@ -130,7 +130,7 @@ internal class RestoreLink(private val graph: AppGraph) : ViewModel() {
                 AnalyticsReasons.signingIn(SignInMethod.RelayRestore) {
                     request.start()
                     state.value = RestoreCode.Ready(request.url)
-                    val linked = request.awaitApproval() ?: throw IllegalStateException("The approval doesn't open with this key")
+                    val linked = request.awaitApproval()
                     graph.auth.signIn(linked.token, linked.secret)
                 }
             } catch (e: CancellationException) {

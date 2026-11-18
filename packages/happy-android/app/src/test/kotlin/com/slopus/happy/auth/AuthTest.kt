@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.analytics.AnalyticsReasons
+import com.slopus.happy.analytics.SignInError
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.SecretKeyBackup
 import com.slopus.happy.crypto.encodeBase64
@@ -12,6 +14,10 @@ import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
+import mockwebserver3.Dispatcher
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -86,6 +92,48 @@ class AuthTest {
         }
         assertEquals(AuthState.SignedOut, auth.state.value)
         assertTrue(server.authenticatedKeys.isEmpty())
+    }
+
+    /** Each step of a restore that fails is its own `sign_in_failed` code; nothing is signed in. */
+    @Test
+    fun aFailedRestoreSaysWhichStepFailed() = runTest {
+        val backup = SecretKeyBackup.format(encodeBase64(server.secret, Base64Variant.Url))
+        suspend fun failure(auth: AuthRepository, key: String = backup): SignInError {
+            val error = runCatching { auth.restore(key) }.exceptionOrNull() ?: error("signed in")
+            assertEquals(AuthState.SignedOut, auth.state.value)
+            return AnalyticsReasons.relaySignIn(error)
+        }
+        fun answering(response: MockResponse) = MockWebServer().apply {
+            dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = response
+            }
+            start()
+        }
+        fun at(edge: MockWebServer) =
+            AuthRepository(SecureStoreCredentialStore(ExpoSecureStore(prefs, keys)), AuthApi(HappyHttp(OkHttpClient(), { edge.url("/").toString().trimEnd('/') }, "android/test")), io = Dispatchers.Unconfined)
+
+        assertEquals(SignInError.InvalidToken, failure(repository(), "hello robot"))
+        for ((response, code) in listOf(
+            MockResponse.Builder().code(401).body("""{"error":"Invalid signature"}""").build() to SignInError.Rejected,
+            MockResponse.Builder().code(429).build() to SignInError.RateLimited,
+            MockResponse.Builder().code(500).body("{}").build() to SignInError.ServerError,
+            MockResponse.Builder().code(502).body("<html>Bad gateway</html>").build() to SignInError.ServerError,
+            MockResponse.Builder().code(200).body("<html>Just a moment...</html>").build() to SignInError.InvalidResponse,
+        )) {
+            val edge = answering(response)
+            assertEquals("${response.code}", code, failure(at(edge)))
+            edge.close()
+        }
+        val gone = answering(MockResponse.Builder().build()).also { it.close() }
+        assertEquals(SignInError.Unreachable, failure(at(gone)))
+
+        // The server gave a token, but the phone couldn't keep it.
+        val refusing = object : CredentialStore {
+            override fun read(): AuthCredentials? = null
+            override fun write(credentials: AuthCredentials) = throw java.security.KeyStoreException("Keystore unavailable")
+            override fun clear() {}
+        }
+        assertEquals(SignInError.StorageFailed, failure(AuthRepository(refusing, AuthApi(http()), io = Dispatchers.Unconfined)))
     }
 
     @Test

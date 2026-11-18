@@ -329,7 +329,8 @@ extension AnalyticsEvent {
     public enum SignInMethod: String, AnalyticsWord { case relayCreate = "relay_create", relayRestore = "relay_restore", teamServer = "team_server" }
     public enum SignInErrorCode: String, AnalyticsWord {
         case invalidAddress = "invalid_address", noSignIn = "no_sign_in", edgeBlocked = "edge_blocked", unreachable, denied
-        case expired, invalidToken = "invalid_token", rejected, profileRequired = "profile_required", wrongServer = "wrong_server", unknown
+        case expired, invalidToken = "invalid_token", rejected, profileRequired = "profile_required", wrongServer = "wrong_server"
+        case rateLimited = "rate_limited", serverError = "server_error", invalidResponse = "invalid_response", storageFailed = "storage_failed", unknown
     }
 
     public enum VoiceErrorCode: String, AnalyticsWord {

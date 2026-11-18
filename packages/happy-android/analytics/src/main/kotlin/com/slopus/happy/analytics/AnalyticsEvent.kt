@@ -320,7 +320,8 @@ enum class SignInMethod(override val wire: String) : Wire { RelayCreate("relay_c
 enum class SignInError(override val wire: String) : Wire {
     InvalidAddress("invalid_address"), NoSignIn("no_sign_in"), EdgeBlocked("edge_blocked"), Unreachable("unreachable"),
     Denied("denied"), Expired("expired"), InvalidToken("invalid_token"), Rejected("rejected"),
-    ProfileRequired("profile_required"), WrongServer("wrong_server"), Unknown("unknown"),
+    ProfileRequired("profile_required"), WrongServer("wrong_server"), RateLimited("rate_limited"),
+    ServerError("server_error"), InvalidResponse("invalid_response"), StorageFailed("storage_failed"), Unknown("unknown"),
 }
 
 enum class VoiceError(override val wire: String) : Wire {
