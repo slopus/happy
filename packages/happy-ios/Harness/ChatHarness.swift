@@ -56,6 +56,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var controller: AccountController?
     private var probe: ChatScrollProbe?
     private var whatsNew: WhatsNewProbe?
+    private var callTranscript: CallTranscriptHarness?
     #if DEBUG || HAPPY_FIXTURES
     private var homeRenderer: HomeRendererHarness?
     private var agent: AgentHarness?
@@ -212,6 +213,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         #endif
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "callTranscript" {
+            callTranscript = CallTranscriptHarness(window: window, arguments: arguments)
+            return
+        }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "whatsnew" {
             whatsNew = WhatsNewProbe(window: window, arguments: arguments)
             return

@@ -848,6 +848,44 @@ interruption and the app leaving the foreground play none.
 The ended bar offers nothing to resume: it shows how the call ended, as
 before.
 
+## The last call's transcript, in developer mode
+
+Unlike the history, this keeps everything the last call exchanged with the
+voice connection, for checking what the agent was really given
+(`CallTranscript` on both). It is recorded where the call meets the
+connection: `CallTranscript.record` wraps the `connect` that `CallSession`
+is given, so every `update` and `cue` going in, and every tool call, tool
+result and transcript coming out, passes through it in order. Each entry
+has its wall-clock time and a kind:
+
+| Kind | What |
+| --- | --- |
+| system prompt sent, context sent | `CallStart.prompt` and `initialConversationContext`, as the call started |
+| update | a contextual update, exactly as sent (several lines when they went together) |
+| app cue | a cue's user message, `[app] ` included |
+| tool call, tool result | the tool's name and arguments as JSON; the result's text, marked when it is an error |
+| agent said, agent said, as heard | the agent's response, greeting included; its correction when the person cut in |
+| you said | the person's final transcript |
+| ended | the app's end, the agent or person hanging up, or a drop |
+
+Only the latest call is kept: each connection, a restart's too, replaces
+it, and what an ended call still reports is dropped. It is one file of
+JSON lines, appended as the call goes and readable after a restart: iOS
+`Application Support/Happy/call-transcript.jsonl` (complete file
+protection, excluded from backup), Android `noBackupFilesDir`. Past 4 MB
+nothing more is kept but how the call ended, after a `truncated` line. It
+holds conversation content, so it is never logged, uploaded or sent to
+analytics, and it is not tied to a connection: removing one leaves the
+last call's transcript until the next call.
+
+Settings › About shows "Last voice call transcript" after Version while
+developer mode is on (ten taps on Version; on Android, debug builds too).
+It opens the call's start, duration and entries, each headed by its local
+time and kind, with Copy (the whole transcript as plain text) and Share
+(iOS's share sheet; Android hands it on as a text file, which fits a
+transcript too long for the clipboard). Before any call it says there is
+none yet.
+
 ## The hosted agent
 
 Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,

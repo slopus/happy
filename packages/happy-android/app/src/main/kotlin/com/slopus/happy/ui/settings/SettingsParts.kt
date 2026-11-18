@@ -362,9 +362,9 @@ fun RemoveCard(agent: Boolean, name: String?, onRemove: () -> Unit) {
     if (confirming) RemoveConfirm(agent, name, onConfirm = onRemove, onDismiss = { confirming = false })
 }
 
-/** What About shows: the build. */
+/** What About shows: the build, and developer mode's rows when it is on. */
 @Immutable
-data class AboutInfo(val versionName: String, val versionSubtitle: String? = null, val isPro: Boolean = false)
+data class AboutInfo(val versionName: String, val versionSubtitle: String? = null, val isPro: Boolean = false, val developer: Boolean = false)
 
 /** What About and Support us do. */
 @Immutable
@@ -373,6 +373,8 @@ class AboutActions(
     val onWhatsNew: () -> Unit = {},
     /** A tap on Version; ten in a row toggle developer mode (useMultiClick). */
     val onVersion: () -> Unit = {},
+    /** Developer mode's Last voice call transcript. */
+    val onCallTranscript: () -> Unit = {},
     val onSupport: () -> Unit = {},
     /** Billing belongs to the phone's store/account, even with an agent's proxied browser open. */
     val onManageSubscriptions: () -> Unit = { onOpenUrl(SettingsSpec.SUBSCRIPTIONS_URL) },
@@ -413,11 +415,12 @@ fun supportSection(about: AboutInfo, actions: AboutActions) = SettingsSection(
  * What's New, GitHub with "slopus/happy", Report an Issue, Privacy Policy,
  * Terms of Service and Version, the app's line under the card. No EULA:
  * happy-app shows Apple's on iOS only. The four rows that open a page
- * offer the link menu on a long press, as links in text do.
+ * offer the link menu on a long press, as links in text do. Developer
+ * mode's own rows follow Version, in English only.
  */
 @Composable
 fun aboutSection(about: AboutInfo, actions: AboutActions) = SettingsSection(
-    listOf(
+    listOfNotNull(
         SettingsEntry(
             id = SettingsTags.WHATS_NEW,
             title = stringResource(R.string.settings_whats_new),
@@ -463,6 +466,12 @@ fun aboutSection(about: AboutInfo, actions: AboutActions) = SettingsSection(
             chevron = false,
             onClick = actions.onVersion,
         ),
+        if (about.developer) SettingsEntry(
+            id = SettingsTags.CALL_TRANSCRIPT,
+            title = "Last voice call transcript",
+            icon = { SettingsTile(Ionicon.MicOutline, SettingsTiles.gray) },
+            onClick = actions.onCallTranscript,
+        ) else null,
     ),
     footer = stringResource(R.string.settings_about_footer),
 )

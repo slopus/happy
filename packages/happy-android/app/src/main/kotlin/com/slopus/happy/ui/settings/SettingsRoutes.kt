@@ -82,6 +82,7 @@ import com.slopus.happy.ui.voice.VoiceSettingsRoute
 @Serializable data class LanguageRoute(val reveal: String? = null)
 @Serializable data object AgentsRoute
 @Serializable data object ChangelogRoute
+@Serializable data object CallTranscriptRoute
 
 /** Settings' screens; [SettingsRoute] itself is HappyApp's ([AccountSettings]). */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
@@ -96,6 +97,7 @@ fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
         val changelog = remember(resources) { Changelog.bundled(resources) }
         ChangelogScreen(changelog, onViewed = graph.changelog::markViewed, onBack = { nav.popBackStack() })
     }
+    page<CallTranscriptRoute> { CallTranscriptScreen(graph.callTranscript, onBack = { nav.popBackStack() }) }
     page<LanguageRoute> { entry ->
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         ProvideRowReveal(entry.toRoute<LanguageRoute>().reveal) {
@@ -227,12 +229,14 @@ internal fun supportAction(nav: NavHostController): () -> Unit = { nav.navigate(
 internal fun rememberAboutInfo(graph: AppGraph): AboutInfo {
     val resources = LocalResources.current
     val pro by graph.subscription.pro.collectAsStateWithLifecycle()
+    val local by graph.localSettings.values.collectAsStateWithLifecycle()
     return AboutInfo(
         versionName = versionDetail(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
         versionSubtitle = buildSubtitle(BuildConfig.BUILD_COMMIT_SHA, BuildConfig.BUILD_COMMIT_TIMESTAMP, resources.getString(R.string.settings_commit)) {
             resources.getString(R.string.settings_commit_at, it)
         },
         isPro = BuildConfig.DEBUG || pro,
+        developer = BuildConfig.DEBUG || local.devModeEnabled,
     )
 }
 
@@ -264,6 +268,7 @@ internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): Abou
                     alerts.show(Alert(developerMode, if (enabled) developerModeEnabled else developerModeDisabled, listOf(AlertButton(ok))))
                 }
             },
+            onCallTranscript = { nav.navigate(CallTranscriptRoute) },
             onSupport = support,
             onManageSubscriptions = {
                 if (linkOpener != null) linkOpener.openExternal(SettingsSpec.SUBSCRIPTIONS_URL)
