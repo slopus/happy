@@ -82,21 +82,28 @@ object SecretKeyBackup {
     }
 
     /**
-     * Accepts either form and returns the base64url secret. Same decision order
-     * as the TS: anything with a dash or whitespace, or longer than 50
-     * characters, is read as the formatted key.
+     * Accepts either form and returns the base64url secret. A raw secret is
+     * exactly 43 base64 characters (either alphabet, padding dropped, as
+     * happy-app's decoder took them); the backup form is at least 52 base32
+     * characters, so anything else is read as the backup form. happy-app
+     * looked for a dash first, which turned away the half of raw secrets
+     * whose base64url has a `-`; iOS's SecretKeyBackup.normalize decides by
+     * length, as this does.
      */
     fun normalize(key: String): String {
         val trimmed = key.trim()
-        if (trimmed.any { it == '-' || it.isWhitespace() } || trimmed.length > 50) {
-            return parse(trimmed)
+        val raw = trimmed.trimEnd('=')
+        if (raw.length == RAW_LENGTH) {
+            val bytes = try {
+                decodeBase64(raw.replace('+', '-').replace('/', '_'), Base64Variant.Url)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+            if (bytes?.size == 32) return encodeBase64(bytes, Base64Variant.Url)
         }
-        return try {
-            val bytes = decodeBase64(trimmed, Base64Variant.Url)
-            if (bytes.size != 32) throw IllegalArgumentException("Invalid secret key")
-            trimmed
-        } catch (_: IllegalArgumentException) {
-            parse(trimmed)
-        }
+        return parse(trimmed)
     }
+
+    /** 32 bytes as unpadded base64. */
+    private const val RAW_LENGTH = 43
 }

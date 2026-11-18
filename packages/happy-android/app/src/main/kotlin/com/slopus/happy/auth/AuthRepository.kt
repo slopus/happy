@@ -9,6 +9,7 @@ import com.slopus.happy.crypto.SecureRandomSource
 import com.slopus.happy.crypto.decodeBase64
 import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.net.HappyJson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,9 @@ sealed interface AuthState {
 
 /** The secret key the user typed is not one. */
 class InvalidSecretKeyException(cause: Throwable? = null) : IllegalArgumentException("Invalid secret key", cause)
+
+/** The server gave the account a token, but this phone couldn't keep the credentials (the Keystore, the preferences). */
+class CredentialStorageException(cause: Throwable) : IllegalStateException("Could not store the credentials", cause)
 
 /**
  * Account sign-in, as in happy-app: the account *is* a random 32-byte secret.
@@ -79,7 +83,15 @@ class AuthRepository(
     suspend fun signIn(token: String, secret: ByteArray) {
         require(secret.size == 32) { "Invalid secret" }
         val credentials = AuthCredentials(token = token, secret = encodeBase64(secret, Base64Variant.Url))
-        withContext(io) { credentialStore.write(credentials) }
+        withContext(io) {
+            try {
+                credentialStore.write(credentials)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw CredentialStorageException(e)
+            }
+        }
         mutableState.value = signedIn(credentials)
     }
 

@@ -533,6 +533,10 @@
             "rejected",
             "profile_required",
             "wrong_server",
+            "rate_limited",
+            "server_error",
+            "invalid_response",
+            "storage_failed",
             "unknown"
           ]
         }

@@ -17,7 +17,6 @@ import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -71,12 +70,23 @@ class AccountLinkingTest {
     }
 
     @Test
-    fun anApprovalSealedToAnotherKeyIsNull() = runBlocking {
-        val newPhone = AccountLinkRequest(api)
-        newPhone.start()
+    fun anApprovalThatDoesNotOpenIsUnreadable() = runBlocking {
         val stranger = AccountLink.generateKeyPair()
-        server.approveAccountRequest(newPhone.keyPair.publicKey, AccountLink.sealSecret(server.secret, stranger.publicKey))
-        assertNull(newPhone.awaitApproval(pollInterval = 10.milliseconds))
+        // Sealed to another key, not base64, and a secret that isn't 32 bytes.
+        for (seal in listOf<(AccountLinkRequest) -> String>(
+            { encodeBase64(AccountLink.sealSecret(server.secret, stranger.publicKey)) },
+            { "not base64!" },
+            { encodeBase64(AccountLink.sealSecret(ByteArray(16), it.keyPair.publicKey)) },
+        )) {
+            val newPhone = AccountLinkRequest(api)
+            newPhone.start()
+            server.accountRequests[encodeBase64(newPhone.keyPair.publicKey)] = seal(newPhone)
+            try {
+                newPhone.awaitApproval(pollInterval = 10.milliseconds)
+                fail("expected an unreadable approval")
+            } catch (_: UnreadableApprovalException) {
+            }
+        }
     }
 
     @Test

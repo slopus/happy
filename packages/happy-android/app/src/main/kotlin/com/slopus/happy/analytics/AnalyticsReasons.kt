@@ -2,7 +2,9 @@ package com.slopus.happy.analytics
 
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentLinkStatus
+import com.slopus.happy.auth.CredentialStorageException
 import com.slopus.happy.auth.InvalidSecretKeyException
+import com.slopus.happy.auth.UnreadableApprovalException
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.ServerAuthException
 import com.slopus.happy.conversation.ConversationApiException
@@ -52,12 +54,23 @@ object AnalyticsReasons {
         ServerAuthException.Reason.WrongServer, ServerAuthException.Reason.CrossOrigin, ServerAuthException.Reason.WrongAudience -> SignInError.WrongServer
     }
 
-    /** A Happy (relay) sign-in's failure: a key that isn't one, the server's refusal, no network, or anything else. */
-    fun relaySignIn(error: Throwable): SignInError = when {
-        error is InvalidSecretKeyException -> SignInError.InvalidToken
-        error is HttpStatusException && (error.status == 401 || error.status == 403) -> SignInError.Rejected
-        error is HttpStatusException -> SignInError.Unknown
-        error is IOException -> SignInError.Unreachable
+    /**
+     * A Happy (relay) sign-in's failure, by the step that failed: a key that
+     * isn't one; the server's answer (a refusal, too many requests, its own
+     * error, or a body that isn't its JSON); no network; an approval from the
+     * other phone that doesn't open; credentials this phone couldn't keep.
+     */
+    fun relaySignIn(error: Throwable): SignInError = when (error) {
+        is InvalidSecretKeyException -> SignInError.InvalidToken
+        is UnreadableApprovalException -> SignInError.InvalidResponse
+        is CredentialStorageException -> SignInError.StorageFailed
+        is HttpStatusException -> when {
+            error.status == 429 -> SignInError.RateLimited
+            error.status >= 500 -> SignInError.ServerError
+            else -> SignInError.Rejected
+        }
+        is IOException -> SignInError.Unreachable
+        is SerializationException -> SignInError.InvalidResponse
         else -> SignInError.Unknown
     }
 

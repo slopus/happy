@@ -36,28 +36,33 @@ class AccountLinkRequest(
 
     /**
      * authQRWait: asks again until the request is authorized, at once and
-     * then every [pollInterval]. Null when the answer doesn't open with this
-     * key pair; throws when a request fails, as authQRWait gives up then too.
+     * then every [pollInterval]. Throws [UnreadableApprovalException] when
+     * the answer doesn't open with this key pair (iOS's
+     * `undecryptableResponse`), and the request's own error when a request
+     * fails, as authQRWait gives up then too.
      */
-    suspend fun awaitApproval(pollInterval: Duration = 1.seconds): LinkedAccount? {
+    suspend fun awaitApproval(pollInterval: Duration = 1.seconds): LinkedAccount {
         while (true) {
             val state = api.requestAccountLink(keyPair.publicKey)
             if (state.state == "authorized") {
-                val token = state.token ?: return null
+                val token = state.token ?: throw UnreadableApprovalException()
                 val response = state.response?.let {
                     try {
                         decodeBase64(it)
                     } catch (_: IllegalArgumentException) {
                         null
                     }
-                } ?: return null
-                val secret = AccountLink.openSecret(response, keyPair) ?: return null
+                } ?: throw UnreadableApprovalException()
+                val secret = AccountLink.openSecret(response, keyPair)?.takeIf { it.size == 32 } ?: throw UnreadableApprovalException()
                 return LinkedAccount(token, secret)
             }
             delay(pollInterval)
         }
     }
 }
+
+/** The other phone's approval came, but it carries no token or doesn't open with this phone's key. */
+class UnreadableApprovalException : IllegalStateException("The approval doesn't open with this key")
 
 /** A scanned or pasted link that is not the kind the flow expects. */
 class InvalidLinkException(message: String) : IllegalArgumentException(message)
