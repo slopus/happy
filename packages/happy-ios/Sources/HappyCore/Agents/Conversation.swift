@@ -994,9 +994,10 @@ public actor Conversation {
                 transcript.wait(message.id)
             }
         case "message.delta":
-            guard let id = payload["messageId"]?.stringValue, let index = payload["blockIndex"]?.numberValue,
-                  let offset = payload["offset"]?.numberValue, let append = payload["append"]?.stringValue else { return }
-            guard let growth = transcript.growth(ofBlock: Int(index), in: id, offset: Int(offset), append: append) else {
+            // A number no Int holds is as malformed as a missing one: Int(_:) would trap on it.
+            guard let id = payload["messageId"]?.stringValue, let index = payload["blockIndex"]?.numberValue.flatMap(Int.init(exactly:)),
+                  let offset = payload["offset"]?.numberValue.flatMap(Int.init(exactly:)), let append = payload["append"]?.stringValue else { return }
+            guard let growth = transcript.growth(ofBlock: index, in: id, offset: offset, append: append) else {
                 if let since = behind[id] {
                     // Read for since it broke: the next whole message mends it.
                     if reads > since { return }
@@ -1007,7 +1008,7 @@ public actor Conversation {
                 return
             }
             // A word already applied, replayed: nothing moves.
-            if case .append(let suffix) = growth { transcript.append(suffix, toBlock: Int(index), of: id) }
+            if case .append(let suffix) = growth { transcript.append(suffix, toBlock: index, of: id) }
             if let runId = payload["runId"]?.stringValue { transcript.place(id, in: runId) }
         case "message.deleted":
             guard let id = payload["messageId"]?.stringValue else { return }
@@ -1055,7 +1056,7 @@ public actor Conversation {
                 question = value.stringValue != nil
                 waitsOn(value.stringValue)
             }
-            if let running = changes["subagents"]?["running"]?.numberValue { subagentsRunning = Int(running) }
+            if let running = changes["subagents"]?["running"]?.numberValue.flatMap(Int.init(exactly:)) { subagentsRunning = running }
             if let value = changes["title"] { snapshot.title = value.stringValue }
             if agentState == before { return }
         case "agent.draft.updated":
