@@ -18,6 +18,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    discussionMode: { label: '讨论', active: '讨论中', toggle: '切换讨论模式', hint: '围绕目的持续讨论，不进入实施；从下一条消息生效', activeHint: '只讨论；实施前请关闭。不会中断已经运行的任务。' },
     composerContext: {
         referenceLimit: "最多新增 8 項引用",
         addGroup: "新增",

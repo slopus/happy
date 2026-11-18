@@ -22,7 +22,7 @@ vi.mock('./sync', () => ({ sync: { getCredentials: () => mocks.credentials, send
 vi.mock('./ops', () => ({ sessionSteer: vi.fn() }));
 vi.mock('./messageMeta', () => ({ resolveMessageModeMeta: () => ({}) }));
 
-import { messageStagingQueue } from './messageStagingQueueRuntime';
+import { stageSessionMessage, messageStagingQueue } from './messageStagingQueueRuntime';
 
 describe('archive behavior of the wired message staging runtime', () => {
     beforeEach(() => {
@@ -39,6 +39,25 @@ describe('archive behavior of the wired message staging runtime', () => {
             agentState: { turnStatus: { status: 'completed', turnId: 'previous', updatedAt: 10 } },
         } } };
         messageStagingQueue.clear();
+    });
+
+    it('snapshots discussion policy, preserves visible text and restores ordinary permissions after exit', async () => {
+        mocks.state.localSettings = { sessionDiscussionModes: { app: true } };
+        mocks.state.sessions.app.metadata.flavor = 'codex';
+        mocks.state.sessions.app.metadata.goalBoard = { featurePath: '/project', taskId: 'task-1' };
+        mocks.state.socketStatus = 'disconnected';
+        await stageSessionMessage('app', 'Help me clarify');
+        mocks.state.localSettings.sessionDiscussionModes.app = false;
+        const queued = messageStagingQueue.getSnapshot().messages[0];
+        expect(queued.modeMeta).toMatchObject({ permissionMode: 'read-only', permissionModeExplicit: true });
+        expect(queued.text).toContain('Current task: task-1');
+        expect(queued.displayText).toBe('Help me clarify');
+        expect(queued.draftText).toBe('Help me clarify');
+        await stageSessionMessage('app', 'Now implement');
+        const next = messageStagingQueue.getSnapshot().messages[1];
+        expect(next.modeMeta).toEqual({});
+        expect(next.text).toContain('Discussion mode is now off');
+        expect(next.displayText).toBe('Now implement');
     });
 
     it('sends a followup directly to an auto-archived warm session', async () => {

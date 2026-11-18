@@ -15,6 +15,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    discussionMode: { label: 'Discuss', active: 'Discussing', toggle: 'Toggle discussion mode', hint: 'Explore purpose through conversation; no implementation. Applies to your next message.', activeHint: 'Discussion only. Turn off to implement. Does not stop an already running turn.' },
     composerContext: {
         referenceLimit: "You can add up to 8 references.",
         addGroup: "Add",

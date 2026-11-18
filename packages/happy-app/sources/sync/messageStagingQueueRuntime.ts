@@ -1,3 +1,4 @@
+import { discussionMessage, discussionModeMeta } from './discussionMode';
 import { parseComposerDraft, composerReferenceDisplay } from './composerReferences';
 import { v4 as uuid } from 'uuid';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
@@ -97,7 +98,17 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
     const state = storage.getState();
     const session = state.sessions[sessionId];
     if (!session || !accountRuntimeCurrent()) throw new Error('Session unavailable');
-    const modeMeta = resolveMessageModeMeta(session, state.settings);
+    const discussing = state.localSettings?.sessionDiscussionModes?.[sessionId] === true;
+    const resolvedModes = resolveMessageModeMeta(session, state.settings);
+    const modeMeta = discussing ? discussionModeMeta(resolvedModes, session.metadata?.flavor) : resolvedModes;
+    if (discussing) {
+        context = { ...context, draftText: context?.draftText ?? text, displayText: context?.displayText ?? text };
+        text = discussionMessage(text, session.metadata?.goalBoard);
+    }
+    if (!discussing && state.localSettings?.sessionDiscussionModes?.[sessionId] === false && !text.trimStart().startsWith('/')) {
+        context = { ...context, draftText: context?.draftText ?? text, displayText: context?.displayText ?? text };
+        text = `Discussion mode is now off. Follow the user's current request and normal authorization rules. Prior consensus alone does not authorize implementation.\n\n${text}`;
+    }
     const selected = attachments?.map(a => ({ ...a }));
     const generation = stagingGeneration;
     // Persisting a large file must not let a later submission to the same

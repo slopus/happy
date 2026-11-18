@@ -1,3 +1,4 @@
+import { DISCUSSION_INSTRUCTIONS } from './discussionMode';
 import type { MessageAnnotation } from '@/components/annotations/annotationDraft';
 import type { AttachmentPreview } from './attachmentTypes';
 import type { MessageModeMeta } from './messageMeta';
@@ -36,7 +37,7 @@ export type StagingSession = {
 export function canSendStagedMessageNow(message: Pick<StagedMessage, 'text' | 'attachmentsExpired'>, session?: StagingSession): boolean {
     if (!session?.connected || message.attachmentsExpired) return false;
     const busy = session.state === 'running' || session.state === 'permission_required';
-    return !busy || (session.supportsSteer === true && !!session.turnId && !message.text.trimStart().startsWith('/'));
+    return !busy || (session.supportsSteer === true && !!session.turnId && !message.text.trimStart().startsWith('/') && !message.text.startsWith(DISCUSSION_INSTRUCTIONS));
 }
 
 type TurnBarrier = { turnId?: string; sawRunning: boolean };
@@ -122,7 +123,7 @@ export function createMessageStagingQueue(deps: {
             }
             const delivery = message.preparedText === undefined ? message : { ...message, text: message.preparedText };
             const active = deps.session(sid);
-            if (guide && (!active?.supportsSteer || !active.turnId)) throw new Error('Native steering unavailable');
+            if (guide && (message.text.startsWith(DISCUSSION_INSTRUCTIONS) || !active?.supportsSteer || !active.turnId)) throw new Error('Native steering unavailable');
             // Native steering joins the existing turn. Its completion releases
             // the barrier; it does not produce another turn/started event.
             commit({ ...snapshot, barriers: { ...snapshot.barriers, [sid]: { turnId: active?.turnId, sawRunning: guide } } });

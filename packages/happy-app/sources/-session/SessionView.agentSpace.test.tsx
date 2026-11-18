@@ -403,6 +403,7 @@ vi.mock('@/sync/storage', () => ({
     useIsDataReady: () => mocks.isDataReady,
     useSocketStatus: () => ({ status: mocks.socketStatus }),
     useLocalSetting: (key: string) => {
+        if (key === 'sessionDiscussionModes') return {};
         if (key === 'acknowledgedCliVersions') return {};
         if (key === 'zenMode') return mocks.zenMode;
         if (key === 'desktopRightPanelCollapsed') return mocks.desktopRightPanelCollapsed;
@@ -565,6 +566,17 @@ describe('SessionView Agent-space boundary', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it('keeps the discussion control outside the toolbar hidden by zen mode', async () => {
+        mocks.zenMode = true;
+        mocks.session.metadata.flavor = 'codex';
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        const composer = renderer.root.findByType('MessageComposer');
+        expect(composer.props.belowComposer.props.testID).toBe('session-discussion-mode');
+        expect(composer.props.belowComposer.props.selected).toBe(false);
+        act(() => renderer.unmount());
+    });
 
     it.each(['connecting', 'disconnected', 'error', 'connected'])(
         'matches the visible queue gate to the realtime transport: %s', async socketStatus => {

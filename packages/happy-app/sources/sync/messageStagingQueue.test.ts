@@ -1,3 +1,4 @@
+import { discussionMessage } from './discussionMode';
 import { describe, expect, it, vi } from 'vitest';
 import { canSendStagedMessageNow, createMessageStagingQueue, type StagingSession, type StagingSnapshot } from './messageStagingQueue';
 
@@ -18,6 +19,20 @@ function setup(initial?: StagingSnapshot) {
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 describe('message staging queue', () => {
+    it('keeps discussion in its own read-only turn instead of steering an executing turn', async () => {
+        const t = setup();
+        const text = discussionMessage('clarify the goal');
+        t.queue.enqueue({ id: 'discussion', sessionId: 's', text, modeMeta: { permissionMode: 'read-only', permissionModeExplicit: true } });
+        expect(canSendStagedMessageNow({ text }, { connected: true, state: 'running', turnId: 'old', supportsSteer: true })).toBe(false);
+        await t.queue.steer('discussion');
+        await tick();
+        expect(t.steer).not.toHaveBeenCalled();
+        expect(t.send).not.toHaveBeenCalled();
+        t.update({ state: 'completed', terminal: true });
+        await tick();
+        expect(t.send).toHaveBeenCalledWith(expect.objectContaining({ modeMeta: { permissionMode: 'read-only', permissionModeExplicit: true } }));
+    });
+
     it('does not automatically send or steer a restored browser blob attachment', async () => {
         const attachment = { id: 'file', uri: 'blob:https://example.test/expired', name: 'report.txt', size: 10, width: 0, height: 0, mimeType: 'text/plain', kind: 'file' as const };
         const snapshot: StagingSnapshot = { messages: [{ id: 'm', sessionId: 's', text: 'report', modeMeta: {}, status: 'queued', attachments: [attachment] }], barriers: {} };

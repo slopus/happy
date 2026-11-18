@@ -1811,6 +1811,9 @@ function SessionViewLoaded({
     // need to re-create on every keystroke.
     const sendInFlight = React.useRef(false);
     const stagedSnapshot = React.useSyncExternalStore(messageStagingQueue.subscribe, messageStagingQueue.getSnapshot, messageStagingQueue.getSnapshot);
+    const discussionModes = useLocalSetting('sessionDiscussionModes');
+    const discussing = discussionModes[sessionId] === true;
+    const supportsDiscussion = session.metadata?.flavor === 'codex' || session.metadata?.flavor === 'claude';
     const [continuingFailedTurn, setContinuingFailedTurn] = React.useState(false);
     const continuedFailedTurnKey = React.useRef<string | null>(null);
     const [renderedContinuedFailedTurnKey, setRenderedContinuedFailedTurnKey] = React.useState<string | null>(null);
@@ -1887,7 +1890,8 @@ function SessionViewLoaded({
         setContinuingFailedTurn(true);
         void (async () => {
             try {
-                await sync.sendMessage(sessionId, t('session.failedContinuePrompt'), { source: 'chat' });
+                if (discussing) await stageSessionMessage(sessionId, t('session.failedContinuePrompt'));
+                else await sync.sendMessage(sessionId, t('session.failedContinuePrompt'), { source: 'chat' });
                 // Queue acceptance precedes worker execution; set the ref
                 // synchronously so another tap cannot enqueue a duplicate.
                 continuedFailedTurnKey.current = failedTurnKey;
@@ -1900,7 +1904,7 @@ function SessionViewLoaded({
                 setContinuingFailedTurn(false);
             }
         })();
-    }, [sessionId, failedContinueQueued, failedHistoryLoading, failedHistoryBehind, failedTurnKey, newerError]);
+    }, [sessionId, discussing, failedContinueQueued, failedHistoryLoading, failedHistoryBehind, failedTurnKey, newerError]);
 
     const handleAbort = React.useCallback(() => {
         storage.getState().resetSessionAgentOverrides(sessionId);
@@ -1999,6 +2003,10 @@ function SessionViewLoaded({
     const composer = (
         <ChatComposer
             mode="session"
+            belowComposer={supportsDiscussion ? <GoalBoardButton variant="chip" selected={discussing} disabled={isTaskRunning} testID="session-discussion-mode" label={t('discussionMode.toggle')} tooltip={t(discussing ? 'discussionMode.activeHint' : 'discussionMode.hint')} onPress={() => {
+                const current = storage.getState().localSettings.sessionDiscussionModes;
+                storage.getState().applyLocalSettings({ sessionDiscussionModes: { ...current, [sessionId]: !discussing } });
+            }}><Ionicons name="chatbubbles-outline" size={16} color={discussing ? theme.colors.textLink : theme.colors.textSecondary} /><Text style={{ color: discussing ? theme.colors.textLink : theme.colors.textSecondary }}>{t(discussing ? 'discussionMode.active' : 'discussionMode.label')}</Text></GoalBoardButton> : undefined}
             composerHandleRef={composerHandleRef}
             placeholder={t('session.inputPlaceholder')}
             sessionId={sessionId}
@@ -2044,7 +2052,7 @@ function SessionViewLoaded({
             usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
             zenMode={zenMode}
-            permissionSelector={permissionSelector}
+            permissionSelector={discussing ? undefined : permissionSelector}
             modeSelector={modeSelector}
             directorySelector={directorySelector}
             machineName={composerMachineName}
