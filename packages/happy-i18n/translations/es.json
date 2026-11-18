@@ -2,6 +2,9 @@
   "code": "es",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "Este es un enlace de descarga, no un código de vinculación. Si estás configurando Happy Desktop, haz clic en «Downloaded and opened» en tu computadora y escanea el código de vinculación que aparece.",
+    "scan.happyWebsiteLink": "Este es un enlace web de Happy, no un código de vinculación. Abre Happy en tu computadora y usa el código o el enlace de vinculación que aparece.",
+    "scan.notPairing": "Esto no es un código ni un enlace de vinculación. Usa el código o el enlace de vinculación que aparece en el dispositivo que quieres conectar.",
     "voiceStatusBar.tapToEnd": "toca para finalizar",
     "voiceStatusBar.connecting": "Conectando…",
     "voiceStatusBar.error": "Error de conexión",

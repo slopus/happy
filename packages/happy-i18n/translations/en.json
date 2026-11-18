@@ -2,6 +2,9 @@
   "code": "en",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "This is a download link, not a pairing code. If you’re setting up Happy Desktop, click ‘Downloaded and opened’ on your computer, then scan the pairing code it shows.",
+    "scan.happyWebsiteLink": "This is a Happy web link, not a pairing code. Open Happy on your computer and use the pairing code or link it shows.",
+    "scan.notPairing": "This isn’t a pairing code or link. Use the pairing code or link shown on the device you want to connect.",
     "voiceStatusBar.tapToEnd": "tap to end",
     "voiceStatusBar.connecting": "Connecting…",
     "voiceStatusBar.error": "Connection error",

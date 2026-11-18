@@ -2,6 +2,9 @@
   "code": "ja",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "これはダウンロード用のリンクで、ペアリングコードではありません。Happy Desktop を設定している場合は、パソコンで「Downloaded and opened」をクリックし、表示されたペアリングコードをスキャンしてください。",
+    "scan.happyWebsiteLink": "これは Happy のウェブリンクで、ペアリングコードではありません。パソコンで Happy を開き、表示されたペアリングコードまたはリンクを使ってください。",
+    "scan.notPairing": "これはペアリング用のコードやリンクではありません。接続したいデバイスに表示されているペアリングコードまたはリンクを使ってください。",
     "voiceStatusBar.tapToEnd": "タップして終了",
     "voiceStatusBar.connecting": "接続中…",
     "voiceStatusBar.error": "接続エラー",

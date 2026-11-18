@@ -4,6 +4,10 @@
   packages/happy-i18n/translations/es.json (es). Do not edit.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
+    <string name="scan_download_link">Este es un enlace de descarga, no un código de vinculación. Si estás configurando Happy Desktop, haz clic en «Downloaded and opened» en tu computadora y escanea el código de vinculación que aparece.</string>
+    <string name="scan_happy_website_link">Este es un enlace web de Happy, no un código de vinculación. Abre Happy en tu computadora y usa el código o el enlace de vinculación que aparece.</string>
+    <string name="scan_not_pairing">Esto no es un código ni un enlace de vinculación. Usa el código o el enlace de vinculación que aparece en el dispositivo que quieres conectar.</string>
+
     <string name="voice_status_bar_tap_to_end">toca para finalizar</string>
     <string name="voice_status_bar_connecting">Conectando…</string>
     <string name="voice_status_bar_error">Error de conexión</string>

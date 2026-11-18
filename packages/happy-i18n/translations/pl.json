@@ -2,6 +2,9 @@
   "code": "pl",
   "rule": "pl",
   "entries": {
+    "scan.downloadLink": "To link do pobrania, a nie kod parowania. Jeśli konfigurujesz Happy Desktop, kliknij na komputerze „Downloaded and opened”, a następnie zeskanuj wyświetlony kod parowania.",
+    "scan.happyWebsiteLink": "To link do strony Happy, a nie kod parowania. Otwórz Happy na komputerze i użyj wyświetlonego kodu lub linku do parowania.",
+    "scan.notPairing": "To nie jest kod ani link do parowania. Użyj kodu lub linku do parowania wyświetlonego na urządzeniu, które chcesz połączyć.",
     "voiceStatusBar.tapToEnd": "dotknij, aby zakończyć",
     "voiceStatusBar.connecting": "Łączenie…",
     "voiceStatusBar.error": "Błąd połączenia",

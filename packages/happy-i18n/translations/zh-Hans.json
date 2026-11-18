@@ -2,6 +2,9 @@
   "code": "zh-Hans",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "这是下载链接，不是配对码。如果你正在设置 Happy Desktop，请在电脑上点击“Downloaded and opened”，然后扫描显示的配对码。",
+    "scan.happyWebsiteLink": "这是 Happy 的网页链接，不是配对码。请在电脑上打开 Happy，使用其中显示的配对码或配对链接。",
+    "scan.notPairing": "这不是配对码或配对链接。请使用要连接的设备上显示的配对码或配对链接。",
     "voiceStatusBar.tapToEnd": "点按结束",
     "voiceStatusBar.connecting": "连接中…",
     "voiceStatusBar.error": "连接错误",

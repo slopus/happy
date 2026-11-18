@@ -64,11 +64,11 @@ final class HappyScanTests: XCTestCase {
 
     /// What the screen shows after `text` was opened: an alert's title and
     /// message, or the screen pushed.
-    private func shown(_ text: String, _ intent: ScanIntent, context: AppContext) async throws -> String {
+    private func shown(_ text: String, _ intent: ScanIntent, context: AppContext, start: PairingStart = .scan) async throws -> String {
         let (window, navigation) = screens()
         defer { window.isHidden = true }
         let host = try XCTUnwrap(navigation.topViewController)
-        let task = Task { await HappyScan.open(text, intent: intent, context: context, on: host, start: .scan) }
+        let task = Task { await HappyScan.open(text, intent: intent, context: context, on: host, start: start) }
         let visible = try await until { navigation.presentedViewController is UIAlertController || navigation.viewControllers.count > 1 }
         task.cancel()
         guard visible else { return "nothing" }
@@ -76,6 +76,41 @@ final class HappyScanTests: XCTestCase {
             return "\(alert.title ?? "") | \(alert.message ?? "")"
         }
         return String(describing: type(of: navigation.topViewController!))
+    }
+
+    func testRejectedScanAndPasteGiveTheSameGuidance() async throws {
+        let controller = try await signedIn()
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let cases = [
+            ("https://link.happy.engineering/download", Strings.Scan.downloadLink),
+            ("https://happy.engineering/#download", Strings.Scan.downloadLink),
+            ("https://apps.apple.com/us/app/happy/id6748571505", Strings.Scan.downloadLink),
+            ("https://testflight.apple.com/join/Example1", Strings.Scan.downloadLink),
+            ("https://play.google.com/store/apps/details?id=com.ex3ndr.happy", Strings.Scan.downloadLink),
+            ("https://happy.engineering/docs/", Strings.Scan.happyWebsiteLink),
+            ("https://app.happy.engineering/", Strings.Scan.happyWebsiteLink),
+            ("https://link.happy.engineering.example.com/download", Strings.Scan.notHappy),
+            ("https://happy.engineering@not-happy.example/download", Strings.Scan.notHappy),
+            ("https://apps.apple.com/account/subscriptions", Strings.Scan.notHappy),
+            ("plain text", Strings.Scan.notHappy),
+        ]
+        for (text, message) in cases {
+            for start: PairingStart in [.scan, .pasteLink] {
+                let actual = try await shown(text, .addAccount, context: context, start: start)
+                XCTAssertEqual(actual, "\(Strings.Scan.notHappyTitle) | \(message)", text)
+            }
+        }
+        await controller.signOut()
+    }
+
+    func testOldCLIBrowserLinkKeepsItsPairingRoute() async throws {
+        let controller = try await signedIn()
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let url = "https://app.happy.engineering/terminal/connect#key="
+        XCTAssertEqual(HappyScan.route(url + CanonicalBase64URL.encode(key), intent: .connect, context: context), .connectComputer(publicKey: key))
+        let invalid = try await shown(url + "bad", .addAccount, context: context, start: .pasteLink)
+        XCTAssertEqual(invalid, "\(Strings.Common.error) | \(Strings.Modals.invalidAuthUrl)")
+        await controller.signOut()
     }
 
     func testEveryCodeFromEitherScanShowsSomething() async throws {

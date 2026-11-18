@@ -130,22 +130,18 @@ class ConnectFlow internal constructor(
                     !signIn(invite) -> alert = errorAlert(messages.serverAtPath)
                 }
             }
-            is HappyCode.NotHappy, is HappyCode.UnknownHappy -> alert = errorAlert(messages.notHappy)
+            is HappyCode.NotHappy, is HappyCode.UnknownHappy -> reject(text, start)
         }
     }
 
     /**
      * connectWithUrl: a pasted link, routed by [route] exactly as the same
-     * code read by the camera is, so typing a terminal link into Link New
-     * Device names the screen it belongs to instead of calling it invalid.
-     * Two read differently: a link of no kind this app knows is "Invalid
-     * authentication URL", since nothing was scanned, and a team server's
-     * is refused, since one is taken only from the camera.
+     * code read by the camera is, except a team server's code is refused
+     * because it is taken only from the camera.
      */
     fun connectWithUrl(url: String) {
         scope.launch {
-            when (val code = HappyCode.classify(url)) {
-                is HappyCode.NotHappy, is HappyCode.UnknownHappy -> alert = errorAlert(messages.invalidUrl)
+            when (HappyCode.classify(url)) {
                 // A team server is added only from the camera (contract §8), never a pasted link.
                 is HappyCode.Server -> alert = errorAlert(messages.serverScanOnly)
                 else -> route(url, PairingStart.PasteLink)
@@ -155,6 +151,16 @@ class ConnectFlow internal constructor(
 
     /** processAuthUrl, awaited. True when the link was approved. */
     suspend fun processAuthUrl(url: String): Boolean = process(url)
+
+    private fun reject(text: String, start: PairingStart) {
+        val message = when (RejectedPairingLink.classify(text)) {
+            RejectedPairingLink.Download -> messages.downloadLink
+            RejectedPairingLink.HappyWebsite -> messages.happyWebsiteLink
+            RejectedPairingLink.LegacyWebPairing -> if (start == PairingStart.PasteLink) messages.invalidUrl else messages.notHappy
+            null -> messages.notPairing
+        }
+        alert = errorAlert(message)
+    }
 
     internal fun errorAlert(message: String) = Alert(errorTitle, message, listOf(AlertButton(okTitle)))
 }
@@ -178,6 +184,9 @@ internal data class ScanMessages(
     val noCamera: String = "",
     val cameraFailed: String = "",
     val notHappy: String = "",
+    val notPairing: String = "",
+    val downloadLink: String = "",
+    val happyWebsiteLink: String = "",
     val terminalElsewhere: String = "",
     val accountElsewhere: String = "",
     val pairingUnavailable: String = "",
@@ -300,6 +309,9 @@ private fun rememberConnectFlow(
         noCamera = stringResource(R.string.scan_no_camera),
         cameraFailed = stringResource(R.string.scan_camera_failed),
         notHappy = stringResource(R.string.scan_not_happy_code),
+        notPairing = stringResource(R.string.scan_not_pairing),
+        downloadLink = stringResource(R.string.scan_download_link),
+        happyWebsiteLink = stringResource(R.string.scan_happy_website_link),
         terminalElsewhere = stringResource(R.string.scan_terminal_code_elsewhere),
         accountElsewhere = stringResource(R.string.scan_account_code_elsewhere),
         pairingUnavailable = stringResource(R.string.scan_pairing_unavailable),

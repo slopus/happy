@@ -4,6 +4,10 @@
   packages/happy-i18n/translations/ca.json (ca). Do not edit.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
+    <string name="scan_download_link">Aquest és un enllaç de baixada, no un codi d’aparellament. Si estàs configurant Happy Desktop, fes clic a «Downloaded and opened» a l’ordinador i escaneja el codi d’aparellament que s’hi mostra.</string>
+    <string name="scan_happy_website_link">Aquest és un enllaç web de Happy, no un codi d’aparellament. Obre Happy a l’ordinador i fes servir el codi o l’enllaç d’aparellament que s’hi mostra.</string>
+    <string name="scan_not_pairing">Això no és un codi ni un enllaç d’aparellament. Fes servir el codi o l’enllaç d’aparellament que es mostra al dispositiu que vols connectar.</string>
+
     <string name="voice_status_bar_tap_to_end">toca per finalitzar</string>
     <string name="voice_status_bar_connecting">Connectant…</string>
     <string name="voice_status_bar_error">Error de connexió</string>

@@ -55,12 +55,16 @@ class ScanRouteTableTest {
     private val pairing = "happy://direct?eyJ2IjoxfQ"
     private val unknownHappy = "happy://something?else"
     private val notHappy = "https://example.com"
+    private val webPairing = "https://app.happy.engineering/terminal/connect#key=abc"
     private val server = "happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=https%3A%2F%2Fhappy.acme.example%2F"
     private val serverAtPath = "happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=https%3A%2F%2Facme.example%2Fhappy%2F"
     private val serverMalformed = "happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=http%3A%2F%2Fhappy.acme.example%2F"
     private val servers = setOf(server, serverAtPath, serverMalformed)
 
-    private val notHappyHere = "This QR code isn't a Happy code."
+    private val notPairing = "This isn’t a pairing code or link. Use the pairing code or link shown on the device you want to connect."
+    private val downloadLink = "This is a download link, not a pairing code. If you’re setting up Happy Desktop, click ‘Downloaded and opened’ on your computer, then scan the pairing code it shows."
+    private val happyWebsite = "This is a Happy web link, not a pairing code. Open Happy on your computer and use the pairing code or link it shows."
+    private val unsupportedQR = "This QR code isn't a Happy code."
     private val terminalElsewhere = "This code connects a terminal. Scan it from Settings › Scan QR code to authenticate."
     private val accountElsewhere = "This code links a new device. Scan it from Settings › Backup & Restore › Link New Device."
     private val accountNeedsPhone = "This code asks for a Happy CLI account. Add one on this phone first."
@@ -80,8 +84,9 @@ class ScanRouteTableTest {
         Triple(ConnectKind.Add, terminal, Lands.Approved(terminal)),
         Triple(ConnectKind.Add, pairing, Lands.Pairs(pairing)),
         Triple(ConnectKind.Add, account, Lands.Says(accountNeedsPhone)),
-        Triple(ConnectKind.Add, unknownHappy, Lands.Says(notHappyHere)),
-        Triple(ConnectKind.Add, notHappy, Lands.Says(notHappyHere)),
+        Triple(ConnectKind.Add, unknownHappy, Lands.Says(notPairing)),
+        Triple(ConnectKind.Add, notHappy, Lands.Says(notPairing)),
+        Triple(ConnectKind.Add, webPairing, Lands.Says(unsupportedQR)),
         Triple(ConnectKind.Add, server, Lands.SignsIn("https://happy.acme.example/")),
         Triple(ConnectKind.Add, serverAtPath, Lands.Says(serverPathUnsupported)),
         Triple(ConnectKind.Add, serverMalformed, Lands.Says(serverInvalid)),
@@ -90,8 +95,8 @@ class ScanRouteTableTest {
         Triple(ConnectKind.Terminal, terminal, Lands.Approved(terminal)),
         Triple(ConnectKind.Terminal, pairing, Lands.Pairs(pairing)),
         Triple(ConnectKind.Terminal, account, Lands.Says(accountElsewhere)),
-        Triple(ConnectKind.Terminal, unknownHappy, Lands.Says(notHappyHere)),
-        Triple(ConnectKind.Terminal, notHappy, Lands.Says(notHappyHere)),
+        Triple(ConnectKind.Terminal, unknownHappy, Lands.Says(notPairing)),
+        Triple(ConnectKind.Terminal, notHappy, Lands.Says(notPairing)),
         Triple(ConnectKind.Terminal, server, Lands.SignsIn("https://happy.acme.example/")),
         Triple(ConnectKind.Terminal, serverAtPath, Lands.Says(serverPathUnsupported)),
         Triple(ConnectKind.Terminal, serverMalformed, Lands.Says(serverInvalid)),
@@ -100,8 +105,8 @@ class ScanRouteTableTest {
         Triple(ConnectKind.Account, account, Lands.Approved(account)),
         Triple(ConnectKind.Account, pairing, Lands.Pairs(pairing)),
         Triple(ConnectKind.Account, terminal, Lands.Says(terminalElsewhere)),
-        Triple(ConnectKind.Account, unknownHappy, Lands.Says(notHappyHere)),
-        Triple(ConnectKind.Account, notHappy, Lands.Says(notHappyHere)),
+        Triple(ConnectKind.Account, unknownHappy, Lands.Says(notPairing)),
+        Triple(ConnectKind.Account, notHappy, Lands.Says(notPairing)),
         Triple(ConnectKind.Account, server, Lands.SignsIn("https://happy.acme.example/")),
         Triple(ConnectKind.Account, serverAtPath, Lands.Says(serverPathUnsupported)),
         Triple(ConnectKind.Account, serverMalformed, Lands.Says(serverInvalid)),
@@ -171,10 +176,9 @@ class ScanRouteTableTest {
     /**
      * A pasted link lands where the same code read by the camera lands: a
      * terminal link typed into Link New Device names Settings' terminal
-     * scanner, rather than being called invalid. The one difference is a
-     * link of no kind this app knows, which says "Invalid authentication
-     * URL" instead of talking about a QR code that nobody scanned, and a
-     * team server's, which is taken only from the camera.
+     * scanner, rather than being called invalid. Team server codes are
+     * still taken only from the camera, and the unsupported old CLI web
+     * pairing link retains its existing fallback for each way in.
      */
     @Test
     fun aPastedLinkGoesWhereTheScannedOneGoes() {
@@ -182,12 +186,35 @@ class ScanRouteTableTest {
         val wrong = table.mapNotNull { (kind, code, scanned) ->
             val expected = when {
                 code in servers -> Lands.Says(serverScanOnly)
-                scanned == Lands.Says(notHappyHere) -> Lands.Says(invalidUrl)
+                code == webPairing -> Lands.Says(invalidUrl)
                 else -> scanned
             }
             val actual = land(kind, code, paste = true)
             if (actual == expected) null else "$kind pasting $code: expected $expected, got $actual"
         }
         assertEquals(emptyList<String>(), wrong)
+    }
+
+    @Test
+    fun rejectedLinksAreExplainedWithoutStartingPairing() {
+        start()
+        val cases = listOf(
+            "https://link.happy.engineering/download" to downloadLink,
+            "https://happy.engineering/#download" to downloadLink,
+            "https://apps.apple.com/us/app/happy/id6748571505" to downloadLink,
+            "https://testflight.apple.com/join/Example1" to downloadLink,
+            "https://play.google.com/store/apps/details?id=com.ex3ndr.happy" to downloadLink,
+            "https://happy.engineering/docs/" to happyWebsite,
+            "https://app.happy.engineering/" to happyWebsite,
+            "https://link.happy.engineering.example.com/download" to notPairing,
+            "https://happy.engineering@not-happy.example/download" to notPairing,
+            "https://apps.apple.com/account/subscriptions" to notPairing,
+            "plain text" to notPairing,
+        )
+        for ((code, message) in cases) {
+            for (paste in listOf(false, true)) {
+                assertEquals("$code pasted=$paste", Lands.Says(message), land(ConnectKind.Add, code, paste))
+            }
+        }
     }
 }
