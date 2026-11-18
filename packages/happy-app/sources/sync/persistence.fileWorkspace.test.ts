@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { loadFileWorkspaceReference, saveFileWorkspaceReference, loadFileWorkspaceUI, saveFileWorkspaceUI } from './persistence';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MMKV } from 'react-native-mmkv';
+import { loadFileWorkspaceDrafts, saveFileWorkspaceDrafts, loadFileWorkspaceReference, saveFileWorkspaceReference, loadFileWorkspaceUI, saveFileWorkspaceUI } from './persistence';
 const scope = 'workspace-reference-test';
-afterEach(() => { saveFileWorkspaceReference(scope, null); saveFileWorkspaceReference(scope + '-other', null); });
+afterEach(() => { vi.restoreAllMocks(); saveFileWorkspaceReference(scope, null); saveFileWorkspaceReference(scope + '-other', null); });
 describe('pending workspace file context storage', () => {
     it('distinguishes the old default from a manual split and preserves an explicit choice at the default width', () => {
         saveFileWorkspaceUI(scope, { tabs: [], active: null, open: false, width: 430 });
@@ -30,5 +31,24 @@ describe('pending workspace file context storage', () => {
     ])('rejects malformed cached context: %j', reference => {
         saveFileWorkspaceReference(scope, reference);
         expect(loadFileWorkspaceReference(scope)).toBeNull();
+    });
+});
+
+
+describe('workspace navigation storage failures', () => {
+    it.each(['QuotaExceededError', 'SecurityError'])('keeps cached navigation and drafts intact when a UI write fails with %s', name => {
+        const previous = { tabs: ['/work/plan.md'], active: '/work/plan.md', open: true, width: 600, widthCustomized: true };
+        const drafts = { '/work/plan.md': { draft: '# Unsaved work', hash: 'original' } };
+        saveFileWorkspaceUI(scope, previous);
+        saveFileWorkspaceDrafts(scope, drafts);
+        const set = vi.spyOn(MMKV.prototype, 'set').mockImplementation(() => {
+            const error = new Error('Storage unavailable'); error.name = name; throw error;
+        });
+        expect(saveFileWorkspaceUI(scope, { tabs: [], active: null, open: false, width: 430 })).toBe(false);
+        expect(loadFileWorkspaceUI(scope)).toEqual(previous);
+        expect(loadFileWorkspaceDrafts(scope)).toEqual(drafts);
+        set.mockRestore();
+        expect(saveFileWorkspaceUI(scope, { ...previous, width: 700 })).toBe(true);
+        expect(loadFileWorkspaceUI(scope).width).toBe(700);
     });
 });

@@ -572,8 +572,14 @@ export function loadFileWorkspaceUI(scope: string): FileWorkspaceUI {
     } catch { return { tabs: [], active: null, open: false, width: 430, widthCustomized: false }; }
 }
 export function saveFileWorkspaceUI(scope: string, ui: FileWorkspaceUI) {
-    // Persist navigation only; file contents remain on the session machine.
-    mmkv.set(`file-workspace-v1:${scope}`, JSON.stringify(ui));
+    // Navigation is best-effort: full or blocked browser storage must not crash
+    // the workspace. Keep existing snapshots and unsaved drafts untouched.
+    try {
+        mmkv.set(`file-workspace-v1:${scope}`, JSON.stringify(ui));
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 
