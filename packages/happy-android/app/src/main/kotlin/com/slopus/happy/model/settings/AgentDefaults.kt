@@ -95,7 +95,7 @@ object AgentDefaults {
         AgentKey.Codex to AgentDefaultConfig("auto", "gpt-6.1-sol", "medium"),
         AgentKey.Gemini to AgentDefaultConfig("default", "gemini-2.5-pro", null),
         AgentKey.Openclaw to AgentDefaultConfig("default", "default", null),
-        AgentKey.Agy to AgentDefaultConfig("default", "Gemini 3.8 Flash", "medium"),
+        AgentKey.Agy to AgentDefaultConfig("default", "gemini-4-argon-high", "high"),
     )
 
     /** `auto` first shipped in happy-cli 1.2.1-beta.2, for Claude and Codex alike. */

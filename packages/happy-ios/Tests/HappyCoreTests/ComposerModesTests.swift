@@ -256,8 +256,8 @@ final class ModelModeOptionsTests: XCTestCase {
         XCTAssertEqual(Options.defaultModelKey(flavor: "codex"), "gpt-6.1-sol")
         XCTAssertEqual(Options.defaultEffortKey(flavor: "codex"), "medium")
         XCTAssertEqual(Options.defaultPermissionModeKey(flavor: "agy"), "default")
-        XCTAssertEqual(Options.defaultModelKey(flavor: "agy"), "Gemini 3.8 Flash")
-        XCTAssertEqual(Options.defaultEffortKey(flavor: "agy"), "medium")
+        XCTAssertEqual(Options.defaultModelKey(flavor: "agy"), "gemini-4-argon-high")
+        XCTAssertEqual(Options.defaultEffortKey(flavor: "agy"), "high")
         XCTAssertEqual(Options.defaultEffortKeyForModel(flavor: "gemini", modelKey: "gemini-2.5-pro"), nil)
         XCTAssertEqual(Options.defaultEffortKeyForModel(flavor: "codex", modelKey: "gpt-6-luna"), "medium")
     }
@@ -307,13 +307,46 @@ final class ModelModeOptionsTests: XCTestCase {
         let models = Options.availableModels(flavor: "agy", metadata: nil)
         XCTAssertEqual(models, Options.hardcodedModelModes(flavor: "agy"))
         let keys = keys(models)
-        XCTAssertTrue(keys.contains("Gemini 3.8 Flash"))
-        XCTAssertEqual(Options.defaultModelKey(flavor: "agy"), "Gemini 3.8 Flash")
-        XCTAssertEqual(keys.filter { $0.hasPrefix("Gemini ") }, ["Gemini 3.8 Flash"])
-        XCTAssertEqual(self.keys(Options.effortLevelsForModel(flavor: "agy", modelKey: "Gemini 3.8 Flash")), ["low", "medium", "high"])
+        XCTAssertEqual(keys.first, "gemini-4-argon-high")
+        XCTAssertEqual(keys.dropFirst().first, "gemini-4-hydrogen-xhigh")
+        XCTAssertTrue(keys.contains("gemini-3.1-pro-high"))
+        XCTAssertEqual(Options.defaultModelKey(flavor: "agy"), "gemini-4-argon-high")
+        XCTAssertEqual(keys.filter { $0.hasPrefix("gemini-") }, [
+            "gemini-4-argon-high",
+            "gemini-4-hydrogen-xhigh",
+            "gemini-3.8-flash-high",
+            "gemini-3.1-pro-high",
+        ])
+        XCTAssertEqual(self.keys(Options.effortLevelsForModel(flavor: "agy", modelKey: "gemini-4-argon-high")), ["low", "medium", "high"])
+        XCTAssertEqual(self.keys(Options.effortLevelsForModel(flavor: "agy", modelKey: "gemini-4-hydrogen-xhigh")), ["low", "medium", "high", "xhigh"])
         XCTAssertFalse(keys.contains("default"))
         XCTAssertFalse(keys.contains("opus"))
-        XCTAssertEqual(models.map(\.providerId), ["google", "anthropic", "anthropic", "openai"])
+        XCTAssertEqual(models.map(\.providerId), ["google", "google", "anthropic", "anthropic", "openai", "google", "google"])
+    }
+
+    func testMetadataCatalogCurrentModelBeatsCodeDefaultUnlessOverridden() {
+        let metadata = json(#"""
+        {
+          "flavor": "agy",
+          "models": [
+            { "code": "gemini-4-argon-high", "value": "Gemini 4 Argon (Default)" },
+            { "code": "claude-opus-5-5-high", "value": "Claude Opus 5.5 (Thinking)" }
+          ],
+          "currentModelCode": "claude-opus-5-5-high",
+          "currentThoughtLevelCode": "medium"
+        }
+        """#)
+        let reported = ComposerModes(metadata: metadata, picks: ComposerPicks(), agentDefaultOverrides: [:])
+        XCTAssertEqual(reported.modelMode?.key, "claude-opus-5-5-high")
+        XCTAssertEqual(reported.effortLevel?.key, "medium")
+
+        let overridden = ComposerModes(
+            metadata: metadata,
+            picks: ComposerPicks(),
+            agentDefaultOverrides: ["agy": json(#"{ "modelMode": "gemini-4-argon-high", "effortLevel": "high" }"#)]
+        )
+        XCTAssertEqual(overridden.modelMode?.key, "gemini-4-argon-high")
+        XCTAssertEqual(overridden.effortLevel?.key, "high")
     }
 
     func testASavedLegacyAgyModelStaysSelectable() {

@@ -52,7 +52,19 @@ class ModeOptionsTest {
         assertEquals("most capable", ModeOptions.modelModes("codex")[0].description)
         assertEquals(6, ModeOptions.modelModes("gemini").size)
         assertEquals(listOf("default"), ModeOptions.modelModes("openclaw").map { it.key })
-        assertEquals("Gemini 3.8 Flash", ModeOptions.modelModes("agy")[0].name)
+        assertEquals(
+            listOf(
+                "gemini-4-argon-high",
+                "gemini-4-hydrogen-xhigh",
+                "claude-opus-5-5-high",
+                "claude-sonnet-5-5-high",
+                "gpt-oss-120b-medium",
+                "gemini-3.8-flash-high",
+                "gemini-3.1-pro-high",
+            ),
+            ModeOptions.modelModes("agy").map { it.key },
+        )
+        assertEquals("Gemini 4 Argon (Default)", ModeOptions.modelModes("agy")[0].name)
     }
 
     @Test
@@ -85,8 +97,11 @@ class ModeOptionsTest {
         assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), ModeOptions.effortLevelsForModel("codex", "gpt-6.1-terra").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh", "max"), ModeOptions.effortLevelsForModel("codex", "gpt-6-luna").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh"), ModeOptions.effortLevelsForModel("codex", "my-model").map { it.key })
-        assertEquals(listOf("low", "medium", "high"), ModeOptions.effortLevelsForModel("agy", "Gemini 3.8 Flash").map { it.key })
-        assertEquals(emptyList<ModeOption>(), ModeOptions.effortLevelsForModel("agy", "GPT-OSS 120B (Medium)"))
+        assertEquals(listOf("low", "medium", "high"), ModeOptions.effortLevelsForModel("agy", "gemini-4-argon-high").map { it.key })
+        assertEquals(listOf("low", "medium", "high", "xhigh"), ModeOptions.effortLevelsForModel("agy", "gemini-4-hydrogen-xhigh").map { it.key })
+        assertEquals(listOf("low", "medium", "high"), ModeOptions.effortLevelsForModel("agy", "claude-opus-5-5-high").map { it.key })
+        assertEquals(listOf("low", "medium", "high"), ModeOptions.effortLevelsForModel("agy", "gemini-3.1-pro-high").map { it.key })
+        assertEquals(emptyList<ModeOption>(), ModeOptions.effortLevelsForModel("agy", "gpt-oss-120b-medium"))
         assertEquals(emptyList<ModeOption>(), ModeOptions.effortLevelsForModel("gemini", "gemini-2.5-pro"))
     }
 }

@@ -122,10 +122,13 @@ object ModeOptions {
     private val openClawModelModes = listOf(ModeOption("default", "Default model"))
 
     private val agyModelModes = listOf(
-        ModeOption("Gemini 3.8 Flash", "Gemini 3.8 Flash"),
-        ModeOption("Claude Sonnet 4.6 (Thinking)", "Claude Sonnet 4.6 (Thinking)"),
-        ModeOption("Claude Opus 4.6 (Thinking)", "Claude Opus 4.6 (Thinking)"),
-        ModeOption("GPT-OSS 120B (Medium)", "GPT-OSS 120B (Medium)"),
+        ModeOption("gemini-4-argon-high", "Gemini 4 Argon (Default)", "Default · High thinking"),
+        ModeOption("gemini-4-hydrogen-xhigh", "Gemini 4 Hydrogen (XHigh)", "Secondary · Extra high thinking"),
+        ModeOption("claude-opus-5-5-high", "Claude Opus 5.5 (Thinking)", "Anthropic via Antigravity Gateway"),
+        ModeOption("claude-sonnet-5-5-high", "Claude Sonnet 5.5 (Thinking)", "Anthropic via Antigravity Gateway"),
+        ModeOption("gpt-oss-120b-medium", "GPT-OSS 120B (Medium)", "Open weights"),
+        ModeOption("gemini-3.8-flash-high", "Gemini 3.8 Flash (High)", "Fast"),
+        ModeOption("gemini-3.1-pro-high", "Gemini 3.1 Pro (High)", "Optional · Requires Gemini CLI / AI Studio provider on proxy"),
     )
 
     /** getHardcodedModelModes: Claude's for an unknown flavor. */
@@ -160,7 +163,15 @@ object ModeOptions {
     // The Agent SDK's EffortLevel union: one scale for every Claude model.
     private val claudeEfforts = listOf("low", "medium", "high", "xhigh", "max")
 
-    private val agyEffortsByModel = mapOf("Gemini 3.8 Flash" to listOf("low", "medium", "high"))
+    private val agyEffortsByModel = mapOf(
+        "gemini-4-argon-high" to listOf("low", "medium", "high"),
+        "gemini-4-hydrogen-xhigh" to listOf("low", "medium", "high", "xhigh"),
+        "claude-opus-5-5-high" to listOf("low", "medium", "high"),
+        "claude-sonnet-5-5-high" to listOf("low", "medium", "high"),
+        "gemini-3.8-flash-high" to listOf("low", "medium", "high"),
+        "gemini-3.1-pro-high" to listOf("low", "medium", "high"),
+        "Gemini 3.8 Flash" to listOf("low", "medium", "high"),
+    )
 
     // What each model publishes in Codex's registry, in its order.
     private val codexEffortsByModel = mapOf(

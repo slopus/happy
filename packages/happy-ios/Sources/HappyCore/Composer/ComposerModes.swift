@@ -65,16 +65,23 @@ public struct ComposerModes: Equatable, Sendable {
         typealias Options = ModelModeOptions
         let flavor = metadata?["flavor"]?.stringValue
         let cliVersion = metadata?["version"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        let agent = AgentDefaults.Agent(flavor: flavor)
         let isRig = RigCatalog.isRig(metadata)
-        let defaults = AgentDefaults.resolve(agentDefaultOverrides, AgentDefaults.Agent(flavor: flavor), cliVersion: cliVersion)
+        let defaults = AgentDefaults.resolve(agentDefaultOverrides, agent, cliVersion: cliVersion)
+        let hasMetadataCatalog = !(metadata?["models"]?.arrayValue?.isEmpty ?? true)
+        let hasExplicitModelOverride = AgentDefaults.override(agentDefaultOverrides, agent, .modelMode) != nil
+        let hasExplicitEffortOverride = AgentDefaults.override(agentDefaultOverrides, agent, .effortLevel) != nil
+        let reportedModel = metadata?["currentModelCode"]?.stringValue
+        let reportedEffort = metadata?["currentThoughtLevelCode"]?.stringValue
 
         // A pick on a since-retired row shows the row that runs the same
         // model; the key itself is left alone.
         let sessionModelMode = isRig ? picks.modelMode : AgentDefaults.retireModelMode(picks.modelMode, flavor: flavor)
+        let fallbackModel = hasMetadataCatalog && !hasExplicitModelOverride ? (reportedModel ?? defaults.modelMode) : defaults.modelMode
         let availableModels = Options.availableModels(
             flavor: flavor,
             metadata: metadata,
-            selectedKey: sessionModelMode ?? (isRig ? nil : defaults.modelMode)
+            selectedKey: sessionModelMode ?? (isRig ? nil : fallbackModel)
         )
         let availableModes = Options.availablePermissionModes(flavor: flavor, metadata: metadata, selectedKey: picks.permissionMode)
 
@@ -88,18 +95,21 @@ public struct ComposerModes: Equatable, Sendable {
                 ]
                 : [defaults.permissionMode, metadata?["currentOperatingModeCode"]?.stringValue])
         )
-        let modelMode = Options.resolveCurrentOption(availableModels, preferredKeys: [
-            sessionModelMode,
-            isRig ? Options.rigCurrentModelOptionKey(metadata: metadata) : defaults.modelMode,
-            isRig ? nil : metadata?["currentModelCode"]?.stringValue,
-        ])
+        let preferredModelKeys: [String?] = [sessionModelMode] + (isRig
+            ? [Options.rigCurrentModelOptionKey(metadata: metadata)]
+            : (hasMetadataCatalog && !hasExplicitModelOverride
+                ? [reportedModel, defaults.modelMode]
+                : [defaults.modelMode, reportedModel]))
+        let modelMode = Options.resolveCurrentOption(availableModels, preferredKeys: preferredModelKeys)
 
         let modelKey = modelMode?.key ?? "default"
         let availableEffortLevels = Options.effortLevelsForModel(flavor: flavor, modelKey: modelKey, metadata: metadata)
-        let effortLevel = Options.resolveCurrentOption(availableEffortLevels, preferredKeys: [
-            picks.effortLevel,
-            isRig ? RigCatalog.reasoningSelection(metadata, modelKey: modelKey) : defaults.effortLevel,
-        ])
+        let preferredEffortKeys: [String?] = [picks.effortLevel] + (isRig
+            ? [RigCatalog.reasoningSelection(metadata, modelKey: modelKey)]
+            : (hasMetadataCatalog && !hasExplicitEffortOverride
+                ? [reportedEffort, defaults.effortLevel]
+                : [defaults.effortLevel]))
+        let effortLevel = Options.resolveCurrentOption(availableEffortLevels, preferredKeys: preferredEffortKeys)
 
         self.init(
             availableModes: availableModes,
