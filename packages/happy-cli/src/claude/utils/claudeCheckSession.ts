@@ -1,7 +1,31 @@
 import { logger } from "@/ui/logger";
-import { existsSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { getProjectPath } from "./path";
+
+/**
+ * A valid transcript carries an id on one of its first lines, so only the head
+ * of the file is worth reading. Reading it whole threw ERR_STRING_TOO_LONG on
+ * transcripts past Node's 512 MB string limit, and because this runs on every
+ * remote launch the exception surfaced as `[remote]: launch error` and put the
+ * whole remote mode into a retry loop.
+ */
+const HEAD_BYTES = 8 * 1024 * 1024;
+
+function readHeadLines(file: string, maxBytes: number): string[] {
+    const { size } = statSync(file);
+    const length = Math.min(size, maxBytes);
+    const fd = openSync(file, 'r');
+    try {
+        const buffer = Buffer.allocUnsafe(length);
+        const bytesRead = readSync(fd, buffer, 0, length, 0);
+        const lines = buffer.subarray(0, bytesRead).toString('utf-8').split('\n');
+        // The final line is cut off when the file is longer than the window.
+        return size > length && lines.length > 1 ? lines.slice(0, -1) : lines;
+    } finally {
+        closeSync(fd);
+    }
+}
 
 export function claudeCheckSession(sessionId: string, path: string) {
     const projectDir = getProjectPath(path);
@@ -15,7 +39,7 @@ export function claudeCheckSession(sessionId: string, path: string) {
     }
 
     // Check if session contains any messages with valid ID fields
-    const sessionData = readFileSync(sessionFile, 'utf-8').split('\n');
+    const sessionData = readHeadLines(sessionFile, HEAD_BYTES);
 
     const hasGoodMessage = !!sessionData.find((v, index) => {
         if (!v.trim()) return false;  // Skip empty lines silently (not errors)
