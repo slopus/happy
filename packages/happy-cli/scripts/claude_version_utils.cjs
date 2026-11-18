@@ -105,6 +105,44 @@ function isPlainTextWithoutShebang(filePath) {
 }
 
 /**
+ * Detect a native executable: an extensionless file whose leading bytes are
+ * not plain text (Mach-O/ELF), e.g. the native-installer binaries at
+ * ~/.local/share/claude/versions/<version>. These must not be treated as
+ * npm text shims.
+ */
+function isNativeBinaryFile(filePath) {
+    try {
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buffer = Buffer.alloc(128);
+            const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+            if (bytesRead === 0) {
+                return false;
+            }
+            // Shebang scripts are text executables, not native binaries
+            if (bytesRead >= 2 && buffer[0] === 0x23 && buffer[1] === 0x21) {
+                return false;
+            }
+            for (let i = 0; i < bytesRead; i++) {
+                const byte = buffer[i];
+                const isPrintableAscii = byte >= 0x20 && byte <= 0x7e;
+                const isCommonWhitespace = byte === 0x09 || byte === 0x0a || byte === 0x0d;
+                if (!isPrintableAscii && !isCommonWhitespace) {
+                    // Non-text byte found (e.g. Mach-O 0xcf 0xfa, ELF 0x7f 'ELF')
+                    return true;
+                }
+            }
+            // All bytes are plain text — likely an npm shim script
+            return false;
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
  * Find path to npm globally installed Claude Code CLI
  * @returns {string|null} Path to cli.js or native binary, or null if not found
  */
@@ -152,6 +190,15 @@ function findClaudeInPath() {
                 return null;
             }
             if (!isExecutable) {
+                // Extensionless native binary (e.g. native installer >= 2.1.113:
+                // ~/.local/bin/claude -> ~/.local/share/claude/versions/<version>).
+                // Must be handled before the npm text-shim fallback below.
+                if (isNativeBinaryFile(resolvedPath)) {
+                    const originalSource = detectSourceFromPath(claudePath);
+                    const resolvedSource = detectSourceFromPath(resolvedPath);
+                    const source = originalSource !== 'PATH' ? originalSource : resolvedSource;
+                    return { path: resolvedPath, source };
+                }
                 const shimDir = path.dirname(claudePath);
                 const pkgDir = path.join(shimDir, 'node_modules', '@anthropic-ai', 'claude-code');
                 const entrypoint = resolveClaudeEntrypoint(pkgDir);
@@ -687,6 +734,7 @@ module.exports = {
     resolveClaudeEntrypoint,
     findGlobalClaudeCliPath,
     findClaudeInPath,
+    isNativeBinaryFile,
     detectSourceFromPath,
     findNpmGlobalCliPath,
     findBunGlobalCliPath,
