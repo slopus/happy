@@ -359,6 +359,9 @@ export class CodexAppServerClient {
     private modelCatalogRefreshEnabled = false;
     private _threadId: string | null = null;
     private _turnId: string | null = null;
+    // Only a thread created here with no attempted mutations is safe to discard.
+    // Resumed/forked threads and ambiguous failed sends may contain history.
+    private replaceableEmptyThread = false;
     private threadDefaults: {
         model?: string;
         cwd?: string;
@@ -681,6 +684,7 @@ export class CodexAppServerClient {
     }
 
     private emitTaskStarted(turnId: string | null, event?: EventMsg): void {
+        this.replaceableEmptyThread = false;
         if (turnId && this.completedTurnIds.has(turnId)) {
             return;
         }
@@ -1337,6 +1341,7 @@ export class CodexAppServerClient {
         this.settlePawsTurnStart(null, false);
         if (!opts?.preserveThreadState) {
             this._threadId = null;
+            this.replaceableEmptyThread = false;
             this.threadDefaults = null;
             this.pawsStartedTurnIds.clear();
             this.pendingPawsSteers.clear();
@@ -1539,6 +1544,7 @@ export class CodexAppServerClient {
         // Keep this startup RPC above that timeout without relaxing all RPCs.
         const result = await this.request('thread/start', params, 120_000) as NewConversationResponse;
         this._threadId = result.thread.id;
+        this.replaceableEmptyThread = true;
         this._turnId = null;
         this.rememberThreadDefaults({
             ...opts,
@@ -1576,6 +1582,7 @@ export class CodexAppServerClient {
             persistExtendedHistory: true,
         };
 
+        this.replaceableEmptyThread = false;
         const result = await this.request('thread/resume', params) as ResumeConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
@@ -1622,6 +1629,7 @@ export class CodexAppServerClient {
             deferGoalContinuation: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? true : opts.deferGoalContinuation,
         };
 
+        this.replaceableEmptyThread = false;
         const result = await this.request('thread/fork', params) as ForkConversationResponse;
         if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) {
             try {
@@ -1800,6 +1808,13 @@ export class CodexAppServerClient {
         const previousTier = this.serviceTier;
         this.serviceTier = tier;
         try {
+            if (this.replaceableEmptyThread) {
+                // Codex may not persist a rollout until turn/start. Let the
+                // caller create the empty thread again under the requested tier,
+                // and publish its new ID before dispatching the first message.
+                // Clear before reconnect so a failed connect/start is retryable.
+                this.clearThreadState();
+            }
             return await this.reconnectAndResumeThread();
         } catch (error) {
             // Retry the same thread on the next request, including the tier transition.
@@ -2246,6 +2261,7 @@ export class CodexAppServerClient {
         );
         this.resolvePendingTurn(true);
         this._threadId = null;
+        this.replaceableEmptyThread = false;
         this._turnId = null;
         this.threadDefaults = null;
         this.startedTurnIds.clear();
@@ -2272,6 +2288,12 @@ export class CodexAppServerClient {
             params = nativeCodexRequest(this.applicationPolicy, method, (params ?? {}) as Record<string, unknown>);
         }
 
+        // Once a mutation is attempted, even a failed/ambiguous reply cannot
+        // prove that no history was written. Never replace that thread later.
+        if (['turn/start', 'turn/steer', 'thread/rollback', 'thread/inject_items',
+            'thread/compact/start', 'thread/goal/set', 'thread/goal/clear', 'review/start'].includes(method)) {
+            this.replaceableEmptyThread = false;
+        }
         const timeout = timeoutMs ?? CodexAppServerClient.REQUEST_TIMEOUT_MS;
         return new Promise((resolve, reject) => {
             if (signal?.aborted) {

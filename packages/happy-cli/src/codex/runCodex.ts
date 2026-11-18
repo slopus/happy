@@ -18,6 +18,7 @@ import type {
     ReasoningEffort,
     ThreadGoal,
 } from './codexAppServerTypes';
+import { setCodexServiceTier } from './codexServiceTier';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
@@ -1440,7 +1441,7 @@ export async function runCodex(opts: {
 
         const ensureCodexThread = async (mode: EnhancedMode) => {
             if (boundMode) mode = boundMode;
-            await client.setServiceTier(mode.fast ? 'fast' : 'standard');
+            await setCodexServiceTier(client, session, mode.fast ?? false);
             const executionPolicy = resolveExecutionPolicyForMode(mode);
             if (!client.hasActiveThread()) {
                 const startedThread = await client.startThread({
@@ -1479,7 +1480,7 @@ export async function runCodex(opts: {
 
         const ensureExistingCodexThread = async (mode: EnhancedMode) => {
             if (boundMode) mode = boundMode;
-            await client.setServiceTier(mode.fast ? 'fast' : 'standard');
+            await setCodexServiceTier(client, session, mode.fast ?? false);
             const existingThreadId = client.threadId ?? session.getMetadata()?.codexThreadId;
             if (!existingThreadId) {
                 return null;

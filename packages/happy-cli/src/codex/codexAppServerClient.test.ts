@@ -1,3 +1,4 @@
+import { setCodexServiceTier } from './codexServiceTier';
 import { CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_HTTP_PROVIDER, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_OVERRIDES } from './codexAccountConfig';
 import { createServer, type Server } from 'node:http';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -1024,6 +1025,122 @@ describe('CodexAppServerClient sandbox integration', () => {
         const reconnect = vi.spyOn(client, 'reconnectAndResumeThread').mockResolvedValue(true);
         await expect(client.setServiceTier('fast')).resolves.toBe(false);
         expect(reconnect).not.toHaveBeenCalled();
+    });
+
+    // An empty native thread has no rollout until its first turn. Model that
+    // process boundary rather than letting the fake resume every invented ID.
+    it.each(['none', 'connect', 'thread-start'])('delivers the first Fast message after empty-thread replacement (failure=%s)', async (failure) => {
+        const requests: MockRpcMessage[] = [];
+        let starts = 0;
+        let spawns = 0;
+        const acceptedInputs: unknown[] = [];
+        mockSpawn.mockImplementation(() => {
+            spawns += 1;
+            if (failure === 'connect' && spawns === 2) throw new Error('temporary connection failure');
+            return createMockProcess({
+                pid: 999999,
+                onRequest: (msg, stdout) => {
+                    requests.push(msg);
+                    if (msg.id == null) return;
+                    let response: unknown;
+                    if (msg.method === 'thread/start') {
+                        starts += 1;
+                        response = failure === 'thread-start' && starts === 2
+                            ? { error: { code: -32000, message: 'temporary startup failure' } }
+                            : { result: { thread: { id: `empty-${starts}` }, model: 'gpt-test', reasoningEffort: null } };
+                    } else if (msg.method === 'thread/resume') {
+                        response = { error: { code: -32600, message: 'no rollout found' } };
+                    } else if (msg.method === 'turn/start') {
+                        acceptedInputs.push(msg.params.input);
+                        response = { result: { turn: { id: 'first-turn' } } };
+                    }
+                    if (response) queueMicrotask(() => pushJsonLine(stdout, { id: msg.id, ...response as object }));
+                },
+            });
+        });
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const threadOptions = { model: 'gpt-test', cwd: '/test/project', approvalPolicy: 'never' as const, sandbox: 'read-only' as const };
+        let metadata = { codexThreadId: 'empty-1', unrelated: 'preserved' };
+        const session = {
+            updateMetadataAndAwait: async (update: any) => {
+                await Promise.resolve();
+                metadata = update(metadata);
+            },
+        };
+        // Same ordering as runCodex.ensureCodexThread before message dispatch.
+        const sendFirstMessage = async () => {
+            await setCodexServiceTier(client, session as any, true);
+            if (!client.hasActiveThread()) {
+                await client.startThread(threadOptions);
+                metadata = { ...metadata, codexThreadId: client.threadId! };
+            }
+            await client.sendTurn('first message', { images: [{ type: 'localImage', path: '/test/image.png' }] });
+        };
+        try {
+            await client.connect();
+            await client.startThread(threadOptions);
+            if (failure !== 'none') {
+                await expect(sendFirstMessage()).rejects.toThrow(failure === 'connect' ? 'temporary connection failure' : 'temporary startup failure');
+                expect(metadata).toEqual({ codexThreadId: undefined, unrelated: 'preserved' });
+            }
+            await sendFirstMessage();
+            expect(acceptedInputs).toEqual([[{ type: 'localImage', path: '/test/image.png' }, { type: 'text', text: 'first message' }]]);
+            expect(requests.some(request => request.method === 'thread/resume')).toBe(false);
+            expect(requests.filter(request => request.method === 'turn/start').map(request => request.params.threadId))
+                .toEqual([failure === 'thread-start' ? 'empty-3' : 'empty-2']);
+            expect(client.threadId).toBe(failure === 'thread-start' ? 'empty-3' : 'empty-2');
+            expect(metadata).toEqual({ codexThreadId: client.threadId, unrelated: 'preserved' });
+            expect(mockSpawn.mock.calls.at(-1)?.[1]).toContain('service_tier=\"fast\"');
+        } finally {
+            await client.disconnect();
+        }
+    });
+
+    it.each(['resumed', 'forked', 'turn-rejected', 'turn-accepted', 'goal'])('never replaces a %s thread when Fast resume reports no rollout', async (source) => {
+        const requests: MockRpcMessage[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({
+            pid: 999999,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.id == null) return;
+                let response: unknown;
+                if (['thread/start', 'thread/fork'].includes(msg.method ?? '') || (msg.method === 'thread/resume' && requests.filter(r => r.method === 'thread/resume').length === 1 && source === 'resumed')) {
+                    response = { result: { thread: { id: 'protected-thread' }, model: 'gpt-test', reasoningEffort: null } };
+                } else if (msg.method === 'thread/resume') {
+                    response = { error: { code: -32600, message: 'no rollout found' } };
+                } else if (msg.method === 'turn/start') {
+                    response = source === 'turn-rejected'
+                        ? { error: { code: -32000, message: 'turn failed' } }
+                        : { result: { turn: { id: 'existing-turn' } } };
+                } else if (msg.method === 'thread/goal/set') {
+                    response = { result: {} };
+                }
+                if (response) queueMicrotask(() => pushJsonLine(stdout, { id: msg.id, ...response as object }));
+            },
+        }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        try {
+            await client.connect();
+            if (source === 'resumed') await client.resumeThread({ threadId: 'protected-thread' });
+            else if (source === 'forked') await client.forkThread({ threadId: 'parent' });
+            else {
+                await client.startThread({ model: 'gpt-test' });
+                if (source === 'turn-rejected') await expect(client.sendTurn('original')).rejects.toThrow('turn failed');
+                else if (source === 'turn-accepted') await client.sendTurn('original');
+                else await client.setThreadGoal({ objective: 'original goal' });
+            }
+            const originalStarts = requests.filter(r => r.method === 'thread/start').length;
+            await expect(client.setServiceTier('fast')).rejects.toThrow('no rollout found');
+            await expect(client.setServiceTier('fast')).rejects.toThrow('no rollout found');
+            expect(client.threadId).toBe('protected-thread');
+            expect(requests.filter(r => r.method === 'thread/start')).toHaveLength(originalStarts);
+            expect(requests.filter(r => r.method === 'thread/resume').slice(-2).map(r => r.params.threadId))
+                .toEqual(['protected-thread', 'protected-thread']);
+        } finally {
+            await client.disconnect();
+        }
     });
 
     it('keeps the original thread when service-tier resume fails and retries it instead of starting another', async () => {
