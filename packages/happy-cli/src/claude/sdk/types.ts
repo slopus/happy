@@ -54,6 +54,8 @@ export interface QueryOptions {
      * the SDK silently downgrades it to 'high' on models without it.
      */
     effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    /** Starts the Claude Code process instead of the SDK's default spawn (used to run it in the sandbox) */
+    spawnClaudeCodeProcess?: Options['spawnClaudeCodeProcess']
 }
 
 /**

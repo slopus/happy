@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claudeRemote } from './claudeRemote';
 import { query } from '@/claude/sdk';
 import type { EnhancedMode } from './loop';
+import type { SandboxConfig } from '@/persistence';
+import { spawnSandboxedProcess } from '@/sandbox/sandboxedProcess';
 
 // No provider process, credentials, transcript watcher, or real log files.
 vi.mock('@/lib', () => ({ logger: { debug: vi.fn(), debugLargeJson: vi.fn() } }));
@@ -9,6 +11,12 @@ vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn(), debugLargeJson: vi.fn(
 vi.mock('./utils/claudeCheckSession', () => ({ claudeCheckSession: () => true }));
 vi.mock('./utils/path', () => ({ getProjectPath: () => '/fixture/claude-project' }));
 vi.mock('@/modules/watcher/awaitFileExist', () => ({ awaitFileExist: async () => true }));
+
+const { mockInitializeSandbox, mockResetSandbox } = vi.hoisted(() => ({
+    mockInitializeSandbox: vi.fn(),
+    mockResetSandbox: vi.fn(),
+}));
+vi.mock('@/sandbox/manager', () => ({ initializeSandbox: mockInitializeSandbox }));
 
 vi.mock('@/claude/sdk', () => ({
     query: vi.fn(),
@@ -243,5 +251,51 @@ describe('claudeRemote', () => {
             type: 'assistant',
             isCompactSummary: true,
         }));
+    });
+
+    describe('sandbox', () => {
+        const sandboxConfig = { enabled: true } as SandboxConfig;
+
+        async function runWithSandbox(config: SandboxConfig | undefined) {
+            vi.mocked(query).mockReturnValue({
+                async *[Symbol.asyncIterator]() { yield { type: 'result', subtype: 'success', is_error: false, result: 'done' }; },
+            } as any);
+            await claudeRemote({
+                sessionId: null,
+                path: '/fixture/project',
+                allowedTools: [],
+                hookSettingsPath: '/fixture/settings.json',
+                sandboxConfig: config,
+                nextMessage: vi.fn().mockResolvedValueOnce({ message: 'Hi', mode }).mockResolvedValue(null),
+                onReady: vi.fn(), onMessage: vi.fn(),
+                canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
+                isAborted: () => false,
+                onSessionFound: vi.fn(),
+            });
+        }
+
+        beforeEach(() => {
+            mockInitializeSandbox.mockReset().mockResolvedValue(mockResetSandbox);
+            mockResetSandbox.mockReset().mockResolvedValue(undefined);
+        });
+
+        it('starts Claude inside the sandbox when the sandbox is enabled', async () => {
+            await runWithSandbox(sandboxConfig);
+            expect(mockInitializeSandbox).toHaveBeenCalledWith(sandboxConfig, '/fixture/project');
+            expect(vi.mocked(query).mock.calls[0][0].options?.spawnClaudeCodeProcess).toBe(spawnSandboxedProcess);
+            expect(mockResetSandbox).toHaveBeenCalledOnce();
+        });
+
+        it('starts Claude normally when the sandbox is not enabled', async () => {
+            await runWithSandbox(undefined);
+            expect(mockInitializeSandbox).not.toHaveBeenCalled();
+            expect(vi.mocked(query).mock.calls[0][0].options?.spawnClaudeCodeProcess).toBeUndefined();
+        });
+
+        it('does not start Claude when the sandbox cannot be set up', async () => {
+            mockInitializeSandbox.mockRejectedValue(new Error('bwrap: No permissions to create new namespace'));
+            await expect(runWithSandbox(sandboxConfig)).rejects.toThrow(/sandbox/i);
+            expect(query).not.toHaveBeenCalled();
+        });
     });
 });

@@ -16,6 +16,9 @@ import { fromRateLimitEvent, windowsFromGetUsage, type UnboundRateLimit, type Us
 import type { UsageLimitWindow } from "@/api/types";
 import { pluginsFromArgs } from './utils/pluginsFromArgs';
 import { claudeProviderAuthMessage } from './utils/providerAuth';
+import type { SandboxConfig } from '@/persistence';
+import { initializeSandbox } from '@/sandbox/manager';
+import { spawnSandboxedProcess } from '@/sandbox/sandboxedProcess';
 
 export async function claudeRemote(opts: {
 
@@ -34,6 +37,8 @@ export async function claudeRemote(opts: {
     hookSettingsPath: string,
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime,
+    /** When enabled, Claude runs inside this sandbox, as in local mode */
+    sandboxConfig?: SandboxConfig,
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
@@ -169,6 +174,18 @@ export async function claudeRemote(opts: {
             content: initial.message,
         },
     });
+
+    // The session skips permission prompts because the sandbox is on (see
+    // applySandboxPermissionPolicy), so Claude must not start without it.
+    let resetSandbox: (() => Promise<void>) | null = null;
+    if (opts.sandboxConfig?.enabled) {
+        try {
+            resetSandbox = await initializeSandbox(opts.sandboxConfig, opts.path);
+        } catch (error) {
+            throw new Error(`Sandbox is enabled but could not be started: ${error instanceof Error ? error.message : String(error)}. Fix it, or start the session with --no-sandbox.`);
+        }
+        sdkOptions.spawnClaudeCodeProcess = spawnSandboxedProcess;
+    }
 
     // Start the loop
     const response = query({
@@ -396,5 +413,8 @@ export async function claudeRemote(opts: {
         }
     } finally {
         updateThinking(false);
+        if (resetSandbox) {
+            await resetSandbox().catch((error) => logger.debug('[claudeRemote] Failed to reset sandbox', error));
+        }
     }
 }

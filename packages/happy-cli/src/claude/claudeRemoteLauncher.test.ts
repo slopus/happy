@@ -83,6 +83,15 @@ describe('claudeRemoteLauncher provider auth', () => {
         expect(envelopes.filter(envelope => envelope.ev.t === 'turn-end')).toHaveLength(1);
     });
 
+    it('runs remote Claude with the session sandbox', async () => {
+        const { session, stop } = fixture();
+        const sandboxConfig = { enabled: true };
+        (session as any).sandboxConfig = sandboxConfig;
+        vi.mocked(claudeRemote).mockImplementationOnce(async () => { stop(); });
+        await claudeRemoteLauncher(session as any);
+        expect(claudeRemote).toHaveBeenCalledWith(expect.objectContaining({ sandboxConfig }));
+    });
+
     it('shows untruncated host-login guidance for a thrown OAuth error and accepts a later invocation', async () => {
         const { session, notification, stop } = fixture();
         vi.mocked(claudeRemote)
