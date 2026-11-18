@@ -12,9 +12,7 @@ import UIKit
 /// only to `output.wav`. `prompt-1.wav`, `prompt-2.wav`, … in the
 /// directory go to the agent as the person's voice, each once the agent
 /// has answered the one before; a `prompt-N.txt` goes as the person's
-/// words typed (a user message the call hears as theirs). `talkover.txt`,
-/// if there is one, is typed the moment the first `conversation_update`
-/// cue goes, as the person talking over it. The provider, its transport and the
+/// words typed (a user message the call hears as theirs). The provider, its transport and the
 /// client tools are real; the computer they act on is the harness's
 /// fixture one (`DemoComputer`), so nothing reaches a real task.
 ///
@@ -24,7 +22,6 @@ import UIKit
 @MainActor
 final class CallLiveCheck {
     private let prompts: [URL]
-    private let talkOver: String?
     private let output: URL
     private let sent = AudioFileRenderer()
     private let heard = AudioFileRenderer()
@@ -36,8 +33,6 @@ final class CallLiveCheck {
             .filter { $0.lastPathComponent.hasPrefix("prompt-") && ["wav", "txt"].contains($0.pathExtension) }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
         output = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        talkOver = (try? String(contentsOf: directory.appendingPathComponent("talkover.txt"), encoding: .utf8))?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
         // Before the call: no device, so no microphone and no speaker, only what is played in.
         try AudioManager.shared.setManualRenderingMode(true)
         guard AudioManager.shared.isManualRenderingMode else { throw CocoaError(.featureUnsupported) }
@@ -48,7 +43,6 @@ final class CallLiveCheck {
         AudioManager.shared.add(remoteAudioRenderer: heard)
         log("prompts \(prompts.map(\.lastPathComponent)) silent: manual rendering \(AudioManager.shared.isManualRenderingMode)")
         Task { await run() }
-        if talkOver != nil { Task { await watchForUpdate() } }
     }
 
     private func run() async {
@@ -92,28 +86,16 @@ final class CallLiveCheck {
             if await !quiet(after: agentLines, timeout: 60) { log("no answer to \(prompt.lastPathComponent)") }
             if !CallController.shared.state.isShown { break }
         }
-        // An update still to come, or to be told again, after the last prompt.
-        let updates = { CallProbe.sent.filter { $0.kind == "cue" && $0.text.contains("conversation_update") }.count }
+        // A read's update still to come after the last prompt: context, never a cue.
+        let updates = { (kind: String) in CallProbe.sent.filter { $0.kind == kind && $0.text.contains("conversation_update") }.count }
         if CallController.shared.state.isShown {
-            let lines = CallProbe.transcript.filter { $0.role == "agent" }.count
-            _ = await until(talkOver == nil ? 20 : 60, { updates() > (talkOver == nil ? 0 : 1) })
-            _ = await quiet(after: lines, timeout: 30)
-            log("updates sent \(updates())")
+            _ = await until(20, { updates("update") > 0 })
+            log("updates sent \(updates("update")), as cues \(updates("cue"))")
         }
         // What the bar shows once the talking is done: gone if the agent hung up.
         log("call state \(CallController.shared.state)")
         try? await Task.sleep(for: .seconds(4))
     }
-
-    /// Types `talkover.txt` as the first `conversation_update` cue goes,
-    /// then waits for the update to be told: up to 90 s more of the call.
-    private func watchForUpdate() async {
-        guard await until(240, { CallProbe.sent.contains { $0.kind == "cue" && $0.text.contains("conversation_update") } }), let talkOver else { return }
-        log("talk over: \(talkOver)")
-        CallProbe.type?(talkOver)
-        talkedOver = true
-    }
-    private var talkedOver = false
 
     /// Until the agent has said more than `after` lines and been quiet
     /// for 2.5 s since.

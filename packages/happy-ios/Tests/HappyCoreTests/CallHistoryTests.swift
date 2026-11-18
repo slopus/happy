@@ -164,6 +164,38 @@ final class CallHistoryTests: XCTestCase {
         XCTAssertEqual(connection.updates, [CallCues.silenceOver])
     }
 
+    /// What a read's refresh finds after the read answered reaches the
+    /// agent as context, wired as the app wires it: never a cue, however
+    /// long both sides stay quiet.
+    func testARefreshsUpdateIsContextAndNeverACue() async throws {
+        let target = CallTarget(agentId: "a", title: "Release notes", kind: .task, status: .idle)
+        let shipped = CallTurn(id: "r1", user: "Ship the 2.1 notes", reply: "Done: the 2.1 changelog is published.")
+        var kept = CallTargetState(target: target, turns: [shipped])
+        kept.fresh = false
+        let targets = FakeCallTargets(directory: [target], states: ["a": kept], focus: nil)
+        var newer = kept
+        newer.turns.append(CallTurn(id: "r2", user: "Add the pineapple fix", reply: "Added: the pineapple fix is listed first."))
+        await targets.setRefresh("a", .to(newer, after: .milliseconds(150)))
+        let context = CallContext(targets: targets, freshWait: .milliseconds(20))
+        let connection = FakeCallConnection()
+        var events: CallEvents?
+        let call = session(CallHistory(store: nil), connection: connection) { events = $0 }
+        await context.onReading { line in Task { @MainActor in call.deliver(CallUpdate(context: [line])) } }
+        call.start(language: nil, context: { await context.initial() }, tool: { await context.handle($0) })
+        await live(call)
+        let said = try XCTUnwrap(events)
+        let read = await said.tool(CallToolCall(id: "t", name: "readConversation", parameters: Data(#"{"ref":"s1"}"#.utf8)))
+        XCTAssertTrue(read.text.contains(#""refreshing":true"#))
+        await waitUntil { connection.updates.contains { $0.contains("conversation_update") } }
+        try await Task.sleep(for: .milliseconds(300))
+        await call.delivered()
+        XCTAssertEqual(connection.updates.filter { $0.contains("conversation_update") }.count, 1)
+        XCTAssertTrue(connection.updates.contains { $0.contains("pineapple") })
+        XCTAssertEqual(connection.cues, [])
+        call.stop()
+        await context.close()
+    }
+
     /// The agent agreed to restart: once it has said so, the call ends and a
     /// new one starts with what was said in its context.
     func testARestartCarriesTheCallOver() async throws {
@@ -324,174 +356,6 @@ final class CallCuesTests: XCTestCase {
         var endless = CallCues(since: 0)
         endless.restartAsked(at: 10)
         XCTAssertEqual(endless.next(.init(now: 22, agentSpeaking: true)), .restart)
-    }
-
-    /// An update waits for its moment: never while either side speaks,
-    /// not before the agent has answered from the read (or said nothing
-    /// for 4 s) and been quiet a moment, and not before it answered what
-    /// the person said meanwhile. One at a time, oldest first: the next
-    /// once the agent has told this one.
-    func testAnUpdateIsToldOnceTheAgentHasAnsweredWhatCameBefore() {
-        let first = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s1"}"#)
-        let second = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s2"}"#)
-        XCTAssertEqual(first.text, #"{"event":"conversation_update","ref":"s1"}"#)
-        var cues = CallCues(since: 0)
-        cues.refreshing(at: 10)
-        cues.later(first)
-        // The agent hasn't answered from the read yet.
-        XCTAssertNil(cues.next(.init(now: 11)))
-        XCTAssertNil(cues.next(.init(now: 12, agentSpeaking: true)))
-        cues.agentSpoke(at: 12)
-        // Quiet a moment first, so it isn't cut off between its words.
-        XCTAssertNil(cues.next(.init(now: 13)))
-        // The person speaks meanwhile, and the agent answers them first.
-        XCTAssertNil(cues.next(.init(now: 14, personSpeaking: true)))
-        cues.heard(at: 15)
-        XCTAssertNil(cues.next(.init(now: 16)))
-        XCTAssertNil(cues.next(.init(now: 17, agentSpeaking: true)))
-        cues.agentSpoke(at: 18)
-        XCTAssertNil(cues.next(.init(now: 19)))
-        XCTAssertEqual(cues.next(.init(now: 20)), .cue(first))
-        // The next waits for the agent to tell this one.
-        cues.later(second)
-        XCTAssertNil(cues.next(.init(now: 21)))
-        cues.agentSaid(String(repeating: "word ", count: 14), event: 7, at: 21)
-        XCTAssertNil(cues.next(.init(now: 22, agentSpeaking: true)))
-        cues.agentSpoke(at: 24)
-        XCTAssertNil(cues.next(.init(now: 25)))
-        XCTAssertEqual(cues.next(.init(now: 26)), .cue(second))
-        XCTAssertEqual(cues.waiting, 1)
-        // An agent that says nothing: its silence is its answer after 4 s.
-        var silent = CallCues(since: 0)
-        silent.refreshing(at: 10)
-        silent.later(first)
-        XCTAssertNil(silent.next(.init(now: 13)))
-        XCTAssertEqual(silent.next(.init(now: 14)), .cue(first))
-    }
-
-    /// An update the person talked over goes again once they have had
-    /// their answer: spoken over before the agent answered, or its answer
-    /// cut off short; and one the agent never answered. Twice more at most.
-    func testAnUpdateTalkedOverGoesAgainTwiceAtMost() {
-        let update = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s1"}"#)
-        var cues = CallCues(since: 0)
-        cues.refreshing(at: 0)
-        cues.agentSpoke(at: 1)
-        cues.later(update)
-        XCTAssertEqual(cues.next(.init(now: 5)), .cue(update))
-        // The person starts talking as it goes: heard before any answer.
-        XCTAssertNil(cues.next(.init(now: 6, personSpeaking: true)))
-        cues.heard(at: 7)
-        XCTAssertEqual(cues.waiting, 1)
-        // The agent answers them, then the update goes again.
-        cues.agentSaid(String(repeating: "word ", count: 6), event: 1, at: 8)
-        XCTAssertNil(cues.next(.init(now: 8, agentSpeaking: true)))
-        cues.agentSpoke(at: 10)
-        XCTAssertNil(cues.next(.init(now: 11)))
-        XCTAssertEqual(cues.next(.init(now: 12)), .cue(update))
-        // Its answer begins and is cut off after three words.
-        cues.agentSaid(String(repeating: "word ", count: 25), event: 2, at: 12.5)
-        XCTAssertNil(cues.next(.init(now: 13, agentSpeaking: true)))
-        cues.agentCorrected(String(repeating: "word ", count: 3), event: 2)
-        cues.agentSpoke(at: 13.5)
-        XCTAssertNil(cues.next(.init(now: 14, personSpeaking: true)))
-        cues.heard(at: 15)
-        cues.agentSaid(String(repeating: "word ", count: 5), event: 3, at: 15.5)
-        cues.agentSpoke(at: 17)
-        XCTAssertNil(cues.next(.init(now: 18)))
-        XCTAssertEqual(cues.next(.init(now: 21)), .cue(update))
-        // The third time unanswered: let go, never a fourth.
-        XCTAssertNil(cues.next(.init(now: 25)))
-        XCTAssertNil(cues.next(.init(now: 29)))
-        XCTAssertEqual(cues.waiting, 0)
-        XCTAssertNil(cues.next(.init(now: 60)))
-        // Told, uninterrupted: it never goes again, and the person speaking after changes nothing.
-        var told = CallCues(since: 0)
-        told.refreshing(at: 0)
-        told.agentSpoke(at: 1)
-        told.later(update)
-        XCTAssertEqual(told.next(.init(now: 5)), .cue(update))
-        told.agentSaid(String(repeating: "word ", count: 20), event: 1, at: 5.5)
-        XCTAssertNil(told.next(.init(now: 6, agentSpeaking: true)))
-        told.agentSpoke(at: 9)
-        told.heard(at: 10)
-        XCTAssertEqual(told.waiting, 0)
-        XCTAssertNil(told.next(.init(now: 30)))
-        // Never answered at all: again after 8 s of quiet.
-        var unanswered = CallCues(since: 0)
-        unanswered.refreshing(at: 0)
-        unanswered.agentSpoke(at: 1)
-        unanswered.later(update)
-        XCTAssertEqual(unanswered.next(.init(now: 5)), .cue(update))
-        XCTAssertNil(unanswered.next(.init(now: 12)))
-        XCTAssertEqual(unanswered.next(.init(now: 13)), .cue(update))
-    }
-
-    /// A newer update of a conversation takes the place of one still
-    /// waiting, and of one that wasn't told; another conversation's waits.
-    func testANewerUpdateOfAConversationTakesTheWaitingOnesPlace() {
-        let old = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s1","turns":[1]}"#)
-        let new = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s1","turns":[1,2]}"#)
-        let other = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s2"}"#)
-        XCTAssertEqual(new.conversation, "s1")
-        XCTAssertNil(CallCue.silence(endsIn: 25).conversation)
-        var cues = CallCues(since: 0)
-        cues.refreshing(at: 0)
-        cues.agentSpoke(at: 1)
-        cues.later(old)
-        cues.later(other)
-        cues.later(new)
-        XCTAssertEqual(cues.waiting, 2)
-        XCTAssertEqual(cues.next(.init(now: 5)), .cue(other))
-        // The person talks over it; meanwhile s2 has news again: the untold one goes no more.
-        cues.heard(at: 6)
-        cues.agentSpoke(at: 7)
-        let newer = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s2","turns":[3]}"#)
-        cues.later(newer)
-        XCTAssertNil(cues.next(.init(now: 8)))
-        XCTAssertEqual(cues.next(.init(now: 11)), .cue(new))
-        cues.agentSaid(String(repeating: "word ", count: 20), event: 1, at: 11.5)
-        cues.agentSpoke(at: 14)
-        XCTAssertEqual(cues.next(.init(now: 16)), .cue(newer))
-        XCTAssertEqual(cues.waiting, 1)
-    }
-
-    /// Talked over, an update the agent folds into its answer to the person
-    /// is told: it goes no more. An answer that doesn't say it isn't.
-    func testAnUpdateFoldedIntoTheAnswerAfterATalkOverIsTold() {
-        let update = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s2","turns":[{"ref":"t:r2","assistant":"Added: the pineapple fix is now listed first in the 2.1 notes."}]}"#)
-        XCTAssertEqual(update.gist, ["added", "pineapple", "listed", "first", "notes"])
-        var cues = CallCues(since: 0)
-        cues.refreshing(at: 0)
-        cues.agentSpoke(at: 1)
-        cues.later(update)
-        XCTAssertEqual(cues.next(.init(now: 5)), .cue(update))
-        cues.heard(at: 6)
-        cues.agentSaid("Seven days in a week. And there's a small update on the Release notes task: the pineapple fix was added to the version two point one notes.", event: 1, at: 7)
-        XCTAssertNil(cues.next(.init(now: 8, agentSpeaking: true)))
-        cues.agentSpoke(at: 12)
-        XCTAssertNil(cues.next(.init(now: 14)))
-        XCTAssertEqual(cues.waiting, 0)
-        XCTAssertNil(cues.next(.init(now: 40)))
-        // The same, its answer only "Seven days in a week, as always.": not told, so it goes again.
-        var plain = CallCues(since: 0)
-        plain.refreshing(at: 0)
-        plain.agentSpoke(at: 1)
-        plain.later(update)
-        XCTAssertEqual(plain.next(.init(now: 5)), .cue(update))
-        plain.heard(at: 6)
-        plain.agentSaid("Seven days in a week, as always, every single week of the year.", event: 1, at: 7)
-        plain.agentSpoke(at: 10)
-        XCTAssertEqual(plain.next(.init(now: 12)), .cue(update))
-    }
-
-    /// An update for a read of another call (asked before a restart) is
-    /// told to nobody.
-    func testAnUpdateThisCallNeverReadForGoesNowhere() {
-        var cues = CallCues(since: 0)
-        cues.later(.conversationUpdate(#"{"event":"conversation_update","ref":"s1"}"#))
-        XCTAssertEqual(cues.waiting, 0)
-        XCTAssertNil(cues.next(.init(now: 30)))
     }
 }
 

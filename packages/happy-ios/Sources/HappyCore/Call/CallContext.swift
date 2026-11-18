@@ -15,17 +15,6 @@ public struct CallUpdate: Equatable, Sendable {
     public var isEmpty: Bool { context.isEmpty }
 }
 
-/// How a `readConversation` of a conversation that wasn't current goes on
-/// (`CallContext.onReading`): the agent answered from what the phone had
-/// and was told it is refreshing; then what is new since, as a cue to tell
-/// once the moment is right, or, nothing new or no answer in time, a line
-/// of context it reads without answering.
-public enum CallReading: Equatable, Sendable {
-    case refreshing
-    case update(CallCue)
-    case context(String)
-}
-
 /// Lives only during one call, bound to one account. It owns the opaque
 /// references the hosted agent knows conversations by, the focus, and the
 /// last four conversations visited or messaged during the call, which are
@@ -87,6 +76,10 @@ public actor CallContext {
         /// making it current, after its answer, before it is let go as
         /// unconfirmed.
         public static let refresh: Duration = .seconds(8)
+        /// How long a read of a conversation that isn't current waits for
+        /// the computer before it answers with what the phone has: one
+        /// that comes within it is the read, with nothing after.
+        public static let freshWait: Duration = .milliseconds(700)
         /// How long a read waits for what the phone keeps of a conversation
         /// it doesn't hold now (read from its store); past that it goes as
         /// the directory has it, with no turns, and the refresh tells them.
@@ -156,15 +149,29 @@ public actor CallContext {
     private var closed = false
     private var restart: (@Sendable () async -> CallToolResult)?
     private let refreshLimit: Duration
-    /// Conversations read while they weren't current, being made current:
-    /// the refresh, what the agent was last given of it, and the most
-    /// words a message of it was read with. Another read of one joins its
-    /// refresh.
-    private var reading: [String: (refresh: Task<CallTargetState?, Never>, given: CallTargetState, words: Int)] = [:]
+    private let freshWait: Duration
+    /// Conversations read while they weren't current, being made current.
+    /// Another read of one joins its refresh.
+    private var reading: [String: Pending] = [:]
+    private struct Pending {
+        var refresh: Task<CallTargetState?, Never>
+        /// What the agent was last given of it.
+        var given: CallTargetState
+        /// The most words a message of it was read with.
+        var words: Int
+        /// A read is waiting for the refresh (`freshWait`): what it finds
+        /// meanwhile is that read's answer, never told after it.
+        var awaited = false
+        var arrived: Arrived?
+    }
+    /// A refresh that came in, `state` nil when it couldn't be read.
+    private struct Arrived {
+        var state: CallTargetState?
+    }
     /// Each conversation as its last refresh in this call found it, current
     /// then: what a read gives when the phone can't read it in time again.
     private var refreshedLast: [String: CallTargetState] = [:]
-    private var onReading: (@Sendable (CallReading) -> Void)?
+    private var onReading: (@Sendable (String) -> Void)?
 
     /// What the agent has of one visited conversation: its agent's complete
     /// messages, those there when it was first seen counted as had, and the
@@ -198,12 +205,13 @@ public actor CallContext {
 
     public init(targets: any CallTargets, now: @escaping @Sendable () -> Double = { Date().timeIntervalSince1970 },
                 timeZone: TimeZone = .current, toolDeadline: Duration = Limits.toolDeadline,
-                refresh: Duration = Limits.refresh) {
+                refresh: Duration = Limits.refresh, freshWait: Duration = Limits.freshWait) {
         self.targets = targets
         self.now = now
         self.timeZone = timeZone
         self.toolDeadline = toolDeadline
         self.refreshLimit = refresh
+        self.freshWait = freshWait
     }
 
     /// The conversations the call hears from now, the latest visited or messaged first.
@@ -216,11 +224,11 @@ public actor CallContext {
         reading.removeAll()
     }
 
-    /// Where a read of a conversation that wasn't current goes on: that it
-    /// went out `refreshing`, then what the refresh found
+    /// Where what the refresh of a read that went out `refreshing` found
+    /// goes, as a line of context the agent reads without answering
     /// (`conversation_update`, `conversation_current`,
     /// `conversation_unconfirmed`). Nothing once the call has ended.
-    public func onReading(_ handler: @escaping @Sendable (CallReading) -> Void) {
+    public func onReading(_ handler: @escaping @Sendable (String) -> Void) {
         onReading = handler
     }
 
@@ -770,9 +778,10 @@ public actor CallContext {
             guard let id = await resolve(arguments["ref"]) else { return .refused("No such conversation.") }
             let asked = CallRead.request(arguments)
             guard let request = asked.request else { return .refused(asked.refusal ?? "") }
-            // What the phone has, at once: current, it is the read; not, it
-            // goes as it is, marked, and is made current behind it, as
-            // opening it would, what that finds told after.
+            // What the phone has: current, it is the read; not, it is made
+            // current, as opening it would, and what that finds within
+            // `freshWait` is the read. Past that, what the phone has goes,
+            // marked, and what the refresh finds follows as context.
             let targets = targets
             let kept = Task { await targets.state(of: id) }
             let state: CallTargetState
@@ -791,21 +800,37 @@ public actor CallContext {
             guard value["ok"] as? Bool != false else { return .json(value, isError: true) }
             guard !state.fresh else { return .json(value) }
             guard !closed else { return .refused("The call has ended.") }
+            let refresh: Task<CallTargetState?, Never>
             if var pending = reading[id] {
                 // One on its way already: this read joins it.
                 pending.given = state
                 pending.words = max(pending.words, request.words)
+                refresh = pending.refresh
                 reading[id] = pending
             } else {
                 let limit = refreshLimit
-                let refresh = Task { await targets.refreshed(id, within: limit) }
-                reading[id] = (refresh, state, request.words)
+                refresh = Task { await targets.refreshed(id, within: limit) }
+                reading[id] = Pending(refresh: refresh, given: state, words: request.words)
                 Task { [weak self] in
                     let state = await refresh.value
-                    await self?.refreshed(id, state)
+                    await self?.refreshed(id, state, by: refresh)
                 }
             }
-            onReading?(.refreshing)
+            reading[id]?.awaited = true
+            let inTime = await Self.within(freshWait, refresh)
+            guard !closed, var pending = reading[id] else { return .refused("The call has ended.") }
+            pending.awaited = false
+            let arrived = pending.arrived ?? inTime.map { Arrived(state: $0) }
+            if let fresh = arrived?.state, fresh.fresh {
+                // In time: the read is what the computer has, and nothing follows it.
+                reading[id] = nil
+                keep(fresh, of: id)
+                let current = read(fresh, request)
+                return .json(current, isError: current["ok"] as? Bool == false)
+            }
+            reading[id] = pending
+            // Come and let go while the read waited: what it is told follows the read at once.
+            if let arrived = pending.arrived { refreshed(id, arrived.state, by: refresh) }
             return .json(value)
 
         case .message:
@@ -905,40 +930,53 @@ public actor CallContext {
     }
 
     /// A conversation read while it wasn't current, made current or let
-    /// go: what is new since the agent was given it goes as a cue (its
-    /// turns new or changed since, from the oldest of them to the newest,
-    /// the newest five at most, paged and cut as a read); nothing new, or
-    /// not current in time, a
-    /// line of context. Nothing once the call has ended.
-    private func refreshed(_ id: String, _ state: CallTargetState?) {
-        guard let pending = reading.removeValue(forKey: id), !closed else { return }
+    /// go, after its read answered: what is new since the agent was given
+    /// it goes as a `conversation_update` (its turns new or changed since,
+    /// from the oldest of them to the newest, the newest five at most,
+    /// paged and cut as a read); nothing new, or not current in time, a
+    /// line saying so. Each a line of context, never a cue: the agent
+    /// uses it when the person asks. While a read waits for it, it is that
+    /// read's. Nothing once the call has ended.
+    private func refreshed(_ id: String, _ state: CallTargetState?, by refresh: Task<CallTargetState?, Never>) {
+        // A read that had it in time took it, and a later read's refresh is its own.
+        guard let pending = reading[id], pending.refresh == refresh else { return }
+        if pending.awaited, !closed {
+            reading[id]?.arrived = Arrived(state: state)
+            return
+        }
+        reading[id] = nil
+        guard !closed else { return }
         var event: [String: Any] = ["ref": ref(id)]
         if let title = directory[id]?.title ?? drafts[id]?.title { event["title"] = title }
-        if let state, state.fresh {
-            var kept = state
-            kept.checkedAt = now() * 1000
-            refreshedLast[id] = kept
-        }
         guard let state, state.fresh else {
             event["event"] = "conversation_unconfirmed"
             if let at = (state ?? pending.given).checkedAt, at > 0 { event["checked"] = when(at) }
             event["note"] = Self.unconfirmedNote
-            onReading?(.context(Self.string(event)))
+            onReading?(Self.string(event))
             return
         }
+        keep(state, of: id)
         guard let update = update(from: pending.given, to: state, words: pending.words, as: event) else {
             event["event"] = "conversation_current"
             event["note"] = Self.currentNote
-            onReading?(.context(Self.string(event)))
+            onReading?(Self.string(event))
             return
         }
-        onReading?(.update(.conversationUpdate(Self.string(update))))
+        onReading?(Self.string(update))
     }
 
-    static let refreshingNote = "What this phone had: answer from it, and say you're checking the computer for anything newer, which comes as an [app] conversation_update."
-    static let refreshingEmptyNote = "This phone has none of its turns yet, so this says nothing of what is in it: say you're checking; its turns come as an [app] conversation_update."
+    /// `state`, current now, as this call's last refresh found it.
+    private func keep(_ state: CallTargetState, of id: String) {
+        var kept = state
+        kept.checkedAt = now() * 1000
+        refreshedLast[id] = kept
+    }
+
+    static let refreshingNote = "What this phone had: the computer didn't answer in time. Answer from it. Anything newer comes later as a silent conversation_update: don't promise it or wait for it."
+    static let refreshingEmptyNote = "This phone has none of its turns yet, so this says nothing of what is in it: say you can't see its messages yet. They come later as a silent conversation_update, for when the person asks again."
     static let unconfirmedNote = "The computer didn't answer in time: what you read may be out of date. Nothing to say unless asked."
     static let currentNote = "Checked: nothing new since you read it. Nothing to say unless asked."
+    static let updateNote = "Newer than what you read. Nothing to say unless asked, or it bears on what you are saying now."
 
     /// What is new in `state` since `given`, as a `conversation_update`:
     /// the turns from the oldest new or changed one (the person's message,
@@ -952,6 +990,7 @@ public actor CallContext {
         guard changed != nil || given.working != state.working || given.needsInput != state.needsInput else { return nil }
         var name: [String: Any] = event
         name["event"] = "conversation_update"
+        name["note"] = Self.updateNote
         let references = CallRead.references(items.map(\.id))
         // The newest five at most; continueFrom reads back from there.
         let oldest = max(changed ?? items.count, items.count - CallRead.turns)

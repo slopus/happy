@@ -124,6 +124,40 @@ class CallHistoryTest {
         assertTrue(ended.last().isUnexpected)
     }
 
+    /**
+     * What a read's refresh finds after the read answered reaches the agent as context, handed on as the app hands it:
+     * never a cue, however long both sides stay quiet.
+     */
+    @Test
+    fun aRefreshsUpdateIsContextAndNeverACue() {
+        val target = CallTarget("a", "Release notes", CallTarget.Kind.Task, CallTarget.Status.Idle)
+        val shipped = CallTurn("r1", "Ship the 2.1 notes", "Done: the 2.1 changelog is published.")
+        val kept = CallTargetState(target, turns = listOf(shipped), fresh = false)
+        val targets = FakeCallTargets(listOf(target), mutableMapOf("a" to kept), null)
+        val newer = kept.copy(turns = listOf(shipped, CallTurn("r2", "Add the pineapple fix", "Added: the pineapple fix is listed first.")))
+        targets.refresh["a"] = FakeCallTargets.Refresh.To(newer, 150)
+        val context = CallContext(targets, freshWaitMillis = 20)
+        val lines = java.util.Collections.synchronizedList(ArrayList<String>())
+        runBlocking { context.onReading { lines += it } }
+        val connection = FakeCallConnection()
+        var events: CallEvents? = null
+        val call = session(CallHistory(null), connection = connection) { events = it }
+        runBlocking { context.initial() }
+        call.start(null, { "" }, { context.handle(it) })
+        test.runCurrent()
+        val read = runBlocking { events!!.tool(CallToolCall("t", "readConversation", kotlinx.serialization.json.buildJsonObject { put("ref", kotlinx.serialization.json.JsonPrimitive("s1")) })) }
+        assertTrue(read.text, "\"refreshing\":true" in read.text)
+        runBlocking { kotlinx.coroutines.withTimeout(5_000) { while (lines.isEmpty()) kotlinx.coroutines.delay(5) } }
+        lines.toList().forEach { call.deliver(CallUpdate(listOf(it))) }
+        test.testScheduler.advanceTimeBy(60_000)
+        test.runCurrent()
+        assertEquals(1, connection.updates.count { "conversation_update" in it })
+        assertTrue(connection.updates.any { "pineapple" in it })
+        assertTrue(connection.cues.toString(), connection.cues.isEmpty())
+        call.stop()
+        runBlocking { context.close() }
+    }
+
     /** Quiet: the agent is cued to say so, then the call ends itself, kept as ended for silence. */
     @Test
     fun silenceCuesTheAgentThenEndsTheCall() {
@@ -334,178 +368,6 @@ class CallCuesTest {
         val endless = CallCues(since = 0)
         endless.restartAsked(10_000)
         assertEquals(CallCues.Action.Restart, endless.next(CallCues.Moment(22_000, agentSpeaking = true)))
-    }
-
-    /**
-     * An update waits for its moment: never while either side speaks, not before the agent has answered from the
-     * read (or said nothing for 4 s) and been quiet a moment, and not before it answered what the person said
-     * meanwhile. One at a time, oldest first: the next once the agent has told this one.
-     */
-    @Test
-    fun anUpdateIsToldOnceTheAgentHasAnsweredWhatCameBefore() {
-        val first = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1"}""")
-        val second = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s2"}""")
-        assertEquals("""{"event":"conversation_update","ref":"s1"}""", first.text)
-        val cues = CallCues(since = 0)
-        cues.refreshing(10_000)
-        cues.later(first)
-        // The agent hasn't answered from the read yet.
-        assertNull(cues.next(CallCues.Moment(11_000)))
-        assertNull(cues.next(CallCues.Moment(12_000, agentSpeaking = true)))
-        cues.agentSpoke(12_000)
-        // Quiet a moment first, so it isn't cut off between its words.
-        assertNull(cues.next(CallCues.Moment(13_000)))
-        // The person speaks meanwhile, and the agent answers them first.
-        assertNull(cues.next(CallCues.Moment(14_000, personSpeaking = true)))
-        cues.heard(15_000)
-        assertNull(cues.next(CallCues.Moment(16_000)))
-        assertNull(cues.next(CallCues.Moment(17_000, agentSpeaking = true)))
-        cues.agentSpoke(18_000)
-        assertNull(cues.next(CallCues.Moment(19_000)))
-        assertEquals(CallCues.Action.Cue(first), cues.next(CallCues.Moment(20_000)))
-        // The next waits for the agent to tell this one.
-        cues.later(second)
-        assertNull(cues.next(CallCues.Moment(21_000)))
-        cues.agentSaid("word ".repeat(14), 7, 21_000)
-        assertNull(cues.next(CallCues.Moment(22_000, agentSpeaking = true)))
-        cues.agentSpoke(24_000)
-        assertNull(cues.next(CallCues.Moment(25_000)))
-        assertEquals(CallCues.Action.Cue(second), cues.next(CallCues.Moment(26_000)))
-        assertEquals(1, cues.waiting)
-        // An agent that says nothing: its silence is its answer after 4 s.
-        val silent = CallCues(since = 0)
-        silent.refreshing(10_000)
-        silent.later(first)
-        assertNull(silent.next(CallCues.Moment(13_000)))
-        assertEquals(CallCues.Action.Cue(first), silent.next(CallCues.Moment(14_000)))
-    }
-
-    /**
-     * An update the person talked over goes again once they have had their answer: spoken over before the agent
-     * answered, or its answer cut off short; and one the agent never answered. Twice more at most.
-     */
-    @Test
-    fun anUpdateTalkedOverGoesAgainTwiceAtMost() {
-        val update = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1"}""")
-        val cue = CallCues.Action.Cue(update)
-        val cues = CallCues(since = 0)
-        cues.refreshing(0)
-        cues.agentSpoke(1_000)
-        cues.later(update)
-        assertEquals(cue, cues.next(CallCues.Moment(5_000)))
-        // The person starts talking as it goes: heard before any answer.
-        assertNull(cues.next(CallCues.Moment(6_000, personSpeaking = true)))
-        cues.heard(7_000)
-        assertEquals(1, cues.waiting)
-        // The agent answers them, then the update goes again.
-        cues.agentSaid("word ".repeat(6), 1, 8_000)
-        assertNull(cues.next(CallCues.Moment(8_000, agentSpeaking = true)))
-        cues.agentSpoke(10_000)
-        assertNull(cues.next(CallCues.Moment(11_000)))
-        assertEquals(cue, cues.next(CallCues.Moment(12_000)))
-        // Its answer begins and is cut off after three words.
-        cues.agentSaid("word ".repeat(25), 2, 12_500)
-        assertNull(cues.next(CallCues.Moment(13_000, agentSpeaking = true)))
-        cues.agentCorrected("word ".repeat(3), 2)
-        cues.agentSpoke(13_500)
-        assertNull(cues.next(CallCues.Moment(14_000, personSpeaking = true)))
-        cues.heard(15_000)
-        cues.agentSaid("word ".repeat(5), 3, 15_500)
-        cues.agentSpoke(17_000)
-        assertNull(cues.next(CallCues.Moment(18_000)))
-        assertEquals(cue, cues.next(CallCues.Moment(21_000)))
-        // The third time unanswered: let go, never a fourth.
-        assertNull(cues.next(CallCues.Moment(25_000)))
-        assertNull(cues.next(CallCues.Moment(29_000)))
-        assertEquals(0, cues.waiting)
-        assertNull(cues.next(CallCues.Moment(60_000)))
-        // Told, uninterrupted: it never goes again, and the person speaking after changes nothing.
-        val told = CallCues(since = 0)
-        told.refreshing(0)
-        told.agentSpoke(1_000)
-        told.later(update)
-        assertEquals(cue, told.next(CallCues.Moment(5_000)))
-        told.agentSaid("word ".repeat(20), 1, 5_500)
-        assertNull(told.next(CallCues.Moment(6_000, agentSpeaking = true)))
-        told.agentSpoke(9_000)
-        told.heard(10_000)
-        assertEquals(0, told.waiting)
-        assertNull(told.next(CallCues.Moment(30_000)))
-        // Never answered at all: again after 8 s of quiet.
-        val unanswered = CallCues(since = 0)
-        unanswered.refreshing(0)
-        unanswered.agentSpoke(1_000)
-        unanswered.later(update)
-        assertEquals(cue, unanswered.next(CallCues.Moment(5_000)))
-        assertNull(unanswered.next(CallCues.Moment(12_000)))
-        assertEquals(cue, unanswered.next(CallCues.Moment(13_000)))
-    }
-
-    /** A newer update of a conversation takes the place of one still waiting, and of one that wasn't told; another conversation's waits. */
-    @Test
-    fun aNewerUpdateOfAConversationTakesTheWaitingOnesPlace() {
-        val old = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1","turns":[1]}""")
-        val new = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1","turns":[1,2]}""")
-        val other = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s2"}""")
-        assertEquals("s1", new.conversation)
-        assertNull(CallCue.Silence(25_000).conversation)
-        val cues = CallCues(since = 0)
-        cues.refreshing(0)
-        cues.agentSpoke(1_000)
-        cues.later(old)
-        cues.later(other)
-        cues.later(new)
-        assertEquals(2, cues.waiting)
-        assertEquals(CallCues.Action.Cue(other), cues.next(CallCues.Moment(5_000)))
-        // The person talks over it; meanwhile s2 has news again: the untold one goes no more.
-        cues.heard(6_000)
-        cues.agentSpoke(7_000)
-        val newer = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s2","turns":[3]}""")
-        cues.later(newer)
-        assertNull(cues.next(CallCues.Moment(8_000)))
-        assertEquals(CallCues.Action.Cue(new), cues.next(CallCues.Moment(11_000)))
-        cues.agentSaid("word ".repeat(20), 1, 11_500)
-        cues.agentSpoke(14_000)
-        assertEquals(CallCues.Action.Cue(newer), cues.next(CallCues.Moment(16_000)))
-        assertEquals(1, cues.waiting)
-    }
-
-    /** Talked over, an update the agent folds into its answer to the person is told: it goes no more. An answer that doesn't say it isn't. */
-    @Test
-    fun anUpdateFoldedIntoTheAnswerAfterATalkOverIsTold() {
-        val update = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s2","turns":[{"ref":"t:r2","assistant":"Added: the pineapple fix is now listed first in the 2.1 notes."}]}""")
-        assertEquals(setOf("added", "pineapple", "listed", "first", "notes"), update.gist)
-        val cues = CallCues(since = 0)
-        cues.refreshing(0)
-        cues.agentSpoke(1_000)
-        cues.later(update)
-        assertEquals(CallCues.Action.Cue(update), cues.next(CallCues.Moment(5_000)))
-        cues.heard(6_000)
-        cues.agentSaid("Seven days in a week. And there's a small update on the Release notes task: the pineapple fix was added to the version two point one notes.", 1, 7_000)
-        assertNull(cues.next(CallCues.Moment(8_000, agentSpeaking = true)))
-        cues.agentSpoke(12_000)
-        assertNull(cues.next(CallCues.Moment(14_000)))
-        assertEquals(0, cues.waiting)
-        assertNull(cues.next(CallCues.Moment(40_000)))
-        // The same, its answer only about the week: not told, so it goes again.
-        val plain = CallCues(since = 0)
-        plain.refreshing(0)
-        plain.agentSpoke(1_000)
-        plain.later(update)
-        assertEquals(CallCues.Action.Cue(update), plain.next(CallCues.Moment(5_000)))
-        plain.heard(6_000)
-        plain.agentSaid("Seven days in a week, as always, every single week of the year.", 1, 7_000)
-        plain.agentSpoke(10_000)
-        assertEquals(CallCues.Action.Cue(update), plain.next(CallCues.Moment(12_000)))
-    }
-
-    /** An update for a read of another call (asked before a restart) is told to nobody. */
-    @Test
-    fun anUpdateThisCallNeverReadForGoesNowhere() {
-        val cues = CallCues(since = 0)
-        cues.later(CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1"}"""))
-        assertEquals(0, cues.waiting)
-        assertNull(cues.next(CallCues.Moment(30_000)))
     }
 }
 

@@ -14,7 +14,6 @@ import com.slopus.happy.call.CallHistory
 import com.slopus.happy.call.CallModeChange
 import com.slopus.happy.call.CallProbe
 import com.slopus.happy.call.CallProblem
-import com.slopus.happy.call.CallReading
 import com.slopus.happy.call.CallTurn
 import com.slopus.happy.call.CallScreenMove
 import com.slopus.happy.call.CallSendOutcome
@@ -85,7 +84,7 @@ class CallCueLiveDeviceCheck {
     private val contexts = ArrayList<String>()
     private val endings = ArrayList<CallEnding>()
 
-    /** A call as the app makes one: history in a file, the drop sound on an unasked end, restarts through navigate, reads that come later as cues. */
+    /** A call as the app makes one: history in a file, the drop sound on an unasked end, restarts through navigate, what reads find later as context. */
     private fun call(history: CallHistory, timing: CallCues.Timing, targets: CallTargets = this.targets): CallSession = runBlocking(Dispatchers.Main) {
         val agentId = CallAgent.hostedAgentId!!
         val context = CallContext(targets)
@@ -99,15 +98,7 @@ class CallCueLiveDeviceCheck {
             if (ending.isUnexpected) sound.play()
         }
         context.onRestart { withContext(Dispatchers.Main) { session.requestRestart() } }
-        context.onReading { reading ->
-            scope.launch {
-                when (reading) {
-                    CallReading.Refreshing -> session.refreshing()
-                    is CallReading.Update -> session.later(reading.cue)
-                    is CallReading.Context -> session.deliver(CallUpdate(listOf(reading.line)))
-                }
-            }
-        }
+        context.onReading { line -> scope.launch { session.deliver(CallUpdate(listOf(line))) } }
         session.start(null, { context.initial(history.slots) }, { call -> context.handle(call) })
         session
     }
@@ -253,15 +244,17 @@ class CallCueLiveDeviceCheck {
     }
 
     /**
-     * A read of a conversation the phone has but not current: the agent answers at once from what the phone has,
-     * saying it is checking, the person asks something else meanwhile and is answered, then the refresh finds a newer
-     * reply and the agent tells it, unasked, from the `conversation_update` cue. Then a read the computer never makes
-     * current: told at once, and only a silent `conversation_unconfirmed` line after, no cue.
+     * A read of a conversation the phone has but not current, the computer slower than the read waits: the agent
+     * answers from what the phone has, the person asks something else meanwhile and is answered, then the refresh finds
+     * a newer reply, which goes as a `conversation_update` line of context and never a cue: the agent says nothing of it
+     * unasked, and tells it when asked. Then a read the computer never makes current: only a silent
+     * `conversation_unconfirmed` line after, no cue.
      */
     @Test
-    fun aReadNotCurrentIsAnsweredAtOnceAndWhatIsNewIsToldWhenItComes() {
+    fun aReadNotCurrentIsAnsweredAndWhatIsNewIsSilentContext() {
         val (session, release, newer) = slowRelease("slow-read")
         fun cues() = CallProbe.sent.value.filter { it.kind == "cue" }
+        fun updates() = CallProbe.sent.value.filter { it.kind == "update" && "conversation_update" in it.text }
         try {
             assertTrue("never connected: ${session.state.value}", until(30_000) { session.state.value is CallState.Active })
             until(15_000) { agentLines() > 0 }
@@ -270,59 +263,33 @@ class CallCueLiveDeviceCheck {
             log.append("FIRST READ: ${first?.result}\n")
             assertTrue("the read wasn't marked refreshing: $first", first != null && "\"refreshing\":true" in first.result.toString())
             assertTrue("the read didn't have the kept turn: $first", "Ship the 2.1 notes" in first!!.result.toString())
-            log.append("ANSWERED AT ONCE: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
+            log.append("ANSWERED: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
             // The voice goes on: asked something else meanwhile, it answers.
             type("Also, how many minutes are in an hour?")
-            assertTrue("no update cue", until(20_000) { cues().any { "conversation_update" in it.text } })
-            val cue = cues().first { "conversation_update" in it.text }.text
-            log.append("UPDATE CUE: $cue\n")
-            assertTrue("the update hasn't the new reply: $cue", "pineapple" in cue && "\"ref\":\"t:r2\"" in cue)
-            val beforeTold = agentLines()
-            assertTrue("the agent never told the update", until(20_000) { agentLines() > beforeTold })
-            until(4_000) { false }
-            log.append("TOLD: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
+            assertTrue("no update line", until(20_000) { updates().isNotEmpty() })
+            val update = updates().first().text
+            log.append("UPDATE LINE: $update\n")
+            assertTrue("the update hasn't the new reply: $update", "pineapple" in update && "\"ref\":\"t:r2\"" in update)
+            // Silent: no cue, and the agent says nothing of it unasked.
+            val beforeQuiet = agentLines()
+            until(8_000) { false }
+            assertEquals("the update went as a cue", 0, cues().count { "conversation_update" in it.text })
+            assertEquals("the agent spoke unasked", beforeQuiet, agentLines())
+            type("Anything new there since?")
+            log.append("ASKED: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
+            assertTrue("never said what was new", CallProbe.lines.value.last { it.role == "agent" }.text.lowercase().contains("pineapple"))
             // Now the computer doesn't answer in time: no cue, a silent line.
             release.never = true
             release.state = release.state.copy(fresh = false)
             type("Read the release notes task again please.")
             assertTrue("no unconfirmed line", until(20_000) { CallProbe.sent.value.any { it.kind == "update" && "conversation_unconfirmed" in it.text } })
-            assertEquals("a second update cue", 1, cues().count { "conversation_update" in it.text })
+            assertEquals("a cue", 0, cues().count { "conversation_" in it.text })
             log.append("TOLD AGAIN: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
             log.append("NEWER: ${newer.turns.last().reply}\n")
         } finally {
             runBlocking(Dispatchers.Main) { session.stop() }
             until(2_000) { false }
             write("slow-read")
-        }
-    }
-
-    /**
-     * The person talks just as the update cue goes out: the agent answers them, and the update goes again and is
-     * told after.
-     */
-    @Test
-    fun anUpdateTalkedOverIsToldAfterAll() {
-        val (session, _, _) = slowRelease("talk-over")
-        fun cues() = CallProbe.sent.value.filter { it.kind == "cue" && "conversation_update" in it.text }
-        try {
-            assertTrue("never connected: ${session.state.value}", until(30_000) { session.state.value is CallState.Active })
-            until(15_000) { agentLines() > 0 }
-            type("What's going on in the release notes task?")
-            assertTrue("no update cue", until(30_000) { cues().isNotEmpty() })
-            // Talked over: the person's words go as the cue does, before the agent answers it.
-            runBlocking(Dispatchers.Main) { connection?.type("Wait, sorry, how many days are in a week?") }
-            CallProbe.line("user", "Wait, sorry, how many days are in a week?")
-            log.append("TALKED OVER at cue ${cues().size}\n")
-            assertTrue("the update didn't go again", until(40_000) { cues().size >= 2 })
-            val before = agentLines()
-            assertTrue("the agent never told the update", until(20_000) { agentLines() > before })
-            until(5_000) { false }
-            log.append("TOLD AFTER: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
-            assertTrue("never said what was new", CallProbe.lines.value.dropWhile { "days" !in it.text }.any { it.role == "agent" && "pineapple" in it.text.lowercase() })
-        } finally {
-            runBlocking(Dispatchers.Main) { session.stop() }
-            until(2_000) { false }
-            write("talk-over")
         }
     }
 

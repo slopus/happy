@@ -350,17 +350,15 @@ final class CallReadTests: XCTestCase {
 
     /// A read of a conversation that isn't current is paged as asked at
     /// once, marked `refreshing`; what the refresh finds new comes as one
-    /// cue, its turns cut by the most words a read of it asked for.
+    /// line of context, its turns cut by the most words a read of it asked for.
     func testANotCurrentReadIsPagedAtOnceAndItsUpdateCutAsRead() async throws {
         var state = CallTargetState(target: target, turns: eight())
         state.fresh = false
         let (_, targets) = await context(state)
-        await targets.setRefresh("a", .after(.milliseconds(150)))
-        let context = CallContext(targets: targets, refresh: .seconds(2))
-        let cues = CueBox()
-        await context.onReading { reading in
-            if case .update(let cue) = reading { cues.add(cue.text) }
-        }
+        await targets.setRefresh("a", .after(.milliseconds(400)))
+        let context = CallContext(targets: targets, refresh: .seconds(2), freshWait: .milliseconds(50))
+        let lines = LineBox()
+        await context.onReading { line in lines.add(line) }
         _ = await context.initial()
         let answer = try object(await read(context, #","from":"t:66","words":30"#))
         XCTAssertEqual(answer["refreshing"] as? Bool, true)
@@ -370,10 +368,10 @@ final class CallReadTests: XCTestCase {
         XCTAssertTrue(refused.isError)
         let long = (1...100).map { "w\($0)" }.joined(separator: " ")
         await targets.set("a", CallTargetState(target: target, turns: eight() + [CallTurn(id: "run-99", user: "more", reply: long)]))
-        for _ in 0..<100 where cues.all.isEmpty { try? await Task.sleep(for: .milliseconds(20)) }
+        for _ in 0..<100 where lines.all.isEmpty { try? await Task.sleep(for: .milliseconds(20)) }
         try? await Task.sleep(for: .milliseconds(100))
-        XCTAssertEqual(cues.all.count, 1)
-        let update = try XCTUnwrap(cues.all.first.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] })
+        XCTAssertEqual(lines.all.count, 1)
+        let update = try XCTUnwrap(lines.all.first.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] })
         XCTAssertEqual(update["event"] as? String, "conversation_update")
         let turn = try XCTUnwrap(turns(update).first)
         XCTAssertEqual(turns(update).count, 1)
@@ -383,7 +381,7 @@ final class CallReadTests: XCTestCase {
     }
 }
 
-private final class CueBox: @unchecked Sendable {
+private final class LineBox: @unchecked Sendable {
     private let lock = NSLock()
     private var texts: [String] = []
     var all: [String] { lock.withLock { texts } }

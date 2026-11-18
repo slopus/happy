@@ -134,21 +134,6 @@ class CallSession(
         })
     }
 
-    /** A read went out not current (`readConversation`'s `refreshing`): the agent answers from it before anything it finds is told. */
-    fun refreshing() {
-        if (connection == null) return
-        cues?.refreshing(now())
-    }
-
-    /**
-     * Something the agent asked for, in: told as a cue once neither side speaks and the agent has answered what came
-     * before ([CallCues]). Nothing, once the call has ended or restarted.
-     */
-    fun later(cue: CallCue) {
-        if (connection == null) return
-        cues?.later(cue)
-    }
-
     private fun begin() {
         val (language, context, tool) = request ?: return
         val current = ++generation
@@ -209,7 +194,6 @@ class CallSession(
                     said = { text, event ->
                         // Its first words before anyone else's are the hosted agent's greeting.
                         if (current == generation) {
-                            cues?.agentSaid(text, event, now())
                             if (!greeted) {
                                 greeted = true
                             } else {
@@ -220,7 +204,6 @@ class CallSession(
                     },
                     corrected = { text, event ->
                         if (current == generation) {
-                            cues?.agentCorrected(text, event)
                             history?.corrected(text, event)
                         }
                     },

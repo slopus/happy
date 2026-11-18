@@ -294,14 +294,14 @@ class CallReadTest {
 
     // Not current
 
-    /** A read of a conversation that isn't current is paged as asked at once, marked `refreshing`; what the refresh finds new comes as one cue, its turns cut by the most words a read of it asked for. */
+    /** A read of a conversation that isn't current is paged as asked at once, marked `refreshing`; what the refresh finds new comes as one line of context, its turns cut by the most words a read of it asked for. */
     @Test
     fun aNotCurrentReadIsPagedAtOnceAndItsUpdateCutAsRead() = runBlocking {
         val targets = FakeCallTargets(listOf(target), mutableMapOf("a" to CallTargetState(target, turns = eight(), fresh = false)), null)
-        targets.refresh["a"] = FakeCallTargets.Refresh.After(150)
-        val context = CallContext(targets, refreshMillis = 2_000)
-        val cues = java.util.Collections.synchronizedList(ArrayList<String>())
-        context.onReading { if (it is CallReading.Update) cues += it.cue.text }
+        targets.refresh["a"] = FakeCallTargets.Refresh.After(400)
+        val context = CallContext(targets, refreshMillis = 2_000, freshWaitMillis = 50)
+        val lines = java.util.Collections.synchronizedList(ArrayList<String>())
+        context.onReading { lines += it }
         context.initial()
         val answer = obj(read(context, ""","from":"t:66","words":30""").text)
         assertEquals(true, answer["refreshing"]!!.jsonPrimitive.boolean)
@@ -310,10 +310,10 @@ class CallReadTest {
         assertTrue(read(context, ""","from":"t:zz"""").isError)
         val long = (1..100).joinToString(" ") { "w$it" }
         targets.states["a"] = CallTargetState(target, turns = eight() + CallTurn("run-99", "more", long))
-        withTimeout(5_000) { while (cues.isEmpty()) delay(20) }
+        withTimeout(5_000) { while (lines.isEmpty()) delay(20) }
         delay(100)
-        assertEquals(1, cues.size)
-        val update = obj(cues.first())
+        assertEquals(1, lines.size)
+        val update = obj(lines.first())
         assertEquals("conversation_update", update.str("event"))
         assertEquals(listOf("t:99"), update.refs())
         assertEquals(mapOf("words" to 100, "leftOut" to 70), update.turns().first().cut("assistant"))

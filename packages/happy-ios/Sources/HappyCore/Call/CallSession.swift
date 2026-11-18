@@ -161,21 +161,6 @@ public final class CallSession {
         return .json(["ok": true, "restarting": true, "note": "The call restarts once you finish speaking; say so in a few words."])
     }
 
-    /// A read went out not current (`readConversation`'s `refreshing`):
-    /// the agent answers from it before anything it finds is told.
-    public func refreshing() {
-        guard connection != nil else { return }
-        cues?.refreshing(at: now())
-    }
-
-    /// Something the agent asked for, in: told as a cue once neither side
-    /// speaks and the agent has answered what came before (`CallCues`).
-    /// Nothing, once the call has ended or restarted.
-    public func later(_ cue: CallCue) {
-        guard connection != nil else { return }
-        cues?.later(cue)
-    }
-
     private func begin() {
         guard let request else { return }
         let language = request.language, context = request.context, tool = request.tool
@@ -235,14 +220,12 @@ public final class CallSession {
                     self.history?.heard(text, at: self.wall())
                 }, said: { [weak self] text, event in
                     guard let self, current == self.generation else { return }
-                    self.cues?.agentSaid(text, event: event, at: self.now())
                     // Its first words before anyone else's are the hosted agent's greeting.
                     guard self.greeted else { self.greeted = true; return }
                     self.spoke = true
                     self.history?.said(text, event: event, at: self.wall())
                 }, corrected: { [weak self] text, event in
                     guard let self, current == self.generation else { return }
-                    self.cues?.agentCorrected(text, event: event)
                     self.history?.corrected(text, event: event)
                 })
                 let opened: any CallConnection

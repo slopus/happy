@@ -110,17 +110,10 @@ final class CallController {
                 await MainActor.run { call?.requestRestart() } ?? CallToolResult(text: #"{"ok":false,"reason":"The call has ended."}"#, isError: true)
             }
         }
-        // A read of a conversation that wasn't current: the agent answers from it first, then
-        // what is new comes as a cue, or a line of context when nothing is.
+        // What a read's refresh found after the read answered: context, never a cue.
         Task { [weak call] in
-            await context.onReading { reading in
-                Task { @MainActor in
-                    switch reading {
-                    case .refreshing: call?.refreshing()
-                    case .update(let cue): call?.later(cue)
-                    case .context(let line): call?.deliver(CallUpdate(context: [line]))
-                    }
-                }
+            await context.onReading { line in
+                Task { @MainActor in call?.deliver(CallUpdate(context: [line])) }
             }
         }
         self.targets = targets

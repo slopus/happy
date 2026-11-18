@@ -14,9 +14,6 @@ sealed interface CallCue {
     /** The call ends in [inMillis]: at the one-call limit a fresh call can carry it over ([restart]); with the voice time used up, nothing can. */
     data class Ending(val reason: Reason, val inMillis: Long, val restart: Boolean) : CallCue
 
-    /** A conversation read while it wasn't current turned out to have more: what is new since that read, as [CallContext] made it (`conversation_update`). */
-    data class ConversationUpdate(val update: String) : CallCue
-
     enum class Reason(val wire: String) { CallLimit("call_limit"), TimeUsed("time_used") }
 
     /** The JSON the agent gets, after the [MARK]. */
@@ -24,26 +21,6 @@ sealed interface CallCue {
         get() = when (this) {
             is Silence -> """{"event":"silence","endsIn":"${spoken(endsInMillis)}"}"""
             is Ending -> """{"event":"call_ending","reason":"${reason.wire}","in":"${spoken(inMillis)}","restart":$restart}"""
-            is ConversationUpdate -> update
-        }
-
-    /** What an update says, to know an answer told it: the words of five letters or more of its turns' agent words and its waiting message. */
-    val gist: Set<String>
-        get() {
-            val value = (this as? ConversationUpdate)?.let { runCatching { kotlinx.serialization.json.Json.parseToJsonElement(it.update) as? kotlinx.serialization.json.JsonObject }.getOrNull() }
-                ?: return emptySet()
-            fun text(element: kotlinx.serialization.json.JsonElement?, key: String) =
-                ((element as? kotlinx.serialization.json.JsonObject)?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
-            val texts = ((value["turns"] as? kotlinx.serialization.json.JsonArray) ?: emptyList()).mapNotNull { text(it, "assistant") } +
-                listOfNotNull(text(value["pendingUserMessage"], "text"))
-            return texts.flatMap { CallCues.words(it) }.filter { it.length >= 5 }.toSet()
-        }
-
-    /** The conversation an update is of (its `ref`), so a newer one of it takes the place of one still waiting; null for the other cues. */
-    val conversation: String?
-        get() = (this as? ConversationUpdate)?.let {
-            runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.update) as? kotlinx.serialization.json.JsonObject)?.get("ref") }
-                .getOrNull()?.let { ref -> (ref as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content }
         }
 
     companion object {
@@ -75,19 +52,8 @@ sealed interface CallCue {
  * speaking after it does, and the agent is told ([SILENCE_OVER]). Muted
  * time counts: the provider hears silence then too.
  *
- * What a read found later ([CallCue.ConversationUpdate]) waits its turn: not
- * while either side speaks, nor until the agent has answered what came before
- * it (the read it answered from, the person's words since, the update before
- * it) and been quiet [Timing.answerSettle], or said nothing for
- * [Timing.answerWait]. Updates go one at a time, oldest first (a newer one of a conversation in place of one still
- * waiting), and each is told
- * before the next goes: told is an answer of the agent's, begun after the cue,
- * of at least [Timing.toldWords] words as the person heard them, with the
- * person not speaking first; or, the person having spoken over it, an answer
- * since that says what the update does (three of its longer words). One talked
- * over and not told so (they spoke before the agent answered, or cut it off
- * short), or the agent didn't answer within [Timing.tellWait] of quiet, goes
- * again once the moment is right, [Timing.retells] times at most.
+ * What other conversations say is never a cue: it goes as context the agent
+ * reads without answering ([CallContext]).
  */
 class CallCues(val timing: Timing = Timing(), val since: Long) {
     data class Timing(
@@ -108,16 +74,6 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
         val restartMinimum: Long = 60_000,
         /** After the agent agreed to restart: the longest its last words may take. */
         val restartDeadline: Long = 12_000,
-        /** A read waits this long for the agent to answer what came before it; past that, its silence is its answer. */
-        val answerWait: Long = 4_000,
-        /** And this long after the agent stops speaking, so it isn't cut off between a filler and what it says after its tool. */
-        val answerSettle: Long = 1_500,
-        /** The fewest words, as heard, of an answer that told an update. */
-        val toldWords: Int = 8,
-        /** An update unanswered this long, both sides quiet, goes again. */
-        val tellWait: Long = 8_000,
-        /** How many times an update goes again before it is let go. */
-        val retells: Int = 2,
     ) {
         fun allowanceLead(total: Long): Long = if (total <= 30 * 60_000L) shortAllowanceLead else longAllowanceLead
     }
@@ -150,79 +106,19 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
     private var allowanceCued = false
     private var restartAsked: Long? = null
     private var spokeSinceRestart = false
-    /** Updates waiting to be told, oldest first, with how often each went. */
-    private val reads = ArrayDeque<Pair<CallCue, Int>>()
-    /** A read of this call went out not current: only then is an update told. */
-    private var asked = false
-    /** Since when the agent owes an answer: to a read, the person's words or an update told; null once it has spoken. */
-    private var owed: Long? = null
-
-    /**
-     * The update sent and not yet known told: when it went, each of the agent's answers since as heard, and when the
-     * person spoke before the agent told it.
-     */
-    private class Telling(val cue: CallCue, val at: Long, val tries: Int) {
-        val answers = HashMap<Int, String>()
-        var talkedOver: Long? = null
-    }
-    private var telling: Telling? = null
-    private var agentDone = Long.MIN_VALUE / 2
 
     /** The person's finished words, or their voice. */
     fun heard(at: Long) {
         lastHeard = maxOf(lastHeard, at)
         if (warned != null) silenceEnded = true
         warned = null
-        owed = at
-        telling?.takeIf { at >= it.at }?.let { if (told(it)) telling = null else it.talkedOver = at }
-    }
-
-    /** The agent's answer [event], [text], begun. */
-    fun agentSaid(text: String, event: Int, at: Long) {
-        telling?.takeIf { at >= it.at }?.answers?.set(event, text)
-    }
-
-    /** The person cut the agent's answer [event] off: [text] of it was heard. */
-    fun agentCorrected(text: String, event: Int) {
-        telling?.takeIf { event in it.answers }?.answers?.set(event, text)
-    }
-
-    /**
-     * Told: an answer of [Timing.toldWords] words or more, the person not speaking first; or, talked over, an answer
-     * since that says what the update does (its words of five letters or more, three of them, or as many as it has).
-     */
-    private fun told(telling: Telling): Boolean {
-        val answers = telling.answers.values.filter { words(it).size >= timing.toldWords }
-        if (telling.talkedOver == null && answers.isNotEmpty()) return true
-        val gist = telling.cue.gist
-        if (gist.isEmpty()) return false
-        return answers.any { answer -> (gist intersect words(answer).filter { it.length >= 5 }.toSet()).size >= minOf(3, gist.size) }
     }
 
     /** The agent finished speaking. */
     fun agentSpoke(at: Long) {
         lastHeard = maxOf(lastHeard, at)
         if (restartAsked != null) spokeSinceRestart = true
-        owed = null
-        agentDone = at
     }
-
-    /** A read went out not current, and what it finds may come later: the agent answers from the read first. */
-    fun refreshing(at: Long) {
-        owed = at
-        asked = true
-    }
-
-    /** An update to tell once the moment is right; one for a read of another call (it came after a restart) goes nowhere. */
-    fun later(cue: CallCue) {
-        if (!asked) return
-        // A newer update of a conversation takes the place of one still waiting.
-        cue.conversation?.let { conversation -> reads.removeAll { it.first.conversation == conversation } }
-        reads.addLast(cue to 0)
-    }
-
-    /** Updates still waiting to be told, the one sent and not yet told among them. */
-    val waiting: Int get() = reads.size + (if (telling == null) 0 else 1)
 
     /** Whether the call can be carried over to a fresh one now: not with under a minute of voice time left. */
     fun canRestart(allowanceLeft: Long?): Boolean = allowanceLeft?.let { it >= timing.restartMinimum } ?: true
@@ -252,21 +148,7 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
             if (now - warnedAt >= timing.silenceEnd - timing.silenceWarning && moment.quiet) return Action.End(CallEnding.Silence)
         } else if (now - lastHeard >= timing.silenceWarning && moment.quiet) {
             warned = now
-            owed = now
             return Action.Cue(CallCue.Silence(timing.silenceEnd - timing.silenceWarning))
-        }
-        telling?.let { sent ->
-            // Decided once the agent has answered since the cue, or since the person spoke over it.
-            val since = sent.talkedOver ?: sent.at
-            val settled = !moment.agentSpeaking && agentDone > since && now - agentDone >= timing.answerSettle
-            if (told(sent) && settled) {
-                telling = null
-            } else if (settled || (moment.quiet && now - maxOf(since, agentDone) >= timing.tellWait)) {
-                // Not told: again, once the person has had their answer.
-                telling = null
-                val superseded = sent.cue.conversation?.let { conversation -> reads.any { it.first.conversation == conversation } } ?: false
-                if (sent.tries < timing.retells && !superseded) reads.addFirst(sent.cue to sent.tries + 1)
-            }
         }
         if (!moment.quiet) return null
         val limitLeft = end - now
@@ -275,20 +157,12 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
         if (left != null && total != null && !allowanceCued && left <= timing.allowanceLead(total) && left <= limitLeft + timing.restartMinimum) {
             allowanceCued = true
             limitCued = true
-            owed = now
             return Action.Cue(CallCue.Ending(CallCue.Reason.TimeUsed, left, restart = false))
         }
         if (!limitCued && limitLeft <= timing.callLimitLead) {
             limitCued = true
-            owed = now
             val restart = left?.let { it > limitLeft + timing.restartMinimum } ?: true
             return Action.Cue(CallCue.Ending(CallCue.Reason.CallLimit, limitLeft, restart))
-        }
-        if (telling == null && reads.isNotEmpty() && now - agentDone >= timing.answerSettle && (owed?.let { now - it >= timing.answerWait } ?: true)) {
-            owed = now
-            val (cue, tries) = reads.removeFirst()
-            telling = Telling(cue, now, tries)
-            return Action.Cue(cue)
         }
         return null
     }
@@ -296,8 +170,5 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
     companion object {
         /** The update that says a silence warning no longer holds. */
         const val SILENCE_OVER = """{"event":"silence_over"}"""
-
-        /** [text]'s words, lowercased, letters and digits only. */
-        fun words(text: String): List<String> = text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
     }
 }
