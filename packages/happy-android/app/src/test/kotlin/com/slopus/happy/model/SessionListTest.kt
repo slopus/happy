@@ -156,6 +156,18 @@ class SessionListTest {
         assertEquals(200L, session("s", older, createdAt = 100, lastMessageSentAt = 800).activityAt())
     }
 
+    @Test
+    fun activityFallsBackToTheServerStampBeforeCreation() {
+        // A read-mostly session (no published timestamp, no local send)
+        // shows the server's last-activity stamp, not its creation time.
+        assertEquals(700L, session("s", null, createdAt = 100, activeAt = 700).activityAt())
+        // A stamp at or before creation changes nothing.
+        assertEquals(100L, session("s", null, createdAt = 100, activeAt = 100).activityAt())
+        assertEquals(100L, session("s", null, createdAt = 100, activeAt = 99).activityAt())
+        // The local send still outranks the server stamp.
+        assertEquals(300L, session("s", null, createdAt = 100, activeAt = 700, lastMessageSentAt = 300).activityAt())
+    }
+
     // resolveSessionAvatar.test.ts
 
     @Test

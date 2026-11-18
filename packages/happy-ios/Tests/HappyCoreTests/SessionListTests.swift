@@ -294,4 +294,29 @@ final class SessionListTests: XCTestCase {
         XCTAssertEqual(shown["rig"], .rig)
         XCTAssertEqual(shown["gemini"], .some(nil), "retired harnesses get no badge")
     }
+
+    // MARK: Activity precedence
+
+    private func bareRecord(_ id: String, createdAt: Int64, activeAt: Int64, lastMessageSentAt: Int64? = nil, metadata: [String: JSONValue] = [:]) -> SessionRecord {
+        SessionRecord(
+            id: id, seq: 0, createdAt: createdAt, updatedAt: createdAt, active: true, activeAt: activeAt,
+            projectId: nil, metadataVersion: 1, metadataCipher: "c",
+            metadata: metadata.isEmpty ? nil : .object(metadata),
+            agentStateVersion: 0, agentStateCipher: nil, agentState: nil,
+            dataKeyCipher: "k", decryptable: true, lastMessageSentAt: lastMessageSentAt
+        )
+    }
+
+    func testActivityFallsBackToTheServerStampBeforeCreation() {
+        XCTAssertEqual(bareRecord("s", createdAt: 100, activeAt: 100).lastActivityAt, 100)
+        // A read-mostly session (no published timestamp, no local send)
+        // shows the server's last-activity stamp, not its creation time.
+        XCTAssertEqual(bareRecord("s", createdAt: 100, activeAt: 700).lastActivityAt, 700)
+        // A stamp at or before creation changes nothing.
+        XCTAssertEqual(bareRecord("s", createdAt: 100, activeAt: 99).lastActivityAt, 100)
+        // The local send still outranks the server stamp.
+        XCTAssertEqual(bareRecord("s", createdAt: 100, activeAt: 700, lastMessageSentAt: 300).lastActivityAt, 300)
+        // A published timestamp outranks everything.
+        XCTAssertEqual(bareRecord("s", createdAt: 100, activeAt: 700, lastMessageSentAt: 300, metadata: ["lastMeaningfulMessageAt": .number(900)]).lastActivityAt, 900)
+    }
 }

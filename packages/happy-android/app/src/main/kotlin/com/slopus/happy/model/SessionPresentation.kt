@@ -58,9 +58,12 @@ fun Session.avatarId(): String {
 
 /**
  * getSessionActivityAt: what the list sorts on. The agent's published
- * last-meaningful-message time, else this device's last send, else creation.
+ * last-meaningful-message time, else this device's last send, else the
+ * server's last-activity stamp (so a read-mostly session does not fall
+ * all the way back to its creation time), else creation.
  */
-fun Session.activityAt(): Long = metadata?.lastMeaningfulMessageAt ?: lastMessageSentAt ?: createdAt
+fun Session.activityAt(): Long =
+    metadata?.lastMeaningfulMessageAt ?: lastMessageSentAt ?: activeAt.takeIf { it > createdAt } ?: createdAt
 
 /** formatPathRelativeToHome: `~` for the home directory and what is under it. */
 fun formatPathRelativeToHome(path: String, homeDir: String?): String {

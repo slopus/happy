@@ -397,9 +397,13 @@ extension SessionRecord {
 
     /// sessionActivity.ts `getSessionActivityAt`: the last meaningful
     /// message, not `updatedAt`, which moves on every background write.
+    /// The server's `activeAt` stamp answers when nothing was published
+    /// and this device never sent, so a read-mostly session does not
+    /// fall all the way back to its creation time.
     public var lastActivityAt: Int64 {
         if let at = metadata?["lastMeaningfulMessageAt"]?.numberValue { return Int64(at) }
         if let at = lastMessageSentAt { return at }
+        if activeAt > createdAt { return activeAt }
         return createdAt
     }
 
