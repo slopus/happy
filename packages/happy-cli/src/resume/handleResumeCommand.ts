@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 import type { Metadata } from '@/api/types';
+import { getProjectPath } from '@/claude/utils/path';
 import { encodeBase64 } from '@/api/encryption';
 import { hasLocalHappyAgentAuth } from '@/resume/localHappyAgentAuth';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
@@ -48,6 +50,33 @@ function resolveFlavor(metadata: Metadata): 'codex' | 'claude' | null {
         return 'claude';
     }
     return null;
+}
+
+/**
+ * Why a resume can point at a transcript that is no longer there.
+ *
+ * A session record survives in `~/.happy/sessions.json` on two criteria
+ * (`readPersistedSessions`): the host process is alive, or the record is
+ * younger than the retention window. Neither says anything about the Claude
+ * transcript, which lives outside Happy in `~/.claude/projects/<slug>/` and
+ * can vanish on its own — Claude Code's retention sweep (`cleanupPeriodDays`),
+ * a user clearing the directory, `CLAUDE_CONFIG_DIR` changing, or the project
+ * being renamed, which changes the slug so the old file is no longer where
+ * `getProjectPath` looks.
+ *
+ * Without this check the session stays listed and clickable, and every message
+ * spawns a `claude --resume` that dies with "No conversation found with session
+ * ID" — an inert tab that swallows input and never says why.
+ */
+export function missingClaudeTranscriptReason(metadata: Metadata): string | null {
+    if (resolveFlavor(metadata) !== 'claude' || !metadata.claudeSessionId) {
+        return null;
+    }
+    const transcript = join(getProjectPath(metadata.path), `${metadata.claudeSessionId}.jsonl`);
+    if (existsSync(transcript)) {
+        return null;
+    }
+    return `The Claude transcript for this session no longer exists at ${transcript}, so it cannot be resumed. Start a new session instead.`;
 }
 
 export function buildResumeLaunch(session: ResumableHappySession, options: ResumeLaunchOptions = {}): ResumeLaunch {
@@ -167,6 +196,11 @@ export async function handleResumeCommand(args: string[]): Promise<void> {
             throw new Error(`Saved session path does not exist: ${launch.cwd}`);
         }
 
+        const missingTranscript = missingClaudeTranscriptReason(reconnectableSession.metadata);
+        if (missingTranscript) {
+            throw new Error(missingTranscript);
+        }
+
         const exitCode = await spawnResumeChild(launch, buildReconnectEnv(reconnectableSession));
         if (typeof exitCode === 'number' && exitCode !== 0) {
             process.exit(exitCode);
@@ -182,6 +216,11 @@ export async function handleResumeCommand(args: string[]): Promise<void> {
 
     if (!existsSync(launch.cwd)) {
         throw new Error(`Saved session path does not exist: ${launch.cwd}`);
+    }
+
+    const missingLegacyTranscript = missingClaudeTranscriptReason(session.metadata);
+    if (missingLegacyTranscript) {
+        throw new Error(missingLegacyTranscript);
     }
 
     const exitCode = await spawnResumeChild(launch);
