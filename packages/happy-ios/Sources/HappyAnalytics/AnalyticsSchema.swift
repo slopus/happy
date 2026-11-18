@@ -11,6 +11,9 @@ public enum AnalyticsSchema {
         public enum Kind: Equatable, Sendable {
             case words([String])
             case count, bool, version, osVersion
+            /// A crash's signature (`CrashSignature`): a signal number, an
+            /// exception's class name, its top frames, the app binary's UUID.
+            case signal, className, frameList, buildUUID
         }
 
         public var kind: Kind
@@ -61,6 +64,12 @@ public enum AnalyticsSchema {
             "app_crashed": [
                 "process": .words(E.CrashProcess.self), "reason": .words(E.CrashReason.self),
                 "crashed_version": Property(kind: .version, nullable: true),
+                "signal": Property(kind: .signal, nullable: true, optional: true),
+                "exception_type": Property(kind: .count, nullable: true, optional: true),
+                "exception_code": Property(kind: .count, nullable: true, optional: true),
+                "exception_class": Property(kind: .className, nullable: true, optional: true),
+                "crash_frames": Property(kind: .frameList, nullable: true, optional: true),
+                "binary_id": Property(kind: .buildUUID, nullable: true, optional: true),
             ],
             "mobile_pairing_failed": ["method": .words(E.PairingMethod.self), "start": start, "error_code": .words(E.PairingErrorCode.self)],
             "sign_in_failed": ["method": .words(E.SignInMethod.self), "error_code": .words(E.SignInErrorCode.self)],
@@ -128,7 +137,23 @@ public enum AnalyticsSchema {
         case (.bool, .bool): return true
         case (.version, .string(let text)): return isVersion(text)
         case (.osVersion, .string(let text)): return text.wholeMatch(of: /[0-9]+(\.[0-9]+)?/) != nil
+        case (.signal, .number(let number)): return number == number.rounded() && (1...64).contains(number)
+        case (.className, .string(let text)): return CrashSignature.isClassName(text)
+        case (.frameList, .string(let text)): return isFrameList(text)
+        case (.buildUUID, .string(let text)): return text.wholeMatch(of: /[0-9A-F]{32}/) != nil
         default: return false
+        }
+    }
+
+    static let maxFrameListLength = 400
+
+    /// One to five frames, top first, one space between: `binary+0xoffset`
+    /// (iOS) or `class.method:line` (Android).
+    static func isFrameList(_ text: String) -> Bool {
+        let frames = text.split(separator: " ", omittingEmptySubsequences: false)
+        return text.count <= maxFrameListLength && (1...CrashSignature.maxFrames).contains(frames.count) && frames.allSatisfy { frame in
+            frame.wholeMatch(of: /[A-Za-z0-9_.$\-]{1,64}\+0x[0-9a-f]{1,12}/) != nil
+                || frame.wholeMatch(of: /[A-Za-z0-9_$.<>\-]{1,128}:[0-9]{1,7}/) != nil
         }
     }
 

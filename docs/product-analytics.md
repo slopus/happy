@@ -75,7 +75,13 @@ Errors and results:
   the OS's exit records, of which only the exception type or signal and the
   app version are read. On Android a JVM crash also carries its exception's
   class, its root cause's class and up to five frames (`exception_class`,
-  `cause_class`, `crash_frames`), and a native crash its `signal`.
+  `cause_class`, `crash_frames`), and a native crash its `signal`. On iOS a
+  crash also carries its `signal`, Mach `exception_type` and
+  `exception_code`, an Objective-C exception's class (`exception_class`),
+  the crashed thread's top five frames as `binary+0xoffset`
+  (`crash_frames`) and the app binary's UUID (`binary_id`), for
+  symbolicating with the build's dSYM. Never the termination text, a
+  message, addresses, memory regions, file paths or thread names.
 - `mobile_pairing_failed`: a phone pairing ended unlinked, with why.
 - `sign_in_failed`: creating, restoring or signing in to an account failed.
   Leaving the flow sends nothing. On Android a Happy account's code is the
@@ -155,10 +161,14 @@ Definitions:
   account. The answer is kept in memory for the launch;
   HappyCore's `MigrationNoteFlag` only holds it, and without
   HappyAnalytics the card never shows.
-- Crashes and hangs come from MetricKit at the next launch. Of each, only
-  the exception type and signal (mapped to `reason`) and the build that
-  crashed are read; never the call stack, the termination text or memory
-  regions.
+- Crashes and hangs come from MetricKit at the next launch. Of each, the
+  exception type and signal (mapped to `reason`) and the build that
+  crashed are read. Of a crash, also its signature (`CrashSignature`):
+  the exception's type, code and signal, `exceptionReason.className`, and
+  from `callStackTree.jsonRepresentation()` only the attributed thread's
+  top 5 frames' `binaryName` and `offsetIntoBinaryTextSegment` and the
+  app binary's `binaryUUID`. Never addresses, other threads, the
+  termination text, `composedMessage` or memory regions.
 - A debug run can send to a capture endpoint on the same machine instead
   of PostHog: launch with `HAPPY_ANALYTICS_CAPTURE=http://127.0.0.1:<port>/batch/`.
   It never asks for the flag.

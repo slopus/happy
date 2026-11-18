@@ -13,7 +13,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case chatFailureActionClicked(kind: FailureKind, action: FailureAction)
     case agentConnectionLost(transport: ConnectionTransport, code: ConnectionCode, outcome: ConnectionOutcome, duration: DurationBucket)
     case errorShown(area: ErrorArea, code: ErrorCode)
-    case appCrashed(process: CrashProcess, reason: CrashReason, crashedVersion: String?)
+    case appCrashed(process: CrashProcess, reason: CrashReason, crashedVersion: String?, signature: CrashSignature? = nil)
     case mobilePairingFailed(method: PairingMethod, start: PairingStart?, errorCode: PairingErrorCode)
     case signInFailed(method: SignInMethod, errorCode: SignInErrorCode)
     case voiceSessionError(errorCode: VoiceErrorCode, duration: DurationBucket?)
@@ -72,8 +72,9 @@ public enum AnalyticsEvent: Equatable, Sendable {
             ["transport": .word(transport), "code": .word(code), "outcome": .word(outcome), "duration": .word(duration), "is_recovery_screen_shown": .bool(false)]
         case .errorShown(let area, let code):
             ["area": .word(area), "code": .word(code)]
-        case .appCrashed(let process, let reason, let crashedVersion):
+        case .appCrashed(let process, let reason, let crashedVersion, let signature):
             ["process": .word(process), "reason": .word(reason), "crashed_version": AnalyticsSchema.version(crashedVersion).map(JSONValue.string) ?? .null]
+                .merging(signature?.properties ?? [:]) { $1 }
         case .mobilePairingFailed(let method, let start, let errorCode):
             Self.pairing(method, start).merging(["error_code": .word(errorCode)]) { $1 }
         case .signInFailed(let method, let errorCode):

@@ -7,7 +7,8 @@
     "os_version": "string matching ^[0-9]+(\\.[0-9]+)?$ (major.minor only)",
     "class_name": "string matching ^[A-Za-z_$][A-Za-z0-9_$.]{0,127}$: a class name as the runtime names it (possibly obfuscated by R8), never a message.",
     "frame_list": "1 to 5 stack frames joined by single spaces, at most 400 characters. Each is one of: iOS binary+offset, ^[A-Za-z0-9_.$-]{1,64}\\+0x[0-9a-f]{1,12}$; Android class.method:line, ^[A-Za-z0-9_$.<>-]{1,128}:[0-9]{1,7}$ (the line R8 leaves, retraced with the build's mapping; 0 when unknown). No file names, paths or arguments.",
-    "signal": "integer 1..64, a POSIX signal number"
+    "signal": "integer 1..64, a POSIX signal number",
+    "build_uuid": "string matching ^[0-9A-F]{32}$: a binary's build UUID, dashes removed"
   },
   "shared_enums": {
     "provider_kind": [
@@ -333,7 +334,7 @@
         "ios",
         "android"
       ],
-      "fires": "A process of the app died abnormally. Mobile: read at the next launch from the OS's own exit records (MetricKit, ApplicationExitInfo); only the closed fields above are read, and never the termination text, messages, memory regions, file paths or thread names. On Android a JVM crash's exception_class, cause_class and crash_frames are written by the crashing process's uncaught-exception handler to one small file in the app's no-backup storage, only while analytics is on, then read and deleted at the next start (or deleted when analytics is turned off); they are sent only when the system's record says that process crashed. Desktop: a renderer or child process that dies is reported by the main process to the reloaded window in memory; a main-process crash is not reported, and nothing is written to disk.",
+      "fires": "A process of the app died abnormally. Mobile: read at the next launch from the OS's own exit records (MetricKit, ApplicationExitInfo); only the closed fields above are read, and never the termination text, messages, memory regions, file paths or thread names. On iOS a crash's signal, Mach exception type and code, Objective-C exception class (never its message), the crashed thread's top frames as binary+offset and the app binary's UUID (binary_id, for symbolicating with the build's dSYM) come from the MetricKit diagnostic's numbers and call stack tree; never an address or another thread's frames. On Android a JVM crash's exception_class, cause_class and crash_frames are written by the crashing process's uncaught-exception handler to one small file in the app's no-backup storage, only while analytics is on, then read and deleted at the next start (or deleted when analytics is turned off); they are sent only when the system's record says that process crashed. Desktop: a renderer or child process that dies is reported by the main process to the reloaded window in memory; a main-process crash is not reported, and nothing is written to disk.",
       "properties": {
         "process": {
           "enum": [
@@ -364,6 +365,7 @@
           "nullable": true,
           "optional": true,
           "clients": [
+            "ios",
             "android"
           ]
         },
@@ -380,6 +382,7 @@
           "nullable": true,
           "optional": true,
           "clients": [
+            "ios",
             "android"
           ]
         },
@@ -388,7 +391,32 @@
           "nullable": true,
           "optional": true,
           "clients": [
+            "ios",
             "android"
+          ]
+        },
+        "exception_type": {
+          "type": "count",
+          "nullable": true,
+          "optional": true,
+          "clients": [
+            "ios"
+          ]
+        },
+        "exception_code": {
+          "type": "count",
+          "nullable": true,
+          "optional": true,
+          "clients": [
+            "ios"
+          ]
+        },
+        "binary_id": {
+          "type": "build_uuid",
+          "nullable": true,
+          "optional": true,
+          "clients": [
+            "ios"
           ]
         }
       }
