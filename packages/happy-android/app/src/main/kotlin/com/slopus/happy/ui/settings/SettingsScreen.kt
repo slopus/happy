@@ -43,6 +43,7 @@ object SettingsTags {
     const val REPORT_ISSUE = "settings.row.reportIssue"
     const val PRIVACY = "settings.row.privacy"
     const val TERMS = "settings.row.terms"
+    const val CALL_TRANSCRIPT = "settings.row.callTranscript"
 }
 
 /** SettingsView.tsx, Android: the links and the icon colours the older pages still use. */

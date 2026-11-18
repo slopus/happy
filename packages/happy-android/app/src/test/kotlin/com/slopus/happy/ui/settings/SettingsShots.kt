@@ -118,6 +118,20 @@ class SettingsShots {
         File(dir, "settings-agent-edit-menu${if (dark) "-dark" else ""}.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** Developer mode's Last voice call transcript, once read off the main thread; a call, or none yet. */
+    private fun callTranscript(name: String, dark: Boolean, transcript: com.slopus.happy.call.CallTranscript) {
+        assumeTrue(dir != null)
+        dir!!.mkdirs()
+        rule.setHappyContent(dark) { CallTranscriptScreen(transcript, onBack = {}) }
+        rule.waitUntil(5_000) { rule.onAllNodes(androidx.compose.ui.test.hasTestTag(CallTranscriptTags.LIST).or(androidx.compose.ui.test.hasTestTag(CallTranscriptTags.EMPTY)), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
+        File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test fun callTranscriptLight() = callTranscript("settings-call-transcript", false, CallTranscriptFixture.transcript())
+    @Test fun callTranscriptDark() = callTranscript("settings-call-transcript-dark", true, CallTranscriptFixture.transcript())
+    @Test fun callTranscriptEmpty() = callTranscript("settings-call-transcript-empty", false, com.slopus.happy.call.CallTranscript(com.slopus.happy.call.MemoryTranscriptStore()))
+
     @Test fun agentEditMenuLight() = agentEditMenu(false)
     @Test fun agentEditMenuDark() = agentEditMenu(true)
 }

@@ -2,8 +2,11 @@
 <!--
   The one directory a conversation's media goes in, and the only thing the
   file provider will hand out: not the cache's root, nothing else of the
-  app's. MediaFiles.DIRECTORY must stay in step with it.
+  app's. MediaFiles.DIRECTORY must stay in step with it. Developer mode's
+  last voice call transcript is shared from its own folder beside it
+  (CallTranscriptScreen).
 -->
 <paths>
     <cache-path name="conversation-media" path="conversation-media/" />
+    <cache-path name="call-transcript" path="call-transcript/" />
 </paths>

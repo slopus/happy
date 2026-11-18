@@ -8,6 +8,8 @@ import com.slopus.happy.accounts.AccountStore
 import com.slopus.happy.accounts.RnServerConfigImporter
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.call.CallController
+import com.slopus.happy.call.CallTranscript
+import com.slopus.happy.call.FileCallTranscriptStore
 import com.slopus.happy.agent.AgentSessions
 import com.slopus.happy.agent.StartupLink
 import com.slopus.happy.analytics.Analytics
@@ -733,7 +735,13 @@ class AppGraph(
             stopRelayVoice = voice::stop,
             subscription = subscription,
             offers = offers,
+            transcript = callTranscript,
         )
+    }
+
+    /** The last call's exchange with the voice connection, for developer mode; on this phone only. */
+    val callTranscript: CallTranscript by lazy {
+        CallTranscript(FileCallTranscriptStore(java.io.File(appContext.noBackupFilesDir, CallTranscript.FILE)))
     }
 
 

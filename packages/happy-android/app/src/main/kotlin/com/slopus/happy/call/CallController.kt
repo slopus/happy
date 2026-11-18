@@ -42,8 +42,9 @@ import kotlinx.coroutines.withContext
  * (`ui/call/CallFrame`), bound to the one connection it started on. It ends
  * when the app leaves the foreground, and when another account opens. What
  * each call said is kept for the connection's next one ([CallHistory]), and a
- * call that ends unasked plays [CallDropSound]. Apart from the relay's voice
- * ([stopRelayVoice]), whose call it stops first.
+ * call that ends unasked plays [CallDropSound]; the last call's whole
+ * exchange with the connection is kept for developer mode ([CallTranscript]).
+ * Apart from the relay's voice ([stopRelayVoice]), whose call it stops first.
  */
 class CallController(
     private val appContext: Context,
@@ -62,6 +63,8 @@ class CallController(
     private val grants: CallGrants = CallAgent.hostedAgentId?.let(::PublicAgentCallGrants) ?: UnconfiguredCallGrants,
     private val preferences: android.content.SharedPreferences = appContext.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE),
     private val allowance: CallAllowance = CallAllowance(PreferencesCallUsageStore(preferences), period = subscription::period),
+    /** The last call's transcript, for developer mode. */
+    private val transcript: CallTranscript? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow<CallState>(CallState.Idle)
@@ -113,11 +116,13 @@ class CallController(
         val targets = ConnectionCallTargets(account, appContext.resources::failureText, Typesetter.of(appContext)) { screen }
         val context = CallContext(targets, hours24 = android.text.format.DateFormat.is24HourFormat(appContext))
         val history = CallHistory(sessions.keptFile(connection, HISTORY_FILE)?.let(::FileCallHistoryStore))
-        val call = CallSession(
-            scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
-        ) { grant, request, events ->
+        val connect: suspend (CallGrant, CallStart, CallEvents) -> CallConnection = { grant, request, events ->
             ElevenLabsCallConnection.connect(appContext, scope, grant, request, events)
         }
+        val call = CallSession(
+            scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
+            connect = transcript?.record(connect) ?: connect,
+        )
         // Not the person's own end, nor the agent's goodbye: those were heard coming.
         call.onEnded = { ending -> if (ending.isUnexpected) dropSound.play() }
         val calling = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))

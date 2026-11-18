@@ -798,7 +798,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// Developer mode's own rows, after Version, in English only.
     private func developerRows() -> [SettingsRow] {
         guard context.account.localSettings.devModeEnabled else { return [] }
-        return [SettingsRow(id: "genui-fixtures", title: "Gen UI fixtures", action: { [weak self] in self?.show(GenUIFixturesViewController()) })]
+        return [SettingsRow(id: "genui-fixtures", title: "Gen UI fixtures", action: { [weak self] in self?.show(GenUIFixturesViewController()) }),
+                SettingsRow(id: "call-transcript", title: "Last voice call transcript", action: { [weak self] in
+                    self?.show(CallTranscriptViewController(store: CallController.transcriptStore))
+                })]
     }
 
     /// A Happy Cloud server's AI providers: the connections its chats run on.

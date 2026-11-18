@@ -9,7 +9,9 @@ import UIKit
 /// to the one connection it started on. It ends in the background, on an
 /// audio interruption or a lost route, and when the connection changes.
 /// What each call said is kept for the connection's next one
-/// (`CallHistory`), and a call that ends unasked plays `CallDropSound`.
+/// (`CallHistory`), and a call that ends unasked plays `CallDropSound`;
+/// the last call's whole exchange with the connection is kept for
+/// developer mode (`CallTranscript`).
 /// Apart from the relay's `VoiceCoordinator`: one call at a time, the newer wins.
 @MainActor
 final class CallController {
@@ -39,6 +41,11 @@ final class CallController {
     private static var grants: any CallGrantSource {
         CallAgent.hostedAgentId.map { PublicAgentCallGrants(agentId: $0) } ?? UnconfiguredCallGrants()
     }
+
+    /// The last call's exchange with the voice connection, for developer
+    /// mode; on this phone only.
+    static let transcriptStore = FileCallTranscriptStore.device()
+    static let transcript = transcriptStore.map { CallTranscript(store: $0) }
 
     /// 20 free minutes in 30 days, or the subscription's 2 hours a month.
     private let allowance = CallAllowance(period: { Offers.shared.month() })
@@ -96,13 +103,14 @@ final class CallController {
         let targets = SessionCallTargets(session: account, shell: shell)
         let context = CallContext(targets: targets)
         let history = CallHistory(store: account.offline.map { OfflineCallHistoryStore(offline: $0) })
+        let connect: CallSession.Connect = { grant, request, events in
+            try await ElevenLabsCallConnection.connect(grant: grant, request: request, events: events)
+        }
         // The relay's call stops once this one really starts: a connection that can't call leaves it alone.
         let call = CallSession(grants: Self.grants, allowance: allowance, permission: {
             VoiceCoordinator.shared.stop()
             return await AVAudioApplication.requestRecordPermission()
-        }, history: history) { grant, request, events in
-            try await ElevenLabsCallConnection.connect(grant: grant, request: request, events: events)
-        }
+        }, history: history, connect: Self.transcript?.record(connect) ?? connect)
         // Not the person's own end, nor the agent's goodbye: those were heard coming.
         call.onEnded = { ending in if ending.isUnexpected { CallDropSound.play() } }
         Task { [weak call] in
