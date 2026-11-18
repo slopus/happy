@@ -29,6 +29,7 @@ import { handleSandboxCommand } from './commands/sandbox'
 import { handleServerCommand } from './commands/server'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
+import { CLAUDE_EFFORT_LEVELS, isClaudeEffort } from './claude/utils/effort'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
@@ -648,7 +649,12 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
       } else if (arg === '--permission-mode') {
         options.permissionMode = args[++i] as StartOptions['permissionMode']
       } else if (arg === '--effort') {
-        options.effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']).parse(args[++i])
+        const effort = args[++i]
+        if (!isClaudeEffort(effort)) {
+          console.error(chalk.red(`Invalid --effort value: ${effort}. Must be one of: ${CLAUDE_EFFORT_LEVELS.join(', ')}`))
+          process.exit(1)
+        }
+        options.effort = effort
       } else if (arg === '--started-by') {
         options.startedBy = args[++i] as 'daemon' | 'terminal'
       } else if (arg === '--js-runtime') {
