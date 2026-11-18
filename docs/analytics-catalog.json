@@ -450,7 +450,7 @@
         "ios",
         "android"
       ],
-      "fires": "A phone pairing ended unlinked by an error or a refusal. Existing desktop event, now with error_code.",
+      "fires": "A phone pairing ended unlinked by an error or a refusal, including local mobile scan or paste rejection. Agent and team-server codes retain their own handling.",
       "properties": {
         "method": {
           "enum": "pairing_method"

@@ -18,11 +18,17 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.PairingError
+import com.slopus.happy.analytics.PairingMethod
 import com.slopus.happy.analytics.SignInMethod
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.auth.InvalidPairingKeyException
 import com.slopus.happy.auth.TERMINAL_URL_PREFIX
 import com.slopus.happy.auth.approveAccountLink
 import com.slopus.happy.auth.approveTerminal
+import com.slopus.happy.auth.hasTerminalPairingKey
 import com.slopus.happy.crypto.AccountLink
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -53,6 +59,8 @@ class ConnectFlow internal constructor(
     internal var okTitle = ""
     internal var messages = ScanMessages()
     internal var scanner: QrScanner = QrScanner { ScanResult.Cancelled }
+    internal var record: (AnalyticsEvent) -> Unit = Analytics::record
+    internal var hasRelayAccount: () -> Boolean = { false }
 
     /** What the scanner's ⋮ offers (Add's other ways in); empty, no ⋮. */
     internal var request = ScanRequest()
@@ -76,7 +84,7 @@ class ConnectFlow internal constructor(
 
     /** Add's "Enter link manually" prompt is open. */
     var enteringLink by mutableStateOf(false)
-    internal var process: suspend (String) -> Boolean = { false }
+    internal var process: suspend (String, PairingStart?) -> Boolean = { _, _ -> false }
     private var scanning = false
 
     /**
@@ -111,13 +119,23 @@ class ConnectFlow internal constructor(
             is HappyCode.AgentPairing -> connectAgent?.invoke(code.text, start)
                 ?: run { alert = errorAlert(messages.pairingUnavailable) }
             is HappyCode.Terminal -> when {
-                kind != ConnectKind.Terminal && kind != ConnectKind.Add -> alert = errorAlert(messages.terminalElsewhere)
-                confirmTerminal?.invoke() != false -> process(code.url)
+                kind != ConnectKind.Terminal && kind != ConnectKind.Add -> {
+                    pairingFailed(start, if (hasTerminalPairingKey(code.url)) PairingError.Rejected else PairingError.InvalidCode)
+                    alert = errorAlert(messages.terminalElsewhere)
+                }
+                confirmTerminal?.invoke() != false -> process(code.url, start)
             }
-            is HappyCode.Account -> when (kind) {
-                ConnectKind.Account -> process(code.url)
-                ConnectKind.Add -> alert = Alert(messages.accountSignedOutTitle, messages.accountSignedOut, listOf(AlertButton(okTitle)))
-                else -> alert = errorAlert(messages.accountElsewhere)
+            is HappyCode.Account -> when {
+                kind == ConnectKind.Account -> process(code.url, start)
+                AccountLink.parseLinkUrl(code.url) == null -> reject(messages.invalidUrl, start)
+                kind == ConnectKind.Add && !hasRelayAccount() -> {
+                    pairingFailed(start, PairingError.SignInRequired)
+                    alert = Alert(messages.accountSignedOutTitle, messages.accountSignedOut, listOf(AlertButton(okTitle)))
+                }
+                else -> {
+                    pairingFailed(start, PairingError.Rejected)
+                    alert = errorAlert(messages.accountElsewhere)
+                }
             }
             is HappyCode.Server -> {
                 val signIn = signInToServer
@@ -130,7 +148,8 @@ class ConnectFlow internal constructor(
                     !signIn(invite) -> alert = errorAlert(messages.serverAtPath)
                 }
             }
-            is HappyCode.NotHappy, is HappyCode.UnknownHappy -> reject(text, start)
+            is HappyCode.NotHappy, is HappyCode.UnknownHappy ->
+                reject(if (text == "https://link.happy.engineering/download") messages.downloadLink else messages.notPairing, start)
         }
     }
 
@@ -150,16 +169,15 @@ class ConnectFlow internal constructor(
     }
 
     /** processAuthUrl, awaited. True when the link was approved. */
-    suspend fun processAuthUrl(url: String): Boolean = process(url)
+    suspend fun processAuthUrl(url: String): Boolean = process(url, null)
 
-    private fun reject(text: String, start: PairingStart) {
-        val message = when (RejectedPairingLink.classify(text)) {
-            RejectedPairingLink.Download -> messages.downloadLink
-            RejectedPairingLink.HappyWebsite -> messages.happyWebsiteLink
-            RejectedPairingLink.LegacyWebPairing -> if (start == PairingStart.PasteLink) messages.invalidUrl else messages.notHappy
-            null -> messages.notPairing
-        }
+    private fun reject(message: String, start: PairingStart) {
+        pairingFailed(start, PairingError.InvalidCode)
         alert = errorAlert(message)
+    }
+
+    internal fun pairingFailed(start: PairingStart, reason: PairingError) {
+        record(AnalyticsEvent.MobilePairingFailed(PairingMethod.Relay, AnalyticsReasons.start(start), reason))
     }
 
     internal fun errorAlert(message: String) = Alert(errorTitle, message, listOf(AlertButton(okTitle)))
@@ -186,7 +204,6 @@ internal data class ScanMessages(
     val notHappy: String = "",
     val notPairing: String = "",
     val downloadLink: String = "",
-    val happyWebsiteLink: String = "",
     val terminalElsewhere: String = "",
     val accountElsewhere: String = "",
     val pairingUnavailable: String = "",
@@ -311,12 +328,11 @@ private fun rememberConnectFlow(
         notHappy = stringResource(R.string.scan_not_happy_code),
         notPairing = stringResource(R.string.scan_not_pairing),
         downloadLink = stringResource(R.string.scan_download_link),
-        happyWebsiteLink = stringResource(R.string.scan_happy_website_link),
         terminalElsewhere = stringResource(R.string.scan_terminal_code_elsewhere),
         accountElsewhere = stringResource(R.string.scan_account_code_elsewhere),
         pairingUnavailable = stringResource(R.string.scan_pairing_unavailable),
         accountSignedOutTitle = stringResource(R.string.account_kind_device_needs_account_title),
-        accountSignedOut = stringResource(R.string.account_kind_device_needs_cli_account),
+        accountSignedOut = stringResource(R.string.scan_restore_device_link),
         invalidUrl = invalid,
         serverInvalid = stringResource(R.string.team_server_code_invalid),
         serverAtPath = stringResource(R.string.team_server_code_path),
@@ -326,7 +342,7 @@ private fun rememberConnectFlow(
     flow.connectAgent = LocalAgentPairing.current
     flow.signInToServer = com.slopus.happy.ui.connection.LocalServerSignIn.current
     val prefix = kind.prefix
-    flow.process = process@{ url ->
+    flow.process = process@{ url, start ->
         if (!url.startsWith(prefix)) {
             flow.alert = flow.errorAlert(invalid)
             return@process false
@@ -339,7 +355,11 @@ private fun rememberConnectFlow(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w("ConnectFlow", "Approving $prefix failed", e)
+            if (e is InvalidPairingKeyException) {
+                if (start != null) flow.pairingFailed(start, PairingError.InvalidCode)
+            } else {
+                Log.w("ConnectFlow", "Approving $prefix failed", e)
+            }
             currentOnResult(flow, e)
             false
         } finally {
@@ -371,7 +391,7 @@ fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit
     onRestore = onRestore,
     onServer = onServer,
     serverLabel = serverLabel,
-)
+).also { it.hasRelayAccount = { graph.auth.state.value is AuthState.SignedIn } }
 
 /** [rememberAddFlow] with the approval passed in, for tests. */
 @Composable

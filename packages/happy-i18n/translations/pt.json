@@ -3,7 +3,7 @@
   "rule": "one-other",
   "entries": {
     "scan.downloadLink": "Este é um link de download, não um código de pareamento. Se você estiver configurando o Happy Desktop, clique em “Downloaded and opened” no computador e escaneie o código de pareamento exibido.",
-    "scan.happyWebsiteLink": "Este é um link do site do Happy, não um código de pareamento. Abra o Happy no computador e use o código ou o link de pareamento exibido.",
+    "scan.restoreDeviceLink": "Este código restaura uma conta do Happy CLI no dispositivo que o exibe. Em um dispositivo que já esteja conectado a essa conta, abra Configurações → Backup e restauração → Vincular novo dispositivo e escaneie este código.",
     "scan.notPairing": "Isto não é um código nem um link de pareamento. Use o código ou o link de pareamento exibido no dispositivo que você quer conectar.",
     "voiceStatusBar.tapToEnd": "toque para encerrar",
     "voiceStatusBar.connecting": "Conectando…",

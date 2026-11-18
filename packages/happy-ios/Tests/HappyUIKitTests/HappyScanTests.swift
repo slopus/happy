@@ -27,8 +27,8 @@ private struct NoSockets: WebSocketConnector {
 final class HappyScanTests: XCTestCase {
     private let key = Data(repeating: 9, count: 32)
 
-    private func signedIn() async throws -> AccountController {
-        let controller = AccountController(
+    private func signedOut() -> AccountController {
+        AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
             clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(),
@@ -37,6 +37,10 @@ final class HappyScanTests: XCTestCase {
             transport: NoNetwork(),
             connector: NoSockets()
         )
+    }
+
+    private func signedIn() async throws -> AccountController {
+        let controller = signedOut()
         try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 1, count: 32)))
         return controller
     }
@@ -83,12 +87,14 @@ final class HappyScanTests: XCTestCase {
         let context = AppContext(account: controller, variant: .development, version: "test")
         let cases = [
             ("https://link.happy.engineering/download", Strings.Scan.downloadLink),
-            ("https://happy.engineering/#download", Strings.Scan.downloadLink),
-            ("https://apps.apple.com/us/app/happy/id6748571505", Strings.Scan.downloadLink),
-            ("https://testflight.apple.com/join/Example1", Strings.Scan.downloadLink),
-            ("https://play.google.com/store/apps/details?id=com.ex3ndr.happy", Strings.Scan.downloadLink),
-            ("https://happy.engineering/docs/", Strings.Scan.happyWebsiteLink),
-            ("https://app.happy.engineering/", Strings.Scan.happyWebsiteLink),
+            ("https://link.happy.engineering/download/", Strings.Scan.notHappy),
+            ("https://link.happy.engineering/download?source=example", Strings.Scan.notHappy),
+            ("https://happy.engineering/#download", Strings.Scan.notHappy),
+            ("https://apps.apple.com/us/app/happy/id6748571505", Strings.Scan.notHappy),
+            ("https://testflight.apple.com/join/Example1", Strings.Scan.notHappy),
+            ("https://play.google.com/store/apps/details?id=com.ex3ndr.happy", Strings.Scan.notHappy),
+            ("https://happy.engineering/docs/", Strings.Scan.notHappy),
+            ("https://app.happy.engineering/", Strings.Scan.notHappy),
             ("https://link.happy.engineering.example.com/download", Strings.Scan.notHappy),
             ("https://happy.engineering@not-happy.example/download", Strings.Scan.notHappy),
             ("https://apps.apple.com/account/subscriptions", Strings.Scan.notHappy),
@@ -101,6 +107,17 @@ final class HappyScanTests: XCTestCase {
             }
         }
         await controller.signOut()
+    }
+
+    func testRestoreDeviceLinkWithoutAnAccountNamesTheExistingDevice() async throws {
+        let context = AppContext(account: signedOut(), variant: .development, version: "test")
+        let publicLink = "happy:///account?" + CanonicalBase64URL.encode(key)
+        for start: PairingStart in [.scan, .pasteLink] {
+            let actual = try await shown(publicLink, .addAccount, context: context, start: start)
+            XCTAssertEqual(actual, "\(Strings.Scan.deviceNeedsAccountTitle) | \(Strings.Scan.deviceNeedsAccount)")
+            let malformed = try await shown("happy:///account?bad", .addAccount, context: context, start: start)
+            XCTAssertEqual(malformed, "\(Strings.Common.error) | \(Strings.Modals.invalidAuthUrl)")
+        }
     }
 
     func testOldCLIBrowserLinkKeepsItsPairingRoute() async throws {

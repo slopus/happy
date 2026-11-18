@@ -5,7 +5,7 @@
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
     <string name="scan_download_link">這是下載連結，不是配對碼。如果你正在設定 Happy Desktop，請在電腦上點選「Downloaded and opened」，然後掃描顯示的配對碼。</string>
-    <string name="scan_happy_website_link">這是 Happy 的網頁連結，不是配對碼。請在電腦上開啟 Happy，使用其中顯示的配對碼或配對連結。</string>
+    <string name="scan_restore_device_link">此代碼用於在顯示它的裝置上還原 Happy CLI 帳戶。請在已登入該帳戶的裝置上開啟「設定 → 備份與還原 → 連結新裝置」，然後掃描此代碼。</string>
     <string name="scan_not_pairing">這不是配對碼或配對連結。請使用要連接的裝置上顯示的配對碼或配對連結。</string>
 
     <string name="voice_status_bar_tap_to_end">點按結束</string>

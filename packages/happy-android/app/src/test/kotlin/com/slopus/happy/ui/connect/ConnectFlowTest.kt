@@ -13,6 +13,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.components.PromptTags
 import com.slopus.happy.ui.setHappyContent
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.PairingError
+import com.slopus.happy.analytics.PairingMethod
+import com.slopus.happy.analytics.PairingStart
+import com.slopus.happy.auth.InvalidPairingKeyException
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,7 +40,8 @@ class ConnectFlowTest {
     val rule = createComposeRule()
 
     private val terminalUrl = "happy://terminal?abc"
-    private val accountUrl = "happy:///account?abc"
+    private val accountUrl = "happy:///account?CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk"
+    private val recovery = "This code restores a Happy CLI account on the device showing it. On a device already signed in to that account, open Settings → Backup & Restore → Link New Device and scan this code."
 
     private class FakeScanner : QrScanner {
         val results = ArrayDeque<ScanResult>()
@@ -173,6 +179,27 @@ class ConnectFlowTest {
     }
 
     @Test
+    fun aLocalPairingParseFailureRecordsOnceButANetworkErrorDoesNot() {
+        setTerminal()
+        val events = CopyOnWriteArrayList<AnalyticsEvent>()
+        rule.runOnIdle {
+            flow.record = { events += it }
+            failWith = InvalidPairingKeyException(IllegalArgumentException())
+            flow.connectWithUrl("happy://terminal?bad")
+        }
+        rule.onNodeWithText("Failed to connect terminal").assertExists()
+        assertEquals(listOf(AnalyticsEvent.MobilePairingFailed(PairingMethod.Relay, PairingStart.PasteLink, PairingError.InvalidCode)), events.toList())
+        rule.onNodeWithText("OK").performClick()
+        rule.runOnIdle {
+            failWith = IOException("offline")
+            scanner.results += ScanResult.Scanned(terminalUrl)
+            flow.scan()
+        }
+        rule.onNodeWithText("Failed to connect terminal").assertExists()
+        assertEquals(1, events.size)
+    }
+
+    @Test
     fun aCallerWithOnErrorGetsTheFailureInstead() {
         failWith = IOException("offline")
         setTerminal(withOnError = true)
@@ -303,7 +330,7 @@ class ConnectFlowTest {
         assertEquals(listOf("happy://direct?abc"), paired)
 
         approved.clear()
-        assertScanSays(ScanResult.Scanned(accountUrl), "This code asks for a Happy CLI account. Add one on this phone first.")
+        assertScanSays(ScanResult.Scanned(accountUrl), recovery)
         assertScanSays(ScanResult.Scanned("happy://something?else"), notPairing)
         assertScanSays(ScanResult.Scanned("https://example.com"), notPairing)
     }
@@ -318,7 +345,7 @@ class ConnectFlowTest {
         rule.runOnIdle { flow.connectWithUrl("happy://direct?xyz") }
         rule.waitUntil { paired.isNotEmpty() }
         rule.runOnIdle { flow.connectWithUrl(accountUrl) }
-        rule.onNodeWithText("This code asks for a Happy CLI account. Add one on this phone first.").assertExists()
+        rule.onNodeWithText(recovery).assertExists()
         // iOS's title, not "Error" (Strings.Scan.deviceNeedsAccountTitle).
         rule.onNodeWithText("No account to share").assertExists()
         rule.onNodeWithText("OK").performClick()

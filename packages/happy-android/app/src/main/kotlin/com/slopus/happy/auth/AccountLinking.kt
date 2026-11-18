@@ -62,6 +62,31 @@ class AccountLinkRequest(
 /** A scanned or pasted link that is not the kind the flow expects. */
 class InvalidLinkException(message: String) : IllegalArgumentException(message)
 
+/** The relay pairing public key could not be parsed; no approval was sent. */
+internal class InvalidPairingKeyException(cause: IllegalArgumentException) : IllegalArgumentException("Invalid pairing key", cause)
+
+private fun decodePairingKey(encoded: String): ByteArray = try {
+    decodeBase64(encoded, Base64Variant.Url)
+} catch (e: IllegalArgumentException) {
+    throw InvalidPairingKeyException(e)
+}
+
+/** For the error shown when this scanner already refuses a terminal link. */
+internal fun hasTerminalPairingKey(url: String): Boolean = try {
+    decodePairingKey(url.removePrefix(TERMINAL_URL_PREFIX)).size == Sodium.BOX_PUBLIC_KEY_BYTES
+} catch (_: InvalidPairingKeyException) {
+    false
+}
+
+// Keep the existing box validation in place; distinguish a bad key length
+// from unrelated exceptions so the scanner can report the parse failure.
+private inline fun <T> withPairingKey(key: ByteArray, use: () -> T): T = try {
+    use()
+} catch (e: IllegalArgumentException) {
+    if (key.size != Sodium.BOX_PUBLIC_KEY_BYTES) throw InvalidPairingKeyException(e)
+    throw e
+}
+
 /**
  * The existing phone's side (useConnectAccount.ts processAuthUrl with
  * authAccountApprove.ts): seals this account's secret to the key in a
@@ -78,8 +103,9 @@ suspend fun approveAccountLink(
     random: RandomSource = SecureRandomSource,
 ) {
     if (!url.startsWith(AccountLink.URL_PREFIX)) throw InvalidLinkException("Not an account link")
-    val publicKey = decodeBase64(url.substring(AccountLink.URL_PREFIX.length), Base64Variant.Url)
-    val response = AccountLink.sealSecret(credentials.secretBytes(), publicKey, random)
+    val publicKey = decodePairingKey(url.substring(AccountLink.URL_PREFIX.length))
+    val secret = credentials.secretBytes()
+    val response = withPairingKey(publicKey) { AccountLink.sealSecret(secret, publicKey, random) }
     api.approveAccountLink(credentials.token, publicKey, response)
 }
 
@@ -105,8 +131,9 @@ suspend fun approveTerminal(
     random: RandomSource = SecureRandomSource,
 ) {
     if (!url.startsWith(TERMINAL_URL_PREFIX)) throw InvalidLinkException("Not a terminal link")
-    val publicKey = decodeBase64(url.substring(TERMINAL_URL_PREFIX.length), Base64Variant.Url)
-    val responseV1 = encryptBox(credentials.secretBytes(), publicKey, random)
+    val publicKey = decodePairingKey(url.substring(TERMINAL_URL_PREFIX.length))
+    val secret = credentials.secretBytes()
+    val responseV1 = withPairingKey(publicKey) { encryptBox(secret, publicKey, random) }
     val responseV2 = encryptBox(byteArrayOf(0) + encryption.contentPublicKey, publicKey, random)
     val status = api.terminalAuthStatus(publicKey)
     if (status.status == "pending") {

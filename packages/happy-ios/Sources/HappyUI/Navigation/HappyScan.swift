@@ -277,11 +277,7 @@ enum HappyScan {
     private static func report(_ problem: ScanProblem, input: String, on controller: UIViewController) {
         switch problem {
         case .notHappy:
-            let message = switch RejectedPairingLink(input) {
-            case .download: Strings.Scan.downloadLink
-            case .happyWebsite: Strings.Scan.happyWebsiteLink
-            case nil: Strings.Scan.notHappy
-            }
+            let message = Strings.Scan.isDesktopDownload(input) ? Strings.Scan.downloadLink : Strings.Scan.notHappy
             Alerts.show(Strings.Scan.notHappyTitle, message, on: controller)
         case .invalidTerminal, .invalidAccount:
             Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
