@@ -636,9 +636,23 @@ function runClaudeCli(cliPath) {
     // (Investigation: ps showed orphan claude.exe with parent pid 1 still
     // attached to the same pts as the live one.)
     const args = process.argv.slice(2);
+    // Keep `claude` as argv[0]. findGlobalClaudeCliPath() realpaths every
+    // candidate it returns, so for a native install cliPath is
+    // ~/.local/share/claude/versions/<version> and argv[0] would otherwise be
+    // a bare version number like "2.1.238". Anything that identifies the
+    // running agent from argv[0] -- terminal workspace managers that label
+    // panes by the agent they detect, status lines, plain `pgrep claude` --
+    // then sees no claude at all, just an unrecognized process under a couple
+    // of `node` wrappers.
+    //
+    // cross-spawn passes options straight through to child_process.spawn on
+    // POSIX, where argv0 is honored. Skipped on Windows, where cross-spawn may
+    // route the call through cmd.exe and overriding argv[0] would misreport
+    // the command actually being run.
     const child = spawn(cliPath, args, {
         stdio: 'inherit',
-        env: process.env
+        env: process.env,
+        ...(process.platform !== 'win32' ? { argv0: 'claude' } : {})
     });
 
     let forwarded = false;
