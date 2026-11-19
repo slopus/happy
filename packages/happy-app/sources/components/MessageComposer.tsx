@@ -112,7 +112,7 @@ interface MessageComposerProps {
     leadingControls?: React.ReactNode;
     trailingControls?: React.ReactNode;
     belowComposer?: React.ReactNode;
-    /** Session discussion toggle; remains available when auxiliary controls are hidden. */
+    /** Discussion toggle for home and session; available when auxiliary controls are hidden. */
     discussionMode?: DiscussionModeButtonProps;
     /** Pending contextual content, such as selected-passage annotations. */
     hasContext?: boolean;
@@ -1049,7 +1049,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
                             {/* Composer actions stay on one row. */}
                             <View testID="composer-actions-row" style={styles.actionButtonsRow}>
-                                <View style={[styles.actionButtonsLeft, isSession && props.discussionMode && styles.discussionActionsLeft]}>
+                                <View style={[styles.actionButtonsLeft, props.discussionMode && styles.discussionActionsLeft]}>
 
                                 {/* The same content chooser as typing @. */}
                                 {!props.zenMode && (props.onPickImages || !props.imageAttachmentsOnly) && (
@@ -1084,7 +1084,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 )}
 
 
-                                {isSession && props.discussionMode && <DiscussionModeButton {...props.discussionMode} />}
+                                {props.discussionMode && <DiscussionModeButton {...props.discussionMode} />}
 
                                 {!props.zenMode && isSession && !props.discussionMode?.active && props.permissionSelector && supportsDesktopComposerModeSelector({
                                     isWeb: Platform.OS === 'web',
@@ -1099,7 +1099,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 </View>
 
                                 {/* Model selection and primary action. */}
-                                <View style={[styles.actionButtonsRight, isSession && props.discussionMode && styles.discussionActionsRight]}>
+                                <View style={[styles.actionButtonsRight, props.discussionMode && styles.discussionActionsRight]}>
                                 {/* Inline execution controls are desktop affordances. Narrow Web and native
                                     layouts keep the compact composer and use the existing session menu. */}
                                 {props.trailingControls}

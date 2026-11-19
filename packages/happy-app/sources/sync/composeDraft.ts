@@ -19,11 +19,15 @@ export const composeDraftAttachmentSelectionGeneration = {
 export const useComposeDraft = create<{
     text: string;
     revision: number;
+    discussing: boolean;
+    setDiscussing: (value: boolean) => void;
     images: AttachmentPreview[];
     setText: (text: string) => void;
     setImages: (update: AttachmentPreview[] | ((current: AttachmentPreview[]) => AttachmentPreview[])) => void;
 }>((set) => ({
     text: draftStorage.getString('text') || '', revision: 0, images: [],
+    discussing: draftStorage.getBoolean('discussing') ?? false,
+    setDiscussing: (discussing) => { draftStorage.set('discussing', discussing); set({ discussing }); },
     setText: (text) => {
         draftStorage.set('text', text);
         set(state => text === state.text ? state : { text, revision: state.revision + 1 });
@@ -33,6 +37,7 @@ export const useComposeDraft = create<{
 
 export function clearComposeDraft() {
     draftStorage.delete('text');
+    draftStorage.delete('discussing');
     composeDraftAttachmentSelectionGeneration.invalidate();
-    useComposeDraft.setState(state => ({ text: '', images: [], revision: state.revision + 1 }));
+    useComposeDraft.setState(state => ({ text: '', images: [], discussing: false, revision: state.revision + 1 }));
 }

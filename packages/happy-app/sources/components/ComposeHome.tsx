@@ -161,7 +161,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const { pending, submit, retry, restore, checkSession, dismiss } = useFirstSubmission();
     const sending = pending?.phase === 'saving';
     const hydrationError = pending?.failure === 'hydrate';
-    const { text, setText, images: draftImages, setImages: setDraftImages } = useComposeDraft();
+    const { text, setText, discussing, setDiscussing, images: draftImages, setImages: setDraftImages } = useComposeDraft();
     const [imageGalleryOpen, setImageGalleryOpen] = React.useState(false);
     const [releasedSubmission, setReleasedSubmission] = React.useState<SubmittedComposeSnapshot | null>(null);
     const [selectedImageStyleIds, setSelectedImageStyleIds] = React.useState<string[]>([]);
@@ -695,11 +695,12 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             path: draft.selectedPath,
             agent: spawnAgent,
             ...spawnSettings,
+            discussing: !activeImageAgent && discussing && (spawnAgent === 'codex' || spawnAgent === 'claude'),
             prompt,
             images,
             sidebarListId,
         }, liveText, () => releaseSubmittedText(submittedSnapshot), () => clearQueuedSubmission(submittedSnapshot));
-    }, [activeImageAgent, effectiveImageAgent, activeImageStyles.length, agentDefaultOverrides, pending, machines, submit, hasImages, selectedImages, customImageStyles, selectedCustomReferenceImages, sidebarListId, clearQueuedSubmission, releaseSubmittedText]);
+    }, [activeImageAgent, effectiveImageAgent, activeImageStyles.length, agentDefaultOverrides, pending, machines, discussing, submit, hasImages, selectedImages, customImageStyles, selectedCustomReferenceImages, sidebarListId, clearQueuedSubmission, releaseSubmittedText]);
 
     const handleRetryHydration = React.useCallback(async () => {
         await retry();
@@ -725,9 +726,10 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                 return images.filter(image => !omittedIds.has(image.id));
             });
         }
+        setDiscussing(pending.discussing === true);
         setText(restored);
         composerInputRef.current?.setTextAndSelection(restored, { start: restored.length, end: restored.length });
-    }, [pending, restore, setText, pickAttachment]);
+    }, [pending, restore, setText, setDiscussing, pickAttachment]);
 
     // The send target must be reachable: an online machine and no fresh-worktree
     // request. When it isn't, MessageComposer's send button greys out (via
@@ -1073,6 +1075,10 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         <MessageComposer
                         ref={composerInputRef}
                         mode="home"
+                        discussionMode={!activeImageAgent && (agentType === 'codex' || agentType === 'claude') ? {
+                            active: discussing, disabled: sending,
+                            onToggle: () => setDiscussing(!discussing),
+                        } : undefined}
                         placeholder={activeImageAgent
                             ? t('agents.imagePromptPlaceholder')
                             : t('composeHome.placeholder')}
@@ -1091,7 +1097,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         onAddImages={canAttach ? addImages : undefined}
                         onPrepareAddImages={canAttach ? prepareAddImages : undefined}
                         imageAttachmentsOnly={!!activeImageAgent || agentType === 'opencode'}
-                        leadingControls={controls.leading}
+                        leadingControls={!activeImageAgent && discussing && (agentType === 'codex' || agentType === 'claude') ? undefined : controls.leading}
                         trailingControls={controls.trailing}
                         belowComposer={controls.below}
                     />

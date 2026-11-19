@@ -1,3 +1,6 @@
+import { storage } from './storage';
+import { discussionMessage, discussionModeMeta } from './discussionMode';
+import { resolveMessageModeMeta } from './messageMeta';
 import { MMKV } from 'react-native-mmkv';
 import { Platform } from 'react-native';
 import { randomUUID } from 'expo-crypto';
@@ -68,8 +71,18 @@ export const firstSubmission = new FirstSubmissionOwner({
         const scope = getFirstSubmissionScope();
         return ensureSessionHydratedWithRetry(id, () => scope !== null && getFirstSubmissionScope() === scope && getServerUrl() === scope.serverUrl);
     },
-    configure: configureSpawnedSession,
-    send: (id, input, live, current) => sync.sendMessage(id, input.prompt, {
+    configure: (id, input) => {
+        configureSpawnedSession(id, input);
+        if (input.discussing) {
+            const state = storage.getState();
+            state.applyLocalSettings({ sessionDiscussionModes: { ...state.localSettings.sessionDiscussionModes, [id]: true } });
+        }
+    },
+    send: (id, input, live, current) => sync.sendMessage(id, input.discussing ? discussionMessage(input.prompt) : input.prompt, {
+        ...(input.discussing ? {
+            displayText: input.text,
+            modeMeta: discussionModeMeta(resolveMessageModeMeta(storage.getState().sessions[id], storage.getState().settings), input.agent),
+        } : {}),
         source: 'new_session', attachments: live.images.length ? live.images : undefined,
         isCurrent: current,
     }),

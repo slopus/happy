@@ -156,8 +156,8 @@ describe('MessageComposer unified context entry', () => {
         type('@ab'); expect(renderer.root.findAllByType('ComposerContextPicker')).toHaveLength(1);
         type('@a'); expect(renderer.root.findAllByType('ComposerContextPicker')).toHaveLength(1);
     });
-    it('places the discussion icon beside content selection inside the input panel', () => {
-        mount({ mode: 'session', discussionMode: { active: true, onToggle: vi.fn() }, permissionSelector: {} });
+    it.each(['home', 'session'])('places the discussion icon beside content selection inside the %s input panel', mode => {
+        mount({ mode, discussionMode: { active: true, onToggle: vi.fn() }, permissionSelector: {} });
         const panel = renderer.root.findByProps({ testID: 'composer-input-panel' });
         const button = renderer.root.findByType('DiscussionModeButton');
         expect(panel.findByType('DiscussionModeButton')).toBe(button);

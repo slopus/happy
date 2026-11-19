@@ -30,6 +30,7 @@ export interface SpawnSessionArgs {
     modelMode?: string | null;
     effortLevel?: string | null;
     fastMode?: boolean;
+    discussing?: boolean;
     expectedCodexAccountProfileId?: string | null;
     /** Initial prompt to send into the freshly spawned session. */
     prompt: string;

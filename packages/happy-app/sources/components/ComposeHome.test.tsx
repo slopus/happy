@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
     onDismiss: null as (() => void) | null,
     refreshSessions: vi.fn(),
     applySettings: vi.fn(),
+    applyLocalSettings: vi.fn(),
     updatePermission: vi.fn(),
     updateModel: vi.fn(),
     updateEffort: vi.fn(),
@@ -151,7 +152,9 @@ vi.mock('@/sync/storage', () => {
         (selector: (state: unknown) => unknown) => selector({ sessions: {}, sessionMessages: {} }),
         {
             getState: () => ({
-                sessions: {},
+                localSettings: { sessionDiscussionModes: {} },
+                applyLocalSettings: mocks.applyLocalSettings,
+                sessions: { 'session-1': { metadata: { flavor: 'codex' }, modelMode: 'gpt-6.1-sol', permissionMode: 'yolo' } },
                 sessionMessages: {},
                 settings: { codingAgentMachines: mocks.codingAgents, sidebarOrganization: { lists: [], tags: [], sessions: {} } },
                 updateSessionPermissionMode: mocks.updatePermission,
@@ -226,6 +229,7 @@ describe('ComposeHome session hydration recovery', () => {
 
     beforeEach(() => {
         mocks.codingAgents = {};
+        mocks.draft.agentType = 'codex';
         mocks.modelUnavailable = false;
         const values = new Map<string, string>();
         vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) });
@@ -241,7 +245,7 @@ describe('ComposeHome session hydration recovery', () => {
         ];
         mocks.setSelectedImages = null;
         mocks.imagePickerGeneration = null;
-        useComposeDraft.setState({ text: '', revision: 0, images: mocks.selectedImages as any });
+        useComposeDraft.setState({ text: '', revision: 0, discussing: false, images: mocks.selectedImages as any });
         mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'session-1' });
         mocks.ensureSessionHydrated.mockResolvedValue(false);
         mocks.sendMessage.mockResolvedValue({ type: 'queued', sessionId: 'session-1', localIds: ['local-1'] });
@@ -252,6 +256,44 @@ describe('ComposeHome session hydration recovery', () => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
             originalConsoleError(...values);
         });
+    });
+
+    it.each([['codex', 'read-only'], ['claude', 'plan']])('starts %s in discussion mode and preserves it in the created session', async (agent, permissionMode) => {
+        mocks.draft.agentType = agent;
+        mocks.codingAgents = { 'machine-1': ['codex', 'claude'] };
+        mocks.ensureSessionHydrated.mockResolvedValue(true);
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<ComposeHome />); });
+        act(() => renderer.root.findByType('MessageComposer').props.discussionMode.onToggle());
+        expect(renderer.root.findByType('MessageComposer').props.discussionMode.active).toBe(true);
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('Explore this idea'));
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
+        expect(mocks.applyLocalSettings).toHaveBeenCalledWith({ sessionDiscussionModes: { 'session-1': true } });
+        expect(mocks.sendMessage).toHaveBeenCalledWith('session-1', expect.stringContaining('Discussion mode is active'), expect.objectContaining({
+            displayText: 'Explore this idea',
+            modeMeta: expect.objectContaining({ permissionMode, permissionModeExplicit: true }),
+        }));
+        act(() => renderer.unmount());
+    });
+
+    it.each([true, false])('restores saved discussion=%s with the recovered text', async (discussing) => {
+        const scope = getFirstSubmissionScope()!;
+        globalThis.localStorage.setItem(`first-submission-v1:${scope.key}`, JSON.stringify({
+            version: 1, scope: scope.key, phase: 'spawning', text: 'Recovered request', prompt: 'Recovered request',
+            agent: 'codex', machineId: 'machine-1', path: '/work', worktreeKey: null, attachments: [], discussing,
+        }));
+        setFirstSubmissionScope(scope.key, scope.serverUrl);
+        useComposeDraft.getState().setImages([]);
+        useComposeDraft.getState().setDiscussing(!discussing);
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ComposeHome />); });
+        try {
+            vi.mocked(Modal.confirm).mockResolvedValue(true);
+            await act(async () => { await renderer.root.findByProps({ testID: 'compose-home-restore-submission' }).props.onPress(); });
+            expect(useComposeDraft.getState().discussing).toBe(discussing);
+            expect(useComposeDraft.getState().text).toBe('Recovered request');
+            expect(mocks.sendMessage).not.toHaveBeenCalled();
+        } finally { act(() => renderer.unmount()); vi.mocked(Modal.confirm).mockReset(); }
     });
 
     it('does not spawn a disabled agent even if an old send callback is invoked', async () => {

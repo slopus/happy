@@ -7,6 +7,7 @@ vi.mock('./apiSocket', () => ({ apiSocket: { machineRPC }, getHappyClientId: () 
 vi.mock('./serverConfig', () => ({ getServerUrl: () => 'https://test' }));
 vi.mock('@/auth/tokenStorage', () => ({ TokenStorage: { getCredentials: async () => ({ token: 'bearer', secret: 'secret' }) } }));
 vi.mock('./sync', () => ({ sync: {} }));
+vi.mock('./storage', () => ({ storage: { getState: vi.fn() } }));
 vi.mock('@/hooks/useSpawnSession', () => ({ configureSpawnedSession: vi.fn() }));
 vi.mock('@/modal', () => ({ Modal: { alert, confirm } }));
 vi.mock('expo-router', () => ({ router: { push } }));
