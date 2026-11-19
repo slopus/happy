@@ -183,7 +183,8 @@ across a landscape window or a main panel with the sidebar hidden.
 | --- | --- |
 | compact width: an iPhone upright, a folded iPhone Duo (466 × 678), Slide Over, a third of Split View | phone |
 | compact height: any iPhone on its side, a Pro Max's 956 × 440 included, a folded Duo on its side (678 × 466) | phone |
-| regular but under 768: a Duo open in portrait (669 × 951), an iPad mini upright (744), a 13-inch iPad's half in landscape (683) | phone |
+| regular but under 768, on a display that folds: a Duo open in portrait (669 × 951) | the sidebar over the main panel |
+| regular but under 768, on one that doesn't: an iPad mini upright (744), a 13-inch iPad's half in landscape (683) | phone |
 | regular both ways and 768 or wider: a Duo open in landscape (951 × 669), every iPad full screen except the mini upright | split |
 | any window not showing a home (onboarding, sign-in, server confirmation) | phone, full window |
 
@@ -210,12 +211,21 @@ bar). Measured on the iOS 27.2 Duo simulator, in points at @3x:
 | folded, upright | 466 × 678 | compact × regular | right 84, bottom 34 | phone |
 | folded, on its side | 678 × 466 | compact × compact | right 84, bottom 34 | phone |
 | open in landscape | 951 × 669 | regular × regular | right 84, bottom 34 | split: sidebar 340, main panel 611 |
-| open in portrait | 669 × 951 | regular × regular | top 82, bottom 34 | phone |
+| open in portrait | 669 × 951 | regular × regular | top 82, bottom 34 | the sidebar over the main panel |
 
-Open in portrait is the phone: a sidebar of 340 would leave the main
-panel 329, narrower than any iPhone, and a narrower sidebar cuts the
-account's pill. It is the same answer as an iPad mini upright, by the
-same rule. Folding and opening is a resize: the shell collapses and
+Open in portrait, a sidebar of 340 beside would leave the main panel 329,
+narrower than any iPhone, and a narrower sidebar cuts the account's pill.
+So the main panel keeps the whole width and home slides over it from the
+leading edge, as Messages and Mail do there: the split's own overlay
+(`preferredSplitBehavior = .overlay`), opened by the sidebar's button or a
+swipe from the edge, closed by a tap beside it. A row opened there is the
+main panel's new root, and home goes away (`showInMain`). With nothing
+open, home starts over the empty panel. The overlay is never taken for
+the person hiding the sidebar: landscape again, the sidebar is beside the
+main panel as they left it. Only a display that folds does this
+(`SplitRule.sidebar`, told by the hinge, `UIHingeInteraction`): an iPad
+mini upright is regular at 744 too, and stays the phone's one stack, as
+it always was. Folding and opening is a resize: the shell collapses and
 expands through the split's delegate calls, and the stack, a sheet over
 it and the call's bar all stay (`HostedSplitShellTests`).
 

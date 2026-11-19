@@ -323,6 +323,8 @@ private struct SplitComposeMachine: HomeOps, HomeSessionOps {
 /// For screenshots and recordings, after launch: `-open <session id or
 /// agent id>` opens a chat from the sidebar, `-info` pushes its profile,
 /// `-settings` opens Settings instead, `-hideSidebar` hides the sidebar,
+/// `-showSidebar` shows it, `-sidebarTour <id>` shows it and then opens
+/// that chat from it, a pause before each,
 /// `-dark` darkens the window, `-landscape` turns it on its side,
 /// `-geometry` logs the window's size, safe area, size classes, split,
 /// hinge and division regions each time they change (`[geometry]`), as a
@@ -488,6 +490,19 @@ final class SplitAppHarness {
             if arguments.contains("-hideSidebar") {
                 try? await Task.sleep(for: .milliseconds(500))
                 shell.setSidebarHidden(true)
+            }
+            if arguments.contains("-showSidebar") {
+                try? await Task.sleep(for: .milliseconds(500))
+                shell.setSidebarHidden(false)
+            }
+            // The sidebar over the main panel and a row opened from it, as
+            // the sidebar's button and a tap do (an iPhone Duo open in portrait).
+            if let id = option("-sidebarTour") {
+                try? await Task.sleep(for: .seconds(1.5))
+                shell.setSidebarHidden(false)
+                try? await Task.sleep(for: .seconds(1.5))
+                Self.open(id, from: home, context: context, agent: agent, animated: true)
+                print("[sidebar-tour] done")
             }
             if arguments.contains("-attachPreviewTour") {
                 await AttachPreviewTour.run(window: window, caption: option("-caption") ?? "A caption long enough to wrap onto a second line here")

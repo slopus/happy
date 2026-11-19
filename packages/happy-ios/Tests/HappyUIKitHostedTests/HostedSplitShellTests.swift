@@ -145,11 +145,23 @@ final class HostedSplitShellTests: XCTestCase {
     /// The window `width` wide, as Split View, Slide Over or Stage Manager
     /// leaves it, and laid out.
     private func resize(_ app: App, width: CGFloat) async throws {
-        let scene = app.window.bounds.height
-        app.window.frame = CGRect(x: 0, y: 0, width: width, height: scene)
-        app.window.layoutIfNeeded()
+        narrow(app.window, app.shell, to: width)
         try await Task.sleep(for: .milliseconds(100))
         app.window.layoutIfNeeded()
+    }
+
+    /// The window `width` wide. On a display that folds, a window too
+    /// narrow for the sidebar beside is the folded one, compact, as the
+    /// phone's one stack is there; regular and open, the sidebar would
+    /// slide over instead (`testOpenInPortraitTheSidebarSlidesOverTheMainPanel`).
+    private func narrow(_ window: UIWindow, _ shell: ShellViewController, to width: CGFloat) {
+        if shell.folds, width < SplitRule.minWidth {
+            window.traitOverrides.horizontalSizeClass = .compact
+        } else {
+            window.traitOverrides.remove(UITraitHorizontalSizeClass.self)
+        }
+        window.frame = CGRect(x: 0, y: 0, width: width, height: window.bounds.height)
+        window.layoutIfNeeded()
     }
 
     private func settle(_ shell: ShellViewController) async throws {
@@ -547,6 +559,66 @@ final class HostedSplitShellTests: XCTestCase {
         withExtendedLifetime(app.coordinator) {}
     }
 
+    /// An iPhone Duo open in portrait (669 wide, regular): too thin for the
+    /// sidebar beside, so it slides over the main panel from the leading
+    /// edge with the system's own overlay, and a row opened there puts the
+    /// sidebar away. A window that doesn't fold (an iPad's) is the phone's
+    /// one stack at that width, as it always was.
+    func testOpenInPortraitTheSidebarSlidesOverTheMainPanel() async throws {
+        let app = try await app()
+        let shell = app.shell
+        let split = try XCTUnwrap(shell.split)
+        let home = try XCTUnwrap(home(shell))
+        let open = app.window.bounds.size
+        addTeardownBlock { @MainActor in app.window.traitOverrides.remove(UITraitHorizontalSizeClass.self) }
+        home.push(.session(id: "seeded-main"), context: app.context)
+        try await settle(shell)
+        let chat = try XCTUnwrap(shell.main.viewControllers.first as? LegacyChatViewController)
+
+        app.window.traitOverrides.remove(UITraitHorizontalSizeClass.self)
+        app.window.frame = CGRect(x: 0, y: 0, width: 669, height: open.height)
+        app.window.layoutIfNeeded()
+        guard shell.folds else {
+            try await until("a phone at 669") { !shell.isExpanded }
+            XCTAssertEqual(shell.phone.viewControllers, [home, chat])
+            app.window.frame = CGRect(origin: .zero, size: open)
+            app.window.layoutIfNeeded()
+            try await until("split again") { shell.isExpanded }
+            withExtendedLifetime(app.coordinator) {}
+            return
+        }
+        try await until("over") { shell.isExpanded && shell.overlays && split.displayMode == .secondaryOnly }
+        XCTAssertEqual(split.preferredSplitBehavior, .overlay)
+        XCTAssertEqual(shell.sidebar.viewControllers, [home])
+        XCTAssertEqual(shell.main.viewControllers, [chat], "the chat has the whole window")
+        XCTAssertEqual(shell.main.view.convert(shell.main.view.bounds, to: app.window).minX, 0)
+        XCTAssertTrue(shell.wearsToggle(chat), "the sidebar's button")
+        try await capture(app, "over-closed")
+
+        // The sidebar's button slides home over the chat.
+        shell.setSidebarHidden(false)
+        try await until("home over the chat") { split.displayMode == .oneOverSecondary }
+        XCTAssertEqual(shell.main.viewControllers, [chat])
+        try await capture(app, "over-open")
+
+        // A row opened there is the main panel's root, and home goes away.
+        home.push(.session(id: "seeded-tab-3"), context: app.context)
+        try await settle(shell)
+        try await until("put away") { split.displayMode == .secondaryOnly }
+        XCTAssertEqual(list(shell)?.selectedSessionId, "seeded-tab-3")
+        let other = try XCTUnwrap(shell.main.viewControllers.first)
+        XCTAssertFalse(other === chat)
+        XCTAssertEqual(shell.main.viewControllers.count, 1)
+
+        // Turned to landscape: beside again, as it was left.
+        app.window.frame = CGRect(origin: .zero, size: open)
+        app.window.layoutIfNeeded()
+        try await until("beside") { !shell.overlays && split.displayMode == .oneBesideSecondary }
+        XCTAssertEqual(split.preferredSplitBehavior, .tile)
+        XCTAssertEqual(shell.main.viewControllers, [other])
+        withExtendedLifetime(app.coordinator) {}
+    }
+
     // MARK: A Happy Agent's home
 
     private static let rows = [
@@ -620,18 +692,37 @@ final class HostedSplitShellTests: XCTestCase {
 
         // Narrowed: home, then the chat; nothing selected under it.
         let wide = window.bounds.width
-        window.frame = CGRect(x: 0, y: 0, width: 700, height: window.bounds.height)
-        window.layoutIfNeeded()
+        narrow(window, shell, to: 700)
         try await until("collapsed") { !shell.isExpanded }
         XCTAssertEqual(shell.phone.viewControllers, [agentHome, chat])
         XCTAssertNil(home.homeList.selectedRowId)
 
         // Widened: the row is selected again.
-        window.frame = CGRect(x: 0, y: 0, width: wide, height: window.bounds.height)
-        window.layoutIfNeeded()
+        narrow(window, shell, to: wide)
         try await until("expanded") { shell.isExpanded }
         XCTAssertEqual(shell.main.viewControllers, [chat])
         XCTAssertEqual(home.homeList.selectedRowId, "space:ios")
+
+        // Over the chat (a display that folds, open in portrait), the row
+        // stays selected each time home slides away and back.
+        if shell.folds, let split = shell.split {
+            window.frame = CGRect(x: 0, y: 0, width: 669, height: window.bounds.height)
+            window.layoutIfNeeded()
+            try await until("over") { shell.overlays && split.displayMode == .secondaryOnly }
+            for _ in 0..<2 {
+                shell.setSidebarHidden(false)
+                try await until("home over the chat") { split.displayMode == .oneOverSecondary }
+                XCTAssertEqual(home.homeList.selectedRowId, "space:ios")
+                shell.setSidebarHidden(true)
+                try await until("put away") { split.displayMode == .secondaryOnly }
+                // Home hears it went once the slide has finished.
+                try await until("home gone") { home.viewIfLoaded?.window == nil }
+                try await Task.sleep(for: .milliseconds(300))
+            }
+            narrow(window, shell, to: wide)
+            try await until("beside") { !shell.overlays && split.displayMode == .oneBesideSecondary }
+            XCTAssertEqual(home.homeList.selectedRowId, "space:ios")
+        }
 
         // Compose: new work is the main panel's root, and no row is selected.
         agentHome.compose()

@@ -66,6 +66,11 @@ public final class ShellViewController: UIViewController {
     /// display-mode changes until it settles are the split's, not the
     /// person's.
     private var resizing = false
+    /// The sidebar slides over the main panel rather than sits beside it
+    /// (`SplitRule.sidebar`, `.over`): a display that folds, open too thin.
+    private(set) var overlays = false
+    /// The display folds (iOS 27.1's hinge): an iPhone Duo.
+    private(set) var folds = false
     /// The voice call's bar across the window's top (`CallController`), and
     /// whether it shows. While it does, the content starts at its foot.
     let callBar = CallBarView()
@@ -300,6 +305,8 @@ public final class ShellViewController: UIViewController {
             main.setViewControllers([controller], animated: false)
         }
         followMainPanel()
+        // Over the main panel, the sidebar makes way for what it opened.
+        if overlays, let split, split.displayMode != .secondaryOnly { split.hide(.primary) }
     }
 
     /// The sidebar's button, first at the leading edge of the main panel's
@@ -389,10 +396,12 @@ public final class ShellViewController: UIViewController {
 
     /// The hinge moved (iOS 27.1, `UIHingeInteraction`): a display folded
     /// partway or flat again moves the sidebar's edge to the crease or back.
+    /// Its first update says whether the display folds at all.
     private func observeHinge() {
         #if compiler(>=6.4.1)
         if #available(iOS 27.1, *) {
-            view.addInteraction(UIHingeInteraction { [weak self] _, _ in
+            view.addInteraction(UIHingeInteraction { [weak self] _, update in
+                self?.folds = update.hinge != nil
                 // The division regions follow the hinge in the same update.
                 DispatchQueue.main.async { self?.updateMode(animated: true) }
             })
@@ -441,12 +450,23 @@ public final class ShellViewController: UIViewController {
                 resize()
             }
         }
-        let wanted = SplitRule.showsSplit(
+        let placement = SplitRule.sidebar(
             width: width,
             isRegularWidth: traitCollection.horizontalSizeClass == .regular,
             isRegularHeight: traitCollection.verticalSizeClass != .compact,
+            folds: folds,
             showsHome: Self.isHome(stack.first)
         )
+        let wanted = placement != .none
+        if wanted, overlays != (placement == .over) {
+            overlays = placement == .over
+            split.preferredSplitBehavior = overlays ? .overlay : .tile
+            if isExpanded {
+                resizing = true
+                settle()
+                split.preferredDisplayMode = preferredMode
+            }
+        }
         let forcedCompact = split.traitOverrides.contains(UITraitHorizontalSizeClass.self)
         if wanted == forcedCompact {
             resizing = true
@@ -504,7 +524,7 @@ public final class ShellViewController: UIViewController {
         // The window's choice: the split comes back as it was left, the
         // sidebar hidden if the person hid it.
         DispatchQueue.main.async { [weak self] in
-            guard let self, let split, isExpanded, sidebarHidden, split.displayMode != .secondaryOnly else { return }
+            guard let self, let split, isExpanded, !overlays, sidebarHidden, split.displayMode != .secondaryOnly else { return }
             UIView.performWithoutAnimation { split.hide(.primary) }
         }
     }
@@ -536,8 +556,11 @@ public final class ShellViewController: UIViewController {
         }
     }
 
+    /// Beside the main panel, as the person left it. Over it, put away,
+    /// unless the main panel has nothing to show.
     private var preferredMode: UISplitViewController.DisplayMode {
-        sidebarHidden ? .secondaryOnly : .oneBesideSecondary
+        if overlays { return main.viewControllers.first === placeholder ? .oneOverSecondary : .secondaryOnly }
+        return sidebarHidden ? .secondaryOnly : .oneBesideSecondary
     }
 
     public override func viewIsAppearing(_ animated: Bool) {
@@ -560,9 +583,12 @@ extension ShellViewController: UISplitViewControllerDelegate {
 
     public func splitViewController(_ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode) {
         // The sidebar coming or going, whoever moved it: the main panel's
-        // top edge follows once the mode has changed.
-        DispatchQueue.main.async { [weak self] in self?.updateTopEdges() }
-        guard isExpanded, !rewriting, !resizing, !svc.isCollapsed else { return }
+        // top edge and the button's words follow once the mode has changed.
+        DispatchQueue.main.async { [weak self] in
+            self?.updateTopEdges()
+            self?.placeToggle()
+        }
+        guard isExpanded, !overlays, !rewriting, !resizing, !svc.isCollapsed else { return }
         // The sidebar's button, ⌃⌘S or the swipe: the person's choice.
         switch displayMode {
         case .secondaryOnly: sidebarHidden = true
@@ -572,7 +598,6 @@ extension ShellViewController: UISplitViewControllerDelegate {
         // Kept through rotation and resizing, which go back to the
         // preferred mode.
         if svc.preferredDisplayMode != displayMode { svc.preferredDisplayMode = displayMode }
-        DispatchQueue.main.async { [weak self] in self?.placeToggle() }
     }
 }
 

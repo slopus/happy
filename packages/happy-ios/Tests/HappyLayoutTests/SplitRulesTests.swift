@@ -66,6 +66,28 @@ final class SplitRulesTests: XCTestCase {
         XCTAssertEqual(SplitRule.sidebarWidth(windowWidth: 1376), 360, "on its side")
     }
 
+    /// Where home goes: beside, over, or the phone's one stack.
+    func testOnADisplayThatFoldsATooThinWindowSlidesTheSidebarOver() {
+        // An iPhone Duo open in portrait, 669 × 951: over the main panel.
+        XCTAssertEqual(SplitRule.sidebar(width: 669, isRegularWidth: true, isRegularHeight: true, folds: true, showsHome: true), .over)
+        // Open in landscape: beside it, as before.
+        XCTAssertEqual(SplitRule.sidebar(width: 951, isRegularWidth: true, isRegularHeight: true, folds: true, showsHome: true), .beside)
+        // Folded, upright or on its side: the phone.
+        XCTAssertEqual(SplitRule.sidebar(width: 466, isRegularWidth: false, isRegularHeight: true, folds: true, showsHome: true), .none)
+        XCTAssertEqual(SplitRule.sidebar(width: 678, isRegularWidth: false, isRegularHeight: false, folds: true, showsHome: true), .none)
+        // Onboarding and sign-in still own the window.
+        XCTAssertEqual(SplitRule.sidebar(width: 669, isRegularWidth: true, isRegularHeight: true, folds: true, showsHome: false), .none)
+        // A window that doesn't fold is as it was: an iPad mini upright
+        // and a 13-inch iPad's half in landscape are the phone, every
+        // other iPad full screen splits, an iPhone on its side is the phone.
+        XCTAssertEqual(SplitRule.sidebar(width: 744, isRegularWidth: true, isRegularHeight: true, folds: false, showsHome: true), .none)
+        XCTAssertEqual(SplitRule.sidebar(width: 683, isRegularWidth: true, isRegularHeight: true, folds: false, showsHome: true), .none)
+        for width: CGFloat in [820, 834, 1032, 1180, 1194, 1376] {
+            XCTAssertEqual(SplitRule.sidebar(width: width, isRegularWidth: true, isRegularHeight: true, folds: false, showsHome: true), .beside, "\(width)")
+        }
+        XCTAssertEqual(SplitRule.sidebar(width: 956, isRegularWidth: true, isRegularHeight: false, folds: false, showsHome: true), .none)
+    }
+
     /// An iPhone Duo open in landscape and folded partway, as the iOS 27.2
     /// Duo simulator reports it: one active division region, 40 wide round
     /// the crease at 475.5 (20 either side for touch).

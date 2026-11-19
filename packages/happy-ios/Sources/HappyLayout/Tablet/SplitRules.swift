@@ -6,9 +6,10 @@ import CoreGraphics
 /// When a window is roomy enough for the sidebar beside the main panel
 /// (docs/IPAD.md). Otherwise the window is a phone: one stack, home at its
 /// root. The rule is the window's, on any device, never the idiom's: an
-/// iPhone Duo open in landscape (951 × 669) splits, folded (466 × 678) or
-/// open in portrait (669 × 951) it is the phone, and a fold mid-session
-/// moves the same screens between the two.
+/// iPhone Duo open in landscape (951 × 669) splits, folded (466 × 678) it
+/// is the phone, and a fold mid-session moves the same screens between
+/// the two. Open in portrait (669 × 951) it is too thin for the sidebar
+/// beside: there it slides over (`sidebar`).
 ///
 /// The system's own answer is the size classes, and both have to be
 /// regular. A compact height is a phone on its side: an iPhone Pro Max in
@@ -33,6 +34,26 @@ public enum SplitRule {
     /// rule is unchanged.
     public static func showsSplit(width: CGFloat, isRegularWidth: Bool, isRegularHeight: Bool = true, showsHome: Bool) -> Bool {
         showsHome && isRegularWidth && isRegularHeight && width >= minWidth
+    }
+
+    /// Where home goes: beside the main panel (`showsSplit`), over it, or
+    /// nowhere apart, the window a phone's one stack.
+    public enum Sidebar: Equatable, Sendable {
+        case none
+        case beside
+        case over
+    }
+
+    /// `showsSplit`'s answer, and one more: a display that folds, regular
+    /// both ways but too thin for the sidebar beside the main panel (an
+    /// iPhone Duo open in portrait, 669 wide), keeps the main panel at its
+    /// whole width and slides the sidebar over it from the leading edge,
+    /// as Messages and Mail do there. A window that doesn't fold (an iPad
+    /// mini upright, a 13-inch iPad's half in landscape) stays the phone's
+    /// one stack, as it always was.
+    public static func sidebar(width: CGFloat, isRegularWidth: Bool, isRegularHeight: Bool = true, folds: Bool, showsHome: Bool) -> Sidebar {
+        if showsSplit(width: width, isRegularWidth: isRegularWidth, isRegularHeight: isRegularHeight, showsHome: showsHome) { return .beside }
+        return folds && showsHome && isRegularWidth && isRegularHeight ? .over : .none
     }
 
     /// The sidebar's width: 30% of the window, as happy-app's sidebar, held
