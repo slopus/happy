@@ -27,10 +27,11 @@ async function readPrivateFile(path: string, max = MAX_HISTORY): Promise<Buffer>
 }
 
 export async function exportNativeConversation(source: { id: string; agent: 'claude' | 'codex'; nativeId: string; directory: string; accountProfileId?: string; requiresImportedHistory?: boolean }): Promise<ConversationItem[]> {
+    const directory = await realpath(source.directory);
     let history: ConversationItem[];
     if (source.agent === 'claude') {
         if (!/^[a-f0-9-]{36}$/i.test(source.nativeId)) throw new Error('Invalid Claude session ID');
-        const data = await readPrivateFile(join(getProjectPath(source.directory), `${source.nativeId}.jsonl`));
+        const data = await readPrivateFile(join(getProjectPath(directory), `${source.nativeId}.jsonl`));
         history = readClaudeConversation(data.toString('utf8').split('\n').filter(line => line.trim()).map(line => JSON.parse(line)));
     } else {
         const read = async (client: CodexAppServerClient) => {
@@ -40,7 +41,7 @@ export async function exportNativeConversation(source: { id: string; agent: 'cla
             // Retain the portable prefix and exclude its synthetic native turn
             // so repeated cross-agent conversion neither loses nor duplicates it.
             const inherited = await readImportPrefix(source.nativeId, source.requiresImportedHistory);
-            if (inherited && inherited.directory !== source.directory) throw new Error('Imported history directory mismatch');
+            if (inherited && await realpath(inherited.directory) !== directory) throw new Error('Imported history directory mismatch');
             const importedTurns = new Set(inherited?.turnIds ?? []);
             const recent = readCodexConversation({ ...thread, turns: thread.turns?.filter(turn => !importedTurns.has(turn.id)) });
             return [...(inherited?.history ?? []), ...recent];
@@ -78,6 +79,7 @@ export async function exportNativeConversation(source: { id: string; agent: 'cla
 }
 
 export async function importClaudeConversation(history: ConversationItem[], directory: string): Promise<string> {
+    directory = await realpath(directory);
     const id = randomUUID(); const project = getProjectPath(directory);
     await mkdir(project, { recursive: true, mode: 0o700 });
     const path = join(project, `${id}.jsonl`); const temp = `${path}.tmp`;
@@ -94,6 +96,7 @@ export async function importClaudeConversation(history: ConversationItem[], dire
  * turns. A fresh rollout avoids touching an existing account thread/index.
  */
 export async function importCodexConversation(history: ConversationItem[], directory: string, env: NodeJS.ProcessEnv): Promise<string> {
+    directory = await realpath(directory);
     const id = randomUUID(); const turnId = randomUUID();
     const now = new Date(); const stamp = now.toISOString();
     const date = stamp.slice(0, 10);

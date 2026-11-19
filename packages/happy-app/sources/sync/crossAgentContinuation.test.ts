@@ -6,6 +6,7 @@ vi.mock('@/auth/accountRuntime', () => ({ accountStorageId: (x: string) => x, as
 vi.mock('./storage', () => ({ storage: { getState: () => h.state } }));
 vi.mock('./ops', () => ({ machineContinueWithAgent: h.spawn }));
 vi.mock('./ensureSessionHydratedWithRetry', () => ({ ensureSessionHydratedWithRetry: h.hydrate }));
+import { HappyError } from '@/utils/errors';
 import { createCrossAgentContinuation } from './crossAgentContinuation';
 beforeEach(() => {
  h.values.clear(); h.spawn.mockReset(); h.hydrate.mockReset().mockResolvedValue(true); h.current = true;
@@ -38,4 +39,10 @@ describe('cross-agent client orchestration', () => {
   await expect(createCrossAgentContinuation('source','codex')).rejects.toThrow('account changed');
   expect(h.hydrate).not.toHaveBeenCalled(); expect(h.values.get('source:codex')).toContain('target');
  });
+});
+
+it('surfaces the real continuation failure through the action dialog error type', async () => {
+ h.spawn.mockResolvedValue({type:'error',errorMessage:'Wait for the source turn to finish'});
+ await expect(createCrossAgentContinuation('source','codex')).rejects.toBeInstanceOf(HappyError);
+ await expect(createCrossAgentContinuation('source','codex')).rejects.toThrow('Wait for the source turn to finish');
 });

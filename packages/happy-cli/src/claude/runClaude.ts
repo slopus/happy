@@ -324,6 +324,11 @@ export async function runClaude(
                 session.sendClaudeSessionMessage(message);
                 backfilled += 1;
             }
+            // Imported messages describe closed history, not a new live turn.
+            // Without its terminal event the UI queues the first real prompt.
+            if (crossAgentSourceAgent && backfilled > 0) {
+                session.closeClaudeSessionTurn('completed');
+            }
             const skippedAttachMessages = parsedMessages.length - messagesToBackfill.length;
             logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}; skippedAttachMessages=${skippedAttachMessages}; skippedInvalidLines=${skippedInvalidLines}`);
             // Bind the new Happy session to the forked Claude UUID up

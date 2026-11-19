@@ -1,3 +1,4 @@
+import { HappyError } from '@/utils/errors';
 import { MMKV } from 'react-native-mmkv';
 import * as Crypto from 'expo-crypto';
 import { accountStorageId, assertAccountRuntime } from '@/auth/accountRuntime';
@@ -34,5 +35,8 @@ export function createCrossAgentContinuation(sourceId: string, target: 'claude' 
         receipts.delete(key);
         return record.sessionId;
     };
-    const promise = run().finally(() => pending.delete(key)); pending.set(key, promise); return promise;
+    const promise = run().catch((error: unknown) => {
+        // useHappyAction only displays diagnostic messages for HappyError.
+        throw error instanceof HappyError ? error : new HappyError(error instanceof Error ? error.message : 'Cross-agent continuation failed', false);
+    }).finally(() => pending.delete(key)); pending.set(key, promise); return promise;
 }

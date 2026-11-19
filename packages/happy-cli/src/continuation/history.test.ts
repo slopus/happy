@@ -42,3 +42,27 @@ describe('cross-agent native conversation conversion', () => {
         expect(() => readCodexConversation({ id: 't', turns: [{ id: 'turn', items: [{ type: 'newUnknownItem', id: 'x' }] }] })).toThrow(/unsupported/i);
     });
 });
+
+it.each(['completed', 'failed', 'declined'])('imports terminal Codex commands with omitted output (%s) without replaying them', status => {
+ const history = readCodexConversation({ id: 'thread', turns: [{ id: 'turn', status: 'completed', items: [
+  { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'run a command' }] },
+  { type: 'commandExecution', id: 'c', command: 'pwd', cwd: '/work', status, aggregatedOutput: null, exitCode: status === 'completed' ? 0 : null },
+ ] }] });
+ expect(history[1]).toMatchObject({kind:'tool', command:'pwd', error:status !== 'completed'});
+ expect((history[1] as any).output).toMatch(/not retained/i);
+ expect(JSON.stringify(toClaudeLines(history,{id:'new',cwd:'/work'}))).toContain('not retained');
+});
+it('still rejects running and unverified command records with missing output', () => {
+ for (const status of ['inProgress', undefined, 'unknown']) expect(() => readCodexConversation({id:'t',turns:[{id:'turn',status:'completed',items:[{type:'commandExecution',id:'c',command:'pwd',status,aggregatedOutput:null}]}]})).toThrow(/unfinished/i);
+ expect(() => readCodexConversation({id:'t',turns:[{id:'turn',status:'inProgress',items:[]}]})).toThrow(/finish/i);
+});
+
+it('preserves native sub-agent activity and sleep as historical notes only', () => {
+ const h=readCodexConversation({id:'t',turns:[{id:'turn',status:'completed',items:[
+ {type:'subAgentActivity',id:'a',kind:'spawn',agentThreadId:'child',completedAtMs:2},
+ {type:'sleep',id:'s',durationMs:100},
+ ]}]} as any);
+ expect(h.map(x=>x.kind)).toEqual(['assistant','assistant']);
+ expect(JSON.stringify(h)).toContain('subAgentActivity');expect(JSON.stringify(h)).toContain('sleep');
+ expect((toCodexItems(h,'/work') as any[]).every(x=>x.type==='message')).toBe(true);
+});

@@ -1,6 +1,6 @@
 /** Authless native storage probe. Run with HAPPY_CODEX_PATH pointing at the actual Codex binary. */
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, mkdir, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configuration } from '../src/configuration';
@@ -9,7 +9,7 @@ import { getProjectPath } from '../src/claude/utils/path';
 import { readClaudeConversation, type ConversationItem } from '../src/continuation/history';
 import { CodexAppServerClient } from '../src/codex/codexAppServerClient';
 let forkedId: string | undefined;
-const root = await mkdtemp(join(tmpdir(), 'paws-cross-agent-probe-'));
+const root = await realpath(await mkdtemp(join(tmpdir(), 'paws-cross-agent-probe-')));
 const saved = { home: process.env.CODEX_HOME, claude: process.env.CLAUDE_CONFIG_DIR, happy: configuration.happyHomeDir };
 process.env.CODEX_HOME = join(root, 'codex'); process.env.CLAUDE_CONFIG_DIR = join(root, 'claude');
 (configuration as { happyHomeDir: string }).happyHomeDir = join(root, 'paws');

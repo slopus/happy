@@ -94,11 +94,15 @@ export function readCodexConversation(thread: Thread): ConversationItem[] {
                 case 'agentMessage': out.push({ kind: 'assistant', text: (item as any).text }); break;
                 case 'commandExecution': {
                     const command = item as any;
-                    if (command.status === 'inProgress' || command.aggregatedOutput == null) throw new Error('Unfinished historical command result');
+                    // Native thread/read may omit the output of a finished command.
+                    // Missing output is distinct from a call that is still executing.
+                    const terminal = ['completed', 'failed', 'declined'].includes(command.status);
+                    if (command.status === 'inProgress' || (command.aggregatedOutput == null && !terminal)) throw new Error('Unfinished historical command result');
+                    const output = command.aggregatedOutput ?? `[Historical command output not retained by Codex; status: ${command.status}; exit code: ${command.exitCode ?? 'unavailable'}]`;
                     out.push({ kind: 'tool', name: 'exec_command', input: JSON.stringify({ cmd: command.command, workdir: command.cwd }), command: command.command,
-                        cwd: command.cwd, output: boundedOutput(command.aggregatedOutput), error: command.exitCode != null && command.exitCode !== 0 }); break;
+                        cwd: command.cwd, output: boundedOutput(output), error: command.status === 'failed' || command.status === 'declined' || (command.exitCode != null && command.exitCode !== 0) }); break;
                 }
-                case 'fileChange': case 'mcpToolCall': case 'webSearch': case 'imageView': case 'imageGeneration': case 'collabAgentToolCall': case 'dynamicToolCall':
+                case 'subAgentActivity': case 'sleep': case 'fileChange': case 'mcpToolCall': case 'webSearch': case 'imageView': case 'imageGeneration': case 'collabAgentToolCall': case 'dynamicToolCall':
                     if ((item as any).status === 'inProgress') throw new Error('Unfinished historical tool call');
                     out.push({ kind: 'assistant', text: `[Historical ${item.type}]\n${boundedOutput(item)}` }); break;
                 case 'reasoning': case 'contextCompaction': case 'enteredReviewMode': case 'exitedReviewMode': break;

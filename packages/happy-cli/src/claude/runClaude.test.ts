@@ -130,6 +130,7 @@ describe('runClaude remote JSONL scanner', () => {
         delete process.env.HAPPY_FORKED_FROM_SESSION_ID;
         delete process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
         delete process.env.HAPPY_FORK_CLAUDE_SESSION_ID;
+        delete process.env.HAPPY_CROSS_AGENT_SOURCE_AGENT;
         delete process.env.CLAUDE_CONFIG_DIR;
 
         mockReadSettings.mockResolvedValue({
@@ -241,10 +242,11 @@ describe('runClaude remote JSONL scanner', () => {
         originalListeners.clear();
     });
 
-    it('does not backfill the /paws attach command turn into the forked Happy session', async () => {
+    it.each([false, true])('backfills native history without leaving a cross-agent replay running (%s)', async (crossAgent) => {
         const claudeConfigDir = await mkdtemp(join(tmpdir(), 'happy-claude-config-'));
         process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
         process.env.HAPPY_FORK_CLAUDE_SESSION_ID = 'source-claude-session';
+        if (crossAgent) process.env.HAPPY_CROSS_AGENT_SOURCE_AGENT = 'codex';
 
         const sourceProjectPath = getProjectPath(process.cwd());
         await mkdir(sourceProjectPath, { recursive: true });
@@ -291,6 +293,7 @@ describe('runClaude remote JSONL scanner', () => {
         const sessionClient = {
             sessionId: 'happy-session-1',
             suppressNextArchiveSignal: vi.fn(),
+            closeClaudeSessionTurn: vi.fn(),
             skipExistingMessages: vi.fn(),
             updateMetadata: vi.fn(),
             sendClaudeSessionMessage: vi.fn((message: unknown) => {
@@ -344,6 +347,7 @@ describe('runClaude remote JSONL scanner', () => {
             expect(mockLoop).toHaveBeenCalled();
         });
 
+        expect(sessionClient.closeClaudeSessionTurn.mock.calls).toEqual(crossAgent ? [['completed']] : []);
         expect(sentMessages).toHaveLength(2);
         expect(sentMessages).toEqual([
             expect.objectContaining({ uuid: 'u-before' }),
