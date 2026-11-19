@@ -1911,10 +1911,6 @@ function SessionViewLoaded({
         return sessionAbort(sessionId);
     }, [sessionId]);
 
-    const handleFileViewerPress = React.useCallback(() => {
-        router.push(`/session/${sessionId}/files`);
-    }, [router, sessionId]);
-
     const handleAutocompleteSuggestions = React.useCallback((query: string) => (
         getSuggestions(sessionId, query, { flavor: session.metadata?.flavor ?? null })
     ), [sessionId, session.metadata?.flavor]);
@@ -2044,7 +2040,6 @@ function SessionViewLoaded({
             sendHint={isTaskRunning ? t('messageQueue.enqueueHint') : undefined}
             onAbort={isDisconnected ? undefined : handleAbort}
             showAbortButton={sessionStatus.state === 'running'}
-            onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
             selectedImages={selectedImages}
             onPickImages={sessionCanAttach ? (session.metadata?.flavor === 'opencode' ? pickImages : pickAttachment) : undefined}
             onRemoveImage={removeImage}

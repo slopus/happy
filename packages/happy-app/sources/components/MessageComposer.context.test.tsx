@@ -143,14 +143,12 @@ describe('MessageComposer unified context entry', () => {
         expect(renderer.root.findAllByType('DiscussionModeButton')).toHaveLength(1);
         expect(renderer.root.findAllByProps({ testID: 'composer-context-trigger' })).toHaveLength(0);
     });
-    it.each([390, 900])('keeps Git accessible and shows counts only on wide toolbars (%s)', width => {
+    it.each([390, 900])('omits the Git action from the composer at width %s', width => {
         mocks.width = width;
         mocks.hasGit = true;
-        const onFileViewerPress = vi.fn();
-        mount({ mode: 'session', sessionId: 'session', discussionMode: { active: false, onToggle: vi.fn() }, onFileViewerPress });
-        expect(renderer.root.findAllByType('GitStatusBadge')).toHaveLength(width < 600 ? 0 : 1);
-        act(() => renderer.root.findByProps({ testID: 'composer-git-trigger' }).props.onPress());
-        expect(onFileViewerPress).toHaveBeenCalledOnce();
+        mount({ mode: 'session', sessionId: 'session', discussionMode: { active: false, onToggle: vi.fn() } });
+        expect(renderer.root.findAllByProps({ testID: 'composer-git-trigger' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('GitStatusBadge')).toHaveLength(0);
     });
     it.each(['home', 'session'])('opens @ without files or autocomplete props in %s', mode => {
         mount({ mode }); type('@'); expect(menu().props.query).toBe('');

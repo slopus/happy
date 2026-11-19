@@ -26,6 +26,7 @@ export const DiscussionModeButton = React.memo(function DiscussionModeButton({
         aria-pressed={Platform.OS === 'web' ? active : undefined}
         disabled={disabled}
         onPress={onToggle}
+        hitSlop={{ top: 6, bottom: 6, left: 1, right: 1 }}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
         onFocus={() => setFocused(true)}
@@ -39,7 +40,7 @@ export const DiscussionModeButton = React.memo(function DiscussionModeButton({
             Platform.OS === 'web' && { cursor: disabled ? 'auto' : 'pointer' },
         ]}
     >
-        <Ionicons name="chatbubbles-outline" size={Platform.OS === 'web' ? 20 : 24}
+        <Ionicons name="chatbubbles-outline" size={18}
             color={active ? theme.colors.textLink : theme.colors.textSecondary} />
         <ComposerTooltip testID="session-discussion-mode-tooltip" label={t('discussionMode.label')}
             visible={Platform.OS === 'web' && !disabled && (hovered || focused)} />
@@ -48,8 +49,8 @@ export const DiscussionModeButton = React.memo(function DiscussionModeButton({
 
 const styles = StyleSheet.create({
     button: {
-        width: Platform.select({ web: 32, default: 44 }),
-        height: Platform.select({ web: 32, default: 44 }),
+        width: Platform.select({ web: 32, default: 36 }),
+        height: Platform.select({ web: 32, default: 36 }),
         flexShrink: 0,
         alignItems: 'center',
         justifyContent: 'center',

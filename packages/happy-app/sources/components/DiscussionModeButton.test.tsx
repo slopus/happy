@@ -83,7 +83,7 @@ describe('DiscussionModeButton', () => {
         mount();
         act(() => button().props.onFocus());
         expect(style()).not.toHaveProperty('cursor');
-        expect(renderer.root.findByType('Ionicons').props.size).toBe(24);
+        expect(renderer.root.findByType('Ionicons').props.size).toBe(18);
         expect(button().props.accessibilityRole).toBe('switch');
         expect(button().props.accessibilityState.checked).toBe(false);
         expect(tooltip().props.visible).toBe(false);

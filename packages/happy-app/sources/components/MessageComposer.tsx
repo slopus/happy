@@ -1,5 +1,5 @@
 import { ComposerActionIcon } from './ComposerActionIcon';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable } from 'react-native';
 import { ComposerTooltip } from './DesktopShortcutTooltip';
@@ -25,7 +25,6 @@ import { ComposerContextPicker, type ComposerContextPickerHandle } from './Compo
 import { findActiveWord } from './autocomplete/findActiveWord';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
-import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
@@ -97,7 +96,6 @@ interface MessageComposerProps {
         contextSize: number;
     };
     alwaysShowContextSize?: boolean;
-    onFileViewerPress?: () => void;
     agentType?: 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
     onAgentClick?: () => void;
     machineName?: string | null;
@@ -210,7 +208,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     actionButtonsLeft: {
         flexDirection: 'row',
-        gap: 4,
+        gap: 2,
         alignItems: 'center',
         flex: 1,
         minWidth: 0,
@@ -274,12 +272,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default('semiBold'),
     },
     imagePickerButton: {
-        width: Platform.select({ web: 32, default: 40 }),
-        height: Platform.select({ web: 32, default: 40 }),
-        borderRadius: Platform.select({ web: 16, default: 20, android: 22 }),
+        width: Platform.select({ web: 32, default: 36 }),
+        height: Platform.select({ web: 32, default: 36 }),
+        borderRadius: Platform.select({ web: 16, default: 18 }),
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 4,
         flexShrink: 0,
         zIndex: 2,
     },
@@ -1039,7 +1036,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
-                            {/* Row 1: Profile (FIRST), Agent, Git Status */}
+                            {/* Composer actions stay on one row. */}
                             <View testID="composer-actions-row" style={styles.actionButtonsRow}>
                                 <View style={[styles.actionButtonsLeft, isSession && props.discussionMode && styles.discussionActionsLeft]}>
 
@@ -1055,7 +1052,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             if (contextOpen) closeContext();
                                             else { setDismissedContext(null); setContextFromButton(true); }
                                         }}
-                                        hitSlop={8}
+                                        hitSlop={{ top: 6, bottom: 6, left: 1, right: 1 }}
                                         onHoverIn={() => setHoveredAction('attach')}
                                         onHoverOut={() => setHoveredAction(null)}
                                         style={(p) => [
@@ -1066,7 +1063,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     >
                                         <Ionicons
                                             name="add"
-                                            size={Platform.OS === 'web' ? 20 : 24}
+                                            size={18}
                                             color={(props.selectedImages?.length ?? 0) > 0
                                                 ? theme.colors.radio.active
                                                 : theme.colors.button.secondary.tint}
@@ -1088,14 +1085,9 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
                                 {!props.zenMode && props.leadingControls}
 
-                                {/* Git Status Badge (session only) */}
-                                {!props.zenMode && isSession && (
-                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} compact={screenWidth < 600} />
-                                )}
-
                                 </View>
 
-                                {/* Right cluster: image picker + send (image sits at far right, next to send) */}
+                                {/* Model selection and primary action. */}
                                 <View style={[styles.actionButtonsRight, isSession && props.discussionMode && styles.discussionActionsRight]}>
                                 {/* Inline execution controls are desktop affordances. Narrow Web and native
                                     layouts keep the compact composer and use the existing session menu. */}
@@ -1185,56 +1177,3 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         </View>
     );
 }));
-
-// Git Status Button Component
-function GitStatusButton({ sessionId, onPress, compact = false }: { sessionId?: string, onPress?: () => void, compact?: boolean }) {
-    const [hovered, setHovered] = React.useState(false);
-    const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
-    const styles = stylesheet;
-    const { theme } = useUnistyles();
-
-    if (!sessionId || !onPress) {
-        return null;
-    }
-
-    return (
-        <Pressable
-            testID="composer-git-trigger"
-            accessibilityRole="button"
-            accessibilityLabel="Git"
-            style={(p) => ({
-                flexDirection: 'row',
-                alignItems: 'center',
-                borderRadius: Platform.select({ default: 16, android: 20 }),
-                paddingHorizontal: 8,
-                paddingVertical: 6,
-                height: 32,
-                opacity: p.pressed ? 0.7 : 1,
-                flex: 0,
-                flexBasis: 'auto',
-                flexShrink: 0,
-                ...(compact ? { width: 32, justifyContent: 'center' as const } : {}),
-                overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
-                backgroundColor: hovered ? theme.colors.surfaceSelected : 'transparent',
-            })}
-            onHoverIn={() => setHovered(true)}
-            onHoverOut={() => setHovered(false)}
-            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-            onPress={() => {
-                hapticsLight();
-                onPress?.();
-            }}
-        >
-            {hasMeaningfulGitStatus && !compact ? (
-                <GitStatusBadge sessionId={sessionId} />
-            ) : (
-                <Octicons
-                    name="git-branch"
-                    size={16}
-                    color={theme.colors.button.secondary.tint}
-                />
-            )}
-            <ComposerTooltip testID="composer-git-tooltip" label="Git" visible={Platform.OS === 'web' && hovered} />
-        </Pressable>
-    );
-}
