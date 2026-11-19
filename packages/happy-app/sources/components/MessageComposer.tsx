@@ -905,7 +905,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         }
 
         if (predictionText && inputRef.current?.getText() === '') {
-            if (event.key === 'Tab' && !event.shiftKey) {
+            if ((event.key === 'Tab' || event.key === 'ArrowRight') && !event.shiftKey) {
                 acceptPrediction();
                 return true;
             }

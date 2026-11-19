@@ -241,7 +241,7 @@ describe('MessageComposer web image paste', () => {
         expect(previousChange).not.toHaveBeenCalled();
     });
 
-    it('keeps prediction out of the live draft and only fills it on explicit Tab acceptance', () => {
+    it.each(['Tab', 'ArrowRight'])('keeps prediction out of the live draft until explicit %s acceptance', (key) => {
         const ref = React.createRef<any>();
         const onSend = vi.fn();
         const onQueue = vi.fn();
@@ -258,18 +258,38 @@ describe('MessageComposer web image paste', () => {
         expect(onChange).not.toHaveBeenCalled();
         const input = renderer.root.findByType('MultiTextInput');
         let handled: boolean | undefined;
-        act(() => { handled = input.props.onKeyPress({ key: 'Tab', shiftKey: true }); });
+        act(() => { handled = input.props.onKeyPress({ key, shiftKey: true }); });
         expect(handled).toBe(false);
         expect(ref.current.getText()).toBe('');
         act(() => { input.props.onKeyPress({ key: 'Enter', shiftKey: false }); });
         expect(onSend).not.toHaveBeenCalled();
-        act(() => { handled = input.props.onKeyPress({ key: 'Tab', shiftKey: false }); });
+        act(() => { handled = input.props.onKeyPress({ key, shiftKey: false }); });
         expect(handled).toBe(true);
         expect(ref.current.getText()).toBe('Show me the preview.');
         expect(onChange).toHaveBeenCalledExactlyOnceWith('Show me the preview.');
         expect(onQueue).not.toHaveBeenCalled();
         expect(onSend).not.toHaveBeenCalled();
         expect(onDismiss).not.toHaveBeenCalled();
+    });
+
+    it('preserves arrow navigation when there is no prediction or the live draft is nonempty', () => {
+        const ref = React.createRef<any>();
+        const onChange = vi.fn();
+        let renderer: any;
+        const props = { mode: 'session' as const, initialValue: '', placeholder: 'Message', onSend: vi.fn(), onChangeText: onChange };
+        act(() => {
+            renderer = TestRenderer.create(<MessageComposer {...props} ref={ref} />);
+            renderers.push(renderer);
+        });
+        const input = () => renderer.root.findByType('MultiTextInput');
+        expect(input().props.onKeyPress({ key: 'ArrowRight', shiftKey: false })).toBe(false);
+        act(() => renderer.update(<MessageComposer {...props} ref={ref} predictionText="Suggested reply" />));
+        expect(input().props.onKeyPress({ key: 'ArrowLeft', shiftKey: false })).toBe(false);
+        act(() => ref.current.setTextAndSelection('My reply', { start: 2, end: 2 }));
+        onChange.mockClear();
+        expect(input().props.onKeyPress({ key: 'ArrowRight', shiftKey: false })).toBe(false);
+        expect(ref.current.getText()).toBe('My reply');
+        expect(onChange).not.toHaveBeenCalled();
     });
 
     it('shows only subdued ghost text, restores it after deletion and keeps Escape dismissal', () => {
