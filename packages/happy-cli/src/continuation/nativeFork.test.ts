@@ -1,0 +1,20 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { configuration } from '@/configuration';
+import { CodexAppServerClient } from '@/codex/codexAppServerClient';
+import { writeImportPrefix, readImportPrefix } from './importPrefix';
+const previous = configuration.happyHomeDir;
+let root: string;
+afterEach(async () => { (configuration as { happyHomeDir: string }).happyHomeDir = previous; if (root) await rm(root, { recursive: true, force: true }); });
+it('carries the import prefix through the low-level fork used by the chat /fork command', async () => {
+ root = await mkdtemp(join(tmpdir(), 'paws-direct-fork-')); (configuration as { happyHomeDir: string }).happyHomeDir = root;
+ const source = '00000000-0000-4000-8000-000000000001'; const target = '00000000-0000-4000-8000-000000000002';
+ const prefix = { directory: '/before', history: [{ kind: 'user' as const, text: 'original context' }], turnIds: ['synthetic'] };
+ await writeImportPrefix(source, prefix);
+ const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+ vi.spyOn(client as any, 'request').mockResolvedValue({ thread: { id: target, turns: [] }, model: 'test', reasoningEffort: null });
+ await client.forkThread({ threadId: source, cwd: '/after' });
+ expect(await readImportPrefix(target, true)).toEqual({ ...prefix, directory: '/after' });
+});

@@ -49,6 +49,7 @@ vi.mock('@/hooks/useWorktreeCleanup', () => ({ maybeCleanupWorktree: vi.fn() }))
 vi.mock('@/hooks/useSessionManagementPreferences', () => ({
     useSessionManagementPreferences: () => ({ isPinned: () => false, togglePinned: vi.fn() }),
 }));
+vi.mock('@/sync/crossAgentContinuation', () => ({ createCrossAgentContinuation: vi.fn() }));
 vi.mock('@/sync/sessionContinuation', () => ({ createSessionContinuation: vi.fn() }));
 vi.mock('@/utils/copySessionMetadataToClipboard', () => ({}));
 vi.mock('@/utils/sessionFork', () => ({ getSessionForkSource: () => null }));

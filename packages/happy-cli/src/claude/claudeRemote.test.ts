@@ -107,3 +107,23 @@ describe('claudeRemote', () => {
         }));
     });
 });
+
+it('marks a subsequent streamed request as thinking before the SDK consumes it', async () => {
+ const transitions: boolean[] = []; let thinking = false; let messages = 0;
+ vi.mocked(query).mockImplementation(({ prompt }: any) => ({
+  initializationResult: async () => ({}),
+  async *[Symbol.asyncIterator]() {
+   const input = prompt[Symbol.asyncIterator](); await input.next();
+   yield { type: 'result', subtype: 'success' };
+   const second = await input.next(); expect(second.value.message.content).toBe('second');
+   expect(thinking).toBe(true);
+   yield { type: 'result', subtype: 'success' };
+  },
+ }) as any);
+ await claudeRemote({ sessionId: null, path: process.cwd(), allowedTools: [], hookSettingsPath: '/tmp/settings',
+  nextMessage: async () => ++messages <= 2 ? { message: messages === 1 ? 'first' : 'second', mode } : null,
+  onReady: vi.fn(), canCallTool: async () => ({ behavior: 'allow' }) as any, isAborted: () => false, onSessionFound: vi.fn(), onMessage: vi.fn(),
+  onThinkingChange: value => { thinking = value; transitions.push(value); },
+ });
+ expect(transitions).toEqual([true, false, true, false]);
+});

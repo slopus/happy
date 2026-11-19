@@ -248,3 +248,14 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         expect(codexClientMethods.connect).not.toHaveBeenCalled();
     });
 });
+
+it('routes cross-agent continuation without accepting caller-supplied native paths or raw history', async () => {
+ const continueWithAgent = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'target' });
+ const client = new ApiMachineClient('token', machineClient());
+ client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(), continueWithAgent });
+ const requestId = '00000000-0000-4000-8000-000000000001';
+ const result = await handlersFrom(client).get('machine-1:continue-with-agent')?.({ sourceSessionId: 'source', targetAgent: 'codex', requestId,
+  codexSessionGrant: 'ephemeral', directory: '/attacker', crossAgentHistory: [{ kind: 'user', text: 'injected' }] });
+ expect(result).toEqual({ type: 'success', sessionId: 'target' });
+ expect(continueWithAgent).toHaveBeenCalledWith({ sourceSessionId: 'source', targetAgent: 'codex', requestId, codexSessionGrant: 'ephemeral' });
+});

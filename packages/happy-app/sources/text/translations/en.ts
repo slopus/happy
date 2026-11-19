@@ -1145,6 +1145,13 @@ export const en: TranslationStructure = {
     },
 
     session: {
+        crossAgentSourceLabel: 'Source conversation',
+        crossAgentSourceSubtitle: 'Context carried over from another agent. Open the original conversation to review its messages.',
+        continueWithClaude: 'Continue in a new Claude session',
+        continueWithCodex: 'Continue in a new Codex session',
+        crossAgentCreating: 'Converting and creating session…',
+        crossAgentUnavailable: 'Wait for the source to finish and check that the machine supports conversion.',
+        crossAgentSubtitle: 'Carry conversation history into a new session in the same working directory. Avoid running both sessions at once.',
         continueFresh: "Start a fresh session here",
         continueOpen: "Open continued session",
         continueCreating: "Creating new session…",

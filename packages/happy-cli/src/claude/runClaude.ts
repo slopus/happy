@@ -144,6 +144,10 @@ export async function runClaude(
     // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+    const crossAgentRequestId = process.env.HAPPY_CROSS_AGENT_REQUEST_ID;
+    const crossAgentSourceAgent = process.env.HAPPY_CROSS_AGENT_SOURCE_AGENT;
+    delete process.env.HAPPY_CROSS_AGENT_REQUEST_ID;
+    delete process.env.HAPPY_CROSS_AGENT_SOURCE_AGENT;
 
     let metadata: Metadata = {
         path: workingDirectory,
@@ -166,6 +170,8 @@ export async function runClaude(
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
+        ...(crossAgentRequestId ? { crossAgentRequestId } : {}),
+        ...(crossAgentSourceAgent === 'claude' || crossAgentSourceAgent === 'codex' ? { crossAgentSourceAgent } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     };
 

@@ -53,6 +53,8 @@ export interface CreateSessionMetadataOptions {
     /** Discovered local skill names available to the backend. */
     skills?: string[];
     /** Happy session id this session was forked from. */
+    crossAgentRequestId?: string;
+    crossAgentSourceAgent?: 'claude' | 'codex';
     parentSessionId?: string;
     /** Happy message id used as the fork rewind point. */
     forkedFromMessageId?: string;
@@ -116,6 +118,8 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
         ...(opts.flavor === 'codex' ? { slashCommands: CODEX_NATIVE_SLASH_COMMANDS } : {}),
         ...(opts.skills && opts.skills.length > 0 ? { skills: opts.skills } : {}),
+        ...(opts.crossAgentRequestId ? { crossAgentRequestId: opts.crossAgentRequestId } : {}),
+        ...(opts.crossAgentSourceAgent ? { crossAgentSourceAgent: opts.crossAgentSourceAgent } : {}),
         ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
     };

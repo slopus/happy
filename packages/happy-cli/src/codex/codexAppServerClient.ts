@@ -1,3 +1,4 @@
+import { copyImportPrefix } from '@/continuation/importPrefix';
 import { type NativeLaunchPolicy } from '@/daemon/appDelegation/nativeLaunchPolicy';
 import { restrictedCodexEnv, verifyRestrictedCodex } from '@/daemon/appDelegation/restrictedCodex';
 import { nativeCodexConfig, nativeCodexRequest } from '@/daemon/appDelegation/nativeProviderPolicy';
@@ -1640,6 +1641,10 @@ export class CodexAppServerClient {
                 throw error;
             }
         }
+        // All native forks, including the in-chat /fork path, must carry the
+        // portable import counterpart before exposing the new thread identity.
+        try { await copyImportPrefix(opts.threadId, result.thread.id, opts.cwd ?? defaults.cwd); }
+        catch (error) { await this.deleteThread({ threadId: result.thread.id }).catch(() => undefined); throw error; }
         this._threadId = result.thread.id;
         this._turnId = null;
         this.rememberThreadDefaults({

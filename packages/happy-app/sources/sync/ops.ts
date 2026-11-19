@@ -331,6 +331,14 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
     }, options.expectedCodexAccountProfileId);
 }
 
+/** Create a linked session with converted native history; the machine resolves the source. */
+export async function machineContinueWithAgent(options: {
+    machineId: string; sourceSessionId: string; targetAgent: 'claude' | 'codex'; requestId: string;
+}): Promise<SpawnSessionResult> {
+    const { machineId, ...request } = options;
+    return machineStartSession(machineId, 'continue-with-agent', options.targetAgent === 'codex', request);
+}
+
 /** Project tasks use the same ephemeral Codex-account grants as ordinary session creation. */
 export async function machineStartGoalTask(machineId: string, input: {
     featurePath: string; taskId: string; requestId: string; action: 'chat' | 'execute'; agent: 'codex' | 'claude';
@@ -350,7 +358,7 @@ export async function machineStartGoalAuthor(machineId: string, input: { scopePa
 /** Every final process launch goes through here; grants never enter persisted App state. */
 async function machineStartSession(
     machineId: string,
-    method: 'spawn-happy-session' | 'resume-happy-session' | 'goalTaskLaunch' | 'previewGoalTaskLaunch' | 'goalProjectAuthor',
+    method: 'continue-with-agent' | 'spawn-happy-session' | 'resume-happy-session' | 'goalTaskLaunch' | 'previewGoalTaskLaunch' | 'goalProjectAuthor',
     isCodex: boolean,
     parameters: Record<string, unknown>,
     expectedCodexAccountProfileId?: string | null,

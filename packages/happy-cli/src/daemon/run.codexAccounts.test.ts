@@ -3,14 +3,15 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
-const state = vi.hoisted(() => ({ control: null as any, handlers: null as any, tmux: false, spawned: [] as any[], workerArgs: [] as any[], children: [] as any[], rejectGrant: false, api: null as any, bundleMtime: 1, tmuxOptions: null as any }));
+const state = vi.hoisted(() => ({ control: null as any, handlers: null as any, tmux: false, spawned: [] as any[], workerArgs: [] as any[], children: [] as any[], rejectGrant: false, api: null as any, bundleMtime: 1, tmuxOptions: null as any, persisted: {} as Record<string, any> }));
 vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>();
   return { ...fs, statSync: (...args: any[]) => String(args[0]).endsWith('/dist/index.mjs') ? { mtimeMs: state.bundleMtime } : (fs.statSync as any)(...args) };
 });
 vi.mock('axios', () => ({ default: { get: vi.fn(async () => ({ data: { sessions: [] } })) } }));
+vi.mock('@/continuation/nativeHistory', () => ({ exportNativeConversation: async () => [{ kind: 'user', text: 'task' }], importClaudeConversation: async () => '00000000-0000-4000-8000-000000000010', importCodexConversation: async () => '00000000-0000-4000-8000-000000000011' }));
 vi.mock('@/ui/auth', () => ({ authAndSetupMachineIfNeeded: async () => ({ credentials: { token: 'fake', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, machineId: 'machine-1' }) }));
-vi.mock('@/persistence', () => ({ writeDaemonState: vi.fn(), readDaemonState: async () => null, acquireDaemonLock: async () => ({}), releaseDaemonLock: async () => {}, readPersistedSessions: () => ({}), persistSession: vi.fn() }));
+vi.mock('@/persistence', () => ({ writeDaemonState: vi.fn(), readDaemonState: async () => null, acquireDaemonLock: async () => ({}), releaseDaemonLock: async () => {}, readPersistedSessions: () => state.persisted, persistSession: vi.fn((id, saved) => { state.persisted[id] = saved; }) }));
 vi.mock('./controlClient', () => ({ cleanupDaemonState: async () => {}, isDaemonRunningCurrentlyInstalledHappyVersion: async () => false, stopDaemon: async () => {} }));
 vi.mock('./controlServer', () => ({ startDaemonControlServer: async (options: any) => { state.control = options; return { port: 45678, stop: async () => {} }; } }));
 vi.mock('@/utils/caffeinate', () => ({ startCaffeinate: () => false, stopCaffeinate: async () => {} }));
@@ -45,6 +46,7 @@ beforeEach(async () => {
   vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
   vi.spyOn(process, 'kill').mockImplementation(() => true);
   signalListeners = new Map(['SIGINT', 'SIGTERM', 'uncaughtException', 'unhandledRejection', 'exit', 'beforeExit'].map(s => [s, process.listeners(s as NodeJS.Signals)]));
+  state.persisted = {};
   state.control = null; state.handlers = null; state.spawned = []; state.workerArgs = []; state.children = []; state.rejectGrant = false; state.bundleMtime = 1; state.tmuxOptions = null;
   sourceHome = await mkdtemp(join(tmpdir(), 'daemon-codex-test-')); await writeFile(join(sourceHome, 'auth.json'), 'global-auth');
   (configuration as { happyHomeDir: string }).happyHomeDir = sourceHome;
@@ -431,4 +433,95 @@ describe('real daemon Codex spawn paths', () => {
     expect(result.type).toBe('error'); expect(state.spawned).toHaveLength(0);
     expect(JSON.stringify(vi.mocked(logger.debug).mock.calls)).not.toContain('secret-canary');
   });
+});
+
+
+it('never marks a dispatched regular continuation as safe to repeat after webhook timeout', async () => {
+ state.tmux = false;
+ const result = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', crossAgentHistory: [{ kind: 'user', text: 'task' }], parentSessionId: 'source' });
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+ await vi.advanceTimersByTimeAsync(90_001);
+ expect(await result).toMatchObject({ type: 'error' });
+ expect((await result).notDispatched).not.toBe(true);
+});
+
+it('marks a rejected account launch as safe to retry before any worker is dispatched', async () => {
+ state.rejectGrant = true;
+ const result = await state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'g'.repeat(43), crossAgentHistory: [{ kind: 'user', text: 'task' }], parentSessionId: 'source' });
+ expect(result).toMatchObject({ type: 'error', notDispatched: true }); expect(state.spawned).toHaveLength(0);
+});
+
+it('reads an exact source snapshot and preserves source identity when launching the opposite agent', async () => {
+ const metadata = { machineId: 'machine-1', hostPid: 987603, flavor: 'claude', startedBy: 'terminal', path: sourceHome, claudeSessionId: '00000000-0000-4000-8000-000000000001' };
+ const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' as const, seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+ state.control.onHappySessionWebhook('old-source', metadata, encryption);
+ const encrypted = (value: unknown) => encodeBase64(encrypt(encryption.encryptionKey, 'legacy', value));
+ vi.mocked(axios.get).mockResolvedValue({ data: { session: { id: 'old-source', metadata: encrypted(metadata), active: false, seq: 7, metadataVersion: 1, agentState: encrypted({ turnStatus: { status: 'completed' } }) } } });
+ const request = { sourceSessionId: 'old-source', targetAgent: 'codex', requestId: '00000000-0000-4000-8000-000000000003' };
+ const launching = state.handlers.continueWithAgent(request);
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+ expect(vi.mocked(axios.get).mock.calls.at(-1)?.[0]).toContain('/v2/sessions/old-source');
+ expect(state.spawned[0]).toMatchObject({ HAPPY_FORKED_FROM_SESSION_ID: 'old-source', HAPPY_CROSS_AGENT_SOURCE_AGENT: 'claude', HAPPY_CROSS_AGENT_REQUEST_ID: request.requestId });
+ state.control.onHappySessionWebhook('converted', { machineId: 'machine-1', hostPid: 987601, flavor: 'codex', startedBy: 'daemon' });
+ expect(await launching).toEqual({ type: 'success', sessionId: 'converted' });
+});
+
+it('recovers a target whose worker exited after its startup response was lost', async () => {
+ const source = 'recovery-source'; const requestId = '00000000-0000-4000-8000-000000000071';
+ const receipt = join(sourceHome, 'cross-agent-continuations', 'machine-1', `${requestId}.json`);
+ await mkdir(join(sourceHome, 'cross-agent-continuations', 'machine-1'), { recursive: true });
+ await writeFile(receipt, JSON.stringify({ sourceSessionId: source, targetAgent: 'codex', phase: 'starting' }));
+ const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' as const, seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+ const launching = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex' });
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+ state.control.onHappySessionWebhook('already-created', { hostPid: 987601, flavor: 'codex', parentSessionId: source, crossAgentRequestId: requestId, startedBy: 'daemon' }, encryption);
+ await launching;
+ state.children[0].emit('exit', 0);
+ expect(await state.handlers.continueWithAgent({ sourceSessionId: source, targetAgent: 'codex', requestId })).toEqual({ type: 'success', sessionId: 'already-created' });
+ expect(state.spawned).toHaveLength(1);
+});
+
+it.each([[true, true], [undefined, true], [true, false]])('rejects a Claude source with thinking=%s and active=%s before any output', async (thinking, active) => {
+ const metadata = { machineId: 'machine-1', hostPid: 987603, flavor: 'claude', startedBy: 'terminal', path: sourceHome, claudeSessionId: '00000000-0000-4000-8000-000000000001' };
+ const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' as const, seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+ state.control.onHappySessionWebhook('busy-source', metadata, encryption);
+ const encrypted = (value: unknown) => encodeBase64(encrypt(encryption.encryptionKey, 'legacy', value));
+ vi.mocked(axios.get).mockResolvedValue({ data: { session: { id: 'busy-source', metadata: encrypted(metadata), active, seq: 7, metadataVersion: 1,
+  agentState: encrypted(thinking === undefined ? {} : { claudeThinking: thinking }) } } });
+ await expect(state.handlers.continueWithAgent({ sourceSessionId: 'busy-source', targetAgent: 'codex', requestId: '00000000-0000-4000-8000-000000000072' })).rejects.toThrow(/finish running/);
+ expect(state.spawned).toHaveLength(0);
+});
+
+
+it('recovers an unknown startup target from persisted metadata after daemon restart', async () => {
+ const source = 'restarted-source'; const requestId = '00000000-0000-4000-8000-000000000073';
+ const folder = join(sourceHome, 'cross-agent-continuations', 'machine-1'); await mkdir(folder, { recursive: true });
+ await writeFile(join(folder, `${requestId}.json`), JSON.stringify({ sourceSessionId: source, targetAgent: 'codex', phase: 'starting' }));
+ const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' as const, seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+ const launching = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex' });
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+ state.control.onHappySessionWebhook('persisted-target', { hostPid: 987601, flavor: 'codex', parentSessionId: source, crossAgentRequestId: requestId, startedBy: 'daemon' }, encryption);
+ await launching;
+ state.control.requestShutdown();
+ let stopped = false; void daemon.then(() => { stopped = true; });
+ await vi.waitFor(async () => { await vi.advanceTimersByTimeAsync(150); expect(stopped).toBe(true); });
+ state.handlers = null; daemon = startDaemon();
+ await vi.waitFor(() => expect(state.handlers).toBeTruthy());
+ expect(await state.handlers.continueWithAgent({ sourceSessionId: source, targetAgent: 'codex', requestId })).toEqual({ type: 'success', sessionId: 'persisted-target' });
+ expect(state.spawned).toHaveLength(1);
+});
+
+
+it('allows a stopped Claude worker with a stale thinking flag to be continued', async () => {
+ const metadata = { machineId: 'machine-1', hostPid: 987603, flavor: 'claude', startedBy: 'terminal', path: sourceHome, claudeSessionId: '00000000-0000-4000-8000-000000000001' };
+ const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' as const, seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+ state.control.onHappySessionWebhook('crashed-source', metadata, encryption);
+ vi.mocked(process.kill).mockImplementation((pid: number) => { if (pid === 987603) throw Object.assign(new Error('worker exited'), { code: 'ESRCH' }); return true; });
+ const encrypted = (value: unknown) => encodeBase64(encrypt(encryption.encryptionKey, 'legacy', value));
+ vi.mocked(axios.get).mockResolvedValue({ data: { session: { id: 'crashed-source', metadata: encrypted(metadata), active: false, seq: 7, metadataVersion: 1,
+  agentState: encrypted({ claudeThinking: true, turnStatus: { status: 'running' } }) } } });
+ const launching = state.handlers.continueWithAgent({ sourceSessionId: 'crashed-source', targetAgent: 'codex', requestId: '00000000-0000-4000-8000-000000000074' });
+ await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+ state.control.onHappySessionWebhook('crash-continuation', { hostPid: 987601, flavor: 'codex', startedBy: 'daemon' });
+ expect(await launching).toEqual({ type: 'success', sessionId: 'crash-continuation' });
 });

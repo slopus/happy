@@ -105,6 +105,8 @@ export const MetadataSchema = z.object({
     continuationOfSessionId: z.string().optional(),
     continuationContext: z.string().max(24000).optional(),
     continuedBySessionId: z.string().optional(),
+    crossAgentRequestId: z.string().optional(),
+    crossAgentSourceAgent: z.enum(['claude', 'codex']).optional(),
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
 });
@@ -112,6 +114,7 @@ export const MetadataSchema = z.object({
 export type Metadata = z.infer<typeof MetadataSchema>;
 
 export const AgentStateSchema = z.object({
+    claudeThinking: z.boolean().optional(),
     controlledByUser: z.boolean().nullish(),
     queuedMessages: z.number().int().nonnegative().optional(),
     turnStatus: z.object({
@@ -213,6 +216,7 @@ export const MachineMetadataSchema = z.object({
     daemonLastKnownPid: z.number().optional(),
     shutdownRequestedAt: z.number().optional(),
     shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional(),
+    crossAgentContinuation: z.literal(1).optional(),
     cliAvailability: z.object({
         ask: z.boolean().optional(),
         claude: z.boolean(),

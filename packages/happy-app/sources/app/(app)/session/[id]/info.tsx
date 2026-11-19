@@ -133,6 +133,9 @@ function SessionInfoContent({ session }: { session: Session }) {
     const sessionStatus = useSessionStatus(session);
     const {
         canShowResume,
+        crossAgentTarget,
+        continuingWithAgent,
+        continueWithAgent,
         canFork,
         canRegenerateTitle,
         forking,
@@ -380,6 +383,15 @@ function SessionInfoContent({ session }: { session: Session }) {
                             loading={regeneratingTitle}
                         />
                     )}
+                    {crossAgentTarget && (
+                        <Item
+                            title={continuingWithAgent ? t('session.crossAgentCreating') : crossAgentTarget === 'claude' ? t('session.continueWithClaude') : t('session.continueWithCodex')}
+                            subtitle={t('session.crossAgentSubtitle')}
+                            icon={<Ionicons name="swap-horizontal-outline" size={29} color={theme.colors.accent} />}
+                            onPress={continueWithAgent}
+                            loading={continuingWithAgent}
+                        />
+                    )}
                     {canFork && (
                         <Item
                             title={t('session.forkAction')}
@@ -399,8 +411,8 @@ function SessionInfoContent({ session }: { session: Session }) {
                     )}
                     {session.metadata?.parentSessionId && (
                         <Item
-                            title={t('session.forkedFromLabel')}
-                            subtitle={t('session.forkedFromSubtitle')}
+                            title={session.metadata.crossAgentSourceAgent ? t('session.crossAgentSourceLabel') : t('session.forkedFromLabel')}
+                            subtitle={session.metadata.crossAgentSourceAgent ? t('session.crossAgentSourceSubtitle') : t('session.forkedFromSubtitle')}
                             icon={<Ionicons name="return-up-back-outline" size={29} color="#5856D6" />}
                             onPress={() => router.push(`/session/${session.metadata!.parentSessionId}`)}
                         />

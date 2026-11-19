@@ -1,3 +1,4 @@
+import type { CrossAgentRequest } from '@/continuation/coordinator';
 import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges, artifactAccountScope } from '@/modules/artifacts/runtime';
 import { registerProjectGoalHandlers, type ProjectGoalDependencies } from '@/modules/goalBoard/projectService';
 import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
@@ -114,6 +115,7 @@ interface DaemonToServerEvents {
 
 type MachineRpcHandlers = {
     spawnSession: (options: TracedSpawnSessionOptions) => Promise<SpawnSessionResult>;
+    continueWithAgent?: (request: CrossAgentRequest) => Promise<SpawnSessionResult>;
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
@@ -130,6 +132,7 @@ function requireNonEmptyString(value: unknown, name: string): string {
 }
 
 export class ApiMachineClient {
+    private crossAgentContinuationAvailable = false;
     private nativeSessionHooks?: NativeSessionHooks;
     setNativeSessionHooks(hooks: NativeSessionHooks): void { this.nativeSessionHooks = hooks; }
     private stopAppChatWorker: (() => void) | null = null;
@@ -205,6 +208,7 @@ export class ApiMachineClient {
 
     setRPCHandlers({
         spawnSession,
+        continueWithAgent,
         resumeSession,
         stopSession,
         requestShutdown,
@@ -213,6 +217,13 @@ export class ApiMachineClient {
         projectGoals,
     }: MachineRpcHandlers) {
         this.resumeSessionHandler = resumeSession ?? null;
+        this.crossAgentContinuationAvailable = !!continueWithAgent;
+        if (continueWithAgent) this.rpcHandlerManager.registerHandler('continue-with-agent', async (params: any) => {
+            const sourceSessionId = requireNonEmptyString(params?.sourceSessionId, 'sourceSessionId');
+            if (!UUID_RE.test(params?.requestId ?? '') || !['claude', 'codex'].includes(params?.targetAgent)) throw new Error('Invalid continuation request');
+            return continueWithAgent({ sourceSessionId, targetAgent: params.targetAgent, requestId: params.requestId,
+                ...(params.targetAgent === 'codex' && params.codexSessionGrant ? { codexSessionGrant: params.codexSessionGrant } : {}) });
+        });
         this.projectGoals?.dispose();
         if (projectGoals) this.projectGoals = registerProjectGoalHandlers(this.rpcHandlerManager, {
             ...projectGoals, spawn: spawnSession, workingDirectory: process.cwd(),
@@ -685,6 +696,7 @@ export class ApiMachineClient {
                 this.lastKnownResumeSupport = newResumeSupport;
                 this.updateMachineMetadata((metadata) => ({
                     ...(metadata || {} as any),
+                    crossAgentContinuation: this.crossAgentContinuationAvailable ? 1 : undefined,
                     cliAvailability: newAvailability,
                     resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
                 })).catch((err) => {

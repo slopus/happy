@@ -409,6 +409,10 @@ export async function runCodex(opts: {
     // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+    const crossAgentRequestId = process.env.HAPPY_CROSS_AGENT_REQUEST_ID;
+    const crossAgentSourceAgent = process.env.HAPPY_CROSS_AGENT_SOURCE_AGENT;
+    delete process.env.HAPPY_CROSS_AGENT_REQUEST_ID;
+    delete process.env.HAPPY_CROSS_AGENT_SOURCE_AGENT;
 
     // Shared/attached native clients can execute autonomously; their lifetime is not this worker's.
     const artifactLeaseSupported = await prepareCodexArtifactScope({ connection: applicationPolicy ? 'spawn' : resolveCodexAppServerConnection().type, attached: Boolean(opts.resumeThreadId) }, async () => {
@@ -423,6 +427,8 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         skills: discoveredSkills,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
+        ...(crossAgentRequestId ? { crossAgentRequestId } : {}),
+        ...(crossAgentSourceAgent === 'claude' || crossAgentSourceAgent === 'codex' ? { crossAgentSourceAgent } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     });
 
@@ -1606,6 +1612,7 @@ export async function runCodex(opts: {
             session.updateMetadata((currentMetadata) => {
                 const nextMetadata = { ...currentMetadata };
                 delete nextMetadata.codexThreadId;
+                delete nextMetadata.crossAgentSourceAgent;
                 return nextMetadata;
             });
         };

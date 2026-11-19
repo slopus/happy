@@ -68,6 +68,8 @@ export class Session {
         this.hookSettingsPath = opts.hookSettingsPath;
         this.jsRuntime = opts.jsRuntime ?? 'node';
 
+        this.publishThinkingState(false);
+
         // Start keep alive
         this.client.keepAlive(this.thinking, this.mode);
         this.keepAliveInterval = setInterval(() => {
@@ -84,8 +86,16 @@ export class Session {
         logger.debug('[Session] Cleaned up resources');
     }
 
+    private publishThinkingState(thinking: boolean): void {
+        // Publish on transitions, independently of heartbeat and protocol
+        // output: a source may already be working before it emits a reply.
+        void this.client.updateAgentState(state => ({ ...state, claudeThinking: thinking }))
+            .catch(() => logger.debug('[Session] Could not persist Claude execution state'));
+    }
+
     onThinkingChange = (thinking: boolean) => {
         this.thinking = thinking;
+        this.publishThinkingState(thinking);
         this.client.keepAlive(thinking, this.mode);
     }
 

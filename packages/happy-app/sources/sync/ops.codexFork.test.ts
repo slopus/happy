@@ -425,3 +425,10 @@ describe('codex fork ops', () => {
         );
     });
 });
+
+it('authorizes a Codex cross-agent target through the same ephemeral account grant path', async () => {
+ machineRPC.mockResolvedValue({ type: 'success', sessionId: 'target' });
+ const { machineContinueWithAgent } = await import('./ops');
+ expect(await machineContinueWithAgent({ machineId: 'm', sourceSessionId: 'source', targetAgent: 'codex', requestId: 'request' })).toEqual({ type: 'success', sessionId: 'target' });
+ expect(machineRPC).toHaveBeenCalledWith('m', 'continue-with-agent', { sourceSessionId: 'source', targetAgent: 'codex', requestId: 'request', codexSessionGrant: 'a'.repeat(43) }, { timeoutMs: 140_000 });
+});

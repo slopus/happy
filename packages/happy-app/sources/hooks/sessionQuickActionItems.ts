@@ -6,6 +6,7 @@ interface SessionQuickActionLabels {
     details: string;
     resume: string;
     continueFresh?: string;
+    continueWithAgent?: string;
     rename: string;
     regenerateTitle: string;
     fork: string;
@@ -23,6 +24,7 @@ interface SessionQuickActionCallbacks {
     openDetails: () => void;
     resumeSession: () => void;
     continueSession?: () => void;
+    continueWithAgent?: () => void;
     renameSession: () => void;
     regenerateTitle: () => void;
     forkSession: () => void;
@@ -40,6 +42,7 @@ interface BuildSessionQuickActionItemsOptions {
     callbacks: SessionQuickActionCallbacks;
     canShowResume: boolean;
     canContinue?: boolean;
+    canContinueWithAgent?: boolean;
     canRegenerateTitle: boolean;
     canFork: boolean;
     canCopySessionMetadata: boolean;
@@ -54,6 +57,7 @@ export function buildSessionQuickActionItems({
     callbacks,
     canShowResume,
     canContinue,
+    canContinueWithAgent,
     canRegenerateTitle,
     canFork,
     canCopySessionMetadata,
@@ -90,6 +94,10 @@ export function buildSessionQuickActionItems({
 
     if (canContinue && callbacks.continueSession && labels.continueFresh) {
         items.push({ id: 'continue-fresh', icon: 'add-circle-outline', label: labels.continueFresh, onPress: callbacks.continueSession });
+    }
+
+    if (canContinueWithAgent && callbacks.continueWithAgent && labels.continueWithAgent) {
+        items.push({ id: 'continue-with-agent', icon: 'swap-horizontal-outline', label: labels.continueWithAgent, onPress: callbacks.continueWithAgent });
     }
 
     if (canFork) {

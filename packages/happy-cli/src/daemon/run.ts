@@ -1,3 +1,6 @@
+import { createCrossAgentContinuation } from '@/continuation/coordinator';
+import { exportNativeConversation, importClaudeConversation, importCodexConversation } from '@/continuation/nativeHistory';
+import type { ConversationItem } from '@/continuation/history';
 import { ExecutionBindingSchema } from '@slopus/happy-wire';
 import { NativeLaunchPolicyStore, NATIVE_POLICY_ENV, type NativeLaunchPolicy } from './appDelegation/nativeLaunchPolicy';
 import { createOwnerNativeSessionHooks } from './appDelegation/ownerNativeSessionHooks';
@@ -54,7 +57,7 @@ import {
   type StartupTraceWriter,
 } from './sessionStartupTrace';
 
-type TracedSpawnSessionOptions = SpawnSessionOptions & { traceId?: string; nativeApplicationPolicy?: NativeLaunchPolicy; nativeReconnectEnvironment?: Record<string, string> };
+type TracedSpawnSessionOptions = SpawnSessionOptions & { traceId?: string; nativeApplicationPolicy?: NativeLaunchPolicy; nativeReconnectEnvironment?: Record<string, string>; crossAgentHistory?: ConversationItem[]; crossAgentRequestId?: string };
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -414,8 +417,18 @@ export async function startDaemon(): Promise<void> {
         }
       }
 
-      return withCodexAccountLaunch(options, api, machineId, async (codexLaunch) => {
+      let continuationWorkerDispatched = false;
+      const launchResult = await withCodexAccountLaunch(options, api, machineId, async (codexLaunch) => {
       try {
+        // Convert only inside the selected target account home. This option is
+        // daemon-internal and never accepted by the generic spawn RPC.
+        if (options.crossAgentHistory) {
+          const importedHistory = options.crossAgentHistory;
+          options = { ...options };
+          if (options.agent === 'claude') options.resumeClaudeSessionId = await importClaudeConversation(importedHistory, directory);
+          else if (options.agent === 'codex') options.resumeCodexThreadId = await importCodexConversation(importedHistory, directory, codexLaunch ? codexLaunch.environment(process.env) : process.env);
+          else throw new Error('Unsupported continuation target');
+        }
 
         // Build environment variables for session spawning
         // Authentication tokens are resolved here
@@ -434,6 +447,10 @@ export async function startDaemon(): Promise<void> {
         };
         delete extraEnv.HAPPY_SESSION_STARTUP_TRACE_ID;
         delete extraEnv[NATIVE_POLICY_ENV];
+        if (options.crossAgentRequestId) extraEnv.HAPPY_CROSS_AGENT_REQUEST_ID = options.crossAgentRequestId;
+        const inheritedSourceAgent = options.parentSessionId ? findTrackedSessionById(options.parentSessionId)?.happySessionMetadataFromLocalWebhook?.crossAgentSourceAgent : undefined;
+        if (options.crossAgentHistory || inheritedSourceAgent) extraEnv.HAPPY_CROSS_AGENT_SOURCE_AGENT = options.crossAgentHistory
+          ? (options.agent === 'claude' ? 'codex' : 'claude') : inheritedSourceAgent!;
         if (options.parentSessionId) {
           extraEnv.HAPPY_FORKED_FROM_SESSION_ID = options.parentSessionId;
         }
@@ -549,6 +566,7 @@ export async function startDaemon(): Promise<void> {
             logger.debug(`[DAEMON RUN] Applied Codex network proxy from HAPPY_CODEX_PROXY_URL/CODEX_PROXY_URL`);
           }
 
+          continuationWorkerDispatched = true;
           const tmuxResult = await tmux.spawnInTmux([fullCommand], {
             sessionName: tmuxSessionName,
             windowName: windowName,
@@ -673,6 +691,7 @@ export async function startDaemon(): Promise<void> {
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
           // For now, we ignore it - each spawn creates a new session
+          continuationWorkerDispatched = true;
           return spawnTrackedHappyProcess({
             agent: options.agent,
             args,
@@ -708,13 +727,15 @@ export async function startDaemon(): Promise<void> {
         };
       }
       }, {
-        sourceSessionId: options.parentSessionId, sourceThreadId: options.resumeCodexThreadId,
+        sourceSessionId: options.crossAgentHistory ? undefined : options.parentSessionId, sourceThreadId: options.crossAgentHistory ? undefined : options.resumeCodexThreadId,
         inheritConfiguration: !options.nativeApplicationPolicy,
         sourceProfileId: options.nativeApplicationPolicy?.binding.engine === 'codex' ? options.nativeApplicationPolicy.binding.accountRef.id : options.expectedCodexAccountProfileId,
         // Only a new session created from a native fork may use the selected
         // account. Resuming an existing session retains its original identity.
         allowCrossAccountFork: !!(options.parentSessionId && options.resumeCodexThreadId),
       });
+      return options.crossAgentHistory && launchResult.type === 'error' && !continuationWorkerDispatched
+        ? { ...launchResult, notDispatched: true } : launchResult;
     };
 
     const spawnTrackedHappyProcess = ({
@@ -821,9 +842,10 @@ export async function startDaemon(): Promise<void> {
       sessionId: string,
       encryptionKey: Uint8Array,
       encryptionVariant: 'legacy' | 'dataKey',
-    ): Promise<{ metadata: Metadata; seq: number; metadataVersion: number; active: boolean; agentState: AgentState | null } | null> => {
+      single = false,
+    ): Promise<{ metadata: Metadata; seq: number; metadataVersion: number; active: boolean; agentState: AgentState | null; agentStateVersion?: number } | null> => {
       try {
-        const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
+        const response = await axios.get(single ? `${configuration.serverUrl}/v2/sessions/${encodeURIComponent(sessionId)}` : `${configuration.serverUrl}/v1/sessions`, {
           headers: { Authorization: `Bearer ${credentials.token}` },
           timeout: 10_000,
         });
@@ -833,15 +855,17 @@ export async function startDaemon(): Promise<void> {
           metadata: string;
           seq: number;
           metadataVersion: number;
+          agentStateVersion?: number;
           agentState?: string | null;
         }> }).sessions;
-        const matched = sessions.find(s => s.id === sessionId);
+        const matched = single ? response.data.session : sessions.find(s => s.id === sessionId);
         if (!matched) return null;
         const decrypted = decrypt(encryptionKey, encryptionVariant, decodeBase64(matched.metadata));
         if (!decrypted) return null;
         return {
           metadata: decrypted as Metadata,
           active: matched.active,
+          agentStateVersion: matched.agentStateVersion,
           agentState: matched.agentState ? decrypt(encryptionKey, encryptionVariant, decodeBase64(matched.agentState)) as AgentState | null : null,
           seq: matched.seq,
           metadataVersion: matched.metadataVersion,
@@ -1318,8 +1342,48 @@ export async function startDaemon(): Promise<void> {
     });
     const refreshBoundCodexAccountQuota = async (grant: string) => refreshCodexAccountQuota(api, machineId, grant);
 
+    const continueWithAgent = createCrossAgentContinuation({
+      root: join(configuration.happyHomeDir, 'cross-agent-continuations', machineId),
+      findCreated: async request => {
+        for (const tracked of [...pidToTrackedSession.values(), ...sessionIdToFinishedSession.values()]) {
+          const meta = tracked.happySessionMetadataFromLocalWebhook;
+          if (tracked.happySessionId && meta?.crossAgentRequestId === request.requestId
+            && meta.parentSessionId === request.sourceSessionId && meta.flavor === request.targetAgent) return tracked.happySessionId;
+        }
+        return undefined;
+      },
+      resolveSource: async (id) => {
+        const tracked = findTrackedSessionById(id);
+        if (!tracked?.encryption) throw new Error('Source session is not retained by this machine');
+        const snapshot = await fetchServerSessionSnapshot(id, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant, true);
+        if (!snapshot || snapshot.metadata.machineId !== machineId) throw new Error('Cannot verify source session ownership');
+        const metadata = snapshot.metadata;
+        const agent = metadata.flavor;
+        if (agent !== 'claude' && agent !== 'codex') throw new Error('Only Claude and Codex sessions can be converted');
+        const nativeId = agent === 'claude' ? metadata.claudeSessionId : metadata.codexThreadId;
+        if (!nativeId || !metadata.path) throw new Error('Source session has no native history');
+        const state = snapshot.agentState;
+        // Relay presence can expire while the local worker is still executing.
+        // Only ESRCH proves that a persisted thinking flag belongs to an exited
+        // worker. Permission errors and missing PIDs remain unknown, not idle.
+        let workerStopped = false;
+        if (agent === 'claude' && Number.isSafeInteger(metadata.hostPid) && metadata.hostPid! > 0) {
+          try { process.kill(metadata.hostPid!, 0); }
+          catch (error) { workerStopped = (error as NodeJS.ErrnoException).code === 'ESRCH'; }
+        }
+        return { id, agent, nativeId, directory: metadata.path, application: !!metadata.application,
+          accountProfileId: metadata.codexAccountProfileId, requiresImportedHistory: !!metadata.crossAgentSourceAgent, revision: snapshot.seq, stateVersion: snapshot.agentStateVersion,
+          running: (agent === 'claude' && !workerStopped && (state?.claudeThinking === true || (snapshot.active && state?.claudeThinking !== false)))
+            || (!workerStopped && state?.turnStatus?.status === 'running')
+            || !!Object.keys(state?.requests ?? {}).length || (state?.queuedMessages ?? 0) > 0 };
+      },
+      exportHistory: exportNativeConversation,
+      spawn: spawnSession,
+    });
+
     // Set RPC handlers
     apiMachine.setRPCHandlers({
+      continueWithAgent,
       spawnSession,
       resumeSession,
       stopSession,

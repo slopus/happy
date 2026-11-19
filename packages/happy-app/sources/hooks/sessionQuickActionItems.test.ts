@@ -146,3 +146,10 @@ it('offers fresh continuation independently of Resume and native fork eligibilit
     items.find(item => item.id === 'continue-fresh')!.onPress();
     expect(continuation).toHaveBeenCalledOnce();
 });
+
+it('offers the cross-agent action independently of native fork experiments', () => {
+ const onPress = vi.fn();
+ const items = buildSessionQuickActionItems({ labels: { ...labels, continueWithAgent: 'New Claude session' }, callbacks: { ...callbacks, continueWithAgent: onPress },
+  canShowResume: false, canContinueWithAgent: true, canRegenerateTitle: false, canFork: false, canCopySessionMetadata: false, sessionPinned: false, sessionActive: false, sessionArchived: true });
+ const action = items.find(x => x.id === 'continue-with-agent'); expect(action?.label).toBe('New Claude session'); action?.onPress(); expect(onPress).toHaveBeenCalledOnce();
+});

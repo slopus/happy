@@ -1201,6 +1201,13 @@ export const zhHant: TranslationStructure = {
     },
 
     session: {
+        crossAgentSourceLabel: projectGoalsBase.session.crossAgentSourceLabel,
+        crossAgentSourceSubtitle: projectGoalsBase.session.crossAgentSourceSubtitle,
+        continueWithClaude: projectGoalsBase.session.continueWithClaude,
+        continueWithCodex: projectGoalsBase.session.continueWithCodex,
+        crossAgentCreating: projectGoalsBase.session.crossAgentCreating,
+        crossAgentUnavailable: projectGoalsBase.session.crossAgentUnavailable,
+        crossAgentSubtitle: projectGoalsBase.session.crossAgentSubtitle,
         continueFresh: "Start a fresh session here",
         continueOpen: "Open continued session",
         continueCreating: "Creating new session…",

@@ -1,3 +1,4 @@
+import { assertImportRewindBoundary } from '@/continuation/importPrefix';
 import type { Thread, ThreadItem, ThreadTurn } from './codexAppServerTypes';
 
 export type CodexRewindPoint = {
@@ -130,6 +131,7 @@ export async function forkCodexThread(
         if (opts.cutBeforeItemId && selected.itemIndex > 0) {
             throw new Error('Cannot fork before a question inside a Codex turn without removing earlier history');
         }
+        await assertImportRewindBoundary(opts.threadId, thread.turns![selected.index].id);
         cut = {
             turnId: thread.turns![selected.index].id,
             text: selected.text,

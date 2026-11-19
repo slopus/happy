@@ -283,6 +283,7 @@ export async function claudeRemote(opts: {
                         messages.end();
                     } else {
                         mode = next.mode;
+                        updateThinking(true);
                         messages.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: next.message } });
                     }
                 }).catch(() => {

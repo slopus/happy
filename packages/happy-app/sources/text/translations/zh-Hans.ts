@@ -1330,6 +1330,13 @@ export const zhHans: TranslationStructure = {
     },
 
     session: {
+        crossAgentSourceLabel: '接续来源',
+        crossAgentSourceSubtitle: '已携带另一 Agent 的上下文。点击查看原会话中的消息。',
+        continueWithClaude: '新建 Claude 会话接着做',
+        continueWithCodex: '新建 Codex 会话接着做',
+        crossAgentCreating: '正在转换并创建会话…',
+        crossAgentUnavailable: '请等待原会话执行结束，并检查机器是否支持会话转换。',
+        crossAgentSubtitle: '携带对话历史，在同一工作目录新建会话。请避免两个会话同时执行。',
         continueFresh: "新建 Session 接着聊",
         continueOpen: "打开接续会话",
         continueCreating: "正在创建新会话…",

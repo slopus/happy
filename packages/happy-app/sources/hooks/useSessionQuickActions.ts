@@ -1,3 +1,5 @@
+import { getCrossAgentTarget } from '@/utils/crossAgentContinuation';
+import { createCrossAgentContinuation } from '@/sync/crossAgentContinuation';
 import * as React from 'react';
 import { isRetiredSession } from '@/sync/retiredSessions';
 import { createSessionContinuation } from '@/sync/sessionContinuation';
@@ -171,6 +173,14 @@ export function useSessionQuickActions(
         && isMachineOnline(machine),
     );
     const canRegenerateTitle = canRegenerateSessionTitle(session);
+    const crossAgentTarget = getCrossAgentTarget(session, machine);
+    const [continuingWithAgent, performContinueWithAgent] = useHappyAction(async () => {
+        if (!crossAgentTarget) throw new HappyError(t('session.crossAgentUnavailable'), false);
+        const id = await createCrossAgentContinuation(session.id, crossAgentTarget);
+        hapticsSuccess(); navigateToSession(id);
+    });
+    const continueWithAgent = React.useCallback(() => { performContinueWithAgent(); }, [performContinueWithAgent]);
+
 
     const openDetails = React.useCallback(() => {
         router.push(`/session/${session.id}/info`);
@@ -538,6 +548,7 @@ export function useSessionQuickActions(
                 unpin: t('sessionInfo.unpinSession'),
                 details: t('profile.details'),
                 resume: t('sessionInfo.resumeSession'),
+                continueWithAgent: continuingWithAgent ? t('session.crossAgentCreating') : crossAgentTarget === 'claude' ? t('session.continueWithClaude') : t('session.continueWithCodex'),
                 continueFresh: continuingSession ? t('session.continueCreating') : session.metadata?.continuedBySessionId ? t('session.continueOpen') : t('session.continueFresh'),
                 rename: t('sessionInfo.renameSession'),
                 regenerateTitle: t('sessionInfo.regenerateTitle'),
@@ -555,6 +566,7 @@ export function useSessionQuickActions(
                 openDetails,
                 resumeSession,
                 continueSession,
+                continueWithAgent,
                 renameSession,
                 regenerateTitle,
                 forkSession,
@@ -568,6 +580,7 @@ export function useSessionQuickActions(
             },
             canShowResume: resumeAvailability.canShowResume,
             canContinue,
+            canContinueWithAgent: !!crossAgentTarget,
             canRegenerateTitle,
             canFork,
             canCopySessionMetadata,
@@ -577,6 +590,9 @@ export function useSessionQuickActions(
             canSelect: Boolean(onSelectSession),
         });
     }, [
+        crossAgentTarget,
+        continuingWithAgent,
+        continueWithAgent,
         archiveSession,
         canCopySessionMetadata,
         canRegenerateTitle,
@@ -615,6 +631,9 @@ export function useSessionQuickActions(
 
     return {
         actionItems,
+        crossAgentTarget,
+        continuingWithAgent,
+        continueWithAgent,
         canContinue,
         continueSession,
         continuingSession,
