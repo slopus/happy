@@ -35,9 +35,13 @@ export const GoalBoardSnapshotSchema = z.object({
 export type GoalBoardSnapshot = z.infer<typeof GoalBoardSnapshotSchema>;
 export const GoalBoardCatalogEntrySchema = z.object({ featurePath: path, title: label, summary: label.optional(), projectTitle: label.optional(), projectPath: path.optional() });
 export type GoalBoardCatalogEntry = z.infer<typeof GoalBoardCatalogEntrySchema>;
+/** Public GitHub repository location, never credentials, query strings or arbitrary URLs. */
+export const GoalGithubUrlSchema = z.string().max(2048)
+    .regex(/^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/[A-Za-z0-9_.-]+\/?$/)
+    .refine(value => !['.', '..', '.git'].includes(value.replace(/\/$/, '').split('/').pop()!), 'Expected a GitHub repository');
 export const GoalProjectSchema = z.object({
     projectPath: path, title: label, summary: label.optional(), features: z.array(GoalBoardCatalogEntrySchema).max(100),
-    direct: GoalBoardCatalogEntrySchema.optional(),
+    direct: GoalBoardCatalogEntrySchema.optional(), githubUrl: GoalGithubUrlSchema.optional().catch(undefined),
 });
 export type GoalProject = z.infer<typeof GoalProjectSchema>;
 export const GoalTaskSessionSchema = z.object({

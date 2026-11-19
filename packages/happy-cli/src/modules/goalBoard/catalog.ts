@@ -2,6 +2,7 @@ import { readdir, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import type { GoalBoardCatalogEntry, GoalProject } from '@slopus/happy-wire';
+import { GoalGithubUrlSchema } from '@slopus/happy-wire';
 import { readDocument, titleOf } from './parser';
 
 export const MAX_CATALOG = 100;
@@ -43,6 +44,16 @@ export function catalogSummary(source: string): string | undefined {
         .split(/\r?\n/).map(line => line.trim()).find(line => line && !/^(?:#|[-*|>`]|\d+\.|!\[|\[)/.test(line));
     return prose?.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[*_`]/g, '').slice(0, 400);
 }
+/** Read only the project's explicit structured field, never links in archive prose. */
+export function projectGithubUrl(source: string): string | undefined {
+    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1];
+    const fields = frontmatter?.split(/\r?\n/).filter(line => /^github_url:/.test(line));
+    if (fields?.length !== 1) return undefined;
+    const raw = fields[0].slice('github_url:'.length).trim();
+    const value = raw.startsWith('"') && raw.endsWith('"') || raw.startsWith("'") && raw.endsWith("'") ? raw.slice(1, -1) : raw;
+    const parsed = GoalGithubUrlSchema.safeParse(value);
+    return parsed.success ? parsed.data.replace(/\/$/, '').replace(/\.git$/, '') : undefined;
+}
 export async function readProjects(roots: string[]): Promise<GoalProject[]> {
     const entries = await readCatalog(roots);
     const projects = new Map<string, GoalProject>();
@@ -53,7 +64,7 @@ export async function readProjects(roots: string[]): Promise<GoalProject[]> {
                 const projectPath = await safePath(root, join(root, name));
                 if (!(await stat(projectPath)).isDirectory()) continue;
                 const text = await readDocument(root, join(projectPath, 'index.md'));
-                projects.set(projectPath, { projectPath, title: titleOf(text) || name, summary: catalogSummary(text), features: [] });
+                projects.set(projectPath, { projectPath, title: titleOf(text) || name, summary: catalogSummary(text), githubUrl: projectGithubUrl(text), features: [] });
             } catch { /* Only indexed archive projects are catalogued. */ }
         }
     }
