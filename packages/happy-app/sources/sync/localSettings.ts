@@ -97,7 +97,7 @@ export const LocalSettingsSchema = z.object({
     // 不随账号同步（同 agents/zenMode），避免被同步 churn 冲掉。
     agentSpaceId: z.string().nullable().describe('当前进入的「我的 Agent」空间（agent id），null 为全局视图'),
     hapticFeedbackEnabled: z.boolean().describe('Enable haptic (vibration) feedback for interactions'),
-    webCompletionNotificationsEnabled: z.boolean().catch(false).describe('Browser-only task completion system notifications'),
+    webCompletionNotificationsEnabled: z.boolean().catch(true).describe('Browser-only task completion system notifications'),
     webSound: WebSoundSettingsSchema.catch(webSoundSettingsDefaults).describe('Browser-only session sound alerts'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
@@ -162,7 +162,7 @@ export const localSettingsDefaults: LocalSettings = {
     },
     agentSpaceId: null,
     hapticFeedbackEnabled: true,
-    webCompletionNotificationsEnabled: false,
+    webCompletionNotificationsEnabled: true,
     webSound: webSoundSettingsDefaults,
     acknowledgedCliVersions: {},
     agents: [],

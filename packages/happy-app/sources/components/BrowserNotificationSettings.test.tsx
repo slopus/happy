@@ -43,11 +43,11 @@ it('asks for permission only when the user switches on, then saves the granted s
     expect(mocks.setEnabled).toHaveBeenCalledWith(true);
     await act(async () => tree.unmount());
 });
-it('does not enable notifications when permission is denied and explains how to recover', async () => {
+it('keeps the preference enabled when permission is denied and explains how to recover', async () => {
     const tree = await render();
     mocks.request.mockResolvedValue('denied');
     await act(async () => { await tree.root.findByType('Switch' as any).props.onValueChange(true); });
-    expect(mocks.setEnabled).toHaveBeenCalledWith(false);
+    expect(mocks.setEnabled).toHaveBeenCalledWith(true);
     expect(tree.root.findByProps({ testID: 'web-completion-notification-enable' }).props.subtitle).toContain('网站设置');
     expect(tree.root.findByProps({ testID: 'web-completion-notification-test' }).props.disabled).toBe(true);
     await act(async () => tree.unmount());
@@ -71,8 +71,30 @@ it('refreshes revoked permissions on focus and cleans up listeners', async () =>
     mocks.permission = 'denied';
     const refresh = vi.mocked(window.addEventListener).mock.calls[0][1] as () => void;
     await act(async () => refresh());
-    expect(tree.root.findByType('Switch' as any).props.value).toBe(false);
+    expect(tree.root.findByType('Switch' as any).props.value).toBe(true);
+    expect(tree.root.findByProps({ testID: 'web-completion-notification-enable' }).props.subtitle).toContain('网站设置');
     await act(async () => tree.unmount());
     expect(window.removeEventListener).toHaveBeenCalledWith('focus', refresh);
     expect(document.removeEventListener).toHaveBeenCalledWith('visibilitychange', refresh);
+});
+
+it('shows the default-on preference separately from pending browser permission, without auto-prompting', async () => {
+    mocks.enabled = true;
+    const tree = await render();
+    expect(tree.root.findByType('Switch' as any).props.value).toBe(true);
+    expect(mocks.request).not.toHaveBeenCalled();
+    mocks.request.mockResolvedValue('granted');
+    await act(async () => { tree.root.findByProps({ testID: 'web-completion-notification-permission' }).props.onPress(); });
+    expect(mocks.request).toHaveBeenCalledOnce();
+    expect(tree.root.findByProps({ testID: 'web-completion-notification-system-help' }).props.subtitle).toContain('横幅');
+    await act(async () => tree.unmount());
+});
+it('does not turn off the default preference when permission is dismissed', async () => {
+    mocks.enabled = true;
+    mocks.request.mockResolvedValue('default');
+    const tree = await render();
+    await act(async () => { tree.root.findByProps({ testID: 'web-completion-notification-permission' }).props.onPress(); });
+    expect(mocks.setEnabled).not.toHaveBeenCalled();
+    expect(tree.root.findByType('Switch' as any).props.value).toBe(true);
+    await act(async () => tree.unmount());
 });
