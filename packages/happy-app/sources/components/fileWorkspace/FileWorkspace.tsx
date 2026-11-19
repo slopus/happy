@@ -40,11 +40,13 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
     const scrollView = React.useRef<ScrollView>(null);
     const path = workspace?.snapshot.active;
     const document = path ? workspace?.snapshot.documents[path] : null;
+    const locationRequest = workspace?.locationRequest;
     const readOnly = workspace?.readOnly || document?.readOnly;
     const closeHistory = React.useCallback(() => {
         setHistoryPath(null);
         if (historyExpanded.current) { historyExpanded.current = false; workspace?.setMaximized(false); }
     }, [workspace?.setMaximized]);
+    React.useEffect(() => { if (path && locationRequest?.path === path) { setModes(value => ({ ...value, [path]: false })); closeHistory(); } }, [path, locationRequest, closeHistory]);
     React.useEffect(() => { const target = annotationUi.focus?.path; if (target) { setModes(value => ({ ...value, [target]: true })); closeHistory(); } }, [annotationUi.focus, closeHistory]);
     React.useEffect(() => {
         if (historyPath && historyPath !== path) { closeHistory(); return; }
@@ -52,7 +54,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
             historyExpanded.current = true; workspace.setMaximized(true);
         }
     }, [historyPath, path, workspaceWidth, workspace?.maximized, workspace?.setMaximized, closeHistory]);
-    React.useEffect(() => { setQuote(''); const selected=globalThis.window?.getSelection(); if(selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) selected.removeAllRanges(); if (path) scrollView.current?.scrollTo({ y: scroll.current[path] ?? 0, animated: false }); }, [path, document?.hash]);
+    React.useEffect(() => { setQuote(''); const selected=globalThis.window?.getSelection(); if(selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) selected.removeAllRanges(); if (path && locationRequest?.path !== path) scrollView.current?.scrollTo({ y: scroll.current[path] ?? 0, animated: false }); }, [path, document?.hash]);
     if (!workspace?.enabled || !workspace.snapshot.open || !path) return null;
     const { controller, snapshot } = workspace;
     const currentArtifact = workspace.versions.currentForHash(path, document?.error ? null : document?.hash ?? null);
@@ -145,7 +147,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
                         const selected = globalThis.window?.getSelection();
                         if (selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) setQuote(selected.toString().slice(0, 4000));
                     } } as any)}>
-                        {preview ? <AnnotatableFile sessionId={sessionId} file={annotationFile}><MarkdownView markdown={document.draft} typography="document" readOnly fileLinks={!readOnly} sessionId={sessionId} annotationTargets={!!sessionId} /></AnnotatableFile> : <CodeEditor readOnly={readOnly} value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
+                        {preview ? <AnnotatableFile sessionId={sessionId} file={annotationFile}><MarkdownView markdown={document.draft} typography="document" readOnly fileLinks={!readOnly} sessionId={sessionId} annotationTargets={!!sessionId} /></AnnotatableFile> : <CodeEditor location={locationRequest?.path === path ? locationRequest : undefined} onRevealLine={y => scrollView.current?.scrollTo({ y, animated: false })} readOnly={readOnly} value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
                     </View>
                 </ScrollView>}
             </View>

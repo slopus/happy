@@ -3,6 +3,7 @@
  * The file edit feature is web-only. This stub prevents import errors.
  */
 import * as React from 'react';
+import type { FileLocation } from '@/utils/fileLocation';
 import { View, Text } from 'react-native';
 
 interface CodeEditorProps {
@@ -11,6 +12,8 @@ interface CodeEditorProps {
     language: string | null;
     darkMode: boolean;
     readOnly?: boolean;
+    location?: FileLocation;
+    onRevealLine?: (offset: number) => void;
 }
 
 export const CodeEditor = React.memo(function CodeEditor(_props: CodeEditorProps) {

@@ -202,3 +202,16 @@ it('replaces a direct legacy file URL without leaving a redirect loop on Back', 
     expect(next.routes.map(route=>route.name)).toEqual(['session/[id]']);
     expect(next.routes[0].params).toHaveProperty('fileOpenRequest', 'direct');
 });
+
+it('hands a selected file out of a desktop picker to its original conversation', () => {
+    const app = setup();
+    app.send(StackActions.push('session/[id]', { id: 's' }));
+    const conversation = app.state.routes[1];
+    app.send(StackActions.push('session/[id]/files', { id: 's', desktopModal: '1' }));
+    expect(getDesktopModalStart(app.state)).toBe(2);
+    app.send({ type: 'NAVIGATE', payload: { name: 'session/[id]', params: { id: 's', openFile: 'ZmlsZQ==', fileOpenRequest: 'picker' } } });
+    expect(getDesktopModalStart(app.state)).toBe(-1);
+    expect(app.state.routes).toHaveLength(2);
+    expect(app.state.routes[1].key).toBe(conversation.key);
+    expect(app.state.routes[1].params).toMatchObject({ openFile: 'ZmlsZQ==' });
+});

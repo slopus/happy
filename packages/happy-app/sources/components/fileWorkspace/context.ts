@@ -7,6 +7,7 @@ export type FileWorkspaceContextValue = {
     readOnly?: boolean;
     readBytes?: (path: string, signal?: AbortSignal) => Promise<Uint8Array>;
     openRequestId: number;
+    locationRequest?: { path: string; line: number; column: number | null };
     versions: VersionController;
     versionSnapshot: ReturnType<VersionController['getSnapshot']>;
     restoreVersion: (path: string, action?: 'inspect' | 'resume' | 'rollback' | 'retry', selection?: RestoreSelection) => Promise<boolean>;

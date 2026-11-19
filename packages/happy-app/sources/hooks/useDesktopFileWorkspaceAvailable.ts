@@ -1,12 +1,10 @@
 import { Platform, useWindowDimensions } from 'react-native';
 import { isDesktopRightPanelAvailable } from '@/utils/desktopNavigationLayout';
-import { useDesktopWorkspaceLayout } from './useDesktopWorkspaceLayout';
 
-/** Capability is independent of whether the current route displays its right panel. */
+/** Physical capability survives dialog layout isolation and collapsed sidebars. */
 export function useDesktopFileWorkspaceAvailable() {
-    const { enabled } = useDesktopWorkspaceLayout();
     const { width } = useWindowDimensions();
-    return Platform.OS === 'web' && enabled && isDesktopRightPanelAvailable({
+    return Platform.OS === 'web' && isDesktopRightPanelAvailable({
         isTablet: true, supportsPersistentPanel: true, windowWidth: width,
     });
 }

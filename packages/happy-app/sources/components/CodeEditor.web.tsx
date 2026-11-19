@@ -4,6 +4,7 @@
  * Theme colors match the app's syntax highlighting (Pierre-consistent).
  */
 import * as React from 'react';
+import { type FileLocation, fileLocationSelection, CODE_EDITOR_LINE_HEIGHT, CODE_EDITOR_PADDING } from '@/utils/fileLocation';
 import Editor from 'react-simple-code-editor';
 import Prism from 'prismjs';
 
@@ -40,6 +41,8 @@ interface CodeEditorProps {
     language: string | null;
     darkMode: boolean;
     readOnly?: boolean;
+    location?: FileLocation;
+    onRevealLine?: (offset: number) => void;
 }
 
 const LANG_MAP: Record<string, string> = {
@@ -78,7 +81,43 @@ export const CodeEditor = React.memo(function CodeEditor({
     language,
     darkMode,
     readOnly = false,
+    location,
+    onRevealLine,
 }: CodeEditorProps) {
+    const container = React.useRef<HTMLDivElement>(null);
+    const handledLocation = React.useRef<FileLocation | undefined>(undefined);
+    React.useEffect(() => {
+        if (!location) { handledLocation.current = undefined; return; }
+        if (handledLocation.current === location) return;
+        const input = container.current?.querySelector('textarea');
+        if (!input) return;
+        handledLocation.current = location;
+        const selection = fileLocationSelection(value, location);
+        input.focus({ preventScroll: true });
+        input.setSelectionRange(selection.start, selection.end);
+        let top = CODE_EDITOR_PADDING + (selection.line - 1) * CODE_EDITOR_LINE_HEIGHT;
+        // Highlighted text is the actual wrapped layout, unlike logical line * line-height.
+        const pre = container.current?.querySelector('pre');
+        if (pre) {
+            const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+            let remaining = selection.start;
+            let node = walker.nextNode();
+            while (node) {
+                const length = node.textContent?.length ?? 0;
+                if (remaining <= length) {
+                    const range = document.createRange();
+                    range.setStart(node, remaining);
+                    range.setEnd(node, Math.min(length, remaining + 1));
+                    const rect = range.getBoundingClientRect();
+                    if (rect.height > 0) top = rect.top - container.current!.getBoundingClientRect().top;
+                    break;
+                }
+                remaining -= length;
+                node = walker.nextNode();
+            }
+        }
+        onRevealLine?.(Math.max(0, top - 40));
+    }, [location, value, onRevealLine]);
     const highlight = React.useCallback((code: string) => {
         const prismLang = language ? (LANG_MAP[language] ?? null) : null;
         const grammar = prismLang ? Prism.languages[prismLang] : null;
@@ -104,6 +143,7 @@ export const CodeEditor = React.memo(function CodeEditor({
 
     return (
         <div
+            ref={container}
             style={{
                 flex: 1,
                 overflow: 'auto',
@@ -114,7 +154,7 @@ export const CodeEditor = React.memo(function CodeEditor({
                 value={value}
                 onValueChange={readOnly ? () => {} : onChange}
                 highlight={highlight}
-                padding={16}
+                padding={CODE_EDITOR_PADDING}
                 readOnly={readOnly}
                 style={{
                     fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Menlo, Monaco, Consolas, monospace',

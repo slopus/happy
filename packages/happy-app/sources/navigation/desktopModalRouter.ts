@@ -34,13 +34,22 @@ export function createDesktopModalRouter(options: StackRouterOptions) {
             return restored;
         },
         getStateForAction(state: ModalState, action: Parameters<typeof original.getStateForAction>[1], config: Parameters<typeof original.getStateForAction>[2]): ModalState | null {
-            const start = getDesktopModalStart(state);
+            let start = getDesktopModalStart(state);
             if ((action.type as string) === 'CLOSE_DESKTOP_MODAL') {
                 if (start < 0) return state;
                 return { ...state, routes: state.routes.slice(0, start), index: start - 1, desktopModalBaseKey: undefined };
             }
             const payload = 'payload' in action ? action.payload : undefined;
             const params = payload && 'params' in payload ? payload.params as Record<string, unknown> | undefined : undefined;
+            // A file picker may hand its result to the background conversation.
+            // Only this explicit file request escapes; ordinary dialog navigation stays scoped.
+            const fileHandoff = action.type === 'NAVIGATE' && payload && 'name' in payload
+                && payload.name === 'session/[id]' && typeof params?.openFile === 'string'
+                && typeof params?.fileOpenRequest === 'string';
+            if (start >= 0 && fileHandoff) {
+                state = { ...state, routes: state.routes.slice(0, start), index: start - 1, desktopModalBaseKey: undefined };
+                start = -1;
+            }
             const opensModal = params?.desktopModal === '1';
             let nextAction = action;
             if (start >= 0 && action.type === 'POP') {

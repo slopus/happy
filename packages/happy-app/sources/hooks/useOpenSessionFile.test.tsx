@@ -3,8 +3,8 @@ import { act } from 'react';
 // @ts-expect-error react-test-renderer has no declarations.
 import TestRenderer from 'react-test-renderer';
 import { beforeEach, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ web: true, desktop: true, workspace: null as any, push: vi.fn(), navigate: vi.fn() }));
-vi.mock('react-native', () => ({ Platform: { get OS() { return state.web ? 'web' : 'android'; } }, useWindowDimensions: () => ({ width: 1400 }) }));
+const state = vi.hoisted(() => ({ web: true, desktop: true, width: 1400, workspace: null as any, push: vi.fn(), navigate: vi.fn() }));
+vi.mock('react-native', () => ({ Platform: { get OS() { return state.web ? 'web' : 'android'; } }, useWindowDimensions: () => ({ width: state.width }) }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: state.push, navigate: state.navigate }) }));
 vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({ useDesktopWorkspaceLayout: () => ({ enabled: state.desktop, rightPanelAvailable: false }) }));
 vi.mock('@/components/fileWorkspace/context', () => ({ useFileWorkspace: () => state.workspace }));
@@ -12,7 +12,7 @@ import { useOpenSessionFile } from './useOpenSessionFile';
 import { decodeFilePath } from '@/utils/filePathEncoding';
 let open: ReturnType<typeof useOpenSessionFile>;
 function Probe({ sessionId = 's' }: { sessionId?: string }) { open = useOpenSessionFile(sessionId); return null; }
-beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; state.web = true; state.desktop = true; state.workspace = null; vi.clearAllMocks(); });
+beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; state.web = true; state.desktop = true; state.width = 1400; state.workspace = null; vi.clearAllMocks(); });
 it('opens project files in the current session workspace without navigating away from chat', () => {
     const openReference = vi.fn(); state.workspace = { sessionId: 's', enabled: true, root: '/work', openReference };
     let renderer: any; act(() => { renderer = TestRenderer.create(<Probe />); });
@@ -47,9 +47,17 @@ it('opens outside-project files in the desktop workspace without leaving chat', 
     act(() => renderer.unmount());
 });
 it.each([{web:false,desktop:true},{web:true,desktop:false}])('keeps the existing small-screen/native viewer: %o', config => {
-    Object.assign(state, config);
+    Object.assign(state, config); state.width = config.desktop ? 1400 : 900;
     let renderer: any; act(() => { renderer = TestRenderer.create(<Probe />); });
     act(() => open('/work/a.md'));
     expect(state.push.mock.calls[0][0]).toContain('/session/s/file?path='); expect(state.navigate).not.toHaveBeenCalled();
+    act(() => renderer.unmount());
+});
+
+it('hands files from an isolated desktop dialog back to the owning workspace', () => {
+    state.desktop = false; state.width = 1400;
+    let renderer: any; act(() => { renderer = TestRenderer.create(<Probe />); });
+    act(() => open('/work/a.md'));
+    expect(state.push).not.toHaveBeenCalled(); expect(state.navigate.mock.calls[0][0].params.id).toBe('s');
     act(() => renderer.unmount());
 });

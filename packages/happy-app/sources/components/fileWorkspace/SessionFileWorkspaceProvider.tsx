@@ -14,7 +14,7 @@ import { VersionController, type RestoreSelection } from './versionController';
 import { FileWorkspaceController } from './controller';
 import { EventRefreshQueue } from './eventRefreshQueue';
 import { readWorkspaceText, writeWorkspaceText } from './fileIO';
-import { FileWorkspaceContext, type FileReference } from './context';
+import { FileWorkspaceContext, type FileReference, type FileWorkspaceContextValue } from './context';
 
 export type FileWorkspaceBinding = {
     root: string; scope: string; machineId: string;
@@ -74,6 +74,7 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, binding, children
     const setChatWidth = React.useCallback((width: number) => { updateChatWidth(width); setChatWidthCustomized(true); }, []);
     const [maximized, setMaximized] = React.useState(false);
     const [openRequestId, setOpenRequestId] = React.useState(0);
+    const [locationRequest, setLocationRequest] = React.useState<FileWorkspaceContextValue['locationRequest']>();
     const restored = React.useRef(false);
     const restoration = React.useMemo(() => {
         let finish!: () => void;
@@ -175,8 +176,9 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, binding, children
         await restoration.ready;
         if (!lifetime.current || !accountRuntimeCurrent()) return;
         setMaximized(false);
+        setLocationRequest(resolved.line ? { path: resolved.absolutePath, line: resolved.line, column: resolved.column } : undefined);
         setOpenRequestId(value => value + 1);
         try { await controller.open(resolved.absolutePath); } catch (error) { Modal.alert(t('fileWorkspace.title'), error instanceof Error && error.message === 'FILE_WORKSPACE_TAB_LIMIT' ? t('fileWorkspace.tooManyTabs') : String(error)); }
     }, [controller, enabled, root, sessionId, restoration, binding]);
-    return <FileWorkspaceContext.Provider value={{ sessionId, readOnly: binding?.readOnly, readBytes: binding?.readBytes, openRequestId, versions, versionSnapshot, restoreVersion, draftCacheError: draftCacheError || referenceCacheError, enabled, root, controller, snapshot, reference, setReference, openReference, chatWidth, chatWidthCustomized, setChatWidth, maximized, setMaximized }}>{children}</FileWorkspaceContext.Provider>;
+    return <FileWorkspaceContext.Provider value={{ sessionId, readOnly: binding?.readOnly, readBytes: binding?.readBytes, openRequestId, locationRequest, versions, versionSnapshot, restoreVersion, draftCacheError: draftCacheError || referenceCacheError, enabled, root, controller, snapshot, reference, setReference, openReference, chatWidth, chatWidthCustomized, setChatWidth, maximized, setMaximized }}>{children}</FileWorkspaceContext.Provider>;
 }

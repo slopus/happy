@@ -3,31 +3,39 @@ import { act } from 'react';
 // @ts-expect-error react-test-renderer has no declarations.
 import TestRenderer from 'react-test-renderer';
 import { beforeEach, expect, it, vi } from 'vitest';
-const state=vi.hoisted(()=>({desktop:true,web:true,root:'/work',navigate:vi.fn()}));
-vi.mock('react-native',()=>({Platform:{get OS(){return state.web?'web':'android';}},useWindowDimensions:()=>({width:1400})}));
-vi.mock('expo-router',()=>({useRouter:()=>({navigate:state.navigate})}));
-vi.mock('@/sync/storage',()=>({useSession:()=>({metadata:{path:state.root}})}));
-vi.mock('@/hooks/useDesktopWorkspaceLayout',()=>({useDesktopWorkspaceLayout:()=>({enabled:state.desktop,rightPanelAvailable:false})}));
-import {useRedirectSessionFile} from './useRedirectSessionFile';
-let redirect=false;
-function Probe({path='/work/PRIVACY.md',positioned=false}:{path?:string;positioned?:boolean}){redirect=useRedirectSessionFile('s',path,positioned);return null;}
-beforeEach(()=>{(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;state.desktop=true;state.web=true;state.root='/work';state.navigate.mockClear();});
-it('redirects an old desktop file URL back to its conversation with a selected tab',()=>{
- let renderer:any;act(()=>{renderer=TestRenderer.create(<Probe/>);});
- expect(redirect).toBe(true);expect(state.navigate.mock.calls[0][0].params.id).toBe('s');
- act(()=>renderer.update(<Probe/>));expect(state.navigate).toHaveBeenCalledTimes(1);act(()=>renderer.unmount());
+const state = vi.hoisted(() => ({ web: true, width: 1400, root: '/work', navigate: vi.fn() }));
+vi.mock('react-native', () => ({ Platform: { get OS() { return state.web ? 'web' : 'android'; } }, useWindowDimensions: () => ({ width: state.width }) }));
+vi.mock('expo-router', () => ({ useRouter: () => ({ navigate: state.navigate }) }));
+vi.mock('@/sync/storage', () => ({ useSession: () => ({ metadata: { path: state.root } }) }));
+import { useRedirectSessionFile } from './useRedirectSessionFile';
+import { decodeFilePath } from '@/utils/filePathEncoding';
+let redirect = false;
+function Probe({ path = '/work/PRIVACY.md', line, column }: { path?: string; line?: string; column?: string }) {
+    redirect = useRedirectSessionFile('s', path, { line, column }); return null;
+}
+beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; state.web = true; state.width = 1400; state.root = '/work'; state.navigate.mockClear(); });
+it('redirects an old desktop file URL back to its conversation once', () => {
+    let r: any; act(() => { r = TestRenderer.create(<Probe />); });
+    expect(redirect).toBe(true); expect(state.navigate.mock.calls[0][0].params.id).toBe('s');
+    act(() => r.update(<Probe />)); expect(state.navigate).toHaveBeenCalledTimes(1); act(() => r.unmount());
 });
-it.each([{positioned:true}])('preserves legacy behavior for positioned links: %o',props=>{
- let renderer:any;act(()=>{renderer=TestRenderer.create(<Probe {...props}/>);});
- expect(redirect).toBe(false);expect(state.navigate).not.toHaveBeenCalled();act(()=>renderer.unmount());
+it('carries query line and column into the desktop workspace instead of mounting the old reader', () => {
+    let r: any; act(() => { r = TestRenderer.create(<Probe line="12" column="4" />); });
+    expect(redirect).toBe(true);
+    expect(decodeFilePath(state.navigate.mock.calls[0][0].params.openFile)).toBe('/work/PRIVACY.md:12:4');
+    act(() => r.unmount());
 });
-it('waits for root metadata and only redirects when desktop layout is available',()=>{
- state.root='';let renderer:any;act(()=>{renderer=TestRenderer.create(<Probe/>);});expect(redirect).toBe(false);
- state.root='/work';act(()=>renderer.update(<Probe/>));expect(redirect).toBe(true);
- state.desktop=false;act(()=>renderer.update(<Probe/>));expect(redirect).toBe(false);act(()=>renderer.unmount());
+it('keeps the old reader unmounted while cold-start session metadata is hydrating', () => {
+    state.root = ''; let r: any; act(() => { r = TestRenderer.create(<Probe />); });
+    expect(redirect).toBe(true); expect(state.navigate).not.toHaveBeenCalled();
+    state.root = '/work'; act(() => r.update(<Probe />)); expect(state.navigate).toHaveBeenCalledTimes(1);
+    act(() => r.unmount());
 });
-it('keeps the native file screen',()=>{
- state.web=false;let renderer:any;act(()=>{renderer=TestRenderer.create(<Probe/>);});expect(redirect).toBe(false);expect(state.navigate).not.toHaveBeenCalled();act(()=>renderer.unmount());
+it.each([{ web: false, width: 1400 }, { web: true, width: 1099 }])('retains native and small-screen readers: %o', config => {
+    Object.assign(state, config); let r: any; act(() => { r = TestRenderer.create(<Probe line="5" />); });
+    expect(redirect).toBe(false); expect(state.navigate).not.toHaveBeenCalled(); act(() => r.unmount());
 });
-
-it('redirects external desktop file URLs into the conversation too',()=>{ let r:any;act(()=>{r=TestRenderer.create(<Probe path="/outside/a.md"/>);});expect(redirect).toBe(true);expect(state.navigate.mock.calls[0][0].params.id).toBe('s');act(()=>r.unmount());});
+it('redirects external files too', () => {
+    let r: any; act(() => { r = TestRenderer.create(<Probe path="/skills/SKILL.md" />); });
+    expect(redirect).toBe(true); expect(state.navigate.mock.calls[0][0].params.id).toBe('s'); act(() => r.unmount());
+});

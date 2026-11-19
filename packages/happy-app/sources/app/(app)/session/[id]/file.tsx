@@ -92,7 +92,7 @@ export default React.memo(function FileScreen() {
     const params = useLocalSearchParams<{ id: string; path?: string; line?: string; column?: string }>();
     let path = params.path ?? '';
     try { path = decodeFilePath(path); } catch { /* Preserve legacy malformed-route handling below. */ }
-    const redirect = useRedirectSessionFile(params.id, path, !!(params.line || params.column));
+    const redirect = useRedirectSessionFile(params.id, path, { line: params.line, column: params.column });
     if (redirect) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /></View>;
     return <StandaloneFileScreen />;
 });
