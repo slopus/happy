@@ -290,7 +290,7 @@ describe('MarkdownView typography scope', () => {
         expect(openExternalUrl).not.toHaveBeenCalled();
     });
 
-    it.each(['plain', 'bold', 'italic'])('opens a %s chat link to a Skill file outside the project in the independent viewer', format => {
+    it.each(['plain', 'bold', 'italic'])('opens a %s Skill link through the active desktop workspace navigation policy', async format => {
         const openReference = vi.fn();
         const workspace = { sessionId: 's', enabled: true, root: '/work', openReference } as any;
         const path = '/Users/alice/.codex/skills/design-ops/references/图标/index.md';
@@ -305,11 +305,9 @@ describe('MarkdownView typography scope', () => {
         const link = textNode(renderer, '图标索引');
         expect(link).toBeDefined();
         expect(link.props.accessibilityRole).toBe('link');
-        act(() => { link.props.onClick(); });
-        const href = navigation.push.mock.calls[0]?.[0];
-        expect(href).toMatch(/^\/session\/s\/file\?path=/);
-        expect(decodeFilePath(new URL(href, 'https://paws.test').searchParams.get('path')!)).toBe(path);
-        expect(openReference).not.toHaveBeenCalled();
+        await act(async () => { await link.props.onClick(); });
+        expect(openReference).toHaveBeenCalledExactlyOnceWith(path);
+        expect(navigation.push).not.toHaveBeenCalled();
         expect(navigation.navigate).not.toHaveBeenCalled();
         expect(openExternalUrl).not.toHaveBeenCalled();
     });

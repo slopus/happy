@@ -58,6 +58,20 @@ data='/var/lib/paws-agent-party'
 backup="/var/backups/paws-agent-party/$release_id"
 config='/etc/caddy/Caddyfile'
 old_present=0; renamed=0; new_created=0; data_backed_up=0; caddy_changed=0
+# Only call after the owned container is stopped (or removed). Lock files are
+# process state, not durable data: restoring them prevents every later startup.
+preserve_stopped_service_locks() {
+  local destination="$1" lock relative
+  while IFS= read -r -d '' lock; do
+    relative="${lock#"$data"/}"
+    case "$relative" in
+      public-shell/service.lock|accounts/*/service.lock)
+        install -d -m 700 -- "$destination/$(dirname -- "$relative")"
+        mv -- "$lock" "$destination/$relative"
+        ;;
+    esac
+  done < <(find "$data" -maxdepth 3 -type f -name service.lock -print0)
+}
 wait_reload() {
   local reload_result
   for ((attempt=1; attempt<=30; attempt+=1)); do
@@ -76,6 +90,7 @@ rollback() {
     if ((data_backed_up)); then
       mv -- "$data" "$backup/failed-data"
       tar -xzf "$backup/data.tar.gz" -C /var/lib
+      preserve_stopped_service_locks "$backup/rollback-locks"
     fi
     if ((renamed)); then docker rename "$previous" "$container" && docker start "$container" >/dev/null;
     elif ((old_present)); then docker start "$container" >/dev/null; fi
@@ -104,6 +119,7 @@ if ((old_present)); then docker stop --time 30 "$container" >/dev/null; fi
 install -d -o 1000 -g 1000 -m 700 "$data"
 tar -czf "$backup/data.tar.gz" -C /var/lib paws-agent-party
 data_backed_up=1
+preserve_stopped_service_locks "$backup/stopped-locks"
 if ((old_present)); then docker rename "$container" "$previous"; renamed=1; fi
 docker create --name "$container" --label com.paws.service=agent-party --label "com.paws.revision=$revision" \
   --network host --user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges \
