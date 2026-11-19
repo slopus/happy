@@ -1,5 +1,7 @@
 vi.mock('./ComposerReferenceChips', () => ({ ComposerReferenceChips: 'ComposerReferenceChips' }));
 vi.mock('./ComposerContextPicker', () => ({ ComposerContextPicker: 'ComposerContextPicker' }));
+vi.mock('./DiscussionModeButton', () => ({ DiscussionModeButton: 'DiscussionModeButton' }));
+vi.mock('./SessionComposerPermissionSelector', () => ({ SessionComposerPermissionSelector: 'SessionComposerPermissionSelector' }));
 vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path', Rect: 'Rect', Circle: 'Circle' }));
 import * as React from 'react';
 import { act } from 'react';
@@ -128,6 +130,19 @@ describe('MessageComposer unified context entry', () => {
         input().props.onChangeText(text);
     });
     const menu = () => renderer.root.findByType('ComposerContextPicker');
+    it('places the discussion icon beside content selection inside the input panel', () => {
+        mount({ mode: 'session', discussionMode: { active: true, onToggle: vi.fn() }, permissionSelector: {} });
+        const panel = renderer.root.findByProps({ testID: 'composer-input-panel' });
+        const button = renderer.root.findByType('DiscussionModeButton');
+        expect(panel.findByType('DiscussionModeButton')).toBe(button);
+        expect(button.parent.findByProps({ testID: 'composer-context-trigger' })).toBeTruthy();
+        expect(renderer.root.findAllByType('SessionComposerPermissionSelector')).toHaveLength(0);
+    });
+    it('keeps the discussion action in zen mode while hiding auxiliary controls', () => {
+        mount({ mode: 'session', zenMode: true, discussionMode: { active: false, onToggle: vi.fn() } });
+        expect(renderer.root.findAllByType('DiscussionModeButton')).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'composer-context-trigger' })).toHaveLength(0);
+    });
     it.each(['home', 'session'])('opens @ without files or autocomplete props in %s', mode => {
         mount({ mode }); type('@'); expect(menu().props.query).toBe('');
     });

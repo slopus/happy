@@ -31,7 +31,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
-    discussionMode: { label: 'Discuss', active: 'Discussing', toggle: 'Toggle discussion mode', hint: 'Explore purpose through conversation; no implementation. Applies to your next message.', activeHint: 'Discussion only. Turn off to implement. Does not stop an already running turn.' },
+    discussionMode: { label: 'Discuss only', active: 'Discussing', toggle: 'Toggle discussion mode', hint: 'Explore purpose through conversation; no implementation. Applies to your next message.', activeHint: 'Discussion only. Turn off to implement. Does not stop an already running turn.' },
     composerContext: {
         referenceLimit: "You can add up to 8 references.",
         addGroup: "Add",

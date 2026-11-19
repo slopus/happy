@@ -47,6 +47,7 @@ import {
 } from './SessionComposerDirectorySelector';
 import { resolveComposerPrimaryAction } from './composerPrimaryAction';
 import { useComposerAbortConfirmation } from '@/hooks/useComposerAbortConfirmation';
+import { DiscussionModeButton, type DiscussionModeButtonProps } from './DiscussionModeButton';
 
 interface MessageComposerProps {
     // Drives layout differences between the home compose box and the in-session
@@ -112,6 +113,8 @@ interface MessageComposerProps {
     leadingControls?: React.ReactNode;
     trailingControls?: React.ReactNode;
     belowComposer?: React.ReactNode;
+    /** Session discussion toggle; remains available when auxiliary controls are hidden. */
+    discussionMode?: DiscussionModeButtonProps;
     /** Pending contextual content, such as selected-passage annotations. */
     hasContext?: boolean;
     contextContent?: React.ReactNode;
@@ -213,6 +216,16 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         minWidth: 0,
         overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
     },
+    actionButtonsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    discussionActionRow: { flexWrap: 'wrap', rowGap: 8 },
+    // Yoga gives positive `flex` an implicit zero basis, even with flexBasis:auto.
+    // Clear the shorthand so narrow rows wrap before the icon can be clipped.
+    discussionActionsLeft: { flex: 0, flexGrow: 1, flexBasis: 'auto', flexShrink: 0, maxWidth: '100%' },
+    discussionActionsRight: { maxWidth: '100%', marginLeft: 'auto' },
     machineLabel: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1027,12 +1040,11 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                     <View style={styles.actionButtonsContainer}>
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
                             {/* Row 1: Profile (FIRST), Agent, Git Status */}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                {props.zenMode && <View style={{ flex: 1 }} />}
-                                {!props.zenMode && <View style={styles.actionButtonsLeft}>
+                            <View style={[styles.actionButtonsRow, isSession && props.discussionMode && styles.discussionActionRow]}>
+                                <View style={[styles.actionButtonsLeft, isSession && props.discussionMode && styles.discussionActionsLeft]}>
 
                                 {/* The same content chooser as typing @. */}
-                                {(props.onPickImages || !props.imageAttachmentsOnly) && (
+                                {!props.zenMode && (props.onPickImages || !props.imageAttachmentsOnly) && (
                                     <Pressable
                                         accessibilityRole="button"
                                         accessibilityLabel={t('composerContext.title')}
@@ -1064,7 +1076,9 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 )}
 
 
-                                {isSession && props.permissionSelector && supportsDesktopComposerModeSelector({
+                                {isSession && props.discussionMode && <DiscussionModeButton {...props.discussionMode} />}
+
+                                {!props.zenMode && isSession && !props.discussionMode?.active && props.permissionSelector && supportsDesktopComposerModeSelector({
                                     isWeb: Platform.OS === 'web',
                                     windowWidth: screenWidth,
                                 }) ? (
@@ -1072,17 +1086,17 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 ) : null}
 
 
-                                {props.leadingControls}
+                                {!props.zenMode && props.leadingControls}
 
                                 {/* Git Status Badge (session only) */}
-                                {isSession && (
+                                {!props.zenMode && isSession && (
                                     <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                                 )}
 
-                                </View>}
+                                </View>
 
                                 {/* Right cluster: image picker + send (image sits at far right, next to send) */}
-                                <View style={styles.actionButtonsRight}>
+                                <View style={[styles.actionButtonsRight, isSession && props.discussionMode && styles.discussionActionsRight]}>
                                 {/* Inline execution controls are desktop affordances. Narrow Web and native
                                     layouts keep the compact composer and use the existing session menu. */}
                                 {props.trailingControls}

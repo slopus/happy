@@ -567,14 +567,14 @@ describe('SessionView Agent-space boundary', () => {
 
     afterEach(() => consoleErrorSpy.mockRestore());
 
-    it('keeps the discussion control outside the toolbar hidden by zen mode', async () => {
+    it('keeps the discussion action available in zen mode without a separate composer row', async () => {
         mocks.zenMode = true;
         mocks.session.metadata.flavor = 'codex';
         let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
         const composer = renderer.root.findByType('MessageComposer');
-        expect(composer.props.belowComposer.props.testID).toBe('session-discussion-mode');
-        expect(composer.props.belowComposer.props.selected).toBe(false);
+        expect(composer.props.belowComposer).toBeUndefined();
+        expect(composer.props.discussionMode).toMatchObject({ active: false, disabled: false });
         act(() => renderer.unmount());
     });
 

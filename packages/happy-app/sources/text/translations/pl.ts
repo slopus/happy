@@ -27,7 +27,7 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
-    discussionMode: { label: 'Discuss', active: 'Discussing', toggle: 'Toggle discussion mode', hint: 'Explore purpose through conversation; no implementation. Applies to your next message.', activeHint: 'Discussion only. Turn off to implement. Does not stop an already running turn.' },
+    discussionMode: { label: 'Discuss only', active: 'Discussing', toggle: 'Toggle discussion mode', hint: 'Explore purpose through conversation; no implementation. Applies to your next message.', activeHint: 'Discussion only. Turn off to implement. Does not stop an already running turn.' },
     composerContext: {
         referenceLimit: "Możesz dodać maksymalnie 8 odwołań.",
         addGroup: "Dodaj",

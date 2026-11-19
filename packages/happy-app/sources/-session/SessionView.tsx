@@ -2003,10 +2003,14 @@ function SessionViewLoaded({
     const composer = (
         <ChatComposer
             mode="session"
-            belowComposer={supportsDiscussion ? <GoalBoardButton variant="chip" selected={discussing} disabled={isTaskRunning} testID="session-discussion-mode" label={t('discussionMode.toggle')} tooltip={t(discussing ? 'discussionMode.activeHint' : 'discussionMode.hint')} onPress={() => {
-                const current = storage.getState().localSettings.sessionDiscussionModes;
-                storage.getState().applyLocalSettings({ sessionDiscussionModes: { ...current, [sessionId]: !discussing } });
-            }}><Ionicons name="chatbubbles-outline" size={16} color={discussing ? theme.colors.textLink : theme.colors.textSecondary} /><Text style={{ color: discussing ? theme.colors.textLink : theme.colors.textSecondary }}>{t(discussing ? 'discussionMode.active' : 'discussionMode.label')}</Text></GoalBoardButton> : undefined}
+            discussionMode={supportsDiscussion ? {
+                active: discussing,
+                disabled: isTaskRunning,
+                onToggle: () => {
+                    const current = storage.getState().localSettings.sessionDiscussionModes;
+                    storage.getState().applyLocalSettings({ sessionDiscussionModes: { ...current, [sessionId]: !discussing } });
+                },
+            } : undefined}
             composerHandleRef={composerHandleRef}
             placeholder={t('session.inputPlaceholder')}
             sessionId={sessionId}
