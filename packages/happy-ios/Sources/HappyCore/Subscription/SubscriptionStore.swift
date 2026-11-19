@@ -74,5 +74,20 @@ public enum StorePurchase: Equatable, Sendable {
     case pending
     case cancelled
     /// The store refused, or what it returned didn't verify.
-    case failed
+    case failed(StoreFailure)
+}
+
+/// Why the store's sheet came to nothing, as StoreKit said it.
+public enum StoreFailure: Equatable, Sendable {
+    /// The App Store couldn't be reached.
+    case network
+    /// This Apple ID or device may not buy: Screen Time, a restriction.
+    case notAllowed
+    /// The store refused the payment or its terms.
+    case paymentInvalid
+    /// The store doesn't sell the product here now, or not monthly.
+    case notOnSale
+    /// What the store returned didn't verify.
+    case unverified
+    case unknown
 }

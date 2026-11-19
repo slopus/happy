@@ -200,15 +200,38 @@ final class SubscriptionTests: XCTestCase {
         XCTAssertEqual(subscription.problem, .refused(status: 400))
     }
 
+    /// The second tap is told apart from nothing on sale: it opens nothing,
+    /// and says the first is under way, which observers hear start and end.
     func testASecondSubscribeWhileTheSheetIsOpenOpensNothing() async {
         let subscription = await ready()
+        var heard: [Bool] = []
+        let observation = subscription.observe { heard.append(subscription.purchasing) }
         store.next = .held
         let first = Task { await subscription.buy() }
         await waitFor { store.open }
-        assertEqual(await subscription.buy(), .unavailable)
+        XCTAssertTrue(subscription.purchasing)
+        XCTAssertEqual(subscription.offer, .onSale(price: "$19.99"))
+        assertEqual(await subscription.buy(), .inProgress)
         store.release(.cancelled)
         assertEqual(await first.value, .cancelled)
+        XCTAssertFalse(subscription.purchasing)
+        XCTAssertEqual(heard, [true, false])
         XCTAssertEqual(store.purchases.count, 1)
+        observation.invalidate()
+    }
+
+    /// The store's refusal keeps StoreKit's reason, and the next Subscribe opens the sheet again.
+    func testAStoreRefusalSaysWhyAndLeavesSubscribeOpen() async {
+        let subscription = await ready()
+        for failure: StoreFailure in [.network, .notAllowed, .paymentInvalid, .notOnSale, .unverified, .unknown] {
+            store.next = .fail(failure)
+            assertEqual(await subscription.buy(), .failed(failure))
+            XCTAssertFalse(subscription.purchasing)
+        }
+        store.next = .bought
+        assertEqual(await subscription.buy(), .purchased)
+        XCTAssertEqual(store.purchases.count, 7)
+        XCTAssertTrue(revenueCat.posted.count == 1 && store.finished.count == 1)
     }
 
     /// Ask to Buy, approved months later: posted for the customer it names, and granted.
@@ -565,7 +588,7 @@ final class SubscriptionTests: XCTestCase {
 
 /// The App Store: what it sells, what each sheet comes to, and what it holds.
 final class FakeStore: SubscriptionStore, @unchecked Sendable {
-    enum Next { case bought, pending, cancel, held }
+    enum Next { case bought, pending, cancel, held, fail(StoreFailure) }
 
     private let lock = NSLock()
     private var state = State()
@@ -616,6 +639,7 @@ final class FakeStore: SubscriptionStore, @unchecked Sendable {
         case .pending: return .pending
         case .cancel: return .cancelled
         case .held: return await withCheckedContinuation { continuation in with { $0.held = continuation } }
+        case .fail(let failure): return .failed(failure)
         }
     }
 

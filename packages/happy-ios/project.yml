@@ -194,9 +194,13 @@ targets:
       - path: TestHost
         excludes:
           - Info.plist
+          - TestHost.entitlements
     settings:
       base:
         PRODUCT_NAME: HappyUIKitTestHost
+        # A development install even signed ad hoc, so StoreKit takes
+        # HostedStoreKitPurchaseTests' configuration (SKTestSession).
+        CODE_SIGN_ENTITLEMENTS: TestHost/TestHost.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.uikit-testhost
         GENERATE_INFOPLIST_FILE: YES

@@ -154,9 +154,26 @@ extension Subscription.PurchaseResult {
         case .purchased: .paywallPurchased(product: .pro)
         case .pending: .paywallError(product: .pro, errorCode: .pending)
         case .cancelled: .paywallCancelled(product: .pro)
-        case .failed: .paywallError(product: .pro, errorCode: .unknown)
+        case .failed(let failure): .paywallError(product: .pro, errorCode: .init(failure))
         case .unconfirmed: .paywallError(product: .pro, errorCode: .verificationFailed)
         case .unavailable: .paywallError(product: .pro, errorCode: .storeUnavailable)
+        case .inProgress: .paywallError(product: .pro, errorCode: .purchaseInProgress)
+        }
+    }
+}
+
+extension AnalyticsEvent.PaywallErrorCode {
+    /// Why the store's sheet came to nothing. Only nothing on sale is
+    /// `store_unavailable`; a Subscribe while one is under way is
+    /// `purchase_in_progress`.
+    init(_ failure: StoreFailure) {
+        self = switch failure {
+        case .network: .network
+        case .notAllowed: .notAllowed
+        case .paymentInvalid: .paymentInvalid
+        case .notOnSale: .storeUnavailable
+        case .unverified: .verificationFailed
+        case .unknown: .unknown
         }
     }
 }

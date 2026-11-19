@@ -42,6 +42,7 @@ extension Strings {
         static var previewFooter: String { "\(Strings.Offer.voiceHours) hours of real-time voice each month, and it supports Happy. Test preview: nothing is charged." }
         static var notYet: String { "Not on sale yet" }
         static var notYetHint: String { "Voice subscriptions aren’t on sale yet." }
+        static var buyingHint: String { "The App Store is opening." }
         static var comingFooter: String { "Sending boba every month will support Happy and come with \(Strings.Offer.voiceHours) hours of real-time voice. It isn’t on sale yet." }
         static var restoreHint: String { "Nothing to restore until voice subscriptions are on sale." }
     }

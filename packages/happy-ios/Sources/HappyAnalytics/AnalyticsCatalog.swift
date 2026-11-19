@@ -342,6 +342,7 @@ extension AnalyticsEvent {
     public enum PaywallErrorCode: String, AnalyticsWord {
         case storeUnavailable = "store_unavailable", paymentInvalid = "payment_invalid", notAllowed = "not_allowed"
         case network, verificationFailed = "verification_failed", nothingToRestore = "nothing_to_restore", pending, unknown
+        case purchaseInProgress = "purchase_in_progress"
     }
 
     // MARK: Usage

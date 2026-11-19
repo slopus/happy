@@ -400,7 +400,7 @@ enum class PaywallStep(val event: String) {
 enum class PurchaseError(override val wire: String) : Wire {
     StoreUnavailable("store_unavailable"), PaymentInvalid("payment_invalid"), NotAllowed("not_allowed"),
     Network("network"), VerificationFailed("verification_failed"), NothingToRestore("nothing_to_restore"), Pending("pending"),
-    Unknown("unknown"),
+    Unknown("unknown"), PurchaseInProgress("purchase_in_progress"),
 }
 
 /** A failed create's reason, as desktop's create events have it. */
