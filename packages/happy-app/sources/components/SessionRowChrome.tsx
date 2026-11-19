@@ -6,6 +6,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { useSessionQuickActions, type SessionActionItem } from '@/hooks/useSessionQuickActions';
+import { SessionDeleteConfirmation } from './SessionDeleteConfirmation';
 import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { SessionRowData, useMachine, useSession } from '@/sync/storage';
 import { t } from '@/text';
@@ -254,6 +255,7 @@ export const SessionRowDetails = React.memo(function SessionRowDetails({
 export const SessionRowActions = React.memo(function SessionRowActions({
     contextAnchor,
     onContextAnchorChange,
+    onDeleteConfirmationChange,
     onOrganize,
     onStartSelection,
     sessionId,
@@ -262,6 +264,7 @@ export const SessionRowActions = React.memo(function SessionRowActions({
 }: {
     contextAnchor: SessionActionsAnchor | null;
     onContextAnchorChange: (anchor: SessionActionsAnchor | null) => void;
+    onDeleteConfirmationChange?: (visible: boolean) => void;
     onOrganize?: () => void;
     onStartSelection?: () => void;
     sessionId: string;
@@ -288,6 +291,7 @@ export const SessionRowActions = React.memo(function SessionRowActions({
         }
 
         const closeOnOutsidePointer = (event: PointerEvent) => {
+            if ((event.target as Element)?.closest?.('[data-testid="session-delete-confirmation"]')) return;
             if (!actionClusterRef.current?.contains?.(event.target)) {
                 onContextAnchorChange(null);
             }
@@ -316,7 +320,7 @@ export const SessionRowActions = React.memo(function SessionRowActions({
         <View ref={actionClusterRef} style={styles.actionCluster}>
             <View style={styles.actions} testID={`session-row-actions-${sessionId}`}>
                 {!useMoreAction ? (
-                    <InlineSessionRowActions session={session} statusLabel={statusLabel} visible={showInline} />
+                    <InlineSessionRowActions onDeleteConfirmationChange={onDeleteConfirmationChange} session={session} statusLabel={statusLabel} visible={showInline} />
                 ) : null}
                 {useMoreAction ? (
                     <SessionRowActionButton
@@ -331,6 +335,7 @@ export const SessionRowActions = React.memo(function SessionRowActions({
                 anchor={contextAnchor}
                 extraActions={extraActions}
                 inline={Platform.OS === 'web' && useMoreAction}
+                onDeleteConfirmationChange={onDeleteConfirmationChange}
                 onClose={() => onContextAnchorChange(null)}
                 onSelectSession={onStartSelection}
                 sessionId={sessionId}
@@ -342,7 +347,8 @@ export const SessionRowActions = React.memo(function SessionRowActions({
 
 // Phone rows only need the menu trigger. Keep the full action state machine
 // out of their render path; the popover initializes it when opened.
-function InlineSessionRowActions({ session, statusLabel, visible }: {
+function InlineSessionRowActions({ session, statusLabel, visible, onDeleteConfirmationChange }: {
+    onDeleteConfirmationChange?: (visible: boolean) => void;
     session: NonNullable<ReturnType<typeof useSession>>;
     statusLabel: string;
     visible: boolean;
@@ -350,7 +356,12 @@ function InlineSessionRowActions({ session, statusLabel, visible }: {
     const styles = stylesheet;
     const quickActions = useSessionQuickActions(session);
     const sessionArchived = isSessionArchived(session);
-    if (!visible) return null;
+    const [pendingDelete, setPendingDelete] = React.useState<{ sessionId: string; anchor: SessionActionsAnchor } | null>(null);
+    React.useEffect(() => setPendingDelete(null), [session.id]);
+    const deleteAnchor = pendingDelete?.sessionId === session.id ? pendingDelete.anchor : null;
+    const cancelDelete = React.useCallback(() => setPendingDelete(null), []);
+    // Keep the confirmation mounted when the pointer leaves the hover actions.
+    if (!visible && !deleteAnchor) return null;
     const handleAction = (callback: () => void) => (event: any) => {
         stopSessionRowActionPropagation(event);
         callback();
@@ -371,9 +382,16 @@ function InlineSessionRowActions({ session, statusLabel, visible }: {
                 disabled={quickActions.deletingSession}
                 icon="trash"
                 label={t('sessionInfo.deleteSession')}
-                onPress={handleAction(quickActions.deleteSession)}
+                onPress={(event) => {
+                    stopSessionRowActionPropagation(event);
+                    setPendingDelete({ sessionId: session.id, anchor: anchorFromEvent(event) });
+                }}
                 testID="session-row-delete-action"
             />
+            {deleteAnchor ? <SessionDeleteConfirmation key={session.id} onVisibilityChange={onDeleteConfirmationChange} anchor={deleteAnchor} onCancel={cancelDelete} onConfirm={() => {
+                cancelDelete();
+                quickActions.confirmDeleteSession();
+            }} /> : null}
             <SessionRowActionButton
                 disabled={quickActions.archivingSession || quickActions.restoringSession}
                 icon={sessionArchived ? 'undo' : 'archive'}

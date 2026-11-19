@@ -643,6 +643,8 @@ export function useSessionQuickActions(
         canArchive: session.active,
         canDelete: true,
         deleteSession,
+        // For callers that already presented their own local confirmation.
+        confirmDeleteSession: performDelete,
         deletingSession,
         canCopySessionMetadata,
         canResume: resumeAvailability.canResume,

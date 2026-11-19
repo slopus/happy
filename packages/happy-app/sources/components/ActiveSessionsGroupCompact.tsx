@@ -306,6 +306,7 @@ export const CompactSessionRow = React.memo(({ nested = false, onOrganize, sessi
     const router = useRouter();
     const organization = useSetting('sidebarOrganization');
     const compactTitle = useWindowDimensions().width < 600;
+    const [deleteConfirmationVisible, setDeleteConfirmationVisible] = React.useState(false);
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const disclosure = useSessionRowDisclosure(session.name);
     const presentation = useSessionRowPresentation(session);
@@ -469,6 +470,7 @@ export const CompactSessionRow = React.memo(({ nested = false, onOrganize, sessi
             {!selectionMode ? (
                 <SessionRowActions
                     contextAnchor={actionsAnchor}
+                    onDeleteConfirmationChange={setDeleteConfirmationVisible}
                     onContextAnchorChange={setActionsAnchor}
                     onOrganize={onOrganize}
                     onStartSelection={onStartSelection ? () => onStartSelection(session.id) : undefined}
@@ -490,7 +492,7 @@ export const CompactSessionRow = React.memo(({ nested = false, onOrganize, sessi
             <SessionRowDetails
                 anchor={disclosure.detailsAnchor}
                 presentation={presentation}
-                visible={!selectionMode && disclosure.visible}
+                visible={!selectionMode && disclosure.visible && !deleteConfirmationVisible}
             />
         </View>
     );

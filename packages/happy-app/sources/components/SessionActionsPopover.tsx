@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Platform, Pressable, Modal as RNModal, Text, View, useWindowDimensions } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
+import { SessionDeleteConfirmation } from './SessionDeleteConfirmation';
 import { Typography } from '@/constants/Typography';
 import { useSessionQuickActions, type SessionActionItem } from '@/hooks/useSessionQuickActions';
 import { useSession } from '@/sync/storage';
@@ -25,6 +26,7 @@ interface SessionActionsPopoverProps {
     extraActions?: SessionActionItem[];
     onAfterArchive?: () => void;
     onAfterDelete?: () => void;
+    onDeleteConfirmationChange?: (visible: boolean) => void;
     onSelectSession?: () => void;
     onClose: () => void;
     sessionId: string;
@@ -111,6 +113,7 @@ function VisibleSessionActionsPopover({
     extraActions,
     onAfterArchive,
     onAfterDelete,
+    onDeleteConfirmationChange,
     onSelectSession,
     onClose,
     sessionId,
@@ -121,7 +124,10 @@ function VisibleSessionActionsPopover({
     const { theme } = useUnistyles();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const session = useSession(sessionId);
-    const { actionItems } = useSessionQuickActions(session!, {
+    const [deleteConfirmationSessionId, setDeleteConfirmationSessionId] = React.useState<string | null>(null);
+    const cancelDelete = React.useCallback(() => { setDeleteConfirmationSessionId(null); onClose(); }, [onClose]);
+    React.useEffect(() => { setDeleteConfirmationSessionId(null); }, [visible, sessionId]);
+    const { actionItems, confirmDeleteSession } = useSessionQuickActions(session!, {
         onAfterArchive,
         onAfterDelete,
         onSelectSession,
@@ -153,9 +159,13 @@ function VisibleSessionActionsPopover({
     }, [actions.length, anchor, windowHeight, windowWidth]);
 
     const handleActionPress = React.useCallback((action: SessionActionItem) => {
+        if (Platform.OS === 'web' && action.id === 'delete') {
+            setDeleteConfirmationSessionId(sessionId);
+            return;
+        }
         onClose();
         action.onPress();
-    }, [onClose]);
+    }, [onClose, sessionId]);
 
     if (!visible || !anchor || !session) {
         return null;
@@ -163,6 +173,13 @@ function VisibleSessionActionsPopover({
 
     if (!position) {
         return null;
+    }
+
+    if (deleteConfirmationSessionId === sessionId) {
+        return <SessionDeleteConfirmation key={sessionId} onVisibilityChange={onDeleteConfirmationChange} anchor={anchor} onCancel={cancelDelete} onConfirm={() => {
+            cancelDelete();
+            confirmDeleteSession();
+        }} />;
     }
 
     const anchorTop = anchor.y;

@@ -7,11 +7,11 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { SessionActionsPopover } from './SessionActionsPopover';
 
 const mocks = vi.hoisted(() => ({
-    executions: vi.fn(), pending: Promise.resolve(),
+    os: 'android', remove: vi.fn(), oldDelete: vi.fn(), executions: vi.fn(), pending: Promise.resolve(),
     session: { id: 'session-1', metadata: {} } as any,
 }));
 vi.mock('react-native', () => ({
-    Platform: { OS: 'android' },
+    Platform: { get OS() { return mocks.os; } },
     Pressable: 'Pressable', View: 'View', Text: 'Text', Modal: 'Modal',
     useWindowDimensions: () => ({ width: 400, height: 900 }),
 }));
@@ -26,7 +26,8 @@ vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: () => {
     const [, perform] = useHappyAction(async () => { mocks.executions(); await mocks.pending; });
     return {
-        actionItems: [{ id: 'pin', label: 'Pin', icon: 'pin', onPress: () => { perform(); } }],
+        actionItems: [{ id: 'pin', label: 'Pin', icon: 'pin', onPress: () => { perform(); } }, { id: 'delete', label: 'Delete', icon: 'trash', onPress: mocks.oldDelete }],
+        confirmDeleteSession: mocks.remove,
     };
 } }));
 
@@ -63,4 +64,40 @@ it('keeps the real useHappyAction in-flight guard when the menu is reopened', as
         pressAction();
         expect(mocks.executions).toHaveBeenCalledTimes(2);
     } finally { await act(async () => { finish(); await mocks.pending; }); }
+});
+
+it('replaces the web menu with an anchored confirmation and dismisses outside without deleting', () => {
+    mocks.os = 'web';
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = (id: string) => renderer.root.findAll((n: any) => typeof n.type === 'string' && n.props.testID === id)[0];
+    const deleteAction = () => renderer.root.findAll((n: any) => n.type === 'Pressable' && n.findAllByType('Ionicons').some((icon: any) => icon.props.name === 'trash'))[0];
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    act(() => deleteAction().props.onPress());
+    expect(host('session-delete-confirmation')).toBeDefined();
+    expect(mocks.oldDelete).not.toHaveBeenCalled();
+    expect(mocks.remove).not.toHaveBeenCalled();
+    act(() => host('session-delete-outside').props.onPress({ stopPropagation() {} }));
+    expect(host('session-delete-confirmation')).toBeUndefined();
+    expect(mocks.remove).not.toHaveBeenCalled();
+    act(() => reopen());
+    act(() => deleteAction().props.onPress());
+    act(() => host('session-delete-confirm').props.onPress({ stopPropagation() {} }));
+    expect(mocks.remove).toHaveBeenCalledOnce();
+    expect(mocks.oldDelete).not.toHaveBeenCalled();
+    mocks.os = 'android';
+});
+
+it('drops the old confirmation when a reused menu switches session, including switching back', () => {
+    mocks.os = 'web';
+    const host = (id: string) => renderer.root.findAll((n: any) => typeof n.type === 'string' && n.props.testID === id)[0];
+    const menu = (id: string) => <SessionActionsPopover visible anchor={{ type: 'point', x: 100, y: 100 }} onClose={() => {}} sessionId={id} />;
+    act(() => { renderer = TestRenderer.create(menu('session-1')); });
+    const remove = renderer.root.findAll((n: any) => n.type === 'Pressable' && n.findAllByType('Ionicons').some((icon: any) => icon.props.name === 'trash'))[0];
+    act(() => remove.props.onPress());
+    expect(host('session-delete-confirmation')).toBeDefined();
+    act(() => renderer.update(menu('session-2')));
+    expect(host('session-delete-confirmation')).toBeUndefined();
+    act(() => renderer.update(menu('session-1')));
+    expect(host('session-delete-confirmation')).toBeUndefined();
+    mocks.os = 'android';
 });

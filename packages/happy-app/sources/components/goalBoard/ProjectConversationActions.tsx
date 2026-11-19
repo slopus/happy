@@ -1,5 +1,7 @@
 import * as React from 'react';
-import { Text } from 'react-native';
+import { Platform, Text, type View } from 'react-native';
+import { SessionDeleteConfirmation } from '@/components/SessionDeleteConfirmation';
+import type { SessionActionsAnchor } from '@/components/SessionActionsPopover';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { useSession } from '@/sync/storage';
@@ -16,10 +18,33 @@ export function ProjectConversationActions({ id, onRemoved, disabled, testIDPref
 function Actions({ session, onRemoved, disabled, testIDPrefix, showLabels, onBeforeAction, render }: { session: Session; onRemoved: () => void; disabled?: boolean; testIDPrefix: string; showLabels?: boolean; onBeforeAction?: () => void; render?: (actions: React.ReactNode) => React.ReactNode }) {
     const { theme } = useUnistyles();
     const actions = useSessionQuickActions(session, { onAfterArchive: onRemoved, onAfterDelete: onRemoved });
+    const deleteButton = React.useRef<View>(null);
+    const [confirmation, setConfirmation] = React.useState<{ sessionId: string; anchor: SessionActionsAnchor } | null>(null);
+    React.useEffect(() => setConfirmation(null), [session.id]);
+    const cancelDelete = React.useCallback(() => setConfirmation(null), []);
     const busy = disabled || actions.archivingSession || actions.deletingSession || actions.restoringSession;
+    const requestDelete = () => {
+        if (busy) return;
+        if (Platform.OS === 'web' && !showLabels) {
+            deleteButton.current?.measureInWindow((x, y, width, height) => {
+                setConfirmation({ sessionId: session.id, anchor: { type: 'rect', x, y, width, height } });
+            });
+            return;
+        }
+        onBeforeAction?.();
+        void actions.deleteSession();
+    };
     const buttons = <>
-        <Button variant={showLabels ? "row" : "toolbar"} touchTarget={showLabels} label={t('sessionInfo.deleteSession')} disabled={busy} testID={`${testIDPrefix}-delete-conversation`} onPress={() => { onBeforeAction?.(); void actions.deleteSession(); }}><Ionicons name="trash-outline" size={20} color={theme.colors.textSecondary} />{showLabels && <Text style={{ color: theme.colors.text }}>{t('sessionInfo.deleteSession')}</Text>}</Button>
+        <Button ref={deleteButton} variant={showLabels ? "row" : "toolbar"} touchTarget={showLabels} label={t('sessionInfo.deleteSession')} disabled={busy} testID={`${testIDPrefix}-delete-conversation`} onPress={requestDelete}><Ionicons name="trash-outline" size={20} color={theme.colors.textSecondary} />{showLabels && <Text style={{ color: theme.colors.text }}>{t('sessionInfo.deleteSession')}</Text>}</Button>
         <Button variant={showLabels ? "row" : "toolbar"} touchTarget={showLabels} label={t('sessionInfo.archiveSession')} disabled={busy} testID={`${testIDPrefix}-archive-conversation`} onPress={() => { onBeforeAction?.(); void actions.archiveSession(); }}><Ionicons name="archive-outline" size={20} color={theme.colors.textSecondary} />{showLabels && <Text style={{ color: theme.colors.text }}>{t('sessionInfo.archiveSession')}</Text>}</Button>
     </>;
-    return render ? render(buttons) : buttons;
+    return <>
+        {render ? render(buttons) : buttons}
+        {confirmation?.sessionId === session.id && !busy ? <SessionDeleteConfirmation
+            key={session.id} anchor={confirmation.anchor} onCancel={cancelDelete} onConfirm={() => {
+                cancelDelete();
+                onBeforeAction?.();
+                actions.confirmDeleteSession();
+            }} /> : null}
+    </>;
 }

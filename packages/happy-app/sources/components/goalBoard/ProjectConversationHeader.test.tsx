@@ -3,25 +3,25 @@ import { act } from 'react';
 // @ts-expect-error react-test-renderer has no declarations.
 import TestRenderer from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mock = vi.hoisted(() => ({ session: { id: 'one', active: false, metadata: {} } as any, sessions: {} as Record<string, any>, deleted: new Set<string>(), busy: false, callbacks: {} as any, archive: vi.fn(), remove: vi.fn(), restore: vi.fn(), alert: vi.fn(), unmount: vi.fn() }));
-vi.mock('react-native', () => ({ Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View', Platform: { OS: 'native' }, useWindowDimensions: () => ({ width: 1600, height: 900 }) }));
+const mock = vi.hoisted(() => ({ os: 'native', confirmRemove: vi.fn(), session: { id: 'one', active: false, metadata: {} } as any, sessions: {} as Record<string, any>, deleted: new Set<string>(), busy: false, callbacks: {} as any, archive: vi.fn(), remove: vi.fn(), restore: vi.fn(), alert: vi.fn(), unmount: vi.fn() }));
+vi.mock('react-native', () => ({ Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View', Platform: { get OS() { return mock.os; } }, useWindowDimensions: () => ({ width: 1600, height: 900 }) }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Icon' }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
-vi.mock('react-native-unistyles', () => { const theme = { colors: { modal: { backdrop: 'backdrop' }, shadow: {}, surface: 'surface', divider: 'divider' } }; return { useUnistyles: () => ({ theme }), StyleSheet: { create: (f: any) => f(theme) } }; });
+vi.mock('react-native-unistyles', () => { const theme = { colors: { modal: { backdrop: 'backdrop' }, status: {}, shadow: {}, surface: 'surface', divider: 'divider' } }; return { useUnistyles: () => ({ theme }), StyleSheet: { create: (f: any) => f(theme) } }; });
 vi.mock('./GoalBoardButton', () => ({ GoalBoardButton: React.forwardRef((props: any, ref: any) => React.createElement('Button', { ...props, ref })) }));
 vi.mock('@/sync/storage', () => ({ useSession: (id: string) => mock.sessions[id], storage: Object.assign((select: any) => select({ sessions: mock.sessions }), { getState: () => ({ sessions: mock.sessions }) }) }));
 vi.mock('@/sync/projectSessionLinks', () => ({ isProjectSessionDeleted: (id: string) => mock.deleted.has(id) }));
 vi.mock('@/modal', () => ({ Modal: { alert: mock.alert } }));
 vi.mock('@/hooks/useProjectModalEscape', () => ({ useProjectModalEscape: () => {} }));
-vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: (_session: any, callbacks: any) => { React.useEffect(() => () => mock.unmount(), []); mock.callbacks = callbacks; return { archiveSession: mock.archive, deleteSession: mock.remove, restoreSession: mock.restore, archivingSession: mock.busy }; } }));
+vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: (_session: any, callbacks: any) => { React.useEffect(() => () => mock.unmount(), []); mock.callbacks = callbacks; return { archiveSession: mock.archive, deleteSession: mock.remove, confirmDeleteSession: mock.confirmRemove, restoreSession: mock.restore, archivingSession: mock.busy }; } }));
 import { ProjectConversationHeader } from './ProjectConversationHeader';
 let renderer: any;
 const select = vi.fn(), globalChat = vi.fn(), close = vi.fn();
 const props = { testIDPrefix: 'test', selectedId: 'one', sessions: [{ sessionId: 'one', title: 'Old chat', directory: '/task', updatedAt: 1, executed: false }], onSelect: select, onGlobal: globalChat, onClose: close, manage: true };
 function setup(patch: any = {}) { act(() => { if (renderer) renderer.update(<ProjectConversationHeader {...props} {...patch} />); else renderer = TestRenderer.create(<ProjectConversationHeader {...props} {...patch} />, { createNodeMock: () => ({ measureInWindow: (f: any) => f(100, 80, 100, 36), focus: vi.fn() }) }); }); }
 const press = (id: string) => act(() => renderer.root.findAllByType('Button').find((n: any) => n.props.testID === id).props.onPress());
-beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; vi.clearAllMocks(); mock.session = { id: 'one', active: false, metadata: {} }; mock.sessions = { one: mock.session, two: { id: 'two', metadata: {} } }; mock.deleted.clear(); mock.busy = false; });
+beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; vi.clearAllMocks(); mock.os = 'native'; mock.session = { id: 'one', active: false, metadata: {} }; mock.sessions = { one: mock.session, two: { id: 'two', metadata: {} } }; mock.deleted.clear(); mock.busy = false; });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; });
 it('provides distinct global and close actions without changing the selected history', () => { setup(); press('test-global-chat'); press('test-close-chat'); expect(globalChat).toHaveBeenCalledTimes(1); expect(close).toHaveBeenCalledTimes(1); expect(select).not.toHaveBeenCalled(); });
 it('labels global history independently and still switches its own sessions', () => { setup({ scope: 'global', onGlobal: undefined }); expect(renderer.root.findAllByType('Button').find((n: any) => n.props.testID === 'test-history').props.label).toBe('projectGoals.globalHistory'); press('test-history'); press('test-history-one'); expect(select).toHaveBeenCalledExactlyOnceWith('one'); expect(renderer.root.findAllByType('Modal')).toHaveLength(0); });
@@ -116,4 +116,30 @@ it('keeps lifecycle action hooks mounted after closing the mobile sheet for conf
     expect(mock.unmount).not.toHaveBeenCalled();
     act(() => mock.callbacks.onAfterDelete());
     expect(close).toHaveBeenCalledTimes(1);
+});
+
+it('anchors desktop header delete confirmation to the trash button and cancels without deleting', () => {
+    mock.os = 'web';
+    setup({ scope: 'global' });
+    press('test-delete-conversation');
+    const host = (id: string) => renderer.root.findAll((n: any) => typeof n.type === 'string' && n.props.testID === id)[0];
+    expect(host('session-delete-confirmation')).toBeDefined();
+    expect(host('session-delete-arrow')).toBeDefined();
+    expect(mock.remove).not.toHaveBeenCalled();
+    expect(mock.confirmRemove).not.toHaveBeenCalled();
+    act(() => host('session-delete-cancel').props.onPress({ stopPropagation() {} }));
+    expect(host('session-delete-confirmation')).toBeUndefined();
+    expect(mock.confirmRemove).not.toHaveBeenCalled();
+    press('test-delete-conversation');
+    act(() => host('session-delete-confirm').props.onPress({ stopPropagation() {} }));
+    expect(mock.confirmRemove).toHaveBeenCalledOnce();
+    expect(mock.remove).not.toHaveBeenCalled();
+});
+it('dismisses a pending header confirmation when a different conversation is selected', () => {
+    mock.os = 'web'; setup(); press('test-delete-conversation');
+    setup({ selectedId: 'two' });
+    expect(renderer.root.findAllByProps({ testID: 'session-delete-confirmation' })).toHaveLength(0);
+    setup({ selectedId: 'one' });
+    expect(renderer.root.findAllByProps({ testID: 'session-delete-confirmation' })).toHaveLength(0);
+    expect(mock.confirmRemove).not.toHaveBeenCalled();
 });
