@@ -41,7 +41,7 @@ export const GoalProjectSchema = z.object({
 });
 export type GoalProject = z.infer<typeof GoalProjectSchema>;
 export const GoalTaskSessionSchema = z.object({
-    sessionId: label, title: label, directory: path, updatedAt: z.number(), executed: z.boolean(), active: z.boolean().optional(),
+    sessionId: label, title: label, directory: path, updatedAt: z.number(), executed: z.boolean(), active: z.boolean().optional(), lifecycleState: z.string().max(64).optional(),
 });
 export type GoalTaskSession = z.infer<typeof GoalTaskSessionSchema>;
 export const GoalBoardBindingSchema = z.object({ featurePath: path, taskId: label.optional(), parentSessionId: label.optional() });

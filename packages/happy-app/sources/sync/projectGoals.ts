@@ -3,6 +3,8 @@ import { GoalProjectSchema, GoalScopeOverviewSchema, GoalBoardSnapshotSchema, Go
 import { projectFileHash } from './projectFileHash';
 import { assertAccountRuntime, getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { isProjectSessionDeleted } from './projectSessionLinks';
+import { storage } from './storage';
+import { isProjectConversationArchived } from '@/sync/projectConversationLifecycle';
 import { apiSocket } from './apiSocket';
 import { machineStartGoalTask, machineStartGoalPreviewChat } from './ops';
 import type { FileWorkspaceBinding } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
@@ -100,7 +102,10 @@ export async function loadProjectTaskHistory(machineId: string, featurePath: str
 }
 export function latestProjectTaskConversation(sessions: z.infer<typeof GoalTaskSessionSchema>[], directory: string) {
     const normalized = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
-    return sessions.filter(session => !isProjectSessionDeleted(session.sessionId) && normalized(session.directory) === normalized(directory))
+    return sessions.filter(session => {
+        const live = storage.getState().sessions[session.sessionId];
+        return !isProjectSessionDeleted(session.sessionId) && !isProjectConversationArchived(session, live) && normalized(session.directory) === normalized(directory);
+    })
         .sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId))[0];
 }
 
@@ -206,5 +211,8 @@ export async function loadProjectScope(machineId: string, scopePath: string, rev
 }
 export async function loadProjectScopeHistory(machineId: string, scopePath: string) {
     const response = z.object({ success: z.literal(true), sessions: z.array(GoalTaskSessionSchema).max(25) }).parse(await projectGoalRequest(machineId, 'goalScopeHistory', { scopePath }));
-    return response.sessions.filter(session => !isProjectSessionDeleted(session.sessionId) && session.directory === scopePath);
+    return response.sessions.filter(session => {
+        const live = storage.getState().sessions[session.sessionId];
+        return !isProjectSessionDeleted(session.sessionId) && !isProjectConversationArchived(session, live) && session.directory === scopePath;
+    });
 }

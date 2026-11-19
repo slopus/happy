@@ -3,13 +3,14 @@ import { storage } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { isProjectSessionDeleted } from '@/sync/projectSessionLinks';
 
 /** A machine-verified history link can enter SessionView's normal loading and
  * recovery flow. Explicit live ownership always overrides an old history link. */
 export function useProjectConversation(id: string | undefined, known: boolean, accepts: (metadata: NonNullable<Session['metadata']>) => boolean) {
     const session = storage(state => id ? state.sessions[id] : undefined);
-    const rejected = !!id && (isProjectSessionDeleted(id) || (!!session?.metadata && !accepts(session.metadata)));
+    const rejected = !!id && (isProjectSessionDeleted(id) || (!!session && isSessionArchived(session)) || (!!session?.metadata && !accepts(session.metadata)));
     const verified = !!id && !rejected && (known || !!session?.metadata);
     const [attempt, retry] = React.useReducer(value => value + 1, 0);
     const [failure, setFailure] = React.useState<{ id: string; attempt: number }>();

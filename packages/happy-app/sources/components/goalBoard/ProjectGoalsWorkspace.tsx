@@ -19,6 +19,8 @@ import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName } from '@/utils/sessionUtils';
+import { isSessionArchived } from '@/utils/sessionLifecycle';
+import { isProjectConversationArchived } from '@/sync/projectConversationLifecycle';
 import { ensureSessionHydratedWithRetry } from '@/sync/ensureSessionHydratedWithRetry';
 import { machineStartGoalAuthor, type DirectoryEntry } from '@/sync/ops';
 import { loadProjectScopeHistory, loadProjectTaskHistory, launchProjectGoalTask, projectGoalRequest, projectTaskFiles, taskApproval, taskCanExecute, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, ProjectGoalLaunchError, type ProjectHistoryCursor, isReadOnlyProjectPreview, type ProjectHistoryCandidate } from '@/sync/projectGoals';
@@ -280,6 +282,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         finally { cardOpening.current = false; if (alive.current) setBusy(false); }
     };
     const globalAttempt = React.useRef<{ scope: string; id: string } | undefined>(undefined);
+    const pendingGlobal = React.useRef(new Map<string, GoalTaskSession>());
     const openGlobalConversation = async () => {
         if (cardOpening.current || busy || !feature) return;
         cardOpening.current = true; setBusy(true); setActionError(null);
@@ -289,10 +292,14 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
             const key = projectCacheKey('history', machineId, feature.featurePath);
             const cached = readProjectCache(key, projectHistorySchema)?.value.sessions ?? [];
             const fresh = data.offline ? [] : await loadProjectScopeHistory(machineId, feature.featurePath);
-            const sessions = [...new Map([...cached, ...fresh].map(session => [session.sessionId, session])).values()]
+            const pending = pendingGlobal.current.get(key);
+            if (pending && (fresh.some(session => session.sessionId === pending.sessionId) || storage.getState().sessions[pending.sessionId]?.metadata)) pendingGlobal.current.delete(key);
+            const candidates = data.offline ? cached : [...fresh, ...(pendingGlobal.current.has(key) ? [pendingGlobal.current.get(key)!] : [])];
+            const sessions = [...new Map(candidates.map(session => [session.sessionId, session])).values()]
                 .filter(session => {
-                    const metadata = storage.getState().sessions[session.sessionId]?.metadata;
-                    return session.directory === feature.featurePath && !isProjectSessionDeleted(session.sessionId) && (!metadata || (metadata.machineId === machineId && (!metadata.goalBoard || (!metadata.goalBoard.taskId && metadata.goalBoard.featurePath === feature.featurePath))));
+                    const live = storage.getState().sessions[session.sessionId];
+                    const metadata = live?.metadata;
+                    return session.directory === feature.featurePath && !isProjectSessionDeleted(session.sessionId) && !isProjectConversationArchived(session, live) && (!metadata || (metadata.machineId === machineId && (!metadata.goalBoard || (!metadata.goalBoard.taskId && metadata.goalBoard.featurePath === feature.featurePath))));
                 })
                 .sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
             if (!current()) return;
@@ -304,7 +311,8 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 if (result.type !== 'success') throw new Error(result.type === 'error' ? result.errorMessage : t('projectGoals.sessionUnavailable'));
                 id = result.sessionId;
                 if (!current()) return;
-                sessions.unshift({ sessionId: id, title: feature.title, directory: feature.featurePath, updatedAt: Date.now(), executed: false });
+                const linked = { sessionId: id, title: feature.title, directory: feature.featurePath, updatedAt: Date.now(), executed: false };
+                pendingGlobal.current.set(key, linked); sessions.unshift(linked);
             }
             writeProjectCache(key, { sessions });
             globalAttempt.current = undefined;
@@ -480,12 +488,13 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const [localHistory, setLocalHistory] = React.useState<GoalTaskSession[]>([]);
     const lifetime = React.useRef({ alive: true });
     const focused = React.useRef(true);
-    useFocusEffect(React.useCallback(() => { focused.current = true; return () => { focused.current = false; }; }, []));
+    const focusEpoch = React.useRef(0);
+    useFocusEffect(React.useCallback(() => { focused.current = true; focusEpoch.current++; return () => { focused.current = false; focusEpoch.current++; }; }, []));
     const action = React.useRef<{ key: string; id: string; uncertain: boolean } | null>(null);
     const opening = React.useRef(false);
     React.useEffect(() => { lifetime.current.alive = true; return () => { lifetime.current.alive = false; }; }, []);
     const historyFromStore = storage(state => Object.values(state.sessions)
-        .map(session => `${session.id}:${session.updatedAt}:${session.metadata?.machineId}:${session.metadata?.path}:${session.metadata?.goalBoard?.featurePath}:${session.metadata?.goalBoard?.taskId}`).sort().join('|'));
+        .map(session => `${session.id}:${session.updatedAt}:${session.metadata?.machineId}:${session.metadata?.path}:${session.metadata?.goalBoard?.featurePath}:${session.metadata?.goalBoard?.taskId}:${isSessionArchived(session)}`).sort().join('|'));
     const deletionRevision = React.useSyncExternalStore(subscribeProjectSessionDeletions, getProjectSessionDeletionRevision, getProjectSessionDeletionRevision);
     const history = React.useMemo(() => {
         return mergeProjectTaskHistory([...taskHistory.sessions, ...localHistory], Object.values(storage.getState().sessions), { machineId, featurePath, taskId: task.id, directory: workspace.root });
@@ -528,6 +537,19 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
         } }
         finally { opening.current = false; if (lifetime.current.alive) setBusy(false); }
     };
+    const resolveNextConversation = taskHistory.nextCursor ? async () => {
+        const epoch = focusEpoch.current;
+        try {
+            const page = await readTaskCardHistory(cursor => loadProjectTaskHistory(machineId, featurePath, task.id, cursor ?? taskHistory.nextCursor, undefined, taskHistory.verification),
+                sessions => mergeProjectTaskHistory(sessions, Object.values(storage.getState().sessions), { machineId, featurePath, taskId: task.id, directory: workspace.root })[0]);
+            if (!lifetime.current.alive || !focused.current || focusEpoch.current !== epoch) throw new Error('Project conversation lookup cancelled');
+            setLocalHistory(values => [...new Map([...values, ...page.sessions].map(session => [session.sessionId, session])).values()]);
+            return page.conversation?.sessionId;
+        } catch (error) {
+            if (lifetime.current.alive && focused.current && focusEpoch.current === epoch) setError(error instanceof Error ? error.message : String(error));
+            throw error;
+        }
+    } : undefined;
     const openFile = async (path: string) => {
         if (mobile) { props.openReader(path); return; }
         setCompactTab('file');
@@ -551,7 +573,8 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const fileOpen = workspace.enabled && workspace.snapshot.open;
     const maximized = fileOpen && workspace.maximized;
     React.useEffect(() => { if (!fileOpen && workspace.maximized) workspace.setMaximized(false); }, [fileOpen, workspace.maximized, workspace.setMaximized]);
-    const showChat = !!conversationId;
+    // Keep the header mounted while a deleted route advances to its successor.
+    const showChat = !!props.conversationId;
     const centerOpen = showChat || fileOpen;
     const catalogWidth = getProjectCatalogWidth(rowWidth, rightWidth ?? 0);
     const showTaskFiles = () => { if (mobile) props.changeView('files'); else { setTab('files'); if (fileOpen) setCompactTab('file'); } };
@@ -569,7 +592,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
         {!readOnly && task.execution?.state === 'uncertain' && <Text style={[styles.meta, { paddingHorizontal: 14, paddingVertical: 6 }]}>{t('projectGoals.executionUncertain')}</Text>}
     </ProjectDetailsPanel>;
     const chat = <View testID="project-task-chat" style={[styles.chat, { backgroundColor: surface }, wide && fileOpen && compactTab === 'file' && { display: 'none' }]}>
-        <ProjectConversationHeader onGlobal={mobile ? undefined : props.openGlobalConversation} onClose={() => { setError(null); selectConversation(undefined); }} manage={!readOnly && conversationVerified} testIDPrefix="project-task" sessions={history} selectedId={conversationId} onSelect={id => { setError(null); selectConversation(id); }} onNew={canCreateProjectConversation() ? () => { void start(task, 'chat', false, true); } : undefined} onRefresh={() => { void taskHistory.read(); }} loading={taskHistory.loading} error={taskHistory.error} onRetry={() => { void taskHistory.read(); }} onMore={taskHistory.nextCursor ? () => { void taskHistory.read(taskHistory.nextCursor); } : undefined} busy={busy || props.globalBusy} offline={offline} mobile={mobile} />
+        <ProjectConversationHeader onGlobal={mobile ? undefined : props.openGlobalConversation} onClose={() => { setError(null); selectConversation(undefined); }} manage={!readOnly && conversationVerified} testIDPrefix="project-task" onResolveNext={resolveNextConversation} sessions={history} selectedId={props.conversationId} onSelect={id => { setError(null); selectConversation(id); }} onNew={canCreateProjectConversation() ? () => { void start(task, 'chat', false, true); } : undefined} onRefresh={() => { void taskHistory.read(); }} loading={taskHistory.loading} error={taskHistory.error} onRetry={() => { void taskHistory.read(); }} onMore={taskHistory.nextCursor ? () => { void taskHistory.read(taskHistory.nextCursor); } : undefined} busy={busy || props.globalBusy} offline={offline} mobile={mobile} />
         {conversationId && !conversationVerified ? <View style={styles.empty} testID="project-conversation-loading">{!conversationState.error && !conversationRejected && !offline && <ActivityIndicator color={theme.colors.textSecondary} />}<Text style={styles.meta}>{conversationState.error || t(conversationRejected ? 'projectGoals.sessionUnavailable' : offline ? 'projectGoals.offlineArchive' : 'common.loading')}</Text>{conversationState.error && <Button label={t('common.retry')} onPress={conversationState.retry}><Text style={styles.link}>{t('common.retry')}</Text></Button>}</View> : conversationId ? <SafeAreaInsetsContext.Provider value={mobile ? { ...safeArea, top: 0, bottom: 0 } : safeArea}><SessionView key={conversationId} id={conversationId} embedded fullWidth projectTaskContext={mobile} emptyState={desktop || mobile ? appendDraft => <ProjectConversationEmptyState task={task} scrollable={false} onDraft={appendDraft} onFiles={showTaskFiles} /> : undefined} /></SafeAreaInsetsContext.Provider> : desktop || mobile ? emptyConversation : <View style={styles.empty}><Text style={styles.cardTitle}>{t('projectGoals.emptyChat')}</Text><Text style={styles.meta}>{t('projectGoals.emptyChatHint')}</Text><Button label={t('projectGoals.openChat')} disabled={busy || offline || !canCreateProjectConversation()} onPress={() => { void start(task, 'chat'); }}><Text style={styles.link}>{t('projectGoals.openChat')}</Text></Button></View>}
     </View>;
     const catalogScroll = React.useRef<ScrollView>(null);

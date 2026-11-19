@@ -1,14 +1,15 @@
 import { markProjectSessionDeleted } from './projectSessionLinks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GoalTask } from '@slopus/happy-wire';
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), launch: vi.fn(), previewChat: vi.fn(), account: { key: 'test', generation: 0, serverUrl: 'http://fixture' } }));
+const mocks = vi.hoisted(() => ({ sessions: {} as Record<string, any>, rpc: vi.fn(), launch: vi.fn(), previewChat: vi.fn(), account: { key: 'test', generation: 0, serverUrl: 'http://fixture' } }));
 vi.mock('./apiSocket', () => ({ apiSocket: { machineRPC: mocks.rpc } }));
+vi.mock('./storage', () => ({ storage: { getState: () => ({ sessions: mocks.sessions }) } }));
 vi.mock('./ops', () => ({ machineStartGoalTask: mocks.launch, machineStartGoalPreviewChat: mocks.previewChat }));
 vi.mock('@/auth/accountRuntime', () => ({ assertAccountRuntime: () => {}, getRuntimeAccountSelection: () => mocks.account }));
 vi.mock('@/text', () => ({ t: (value: string) => value }));
 import { projectTaskFiles, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, launchProjectGoalTask, ProjectGoalLaunchError, openProjectGoalConversation, loadGoalProjects, getProjectPreviewMachineId, taskApproval, canConfirmProjectDeliverable, projectGoalRequest, projectSessionMatchesTask } from './projectGoals';
 const task: GoalTask = { id: 'task', title: 'Task', indexPath: '/archive/task/index.md', status: 'pending', goal: 'Goal', expectedDeliverables: [], artifacts: [], dependencies: [], execution: { state: 'never' } };
-beforeEach(() => { mocks.rpc.mockReset(); mocks.launch.mockReset(); mocks.previewChat.mockReset(); mocks.account.generation++; });
+beforeEach(() => { mocks.sessions = {}; mocks.rpc.mockReset(); mocks.launch.mockReset(); mocks.previewChat.mockReset(); mocks.account.generation++; });
 afterEach(() => { delete (globalThis as any).__HAPPY_CONFIG__; });
 describe('actual archive preview transport', () => {
     it('uses the configured archive owner only in the read-only preview', () => {
@@ -185,4 +186,20 @@ it('skips authoritative tombstones and follows finite history pages before consi
         .mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'alive', updatedAt: 10 }] });
     expect(await openProjectGoalConversation('machine', '/archive', task, 'request', 'codex')).toMatchObject({ created: false, session: { sessionId: 'alive' } });
     expect(mocks.rpc).toHaveBeenCalledTimes(2); expect(mocks.launch).not.toHaveBeenCalled();
+});
+
+it('skips archived history pages when continuing a task', async () => {
+    mocks.sessions.archived = { metadata: { lifecycleState: 'archived' } };
+    const base = { directory: '/archive/task', title: 'Task', executed: false };
+    mocks.rpc.mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'archived', updatedAt: 20 }], nextCursor: { sessionId: 'archived', updatedAt: 20 } })
+        .mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'alive', updatedAt: 10 }] });
+    expect(await openProjectGoalConversation('machine', '/archive', task, 'request', 'codex')).toMatchObject({ created: false, session: { sessionId: 'alive' } });
+    expect(mocks.launch).not.toHaveBeenCalled();
+});
+
+it('continues past an archived machine-history row with no locally hydrated header', async () => {
+    const base = { directory: '/archive/task', title: 'Task', executed: false };
+    mocks.rpc.mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'cold-archived', lifecycleState: 'archived', updatedAt: 20 }], nextCursor: { sessionId: 'cold-archived', updatedAt: 20 } })
+        .mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'alive', updatedAt: 10 }] });
+    expect(await openProjectGoalConversation('machine', '/archive', task, 'request', 'codex')).toMatchObject({ created: false, session: { sessionId: 'alive' } });
 });

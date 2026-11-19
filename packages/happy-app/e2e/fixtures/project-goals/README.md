@@ -20,3 +20,6 @@ Current desktop conversation layout: retain the original card gallery on the lef
 
 
 `verify-pinned-items.ego.mjs` / `verify-pinned-layout.ego.mjs` cover the homepage favorite shelf, child-project actions, scope/task document organization, direct saved-file reads and responsive geometry. Use `pinnedItemsConfig={runtimePath,contextPath}` with a fresh synthetic account state; see `docs/validation/library-pinned-items.md`. Context pins one owned Ego space/target/run. No source deletion or model work is performed.
+
+
+`verify-session-actions.ego.mjs` covers direct trash/archive controls, delete cancellation and automatic replacement, durable archive filtering, and reload persistence in both Task and global scope. It retires only fixture-issued synthetic sessions between passes; it never sends a model instruction. Run the ordinary cases before `record:true`; see `docs/validation/project-session-actions.md`. Capture uses the session-bound Happy helper required by the current runtime.

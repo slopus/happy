@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mergeProjectTaskHistory } from './mergeProjectTaskHistory';
 vi.mock('./projectSessionLinks', () => ({ isProjectSessionDeleted: (id: string) => id === 'deleted' }));
 vi.mock('./apiSocket', () => ({ apiSocket: {} }));
+vi.mock('./storage', () => ({ storage: { getState: () => ({ sessions: {} }) } }));
 vi.mock('./ops', () => ({}));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 const scope = { machineId: 'm', featurePath: '/f', taskId: 't', directory: '/f/tasks/t' };
@@ -20,3 +21,5 @@ describe('shared Task history merge', () => {
         expect(result[0]).toMatchObject({ sessionId: 'old', updatedAt: 20, directory: scope.directory });
     });
 });
+
+it.each(['archived', 'archiveRequested'])('excludes %s Task sessions from both cache and live headers', lifecycleState => { const result = mergeProjectTaskHistory([old], [{ id: 'old', updatedAt: 20, active: false, metadata: { machineId: 'm', path: scope.directory, lifecycleState } }], scope); expect(result).toEqual([]); });

@@ -32,3 +32,5 @@ it('a late old request cannot replace the selected conversation state', async ()
     expect(state.verified).toBe(true); expect(state.error).toBeNull();
 });
 it('missing metadata after a successful response does not spin indefinitely on an unknown URL', async () => { mock.hydrate.mockResolvedValue(true); await act(async () => { render('bad-header'); }); expect(state.error).toBe('projectGoals.sessionUnavailable'); });
+
+it.each(['archived', 'archiveRequested'])('rejects a %s conversation even with a trusted history link', lifecycleState => { mock.sessions.history = { metadata: { machineId: 'machine', goalBoard: { taskId: 'task' }, lifecycleState } }; render('history', true); expect(state.rejected).toBe(true); expect(state.verified).toBe(false); });

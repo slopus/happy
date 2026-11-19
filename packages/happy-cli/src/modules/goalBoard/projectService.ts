@@ -32,6 +32,7 @@ const launchInput = taskInput.extend({
     agent: z.enum(['codex', 'claude']), model: z.string().min(1).max(200).optional(),
     effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(), codexSessionGrant: z.string().max(4096).optional(),
 });
+const archived = (state?: string) => state === 'archived' || state === 'archiveRequested';
 const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 /** Machine-scoped archive access. Every request resolves its own feature; no shared selection. */
@@ -88,9 +89,9 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
     const scopeHistory = async (input: unknown) => {
         const { directory } = await scopeFor(z.object({ scopePath: pathInput }).parse(input).scopePath);
         const source = await deps.history(directory, [{ id: '', directory }]);
-        const sessions = source.filter(session => session.directory === directory && (!session.metadata.goalBoard || (!session.metadata.goalBoard.taskId && session.metadata.goalBoard.featurePath === directory)))
+        const sessions = source.filter(session => !archived(session.metadata.lifecycleState) && session.directory === directory && (!session.metadata.goalBoard || (!session.metadata.goalBoard.taskId && session.metadata.goalBoard.featurePath === directory)))
             .sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId))
-            .slice(0, 25).map(({ metadata: _metadata, ...session }) => session);
+            .slice(0, 25).map(({ metadata, ...session }) => ({ ...session, lifecycleState: metadata.lifecycleState }));
         return { success: true, sessions };
     };
     const taskFor = async (input: unknown) => {
@@ -195,8 +196,8 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         // recover new blank sessions immediately after a response was lost.
         const local = await Promise.all(names.map(name => readJSON<GoalTaskSession>(join(localDirectory, name))));
         const merged = new Map(local.filter((session): session is GoalTaskSession => !!session).map(session => [session.sessionId, session]));
-        for (const { metadata: _metadata, ...session } of source) merged.set(session.sessionId, session);
-        const ordered = [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
+        for (const { metadata, ...session } of source) merged.set(session.sessionId, { ...session, lifecycleState: metadata.lifecycleState });
+        const ordered = [...merged.values()].filter(session => !archived(session.lifecycleState)).sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
         const remaining = data.cursor ? ordered.filter(session => session.updatedAt < data.cursor!.updatedAt || (session.updatedAt === data.cursor!.updatedAt && session.sessionId.localeCompare(data.cursor!.sessionId) < 0)) : ordered;
         const sessions: GoalTaskSession[] = [];
         let bytes = 0;

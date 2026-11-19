@@ -7,6 +7,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { storage } from '@/sync/storage';
+import { isProjectConversationArchived } from '@/sync/projectConversationLifecycle';
 import { getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { machineStartGoalAuthor, type DirectoryEntry } from '@/sync/ops';
 import { canCreateProjectConversation, isReadOnlyProjectPreview, loadProjectScope, loadProjectScopeHistory, projectGoalRequest, projectScopeFiles } from '@/sync/projectGoals';
@@ -44,11 +45,12 @@ function OverviewContent(props: ProjectOverviewProps) {
     const readHistory = React.useCallback(async () => ({ sessions: await loadProjectScopeHistory(machineId, scopePath) }), [machineId, scopePath]);
     const historyResource = useCachedProjectResource(projectCacheKey('history', machineId, scopePath), projectHistorySchema, readHistory, !offline, props.revision);
     const [localHistory, setLocalHistory] = React.useState<GoalTaskSession[]>([]);
+    const pendingCreated = React.useRef(new Set<string>());
     const storedSessions = storage(state => state.sessions);
     const history = [...new Map([...(historyResource.value?.sessions ?? []), ...localHistory].map(session => [session.sessionId, session])).values()]
         .filter(session => {
             const metadata = storedSessions[session.sessionId]?.metadata;
-            return session.directory === scopePath && !isProjectSessionDeleted(session.sessionId) && (!metadata || (metadata.machineId === machineId && (!metadata.goalBoard || (!metadata.goalBoard.taskId && metadata.goalBoard.featurePath === scopePath))));
+            return session.directory === scopePath && !isProjectSessionDeleted(session.sessionId) && !isProjectConversationArchived(session, storedSessions[session.sessionId]) && (!metadata || (metadata.machineId === machineId && (!metadata.goalBoard || (!metadata.goalBoard.taskId && metadata.goalBoard.featurePath === scopePath))));
         }).sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
     const conversationState = useProjectConversation(props.conversationId, history.some(session => session.sessionId === props.conversationId), metadata =>
         metadata.machineId === machineId && (metadata.goalBoard ? !metadata.goalBoard.taskId && metadata.goalBoard.featurePath === scopePath : metadata.path === scopePath || history.some(session => session.sessionId === props.conversationId)));
@@ -81,8 +83,13 @@ function OverviewContent(props: ProjectOverviewProps) {
         const isCurrent = () => alive.current && focus.current === epoch && getRuntimeAccountSelection() === owner && latestConversation.current === requestedConversation;
         try {
             const fresh = offline || forceNew ? [] : await loadProjectScopeHistory(machineId, scopePath);
-            const sessions = [...new Map([...history, ...fresh].map(session => [session.sessionId, session])).values()]
-                .filter(session => session.directory === scopePath && !isProjectSessionDeleted(session.sessionId))
+            for (const id of pendingCreated.current) if (fresh.some(session => session.sessionId === id) || storage.getState().sessions[id]?.metadata) pendingCreated.current.delete(id);
+            const candidates = offline ? history : [...fresh, ...localHistory.filter(session => pendingCreated.current.has(session.sessionId))];
+            const sessions = [...new Map(candidates.map(session => [session.sessionId, session])).values()]
+                .filter(session => {
+                    const live = storage.getState().sessions[session.sessionId];
+                    return session.directory === scopePath && !isProjectSessionDeleted(session.sessionId) && !isProjectConversationArchived(session, live);
+                })
                 .sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
             if (!isCurrent()) return;
             let id = forceNew ? undefined : sessions[0]?.sessionId;
@@ -92,7 +99,7 @@ function OverviewContent(props: ProjectOverviewProps) {
                 if (attempt.current?.action !== action) attempt.current = { action, id: `goal-scope-${Date.now()}-${Math.random().toString(36).slice(2)}` };
                 const result = await machineStartGoalAuthor(machineId, { scopePath, requestId: attempt.current.id, agent: props.agent });
                 if (result.type !== 'success') throw new Error(result.type === 'error' ? result.errorMessage : t('projectGoals.overviewUnavailable'));
-                id = result.sessionId;
+                id = result.sessionId; pendingCreated.current.add(id);
             }
             if (!isCurrent()) return;
             const linked = sessions.find(session => session.sessionId === id) ?? { sessionId: id, title: props.title, directory: scopePath, updatedAt: Date.now(), executed: false };
@@ -101,6 +108,26 @@ function OverviewContent(props: ProjectOverviewProps) {
             props.selectConversation(id); setCenter('chat'); attempt.current = undefined;
         } catch (error) { if (isCurrent()) setError(error instanceof Error ? error.message : String(error)); }
         finally { opening.current = false; if (alive.current) setBusy(false); }
+    };
+    const resolveNextConversation = async () => {
+        const owner = getRuntimeAccountSelection(), requestedConversation = latestConversation.current, epoch = focus.current;
+        const isCurrent = () => alive.current && focus.current === epoch && getRuntimeAccountSelection() === owner && latestConversation.current === requestedConversation;
+        try {
+            const fresh = await loadProjectScopeHistory(machineId, scopePath);
+            if (!isCurrent()) throw new Error('Project conversation lookup cancelled');
+            const sessions = fresh.filter(session => {
+                const live = storage.getState().sessions[session.sessionId], metadata = live?.metadata;
+                return session.sessionId !== requestedConversation && session.directory === scopePath && !isProjectSessionDeleted(session.sessionId)
+                    && !isProjectConversationArchived(session, live)
+                    && (!metadata || (metadata.machineId === machineId && (!metadata.goalBoard || (!metadata.goalBoard.taskId && metadata.goalBoard.featurePath === scopePath))));
+            }).sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
+            setLocalHistory(sessions);
+            writeProjectCache(projectCacheKey('history', machineId, scopePath), { sessions });
+            return sessions[0]?.sessionId;
+        } catch (error) {
+            if (isCurrent()) setError(error instanceof Error ? error.message : String(error));
+            throw error;
+        }
     };
     const listDirectory = React.useCallback(async (_sessionId: string, path: string) => {
         try { return await projectGoalRequest<{ success: boolean; entries?: DirectoryEntry[]; error?: string }>(machineId, 'goalScopeListDirectory', { featurePath: scopePath, path }); }
@@ -133,7 +160,7 @@ function OverviewContent(props: ProjectOverviewProps) {
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     </ProjectDetailsPanel>;
     const chat = <View style={[styles.center, { backgroundColor: surface }]} testID="project-scope-chat">
-        <ProjectConversationHeader scope="global" onClose={() => { setError(null); props.selectConversation(undefined); }} manage={!isReadOnlyProjectPreview()} testIDPrefix="project-scope" sessions={history} selectedId={conversationId} onSelect={id => { setError(null); props.selectConversation(id); setCenter('chat'); }} onNew={canCreateProjectConversation() ? () => { void start(true); } : undefined} onRefresh={() => { void historyResource.refresh(); }} loading={historyResource.loading} error={historyResource.error} onRetry={() => { void historyResource.refresh(); }} busy={busy} offline={offline} />
+        <ProjectConversationHeader scope="global" onClose={() => { setError(null); props.selectConversation(undefined); }} manage={!isReadOnlyProjectPreview() && conversationState.verified} testIDPrefix="project-scope" onResolveNext={offline ? undefined : resolveNextConversation} sessions={history} selectedId={props.conversationId} onSelect={id => { setError(null); props.selectConversation(id); setCenter('chat'); }} onNew={canCreateProjectConversation() ? () => { void start(true); } : undefined} onRefresh={() => { void historyResource.refresh(); }} loading={historyResource.loading} error={historyResource.error} onRetry={() => { void historyResource.refresh(); }} busy={busy} offline={offline} />
         {conversationId ? <SessionView key={conversationId} id={conversationId} embedded fullWidth emptyState={appendDraft => <ProjectConversationEmptyState task={{ title: props.title, goal: info?.goal ?? '' }} onDraft={appendDraft} onFiles={showFiles} scrollable={false} />} /> : <View style={styles.brief}><Text style={styles.meta}>{conversationState.error || t(conversationState.rejected ? 'projectGoals.sessionUnavailable' : 'common.loading')}</Text>{conversationState.error && <Button label={t('common.retry')} onPress={conversationState.retry}><Text style={styles.link}>{t('common.retry')}</Text></Button>}</View>}
     </View>;
     return <View style={styles.area} testID="project-overview-workspace">

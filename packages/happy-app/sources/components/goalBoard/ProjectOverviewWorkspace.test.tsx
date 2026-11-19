@@ -43,7 +43,7 @@ it('selection renders the global brief without creating or entering any conversa
 it('explicit open resumes the scope history without creating a conversation', async () => { vi.mocked(loadProjectScopeHistory).mockResolvedValue([session]); const press = setup(); await act(async () => { press(); }); expect(select).toHaveBeenCalledExactlyOnceWith('existing'); expect(machineStartGoalAuthor).not.toHaveBeenCalled(); });
 it('a verified new empty session is reused while server history catches up', async () => { const press = setup(); await act(async () => { press(); press(); }); await act(async () => { press(); }); expect(machineStartGoalAuthor).toHaveBeenCalledTimes(1); expect(select.mock.calls.map(call => call[0])).toEqual(['new-empty', 'new-empty']); });
 it('failed history never creates a new conversation', async () => { vi.mocked(loadProjectScopeHistory).mockRejectedValue(new Error('History unavailable')); const press = setup(); await act(async () => { press(); }); expect(machineStartGoalAuthor).not.toHaveBeenCalled(); expect(select).not.toHaveBeenCalled(); });
-it('cached global association cannot render a session explicitly rebound to a Task', () => { mock.history = [session]; mock.sessions.existing = { metadata: { machineId: 'machine', path: '/scope', goalBoard: { featurePath: '/scope', taskId: 'sibling' } } }; setup('existing'); expect(renderer.root.findAllByType('Session')).toHaveLength(0); });
+it('cached global association cannot render a session explicitly rebound to a Task', () => { mock.history = [session]; mock.sessions.existing = { metadata: { machineId: 'machine', path: '/scope', goalBoard: { featurePath: '/scope', taskId: 'sibling' } } }; setup('existing'); expect(renderer.root.findAllByType('Session')).toHaveLength(0); expect(renderer.root.findByType('ConversationHeader').props.manage).toBe(false); });
 
 it('leaving the screen during history lookup prevents late creation and navigation', async () => {
     let resolve!: (sessions: any[]) => void;
@@ -160,4 +160,24 @@ it('closing a global conversation opened by deselection does not create or reope
     expect(select).toHaveBeenCalledExactlyOnceWith(undefined);
     await act(async () => {});
     expect(machineStartGoalAuthor).not.toHaveBeenCalled();
+});
+
+it.each(['archived', 'archiveRequested'])('filters %s global history without hiding an offline resumable conversation', lifecycleState => { mock.history = [session, { ...session, sessionId: 'archived', updatedAt: 10 }]; mock.sessions.archived = { metadata: { machineId: 'machine', path: '/scope', lifecycleState } }; setup('existing'); expect(renderer.root.findByType('ConversationHeader').props.sessions.map((s: any) => s.sessionId)).toEqual(['existing']); });
+
+it('continues the authoritative available history instead of resurrecting an excluded cached session', async () => { mock.history = [{ ...session, sessionId: 'stale-archive', updatedAt: 100 }]; vi.mocked(loadProjectScopeHistory).mockResolvedValue([session]); const press = setup(); await act(async () => { press(); }); expect(select).toHaveBeenCalledExactlyOnceWith('existing'); expect(machineStartGoalAuthor).not.toHaveBeenCalled(); });
+
+it('refreshes authoritative global history when the last loaded conversation is removed', async () => {
+    mock.history = [session]; vi.mocked(loadProjectScopeHistory).mockResolvedValue([{ ...session, sessionId: 'older' }]); setup('existing');
+    let next: string | undefined;
+    await act(async () => { next = await renderer.root.findByType('ConversationHeader').props.onResolveNext(); });
+    expect(next).toBe('older'); expect(machineStartGoalAuthor).not.toHaveBeenCalled();
+});
+it('cancels a global remaining-history lookup after leaving the screen', async () => {
+    let resolve!: (sessions: any[]) => void;
+    vi.mocked(loadProjectScopeHistory).mockReturnValue(new Promise(done => { resolve = done; }));
+    mock.history = [session]; setup('existing');
+    const lookup = renderer.root.findByType('ConversationHeader').props.onResolveNext();
+    act(() => mock.blur?.());
+    await act(async () => { resolve([{ ...session, sessionId: 'older' }]); await expect(lookup).rejects.toThrow('cancelled'); });
+    expect(select).not.toHaveBeenCalled(); expect(machineStartGoalAuthor).not.toHaveBeenCalled();
 });

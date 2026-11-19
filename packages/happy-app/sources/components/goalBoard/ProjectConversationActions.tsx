@@ -5,23 +5,19 @@ import { useSession } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
-import { getSessionName } from '@/utils/sessionUtils';
-import { Modal } from '@/modal';
 import { t } from '@/text';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 
-export function ProjectConversationActions({ id, onClose, disabled, testIDPrefix }: { id: string; onClose: () => void; disabled?: boolean; testIDPrefix: string }) {
+export function ProjectConversationActions({ id, onRemoved, disabled, testIDPrefix }: { id: string; onRemoved: () => void; disabled?: boolean; testIDPrefix: string }) {
     const session = useSession(id);
-    return session ? <Actions session={session} onClose={onClose} disabled={disabled} testIDPrefix={testIDPrefix} /> : null;
+    return session && !isSessionArchived(session) ? <Actions session={session} onRemoved={onRemoved} disabled={disabled} testIDPrefix={testIDPrefix} /> : null;
 }
-function Actions({ session, onClose, disabled, testIDPrefix }: { session: Session; onClose: () => void; disabled?: boolean; testIDPrefix: string }) {
+function Actions({ session, onRemoved, disabled, testIDPrefix }: { session: Session; onRemoved: () => void; disabled?: boolean; testIDPrefix: string }) {
     const { theme } = useUnistyles();
-    const actions = useSessionQuickActions(session, { onAfterArchive: onClose, onAfterDelete: onClose });
-    const archived = isSessionArchived(session);
+    const actions = useSessionQuickActions(session, { onAfterArchive: onRemoved, onAfterDelete: onRemoved });
     const busy = disabled || actions.archivingSession || actions.deletingSession || actions.restoringSession;
-    return <Button variant="toolbar" label={t('sessionSearch.actions.more')} disabled={busy} testID={`${testIDPrefix}-conversation-actions`} onPress={() => Modal.alert(getSessionName(session), undefined, [
-        { text: t(archived ? 'sessionInfo.restoreSession' : 'sessionInfo.archiveSession'), onPress: archived ? actions.restoreSession : actions.archiveSession },
-        { text: t('sessionInfo.deleteSession'), style: 'destructive', onPress: actions.deleteSession },
-        { text: t('common.cancel'), style: 'cancel' },
-    ])}><Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.textSecondary} /></Button>;
+    return <>
+        <Button variant="toolbar" label={t('sessionInfo.deleteSession')} disabled={busy} testID={`${testIDPrefix}-delete-conversation`} onPress={actions.deleteSession}><Ionicons name="trash-outline" size={20} color={theme.colors.textSecondary} /></Button>
+        <Button variant="toolbar" label={t('sessionInfo.archiveSession')} disabled={busy} testID={`${testIDPrefix}-archive-conversation`} onPress={actions.archiveSession}><Ionicons name="archive-outline" size={20} color={theme.colors.textSecondary} /></Button>
+    </>;
 }

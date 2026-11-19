@@ -319,3 +319,17 @@ describe('project Goal workspace', () => {
         await vi.waitFor(() => expect(f.deps.changed).toHaveBeenCalled(), { timeout: 5000 });
     });
 });
+
+it.each(['archived', 'archiveRequested'])('filters %s scope sessions before the 25-row limit', async lifecycleState => {
+    const f = await fixture();
+    for (let i = 0; i < 25; i++) f.history.push({ sessionId: `hidden-${i}`, title: 'Archived', directory: f.feature, updatedAt: 100 + i, executed: true, metadata: { path: f.feature, lifecycleState } } as ProjectSession);
+    f.history.push({ sessionId: 'available', title: 'Available', directory: f.feature, updatedAt: 1, executed: false, metadata: { path: f.feature, lifecycleState: 'running' } } as ProjectSession);
+    expect((await f.service.scopeHistory({ scopePath: f.feature })).sessions.map(session => session.sessionId)).toEqual(['available']);
+});
+it('archived source overrides a saved blank association without resetting execution history', async () => {
+    const f = await fixture();
+    await f.service.launch({ ...f.input, action: 'chat', agent: 'codex', requestId: 'blank-chat' });
+    f.history.push({ sessionId: 'session-1', title: 'Archived', directory: f.taskDirectory, updatedAt: 10, executed: true, metadata: { path: f.taskDirectory, lifecycleState: 'archived' } } as ProjectSession);
+    expect((await f.service.historyPage(f.input)).sessions).toEqual([]);
+    expect((await f.service.board(f.feature)).snapshot.tasks[0].execution?.state).toBe('historical');
+});
