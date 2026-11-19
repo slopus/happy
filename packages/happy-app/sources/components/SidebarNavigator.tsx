@@ -1,3 +1,4 @@
+import { GlobalSessionMonitor } from './sessionActivity/GlobalSessionMonitor';
 import { AndroidDrawerSwipeLockProvider, useAndroidDrawerSwipeLocked } from '@/hooks/useAndroidDrawerSwipeLock';
 import { useAuth } from '@/auth/AuthContext';
 import * as React from 'react';
@@ -47,7 +48,7 @@ export const SidebarNavigator = React.memo(() => {
         <DesktopWorkspaceLayoutProvider enabled={auth.isAuthenticated && isTablet}>
             <KeyboardShortcutsProvider>
                 <AndroidDrawerSwipeLockProvider>
-                    <SidebarNavigatorContent />
+                    <GlobalSessionMonitor key={Platform.OS === 'web' ? auth.credentials?.token ?? 'anonymous' : 'native'}><SidebarNavigatorContent /></GlobalSessionMonitor>
                 </AndroidDrawerSwipeLockProvider>
             </KeyboardShortcutsProvider>
         </DesktopWorkspaceLayoutProvider>
