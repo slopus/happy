@@ -1723,7 +1723,7 @@ class Conversation(
         val agent = agent
         val working = running || agent?.isWorking == true || outgoing.any { it.accepted }
         val parentAgentId = agent?.parentAgentId
-        val rows = ArrayList<ConversationRow>()
+        var rows = ArrayList<ConversationRow>()
         val lastRun = lastTurn()
         val waiting = base.question
         val grouped = grouped?.value == true
@@ -1785,9 +1785,11 @@ class Conversation(
         if (grouped) {
             // What follows the work (a person's sends) ends none of it: their rows come after.
             val sections = ToolSections.group(rows, working, sectionsEnded, apart) { row -> messages[row.key.substringBeforeLast(':')]?.createdAt?.takeIf { it > 0 } }
-            rows.clear()
-            // A question answered before this showed it is one line; one that settled here stays the card it was.
-            sections.mapTo(rows) { if (it is ConversationRow.Ask && it.phase == AskPhase.Answered && it.question.id !in answered) it.copy(line = true) else it }
+            // With nothing to group, sections is the original list of rows.
+            rows = sections.mapTo(ArrayList(sections.size)) { row ->
+                // A question answered before this showed it is one line; one that settled here stays the card it was.
+                if (row is ConversationRow.Ask && row.phase == AskPhase.Answered && row.question.id !in answered) row.copy(line = true) else row
+            }
         }
         for (id in pending) messages[id]?.let { rows += sentAt(builder.rows(it, agentId, parentAgentId, false)) }
         for (send in outgoing) {

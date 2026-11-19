@@ -15,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -190,6 +191,7 @@ class ConversationTest {
         // An older computer unless a test says otherwise: pictures inline, files in the workspace.
         route: AttachmentRoute = AttachmentRoute().apply { markMissing() },
         kept: MutableMap<String, java.io.File> = HashMap(),
+        grouped: MutableStateFlow<Boolean>? = null,
         created: (JsonObject) -> Unit = {},
     ) = Conversation(
         api = ConversationApi(null, agent.request, fileRequest = agent.fileRequest),
@@ -214,6 +216,7 @@ class ConversationTest {
         cloudFiles = cloudFiles,
         attachmentRoute = route,
         keepAttachment = { id, file -> kept[id] = file },
+        grouped = grouped,
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -364,6 +367,23 @@ class ConversationTest {
         assertEquals(listOf("Fix the build", "Why did it fail?", "Ship it"), read.exchanges.map { it.user })
         assertEquals(listOf("Fixed it.", "The subagent's checks are green.", "Shipped."), read.exchanges.map { it.reply })
         assertEquals("Now the docs", read.unanswered?.text)
+    }
+
+    @Test fun `grouping tool calls keeps a text-only history visible`() = runTest {
+        val agent = FakeAgent().apply {
+            page = """{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":3,"messages":[
+                {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}]},
+                {"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"Done"}]}
+            ]}],"hasMore":false}"""
+        }
+        val chat = conversation(agent, grouped = MutableStateFlow(true))
+        advanceUntilIdle()
+
+        val state = chat.state.value
+        assertTrue(state.synced)
+        assertEquals(listOf("Done"), state.rows.filterIsInstance<ConversationRow.Text>().map { it.text })
+        assertEquals(listOf("Hi"), state.rows.filterIsInstance<ConversationRow.User>().map { it.text })
+        assertEquals(listOf("r1"), state.rows.filterIsInstance<ConversationRow.TurnEnd>().map { it.turn })
     }
 
     @Test fun `reads history and pending messages in run order`() = runTest {
