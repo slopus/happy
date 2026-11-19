@@ -7,21 +7,21 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 
-export function ProjectConversationEmptyState({ task, onDraft, onFiles, onStart, startLabel, disabled, scrollable = true, compact = false }: {
-    task: Pick<GoalTask, 'title' | 'goal'>; onDraft?: (value: string) => void; onFiles: () => void; onStart?: () => void; startLabel?: string; disabled?: boolean; scrollable?: boolean; compact?: boolean;
+export function ProjectConversationEmptyState({ task, onDraft, onFiles, onStart, startLabel, disabled, scrollable = true, compact = false, scope = 'task' }: {
+    scope?: 'task' | 'global'; task: Pick<GoalTask, 'title' | 'goal'>; onDraft?: (value: string) => void; onFiles: () => void; onStart?: () => void; startLabel?: string; disabled?: boolean; scrollable?: boolean; compact?: boolean;
 }) {
     const { theme } = useUnistyles();
     const content = <View style={[styles.content, compact && { gap: 8 }]}>
-            {!compact && <View style={styles.eyebrow}><View style={styles.icon}><Ionicons name="chatbubbles-outline" size={23} color={theme.colors.textLink} /></View><Text style={styles.label}>{t('projectGoals.emptyConversationEyebrow')}</Text></View>}
-            <Text style={styles.kicker}>{t('projectGoals.emptyConversationTitle')}</Text>
+            {!compact && <View style={styles.eyebrow}><View style={styles.icon}><Ionicons name="chatbubbles-outline" size={23} color={theme.colors.textLink} /></View><Text style={styles.label}>{t(scope === 'global' ? 'projectGoals.globalConversation' : 'projectGoals.emptyConversationEyebrow')}</Text></View>}
+            <Text style={styles.kicker}>{t(scope === 'global' ? 'projectGoals.globalOverview' : 'projectGoals.emptyConversationTitle')}</Text>
             {!compact && <Text accessibilityRole="header" style={styles.title}>{task.title}</Text>}
-            <Text style={styles.hint}>{t('projectGoals.emptyConversationHint')}</Text>
+            <Text style={styles.hint}>{t(scope === 'global' ? 'projectGoals.globalCardHint' : 'projectGoals.emptyConversationHint')}</Text>
             {!!task.goal && task.goal !== task.title && <View style={styles.goal}><View style={styles.goalRule} /><Text numberOfLines={3} style={styles.goalText}>{task.goal}</Text></View>}
             <View style={styles.actions}>
                 {onDraft && <><Button variant="row" label={t('projectGoals.discussNextStep')} onPress={() => onDraft(t('projectGoals.nextStepDraft', { title: task.title }))} testID="project-empty-next-step"><Ionicons name="compass-outline" size={18} color={theme.colors.textLink} /><Text style={styles.actionLabel}>{t('projectGoals.discussNextStep')}</Text><Ionicons name="arrow-up-outline" size={14} color={theme.colors.textSecondary} /></Button>
                 <Button variant="row" label={t('projectGoals.discussDelivery')} onPress={() => onDraft(t('projectGoals.deliveryDraft', { title: task.title }))} testID="project-empty-delivery"><Ionicons name="checkmark-done-outline" size={18} color={theme.colors.textLink} /><Text style={styles.actionLabel}>{t('projectGoals.discussDelivery')}</Text><Ionicons name="arrow-up-outline" size={14} color={theme.colors.textSecondary} /></Button></>}
                 {onStart && <Button variant="primary" disabled={disabled} label={startLabel || t('projectGoals.openChat')} onPress={onStart} testID="project-empty-start"><Ionicons name="chatbubble-outline" size={18} color={theme.colors.textLink} /><Text style={styles.actionLabel}>{startLabel || t('projectGoals.openChat')}</Text><Ionicons name="arrow-forward" size={14} color={theme.colors.textSecondary} /></Button>}
-                <Button variant="toolbar" label={t('projectGoals.viewTaskFiles')} onPress={onFiles} testID="project-empty-files"><Ionicons name="folder-open-outline" size={16} color={theme.colors.textSecondary} /><Text style={styles.secondary}>{t('projectGoals.viewTaskFiles')}</Text><Ionicons name="arrow-forward" size={14} color={theme.colors.textSecondary} /></Button>
+                <Button variant="toolbar" label={t(scope === 'global' ? 'projectGoals.featureFiles' : 'projectGoals.viewTaskFiles')} onPress={onFiles} testID="project-empty-files"><Ionicons name="folder-open-outline" size={16} color={theme.colors.textSecondary} /><Text style={styles.secondary}>{t(scope === 'global' ? 'projectGoals.featureFiles' : 'projectGoals.viewTaskFiles')}</Text><Ionicons name="arrow-forward" size={14} color={theme.colors.textSecondary} /></Button>
             </View>
             {onDraft && <Text style={styles.note}>{t('projectGoals.draftOnlyHint')}</Text>}
         </View>;

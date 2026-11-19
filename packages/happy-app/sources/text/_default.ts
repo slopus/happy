@@ -112,6 +112,7 @@ export const en = {
         fileCountPartial: ({ count }: { count: number }) => `At least ${count} files`,
         scopeIndex: 'Open index.md',
         overviewUnavailable: 'Global goals are currently unavailable',
+        globalCardHint: "Discuss overall goals, organize tasks, and coordinate across them.",
         overviewChatHint: 'Discuss goals and organize tasks in this scope. Work begins only after you send a message.',
 
         mobileChat: "Chat",

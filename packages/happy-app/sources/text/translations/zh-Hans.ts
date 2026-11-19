@@ -115,6 +115,7 @@ export const zhHans: TranslationStructure = {
         fileCountPartial: ({ count }: { count: number }) => `至少 ${count} 个文件`,
         scopeIndex: "打开 index.md",
         overviewUnavailable: "全局目标暂不可用",
+        globalCardHint: "讨论整体目标、梳理任务与跨任务协作。",
         overviewChatHint: "在当前范围讨论目标和整理任务；只有发送后才会执行。",
         mobileChat: "对话",
         chooseChat: "打开对话",

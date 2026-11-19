@@ -129,6 +129,7 @@ export const en: TranslationStructure = {
         fileCountPartial: ({ count }: { count: number }) => `At least ${count} ${count === 1 ? "file" : "files"}`,
         scopeIndex: "Open index.md",
         overviewUnavailable: "Global goal unavailable",
+        globalCardHint: "Discuss overall goals, organize tasks, and coordinate across them.",
         overviewChatHint: "Discuss goals and organize tasks in this scope. Work begins only after you send a message.",
         mobileChat: "Chat",
         chooseChat: "Open conversation",
