@@ -35,9 +35,11 @@ import { AgyBackend } from './AgyBackend';
 import {
   DEFAULT_AGY_EFFORT,
   DEFAULT_AGY_MODEL,
+  FALLBACK_AGY_MODEL_OPTIONS,
   discoverAgyModelOptions,
   normalizeAgyEffort,
   normalizeAgyModelAlias,
+  pickDefaultAgyModel,
   resolveAgyModelName,
 } from './constants';
 import type { PermissionMode } from '@/api/types';
@@ -77,15 +79,17 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   let selectedModel = opts.model ? normalizeAgyModelAlias(opts.model) : DEFAULT_AGY_MODEL;
   let selectedEffort = opts.effort ? normalizeAgyEffort(opts.effort) : DEFAULT_AGY_EFFORT;
   let displayedModel = resolveAgyModelName(selectedModel, selectedEffort);
-  const discoveredModels = discoverAgyModelOptions();
+  // Started now, answered after the session is up: `agy models` can take seconds.
+  const modelDiscovery = discoverAgyModelOptions();
+  let availableModels = [...FALLBACK_AGY_MODEL_OPTIONS];
 
   const { state, metadata } = createSessionMetadata({
     flavor: 'agy',
     machineId: settings.machineId,
     startedBy: opts.startedBy,
   });
-  metadata.models = discoveredModels;
-  metadata.currentModelCode = displayedModel;
+  metadata.models = availableModels;
+  metadata.currentModelCode = selectedModel;
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
     log(`Happy Session ID: ${response.id}`);
@@ -177,9 +181,21 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
   backend.onMessage(onBackendMessage);
 
-  const availableModelCodes = discoveredModels.map((item) => item.code);
+  let availableModelCodes = availableModels.map((item) => item.code);
   let lastRemoteModel: string | undefined = undefined;
   let lastRemoteEffort: string | null | undefined = undefined;
+
+  const publishModelMetadata = () => {
+    try {
+      session.updateMetadata((curr) => ({
+        ...curr,
+        models: availableModels,
+        currentModelCode: selectedModel,
+      }));
+    } catch {
+      // Ignore metadata update race before first flush.
+    }
+  };
 
   const syncDisplayedModel = (nextModel: string, nextEffort?: string) => {
     selectedModel = normalizeAgyModelAlias(nextModel);
@@ -192,35 +208,27 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     if (hasTTY) {
       messageBuffer.addMessage(`[MODEL:${displayedModel}]`, 'system');
     }
-    try {
-      session.updateMetadata((curr) => ({
-        ...curr,
-        models: discoveredModels,
-        currentModelCode: displayedModel,
-      }));
-    } catch {
-      // Ignore metadata update race before first flush.
-    }
+    publishModelMetadata();
   };
 
-  if (hasTTY) {
-    const DisplayComponent = () =>
-      React.createElement(AgyDisplay, {
-        messageBuffer,
-        logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
-        currentModel: displayedModel,
-        availableModels: availableModelCodes,
-        onSelectModel: (chosen: string) => {
-          syncDisplayedModel(chosen);
-          messageBuffer.addMessage(`Switched model to ${displayedModel}`, 'status');
-        },
-        onExit: async () => {
-          logger.debug('[agy] Exiting agent via Ctrl-C');
-          shouldExit = true;
-          await handleAbort();
-        },
-      });
+  const DisplayComponent = () =>
+    React.createElement(AgyDisplay, {
+      messageBuffer,
+      logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+      currentModel: displayedModel,
+      availableModels: availableModelCodes,
+      onSelectModel: (chosen: string) => {
+        syncDisplayedModel(chosen);
+        messageBuffer.addMessage(`Switched model to ${displayedModel}`, 'status');
+      },
+      onExit: async () => {
+        logger.debug('[agy] Exiting agent via Ctrl-C');
+        shouldExit = true;
+        await handleAbort();
+      },
+    });
 
+  if (hasTTY) {
     inkInstance = render(React.createElement(DisplayComponent), {
       exitOnCtrlC: false,
       patchConsole: false,
@@ -233,6 +241,25 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     }
     process.stdin.setEncoding('utf8');
   }
+
+  // The default model is swapped when the account doesn't list it, even when
+  // an app sent it: the app's own default is the same model, picked before
+  // this list reached it. Only `--model` is left alone.
+  const modelsReady = modelDiscovery.then((discovered) => {
+    if (!discovered) return;
+    availableModels = discovered;
+    availableModelCodes = discovered.map((item) => item.code);
+    const fallback = pickDefaultAgyModel(availableModelCodes);
+    if (!opts.model && selectedModel === DEFAULT_AGY_MODEL && fallback !== selectedModel) {
+      log(`${selectedModel} is not in agy models; defaulting to ${fallback}`);
+      syncDisplayedModel(fallback);
+    } else {
+      publishModelMetadata();
+    }
+    inkInstance?.rerender(React.createElement(DisplayComponent));
+  }).catch((error) => {
+    logger.debug('[agy] Applying agy models failed:', error);
+  });
 
   session.onUserMessage((message) => {
     if (!message.content.text) return;
@@ -256,14 +283,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       lastRemoteEffort = incomingEffort;
     }
 
-    // Legacy un-updated clients default to bare "Gemini 3.8 Flash" on every
-    // message until the user picks from metadata.models. Ignore that initial
-    // fallback so the session keeps its configured/default Gemini 4 model.
-    const isStaleLegacyDefault =
-      incomingModel === 'Gemini 3.8 Flash' &&
-      !availableModelCodes.includes('Gemini 3.8 Flash');
-
-    if ((remoteModelChanged || remoteEffortChanged) && !isStaleLegacyDefault) {
+    if (remoteModelChanged || remoteEffortChanged) {
       const nextModel = incomingModel ? normalizeAgyModelAlias(incomingModel) : selectedModel;
       const nextEffort = incomingEffort !== undefined ? normalizeAgyEffort(incomingEffort) : selectedEffort;
       syncDisplayedModel(nextModel, nextEffort);
@@ -272,7 +292,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     const trimmedText = message.content.text.trim();
     if (/^\/models$/i.test(trimmedText)) {
       const listText = availableModelCodes
-        .map((code, idx) => `${idx + 1}. ${code}${code === displayedModel ? ' ✓ (current)' : ''}`)
+        .map((code, idx) => `${idx + 1}. ${code}${code === selectedModel ? ` ✓ (current: ${displayedModel})` : ''}`)
         .join('\n');
       const reply = `Available Antigravity models:\n${listText}\n\nUse \`/model <number or name>\` (e.g. \`/model argon high\` or \`/model 1\`) or the model picker to switch.`;
       messageBuffer.addMessage(reply, 'status');
@@ -347,6 +367,9 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
       errorReportedForCurrentTurn = false;
+      // The first turn waits (at most agy models' timeout) so a default the
+      // account lacks is swapped before it fails.
+      await modelsReady;
       sendEnvelopes(sessionManager.startTurn());
       try {
         await backend.sendPrompt(process.cwd(), batch.message);

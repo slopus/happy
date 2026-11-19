@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Text, useStdout, useInput } from 'ink';
 import { MessageBuffer, type BufferedMessage } from './messageBuffer';
+import { agyModelFamily } from '@/agy/constants';
 
 interface AgyDisplayProps {
   messageBuffer: MessageBuffer;
@@ -37,6 +38,8 @@ export const AgyDisplay: React.FC<AgyDisplayProps> = ({
   const { stdout } = useStdout();
   const terminalWidth = stdout.columns || 80;
   const terminalHeight = stdout.rows || 24;
+  // The picker lists model rows; `model` is the resolved "Gemini 4 Argon (High)".
+  const activeModel = model ? agyModelFamily(model) : undefined;
 
   // Update model when prop changes (only if different to avoid loops)
   useEffect(() => {
@@ -147,7 +150,7 @@ export const AgyDisplay: React.FC<AgyDisplayProps> = ({
 
     if (!key.ctrl && !key.meta && input === 'm' && availableModels.length > 0) {
       if (confirmationMode) resetConfirmation();
-      const idx = model ? availableModels.indexOf(model) : -1;
+      const idx = activeModel ? availableModels.indexOf(activeModel) : -1;
       setCursorIndex(idx >= 0 ? idx : 0);
       setPickerOpen(true);
       return;
@@ -157,7 +160,7 @@ export const AgyDisplay: React.FC<AgyDisplayProps> = ({
     if (confirmationMode) {
       resetConfirmation();
     }
-  }, [confirmationMode, actionInProgress, pickerOpen, availableModels, cursorIndex, model, onSelectModel, onExit, setConfirmationWithTimeout, resetConfirmation]));
+  }, [confirmationMode, actionInProgress, pickerOpen, availableModels, cursorIndex, activeModel, onSelectModel, onExit, setConfirmationWithTimeout, resetConfirmation]));
 
   const getMessageColor = (type: BufferedMessage['type']): string => {
     switch (type) {
@@ -213,7 +216,7 @@ export const AgyDisplay: React.FC<AgyDisplayProps> = ({
                 return slice.map((item, idx) => {
                   const realIdx = start + idx;
                   const isCursor = realIdx === cursorIndex;
-                  const isActive = item === model;
+                  const isActive = item === activeModel;
                   return (
                     <Text key={item} color={isCursor ? 'greenBright' : isActive ? 'cyan' : 'white'} bold={isCursor || isActive}>
                       {isCursor ? '❯ ' : '  '}{item}{isActive ? '  ✓' : ''}
