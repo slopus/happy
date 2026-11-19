@@ -447,6 +447,12 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Subscription.PurchaseResult.pending.event, .paywallError(product: .pro, errorCode: .pending))
         XCTAssertEqual(Subscription.PurchaseResult.unconfirmed.event, .paywallError(product: .pro, errorCode: .verificationFailed))
         XCTAssertEqual(Subscription.PurchaseResult.unavailable.event, .paywallError(product: .pro, errorCode: .storeUnavailable))
+        XCTAssertEqual(Subscription.PurchaseResult.inProgress.event.properties["error_code"], .string("purchase_in_progress"))
+        let failures: [(StoreFailure, String)] = [(.network, "network"), (.notAllowed, "not_allowed"), (.paymentInvalid, "payment_invalid"),
+                                                  (.notOnSale, "store_unavailable"), (.unverified, "verification_failed"), (.unknown, "unknown")]
+        for (failure, code) in failures {
+            XCTAssertEqual(Subscription.PurchaseResult.failed(failure).event, .paywallError(product: .pro, errorCode: .init(rawValue: code)!))
+        }
         XCTAssertEqual(Subscription.RestoreResult.restored.event, .paywallRestored(product: .pro))
         XCTAssertEqual(Subscription.RestoreResult.nothingFound.event, .paywallError(product: .pro, errorCode: .nothingToRestore))
     }
