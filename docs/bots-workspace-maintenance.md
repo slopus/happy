@@ -22,11 +22,9 @@ dependency versions alone does not merge their bundled runtime instances.
 
 The former Personal Agent application and CLI engine were removed when Bots
 replaced them. The retired-session guards and old route remain for safe
-handling of existing sessions. `paws-agent` is a separate SDK used by Paws CLI,
-AgentParty and the browser extension; its `personalTransport` implements AI
-service authorization, not the retired Personal Agent. AgentParty and
-`paws-share` provide group chat and session sharing respectively. Check their
-consumers and external package compatibility before removing public APIs.
+handling of existing sessions. `paws-agent` is a separate SDK used by Paws CLI and
+the browser extension; its `personalTransport` implements AI
+service authorization, not the retired Personal Agent. `paws-share` provides session sharing. Check their consumers and external package compatibility before removing public APIs.
 
 For dependency or workspace changes, use a frozen install, generate both
 Prisma clients, build Paws Web and the embedded Bots bundle, and run the

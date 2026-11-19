@@ -497,7 +497,6 @@ jobs:
             echo "| Commit | \`$GITHUB_SHA\` |"
             echo "| Static storage | \`oss://$PAWS_WEB_OSS_BUCKET/web/releases/$GITHUB_SHA/\` |"
             echo '| Server Web files | Removed after verification |'
-            echo '| AgentParty | Released separately after this Web workflow succeeds |'
             echo "| MCP Apps | ${{ steps.mcp_rollout.outputs.enabled == 'true' && 'Enabled after sandbox verification' || 'Disabled (repository variable unset)' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 

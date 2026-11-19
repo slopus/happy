@@ -12,7 +12,6 @@ Local version `0.3.0` is not a publication record. Real provider and native phon
 ## 0.2.0 - 2026-09-20
 
 - feat(sdk): 创建会话时指定清单和 Tag (#611) (e8e77bfe)
-- feat(agent-party): 群聊、Codex 配置与十轮自动辩论 (0d782153)
 - fix(agent): wait for npm promotion metadata to converge (#587) (f70bfa80)
 - fix(agent): verify published packages without republishing (#586) (c53fc211)
 - chore(agent): release paws-agent v0.1.0 (be7a6d63)

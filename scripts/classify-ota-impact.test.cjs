@@ -83,3 +83,59 @@ test('only a deleted non-App workspace importer can bypass lockfile sensitivity'
   assert.equal(onlyRemovedWorkspaceImporters(before, after.replace('dependencies: {}', 'dependencies: {changed: 1}'), ['packages/retired/package.json']), false);
   assert.equal(onlyRemovedWorkspaceImporters(before, before.replace('  packages/happy-app:\n    dependencies: {}\n\n', ''), ['packages/happy-app/package.json']), false);
 });
+
+const retainedImporter = `  packages/happy-app:
+    dependencies:
+      keep:
+        specifier: 1.0.0
+        version: 1.0.0
+
+`;
+const retiredImporter = `  packages/retired:
+    dependencies:
+      orphan:
+        specifier: 2.0.0
+        version: 2.0.0
+
+`;
+const retainedPackages = '  keep@1.0.0:\n    resolution: {integrity: keep}\n\n  native@1.0.0:\n    resolution: {integrity: native}\n\n';
+const prunedPackages = '  orphan@2.0.0:\n    resolution: {integrity: orphan}\n\n  leaf@3.0.0:\n    resolution: {integrity: leaf}\n\n';
+const retainedSnapshots = '  keep@1.0.0:\n    dependencies:\n      native-alias: native@1.0.0\n\n  native@1.0.0: {}\n';
+const prunedSnapshots = '\n  orphan@2.0.0:\n    dependencies:\n      leaf: 3.0.0\n\n  leaf@3.0.0: {}\n';
+const lock = (importers, packages, snapshots) => `lockfileVersion: '9.0'\n\nimporters:\n\n${importers}\npackages:\n\n${packages}\nsnapshots:\n\n${snapshots}`;
+const originalLock = lock(retainedImporter + retiredImporter, retainedPackages + prunedPackages, retainedSnapshots + prunedSnapshots);
+const prunedLock = lock(retainedImporter, retainedPackages, retainedSnapshots);
+const deletedWorkspace = ['packages/retired/package.json'];
+
+test('retiring a non-App workspace may prune its unreachable dependency tree without changing retained records', () => {
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, prunedLock, deletedWorkspace), true);
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, prunedLock, []), false);
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, prunedLock, ['packages/happy-app/package.json']), false);
+});
+
+test('lock pruning retains native guards for referenced packages, metadata, changed edges, and additions', () => {
+  const missingNative = lock(retainedImporter, retainedPackages.replace(/  native@1\.0\.0:[\s\S]*/, ''), retainedSnapshots.replace('  native@1.0.0: {}\n', ''));
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, missingNative, deletedWorkspace), false);
+  const missingMetadata = lock(retainedImporter, retainedPackages.replace(/  native@1\.0\.0:[\s\S]*/, ''), retainedSnapshots);
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, missingMetadata, deletedWorkspace), false);
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, prunedLock.replace('integrity: native', 'integrity: changed'), deletedWorkspace), false);
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, prunedLock.replace('native-alias: native@1.0.0', 'native-alias: orphan@2.0.0'), deletedWorkspace), false);
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, prunedLock + '\n  added@1.0.0: {}\n', deletedWorkspace), false);
+  assert.equal(onlyRemovedWorkspaceImporters(originalLock, prunedLock.replace("lockfileVersion: '9.0'", "lockfileVersion: '10.0'"), deletedWorkspace), false);
+});
+
+test('unchanged missing peer contexts cannot conceal pruning of another record of that package version', () => {
+  const reference = retainedImporter.replace('version: 1.0.0', 'version: 1.0.0(peer@9.0.0)');
+  const original = lock(reference + retiredImporter, retainedPackages + prunedPackages, retainedSnapshots + prunedSnapshots);
+  assert.equal(onlyRemovedWorkspaceImporters(original, lock(reference, retainedPackages, retainedSnapshots), deletedWorkspace), true);
+  const missingKeep = lock(reference, retainedPackages.replace(/  keep@1\.0\.0:[\s\S]*?(?=  native@)/, ''), '  native@1.0.0: {}\n');
+  assert.equal(onlyRemovedWorkspaceImporters(original, missingKeep, deletedWorkspace), false);
+});
+
+test('unknown lock reference protocols and surviving links to a deleted workspace stay native-sensitive', () => {
+  for (const version of ['npm:keep@1.0.0', 'link:../retired']) {
+    const importer = retainedImporter.replace('version: 1.0.0', `version: ${version}`);
+    const before = lock(importer + retiredImporter, retainedPackages + prunedPackages, retainedSnapshots + prunedSnapshots);
+    assert.equal(onlyRemovedWorkspaceImporters(before, lock(importer, retainedPackages, retainedSnapshots), deletedWorkspace), false);
+  }
+});

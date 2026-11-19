@@ -1,4 +1,3 @@
-import { consumePartyReturn } from '@/components/agentParty/loginReturn';
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
 import { Text, View, Image, Platform } from "react-native";
@@ -27,7 +26,6 @@ export default function Home() {
 }
 
 function Authenticated() {
-    React.useEffect(() => { const path = consumePartyReturn(); if (path) router.replace(path as never); }, []);
     return <MainView variant="phone" />;
 }
 

@@ -1,7 +1,0 @@
-**
-!dist/
-!dist/**
-!scripts/
-!scripts/production-server.mjs
-!scripts/production-gateway.mjs
-!Dockerfile.production

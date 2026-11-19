@@ -25,7 +25,6 @@ verify_live() {
     local level="${2:-full}"
     local marker
     local html
-    local party_html
     marker="$(curl --fail --silent --show-error --insecure "$STAGING_ORIGIN/.paws-release-revision")" || return 1
     [[ "$marker" == "$checked_revision" ]] || { echo "Staging revision mismatch: expected $checked_revision, got $marker" >&2; return 1; }
     curl --fail --silent --show-error --insecure "$STAGING_ORIGIN/health" | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{let j=JSON.parse(s);if(j.status!=="ok"||j.service!=="happy-server")process.exit(1)})' || return 1
@@ -45,11 +44,6 @@ verify_live() {
     skin_hash="$(shasum -a 256 "$skin_file" | cut -d ' ' -f 1)"
     remote_skin_hash="$(curl --fail --silent --show-error --insecure "$STAGING_ORIGIN$skin_url" | shasum -a 256 | cut -d ' ' -f 1)" || return 1
     [[ "$skin_hash" == "$remote_skin_hash" ]] || { echo 'DreamSkin background hash mismatch' >&2; return 1; }
-    party_html="$(curl --fail --silent --show-error --insecure "$STAGING_ORIGIN/agent-party/")" || return 1
-    [[ "$party_html" == *'/agent-party/assets/'* ]] || { echo 'AgentParty static UI missing' >&2; return 1; }
-    [[ "$(curl --fail --silent --show-error --insecure "$STAGING_ORIGIN/agent-party/api/access/config")" == '{"accountMode":true}' ]] || { echo 'AgentParty gateway unavailable' >&2; return 1; }
-    [[ "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' --request POST --header 'Origin: https://evil.invalid' "$STAGING_ORIGIN/agent-party/api/access/ticket")" == 403 ]] || { echo 'Foreign Origin was not rejected' >&2; return 1; }
-    [[ "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' --request POST "$STAGING_ORIGIN/agent-party/api/access/ticket")" == 403 ]] || { echo 'Missing Origin was not rejected' >&2; return 1; }
     [[ "$(curl --silent --insecure --output /dev/null --write-out '%{http_code}' "$STAGING_ORIGIN/_expo/missing.js")" == 404 ]] || { echo 'Missing static asset did not return 404' >&2; return 1; }
     echo "Verified $STAGING_ORIGIN at $checked_revision"
 }
@@ -162,9 +156,6 @@ CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL="$STAGING_ORIGIN" EXPO_PUBL
 node scripts/inject-staging-dreamskin-preload.mjs packages/happy-app/dist/index.html
 node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html
 node scripts/stamp-web-release.mjs packages/happy-app/dist/index.html packages/happy-app/dist/.paws-release-revision "$revision"
-PAWS_AGENT_PARTY_BASE_PATH=/agent-party/ pnpm --filter @wangjs-jacky/paws-agent-party exec vite build --config vite.config.ts
-mkdir -p packages/happy-app/dist/agent-party
-cp -R packages/paws-agent-party/dist/web/. packages/happy-app/dist/agent-party/
 node scripts/write-staging-web-checksums.mjs packages/happy-app/dist
 readonly manifest_sha="$(shasum -a 256 packages/happy-app/dist/.paws-staging-checksums.sha256 | cut -d ' ' -f 1)"
 tar -C packages/happy-app/dist -czf "$temp_dir/release.tgz" .

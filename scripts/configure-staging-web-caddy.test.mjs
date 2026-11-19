@@ -20,17 +20,9 @@ test('adds one complete same-origin staging site and preserves production verbat
     assert.match(result, /root \* \/var\/www\/paws-web-staging\/current/);
     assert.match(result, /try_files \{path\} \/index\.html/);
     assert.match(result, /X-Robots-Tag "noindex, nofollow, noarchive"/);
-    assert.match(result, /@paws_agent_party_api path \/agent-party\/api\/\*/);
-    assert.match(result, /@party_invalid_origin \{\s+path \/agent-party\/api\/\* \/agent-party\/revision\s+header Origin \*\s+not header Origin https:\/\/47\.115\.228\.20:8444/s);
-    assert.match(result, /@party_missing_mutation_origin \{\s+path \/agent-party\/api\/\* \/agent-party\/revision\s+method POST PATCH PUT DELETE\s+not header Origin https:\/\/47\.115\.228\.20:8444/s);
-    assert.match(result, /header_up Host 47\.115\.228\.20:8443/);
-    assert.match(result, /header_up Origin https:\/\/47\.115\.228\.20:8443/);
-    assert.match(result, /@paws_agent_party_assets path \/agent-party\/assets\/\*/);
-    assert.match(result, /try_files \{path\} \/agent-party\/index\.html/);
     assert.match(result, /@public_session_share path \/share\/\*/);
     assert.match(result, /Content-Security-Policy .*frame-ancestors 'none'/);
     assert.match(result, /@static_asset path \/_expo\/\* \/assets\/\* \/desktop-skins\/\*/);
-    assert.match(result, /@immutable_static path \/_expo\/\* \/assets\/\* \/desktop-skins\/\* \/agent-party\/assets\/\*/);
     assert.match(result, /header @immutable_static Cache-Control "public, max-age=31536000, immutable" \{\s+match status 2xx\s+\}/);
     assert.match(result, /handle @static_asset \{\s+root \* \/var\/www\/paws-web-staging\/current\s+file_server/s);
     assert.equal(configureStagingWebCaddy(result), result);

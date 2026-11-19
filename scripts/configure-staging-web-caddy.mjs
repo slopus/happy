@@ -5,7 +5,10 @@ import { pathToFileURL } from 'node:url';
 export const STAGING_WEB_BLOCK_START = '# paws-web-staging:start';
 export const STAGING_WEB_BLOCK_END = '# paws-web-staging:end';
 export const STAGING_WEB_ORIGIN = 'https://47.115.228.20:8444';
-const PREVIOUS_MANAGED_BLOCK_SHA256 = '6cddf75112fa26a8ebca1baa97d72a4a8a60fdc34cc0a0463dec1481aa728fd9';
+const PREVIOUS_MANAGED_BLOCK_SHA256 = new Set([
+    '6cddf75112fa26a8ebca1baa97d72a4a8a60fdc34cc0a0463dec1481aa728fd9',
+    '2e786774e233fcb2c1384d6b75759af3b4396703ad880cfd9605ea3c86e14e5a',
+]);
 
 const STAGING_WEB_BLOCK = `${STAGING_WEB_BLOCK_START}
 47.115.228.20:8444 {
@@ -17,7 +20,7 @@ const STAGING_WEB_BLOCK = `${STAGING_WEB_BLOCK_START}
         Referrer-Policy "no-referrer"
         Cache-Control "no-store"
     }
-    @immutable_static path /_expo/* /assets/* /desktop-skins/* /agent-party/assets/*
+    @immutable_static path /_expo/* /assets/* /desktop-skins/*
     header @immutable_static Cache-Control "public, max-age=31536000, immutable" {
         match status 2xx
     }
@@ -25,36 +28,9 @@ const STAGING_WEB_BLOCK = `${STAGING_WEB_BLOCK_START}
     header @public_session_share {
         Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; media-src 'self' blob: https: http:; connect-src 'self' https: http:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
     }
-    @party_invalid_origin {
-        path /agent-party/api/* /agent-party/revision
-        header Origin *
-        not header Origin ${STAGING_WEB_ORIGIN}
-    }
-    @party_missing_mutation_origin {
-        path /agent-party/api/* /agent-party/revision
-        method POST PATCH PUT DELETE
-        not header Origin ${STAGING_WEB_ORIGIN}
-    }
-    @paws_agent_party_api path /agent-party/api/* /agent-party/revision
-    handle @paws_agent_party_api {
-        respond @party_invalid_origin 403
-        respond @party_missing_mutation_origin 403
-        reverse_proxy 127.0.0.1:3847 {
-            header_up Host 47.115.228.20:8443
-            header_up Origin https://47.115.228.20:8443
-        }
-    }
-    @paws_agent_party_assets path /agent-party/assets/*
-    handle @paws_agent_party_assets {
-        root * /var/www/paws-web-staging/current
-        file_server
-    }
-    @paws_agent_party_app path /agent-party /agent-party/*
-    header @paws_agent_party_app Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
-    handle @paws_agent_party_app {
-        root * /var/www/paws-web-staging/current
-        try_files {path} /agent-party/index.html
-        file_server
+    @retired_features path /agent-party /agent-party/* /agent-profiles /agent-party-access /settings/agent-party-admin
+    handle @retired_features {
+        respond 410
     }
     @backend path /v1/* /v2/* /v3/* /v4/* /files/* /health /socket.io/* /socket/*
     handle @backend {
@@ -96,7 +72,7 @@ export function configureStagingWebCaddy(source) {
         const end = source.indexOf(STAGING_WEB_BLOCK_END, start) + STAGING_WEB_BLOCK_END.length;
         const current = source.slice(start, end);
         if (current === STAGING_WEB_BLOCK) return source;
-        if (createHash('sha256').update(current).digest('hex') === PREVIOUS_MANAGED_BLOCK_SHA256) {
+        if (PREVIOUS_MANAGED_BLOCK_SHA256.has(createHash('sha256').update(current).digest('hex'))) {
             return source.slice(0, start) + STAGING_WEB_BLOCK + source.slice(end);
         }
         if (current !== STAGING_WEB_BLOCK) {

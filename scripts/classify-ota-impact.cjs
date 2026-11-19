@@ -3,6 +3,7 @@
 // shared imports and module-level effects are absent from the Android bundle.
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
+const { posix } = require('node:path');
 
 const nativeFiles = new Set([
   'packages/happy-app/app.config.js', 'packages/happy-app/expo-project.json',
@@ -20,7 +21,8 @@ const descriptions = {
 };
 
 // Removing an unrelated workspace importer does not change the App native graph.
-// Require the rest of the lockfile to remain byte-for-byte identical.
+// Retained dependency records must stay byte-for-byte identical; only
+// unreachable package/snapshot records may be pruned with the importer.
 function onlyRemovedWorkspaceImporters(before, after, deletedManifests) {
   const removable = new Set(deletedManifests
     .filter(file => /^packages\/[^/]+\/package\.json$/.test(file) && file !== 'packages/happy-app/package.json')
@@ -31,7 +33,80 @@ function onlyRemovedWorkspaceImporters(before, after, deletedManifests) {
   if (start < 0 || end < 0) return false;
   const importers = before.slice(start, end).replace(/^  ([^ \n][^\n]*):\n[\s\S]*?(?=^  [^ \n]|$(?![\s\S]))/gm,
     (block, key) => removable.has(key) ? '' : block);
-  return before.slice(0, start) + importers + before.slice(end) === after;
+  const stripped = before.slice(0, start) + importers + before.slice(end);
+  return stripped === after || onlyPrunedLockRecords(stripped, after, removable);
+}
+
+// This deliberately supports only pnpm's stable v9 block layout. Unknown shapes
+// fail closed; it is not a general YAML parser and adds no CI runtime dependency.
+function onlyPrunedLockRecords(before, after, removedImporters) {
+  const unquote = value => {
+    if (value.startsWith("'")) return value.endsWith("'") ? value.slice(1, -1).replaceAll("''", "'") : null;
+    if (value.startsWith('"')) { try { return JSON.parse(value); } catch { return null; } }
+    return value;
+  };
+  const records = text => {
+    const starts = [...text.matchAll(/^  (\S.*):(?: \{\})?$/gm)];
+    if (text.slice(0, starts[0]?.index ?? text.length).trim()) return null;
+    const result = new Map();
+    for (let i = 0; i < starts.length; i++) {
+      const key = unquote(starts[i][1]);
+      if (!key || result.has(key)) return null;
+      result.set(key, text.slice(starts[i].index, starts[i + 1]?.index ?? text.length));
+    }
+    return result;
+  };
+  const sections = text => {
+    const match = text.match(/^([\s\S]*?\npackages:\n)([\s\S]*?)\nsnapshots:\n([\s\S]*)$/);
+    if (!match) return null;
+    return { header: match[1], packages: records(match[2]), snapshots: records(match[3]) };
+  };
+  const a = sections(before), b = sections(after);
+  if (!a || !b || a.header !== b.header || !a.packages || !b.packages || !a.snapshots || !b.snapshots) return false;
+  // Record separators may lose blank lines when their final neighbor is pruned.
+  for (const kind of ['packages', 'snapshots']) {
+    for (const [key, block] of b[kind]) {
+      const original = a[kind].get(key);
+      if (original === undefined || original.replace(/\n+$/, '') !== block.replace(/\n+$/, '')) return false;
+    }
+  }
+  // Every surviving snapshot must retain the package metadata it originally used.
+  for (const key of b.snapshots.keys()) {
+    const base = key.split('(')[0];
+    if (a.packages.has(base) && !b.packages.has(base)) return false;
+  }
+  const retainedImporters = records(b.header.slice(b.header.indexOf('\nimporters:\n') + '\nimporters:\n'.length, -'\npackages:\n'.length));
+  if (!retainedImporters) return false;
+  const removedVersions = new Set(['packages', 'snapshots'].flatMap(kind => [...a[kind].keys()].filter(key => !b[kind].has(key)).map(key => key.split('(')[0])));
+  const exists = (name, version, owner) => {
+    if (!name || !version) return false;
+    if (version.startsWith('link:')) {
+      return !!owner && !removedImporters.has(posix.normalize(posix.join(owner, version.slice(5))));
+    }
+    const key = /^(?:@[^/\s:@]+\/)?[^@()\s:/]+@\d/.test(version) ? version : `${name}@${version}`;
+    if (a.snapshots.has(key)) return b.snapshots.has(key);
+    // Some existing locks omit a peer-context variant referenced by an importer.
+    // Do not bless a changed graph: such an unchanged reference is safe only
+    // when no record of that exact package version was removed at all.
+    return /^(?:@[^/\s:@]+\/)?[^@()\s:/]+@\d[^\s]*$/.test(key) && !removedVersions.has(key.split('(')[0]);
+  };
+  for (const [owner, block] of retainedImporters) {
+    let dependency;
+    for (const line of block.split('\n')) {
+      if (/^    \S/.test(line)) dependency = undefined;
+      const name = line.match(/^      (.+):$/);
+      if (name) dependency = unquote(name[1]);
+      const version = line.match(/^        version: (.+)$/);
+      if (version && !exists(dependency, unquote(version[1]), owner)) return false;
+    }
+  }
+  for (const block of b.snapshots.values()) {
+    for (const line of block.split('\n')) {
+      const ref = line.match(/^      (.+): (.+)$/);
+      if (ref && !exists(unquote(ref[1]), unquote(ref[2]))) return false;
+    }
+  }
+  return true;
 }
 
 function classifyOtaImpact(paths, eventName) {
