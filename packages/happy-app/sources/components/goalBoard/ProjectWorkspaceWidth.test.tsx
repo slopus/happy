@@ -39,3 +39,22 @@ it('does not share measurements across project owners', () => {
     act(() => renderer.update(tree('account-b')));
     expect(layout.width).toBe(0);
 });
+
+
+it('retains a manual catalog split across task/global remounts and resets for a new owner', () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    let layout!: ReturnType<typeof useProjectWorkspaceWidth>;
+    function Workspace() { layout = useProjectWorkspaceWidth(); return null; }
+    const tree = (scope: string, owner = 'account-a') => <ProjectWorkspaceWidthProvider key={owner}><Workspace key={scope} /></ProjectWorkspaceWidthProvider>;
+    act(() => { renderer = TestRenderer.create(tree('task-a')); });
+    act(() => layout.resizeCatalog(330));
+    act(() => renderer.update(tree('task-b')));
+    expect(layout.catalogWidth).toBe(330);
+    act(() => renderer.update(tree('global')));
+    expect(layout.catalogWidth).toBe(330);
+    act(() => layout.resizeCatalog(undefined));
+    expect(layout.catalogWidth).toBeUndefined();
+    act(() => layout.resizeCatalog(450));
+    act(() => renderer.update(tree('task-a', 'account-b')));
+    expect(layout.catalogWidth).toBeUndefined();
+});

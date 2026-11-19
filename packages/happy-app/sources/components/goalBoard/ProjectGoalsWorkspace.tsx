@@ -32,6 +32,7 @@ import { useFileWorkspace } from '@/components/fileWorkspace/context';
 import { ProjectArchiveTree } from './ProjectArchiveTree';
 import { getProjectCatalogWidth, projectPanelGap } from './projectWorkspaceLayout';
 import { ProjectWorkspaceWidthProvider, useProjectWorkspaceWidth } from './ProjectWorkspaceWidth';
+import { ProjectCatalogResizeHandle } from './ProjectCatalogResizeHandle';
 import { ProjectOverviewWorkspace } from './ProjectOverviewWorkspace';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel';
 import { ProjectConversationHeader } from './ProjectConversationHeader';
@@ -497,7 +498,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
         fileRequest.current = workspace.openRequestId;
         if (mobile && focused.current && props.mobileView !== 'reader' && workspace.snapshot.active) props.openReader(workspace.snapshot.active);
     }, [workspace.openRequestId, workspace.snapshot.active, mobile, props.mobileView]);
-    const { width: rowWidth, measure: setRowWidth } = useProjectWorkspaceWidth();
+    const { width: rowWidth, measure: setRowWidth, catalogWidth: preferredCatalogWidth, resizeCatalog } = useProjectWorkspaceWidth();
     const [tab, setTab] = React.useState('details');
     const [busy, setBusy] = React.useState(false);
     const [executionAttempted, setExecutionAttempted] = React.useState(() => projectTaskExecutionAttempted(machineId, task));
@@ -595,7 +596,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     // Keep the header mounted while a deleted route advances to its successor.
     const showChat = !!props.conversationId;
     const centerOpen = showChat || fileOpen;
-    const catalogWidth = getProjectCatalogWidth(rowWidth, rightWidth ?? 0);
+    const catalogWidth = getProjectCatalogWidth(rowWidth, rightWidth ?? 0, preferredCatalogWidth);
     const showTaskFiles = () => { if (mobile) props.changeView('files'); else { setTab('files'); if (fileOpen) setCompactTab('file'); } };
     const emptyConversation = <ProjectConversationEmptyState task={task} compact={mobile} onStart={() => { void start(task, 'chat'); }} startLabel={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={busy || (!history.length && (offline || !canCreateProjectConversation()))} onFiles={showTaskFiles} />;
     const changeTab = (value: string) => { setTab(value); if (value === 'details' && showChat) setCompactTab('chat'); else if (value === 'files' && fileOpen) setCompactTab('file'); };
@@ -632,7 +633,8 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
         <View style={[styles.workspaceRow, !wide && { flexDirection: 'column' }]} onLayout={event => setRowWidth(Math.round(event.nativeEvent.layout.width))}>
             {wide ? <>
 
-                <View testID="project-task-catalog" style={[{ minWidth: 0, minHeight: 0 }, centerOpen ? { width: catalogWidth, flexBasis: catalogWidth, flexGrow: 0, flexShrink: 0, marginRight: projectPanelGap } : { flex: 1 }, maximized && { display: 'none' }]}>{catalog}</View>
+                <View testID="project-task-catalog" style={[{ minWidth: 0, minHeight: 0 }, centerOpen ? { width: catalogWidth, flexBasis: catalogWidth, flexGrow: 0, flexShrink: 0 } : { flex: 1 }, maximized && { display: 'none' }]}>{catalog}</View>
+                {centerOpen && !maximized && <ProjectCatalogResizeHandle width={catalogWidth} rowWidth={rowWidth} rightWidth={rightWidth ?? 0} onResize={resizeCatalog} />}
                 {centerOpen && <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
                     {fileOpen && showChat && !maximized && <View style={{ height: 44, flexShrink: 0, paddingBottom: 6 }}><PanelTabs activeTab={compactTab === 'file' ? 'file' : 'chat'} onTabChange={setCompactTab} testIDPrefix="project-center" tabs={[{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' }, { key: 'file', label: t('projectGoals.files'), icon: 'document-outline' }]} /></View>}
                     <View style={styles.workspaceRow}>

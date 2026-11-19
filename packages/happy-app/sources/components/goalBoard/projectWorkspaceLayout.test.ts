@@ -35,3 +35,13 @@ it('keeps cards and a readable center within the desktop work area', () => {
     expect(getProjectCatalogWidth(1580, 320)).toBeGreaterThanOrEqual(554);
     expect(getProjectCatalogWidth(0, 320)).toBe(0);
 });
+
+
+it('honors a manual catalog width while reserving the center and right-hand panel', () => {
+    expect(getProjectCatalogWidth(1580, 320, 300)).toBe(300);
+    expect(getProjectCatalogWidth(1580, 320, 850)).toBe(850);
+    expect(getProjectCatalogWidth(1010, 303, 850)).toBe(327);
+    expect(getProjectCatalogWidth(1580, 320, -100)).toBe(280);
+    expect(getProjectCatalogWidth(0, 320, 500)).toBe(0);
+    expect(getProjectCatalogWidth(1580, 320, NaN)).toBe(getProjectCatalogWidth(1580, 320));
+});

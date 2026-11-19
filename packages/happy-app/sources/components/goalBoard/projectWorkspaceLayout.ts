@@ -4,9 +4,15 @@ export const projectPanelGap = 10;
 export const projectFileDefaultMaximumWidth = 760;
 
 /** Keep the original cards visible while reserving a usable conversation/document. */
-export function getProjectCatalogWidth(rowWidth: number, rightWidth: number) {
+export function getProjectCatalogWidth(rowWidth: number, rightWidth: number, preferred?: number) {
     const available = Math.max(0, rowWidth - rightWidth - 2 * projectPanelGap);
-    return Math.min(620, Math.max(0, available - 360), Math.max(280, Math.floor(available * 0.46)));
+    const maximum = getProjectCatalogMaximumWidth(rowWidth, rightWidth);
+    return Math.min(maximum, Math.max(280, preferred !== undefined && Number.isFinite(preferred) ? preferred : Math.min(620, Math.floor(available * 0.46))));
+}
+
+/** Leave the center readable even when the window shrinks after a manual resize. */
+export function getProjectCatalogMaximumWidth(rowWidth: number, rightWidth: number) {
+    return Math.max(0, rowWidth - rightWidth - 2 * projectPanelGap - 360);
 }
 
 export function getProjectTaskNavigationWidth(rowWidth: number) {

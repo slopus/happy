@@ -26,6 +26,7 @@ import { ProjectConversationEmptyState } from './ProjectConversationEmptyState';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { projectPanelGap, getProjectCatalogWidth } from './projectWorkspaceLayout';
 import { useProjectWorkspaceWidth } from './ProjectWorkspaceWidth';
+import { ProjectCatalogResizeHandle } from './ProjectCatalogResizeHandle';
 
 export type ProjectOverviewProps = {
     machineId: string; scopePath: string; title: string; conversationId?: string; initialTab?: 'files' | 'details';
@@ -61,12 +62,12 @@ function OverviewContent(props: ProjectOverviewProps) {
     const [tab, setTab] = React.useState<string>(props.initialTab ?? 'details');
     const [center, setCenter] = React.useState('tasks');
     const { width } = useWindowDimensions();
-    const { width: rowWidth, measure: setRowWidth } = useProjectWorkspaceWidth();
+    const { width: rowWidth, measure: setRowWidth, catalogWidth: preferredCatalogWidth, resizeCatalog } = useProjectWorkspaceWidth();
     const wide = width >= 1100;
     const rightWidth = Math.min(340, Math.max(280, rowWidth * 0.3));
     const fileOpen = workspace.enabled && workspace.snapshot.open;
     const centerOpen = showChat || fileOpen;
-    const catalogWidth = getProjectCatalogWidth(rowWidth, rightWidth);
+    const catalogWidth = getProjectCatalogWidth(rowWidth, rightWidth, preferredCatalogWidth);
     const alive = React.useRef(true);
     const opening = React.useRef(false);
     const focus = React.useRef(0);
@@ -166,7 +167,8 @@ function OverviewContent(props: ProjectOverviewProps) {
     return <View style={styles.area} testID="project-overview-workspace">
         {!wide && <View style={styles.compactTabs}><PanelTabs activeTab={center} onTabChange={setCenter} testIDPrefix="project-overview" tabs={[{ key: 'tasks', label: t('projectGoals.tasks'), icon: 'grid-outline' }, ...(showChat ? [{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' as const }] : []), ...(fileOpen ? [{ key: 'file', label: t('projectGoals.files'), icon: 'document-outline' as const }] : []), { key: 'details', label: t('projectGoals.globalOverview'), icon: 'compass-outline' }]} /></View>}
         <View style={styles.row} onLayout={event => setRowWidth(Math.round(event.nativeEvent.layout.width))}>
-            {wide ? <><View testID="project-scope-catalog" style={[{ minWidth: 0, minHeight: 0 }, centerOpen ? { width: catalogWidth, flexBasis: catalogWidth, flexGrow: 0, flexShrink: 0, marginRight: projectPanelGap } : { flex: 1 }, maximized && { display: 'none' }]}>{props.children}</View>
+            {wide ? <><View testID="project-scope-catalog" style={[{ minWidth: 0, minHeight: 0 }, centerOpen ? { width: catalogWidth, flexBasis: catalogWidth, flexGrow: 0, flexShrink: 0 } : { flex: 1 }, maximized && { display: 'none' }]}>{props.children}</View>
+                {centerOpen && !maximized && <ProjectCatalogResizeHandle width={catalogWidth} rowWidth={rowWidth} rightWidth={rightWidth} onResize={resizeCatalog} />}
                 {centerOpen && <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
                     {!maximized && showChat && fileOpen && <View style={styles.compactTabs}><PanelTabs testIDPrefix="project-scope-center" activeTab={center === 'file' ? 'file' : 'chat'} onTabChange={setCenter} tabs={[{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' }, { key: 'file', label: t('projectGoals.files'), icon: 'document-outline' }]} /></View>}
                     <View style={styles.row}>{!maximized && showChat && <View style={{ flex: 1, minWidth: 0, minHeight: 0, ...(fileOpen && center === 'file' ? { display: 'none' as const } : {}) }}>{chat}</View>}{fileOpen && <View style={{ flex: 1, minWidth: 0, minHeight: 0, ...(!maximized && showChat && center !== 'file' ? { display: 'none' as const } : {}) }}><FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" fileTreeExpanded={tab === 'files'} onToggleFileTree={() => changeTab(tab === 'files' ? 'details' : 'files')} /></View>}</View>
