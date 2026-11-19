@@ -76,15 +76,17 @@ data class AccountRegistry(
      * with: the open one, else the one open last, else the newest added;
      * null when the phone has none, and a new one is made for it.
      */
-    fun forTerminal(): AccountEntry? = entry(activeId) ?: entry(lastHappyId) ?: entries.maxByOrNull { it.addedOrder }
+    fun forTerminal(usable: (AccountEntry) -> Boolean = { true }): AccountEntry? =
+        entry(activeId)?.takeIf(usable) ?: entry(lastHappyId)?.takeIf(usable) ?: entries.filter(usable).maxByOrNull { it.addedOrder }
 }
 
 /**
  * The accounts whose credential items are there but couldn't be read at the
  * last [AccountStore.reconcile]: the React Native app's [shared] item (the
  * sealed [sharedItem]), and [own] items by account id (the sealed
- * [ownItems]). Neither is signed out. Kept until a retry or until the item
- * changes, so other reads don't ask the Keystore for them again.
+ * [ownItems]). Neither is signed out. A [UnreadableCredentials.permanent]
+ * reason is kept until a retry or until the item changes, so other reads
+ * don't ask the Keystore for it again; any other is read again, once.
  */
 data class UnreadableAccounts(
     val shared: UnreadableCredentials? = null,
@@ -169,11 +171,10 @@ class AccountStore(
     /** [UnreadableAccounts.locked], now. */
     fun locked(): LockedAccount? = unreadableState.value.locked(state.value)
 
-    /** The first account after the open one that can be read and used, by added order; null for none. */
-    fun readableOther(): String? {
-        val current = state.value
+    /** The first account but [excluding] (the open one) that can be read and used, by added order; null for none. */
+    fun readableOther(excluding: String? = state.value.activeId): String? {
         val unreadable = unreadableState.value
-        return current.ordered.firstOrNull { it.id != current.activeId && it.serverConfirmed && unreadable.readable(it) }?.id
+        return state.value.ordered.firstOrNull { it.id != excluding && it.serverConfirmed && unreadable.readable(it) }?.id
     }
 
     /** With the open account [locked], opens [readableOther] in its place; false when there is none. */
@@ -189,8 +190,8 @@ class AccountStore(
      * Brings the registry in line with the stored credentials: entries
      * without credentials go, credentials without an entry are added (the
      * shared item with the React Native server). Returns every account's
-     * credentials by id. An item that couldn't be read before isn't read
-     * again unless [retry]; with it, a read that throws is tried three times.
+     * credentials by id. An item no read will open isn't read again unless
+     * [retry]; with it, a read that throws is tried three times.
      */
     @Synchronized
     fun reconcile(retry: Boolean = false): Map<String, StoredAccountCredentials> {
@@ -200,7 +201,7 @@ class AccountStore(
         val unreadableOwnItems = HashMap<String, String>()
         for (key in own.keys()) {
             val item = own.fingerprint(key)
-            val stored = before.own[key]?.takeIf { !retry && item != null && item == before.ownItems[key] }?.let { Stored.Unreadable(it) }
+            val stored = before.own[key]?.takeIf { !retry && it.permanent && item != null && item == before.ownItems[key] }?.let { Stored.Unreadable(it) }
                 ?: own.load(key, retry, StoredAccountCredentials::credentials) { json.decodeFromString(StoredAccountCredentials.serializer(), it) }
             val value = when (stored) {
                 is Stored.Present -> stored.value
@@ -219,7 +220,7 @@ class AccountStore(
         val sharedRead = when {
             // Removed by the person while it couldn't be read: as good as gone.
             sharedItem != null && sharedItem == current.removedSharedItem -> Stored.Absent
-            !retry && before.shared != null && sharedItem == before.sharedItem -> Stored.Unreadable(before.shared)
+            !retry && before.shared?.permanent == true && sharedItem == before.sharedItem -> Stored.Unreadable(before.shared)
             else -> shared.load(retry)
         }
         unreadableState.value = UnreadableAccounts((sharedRead as? Stored.Unreadable)?.reason, sharedItem.takeIf { sharedRead is Stored.Unreadable }, unreadableOwn, unreadableOwnItems)

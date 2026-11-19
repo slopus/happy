@@ -76,17 +76,18 @@ data class AccountMenu(val entries: List<AccountMenuEntry> = emptyList()) {
 fun rememberAccountMenu(graph: AppGraph): AccountMenu {
     val registry by graph.accountStore.registry.collectAsStateWithLifecycle()
     val unreadable by graph.accountStore.unreadable.collectAsStateWithLifecycle()
+    val open by graph.openAccount.collectAsStateWithLifecycle()
     val cantUnlock = stringResource(R.string.account_unlock_failed_short)
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val seeds by produceState(emptyMap<String, String>(), agents) {
         value = agents.mapNotNull { agent -> graph.agentConnections.placeholderSeed(agent.id)?.let { agent.id to it } }.toMap()
     }
     val defaultUrl = graph.serverConfig.defaultUrl
-    return remember(registry, unreadable, cantUnlock, agents, seeds, defaultUrl) {
+    return remember(registry, unreadable, open, cantUnlock, agents, seeds, defaultUrl) {
         AccountMenu(
             registry.ordered.map { entry ->
-                // Still here, but its item can't be read: picked, its page opens (AppGraph.requestUnlock).
-                val locked = !unreadable.readable(entry)
+                // Still here, but its item can't be read: picked, its page opens (AppGraph.requestUnlock). The open one read already.
+                val locked = !unreadable.readable(entry) && open.id != entry.id
                 AccountMenuEntry(
                     id = entry.id,
                     name = entry.display?.name ?: entry.display?.username,

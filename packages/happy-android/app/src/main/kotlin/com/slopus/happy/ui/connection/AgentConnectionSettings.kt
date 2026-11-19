@@ -470,12 +470,12 @@ internal fun statusText(status: AgentLinkStatus): String = stringResource(
  * Forgets the agent connection [id] on this phone; a Happy Cloud server's
  * session is revoked at the accounts service first (`POST /revoke`), without
  * waiting on it. When it was open, the next account opens: a Happy account
- * first, else another agent; none, the first screen.
+ * that can be read first, else another agent ([AppGraph.usableAccount]);
+ * none, the first screen.
  */
 internal suspend fun removeAgentConnection(graph: AppGraph, id: String) = graph.whileSwitching {
     val open = graph.openAgentId.value == id
-    val next = graph.accountStore.registry.value.ordered.firstOrNull()?.id
-        ?: graph.agentConnections.accounts.value.filter { it.id != id }.minByOrNull { it.addedAt }?.id
+    val next = graph.usableAccount(excluding = id)
     if (HappyCloud.isServer(graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server)) {
         graph.cloudPush.beforeRemoval(id)
         graph.agentConnections.credentials(id)?.oauth?.let { graph.cloudAccount?.revoke(it) }

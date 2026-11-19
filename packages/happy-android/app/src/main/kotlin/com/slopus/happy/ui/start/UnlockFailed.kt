@@ -13,7 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -106,7 +106,7 @@ fun UnlockAccount(graph: AppGraph, nav: NavHostController, id: String?) {
 @Composable
 private fun UnlockActions(graph: AppGraph, nav: NavHostController, locked: LockedAccount, busy: Boolean, more: List<Pair<String, () -> Unit>>) {
     val permanent = locked.reason.permanent
-    var removing by remember { mutableStateOf(false) }
+    var removing by rememberSaveable { mutableStateOf(false) }
     StatePage(
         title = stringResource(R.string.account_unlock_failed_title),
         body = stringResource(if (permanent) R.string.account_unlock_failed_body_permanent else R.string.account_unlock_failed_body),

@@ -338,8 +338,9 @@ class AppGraph(
     /** Accounts picked (in the account menu, Settings' accounts card) that can't be unlocked: their page opens instead of a switch. */
     val unlockRequests: SharedFlow<String> = unlockRequestFlow.asSharedFlow()
 
-    /** If [id] is a Happy account that can't be read, asks for its page ([unlockRequests]) and is true: it isn't opened. */
+    /** If [id] is a Happy account that can't be read (and isn't open), asks for its page ([unlockRequests]) and is true: it isn't opened. */
     fun requestUnlock(id: String): Boolean {
+        if (openAccount.value.id == id) return false
         val entry = accountStore.registry.value.entry(id) ?: return false
         if (accountStore.unreadable.value.readable(entry)) return false
         unlockRequestFlow.tryEmit(id)
@@ -380,9 +381,14 @@ class AppGraph(
         }
     }
 
-    /** Another account to open in the locked one's place: one that can be read ([AccountStore.readableOther]), else an agent connection; null for none. */
-    fun unlockedAccount(): String? = accountStore.readableOther()
-        ?: agentConnections.accounts.value.firstOrNull { it.id != accountStore.registry.value.activeId }?.id
+    /**
+     * An account to open in place of [excluding] (the selected one, which
+     * can't be opened or is going): a Happy account that can be read and
+     * whose server is settled ([AccountStore.readableOther]), else an agent
+     * connection that isn't revoked or signed out; null for none.
+     */
+    fun usableAccount(excluding: String? = accountStore.registry.value.activeId): String? = accountStore.readableOther(excluding)
+        ?: agentConnections.accounts.value.filter { it.id != excluding && !it.revoked && !it.signInRequired }.minByOrNull { it.addedAt }?.id
 
     /**
      * Remove from this phone, for [id] (null: the React Native item no
@@ -563,10 +569,10 @@ class AppGraph(
         scope.launch {
             combine(accountStore.registry, agentConnections.accounts, auth.state) { _, _, _ -> }.collect { publishOpenAccount() }
         }
-        // The open account can't be read but another can (an agent connection, say): that one opens instead.
+        // Nothing open because the selected account can't be read: another that can opens instead. Never while one is open.
         scope.launch {
-            combine(locked, agentConnections.accounts) { locked, _ -> locked }.collect { locked ->
-                if (locked != null) unlockedAccount()?.let { open(it).join() }
+            combine(openAccount, locked, agentConnections.accounts) { open, locked, _ -> open == OpenAccount.None && locked != null }.collect { stuck ->
+                if (stuck) usableAccount()?.let { open(it).join() }
             }
         }
     }
@@ -923,7 +929,10 @@ class AppGraph(
                 val leaving = auth.state.value as? AuthState.SignedIn
                 val id = leaving?.let { accountId(it.credentials) }
                 if (accountIdToRemove != null && accountIdToRemove != id) {
-                    removeInactiveAccount(accountIdToRemove)
+                    // None open (it can't be read, say) and it the last: the phone is wiped as with any last sign-out.
+                    val last = openAccount.value == OpenAccount.None && accountStore.registry.value.entries.singleOrNull()?.id == accountIdToRemove
+                    removeInactiveAccount(accountIdToRemove, wipe = last)
+                    if (last) wipeLastAccount()
                     return@accountRemoval
                 }
                 val server = serverUrl
@@ -938,25 +947,32 @@ class AppGraph(
                 stopAccount()
                 auth.logout()
                 store.use(database(openAccountId()))
-                if (last) {
-                    // After the store moved off the account, so nothing that follows it writes these again.
-                    withContext(Dispatchers.IO) {
-                        // persistence.ts clearPersistence: with the last account, everything in the default MMKV goes.
-                        localSettings.clear()
-                        changelog.clear()
-                        for (name in WIPED_PREFS) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
-                    }
-                    wipeHooks.forEach { it() }
-                    // The language was the account's setting: back to the device's, as after happy-app's reload.
-                    language.apply(null)
-                }
+                // After the store moved off the account, so nothing that follows it writes these again.
+                if (last) wipeLastAccount()
                 if (id != null) forget(id, leaving.publicId, synchronized(databases) { databases.remove(id) }, wipeCaches = last)
             }
         }
     }
 
-    /** Under [accountLock], removes only [id]'s kept state: the selected account and its sync keep running. */
-    private suspend fun removeInactiveAccount(id: String) {
+    /** With the last account gone: this phone's preferences go, and the language goes back to the device's. */
+    private suspend fun wipeLastAccount() {
+        withContext(Dispatchers.IO) {
+            // persistence.ts clearPersistence: with the last account, everything in the default MMKV goes.
+            localSettings.clear()
+            changelog.clear()
+            for (name in WIPED_PREFS) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+        }
+        wipeHooks.forEach { it() }
+        // The language was the account's setting: back to the device's, as after happy-app's reload.
+        language.apply(null)
+    }
+
+    /**
+     * Under [accountLock], removes only [id]'s kept state: the selected
+     * account and its sync keep running. With [wipe] (it was the last, none
+     * open), the caches go with it.
+     */
+    private suspend fun removeInactiveAccount(id: String, wipe: Boolean = false) {
         val entry = accountStore.registry.value.entry(id) ?: return
         val publicId = withContext(Dispatchers.IO) {
             val stored = accountStore.credentials(id)
@@ -967,7 +983,7 @@ class AppGraph(
             accountStore.remove(id)
             stored?.credentials?.token?.let(::tokenSubject)
         }
-        forget(id, publicId, synchronized(databases) { databases.remove(id) }, wipeCaches = false)
+        forget(id, publicId, synchronized(databases) { databases.remove(id) }, wipeCaches = wipe)
     }
 
     private val removalJobs = CopyOnWriteArrayList<Job>()

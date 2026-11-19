@@ -630,9 +630,11 @@ expo-secure-store 55.0.9's Android storage (`SecureStoreModule.kt`,
   it; a healthy Keystore is asked exactly as without it.
 - The account stores read with `keep`: an account item that is there but
   can't be read (`Stored.Unreadable`) is never deleted or written over, and
-  its registry entry stays. `AccountStore` remembers it by the sealed
-  item's fingerprint (a hash, never the value) and doesn't ask the Keystore
-  for it again until a Retry or until the item changes. A sign-in meanwhile
+  its registry entry stays. When the reason is permanent, `AccountStore`
+  remembers it by the sealed item's fingerprint (a hash, never the value)
+  and doesn't ask the Keystore for it again until a Retry or until the item
+  changes; a transient one is read again, once, on each later reconcile. A
+  sign-in meanwhile
   goes to an item of its own. Removing the account clears the shared item
   if it is the one the entry was read from, else never brings that item
   back (`removedSharedItem`).
@@ -640,8 +642,11 @@ expo-secure-store 55.0.9's Android storage (`SecureStoreModule.kt`,
   adding or switching. In the account menu and Settings' accounts card it
   shows "Can't unlock" with the error mark; picked, its page
   (`UnlockAccountRoute`) opens instead of a switch (`AppGraph.requestUnlock`).
-  When it is the open one, another account that reads (or an agent
-  connection) opens in its place, at start before the first frame. Only
+  When it was to open and nothing is open, another account that reads (or
+  an agent connection) opens in its place, at start before the first frame;
+  a later Keystore hiccup never moves someone off the account they have
+  open. Removing the open agent connection or account opens the next
+  usable one, else nothing stays selected. Only
   with nothing else usable does `StartRoute` show `UnlockFailed` (the
   account menu, Add account, Use Happy Cloud). The page and that screen
   offer, when a later read may work (the Keystore threw): Retry

@@ -16,6 +16,11 @@ import com.slopus.happy.auth.Stored
 import com.slopus.happy.auth.UnreadableCredentials
 import com.slopus.happy.auth.UnreadableItem
 import com.slopus.happy.config.ServerConfig
+import com.slopus.happy.connection.AgentConnectionCredentials
+import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.ui.connection.removeAgentConnection
+import com.slopus.happy.ui.home.NewSessionDraftStore
+import kotlinx.serialization.json.Json
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.decodeHex
 import com.slopus.happy.crypto.encodeBase64
@@ -25,6 +30,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -57,7 +63,7 @@ class RnUpgradeTest {
 
     @Before
     fun setUp() {
-        for (name in listOf(ExpoSecureStore.PREFS_NAME, AccountStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, ServerConfig.PREFS_NAME, AccountRemovals.PREFS_NAME)) {
+        for (name in listOf(ExpoSecureStore.PREFS_NAME, AccountStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, ServerConfig.PREFS_NAME, AccountRemovals.PREFS_NAME, AgentConnections.REGISTRY_PREFS, AgentConnections.SECRETS_PREFS)) {
             context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
         }
         mmkv.deleteRecursively()
@@ -172,9 +178,9 @@ class RnUpgradeTest {
             assertEquals(null, locked(graph)!!.id)
             assertEquals(UnreadableCredentials.Failed::class, locked(graph)!!.reason::class)
             assertFalse("a later read may open it", locked(graph)!!.reason.permanent)
-            // Other reads (a switch, a sign-out) don't ask for it again until a Retry.
+            // Other reads (a switch, a sign-out) ask for it once more, with no wait: it may read now.
             graph.accountStore.reconcile()
-            assertEquals(1 + ExpoSecureStore.RETRY_MILLIS.size, failing.asks)
+            assertEquals(2 + ExpoSecureStore.RETRY_MILLIS.size, failing.asks)
         }
         // The Keystore back: the same item opens.
         assertTrue(graph().auth.state.value is AuthState.SignedIn)
@@ -467,7 +473,123 @@ class RnUpgradeTest {
         assertNull("imported already", graph().rnImportFailure)
     }
 
+    /** An agent connection paired before, as AgentConnections keeps it; [revoked] when the agent removed this phone. */
+    private fun agentPaired(id: String = AGENT, revoked: Boolean = false) {
+        ExpoSecureStore(context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE), keys, keychainService = AgentConnections.KEYCHAIN_SERVICE)
+            .setItem(id, Json.encodeToString(AgentConnectionCredentials.serializer(), AgentConnectionCredentials("127.0.0.1", 9, "dv1", "token")))
+        context.getSharedPreferences(AgentConnections.REGISTRY_PREFS, Context.MODE_PRIVATE).edit()
+            .putString("accounts", """[{"id":"$id","name":"Studio","addedAt":1,"revoked":$revoked}]""").commit()
+    }
+
+    /** The React Native account and one signed in after it; returns their ids, the second open. */
+    private fun twoAccounts(): Pair<String, String> {
+        rnSignedIn()
+        val first = graph()
+        val id = shared(first)!!.id
+        val otherId = first.accountStore.signIn(AuthCredentials("other-token", encodeBase64(ByteArray(32) { 9 }, Base64Variant.Url)), "https://other.test")
+        first.close()
+        return id to otherId
+    }
+
+    @Test
+    fun withOnlyAnAccountThatCantBeReadAnAgentConnectionOpensInstead() {
+        rnSignedIn()
+        val id = shared(graph())!!.id
+        agentPaired()
+        val graph = graph(FailingKeys(keys, ProviderException("keystore2")))
+        eventually(message = "the agent connection open") { graph.openAccount.value == OpenAccount.Agent(AGENT) }
+        assertNotNull(graph.accountStore.registry.value.entry(id))
+    }
+
+    @Test
+    fun aRevokedAgentConnectionDoesntOpenInPlaceOfALockedAccount() {
+        rnSignedIn()
+        shared(graph())!!.id
+        agentPaired(revoked = true)
+        val graph = graph(FailingKeys(keys, ProviderException("keystore2")))
+        assertNull(graph.usableAccount())
+        Thread.sleep(200)
+        assertEquals(OpenAccount.None, graph.openAccount.value)
+        assertNotNull(locked(graph))
+    }
+
+    @Test
+    fun removingTheOpenAgentConnectionOpensAnAccountThatReads() {
+        val (id, otherId) = twoAccounts()
+        agentPaired()
+        context.getSharedPreferences(AccountStore.PREFS_NAME, Context.MODE_PRIVATE).let { prefs ->
+            prefs.edit().putString("registry", prefs.getString("registry", null)!!.replace(""""activeId":"$otherId"""", """"activeId":"$AGENT"""")).commit()
+        }
+        val graph = graph(FailingKeys(keys, ProviderException("keystore2")))
+        eventually(message = "the agent connection open") { graph.openAccount.value == OpenAccount.Agent(AGENT) }
+
+        // The first account by order can't be read: the one that can opens.
+        runBlocking { removeAgentConnection(graph, AGENT) }
+        eventually(message = "the readable account open") { graph.openAccount.value == OpenAccount.Happy(otherId) }
+        assertEquals(otherId, graph.accountStore.registry.value.activeId)
+        assertNotNull(graph.accountStore.registry.value.entry(id))
+    }
+
+    @Test
+    fun removingTheOpenAgentConnectionWithNothingUsableLeavesItUnselected() {
+        rnSignedIn()
+        agentPaired()
+        graph().apply { accountStore.select(AGENT); close() }
+        val graph = graph(FailingKeys(keys, ProviderException("keystore2")))
+        eventually(message = "the agent connection open") { graph.openAccount.value == OpenAccount.Agent(AGENT) }
+
+        // The only Happy account can't be read: nothing opens, and the removed connection isn't left selected.
+        runBlocking { removeAgentConnection(graph, AGENT) }
+        assertNotEquals(AGENT, graph.accountStore.registry.value.activeId)
+        assertEquals(OpenAccount.None, graph.openAccount.value)
+        assertNotEquals(AGENT, graph(FailingKeys(keys, ProviderException("keystore2"))).accountStore.registry.value.activeId)
+    }
+
+    @Test
+    fun aKeystoreHiccupWhileAnAccountIsOpenLeavesItOpen() {
+        rnSignedIn()
+        val keystore = object : SecureStoreKeys by keys {
+            @Volatile var failing = false
+            override fun secretKey(alias: String): SecretKey? = if (failing && alias == RN_ALIAS) throw ProviderException("keystore2") else keys.secretKey(alias)
+        }
+        val graph = graph(keystore)
+        val id = shared(graph)!!.id
+        val otherId = graph.accountStore.signIn(AuthCredentials("other-token", encodeBase64(ByteArray(32) { 9 }, Base64Variant.Url)), "https://other.test")
+        runBlocking { graph.open(id).join() }
+        assertEquals(OpenAccount.Happy(id), graph.openAccount.value)
+
+        // A read in passing (a removal's, a switch's) fails once.
+        keystore.failing = true
+        graph.accountStore.credentials(otherId)
+        assertNotNull(graph.accountStore.unreadable.value.shared)
+        Thread.sleep(300)
+        assertEquals("still open", OpenAccount.Happy(id), graph.openAccount.value)
+        assertEquals(credentials, (graph.auth.state.value as AuthState.SignedIn).credentials)
+
+        // The next read in passing finds it again: no Retry needed.
+        keystore.failing = false
+        graph.accountStore.credentials(otherId)
+        assertNull(graph.accountStore.unreadable.value.shared)
+        assertEquals(id, graph.accountStore.registry.value.activeId)
+    }
+
+    @Test
+    fun removingTheLastAccountFromItsUnlockPageWipesThePhoneAsAnySignOut() {
+        rnSignedIn()
+        val id = shared(graph())!!.id
+        keys.secretKeys.clear()
+        val drafts = context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE)
+        drafts.edit().putString("draft", "hello").commit()
+        val graph = graph()
+        assertEquals(id, locked(graph)?.id)
+        runBlocking { graph.removeUnreadable(id).join(); graph.awaitRemovals() }
+        assertNull(graph.accountStore.registry.value.entry(id))
+        assertNull(rnItem)
+        assertTrue("wiped", drafts.all.isEmpty())
+    }
+
     companion object {
+        private const val AGENT = "agent-connection-1"
         private const val DEFAULT = "https://api.cluster-fluster.com"
         private const val RN_SERVER = "https://api.cluster-fluster.com/"
         private const val RN_ALIAS = "AES/GCM/NoPadding:key_v1:keystoreUnauthenticated"
