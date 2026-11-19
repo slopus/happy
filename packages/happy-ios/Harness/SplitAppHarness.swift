@@ -324,8 +324,9 @@ private struct SplitComposeMachine: HomeOps, HomeSessionOps {
 /// agent id>` opens a chat from the sidebar, `-info` pushes its profile,
 /// `-settings` opens Settings instead, `-hideSidebar` hides the sidebar,
 /// `-dark` darkens the window, `-landscape` turns it on its side,
-/// `-geometry` logs the window's size, safe area, size classes and split
-/// each time they change (`[geometry]`), as a fold or an unfold does,
+/// `-geometry` logs the window's size, safe area, size classes, split,
+/// hinge and division regions each time they change (`[geometry]`), as a
+/// fold, an unfold or a partial fold does,
 /// `-resizeLoop` narrows and widens the window in turn, `-narrow` leaves
 /// an iPad's window 600 wide, `-animated` pushes the chat `-open` opens as
 /// a tap does, for a recording of the push, `-linkLoop` has the switcher
@@ -452,20 +453,33 @@ final class SplitAppHarness {
             // The window as it is now, each time it changes: a fold, an
             // unfold or a turn (`[geometry]`), for measuring an iPhone Duo.
             if arguments.contains("-geometry") {
+                var hinge = "-"
+                #if compiler(>=6.4.1)
+                if #available(iOS 27.1, *) {
+                    window.addInteraction(UIHingeInteraction { _, update in
+                        hinge = update.hinge.map { "\($0.status.rawValue)@\(Int(($0.angle * 180 / .pi).rounded()))°" } ?? "none"
+                    })
+                }
+                #endif
                 Task { @MainActor [weak window, weak shell] in
                     var last = ""
                     while let window, let shell {
                         let traits = window.traitCollection
                         var edge = "-"
+                        var division = "-"
                         #if compiler(>=6.4.1)
-                        if #available(iOS 27.1, *) { edge = "\(traits.verticalBarEdge.rawValue)" }
+                        if #available(iOS 27.1, *) {
+                            edge = "\(traits.verticalBarEdge.rawValue)"
+                            division = window.reservedRegions(kind: .division, options: .includeInactive)
+                                .map { "\($0.frame)\($0.isActive ? "" : " inactive") margins=\($0.margins)" }.joined(separator: ",")
+                        }
                         #endif
                         let line = "[geometry] window=\(window.bounds.size) safe=\(window.safeAreaInsets)"
                             + " h=\(traits.horizontalSizeClass == .regular ? "regular" : "compact") v=\(traits.verticalSizeClass == .regular ? "regular" : "compact")"
                             + " scale=\(traits.displayScale) split=\(shell.isExpanded) stack=\(shell.stack.map { String(describing: type(of: $0)) })"
                             + " verticalBarEdge=\(edge) statusBar=\(window.windowScene?.statusBarManager?.statusBarFrame ?? .zero)"
                             + " main=\(shell.main.view.convert(shell.main.view.bounds, to: window))"
-                            + " presented=\(shell.presentedViewController.map { String(describing: type(of: $0)) } ?? "-") callBar=\(shell.callBarShown)"
+                            + " presented=\(shell.presentedViewController.map { String(describing: type(of: $0)) } ?? "-") callBar=\(shell.callBarShown) hinge=\(hinge) division=[\(division)]"
                         if line != last { print(line); last = line }
                         try? await Task.sleep(for: .milliseconds(300))
                     }

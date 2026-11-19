@@ -66,6 +66,35 @@ final class SplitRulesTests: XCTestCase {
         XCTAssertEqual(SplitRule.sidebarWidth(windowWidth: 1376), 360, "on its side")
     }
 
+    /// An iPhone Duo open in landscape and folded partway, as the iOS 27.2
+    /// Duo simulator reports it: one active division region, 40 wide round
+    /// the crease at 475.5 (20 either side for touch).
+    func testOnADisplayFoldedPartwayTheSidebarMeetsTheCrease() {
+        let duo = CGSize(width: 951, height: 669)
+        let crease = CGRect(x: 455.5, y: 0, width: 40, height: 669)
+        // The sidebar's edge on the crease, on the display's pixels.
+        XCTAssertEqual(SplitRule.sidebarWidth(window: duo, divisions: [crease], scale: 3), CGFloat(1427) / 3)
+        // Flat or closed there is no active region: the usual 340.
+        XCTAssertEqual(SplitRule.sidebarWidth(window: duo, divisions: [], scale: 3), 340)
+        // Right to left, the sidebar is the right half.
+        XCTAssertEqual(SplitRule.sidebarWidth(window: duo, divisions: [crease], sidebarOnLeft: false, scale: 3), 951 - CGFloat(1427) / 3)
+        // Beside it the main panel is the other half, to the window's edge.
+        let half = SplitRule.sidebarWidth(window: duo, divisions: [crease], scale: 3)
+        let panel = MainPanelLayout(size: duo, safeArea: LayoutInsets(top: 0, left: half, bottom: 34, right: 84))
+        XCTAssertEqual(panel.panel, CGRect(x: half, y: 0, width: 951 - half, height: 669))
+        // A crease across the window, not down it, isn't one to meet.
+        let across = CGRect(x: 0, y: 314.5, width: 951, height: 40)
+        XCTAssertEqual(SplitRule.sidebarWidth(window: duo, divisions: [across], scale: 3), 340)
+        // Nor one that would leave either half under the least sidebar.
+        let nearTheEdge = CGRect(x: 280, y: 0, width: 40, height: 669)
+        XCTAssertEqual(SplitRule.sidebarWidth(window: duo, divisions: [nearTheEdge], scale: 3), 340)
+        // An iPad has no division regions: its widths are as they were.
+        for width: CGFloat in [820, 1032, 1180, 1376] {
+            XCTAssertEqual(SplitRule.sidebarWidth(window: CGSize(width: width, height: 1000), divisions: [], scale: 2),
+                           SplitRule.sidebarWidth(windowWidth: width), "\(width)")
+        }
+    }
+
     func testTheMainPanelSitsBesideTheFloatingSidebar() {
         let beside = MainPanelLayout(size: CGSize(width: 1032, height: 1376), safeArea: LayoutInsets(top: 32, left: 320, bottom: 20, right: 0))
         XCTAssertEqual(beside.panel, CGRect(x: 320, y: 0, width: 712, height: 1376))

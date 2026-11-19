@@ -126,6 +126,7 @@ public final class ShellViewController: UIViewController {
             return
         }
         split.delegate = self
+        observeHinge()
         registerForTraitChanges([UITraitHorizontalSizeClass.self, UITraitVerticalSizeClass.self]) { (self: Self, _) in self.updateMode() }
         split.preferredSplitBehavior = .tile
         split.presentsWithGesture = true
@@ -376,6 +377,29 @@ public final class ShellViewController: UIViewController {
         coordinator.animate(alongsideTransition: nil) { [weak self] _ in self?.settle() }
     }
 
+    /// Where a display folded partway divides the window (iOS 27.1): the
+    /// active division regions, in this view. None while it is flat or
+    /// closed, or on a device that doesn't fold.
+    private var divisions: [CGRect] {
+        #if compiler(>=6.4.1)
+        if #available(iOS 27.1, *) { return view.reservedRegions(kind: .division).map(\.frame) }
+        #endif
+        return []
+    }
+
+    /// The hinge moved (iOS 27.1, `UIHingeInteraction`): a display folded
+    /// partway or flat again moves the sidebar's edge to the crease or back.
+    private func observeHinge() {
+        #if compiler(>=6.4.1)
+        if #available(iOS 27.1, *) {
+            view.addInteraction(UIHingeInteraction { [weak self] _, _ in
+                // The division regions follow the hinge in the same update.
+                DispatchQueue.main.async { self?.updateMode(animated: true) }
+            })
+        }
+        #endif
+    }
+
     /// After the layout pass that collapsed or expanded the split.
     private func settle() {
         DispatchQueue.main.async { [weak self] in self?.resizing = false }
@@ -393,15 +417,29 @@ public final class ShellViewController: UIViewController {
     }
 
     /// Collapses or expands the split for a window `width` wide (the
-    /// current one by default) and the stack's root.
-    func updateMode(width: CGFloat? = nil) {
+    /// current one by default) and the stack's root. `animated`: the
+    /// sidebar's width moves in an animation, as when the display folds
+    /// partway and its edge goes to the crease.
+    func updateMode(width: CGFloat? = nil, animated: Bool = false) {
         guard let split, isViewLoaded else { return }
+        // Mid-resize the crease is the old window's; layout asks again.
+        let creases = width == nil ? divisions : []
         let width = width ?? view.bounds.width
-        let sidebarWidth = SplitRule.sidebarWidth(windowWidth: width)
+        let sidebarWidth = SplitRule.sidebarWidth(window: CGSize(width: width, height: view.bounds.height), divisions: creases,
+                                                  sidebarOnLeft: view.effectiveUserInterfaceLayoutDirection == .leftToRight,
+                                                  scale: traitCollection.displayScale)
         if split.preferredPrimaryColumnWidth != sidebarWidth {
-            split.minimumPrimaryColumnWidth = sidebarWidth
-            split.maximumPrimaryColumnWidth = sidebarWidth
-            split.preferredPrimaryColumnWidth = sidebarWidth
+            let resize = {
+                split.minimumPrimaryColumnWidth = sidebarWidth
+                split.maximumPrimaryColumnWidth = sidebarWidth
+                split.preferredPrimaryColumnWidth = sidebarWidth
+                if animated { split.view.layoutIfNeeded() }
+            }
+            if animated, isExpanded {
+                UIView.animate(withDuration: 0.35, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: resize)
+            } else {
+                resize()
+            }
         }
         let wanted = SplitRule.showsSplit(
             width: width,

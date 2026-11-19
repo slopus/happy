@@ -119,6 +119,20 @@ puts its buttons there and the transcript centres in what is clear.
 its two buttons; 340 is the least that keeps it whole. An 11-inch iPad
 upright leaves the main panel 480, more than a phone.
 
+**Folded partway, the sidebar meets the crease.** An iPhone Duo open in
+landscape and folded partway reports where its display divides: iOS
+27.1's division region (`UIView.reservedRegions(kind: .division)`), a band
+round the crease that is active only while the hinge is partly open. The
+sidebar's edge goes to the crease, as the system's own apps put theirs,
+so home is one half of the fold and the main panel the other
+(`SplitRule.sidebarWidth(window:divisions:)`); flat again, it is 340. The
+shell hears the hinge move through a `UIHingeInteraction` and animates the
+width there. The position is the system's, never a midpoint the app
+assumes; a crease across the window, or one that would leave either half
+under 340, is ignored. UIKit adds the region's touch margin to the main
+panel's safe area itself. On the iOS 27.2 Duo simulator the crease is at
+475.5 of 951, so the sidebar is 475⅔ on the display's pixels.
+
 ### Hiding the sidebar
 
 The sidebar's button is at the leading edge of the main panel's root

@@ -42,6 +42,25 @@ public enum SplitRule {
     public static func sidebarWidth(windowWidth: CGFloat) -> CGFloat {
         min(360, max(340, (windowWidth * 0.3).rounded()))
     }
+
+    /// The sidebar's width on a display folded partway (iOS 27.1's
+    /// division regions, `UIView.reservedRegions(kind: .division)`): its
+    /// edge on the crease, as the system's own apps put it, so the sidebar
+    /// is one half of the fold and the main panel the other. `divisions`
+    /// are the active regions in the window, each a band round its crease;
+    /// one that runs top to bottom is a crease the sidebar can meet. It
+    /// does only where both halves keep the least sidebar's width (340);
+    /// anywhere else, or with no crease, the width is the usual one. On
+    /// the display's pixels (`scale`).
+    public static func sidebarWidth(window: CGSize, divisions: [CGRect], sidebarOnLeft: Bool = true, scale: CGFloat = 1) -> CGFloat {
+        let usual = sidebarWidth(windowWidth: window.width)
+        guard let band = divisions.first(where: { $0.minY <= 0 && $0.maxY >= window.height && $0.width < window.width }) else { return usual }
+        let pixels = max(1, scale)
+        let crease = (band.midX * pixels).rounded() / pixels
+        let width = sidebarOnLeft ? crease : window.width - crease
+        guard width >= 340, window.width - width >= 340 else { return usual }
+        return width
+    }
 }
 
 /// The main panel inside its column. iOS 26's sidebar floats over the
