@@ -65,7 +65,7 @@ function notifyCompletion(sessionId: string, key: string, body: string): void {
     pending.add(key);
     const send = () => {
         if (!storage.getState().localSettings.webCompletionNotificationsEnabled || claimed.has(key) || readClaims().includes(key)) return;
-        const title = getCurrentLanguage().startsWith('zh') ? 'Paws · 任务已完成' : 'Paws · Task completed';
+        const title = getCurrentLanguage().startsWith('zh') ? 'Paws · 已完成' : 'Paws · Completed';
         if (!showNotification(title, body, `paws-completed:${key}`, sessionId)) return;
         claimed.add(key);
         if (claimed.size > maxClaims) claimed.delete(claimed.values().next().value!);

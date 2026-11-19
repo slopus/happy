@@ -50,7 +50,7 @@ describe('browser completion notifications', () => {
     it('notifies in the background independently of sound, and clicks focus and open the session', () => {
         transition();
         expect(notifications).toHaveLength(1);
-        expect(notifications[0].title).toBe('Paws · 任务已完成');
+        expect(notifications[0].title).toBe('Paws · 已完成');
         expect(notifications[0].options.body).toBe('My task');
         notifications[0].onclick?.();
         expect(mocks.focus).toHaveBeenCalledOnce();
