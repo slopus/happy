@@ -1,3 +1,4 @@
+import { createTaskIdentityStore, isStableTaskId } from './taskIdentity';
 import { watch, type FSWatcher } from 'node:fs';
 import { mkdir, open, readdir, rename, realpath, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -21,7 +22,7 @@ export type ProjectGoalDependencies = {
     observe?: boolean;
     spawn: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     send: (sessionId: string, prompt: string, localId: string) => Promise<void>;
-    history: (featurePath: string, tasks: Array<{ id: string; directory: string; title?: string }>) => Promise<ProjectSession[]>;
+    history: (featurePath: string, tasks: Array<{ id: string; directory: string; title?: string; directories?: string[]; sessionIds?: string[] }>) => Promise<ProjectSession[]>;
     changed: () => void | Promise<void>;
     getArtifactStore?: () => Promise<import('../artifacts/store').ArtifactStore>;
 };
@@ -45,6 +46,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
     const watchers = new Map<string, { watcher: FSWatcher; identity: string }>();
     const inFlight = new Map<string, Promise<SpawnSessionResult>>();
     const transfers = new Map<string, { scope: boolean; featureReadOnly: boolean; featurePath: string; taskId?: string; directory: string; root: string; path: string; revision: string; expiresAt: number }>();
+    const identities = createTaskIdentityStore(deps.storageDirectory);
     const catalog = async () => readCatalog(await discoverRoots(deps.workingDirectory, deps.homeDirectory));
     const entryFor = async (featurePath: string) => {
         if (disposed) throw new Error('Project workspace is closed');
@@ -94,12 +96,74 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             .slice(0, 25).map(({ metadata, ...session }) => ({ ...session, lifecycleState: metadata.lifecycleState }));
         return { success: true, sessions };
     };
+    const identityCatalog = async () => {
+        const result: Array<{ entry: CatalogRecord; task: GoalTask }> = [];
+        const duplicateIds = new Set<string>();
+        for (const entry of await catalog()) {
+            const { snapshot } = await parseBoard(entry, { featureOnly: true, finalOnly: true });
+            for (const id of snapshot.ambiguousTaskIds ?? []) duplicateIds.add(id);
+            for (const task of snapshot.tasks) result.push({ entry, task });
+        }
+        const stableIds = result.filter(({ task }) => isStableTaskId(task.id)).map(({ task }) => task.id);
+        for (const id of stableIds.filter((id, i) => stableIds.indexOf(id) !== i)) duplicateIds.add(id);
+        const unique = result.filter(({ task }) => !duplicateIds.has(task.id));
+        for (const { task } of unique) await identities.remember(task);
+        return unique;
+    };
+    const resolveWorkspace = async (input: unknown) => {
+        const data = z.object({ sessionId: z.string().min(1).max(2048), path: pathInput,
+            goalBoard: z.object({ featurePath: pathInput, taskId: z.string().max(2048).optional() }).optional() }).parse(input);
+        const entries = await identityCatalog();
+        const bound = await identities.session(data.sessionId);
+        const explicit = data.goalBoard?.taskId;
+        if (bound && explicit && isStableTaskId(explicit) && bound !== explicit) return { success: true as const, workspace: null };
+        const stable = bound ?? (explicit && isStableTaskId(explicit) ? explicit : undefined);
+        const actual = await realpath(data.path).catch(() => data.path);
+        const matches = [];
+        for (const item of entries) {
+            const { task, entry } = item;
+            if (stable) { if (task.id === stable) matches.push(item); continue; }
+            const aliases = new Set(isStableTaskId(task.id) ? await identities.paths(task.id) : [dirname(task.indexPath)]);
+            if (explicit) {
+                // Old clients used a digest of indexPath. Match only this exact observed identity.
+                if ([...aliases].some(path => digest(join(path, 'index.md')) === explicit) ||
+                    (entry.featurePath === data.goalBoard?.featurePath && task.id === explicit)) matches.push(item);
+                // A compatibility symlink can establish the former path digest without guessing its title.
+                else if (aliases.has(actual) && digest(join(data.path, 'index.md')) === explicit) matches.push(item);
+            } else if (!data.goalBoard && (aliases.has(actual) || aliases.has(data.path))) matches.push(item);
+        }
+        if (matches.length !== 1) return { success: true as const, workspace: null };
+        const { entry, task } = matches[0];
+        if (actual === dirname(task.indexPath)) await identities.remember(task, data.path);
+        await identities.bind(data.sessionId, task.id);
+        return { success: true as const, workspace: { projectPath: entry.projectPath!, featurePath: entry.featurePath,
+            taskId: task.id, directory: dirname(task.indexPath) } };
+    };
     const taskFor = async (input: unknown) => {
         const data = taskInput.parse(input);
-        const entry = await entryFor(data.featurePath);
-        const parsed = await parseBoard(entry, { featureOnly: true, finalOnly: true });
-        const task = parsed.snapshot.tasks.find(task => task.id === data.taskId);
-        if (!task) throw new Error('Task is not in this feature');
+        let selected: { entry: CatalogRecord; task: GoalTask } | undefined;
+        if (isStableTaskId(data.taskId)) selected = (await identityCatalog()).find(item => item.task.id === data.taskId);
+        else {
+            const entry = await entryFor(data.featurePath);
+            const parsed = await parseBoard(entry, { featureOnly: true, finalOnly: true });
+            const legacy = parsed.snapshot.tasks.find(task => !isStableTaskId(task.id) && task.id === data.taskId);
+            if (legacy) {
+                if (await identities.hasPathHistory(dirname(legacy.indexPath))) throw new Error('This path belonged to another task; assign the new archive its own task_id');
+                selected = { entry, task: legacy };
+            }
+            else {
+                // Old hash inputs get exactly the same ambiguity checks as session navigation.
+                const matches = [];
+                for (const item of await identityCatalog()) {
+                    if (item.entry.featurePath !== entry.featurePath) continue;
+                    if ((await identities.paths(item.task.id)).some(path => digest(join(path, 'index.md')) === data.taskId)) matches.push(item);
+                }
+                if (matches.length === 1) selected = matches[0];
+            }
+        }
+        if (!selected) throw new Error('Task is not in this feature or its identity is unavailable or ambiguous');
+        const { entry, task } = selected;
+        await identities.remember(task);
         const directory = await safePath(entry.root, dirname(task.indexPath));
         return { entry, task, directory };
     };
@@ -125,13 +189,21 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             return true;
         } catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false; throw error; }
     };
-    const belongs = (session: ProjectSession, task: GoalTask, featurePath: string, directory: string) =>
-        session.metadata.goalBoard ? session.metadata.goalBoard.featurePath === featurePath && session.metadata.goalBoard.taskId === task.id : session.directory === directory;
+    const historyTask = async (task: GoalTask) => ({ id: task.id, title: task.title, directory: dirname(task.indexPath), directories: isStableTaskId(task.id) ? await identities.paths(task.id) : [dirname(task.indexPath)], sessionIds: await identities.sessions(task.id) });
     const taskHistory = async (task: GoalTask, entry: CatalogRecord, history: ProjectSession[]) => {
         const directory = await safePath(entry.root, dirname(task.indexPath));
-        return history.filter(session => belongs(session, task, entry.featurePath, directory));
+        const paths = isStableTaskId(task.id) ? await identities.paths(task.id) : [directory];
+        const matches = await Promise.all(history.map(async session => {
+            const binding = session.metadata.goalBoard;
+            const bound = await identities.session(session.sessionId);
+            if (bound) return bound === task.id && (!binding?.taskId || !isStableTaskId(binding.taskId) || binding.taskId === bound);
+            if (!binding) return paths.includes(session.directory);
+            if (isStableTaskId(task.id) && binding.taskId === task.id) return true;
+            return (binding.featurePath === entry.featurePath && binding.taskId === task.id) || paths.some(path => digest(join(path, 'index.md')) === binding.taskId);
+        }));
+        return history.filter((_, index) => matches[index]).map(session => ({ ...session, directory }));
     };
-    const receiptFor = async (directory: string) => readJSON<Receipt>(join(await stateDirectory(directory), 'execution.json'));
+    const receiptFor = async (task: GoalTask) => readJSON<Receipt>(join(await identities.state(task), 'execution.json'));
     const watchDirectories = async (directories: string[]) => {
         if (!observe) return;
         // Bounded event subscriptions can cover several clients without one client's selection replacing another's.
@@ -154,19 +226,28 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         const entry = await entryFor(featurePath);
         const parsed = await parseBoard(entry, { featureOnly: true, finalOnly: true });
         await watchDirectories(parsed.watchDirectories);
+        if (parsed.snapshot.tasks.some(task => isStableTaskId(task.id))) {
+            const unique = new Set((await identityCatalog()).map(({ task }) => task.id));
+            parsed.snapshot.tasks = parsed.snapshot.tasks.filter(task => {
+                if (unique.has(task.id)) return true;
+                parsed.snapshot.warnings.push(`Ambiguous task identity: ${task.id}`); return false;
+            });
+        }
         let history: ProjectSession[] = [];
         let historyAvailable = true;
-        try { history = await deps.history(entry.featurePath, parsed.snapshot.tasks.map(task => ({ id: task.id, title: task.title, directory: dirname(task.indexPath) }))); } catch { historyAvailable = false; parsed.snapshot.warnings.push('Session history is unavailable; first execution is disabled until it can be verified.'); }
+        try { history = await deps.history(entry.featurePath, await Promise.all(parsed.snapshot.tasks.map(historyTask))); } catch { historyAvailable = false; parsed.snapshot.warnings.push('Session history is unavailable; first execution is disabled until it can be verified.'); }
         for (const task of parsed.snapshot.tasks) {
+            await identities.remember(task);
+            if (isStableTaskId(task.id)) task.legacyIds = (await identities.paths(task.id)).map(path => digest(join(path, 'index.md'))).slice(0, 32);
             const directory = await safePath(entry.root, dirname(task.indexPath));
             const linked = await taskHistory(task, entry, history);
-            let receipt = await receiptFor(directory);
+            let receipt = await receiptFor(task);
             const historical = linked.find(session => session.executed);
             if (!receipt && (historical || ['running', 'review', 'done'].includes(task.status))) {
                 // Imported historical execution becomes durable too. Deleting an old
                 // conversation or resetting status must never re-enable first injection.
-                await claim(join(await stateDirectory(directory), 'execution.json'), { requestId: 'historical', directory, state: 'historical', sessionId: historical?.sessionId, createdAt: Date.now() });
-                receipt = await receiptFor(directory);
+                await claim(join(await identities.state(task), 'execution.json'), { requestId: 'historical', directory, state: 'historical', sessionId: historical?.sessionId, createdAt: Date.now() });
+                receipt = await receiptFor(task);
             }
             task.execution = receipt ? { state: receipt.state === 'starting' ? 'uncertain' : receipt.state, sessionId: receipt.sessionId }
                 : { state: !historyAvailable ? 'uncertain' : 'never' };
@@ -175,7 +256,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
                 // Listing only stats files. Original bodies are read on open/explicit acceptance.
                 try {
                     if (artifact.path) await safePath(directory, artifact.path);
-                    const approval = await readJSON<Approval>(join(await stateDirectory(directory), `approval-${digest(artifact.id)}.json`));
+                    const approval = await readJSON<Approval>(join(await identities.state(task), `approval-${digest(artifact.id)}.json`));
                     artifact.approval = { status: !approval ? 'unreviewed' : approval.revision === artifact.revision ? 'accepted' : 'changed', reviewedAt: approval?.reviewedAt };
                 } catch { artifact.approval = { status: 'unreviewed' }; }
             }
@@ -189,15 +270,15 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         const cursorSchema = z.object({ updatedAt: z.number(), sessionId: z.string().min(1).max(2048) });
         const data = taskInput.extend({ cursor: cursorSchema.optional() }).parse(input);
         const { entry, task, directory } = await taskFor(data);
-        const source = await taskHistory(task, entry, await deps.history(entry.featurePath, [{ id: task.id, title: task.title, directory }]));
-        const localDirectory = join(await stateDirectory(directory), 'sessions');
+        const source = await taskHistory(task, entry, await deps.history(entry.featurePath, [await historyTask(task)]));
+        const localDirectory = join(await identities.state(task), 'sessions');
         const names = (await readdir(localDirectory).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return []; throw error; })).filter(name => /^[a-f0-9]{24}\.json$/.test(name));
         // Source history normally contains these too; individual association files
         // recover new blank sessions immediately after a response was lost.
         const local = await Promise.all(names.map(name => readJSON<GoalTaskSession>(join(localDirectory, name))));
         const merged = new Map(local.filter((session): session is GoalTaskSession => !!session).map(session => [session.sessionId, session]));
         for (const { metadata, ...session } of source) merged.set(session.sessionId, { ...session, lifecycleState: metadata.lifecycleState });
-        const ordered = [...merged.values()].filter(session => !archived(session.lifecycleState)).sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
+        const ordered = [...merged.values()].map(session => ({ ...session, directory })).filter(session => !archived(session.lifecycleState)).sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
         const remaining = data.cursor ? ordered.filter(session => session.updatedAt < data.cursor!.updatedAt || (session.updatedAt === data.cursor!.updatedAt && session.sessionId.localeCompare(data.cursor!.sessionId) < 0)) : ordered;
         const sessions: GoalTaskSession[] = [];
         let bytes = 0;
@@ -211,8 +292,24 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
     };
     const launch = async (input: unknown): Promise<SpawnSessionResult> => {
         const data = launchInput.parse(input);
-        const { entry, task, directory } = await taskFor(data);
-        const state = await stateDirectory(directory);
+        let { entry, task, directory } = await taskFor(data);
+        if (!isStableTaskId(task.id)) {
+            // A user-triggered launch upgrades legacy archives once. Ordinary reads never edit them.
+            const source = await readBoundedFile(directory, task.indexPath, 256 * 1024);
+            const text = source.toString('utf8');
+            if (/^task_id:/m.test(text.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '')) throw new Error('Task archive has an invalid task_id');
+            const taskId = await identities.allocate(task.indexPath, sha256(source));
+            const content = /^---\r?\n/.test(text) ? text.replace(/^(---\r?\n)/, `$1task_id: ${taskId}\n`) : `---\ntask_id: ${taskId}\n---\n${text}`;
+            const { createWorkspaceFileHandlers } = await import('../common/workspaceFiles');
+            const saved = await createWorkspaceFileHandlers(directory).write({ path: task.indexPath, content: Buffer.from(content).toString('base64'), expectedHash: sha256(source) });
+            if (saved.success) ({ entry, task, directory } = await taskFor({ featurePath: entry.featurePath, taskId }));
+            else {
+                // Another launcher may have won the same compare-and-write. Join its identity.
+                ({ entry, task, directory } = await taskFor(data));
+                if (!isStableTaskId(task.id)) throw new Error('Task changed while assigning its identity; reopen it');
+            }
+        }
+        const state = await identities.state(task);
         // Repeated requests join the same operation. Cross-process/restart claims fail closed below.
         const operationKey = JSON.stringify([directory, data.action === 'execute' ? 'execute' : data.requestId]);
         const pending = inFlight.get(operationKey);
@@ -220,7 +317,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         const operation = (async (): Promise<SpawnSessionResult> => {
             const file = join(state, data.action === 'execute' ? 'execution.json' : `chat-${digest(data.requestId)}.json`);
             if (data.action === 'execute') {
-                const historical = await taskHistory(task, entry, await deps.history(entry.featurePath, [{ id: task.id, title: task.title, directory }]));
+                const historical = await taskHistory(task, entry, await deps.history(entry.featurePath, [await historyTask(task)]));
                 const prior = historical.find(session => session.executed);
                 if (prior || ['running', 'review', 'done'].includes(task.status)) {
                     await claim(file, { requestId: 'historical', directory, state: 'historical', sessionId: prior?.sessionId, createdAt: Date.now() });
@@ -241,6 +338,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
                     receipt.state = 'uncertain'; await saveJSON(file, receipt); return spawned;
                 }
                 receipt.sessionId = spawned.sessionId;
+                await identities.bind(spawned.sessionId, task.id);
                 const sessionsDirectory = join(state, 'sessions');
                 await mkdir(sessionsDirectory, { recursive: true, mode: 0o700 });
                 // One atomic association per session avoids lost updates across clients or processes.
@@ -312,7 +410,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         const artifact = task.artifacts.find(artifact => artifact.id === data.artifactId && artifact.relation === 'output');
         if (!artifact?.available || (!artifact.path && !artifact.url)) throw new Error('Final deliverable is unavailable');
         const path = artifact.path ? await safePath(directory, artifact.path) : null;
-        const file = join(await stateDirectory(directory), `approval-${digest(artifact.id)}.json`);
+        const file = join(await identities.state(task), `approval-${digest(artifact.id)}.json`);
         const previous = approvalLocks.get(file) ?? Promise.resolve();
         const pending = previous.catch(() => {}).then(async () => {
             let hash: string;
@@ -351,7 +449,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             }
             return { success: true, projects: await readProjects(roots) };
         },
-        board, launch, files, approve, historyPage, overview, scopeHistory,
+        board, launch, files, approve, historyPage, overview, scopeHistory, resolveWorkspace,
         author: async (input: unknown): Promise<SpawnSessionResult> => {
             const data = z.object({ scopePath: pathInput.optional(), requestId: z.string().min(1).max(128), agent: z.enum(['codex', 'claude']), codexSessionGrant: z.string().max(4096).optional() }).parse(input);
             const roots = await discoverRoots(deps.workingDirectory, deps.homeDirectory);
@@ -382,6 +480,7 @@ export function registerProjectGoalHandlers(manager: { registerHandler(method: s
     manager.registerHandler('goalScopeListDirectory', wrap(input => service.files(input, 'list', true)));
     manager.registerHandler('goalScopeReadFile', wrap(input => service.files(input, 'read', true)));
     manager.registerHandler('goalScopeWriteFile', wrap(input => service.files(input, 'write', true)));
+    manager.registerHandler('goalResolveWorkspace', wrap(service.resolveWorkspace));
     manager.registerHandler('goalProjects', wrap(service.projects));
     manager.registerHandler('goalProjectRead', wrap(input => service.board(input?.featurePath)));
     manager.registerHandler('goalTaskHistory', wrap(service.historyPage));

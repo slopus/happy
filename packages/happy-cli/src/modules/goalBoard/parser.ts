@@ -243,7 +243,7 @@ export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: 
             const code = task.code || index.match(/全局\s*(G\d{2,})/)?.[1];
             const delivery = readGoalDeliveryAgreement(index);
             const result: GoalTask = {
-                id: digest(task.path), code, indexPath: task.path, promptPath,
+                id: /^GFT-[a-z0-9]{8}$/.test(scalar(fields, ['task_id']) || '') ? scalar(fields, ['task_id'])! : digest(task.path), code, indexPath: task.path, promptPath,
                 title: titleOf(index) || basename(dirname(task.path)),
                 status: statuses.has(scalar(fields, ['status']) || '') ? scalar(fields, ['status']) as GoalTaskStatus : 'unknown',
                 goal: scalar(fields, ['goal', '目标摘要', '目标']) || section(index, ['目标', '目标摘要']) || scalar(promptFields, ['goal', '目标']) || section(prompt, ['目标', '目标与范围']) || '',
@@ -270,7 +270,10 @@ export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: 
             parsed.push(result);
         } catch (error) { warn(`${basename(dirname(task.path))}: ${error instanceof Error ? error.message : 'Unreadable task'}`); }
     }
+    const duplicateIds = new Set(parsed.filter((task, i) => parsed.findIndex(other => other.id === task.id) !== i).map(task => task.id));
+    for (const id of duplicateIds) warn(`Duplicate stable task identity: ${id}`);
+    for (let i = parsed.length - 1; i >= 0; i--) if (duplicateIds.has(parsed[i].id)) parsed.splice(i, 1);
     if (directories.size > 400) warn('Watcher directory limit reached; use explicit refresh for unobserved artifact changes');
-    const content = { featurePath, title: entry.title, projectTitle: entry.projectTitle, tasks: parsed, warnings };
+    const content = { featurePath, title: entry.title, projectTitle: entry.projectTitle, tasks: parsed, ambiguousTaskIds: [...duplicateIds], warnings };
     return { snapshot: { ...content, revision: digest(JSON.stringify(content)), updatedAt: Date.now() }, watchDirectories: [...directories].slice(0, 400) };
 }

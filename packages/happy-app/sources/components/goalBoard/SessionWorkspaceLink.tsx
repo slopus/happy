@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { accountRuntimeCurrent, getRuntimeAccountSelection } from '@/auth/accountRuntime';
-import { loadGoalProjects, loadProjectGoalBoard } from '@/sync/projectGoals';
+import { loadGoalProjects, loadProjectGoalBoard, resolveProjectSessionWorkspace } from '@/sync/projectGoals';
 import { isProjectSessionDeleted } from '@/sync/projectSessionLinks';
 import { findSessionWorkspace, sessionWorkspaceRoute, type WorkspaceSessionMetadata } from '@/utils/sessionWorkspaceRoute';
 import { Modal } from '@/modal';
@@ -35,7 +35,15 @@ export function SessionWorkspaceLink({ id, metadata, embedded = false, focused, 
             if (!current()) return;
             const candidate = !!findSessionWorkspace(metadata, projects);
             setState({ key, candidate, busy: true });
-            const route = await sessionWorkspaceRoute(id, metadata, projects, loadProjectGoalBoard);
+            const resolved = await resolveProjectSessionWorkspace(metadata.machineId, id, metadata);
+            if (!current()) return;
+            // A null machine result is authoritative for tasks; exact global scopes still use the catalog.
+            const legacyScope = findSessionWorkspace(metadata, projects);
+            const route = resolved ? { pathname: '/projects' as const, params: {
+                machine: metadata.machineId, project: resolved.projectPath, feature: resolved.featurePath,
+                task: resolved.taskId, conversation: id, view: 'chat',
+            } } : resolved === undefined || (legacyScope && !legacyScope.directoryTask && !legacyScope.taskId)
+                ? await sessionWorkspaceRoute(id, metadata, projects, loadProjectGoalBoard) : null;
             if (!current()) return;
             setState({ key, candidate: !!route, busy: true });
             if (navigate) {

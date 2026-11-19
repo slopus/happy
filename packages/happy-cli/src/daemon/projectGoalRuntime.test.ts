@@ -54,3 +54,12 @@ describe('production project relay adapter', () => {
         expect(decrypt(key, 'legacy', decodeBase64(message.content))).toMatchObject({ role: 'user', content: { text: 'Read the real task Prompt' }, meta: { sentFrom: 'paws-goal-project' } });
     });
 });
+
+it('retains task history across a feature move and observed directory changes', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [
+        row('stable', 0, { ...metadata, goalBoard: { featurePath: '/old/feature', taskId: 'GFT-abcdefgh' } } as any),
+        row('legacy', 0, { ...metadata, path: '/old/task' }),
+    ], hasNext: false } });
+    const history = await runtime().history('/new/feature', [{ id: 'GFT-abcdefgh', directory: '/new/task', directories: ['/new/task', '/old/task'] }]);
+    expect(history.map(session => [session.sessionId, session.directory])).toEqual([['stable', '/new/task'], ['legacy', '/new/task']]);
+});

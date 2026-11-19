@@ -20,7 +20,7 @@ export const GoalArtifactSchema = z.object({
 });
 export type GoalArtifact = z.infer<typeof GoalArtifactSchema>;
 export const GoalTaskSchema = z.object({
-    id: label, code: label.optional(), title: label, indexPath: path, promptPath: path.optional(),
+    id: label, legacyIds: z.array(label).max(32).optional(), code: label.optional(), title: label, indexPath: path, promptPath: path.optional(),
     status: GoalTaskStatusSchema, goal: label, problem: label.optional(), stage: label.optional(),
     progress: label.optional(), nextStep: label.optional(), dependencies: z.array(label).max(30),
     expectedDeliverables: z.array(label).max(30), artifacts: z.array(GoalArtifactSchema).max(50), batch: label.optional(),
@@ -30,7 +30,7 @@ export const GoalTaskSchema = z.object({
 export type GoalTask = z.infer<typeof GoalTaskSchema>;
 export const GoalBoardSnapshotSchema = z.object({
     featurePath: path, title: label, projectTitle: label.optional(), revision: label, updatedAt: z.number(),
-    tasks: z.array(GoalTaskSchema).max(200), warnings: z.array(label).max(50),
+    tasks: z.array(GoalTaskSchema).max(200), ambiguousTaskIds: z.array(label).max(200).optional(), warnings: z.array(label).max(50),
 });
 export type GoalBoardSnapshot = z.infer<typeof GoalBoardSnapshotSchema>;
 export const GoalBoardCatalogEntrySchema = z.object({ featurePath: path, title: label, summary: label.optional(), projectTitle: label.optional(), projectPath: path.optional() });

@@ -1,3 +1,5 @@
+import { digest } from '@/modules/goalBoard/parser';
+import { isStableTaskId } from '@/modules/goalBoard/taskIdentity';
 import axios from 'axios';
 import { realpath } from 'node:fs/promises';
 import type { Metadata } from '@/api/types';
@@ -51,7 +53,15 @@ export function createProjectGoalRuntime(options: {
                 const metadata = decrypt(encryption.encryptionKey, encryption.encryptionVariant, decodeBase64(raw.metadata)) as Metadata | null;
                 if (!metadata || metadata.machineId !== options.machineId || typeof metadata.path !== 'string') continue;
                 const directory = await realpath(metadata.path).catch(() => metadata.path);
-                const task = tasks.find(task => metadata.goalBoard ? metadata.goalBoard.featurePath === featurePath && (metadata.goalBoard.taskId ?? '') === task.id : task.directory === directory);
+                const task = tasks.find(task => {
+                    const directories = task.directories ?? [task.directory];
+                    const binding = metadata.goalBoard;
+                    if (task.sessionIds?.includes(raw.id)) return !binding?.taskId || !isStableTaskId(binding.taskId) || binding.taskId === task.id;
+                    if (!binding) return directories.includes(directory) || directories.includes(metadata.path);
+                    if (isStableTaskId(task.id) && binding.taskId === task.id) return true;
+                    return (binding.featurePath === featurePath && (binding.taskId ?? '') === task.id) ||
+                        directories.some(path => digest(`${path}/index.md`) === binding.taskId);
+                });
                 if (!task) continue;
                 let executed = raw.seq > 0;
                 // Ready events do not consume first execution. Only a complete
@@ -66,7 +76,7 @@ export function createProjectGoalRuntime(options: {
                         return row.seq !== index + 1 || !(content?.role === 'agent' && content.content?.type === 'event' && content.content.data?.type === 'ready');
                     });
                 }
-                result.push({ sessionId: raw.id, directory, title: metadata.summary?.text || metadata.name || task.title || raw.id,
+                result.push({ sessionId: raw.id, directory: task.directory, title: metadata.summary?.text || metadata.name || task.title || raw.id,
                     updatedAt: raw.updatedAt, executed, active: raw.active, metadata });
             }
             return result;

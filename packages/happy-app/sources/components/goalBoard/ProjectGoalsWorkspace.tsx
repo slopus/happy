@@ -24,7 +24,7 @@ import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { isProjectConversationArchived } from '@/sync/projectConversationLifecycle';
 import { ensureSessionHydratedWithRetry } from '@/sync/ensureSessionHydratedWithRetry';
 import { machineStartGoalAuthor, type DirectoryEntry } from '@/sync/ops';
-import { loadProjectScopeHistory, loadProjectTaskHistory, launchProjectGoalTask, projectGoalRequest, projectTaskFiles, taskApproval, taskCanExecute, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, ProjectGoalLaunchError, type ProjectHistoryCursor, isReadOnlyProjectPreview, type ProjectHistoryCandidate } from '@/sync/projectGoals';
+import { findProjectTask, loadProjectScopeHistory, loadProjectTaskHistory, launchProjectGoalTask, projectGoalRequest, projectTaskFiles, taskApproval, taskCanExecute, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, ProjectGoalLaunchError, type ProjectHistoryCursor, isReadOnlyProjectPreview, type ProjectHistoryCandidate } from '@/sync/projectGoals';
 import { SessionView } from '@/-session/SessionView';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
 import { FileWorkspace } from '@/components/fileWorkspace/FileWorkspace';
@@ -211,7 +211,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     React.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
     const project = findProjectForLocation(data.projects, params);
     const feature = data.board?.snapshot;
-    const task = feature?.tasks.find(task => task.id === params.task);
+    const task = feature ? findProjectTask(feature.tasks, params.task) : undefined;
     const skin = useLocalSetting('desktopSkinId');
     const reduced = useReducedTransparency();
     const desktop = useIsTablet() && Platform.OS === 'web';

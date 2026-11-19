@@ -57,7 +57,7 @@ async function sendProjectGoalRequest<T>(machineId: string, method: string, inpu
 // Identical concurrent reads share one encrypted request; no timer or polling.
 const projectReads = new Map<string, Promise<unknown>>();
 export function projectGoalRequest<T>(machineId: string, method: string, input: unknown, readVersion?: string): Promise<T> {
-    if (!['goalProjects', 'goalProjectRead', 'goalTaskHistory', 'goalScopeRead', 'goalScopeHistory'].includes(method)) return sendProjectGoalRequest<T>(machineId, method, input);
+    if (!['goalProjects', 'goalProjectRead', 'goalTaskHistory', 'goalScopeRead', 'goalScopeHistory', 'goalResolveWorkspace'].includes(method)) return sendProjectGoalRequest<T>(machineId, method, input);
     const key = JSON.stringify([owner(), isReadOnlyProjectPreview(), machineId, method, input, readVersion]);
     const existing = projectReads.get(key);
     if (existing) return existing as Promise<T>;
@@ -66,11 +66,34 @@ export function projectGoalRequest<T>(machineId: string, method: string, input: 
     return pending;
 }
 
+/** undefined means an older daemon: only then may the caller use the legacy path resolver. */
+export async function resolveProjectSessionWorkspace(machineId: string, sessionId: string,
+    metadata: { path: string; goalBoard?: { featurePath: string; taskId?: string } }) {
+    if (isReadOnlyProjectPreview()) return undefined;
+    try {
+        const workspace = z.object({ projectPath: z.string(), featurePath: z.string(), taskId: z.string(), directory: z.string() });
+        return z.object({ success: z.literal(true), workspace: workspace.nullable() }).parse(
+            await projectGoalRequest(machineId, 'goalResolveWorkspace', { sessionId, path: metadata.path, goalBoard: metadata.goalBoard })).workspace;
+    } catch (error) {
+        if (error instanceof Error && error.message === t('projectGoals.unsupported')) return undefined;
+        throw error;
+    }
+}
+
+/** Accept only a unique legacy alias; current stable IDs always win. */
+export function findProjectTask(tasks: GoalTask[], id?: string) {
+    if (!id) return undefined;
+    const exact = tasks.find(task => task.id === id);
+    if (exact) return exact;
+    const matches = tasks.filter(task => task.legacyIds?.includes(id));
+    return matches.length === 1 ? matches[0] : undefined;
+}
+
 /** Explicit Task metadata takes precedence over a coincidentally shared cwd. */
 export function projectSessionMatchesTask(metadata: { machineId?: string; path?: string; goalBoard?: { featurePath: string; taskId?: string } } | null | undefined,
     machineId: string, featurePath: string, taskId: string, directory: string) {
     if (!metadata || metadata.machineId !== machineId) return false;
-    if (metadata.goalBoard) return metadata.goalBoard.featurePath === featurePath && metadata.goalBoard.taskId === taskId;
+    if (metadata.goalBoard) return metadata.goalBoard.taskId === taskId && (/^GFT-[a-z0-9]{8}$/.test(taskId) || metadata.goalBoard.featurePath === featurePath);
     const normalize = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
     return typeof metadata.path === 'string' && normalize(metadata.path) === normalize(directory);
 }

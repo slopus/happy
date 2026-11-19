@@ -9,7 +9,7 @@ vi.mock('./storage', () => ({ storage: { getState: () => ({ sessions: mocks.sess
 vi.mock('./ops', () => ({ machineStartGoalTask: mocks.launch, machineStartGoalPreviewChat: mocks.previewChat }));
 vi.mock('@/auth/accountRuntime', () => ({ assertAccountRuntime: () => {}, getRuntimeAccountSelection: () => mocks.account }));
 vi.mock('@/text', () => ({ t: (value: string) => value }));
-import { projectTaskFiles, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, launchProjectGoalTask, ProjectGoalLaunchError, openProjectGoalConversation, loadGoalProjects, getProjectPreviewMachineId, taskApproval, canConfirmProjectDeliverable, projectGoalRequest, projectSessionMatchesTask } from './projectGoals';
+import { projectTaskFiles, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, launchProjectGoalTask, ProjectGoalLaunchError, openProjectGoalConversation, loadGoalProjects, getProjectPreviewMachineId, taskApproval, canConfirmProjectDeliverable, projectGoalRequest, projectSessionMatchesTask, findProjectTask } from './projectGoals';
 const task: GoalTask = { id: 'task', title: 'Task', indexPath: '/archive/task/index.md', status: 'pending', goal: 'Goal', expectedDeliverables: [], artifacts: [], dependencies: [], execution: { state: 'never' } };
 beforeEach(() => { mocks.sessions = {}; mocks.rpc.mockReset(); mocks.launch.mockReset(); mocks.previewChat.mockReset(); mocks.account.generation++; });
 afterEach(() => { delete (globalThis as any).__HAPPY_CONFIG__; });
@@ -244,4 +244,16 @@ it('continues past an archived machine-history row with no locally hydrated head
     mocks.rpc.mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'cold-archived', lifecycleState: 'archived', updatedAt: 20 }], nextCursor: { sessionId: 'cold-archived', updatedAt: 20 } })
         .mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'alive', updatedAt: 10 }] });
     expect(await openProjectGoalConversation('machine', '/archive', task, 'request', 'codex')).toMatchObject({ created: false, session: { sessionId: 'alive' } });
+});
+
+it('keeps an explicit stable task bound when its feature moves, while preserving machine isolation', () => {
+    const metadata = { machineId: 'm', path: '/old/tasks/a', goalBoard: { featurePath: '/old', taskId: 'GFT-abcdefgh' } };
+    expect(projectSessionMatchesTask(metadata, 'm', '/new', 'GFT-abcdefgh', '/new/tasks/a')).toBe(true);
+    expect(projectSessionMatchesTask(metadata, 'other', '/new', 'GFT-abcdefgh', '/new/tasks/a')).toBe(false);
+});
+
+it('keeps the old path-hash selection after a legacy task gets a stable ID', () => {
+    const tasks = [{ id: 'GFT-abcdefgh', legacyIds: ['old-hash'] }];
+    expect(findProjectTask(tasks as any, 'old-hash')?.id).toBe('GFT-abcdefgh');
+    expect(findProjectTask([...tasks, { id: 'GFT-ijklmnop', legacyIds: ['old-hash'] }] as any, 'old-hash')).toBeUndefined();
 });

@@ -333,3 +333,122 @@ it('archived source overrides a saved blank association without resetting execut
     expect((await f.service.historyPage(f.input)).sessions).toEqual([]);
     expect((await f.service.board(f.feature)).snapshot.tasks[0].execution?.state).toBe('historical');
 });
+
+
+describe('stable task ownership', () => {
+    async function stable() {
+        const f = await fixture();
+        const index = join(f.taskDirectory, 'index.md');
+        await f.put(index, (await readFile(index, 'utf8')).replace('status: pending', 'status: pending\ntask_id: GFT-abcdefgh'));
+        return f;
+    }
+    it('uses the archive ID and keeps a conversation and launch receipt after a task moves to another feature', async () => {
+        const f = await stable();
+        const task = (await f.service.board(f.feature)).snapshot.tasks[0];
+        expect(task.id).toBe('GFT-abcdefgh');
+        const input = { ...f.input, taskId: task.id, action: 'chat', agent: 'codex', requestId: 'same-request' };
+        expect(await f.service.launch(input)).toMatchObject({ sessionId: 'session-1' });
+        const old = { sessionId: 'session-1', path: f.taskDirectory };
+        expect(await f.service.resolveWorkspace(old)).toMatchObject({ workspace: { taskId: task.id, featurePath: f.feature } });
+        const next = join(f.root, 'new-project/features/moved');
+        await f.put(join(f.root, 'new-project/index.md'), '# New project');
+        await f.put(join(next, 'index.md'), '# Moved feature');
+        await mkdir(join(next, 'tasks'), { recursive: true });
+        await rename(f.taskDirectory, join(next, 'tasks/renamed'));
+        const service = f.make(); // Also survives daemon restart, without a compatibility symlink.
+        expect(await service.resolveWorkspace(old)).toMatchObject({ workspace: { projectPath: join(f.root, 'new-project'), featurePath: next, taskId: task.id } });
+        expect(await service.launch({ ...input, featurePath: next })).toMatchObject({ sessionId: 'session-1' });
+        expect((await service.historyPage({ featurePath: next, taskId: task.id })).sessions).toMatchObject([{ sessionId: 'session-1', directory: join(next, 'tasks/renamed') }]);
+        expect(f.deps.spawn).toHaveBeenCalledTimes(1);
+    });
+    it('recovers a legacy symlink and old path hash, but rejects duplicate stable IDs and removed tasks', async () => {
+        const f = await stable();
+        const legacyId = parser.digest(join(f.taskDirectory, 'index.md'));
+        const next = join(f.feature, 'tasks/renamed');
+        await rename(f.taskDirectory, next); await symlink(next, f.taskDirectory);
+        const old = { sessionId: 'legacy', path: f.taskDirectory, goalBoard: { featurePath: f.feature, taskId: legacyId } };
+        expect(await f.service.resolveWorkspace(old)).toMatchObject({ workspace: { taskId: 'GFT-abcdefgh' } });
+        await f.put(join(f.feature, 'tasks/copy/index.md'), '---\ntask_id: GFT-abcdefgh\n---\n# Duplicate');
+        expect(await f.service.resolveWorkspace(old)).toMatchObject({ workspace: null });
+        await rm(join(f.feature, 'tasks/copy'), { recursive: true });
+        await rm(next, { recursive: true });
+        expect(await f.service.resolveWorkspace(old)).toMatchObject({ workspace: null });
+    });
+    it('never guesses ownership from a title, an outside symlink or stale explicit ID', async () => {
+        const f = await stable();
+        await f.service.board(f.feature);
+        expect(await f.service.resolveWorkspace({ sessionId: 'outside', path: f.home })).toMatchObject({ workspace: null });
+        expect(await f.service.resolveWorkspace({ sessionId: 'stale', path: f.taskDirectory, goalBoard: { featurePath: f.feature, taskId: 'GFT-deleted1' } })).toMatchObject({ workspace: null });
+    });
+});
+
+it('stores bindings through a symlinked storage root without treating its lexical alias as an escape', async () => {
+    const f = await fixture();
+    await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-abcdefgh\n---\n# Stable');
+    await mkdir(join(f.home, 'state'), { recursive: true });
+    const alias = join(f.home, 'state-alias'); await symlink(join(f.home, 'state'), alias);
+    const service = createProjectGoalService({ ...f.deps, storageDirectory: alias });
+    cleanups.push(() => service.dispose());
+    expect(await service.resolveWorkspace({ sessionId: 'alias', path: f.taskDirectory })).toMatchObject({ workspace: { taskId: 'GFT-abcdefgh' } });
+});
+
+it('gives a legacy task a persistent archive ID before launching its first linked conversation', async () => {
+    const f = await fixture();
+    const oldId = f.task.id;
+    expect(await f.service.launch({ ...f.input, action: 'chat', agent: 'codex', requestId: 'legacy-id' })).toMatchObject({ sessionId: 'session-1' });
+    const task = (await f.service.board(f.feature)).snapshot.tasks[0];
+    expect(task.id).toMatch(/^GFT-[a-z0-9]{8}$/);
+    expect(task.legacyIds).toContain(oldId);
+    expect(await readFile(join(f.taskDirectory, 'index.md'), 'utf8')).toContain(`task_id: ${task.id}`);
+    expect(await f.service.launch({ featurePath: f.feature, taskId: oldId, action: 'chat', agent: 'codex', requestId: 'legacy-id' })).toMatchObject({ sessionId: 'session-1' });
+    expect(f.deps.spawn).toHaveBeenCalledTimes(1);
+});
+
+it('does not mistake a third copy for unique after a feature hides its own duplicate IDs', async () => {
+    const f = await fixture();
+    for (const path of ['tasks/a', 'tasks/b']) await f.put(join(f.feature, path, 'index.md'), '---\ntask_id: GFT-abcdefgh\n---\n# Duplicate');
+    const other = join(f.root, 'p/features/other');
+    await f.put(join(other, 'index.md'), '# Other');
+    await f.put(join(other, 'tasks/c/index.md'), '---\ntask_id: GFT-abcdefgh\n---\n# Third');
+    expect(await f.service.resolveWorkspace({ sessionId: 'third', path: join(other, 'tasks/c'), goalBoard: { featurePath: other, taskId: 'GFT-abcdefgh' } })).toMatchObject({ workspace: null });
+    await expect(f.service.historyPage({ featurePath: other, taskId: parser.digest(join(other, 'tasks/c/index.md')) })).rejects.toThrow();
+});
+it('does not transfer a former task history or path-keyed execution receipt to a new task reusing the directory', async () => {
+    const f = await fixture();
+    await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-aaaaaaaa\nstatus: pending\n---\n# Original');
+    await f.service.board(f.feature);
+    await f.put(join(f.home, 'state', parser.digest(f.taskDirectory), 'execution.json'), JSON.stringify({ requestId: 'old', directory: f.taskDirectory, state: 'submitted', sessionId: 'old-session', createdAt: 1 }));
+    await rename(f.taskDirectory, join(f.feature, 'tasks/moved'));
+    await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-bbbbbbbb\nstatus: pending\n---\n# Replacement');
+    f.history.push({ sessionId: 'old-session', directory: f.taskDirectory, title: 'Original', executed: true, updatedAt: 1, metadata: { path: f.taskDirectory } as any });
+    const board = await f.service.board(f.feature);
+    const replacement = board.snapshot.tasks.find(task => task.id === 'GFT-bbbbbbbb')!;
+    expect(replacement.execution?.state).toBe('never');
+    expect((await f.service.historyPage({ featurePath: f.feature, taskId: replacement.id })).sessions).toEqual([]);
+    expect(await f.service.resolveWorkspace({ sessionId: 'unbound', path: f.taskDirectory })).toMatchObject({ workspace: null });
+    await expect(f.service.historyPage({ featurePath: f.feature, taskId: parser.digest(join(f.taskDirectory, 'index.md')) })).rejects.toThrow();
+});
+
+it('keeps an already bound session with its original task when the old path is reused', async () => {
+    const f = await fixture();
+    await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-aaaaaaaa\nstatus: pending\n---\n# Original');
+    await f.service.resolveWorkspace({ sessionId: 'bound', path: f.taskDirectory });
+    await rename(f.taskDirectory, join(f.feature, 'tasks/moved'));
+    await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-bbbbbbbb\nstatus: pending\n---\n# Replacement');
+    f.history.push({ sessionId: 'bound', directory: f.taskDirectory, title: 'Original', executed: true, updatedAt: 1, metadata: { path: f.taskDirectory } as any });
+    await f.service.board(f.feature);
+    expect((await f.service.historyPage({ featurePath: f.feature, taskId: 'GFT-aaaaaaaa' })).sessions.map(session => session.sessionId)).toEqual(['bound']);
+    expect((await f.service.historyPage({ featurePath: f.feature, taskId: 'GFT-bbbbbbbb' })).sessions).toEqual([]);
+});
+
+it('rejects a stale hash when a former stable task directory is reused by an unlabelled task', async () => {
+    const f = await fixture();
+    await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-aaaaaaaa\n---\n# Original');
+    await f.service.board(f.feature);
+    await rename(f.taskDirectory, join(f.feature, 'tasks/moved'));
+    await f.put(join(f.taskDirectory, 'index.md'), '# Unlabelled replacement');
+    await expect(f.service.historyPage(f.input)).rejects.toThrow();
+    await expect(f.service.files({ ...f.input, path: join(f.taskDirectory, 'index.md') }, 'read')).rejects.toThrow();
+    await expect(f.service.launch({ ...f.input, action: 'execute', agent: 'codex', requestId: 'stale' })).rejects.toThrow();
+    expect(f.deps.spawn).not.toHaveBeenCalled();
+});

@@ -4,7 +4,7 @@ import { act } from 'react';
 import TestRenderer from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({ navigate: vi.fn(), alert: vi.fn(), owner: { generation: 'one' }, current: true,
-    projects: vi.fn(), board: vi.fn(), deleted: false, flush: vi.fn() }));
+    resolve: vi.fn(), projects: vi.fn(), board: vi.fn(), deleted: false, flush: vi.fn() }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ navigate: mock.navigate }) }));
 vi.mock('react-native', () => ({ Text: 'Text' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Icon' }));
@@ -12,7 +12,7 @@ vi.mock('react-native-unistyles', () => ({ useUnistyles: () => ({ theme: { color
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/modal', () => ({ Modal: { alert: mock.alert } }));
 vi.mock('@/auth/accountRuntime', () => ({ getRuntimeAccountSelection: () => mock.owner, accountRuntimeCurrent: () => mock.current }));
-vi.mock('@/sync/projectGoals', () => ({ loadGoalProjects: mock.projects, loadProjectGoalBoard: mock.board }));
+vi.mock('@/sync/projectGoals', () => ({ resolveProjectSessionWorkspace: mock.resolve, loadGoalProjects: mock.projects, loadProjectGoalBoard: mock.board }));
 vi.mock('@/sync/projectSessionLinks', () => ({ isProjectSessionDeleted: () => mock.deleted }));
 vi.mock('./GoalBoardButton', () => ({ GoalBoardButton: 'Button' }));
 import { SessionWorkspaceLink } from './SessionWorkspaceLink';
@@ -32,7 +32,7 @@ async function press() { await act(async () => { button().props.onPress(); }); }
 beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks(); mock.current = true; mock.deleted = false; mock.owner = { generation: 'one' };
-    mock.projects.mockResolvedValue(projects); mock.board.mockResolvedValue(board);
+    mock.resolve.mockResolvedValue(undefined); mock.projects.mockResolvedValue(projects); mock.board.mockResolvedValue(board);
 });
 afterEach(() => { act(() => renderer?.unmount()); renderer = undefined; });
 
@@ -72,7 +72,7 @@ it('reports invalid ownership instead of falling back to a different/latest conv
 it('allows a user retry after a read failure without starting automatic retries', async () => {
     mock.projects.mockRejectedValue(new Error('offline')); await render();
     expect(mock.projects).toHaveBeenCalledTimes(1); await press(); expect(mock.alert).toHaveBeenCalled();
-    mock.projects.mockResolvedValue(projects); await press(); expect(mock.navigate).toHaveBeenCalledTimes(1);
+    mock.resolve.mockResolvedValue(undefined); mock.projects.mockResolvedValue(projects); await press(); expect(mock.navigate).toHaveBeenCalledTimes(1);
 });
 it.each(['session', 'blur', 'unmount', 'account'])('discards an in-flight click after %s changes', async change => {
     await render(); let resolve!: (value: any) => void;
@@ -88,4 +88,18 @@ it.each(['session', 'blur', 'unmount', 'account'])('discards an in-flight click 
 it('does not navigate a deleted association or a frozen account', async () => {
     await render(); mock.deleted = true; await press(); expect(mock.alert).toHaveBeenCalled();
     mock.current = false; await render({ embedded: true }); await press(); expect(mock.navigate).not.toHaveBeenCalled();
+});
+
+it('uses the machine-resolved stable task after its project and directory move', async () => {
+    mock.resolve.mockResolvedValue({ projectPath: '/moved', featurePath: '/moved/f', taskId: 'GFT-abcdefgh', directory: '/moved/f/tasks/renamed' });
+    await render({ metadata: { machineId: 'm', path: '/old/tasks/a' } });
+    await press();
+    expect(mock.navigate.mock.calls[0][0].params).toMatchObject({ project: '/moved', feature: '/moved/f', task: 'GFT-abcdefgh', conversation: 'older' });
+    expect(mock.board).not.toHaveBeenCalled();
+});
+it('does not resurrect a missing or ambiguous task through a cached legacy path', async () => {
+    mock.resolve.mockResolvedValue(null);
+    await render({ metadata: { machineId: 'm', path: '/p/f/tasks/t' } });
+    expect(renderer.root.findAllByType('Button')).toHaveLength(0);
+    expect(mock.board).not.toHaveBeenCalled();
 });
