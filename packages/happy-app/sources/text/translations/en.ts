@@ -757,6 +757,7 @@ export const en: TranslationStructure = {
     },
 
     settings: {
+        codingAgents: 'Coding agents',
         title: 'Settings',
         connectedAccounts: 'Connected Accounts',
         connectAccount: 'Connect account',
@@ -1424,7 +1425,27 @@ failedContinueTask: "Continue unfinished task",
         },
     },
 
+    codingAgents: {
+        "machine": "Computer",
+        "online": "Online",
+        "offline": "Offline",
+        "explanation": "Enable the coding agents you want to cycle through on this computer. Installed agents are not enabled automatically.",
+        "enabledCount": "Enabled",
+        "noneEnabled": "No agents enabled. Enable one to start a coding session.",
+        "check": "Check versions",
+        "unavailable": "This computer could not be inspected. Check its connection and update its Paws CLI if needed.",
+        "updated": "Updated. New sessions use the new version; running sessions are unchanged.",
+        "failed": "Update was not verified. Check versions again before retrying.",
+        "notInstalled": "Not installed",
+        "detected": "Detected",
+        "latest": "Latest",
+        "manualUpdate": "Update with the original installer. This installation is not managed automatically.",
+        "checkFailed": "Could not verify the version. Try checking again.",
+        "update": "Update to",
+        "enable": "Enable"
+},
     agentInput: {
+        switchCodingAgent: 'Switch coding agent',
         stop: 'Stop',
         asyncQuestion: {
             title: 'Question', hint: 'You can answer later. Work continues.',

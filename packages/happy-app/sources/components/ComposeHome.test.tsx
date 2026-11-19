@@ -17,6 +17,7 @@ vi.mock('@/sync/sessionStartupTraceRuntime', () => ({ sessionStartupTraceRuntime
 
 const mocks = vi.hoisted(() => ({
     platformOS: 'web',
+    codingAgents: {} as Record<string, string[]>,
     isDataReady: true,
     sessionRouteBecameInteractive: vi.fn(),
     machineSpawnNewSession: vi.fn(),
@@ -151,7 +152,7 @@ vi.mock('@/sync/storage', () => {
             getState: () => ({
                 sessions: {},
                 sessionMessages: {},
-                settings: { sidebarOrganization: { lists: [], tags: [], sessions: {} } },
+                settings: { codingAgentMachines: mocks.codingAgents, sidebarOrganization: { lists: [], tags: [], sessions: {} } },
                 updateSessionPermissionMode: mocks.updatePermission,
                 updateSessionModelMode: mocks.updateModel,
                 updateSessionEffortLevel: mocks.updateEffort,
@@ -171,7 +172,7 @@ vi.mock('@/sync/storage', () => {
         useAllMachines: () => [machine],
         useLocalSetting: (key: string) => key === 'agents' ? mocks.agents : null,
         useLocalSettingMutable: () => [false, vi.fn()],
-        useSetting: () => ({}),
+        useSetting: (key: string) => key === 'codingAgentMachines' ? mocks.codingAgents : ({}),
         useSettingMutable: (key: string) => key === 'pendingCustomImageStyleReferences'
             ? [[], mocks.setPendingReferences]
             : [[], vi.fn()],
@@ -220,6 +221,7 @@ describe('ComposeHome session hydration recovery', () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+        mocks.codingAgents = {};
         const values = new Map<string, string>();
         vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) });
         vi.clearAllMocks();
@@ -245,6 +247,18 @@ describe('ComposeHome session hydration recovery', () => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
             originalConsoleError(...values);
         });
+    });
+
+    it('does not spawn a disabled agent even if an old send callback is invoked', async () => {
+        mocks.codingAgents = { 'machine-1': [] };
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<ComposeHome />); });
+        const composer = renderer.root.findByType('MessageComposer');
+        expect(composer.props.isSendDisabled).toBe(true);
+        await act(async () => { composer.props.onChangeText('Please run'); });
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
     });
 
     it('keeps an existing Agent deep link readable without restoring a discovery entry point', () => {

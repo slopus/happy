@@ -6,12 +6,31 @@ import {
     resolveSessionPinnedOrderMigration,
     resolveSidebarOrganizationMigration,
     settingsDefaults,
+    SettingsSchema,
     settingsParse,
     settingsToSyncPayload,
     type Settings,
 } from './settings';
 
 describe('settings', () => {
+    it('does not synthesize agent changes when restoring empty pending settings', () => {
+        const pending = SettingsSchema.partial().parse({});
+        expect(pending).not.toHaveProperty('codingAgentMachines');
+        const saved = settingsParse({ codingAgentMachines: { m1: ['claude', 'opencode'] } });
+        expect(applySettings(saved, pending).codingAgentMachines).toEqual(saved.codingAgentMachines);
+    });
+    it('preserves future agent preferences without resetting unrelated settings', () => {
+        const parsed = settingsParse({ viewInline: true, codingAgentMachines: { m1: ['future-agent'] } });
+        expect(parsed.viewInline).toBe(true);
+        expect(parsed.codingAgentMachines).toEqual({ m1: ['future-agent'] });
+    });
+
+    it('persists explicit empty agent selections and keeps each machine separate', () => {
+        const parsed = settingsParse({ codingAgentMachines: { m1: [], m2: ['claude', 'opencode'] } });
+        expect(parsed.codingAgentMachines).toEqual({ m1: [], m2: ['claude', 'opencode'] });
+        expect(settingsToSyncPayload(parsed).codingAgentMachines).toEqual(parsed.codingAgentMachines);
+    });
+
     describe('settingsParse', () => {
         it('should return defaults when given invalid input', () => {
             expect(settingsParse(null)).toEqual(settingsDefaults);
@@ -362,6 +381,7 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                codingAgentMachines: {},
                 agentDefaultOverrides: {},
                 sessionPinnedOrder: [],
                 sessionPinnedOrderRaw: null,

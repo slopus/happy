@@ -411,6 +411,10 @@ export const SettingsView = React.memo(function SettingsView() {
                 />
             </ItemGroup>
 
+            <ItemGroup>
+                <Item testID="settings-coding-agents" title={t('settings.codingAgents')} subtitle={t('codingAgents.explanation')}
+                    icon={<Ionicons name="code-slash-outline" size={29} color={theme.colors.accent} />} onPress={() => router.push('/settings/coding-agents')} />
+            </ItemGroup>
             {/* Machines (sorted: online first, then last seen desc) */}
             <ItemGroup>
                 <Item

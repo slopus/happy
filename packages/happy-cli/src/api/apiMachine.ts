@@ -1,4 +1,5 @@
 import type { CrossAgentRequest } from '@/continuation/coordinator';
+import { createCodingAgentService } from '@/environment/codingAgentService';
 import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges, artifactAccountScope } from '@/modules/artifacts/runtime';
 import { registerProjectGoalHandlers, type ProjectGoalDependencies } from '@/modules/goalBoard/projectService';
 import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
@@ -204,6 +205,13 @@ export class ApiMachineClient {
             }),
         ]);
         registerEnvironmentHandlers(this.rpcHandlerManager, environmentService);
+        const codingAgents = createCodingAgentService({ runner, env: process.env });
+        this.rpcHandlerManager.registerHandler('coding-agents-inspect', (request: unknown) => codingAgents.inspect(request));
+        this.rpcHandlerManager.registerHandler('coding-agent-update', async (request: unknown) => {
+            const result = await codingAgents.update(request);
+            if (result.success) await this.updateMachineMetadata(metadata => ({ ...(metadata ?? this.machine.metadata!), cliAvailability: detectCLIAvailability() }));
+            return result;
+        });
     }
 
     setRPCHandlers({

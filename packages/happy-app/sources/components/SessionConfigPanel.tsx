@@ -3,6 +3,8 @@ import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode 
 import { ComposerTooltip } from './DesktopShortcutTooltip';
 import { SessionComposerModeSelector } from './SessionComposerModeSelector';
 import React from 'react';
+import { useRouter } from 'expo-router';
+import { enabledCodingAgents } from '@/utils/codingAgentSelection';
 import {
     View,
     Text,
@@ -69,11 +71,11 @@ const agentIcons = {
 type AgentKey = NewSessionAgentType;
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'ask', label: 'ask' },
-    { key: 'opencode', label: 'opencode' },
-    { key: 'claude', label: 'claude code' },
-    { key: 'codex', label: 'codex' },
-    { key: 'openclaw', label: 'openclaw' },
-    { key: 'gemini', label: 'gemini' },
+    { key: 'opencode', label: 'OpenCode' },
+    { key: 'claude', label: 'Claude Code' },
+    { key: 'codex', label: 'Codex' },
+    { key: 'openclaw', label: 'OpenClaw' },
+    { key: 'gemini', label: 'Gemini' },
 ];
 
 export type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
@@ -778,6 +780,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
     function SessionConfigPanel({ layout = 'inline', collapsible = true, onPickerOpenChange, renderComposer }, ref) {
         const { theme } = useUnistyles();
         const viewport = useWindowDimensions();
+        const router = useRouter();
+        const codingAgentMachines = useSetting('codingAgentMachines');
         const isSidebar = layout === 'sidebar';
         const isComposer = layout === 'composer';
 
@@ -986,9 +990,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const availableAgents = React.useMemo(() => {
             const availability = selectedMachine?.metadata?.cliAvailability;
             const codingAgents = getCodingAgentPickerItems(ALL_AGENTS);
-            if (!availability) return codingAgents;
-            return codingAgents.filter(a => availability[a.key]);
-        }, [selectedMachine]);
+            return enabledCodingAgents(codingAgents, selectedMachineId, codingAgentMachines, availability);
+        }, [selectedMachine, selectedMachineId, codingAgentMachines]);
 
         // If current coding agent is not available on this machine, switch to the
         // first available coding agent. Ask mode stays independent of CLI availability.
@@ -1023,17 +1026,39 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             () => getNewSessionModels(selectedAgent, modelMetadata),
             [modelMetadata, selectedAgent, getNewSessionModels],
         );
-        // A model choice carries its execution agent, so the composer needs only one picker.
-        const unifiedModels = React.useMemo(() => availableAgents.flatMap((item) => {
-            const metadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: item.key, codexAccountProfileId });
-            const options = getNewSessionModels(item.key, metadata);
-            const concrete = options.filter((model) => model.key !== 'default');
-            // Without a concrete catalog this is an agent launch entry, not
-            // an extra default-model choice beside supported models.
-            return (concrete.length ? concrete : [{
-                key: 'default', name: `${item.label} · ${t('agentInput.model.cliAutomatic')}`,
-            }]).map((model) => ({ ...model, key: `${item.key}::${model.key}` }));
-        }), [availableAgents, sessions, selectedMachineId, codexAccountProfileId, getNewSessionModels]);
+        // Models belong to the selected execution agent, even when Magpie exposes
+        // the same model through several agents. Agent changes are explicit.
+        const composerModels = React.useMemo(() => {
+            const concrete = modelModes.filter(model => model.key !== 'default');
+            return (concrete.length ? concrete : modelModes).map(model => ({
+                ...model, key: `${selectedAgent}::${model.key}`,
+            }));
+        }, [modelModes, selectedAgent]);
+        const cycleAgents = ['codex', 'claude', 'opencode', 'gemini', 'openclaw']
+            .flatMap(key => availableAgents.filter(agent => agent.key === key));
+        const nextCycleAgent = cycleAgents.length > 1
+            ? cycleAgents[(cycleAgents.findIndex(agent => agent.key === selectedAgent) + 1) % cycleAgents.length]
+            : null;
+        const switchComposerAgent = () => {
+            if (!nextCycleAgent) return;
+            const nextAgent = nextCycleAgent.key as NewSessionAgentType;
+            const metadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: nextAgent, codexAccountProfileId });
+            const selection = resolveNewSessionModeSelection({
+                agent: nextAgent,
+                permissionMode: 'default',
+                modelMode: draft.modelMode,
+                effortLevel: draft.effortLevel,
+                agentDefaultOverrides,
+                modelOptions: getNewSessionModels(nextAgent, metadata),
+                effortMetadata: metadata,
+            });
+            draft.setAgentType(nextAgent);
+            draft.setPermissionMode(selection.permissionMode);
+            draft.setModelMode(selection.modelMode);
+            draft.setEffortLevel(selection.effortLevel);
+            setSelectedModelKey(selection.modelMode);
+            setFastMode(false);
+        };
         const configExperience = React.useMemo(
             () => getSessionConfigExperience(selectedAgent),
             [selectedAgent],
@@ -1593,46 +1618,47 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                             ))
             }</>;
             const modelControl = <>{
-!isOffline && !configExperience.isAskMode && (
+!isOffline && !configExperience.isAskMode && (availableAgents.length === 0 ? (
+                                <Pressable testID="session-composer-configure-agents" accessibilityRole="button"
+                                    accessibilityLabel={t('codingAgents.noneEnabled')}
+                                    onPress={() => router.push({ pathname: '/settings/coding-agents', params: { machineId: selectedMachineId ?? '' } })}
+                                    style={({ pressed }) => [styles.composerConfigCompactTrigger, pressed && styles.composerConfigCompactPressed]}>
+                                    <Ionicons name="settings-outline" size={16} color={theme.colors.textSecondary} />
+                                    <Text style={styles.composerConfigCompactText}>{t('settings.codingAgents')}</Text>
+                                </Pressable>
+                            ) : (
                                 <SessionComposerModeSelector
                                     unifiedCodex={selectedAgent === 'codex'}
                                     online={!isOffline}
                                     model={currentModel ? { ...currentModel, key: `${selectedAgent}::${currentModel.key}` } : null}
-                                    modelOptions={unifiedModels}
+                                    modelOptions={composerModels}
                                     effort={showEffort ? currentEffort : null}
                                     effortOptions={showEffort ? effortLevels : []}
                                     fastMode={fastMode}
                                     supportsFast={supportsFast}
                                     onFastModeChange={setFastMode}
-                                    onReset={unifiedModels.some(option => option.key === 'codex::gpt-6.1-sol') ? () => {
-                                        draft.setAgentType('codex');
-                                        draft.setModelMode('gpt-6.1-sol');
-                                        draft.setEffortLevel('medium');
-                                        setFastMode(false);
-                                        const modelIndex = modelModes.findIndex(mode => mode.key === 'gpt-6.1-sol');
-                                        if (selectedAgent === 'codex' && modelIndex >= 0) setSelectedModelKey('gpt-6.1-sol');
-                                    } : undefined}
+                                    agentSwitcher={{
+                                        id: selectedAgent,
+                                        onManage: () => router.push({ pathname: '/settings/coding-agents', params: { machineId: selectedMachineId ?? '' } }),
+                                        current: ALL_AGENTS.find(agent => agent.key === selectedAgent)?.label ?? selectedAgent,
+                                        next: nextCycleAgent?.label ?? null,
+                                        onSwitch: switchComposerAgent,
+                                    }}
                                     onModelChange={(key) => {
-                                        const separator = key.indexOf('::');
-                                        if (separator < 0) return;
-                                        const nextAgent = key.slice(0, separator) as NewSessionAgentType;
-                                        const nextModel = key.slice(separator + 2);
-                                        if (nextAgent === selectedAgent) {
-                                            const nextIndex = modelModes.findIndex((mode) => mode.key === nextModel);
-                                            if (nextIndex >= 0) setSelectedModelKey(nextModel);
-                                        } else {
-                                            draft.setAgentType(nextAgent);
-                                        }
+                                        const prefix = `${selectedAgent}::`;
+                                        if (!key.startsWith(prefix)) return;
+                                        const nextModel = key.slice(prefix.length);
+                                        if (!modelModes.some(mode => mode.key === nextModel)) return;
+                                        setSelectedModelKey(nextModel);
                                         draft.setModelMode(nextModel);
-                                        const nextMetadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: nextAgent, codexAccountProfileId });
-                                        if (nextAgent !== 'codex' || !supportsCodexFast(nextMetadata, nextModel)) setFastMode(false);
+                                        if (!supportsCodexFast(modelMetadata, nextModel)) setFastMode(false);
                                     }}
                                     onEffortChange={(key) => {
                                         const next = effortLevels.findIndex((level) => level.key === key);
                                         if (next >= 0) { setEffortIndex(next); draft.setEffortLevel(effortLevels[next].key); }
                                     }}
                                 />
-                            )
+                            ))
             }</>;
             const pickers = <>
                 {renderActivePickerPopover('machine')}

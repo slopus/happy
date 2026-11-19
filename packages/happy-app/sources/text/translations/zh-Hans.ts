@@ -942,6 +942,7 @@ export const zhHans: TranslationStructure = {
     },
 
     settings: {
+        codingAgents: '编程智能体',
         title: '设置',
         connectedAccounts: '已连接账户',
         connectAccount: '连接账户',
@@ -1609,7 +1610,27 @@ failedContinueTask: "继续未完成的任务",
         },
     },
 
+    codingAgents: {
+        "machine": "电脑",
+        "online": "在线",
+        "offline": "离线",
+        "explanation": "按电脑启用需要轮换的编程智能体。检测到已安装，不代表自动启用。",
+        "enabledCount": "已启用",
+        "noneEnabled": "尚未启用智能体，请先启用一个再创建编程会话。",
+        "check": "检查版本",
+        "unavailable": "无法检测这台电脑，请检查连接；旧版 Paws CLI 需要先更新。",
+        "updated": "更新已完成，新会话使用新版本；正在运行的会话保持不变。",
+        "failed": "尚未验证更新成功，请重新检查版本后再试。",
+        "notInstalled": "未安装",
+        "detected": "已检测到",
+        "latest": "最新",
+        "manualUpdate": "请用原安装方式更新，当前安装来源不支持自动管理。",
+        "checkFailed": "无法确认版本，请重试检查。",
+        "update": "更新到",
+        "enable": "启用"
+},
     agentInput: {
+        switchCodingAgent: '切换编程智能体',
         stop: '停止',
         asyncQuestion: {
             title: '问题', hint: '可以稍后回答，任务仍会继续。',

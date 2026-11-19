@@ -20,3 +20,4 @@ export * from './composerPrediction';
 export * from './asyncQuestions';
 export * from './bots';
 export * from './skillCommand';
+export * from './codingAgents';

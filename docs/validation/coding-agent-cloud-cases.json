@@ -1,0 +1,70 @@
+{
+  "sourceCommit": "4cc4576c",
+  "environment": "isolated cloud full App, API and PGlite; real encrypted RPC",
+  "cases": [
+    {
+      "id": "default-opt-in",
+      "status": "passed"
+    },
+    {
+      "id": "cloud-persistence-after-reload",
+      "status": "passed"
+    },
+    {
+      "id": "machine-isolation",
+      "status": "passed"
+    },
+    {
+      "id": "brand-icon-cycle",
+      "status": "passed"
+    },
+    {
+      "id": "model-agent-independence",
+      "status": "passed"
+    },
+    {
+      "id": "empty-selection-send-gate",
+      "status": "passed"
+    },
+    {
+      "id": "explicit-version-check",
+      "status": "passed"
+    },
+    {
+      "id": "sandbox-update-success",
+      "status": "passed"
+    },
+    {
+      "id": "sandbox-update-failure-consumes-token",
+      "status": "passed"
+    },
+    {
+      "id": "claude-spawn-and-model-message",
+      "status": "passed"
+    }
+  ],
+  "regressionFound": "empty partial pending settings synthesized codingAgentMachines={} and overwrote saved preferences",
+  "regressionFixed": true,
+  "updateOperations": {
+    "workerA": [
+      {
+        "agent": "claude",
+        "version": "1.1.0"
+      }
+    ],
+    "workerB": []
+  },
+  "routing": {
+    "spawns": 1,
+    "agent": "claude",
+    "model": "shared-model",
+    "reply": "CLOUD_AGENT_TRANSPORT_OK"
+  },
+  "boundaries": {
+    "screenshots": false,
+    "vendorInference": false,
+    "realAgentInstallationUpgrade": false,
+    "nativeDevice": false,
+    "productionDeployment": false
+  }
+}

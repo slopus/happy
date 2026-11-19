@@ -1,3 +1,4 @@
+vi.mock('./codingAgents/CodingAgentIcon', () => ({ CodingAgentIcon: 'CodingAgentIcon' }));
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -158,6 +159,38 @@ describe('SessionComposerModeSelector', () => {
             renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress(),
         );
         expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('replaces reset with one-click agent cycling and keeps the panel open', () => {
+        const onSwitch = vi.fn(); const onReset = vi.fn(); let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online
+            model={modelOptions[0]} modelOptions={modelOptions} effort={effortOptions[0]} effortOptions={effortOptions}
+            onModelChange={vi.fn()} onEffortChange={vi.fn()} onReset={onReset}
+            agentSwitcher={{ id: 'codex', current: 'Codex', next: 'Claude Code', onSwitch }} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-reset' })).toHaveLength(0);
+        const button = renderer.root.findByProps({ testID: 'session-composer-agent-cycle' });
+        expect(button.props.accessibilityHint).toBe('Codex → Claude Code');
+        expect(button.findByType('CodingAgentIcon').props.agent).toBe('codex');
+        act(() => button.props.onPress());
+        expect(onSwitch).toHaveBeenCalledOnce(); expect(onReset).not.toHaveBeenCalled();
+        expect(renderer.root.findByProps({ testID: 'session-composer-mode-panel' })).toBeDefined();
+        act(() => renderer.unmount());
+    });
+
+    it('keeps cycling available with one model and no effort, and disables it with one agent', () => {
+        const onSwitch = vi.fn(); let renderer: any;
+        const props = { online: true, model: modelOptions[0], modelOptions: modelOptions.slice(0, 1), effort: null, effortOptions: [], onModelChange: vi.fn(), onEffortChange: vi.fn() };
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} agentSwitcher={{ current: 'OpenCode', next: 'Codex', onSwitch }} />); });
+        const trigger = () => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' });
+        expect(trigger().props.disabled).toBe(false);
+        act(() => trigger().props.onPress());
+        act(() => renderer.update(<SessionComposerModeSelector {...props} modelOptions={modelOptions} agentSwitcher={{ current: 'Codex', next: null, onSwitch }} />));
+        const cycle = renderer.root.findByProps({ testID: 'session-composer-agent-cycle' });
+        expect(cycle.props.disabled).toBe(true);
+        act(() => cycle.props.onPress());
+        expect(onSwitch).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 
