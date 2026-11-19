@@ -83,6 +83,7 @@ import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 import packageJson from '../../package.json';
 import { CodexMcpAppAdapter } from './mcpApps/CodexMcpAppAdapter';
 import { assertCodexAccountConfig, assertCodexAccountModel, CODEX_ACCOUNT_OVERRIDES, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_CONFIG_ERROR, CODEX_ACCOUNT_UNSET_ENV } from './codexAccountConfig';
+import { recoverCodexProviderIndex } from './codexProviderIndexRecovery';
 
 type PendingRequest = {
     resolve: (result: unknown) => void;
@@ -1584,7 +1585,23 @@ export class CodexAppServerClient {
         };
 
         this.replaceableEmptyThread = false;
-        const result = await this.request('thread/resume', params) as ResumeConversationResponse;
+        let result: ResumeConversationResponse;
+        try {
+            result = await this.request('thread/resume', params) as ResumeConversationResponse;
+        } catch (error) {
+            const data = error instanceof JsonRpcResponseError ? error.data as Record<string, unknown> | undefined : undefined;
+            const home = this.processEnv.CODEX_HOME;
+            const profile = this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID;
+            if (this.applicationPolicy || this.connection.type !== 'spawn' || !home || !profile
+                || !(error instanceof JsonRpcResponseError) || error.code !== -32600
+                || data?.type !== 'modelProviderMismatch' || data.modelProvider !== 'openai'
+                || data.currentModelProvider !== CODEX_ACCOUNT_PROVIDER
+                || !await recoverCodexProviderIndex(home, profile, threadId).catch(() => false)) throw error;
+            await this.assertAccountConfig(opts?.cwd ?? defaults.cwd);
+            logger.debug('[CodexAppServer] Recovered official provider index for restored thread:', threadId);
+            // One retry of a rejected initialization, never a turn or business action.
+            result = await this.request('thread/resume', params) as ResumeConversationResponse;
+        }
         this._threadId = result.thread.id;
         this._turnId = null;
         this.rememberThreadDefaults({

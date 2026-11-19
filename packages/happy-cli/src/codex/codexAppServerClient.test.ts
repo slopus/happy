@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+import { readFileSync, renameSync } from 'node:fs';
 import { setCodexServiceTier } from './codexServiceTier';
 import { CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_HTTP_PROVIDER, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_OVERRIDES } from './codexAccountConfig';
 import { createServer, type Server } from 'node:http';
@@ -58,7 +60,7 @@ type MockRpcMessage = {
     method?: string;
     params?: any;
     result?: any;
-    error?: { code: number; message: string };
+    error?: { code: number; message: string; data?: unknown };
 };
 
 function pushJsonLine(stdout: NodeJS.ReadableStream & { push: (chunk: string) => void }, payload: unknown) {
@@ -804,6 +806,79 @@ describe('CodexAppServerClient sandbox integration', () => {
             await expect(call()).rejects.toThrow('Device Environment');
             expect(requests.filter(r => r.method === `thread/${operation}`)).toHaveLength(1);
         } finally { await client.disconnect(); rmSync(accountHome, { recursive: true, force: true }); }
+    });
+
+    it.each(['recover', 'unmanaged', 'other-profile', 'other-provider', 'other-header', 'other-thread', 'outside-home', 'second-failure', 'database-link', 'rollout-link', 'marker-missing', 'identity-invalid', 'wrong-error'] as const)(
+        'handles a rebuilt official provider index safely: %s', async scenario => {
+        const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const home = mkdtempSync(join(tmpdir(), 'codex-resume-index-'));
+        const outside = mkdtempSync(join(tmpdir(), 'codex-other-rollout-'));
+        mkdirSync(join(home, 'sessions'));
+        const rollout = join(scenario === 'outside-home' ? outside : join(home, 'sessions'), 'rollout-thread-a.jsonl');
+        const source = JSON.stringify({ type: 'session_meta', payload: {
+            id: scenario === 'other-thread' ? 'thread-other' : 'thread-a',
+            model_provider: scenario === 'other-header' ? 'external' : 'openai',
+        } }) + '\n' + JSON.stringify({ type: 'event_msg', payload: { text: 'original content' } }) + '\n';
+        writeFileSync(rollout, source);
+        writeFileSync(join(home, '.paws-account-launch.json'), JSON.stringify({
+            schemaVersion: 1, daemonPid: 1, machineId: 'machine', profileId: scenario === 'other-profile' ? 'other' : 'profile-a',
+            launchId: 'launch', credentialVersion: 1, currentVersion: 1, authFingerprint: 'a'.repeat(64),
+            accountFingerprint: 'b'.repeat(64), historyRoot: join(home, 'cache'), startedAt: 1,
+            writeDisabled: false, identityInvalid: scenario === 'identity-invalid',
+        }));
+        if (scenario === 'marker-missing') rmSync(join(home, '.paws-account-launch.json'));
+        if (scenario === 'rollout-link') {
+            const target = join(outside, 'source.jsonl'); writeFileSync(target, source);
+            rmSync(rollout); symlinkSync(target, rollout);
+        }
+        const db = new DatabaseSync(join(home, 'state_5.sqlite'));
+        db.exec('CREATE TABLE threads(id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, model_provider TEXT NOT NULL)');
+        db.prepare('INSERT INTO threads VALUES (?, ?, ?)').run('thread-a', rollout, scenario === 'other-provider' ? 'external' : 'openai');
+        db.prepare('INSERT INTO threads VALUES (?, ?, ?)').run('unrelated', '/other/path', 'external');
+        if (scenario === 'database-link') {
+            const target = join(outside, 'state.sqlite'); renameSync(join(home, 'state_5.sqlite'), target);
+            symlinkSync(target, join(home, 'state_5.sqlite'));
+        }
+        let resumes = 0;
+        const calls: MockRpcMessage[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
+            calls.push(message);
+            if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config: {
+                ...CODEX_ACCOUNT_CONFIG, model_providers: { [CODEX_ACCOUNT_PROVIDER]: CODEX_ACCOUNT_HTTP_PROVIDER },
+            } } });
+            if (message.method === 'thread/resume') {
+                resumes++;
+                const provider = db.prepare('SELECT model_provider FROM threads WHERE id=?').get('thread-a').model_provider;
+                if (provider !== CODEX_ACCOUNT_PROVIDER || scenario === 'second-failure') pushJsonLine(stdout, { id: message.id,
+                    error: { code: -32600, message: 'Provider mismatch', data: {
+                        type: scenario === 'wrong-error' ? 'safetyViolation' : 'modelProviderMismatch', modelProvider: 'openai', currentModelProvider: CODEX_ACCOUNT_PROVIDER,
+                    } },
+                });
+                else pushJsonLine(stdout, { id: message.id, result: { thread: { id: 'thread-a' }, model: 'gpt-6.1-sol', reasoningEffort: 'high' } });
+            }
+        } }));
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {
+            CODEX_HOME: home, ...(scenario === 'unmanaged' ? {} : { HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'profile-a' }),
+        });
+        try {
+            await client.connect();
+            const result = client.resumeThread({ threadId: 'thread-a' });
+            if (scenario === 'recover') {
+                await expect(result).resolves.toMatchObject({ threadId: 'thread-a', model: 'gpt-6.1-sol' });
+                expect(resumes).toBe(2);
+                expect(db.prepare('SELECT model_provider FROM threads WHERE id=?').get('thread-a').model_provider).toBe(CODEX_ACCOUNT_PROVIDER);
+                expect(calls.filter(call => call.method === 'thread/resume').every(call => call.params.modelProvider === CODEX_ACCOUNT_PROVIDER)).toBe(true);
+            } else {
+                await expect(result).rejects.toThrow('Provider mismatch');
+                expect(resumes).toBe(scenario === 'second-failure' ? 2 : 1);
+            }
+            expect(readFileSync(rollout, 'utf8')).toBe(source);
+            expect(db.prepare('SELECT model_provider FROM threads WHERE id=?').get('unrelated').model_provider).toBe('external');
+            if (!['recover', 'second-failure'].includes(scenario)) {
+                expect(db.prepare('SELECT model_provider FROM threads WHERE id=?').get('thread-a').model_provider).toBe(scenario === 'other-provider' ? 'external' : 'openai');
+            }
+        } finally { await client.disconnect(); db.close(); rmSync(home, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
     });
 
     it('falls back to non-sandbox transport when sandbox initialization fails', async () => {
