@@ -41,6 +41,7 @@ class AnalyticsCatalogTest {
                 "bool" -> Rule.Bool
                 "version" -> Rule.Version
                 "os_version" -> Rule.OsVersion
+                "platform_class" -> Rule.PlatformClass
                 else -> error("unknown type $type")
             }
         }
@@ -111,6 +112,7 @@ class AnalyticsCatalogTest {
             CrashProcess.entries.forEach { process -> CrashReason.entries.forEach { add(AnalyticsEvent.AppCrashed(process, it, "1.8.0")) } }
             add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.Crash, null))
             RnImportError.entries.forEach { add(AnalyticsEvent.RnImportFailed(it)) }
+            add(AnalyticsEvent.RnImportFailed(RnImportError.Keystore, "android.security.KeyStoreException", "java.lang.IllegalStateException"))
             PairingMethod.entries.forEach { method ->
                 PairingStart.entries.forEach { start ->
                     add(AnalyticsEvent.MobilePairingCompleted(method, start))

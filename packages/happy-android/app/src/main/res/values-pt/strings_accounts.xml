@@ -6,4 +6,7 @@
 <resources>
     <string name="account_menu_title">Contas</string>
     <string name="account_menu_add">Adicionar</string>
+    <string name="account_unlock_failed_title">Não foi possível desbloquear sua conta</string>
+    <string name="account_unlock_failed_body">O armazenamento seguro do telefone não respondeu. Sua conta continua salva neste telefone.</string>
+    <string name="account_unlock_failed_other">Usar outra conta</string>
 </resources>

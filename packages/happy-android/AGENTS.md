@@ -620,13 +620,24 @@ expo-secure-store 55.0.9's Android storage (`SecureStoreModule.kt`,
   `AES/GCM/NoPadding:key_v1:keystoreUnauthenticated` (no suffix for items
   with `usesKeystoreSuffix: false`). The hybrid RSA scheme (API < 23) is
   read-only, as in expo.
-- Failure handling matches expo: a missing Keystore key or one that no
-  longer opens the value deletes the entry. Any other failure of a read (a
-  Keystore `ProviderException`, `IllegalStateException`, …) reads as signed
-  out and leaves the item, as tokenStorage.ts's catch does; it never stops
-  `AppGraph` from being built. A start that finds the item and can't open
-  it (or can't trust its server) sends `rn_import_failed` with the reason
-  (`RnUpgradeTest`).
+- `ExpoSecureStore.getItem` tries a read that throws past the envelope (a
+  Keystore `ProviderException`, `IllegalStateException`, an IO error, …)
+  three times in all, 100 and 250 ms apart, for every store that uses it;
+  a malformed envelope or a key that doesn't open the value isn't tried
+  again. By default a missing Keystore key or one that no longer opens the
+  value deletes the entry, as expo does.
+- The account stores read with `keep`: an account item that is there but
+  can't be read (`Stored.Unreadable`) is never deleted, written over or
+  cleared, and its registry entry stays. A sign-in meanwhile goes to an item
+  of its own; removing the account leaves the item. When the open account
+  (or, on the first start after the upgrade, the React Native one) is
+  unreadable, `StartRoute` shows `UnlockFailed` instead of the start screen:
+  Retry re-reads and reconciles (`AppGraph.retryUnlock`), "Use another
+  account" goes to sign-in. Reconciling never stops `AppGraph` or analytics
+  from starting. Every start whose React Native item can't be opened (or
+  whose server can't be trusted, once) sends `rn_import_failed` with the
+  reason and the exception's platform classes (`RnUpgradeTest`). Only the
+  secret key brings back an item whose Keystore key is gone.
 
 If expo-secure-store is upgraded in happy-app, diff its Android sources
 against this file. `ExpoSecureStoreTest` runs a copy of expo's read and write code

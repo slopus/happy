@@ -54,21 +54,20 @@ object AnalyticsReasons {
         ServerAuthException.Reason.WrongServer, ServerAuthException.Reason.CrossOrigin, ServerAuthException.Reason.WrongAudience -> SignInError.WrongServer
     }
 
-    /**
-     * Why the React Native app's credential item read as signed out; none
-     * told means it opened but held no account (a secret that isn't 32 bytes).
-     */
-    fun rnImport(why: UnreadableCredentials?): RnImportError = when (why) {
-        is UnreadableCredentials.Item -> when (why.reason) {
-            UnreadableItem.KeyMissing -> RnImportError.KeyMissing
-            UnreadableItem.KeyInvalidated -> RnImportError.KeyInvalidated
-            UnreadableItem.DecryptFailed -> RnImportError.DecryptFailed
-            UnreadableItem.AuthRequired -> RnImportError.AuthRequired
-            UnreadableItem.Malformed -> RnImportError.MalformedItem
-        }
+    /** Why the React Native app's credential item can't be opened. */
+    fun rnImport(why: UnreadableCredentials): AnalyticsEvent.RnImportFailed = when (why) {
+        is UnreadableCredentials.Item -> AnalyticsEvent.RnImportFailed(
+            when (why.reason) {
+                UnreadableItem.KeyMissing -> RnImportError.KeyMissing
+                UnreadableItem.KeyInvalidated -> RnImportError.KeyInvalidated
+                UnreadableItem.DecryptFailed -> RnImportError.DecryptFailed
+                UnreadableItem.AuthRequired -> RnImportError.AuthRequired
+                UnreadableItem.Malformed -> RnImportError.MalformedItem
+            },
+        )
         // Past the envelope, all a read does is ask the Keystore and decrypt.
-        UnreadableCredentials.Failed -> RnImportError.Keystore
-        UnreadableCredentials.Invalid, null -> RnImportError.InvalidCredentials
+        is UnreadableCredentials.Failed -> AnalyticsEvent.RnImportFailed.of(RnImportError.Keystore, why.error)
+        UnreadableCredentials.Invalid -> AnalyticsEvent.RnImportFailed(RnImportError.InvalidCredentials)
     }
 
     /** A Happy (relay) sign-in's failure: a key that isn't one, the server's refusal, no network, or anything else. */

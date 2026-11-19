@@ -4,7 +4,8 @@
   "types": {
     "count": "integer 0..1000000",
     "version": "string matching ^[0-9]+(\\.[0-9]+){0,3}$, at most 32 characters. Clients strip any prerelease or build suffix (everything from the first '-' or '+') before sending; a value that still does not match is sent as null.",
-    "os_version": "string matching ^[0-9]+(\\.[0-9]+)?$ (major.minor only)"
+    "os_version": "string matching ^[0-9]+(\\.[0-9]+)?$ (major.minor only)",
+    "platform_class": "string matching ^(java|javax|android|kotlin|dalvik)(\\.[A-Za-z_][A-Za-z0-9_$]*)+$, at most 100 characters: the full name of a platform or JDK class. For an app class, clients send the nearest platform class it extends, never the app's own (or obfuscated) name."
   },
   "shared_enums": {
     "provider_kind": [
@@ -363,7 +364,7 @@
       "clients": [
         "android"
       ],
-      "fires": "At a start, the React Native app's account item was found on the phone and couldn't be opened here, so the person is signed out (or, server_unconfirmed, held until they confirm the server it came from). Sent with the start's first events, only if that start sends. Only the reason; never the item, its key, the token or the server.",
+      "fires": "At a start, the React Native app's account item was found on the phone and couldn't be opened here: the item and its account stay, and the person sees the unlock screen (or, server_unconfirmed, sent once when the account came over but its server couldn't be trusted). A read that throws past the envelope is tried three times in all (about 350 ms) first; one that then succeeds sends nothing. Every start that still can't open the item sends it again, with the start's first events, only if that start sends. Only the reason and, for a read that threw, the exception's platform class and its root cause's; never a message, a trace, the item, its key, the token or the server.",
       "properties": {
         "reason": {
           "enum": [
@@ -377,6 +378,14 @@
             "server_unconfirmed",
             "unknown"
           ]
+        },
+        "error_class": {
+          "type": "platform_class",
+          "nullable": true
+        },
+        "error_cause_class": {
+          "type": "platform_class",
+          "nullable": true
         }
       }
     },

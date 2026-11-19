@@ -4,6 +4,9 @@ import android.content.SharedPreferences
 import com.slopus.happy.auth.AuthCredentials
 import com.slopus.happy.auth.CredentialStore
 import com.slopus.happy.auth.ExpoSecureStore
+import com.slopus.happy.auth.Stored
+import com.slopus.happy.auth.UnreadableCredentials
+import com.slopus.happy.auth.load
 import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.crypto.deriveKey
 import com.slopus.happy.crypto.encodeHex
@@ -70,6 +73,30 @@ data class AccountRegistry(
     fun forTerminal(): AccountEntry? = entry(activeId) ?: entry(lastHappyId) ?: entries.maxByOrNull { it.addedOrder }
 }
 
+/**
+ * The accounts whose credential items are there but couldn't be read at the
+ * last [AccountStore.reconcile]: the React Native app's [shared] item, and
+ * [own] items by account id. Neither is signed out.
+ */
+data class UnreadableAccounts(
+    val shared: UnreadableCredentials? = null,
+    val own: Map<String, UnreadableCredentials> = emptyMap(),
+) {
+    /**
+     * Why the open Happy account in [registry] can't be opened; with none
+     * open, why the React Native item no entry has yet can't (the first
+     * start after the upgrade). Null when nothing is locked.
+     */
+    fun locked(registry: AccountRegistry): UnreadableCredentials? {
+        val open = registry.entry(registry.activeId)
+        return when {
+            open != null -> if (open.location == CredentialLocation.Shared) shared else own[open.id]
+            registry.activeId == null && registry.entries.none { it.location == CredentialLocation.Shared } -> shared
+            else -> null
+        }
+    }
+}
+
 /** An account's own credential item, with its server for recovery. */
 @Serializable
 data class StoredAccountCredentials(val credentials: AuthCredentials, val serverUrl: String) {
@@ -91,6 +118,9 @@ fun accountId(credentials: AuthCredentials): String? = try {
  * downgrade still finds it; every other account has its own item in [own].
  * [reconcile] rebuilds the registry from the credentials, importing the
  * React Native server setting for the shared item the first time it is seen.
+ * An item that is there but can't be read ([unreadable]) is never taken for
+ * a sign-out: its entry keeps its place, and nothing writes over or clears
+ * the shared item; a sign-in meanwhile gets an item of its own.
  *
  * Calls block on storage; the app makes them off the main thread, except
  * the first [reconcile] at start.
@@ -105,6 +135,11 @@ class AccountStore(
     private val state = MutableStateFlow(load(prefs))
     val registry: StateFlow<AccountRegistry> = state.asStateFlow()
 
+    private val unreadableState = MutableStateFlow(UnreadableAccounts())
+
+    /** What couldn't be read at the last [reconcile]. */
+    val unreadable: StateFlow<UnreadableAccounts> = unreadableState.asStateFlow()
+
     /**
      * Brings the registry in line with the stored credentials: entries
      * without credentials go, credentials without an entry are added (the
@@ -114,22 +149,29 @@ class AccountStore(
     @Synchronized
     fun reconcile(): Map<String, StoredAccountCredentials> {
         val values = HashMap<String, StoredAccountCredentials>()
+        val unreadableOwn = HashMap<String, UnreadableCredentials>()
         for (key in own.keys()) {
-            val value = try {
-                own.getItem(key)?.let { json.decodeFromString(StoredAccountCredentials.serializer(), it) }
-            } catch (_: Exception) {
-                null
-            } ?: continue
+            val value = when (val stored = own.load(key, StoredAccountCredentials::credentials) { json.decodeFromString(StoredAccountCredentials.serializer(), it) }) {
+                is Stored.Present -> stored.value
+                is Stored.Unreadable -> {
+                    unreadableOwn[key] = stored.reason
+                    continue
+                }
+                Stored.Absent -> continue
+            }
             if (accountId(value.credentials) != key || ServerConfig.validate(value.serverUrl) != ServerConfig.Validation.Valid) continue
             values[key] = value
         }
-        val sharedCredentials = shared.read()
+        val sharedRead = shared.load()
+        unreadableState.value = UnreadableAccounts((sharedRead as? Stored.Unreadable)?.reason, unreadableOwn)
+        val sharedCredentials = sharedRead.presentOrNull()
         val sharedId = sharedCredentials?.let(::accountId)
         // The shared item wins over an own item for the same account.
         if (sharedId != null && values.remove(sharedId) != null) own.deleteItem(sharedId)
         var current = state.value
+        // Unreadable is not signed out: such an entry keeps its place, server and display.
         val kept = current.ordered.filter { entry ->
-            if (entry.location == CredentialLocation.Shared) entry.id == sharedId else entry.id in values
+            if (entry.location == CredentialLocation.Shared) entry.id == sharedId || sharedRead is Stored.Unreadable else entry.id in values || entry.id in unreadableOwn
         }.mapIndexed { index, entry -> entry.copy(addedOrder = index) }.toMutableList()
         var imported: ImportedServer? = null
         if (sharedCredentials != null && sharedId != null) {
@@ -172,7 +214,12 @@ class AccountStore(
         reconcile()
         val current = state.value
         val existing = current.entry(id)
-        val location = existing?.location ?: if (shared.read() == null) CredentialLocation.Shared else CredentialLocation.Own
+        val location = when (shared.load()) {
+            // Never written over: it may be the only copy of an account that can't be read just now.
+            is Stored.Unreadable -> CredentialLocation.Own
+            Stored.Absent -> existing?.location ?: CredentialLocation.Shared
+            is Stored.Present -> existing?.location ?: CredentialLocation.Own
+        }
         val url = existing?.serverUrl ?: serverUrl
         when (location) {
             CredentialLocation.Shared -> shared.write(credentials)
@@ -199,7 +246,8 @@ class AccountStore(
         val current = state.value
         val entry = current.entry(id) ?: return
         when (entry.location) {
-            CredentialLocation.Shared -> if (shared.read()?.let(::accountId) == id) shared.clear()
+            // An item that can't be read is left: it may not even be this account's.
+            CredentialLocation.Shared -> if (shared.load().presentOrNull()?.let(::accountId) == id) shared.clear()
             CredentialLocation.Own -> own.deleteItem(id)
         }
         val rest = current.entries.filterNot { it.id == id }

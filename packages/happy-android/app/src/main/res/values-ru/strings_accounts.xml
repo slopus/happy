@@ -6,4 +6,7 @@
 <resources>
     <string name="account_menu_title">Аккаунты</string>
     <string name="account_menu_add">Добавить</string>
+    <string name="account_unlock_failed_title">Не удалось разблокировать аккаунт</string>
+    <string name="account_unlock_failed_body">Защищённое хранилище телефона не ответило. Ваш аккаунт по-прежнему сохранён на этом телефоне.</string>
+    <string name="account_unlock_failed_other">Войти в другой аккаунт</string>
 </resources>

@@ -6,4 +6,7 @@
 <resources>
     <string name="account_menu_title">帳戶</string>
     <string name="account_menu_add">新增</string>
+    <string name="account_unlock_failed_title">無法解鎖你的帳戶</string>
+    <string name="account_unlock_failed_body">手機的安全儲存空間沒有回應。你的帳戶仍儲存在這部手機上。</string>
+    <string name="account_unlock_failed_other">使用其他帳戶</string>
 </resources>

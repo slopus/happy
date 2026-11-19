@@ -174,9 +174,6 @@ class AppGraph(
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
-    /** Why the React Native app's credential item last read as signed out ([rnImportFailure]). */
-    @Volatile private var rnCredentialsUnreadable: UnreadableCredentials? = null
-
     /** The React Native app's credential item, which the first Happy account keeps. */
     private val rnCredentials = SecureStoreCredentialStore(
         ExpoSecureStore(
@@ -184,7 +181,6 @@ class AppGraph(
             keys = secureStoreKeys,
             defaultPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE),
         ),
-        unreadable = { rnCredentialsUnreadable = it },
     )
 
     /**
@@ -204,28 +200,25 @@ class AppGraph(
     )
 
     /** Why this start couldn't open the React Native app's account; null when it did, or there was none to open. */
-    internal val rnImportFailure: RnImportError? = reconcileAtStart()
+    internal val rnImportFailure: AnalyticsEvent.RnImportFailed? = reconcileAtStart()
 
     /**
      * The first reconcile, which imports the React Native app's account the
      * first time its item is found. It never stops the graph (and the
      * analytics that would say why) from being built.
      */
-    private fun reconcileAtStart(): RnImportError? {
+    private fun reconcileAtStart(): AnalyticsEvent.RnImportFailed? {
         val importing = rnCredentials.isStored() && accountStore.registry.value.entries.none { it.location == CredentialLocation.Shared }
         try {
             accountStore.reconcile()
         } catch (e: Exception) {
             Log.w(TAG, "Could not reconcile the accounts at start", e)
-            return if (importing) RnImportError.Unknown else null
+            return if (importing) AnalyticsEvent.RnImportFailed.of(RnImportError.Unknown, e) else null
         }
-        if (!importing) return null
+        // Still on the phone, but not to be opened: "Couldn't unlock your account", every start until it opens.
+        accountStore.unreadable.value.shared?.let { return AnalyticsReasons.rnImport(it) }
         val imported = accountStore.registry.value.entries.firstOrNull { it.location == CredentialLocation.Shared }
-        return when {
-            imported == null -> AnalyticsReasons.rnImport(rnCredentialsUnreadable)
-            !imported.serverConfirmed -> RnImportError.ServerUnconfirmed
-            else -> null
-        }
+        return if (importing && imported?.serverConfirmed == false) AnalyticsEvent.RnImportFailed(RnImportError.ServerUnconfirmed) else null
     }
 
     private val removals = AccountRemovals(context.getSharedPreferences(AccountRemovals.PREFS_NAME, Context.MODE_PRIVATE))
@@ -317,6 +310,28 @@ class AppGraph(
 
     init {
         (appContext as? HappyApplication)?.whenTerminated(::close)
+    }
+
+    /**
+     * Why the open Happy account (or, with none, the React Native app's
+     * account) is on the phone but can't be opened: the "Couldn't unlock
+     * your account" screen stands in for the first one while it is set.
+     */
+    val locked: StateFlow<UnreadableCredentials?> = combine(accountStore.registry, accountStore.unreadable) { registry, unreadable -> unreadable.locked(registry) }
+        .stateIn(scope, SharingStarted.Eagerly, accountStore.unreadable.value.locked(accountStore.registry.value))
+
+    /** That screen's Retry: reads every account again (the store retrying the Keystore), and opens the account if it reads now. */
+    fun retryUnlock(): Job = scope.launch {
+        accountSelectionLock.withLock {
+            withContext(Dispatchers.IO) {
+                try {
+                    accountStore.reconcile()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not reconcile the accounts", e)
+                }
+            }
+            auth.reload()
+        }
     }
 
     /** The account's synced settings; a change is uploaded by the next sync. */
@@ -736,7 +751,7 @@ class AppGraph(
             links = link,
             network = appContext.networkPath(),
             flags = featureFlags::set,
-            launch = listOfNotNull(rnImportFailure?.let(AnalyticsEvent::RnImportFailed)),
+            launch = listOfNotNull(rnImportFailure),
         )
     }
 

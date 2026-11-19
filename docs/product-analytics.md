@@ -70,8 +70,12 @@ Errors and results:
   the OS's exit records, of which only the exception type or signal and the
   app version are read.
 - `rn_import_failed` (Android): at a start, the React Native app's account
-  was on the phone but couldn't be opened, with why; the person is signed
-  out, or held until they confirm its server (`server_unconfirmed`).
+  was on the phone but couldn't be opened, with why, at every such start;
+  the account stays and the person sees the unlock screen. Or, once, its
+  server couldn't be trusted (`server_unconfirmed`). A Keystore read that
+  throws is tried three times first; `error_class` and
+  `error_cause_class` are the exception's platform classes (never an app
+  class, a message or a trace), null for a reason that isn't an exception.
 - `mobile_pairing_failed`: a phone pairing ended unlinked, with why.
 - `sign_in_failed`: creating, restoring or signing in to an account failed.
   Leaving the flow sends nothing.

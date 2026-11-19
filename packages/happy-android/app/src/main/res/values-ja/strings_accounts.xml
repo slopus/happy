@@ -6,4 +6,7 @@
 <resources>
     <string name="account_menu_title">アカウント</string>
     <string name="account_menu_add">追加</string>
+    <string name="account_unlock_failed_title">アカウントのロックを解除できませんでした</string>
+    <string name="account_unlock_failed_body">端末のセキュアストレージが応答しませんでした。アカウントはこの端末に保存されたままです。</string>
+    <string name="account_unlock_failed_other">別のアカウントを使う</string>
 </resources>

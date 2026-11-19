@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Several accounts and agent connections (ui/home/AccountMenu, ui/connection).
+  Several accounts and agent connections (ui/home/AccountMenu, ui/connection), and
+  an account that is on the phone but can't be opened (ui/start/UnlockFailed).
   Not in happy-app's catalogs. Translated in values-*/ (AndroidStringsTranslatedTest).
 -->
 <resources>
     <string name="account_menu_title">Accounts</string>
     <string name="account_menu_add">Add</string>
+    <string name="account_unlock_failed_title">Couldn\'t unlock your account</string>
+    <string name="account_unlock_failed_body">Your phone\'s secure storage didn\'t respond. Your account is still saved on this phone.</string>
+    <string name="account_unlock_failed_other">Use another account</string>
 </resources>

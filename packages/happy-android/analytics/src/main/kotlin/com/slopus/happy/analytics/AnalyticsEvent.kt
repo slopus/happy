@@ -72,12 +72,23 @@ sealed interface AnalyticsEvent {
 
     /**
      * The React Native app's account, found on this phone at a start, that
-     * couldn't be opened here: the person is signed out, or held until its
-     * server is confirmed. Only why, never the item, its key or its server.
+     * couldn't be opened here, at every start until it opens: the account
+     * stays, behind the unlock screen. Or, once, its server couldn't be trusted. Only why, and for a read that threw the platform
+     * class of the exception and of its root cause ([AnalyticsSchema.platformClass]);
+     * never a message, a trace, the item, its key or its server.
      */
-    data class RnImportFailed(val reason: RnImportError) : AnalyticsEvent {
+    data class RnImportFailed(val reason: RnImportError, val errorClass: String? = null, val errorCauseClass: String? = null) : AnalyticsEvent {
         override val name get() = "rn_import_failed"
-        override val properties get() = mapOf("reason" to reason.wire)
+        override val properties get() = mapOf("reason" to reason.wire, "error_class" to errorClass, "error_cause_class" to errorCauseClass)
+
+        companion object {
+            /** For [error], after every try; the root cause's class only where it differs. */
+            fun of(reason: RnImportError, error: Throwable): RnImportFailed {
+                val root = generateSequence(error) { it.cause?.takeIf { cause -> cause !== it } }.take(16).last()
+                val errorClass = AnalyticsSchema.platformClass(error.javaClass)
+                return RnImportFailed(reason, errorClass, AnalyticsSchema.platformClass(root.javaClass)?.takeIf { it != errorClass })
+            }
+        }
     }
 
     /** How a phone pairing ended: linked, failed with a reason, or left. */
@@ -315,19 +326,19 @@ enum class CrashReason(override val wire: String) : Wire {
 
 /** Why the React Native app's account wasn't carried over ([AnalyticsEvent.RnImportFailed]). */
 enum class RnImportError(override val wire: String) : Wire {
-    /** No Keystore key for the item (data restored without it): the item is deleted, as expo-secure-store does. */
+    /** No Keystore key for the item (data restored without it): only the secret key brings the account back. */
     KeyMissing("key_missing"),
     KeyInvalidated("key_invalidated"),
-    /** The key doesn't open the item: deleted, as expo-secure-store does. */
+    /** The key doesn't open the item. */
     DecryptFailed("decrypt_failed"),
     AuthRequired("auth_required"),
     /** The item isn't expo-secure-store's envelope. */
     MalformedItem("malformed_item"),
-    /** The Keystore (or decrypting) failed another way; the item stays for a later start. */
+    /** The Keystore (or decrypting) failed another way, every try; a retry or later start may open it. */
     Keystore("keystore"),
     /** The item opens, but isn't `{token, secret}` with a 32-byte secret. */
     InvalidCredentials("invalid_credentials"),
-    /** Signed in, but the React Native server setting couldn't be read safely: nothing is sent until the person confirms it. */
+    /** Signed in, but the React Native server setting couldn't be read safely: nothing is sent until the person confirms it. Told once. */
     ServerUnconfirmed("server_unconfirmed"),
     /** The accounts couldn't be reconciled at all. */
     Unknown("unknown"),

@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import android.util.Base64
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.crypto.Base64Variant
+import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.testing.SoftwareKeys
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
@@ -161,12 +163,13 @@ class ExpoSecureStoreTest {
     @Test
     fun credentialsJsonIsWhatTokenStorageWrites() {
         val credentials = SecureStoreCredentialStore(store)
+        val secret = encodeBase64(ByteArray(32) { 1 }, Base64Variant.Url)
         // JSON.stringify({ token, secret })
-        store.setItem("auth_credentials", """{"token":"tok","secret":"c2VjcmV0"}""")
-        assertEquals(AuthCredentials("tok", "c2VjcmV0"), credentials.read())
+        store.setItem("auth_credentials", """{"token":"tok","secret":"$secret"}""")
+        assertEquals(AuthCredentials("tok", secret), credentials.read())
 
-        credentials.write(AuthCredentials("tok2", "c2Vj"))
-        assertEquals("""{"token":"tok2","secret":"c2Vj"}""", store.getItem("auth_credentials"))
+        credentials.write(AuthCredentials("tok2", secret))
+        assertEquals("""{"token":"tok2","secret":"$secret"}""", store.getItem("auth_credentials"))
 
         credentials.clear()
         assertNull(credentials.read())

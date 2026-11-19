@@ -90,6 +90,7 @@ import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.start.InstallDesktop
 import com.slopus.happy.ui.start.InstallDesktopRoute
 import com.slopus.happy.ui.start.Start
+import com.slopus.happy.ui.start.UnlockFailed
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.settings.LocalizedContent
 import com.slopus.happy.ui.components.avatar.LocalAnimatedAvatars
@@ -215,7 +216,15 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
                     RetainedNavHost(nav, start, motion, modifier = Modifier.backdrop(nav)) {
-                        page<StartRoute> { Start(graph, nav, add) }
+                        page<StartRoute> {
+                            // An account here that can't be read isn't signed out: never the first screen for it.
+                            val locked by graph.locked.collectAsStateWithLifecycle()
+                            if (locked != null) {
+                                UnlockFailed(onRetry = { graph.retryUnlock() }, onOther = { nav.navigate(InstallDesktopRoute) })
+                            } else {
+                                Start(graph, nav, add)
+                            }
+                        }
                         page<InstallDesktopRoute> { InstallDesktop(graph, nav, add) }
                         // Home itself, or with home in the tablet's sidebar the empty main panel.
                         page<HomeRoute> { if (LocalHomeInSidebar.current) MainPanelPlaceholder() else home(MainPanelOpener.Push) }

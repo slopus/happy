@@ -6,4 +6,7 @@
 <resources>
     <string name="account_menu_title">Comptes</string>
     <string name="account_menu_add">Afegeix</string>
+    <string name="account_unlock_failed_title">No s\'ha pogut desbloquejar el teu compte</string>
+    <string name="account_unlock_failed_body">L\'emmagatzematge segur del telèfon no ha respost. El teu compte continua desat en aquest telèfon.</string>
+    <string name="account_unlock_failed_other">Fes servir un altre compte</string>
 </resources>

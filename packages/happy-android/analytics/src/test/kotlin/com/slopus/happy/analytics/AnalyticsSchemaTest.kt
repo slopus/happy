@@ -48,6 +48,26 @@ class AnalyticsSchemaTest {
         assertNull(AnalyticsSchema.check("sign_in_failed", mapOf("method" to "team_server", "error_code" to null)))
     }
 
+    /** An app's exception, as R8 might leave its name. */
+    private class Ab(cause: Throwable) : java.security.ProviderException(cause)
+
+    @Test
+    fun onlyAPlatformClassLeaves() {
+        assertEquals("java.security.ProviderException", AnalyticsSchema.platformClass(Ab::class.java))
+        assertEquals("javax.crypto.AEADBadTagException", AnalyticsSchema.platformClass(javax.crypto.AEADBadTagException::class.java))
+        val failed = AnalyticsEvent.RnImportFailed.of(RnImportError.Keystore, Ab(IllegalStateException("keystore2 said: secret")))
+        assertEquals(AnalyticsEvent.RnImportFailed(RnImportError.Keystore, "java.security.ProviderException", "java.lang.IllegalStateException"), failed)
+        assertEquals("the cause only when it differs", null, AnalyticsEvent.RnImportFailed.of(RnImportError.Keystore, IllegalStateException(IllegalStateException())).errorCauseClass)
+        // Anything else drops the event: a message, an app class, or past 100 characters.
+        assertNull(AnalyticsSchema.check("rn_import_failed", mapOf("reason" to "keystore", "error_class" to "keystore2 said: secret")))
+        assertNull(AnalyticsSchema.check("rn_import_failed", mapOf("reason" to "keystore", "error_class" to "com.slopus.happy.Ab")))
+        assertNull(AnalyticsSchema.check("rn_import_failed", mapOf("reason" to "keystore", "error_class" to "java." + "a".repeat(100))))
+        assertEquals(
+            mapOf("reason" to "key_missing", "error_class" to null, "error_cause_class" to null),
+            AnalyticsSchema.check("rn_import_failed", AnalyticsEvent.RnImportFailed(RnImportError.KeyMissing).properties),
+        )
+    }
+
     @Test
     fun versionsAreNumbersAndNothingElse() {
         assertTrue(AnalyticsSchema.isVersion("1.8.0"))

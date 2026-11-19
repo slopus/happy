@@ -15,6 +15,8 @@ object AnalyticsSchema {
         data object Bool : Rule
         data object Version : Rule
         data object OsVersion : Rule
+        /** A platform or JDK class's full name ([platformClass]). */
+        data object PlatformClass : Rule
     }
 
     data class Field(val rule: Rule, val nullable: Boolean = false, val optional: Boolean = false)
@@ -73,7 +75,11 @@ object AnalyticsSchema {
             "reason" to oneOf<CrashReason>(),
             "crashed_version" to Field(Rule.Version, nullable = true),
         ),
-        "rn_import_failed" to mapOf("reason" to oneOf<RnImportError>()),
+        "rn_import_failed" to mapOf(
+            "reason" to oneOf<RnImportError>(),
+            "error_class" to Field(Rule.PlatformClass, nullable = true),
+            "error_cause_class" to Field(Rule.PlatformClass, nullable = true),
+        ),
         "mobile_pairing_completed" to pairing,
         "mobile_pairing_failed" to pairing + ("error_code" to oneOf<PairingError>()),
         "mobile_pairing_cancelled" to pairing,
@@ -122,6 +128,20 @@ object AnalyticsSchema {
 
     private val version = Regex("^[0-9]+(\\.[0-9]+){0,3}$")
     private val osVersion = Regex("^[0-9]+(\\.[0-9]+)?$")
+    private val platformClassName = Regex("^(java|javax|android|kotlin|dalvik)(\\.[A-Za-z_][A-Za-z0-9_$]*)+$")
+
+    /**
+     * The name of [type], or of the nearest class it extends that is the
+     * platform's or the JDK's: never one of the app's own (or R8's name for
+     * one), so nothing but a standard exception type leaves. Null past
+     * [PLATFORM_CLASS_MAX] characters.
+     */
+    fun platformClass(type: Class<*>): String? =
+        generateSequence(type) { it.superclass }.map { it.name }.firstOrNull(::isPlatformClass)
+
+    private fun isPlatformClass(name: String) = name.length <= PLATFORM_CLASS_MAX && platformClassName.matches(name)
+
+    const val PLATFORM_CLASS_MAX = 100
 
     /**
      * [properties] of event [name] as they may go: unknown properties left
@@ -170,6 +190,7 @@ object AnalyticsSchema {
         Rule.Bool -> value is Boolean
         Rule.Version -> value is String && value.length <= 32 && version.matches(value)
         Rule.OsVersion -> value is String && osVersion.matches(value)
+        Rule.PlatformClass -> value is String && isPlatformClass(value)
     }
 
     private fun Any.asWhole(): Long? = when (this) {

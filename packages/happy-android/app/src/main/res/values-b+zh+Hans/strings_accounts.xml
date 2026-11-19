@@ -6,4 +6,7 @@
 <resources>
     <string name="account_menu_title">账户</string>
     <string name="account_menu_add">添加</string>
+    <string name="account_unlock_failed_title">无法解锁你的账户</string>
+    <string name="account_unlock_failed_body">手机的安全存储没有响应。你的账户仍保存在这部手机上。</string>
+    <string name="account_unlock_failed_other">使用其他账户</string>
 </resources>

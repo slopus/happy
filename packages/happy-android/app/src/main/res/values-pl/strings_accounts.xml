@@ -6,4 +6,7 @@
 <resources>
     <string name="account_menu_title">Konta</string>
     <string name="account_menu_add">Dodaj</string>
+    <string name="account_unlock_failed_title">Nie udało się odblokować konta</string>
+    <string name="account_unlock_failed_body">Bezpieczny magazyn telefonu nie odpowiedział. Twoje konto nadal jest zapisane na tym telefonie.</string>
+    <string name="account_unlock_failed_other">Użyj innego konta</string>
 </resources>
