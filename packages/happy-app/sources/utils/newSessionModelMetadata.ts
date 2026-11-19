@@ -8,6 +8,9 @@ export function getLatestSessionModelMetadata(args: {
     codexAccountProfileId?: string | null;
 }): Metadata | null {
     const { sessions, selectedMachineId, agent, codexAccountProfileId } = args;
+    // A historical Claude process may use another directory, gateway or login.
+    // New sessions discover their native launch context directly instead.
+    if (agent === 'claude') return null;
     // A machine can run both native gateway and managed ChatGPT sessions.
     // Their catalogs cannot be reused across connections or account profiles.
     if (agent === 'codex' && (!selectedMachineId || codexAccountProfileId === undefined)) return null;

@@ -13,7 +13,8 @@ import type { SandboxConfig } from "@/persistence"
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
 
-export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+/** Validated against the selected runtime's model catalog at the message boundary. */
+export type ClaudeEffort = string;
 
 export interface EnhancedMode {
     permissionMode: PermissionMode;

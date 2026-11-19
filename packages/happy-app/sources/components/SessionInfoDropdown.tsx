@@ -17,6 +17,7 @@ import {
 } from '@/utils/sessionInfoDropdownState';
 import { useSessionTaskPermission } from '@/hooks/useSessionTaskPermission';
 import type { TaskPermissionLevel } from '@/utils/taskPermissionModes';
+import { sessionRefreshModels } from '@/sync/ops';
 
 // Permission glyph, matching SessionConfigPanel's getPermissionStyle.
 function permissionIcon(level: TaskPermissionLevel | null): 'warning-outline' | 'shield-checkmark-outline' {
@@ -128,6 +129,10 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     // Which editable row is currently expanded into its option list (one at a time).
     // Animate every expand/collapse so the option list slides in/out smoothly.
     const [expanded, setExpanded] = React.useState<SessionInfoExpandedRow>(null);
+    const [catalogError, setCatalogError] = React.useState(false);
+    const catalogSession = React.useRef(session.id);
+    catalogSession.current = session.id;
+    React.useEffect(() => { setCatalogError(false); }, [session.id]);
     const canKeepExpansion = canKeepSessionInfoExpansion(expanded, {
         permission: canEditPermission,
         model: canEditModel,
@@ -146,7 +151,14 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     const toggle = React.useCallback((row: 'permission' | 'model' | 'effort') => {
         animateNext();
         setExpanded((cur) => (cur === row ? null : row));
-    }, [animateNext]);
+        if (row === 'model' && expanded !== 'model' && online
+            && ((session.metadata?.flavor === 'claude' && session.metadata.capabilities?.claudeModelCatalogRefresh)
+                || (session.metadata?.flavor === 'codex' && session.metadata.capabilities?.codexModelCatalogRefresh))) {
+            const owner = session.id;
+            setCatalogError(false);
+            void sessionRefreshModels(owner).catch(() => { if (catalogSession.current === owner) setCatalogError(true); });
+        }
+    }, [animateNext, expanded, online, session]);
 
     // Apply a pick to the running session. The value is always persisted for
     // future turns via message meta; Codex also receives an immediate RPC update
@@ -359,6 +371,8 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                     value: modelMode.name,
                                 })
                                 : null}
+                            {infoExperience.showModelDetails && visibleExpanded === 'model' && catalogError
+                                ? <Text style={{ color: theme.colors.textSecondary }}>{t('agentInput.model.refreshFailed')}</Text> : null}
                             {infoExperience.showModelDetails && visibleExpanded === 'model'
                                 ? renderOptions(t('sessionInfo.agentPanelModel'), availableModels, modelMode?.key, applyModel)
                                 : null}

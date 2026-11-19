@@ -1,4 +1,5 @@
 import { asyncQuestionResponseSchema, type AsyncQuestionAction, type AsyncQuestionResponse } from '@slopus/happy-wire';
+import { ClaudeModelCatalogSchema, type ClaudeModelCatalog } from '@slopus/happy-wire';
 /**
  * Session operations for remote procedure calls
  * Provides strictly typed functions for all session-related RPC operations
@@ -771,6 +772,13 @@ export async function sessionRefreshModels(sessionId: string): Promise<void> {
         timeoutMs: 30_000, overallTimeoutMs: 30_000,
     });
     if (!result?.success) throw new Error('Model catalog refresh failed');
+}
+
+export async function machineGetClaudeModelCatalog(machineId: string, directory: string): Promise<ClaudeModelCatalog> {
+    const result = await apiSocket.machineRPC<unknown, { directory: string }>(machineId, 'claude-model-catalog', { directory }, {
+        timeoutMs: 25_000, overallTimeoutMs: 25_000,
+    });
+    return ClaudeModelCatalogSchema.parse(result);
 }
 
 export async function sessionAbort(sessionId: string): Promise<void> {

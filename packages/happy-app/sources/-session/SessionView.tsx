@@ -1758,6 +1758,7 @@ function SessionViewLoaded({
     const handleRefreshModels = React.useCallback(() => sessionRefreshModels(sessionId), [sessionId]);
     const modeSelector = React.useMemo(() => ({
         unifiedCodex: session.metadata?.flavor === 'codex',
+        refreshScope: sessionId,
         online: !isDisconnected,
         model: nextTurnModes.modelMode,
         modelOptions: nextTurnModes.availableModels,
@@ -1769,12 +1770,13 @@ function SessionViewLoaded({
             storage.getState().updateSessionFastMode(sessionId, false);
         } : undefined,
         onModelChange: handleModelChange,
-        onRefreshModels: session.metadata?.capabilities?.codexModelCatalogRefresh ? handleRefreshModels : undefined,
+        onRefreshModels: (session.metadata?.flavor === 'codex' && session.metadata?.capabilities?.codexModelCatalogRefresh)
+            || (session.metadata?.flavor === 'claude' && session.metadata?.capabilities?.claudeModelCatalogRefresh) ? handleRefreshModels : undefined,
         onEffortChange: handleEffortChange,
         fastMode: session.fastMode === true,
         supportsFast: nextTurnModes.supportsFast,
         onFastModeChange: handleFastModeChange,
-    }), [handleEffortChange, handleFastModeChange, handleModelChange, handleRefreshModels, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor, session.metadata?.capabilities?.codexModelCatalogRefresh, sessionId]);
+    }), [handleEffortChange, handleFastModeChange, handleModelChange, handleRefreshModels, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor, session.metadata?.capabilities?.codexModelCatalogRefresh, session.metadata?.capabilities?.claudeModelCatalogRefresh, sessionId]);
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。

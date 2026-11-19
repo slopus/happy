@@ -35,6 +35,10 @@ function session(args: {
 }
 
 describe('getLatestSessionModelMetadata', () => {
+    it('does not borrow historical Claude catalogs from another project or login', () => {
+        expect(getLatestSessionModelMetadata({ sessions: [session({ id: 'old', machineId: 'mac', flavor: 'claude', activeAt: 1,
+            models: [{ code: 'private/other-account', value: 'Other connection' }] })], selectedMachineId: 'mac', agent: 'claude' })).toBeNull();
+    });
     it('returns the newest model metadata for the selected machine and agent', () => {
         const latest = getLatestSessionModelMetadata({
             sessions: [

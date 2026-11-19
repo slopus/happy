@@ -16,6 +16,7 @@ export const MetadataSchema = z.object({
     models: z.array(z.object({
         code: z.string(),
         value: z.string(),
+        supportedEffortLevels: z.array(z.string()).optional(),
         description: z.string().nullish(),
         serviceTiers: z.array(z.object({
             id: z.string(),
@@ -24,6 +25,7 @@ export const MetadataSchema = z.object({
         })).optional(),
     })).optional(),
     currentModelCode: z.string().optional(),
+    modelsUpdatedAt: z.number().finite().positive().optional(),
     operatingModes: z.array(z.object({
         code: z.string(),
         value: z.string(),
@@ -52,6 +54,7 @@ export const MetadataSchema = z.object({
         codexSteer: z.boolean().optional(),
         codexAsyncQuestions: z.boolean().optional(),
         codexModelCatalogRefresh: z.boolean().optional(),
+        claudeModelCatalogRefresh: z.boolean().optional(),
         composerPrediction: z.boolean().optional(),
         artifactLeases: z.union([z.literal(1),z.literal(ARTIFACT_PROTOCOL)]).optional(),
     }).optional(),

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+vi.mock('./installedClaude', () => ({ installedClaudeExecutable: () => '/fixture/claude' }));
 
 const {
     mockApiClientCreate,
@@ -153,19 +154,20 @@ describe('runClaude remote JSONL scanner', () => {
         });
     });
 
-    it.each(['resolved', 'rejected'] as const)('waits for real Claude backend initialization (%s), independently of model response', async (initialization) => {
+    it.each(['resolved', 'rejected', 'future-effort', 'future-effort-unavailable', 'future-effort-default', 'remote-refresh'] as const)('waits for real Claude backend initialization (%s), independently of model response', async (initialization) => {
         const order: string[] = [];
         const backend = createDeferred<any>();
         const model = createDeferred<void>();
         const handlers = new Map<string, (...args: any[]) => any>();
         const startupLifecycle = {} as any;
         let registeredUserHandler: ((message: any) => void) | undefined;
+        let nativeMetadata: any = {};
         const sessionClient = {
             sessionId: 'happy-session-1',
             suppressNextArchiveSignal: vi.fn(), skipExistingMessages: vi.fn(), updateMetadata: vi.fn(),
             sendClaudeSessionMessage: vi.fn(), onFileEvent: vi.fn(), on: vi.fn(), trackAttachmentDownload: vi.fn(),
             drainAttachmentsForUserMessage: vi.fn(async () => []), downloadAndDecryptAttachment: vi.fn(),
-            getMetadata: vi.fn(() => ({})), updateAgentState: vi.fn(async () => {}), sendSessionDeath: vi.fn(),
+            getMetadata: vi.fn(() => nativeMetadata), updateMetadataAndAwait: vi.fn(async (update: (metadata: any) => any) => { nativeMetadata = update(nativeMetadata); }), updateAgentState: vi.fn(async () => {}), sendSessionDeath: vi.fn(),
             keepAlive: vi.fn(), acceptClaudeInput: vi.fn(), closeClaudeSessionTurn: vi.fn(),
             flush: vi.fn(async () => {}), close: vi.fn(async () => {}),
             rpcHandlerManager: { registerHandler: vi.fn((name, handler) => handlers.set(name, handler)) },
@@ -184,10 +186,17 @@ describe('runClaude remote JSONL scanner', () => {
             const { loop } = await vi.importActual<typeof import('./loop')>('./loop');
             return loop(options);
         });
-        mockSDKQuery.mockImplementation(({ prompt }: any) => {
+        mockSDKQuery.mockImplementation(({ prompt, options }: any) => {
+            if (options.persistSession === false) return {
+                initializationResult: async () => {
+                    if (initialization === 'future-effort-unavailable') throw new Error('Unavailable catalog');
+                    return { models: [{ value: initialization === 'future-effort-default' ? 'default' : 'opus', displayName: 'Future Opus', supportedEffortLevels: ['future-effort'] }] };
+                }, getSettings: async () => ({ effective: { env: { ANTHROPIC_BASE_URL: 'http://fixture', ANTHROPIC_AUTH_TOKEN: 'fixture-key' } } }), close: vi.fn(),
+            };
             order.push('backend-started');
             return {
                 initializationResult: () => backend.promise,
+                getSettings: async () => ({ effective: { env: { ANTHROPIC_BASE_URL: 'http://fixture', ANTHROPIC_AUTH_TOKEN: 'fixture-key' } } }),
                 setPermissionMode: async () => {},
                 async *[Symbol.asyncIterator]() {
                     await backend.promise;
@@ -206,16 +215,26 @@ describe('runClaude remote JSONL scanner', () => {
         }, startupLifecycle);
         const exited = running.catch(error => error);
         await vi.waitFor(() => expect(registeredUserHandler).toBeTypeOf('function'));
-        registeredUserHandler!({ content: { text: 'first accepted message' }, meta: {} });
-        await vi.waitFor(() => expect(mockSDKQuery).toHaveBeenCalledOnce(), { timeout: 10000 });
+        registeredUserHandler!({ content: { text: 'first accepted message' }, meta: initialization.startsWith('future-effort') ? { model: initialization === 'future-effort-default' ? null : 'opus', effort: 'future-effort' } : {} });
+        await vi.waitFor(() => expect(mockSDKQuery).toHaveBeenCalledTimes(initialization.startsWith('future-effort') ? 2 : 1), { timeout: 10000 });
+        if (initialization === 'future-effort' || initialization === 'future-effort-default') expect(mockSDKQuery.mock.calls.at(-1)?.[0].options.effort).toBe('future-effort');
+        if (initialization === 'future-effort-unavailable') {
+            expect(mockSDKQuery.mock.calls.at(-1)?.[0].options.effort).toBeUndefined();
+            expect(order.some(value => value.includes('using the CLI default'))).toBe(true);
+        }
         const beforeInitialization = [...order];
-        if (initialization === 'resolved') {
-            backend.resolve({});
+        if (initialization !== 'rejected') {
+            backend.resolve({ models: [{ value: 'opus', displayName: 'Opus', supportedEffortLevels: ['high'] }], account: {} });
             await vi.waitFor(() => expect(order).toContain('ready-span'));
             expect(order.filter(value => value === 'event:{"type":"ready"}')).toHaveLength(1);
             expect(order.indexOf('handler')).toBeLessThan(order.indexOf('backend-started'));
             expect(order.indexOf('backend-started')).toBeLessThan(order.indexOf('ready-span'));
             await vi.waitFor(() => expect(order).toContain('consumed'));
+            if (initialization === 'remote-refresh') {
+                await expect(handlers.get('refreshModels')!()).resolves.toEqual({ success: true });
+                expect(nativeMetadata.models[0].code).toBe('opus');
+                expect(sessionClient.updateMetadataAndAwait).toHaveBeenCalledOnce();
+            }
         } else {
             backend.reject(new Error('synthetic initialization failure'));
             await vi.waitFor(() => expect(sessionClient.closeClaudeSessionTurn).toHaveBeenCalledWith('failed'));

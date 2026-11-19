@@ -17,6 +17,19 @@ describe('claudeRemote', () => {
         vi.mocked(query).mockReset();
     });
 
+    it('publishes native initialization models before a model response without forwarding account details', async () => {
+        vi.mocked(query).mockReturnValue({
+            initializationResult: async () => ({ models: [{ value: 'opus', displayName: 'Future Opus', supportedEffortLevels: ['high'] }], account: { email: 'private@example.com' } }),
+            async *[Symbol.asyncIterator]() {},
+        } as any);
+        const received: unknown[] = [];
+        await claudeRemote({ sessionId: null, path: process.cwd(), allowedTools: [], hookSettingsPath: '/tmp/unused',
+            nextMessage: async () => ({ message: 'user request', mode }), canCallTool: async () => ({ behavior: 'allow' }) as any,
+            onReady: vi.fn(), isAborted: () => false, onSessionFound: vi.fn(), onMessage: vi.fn(), onModelCatalog: catalog => received.push(catalog),
+        });
+        expect(received).toEqual([{ source: 'claude-native', observedAt: expect.any(Number), models: [{ code: 'opus', value: 'Future Opus', supportedEffortLevels: ['high'] }] }]);
+    });
+
     it('marks /clear as a completed reset turn', async () => {
         const callbackOrder: string[] = [];
         const onCompletionEvent = vi.fn((message: string) => {

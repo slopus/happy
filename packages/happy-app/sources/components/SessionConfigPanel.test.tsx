@@ -12,6 +12,7 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     openSettingsRoute: vi.fn(),
     browseDirectory: vi.fn(),
+    readClaudeModels: vi.fn(),
     listWorktrees: vi.fn().mockResolvedValue([]),
     modelTriggerFocus: vi.fn(),
     pickerCloseFocus: vi.fn(),
@@ -150,7 +151,7 @@ vi.mock('@/hooks/useNewSessionDraft', async () => {
 });
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true }));
 vi.mock('@/utils/worktree', () => ({ listWorktrees: mocks.listWorktrees }));
-vi.mock('@/sync/ops', () => ({ machineBrowseDirectory: mocks.browseDirectory }));
+vi.mock('@/sync/ops', () => ({ machineBrowseDirectory: mocks.browseDirectory, machineGetClaudeModelCatalog: mocks.readClaudeModels }));
 vi.mock('@/utils/pathUtils', () => ({ resolveAbsolutePath: (path: string) => path }));
 vi.mock('@/utils/sessionUtils', () => ({
     formatLastSeen: () => 'now',
@@ -211,6 +212,7 @@ describe('SessionConfigPanel composer layout', () => {
         mocks.viewport.height = 900;
         vi.useFakeTimers();
         vi.clearAllMocks();
+        mocks.readClaudeModels.mockReset().mockRejectedValue(new Error('Old runtime'));
         mocks.codexAccounts = { loading: false, error: null, bindings: [] };
         mocks.sessionsOverride = null;
         for (const key of Object.keys(mocks.cliAvailability)) delete mocks.cliAvailability[key];
@@ -244,6 +246,54 @@ describe('SessionConfigPanel composer layout', () => {
         expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-selector' })).toHaveLength(0);
     });
 
+    it('uses the actual worktree and keeps CLI automatic as an explicit send choice', async () => {
+        mocks.cliAvailability.claude = true;
+        mocks.draftStore.setState({ agentType: 'claude', modelMode: 'sonnet', selectedPath: '/parent', worktreeKey: '/parent--task' });
+        mocks.readClaudeModels.mockResolvedValue({ source: 'claude-native', observedAt: 1, models: [
+            { code: 'default', value: 'CLI automatic' }, { code: 'opus', value: 'Live Opus' }, { code: 'sonnet', value: 'Live Sonnet' },
+        ] });
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />); });
+        expect(mocks.readClaudeModels).toHaveBeenCalledWith('mac', '/parent--task');
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => { renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress(); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-claude::default' }).props.onPress());
+        expect(ref.current.getSelection().modelKey).toBeUndefined();
+    });
+
+    it('retains a verified explicit choice only on its original connection when a catalog removes it', async () => {
+        mocks.cliAvailability.claude = true;
+        mocks.draftStore.setState({ agentType: 'claude', modelMode: 'vendor/custom', selectedPath: '/one' });
+        mocks.readClaudeModels.mockResolvedValueOnce({ source: 'claude-native', observedAt: 1, models: [{ code: 'vendor/custom', value: 'Custom' }] })
+            .mockResolvedValue({ source: 'claude-native', observedAt: 2, models: [{ code: 'opus', value: 'Live Opus' }] });
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => { renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress(); });
+        expect(ref.current.getSelection().modelKey).toBe('vendor/custom');
+        await act(async () => { mocks.draftStore.setState({ selectedPath: '/two' }); });
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-claude::vendor/custom' })).toHaveLength(0);
+        expect(ref.current.getSelection().modelKey).toBe('opus');
+        expect(ref.current.getSelection().modelUnavailable).toBe(true);
+    });
+
+    it('discovers native Claude models without an earlier session and refreshes the displayed catalog', async () => {
+        mocks.cliAvailability.claude = true;
+        mocks.draftStore.setState({ agentType: 'claude', modelMode: 'opus', selectedPath: '/Users/test/happy' });
+        mocks.readClaudeModels.mockResolvedValueOnce({ source: 'claude-native', observedAt: 1, models: [
+            { code: 'opus', value: 'Live Opus', supportedEffortLevels: ['medium'] },
+        ] }).mockResolvedValueOnce({ source: 'claude-native', observedAt: 2, models: [
+            { code: 'opus', value: 'New Opus', supportedEffortLevels: ['medium'] },
+            { code: 'vendor/future', value: 'Future model', supportedEffortLevels: ['high'] },
+        ] });
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />); });
+        expect(mocks.readClaudeModels).toHaveBeenCalledWith('mac', '/Users/test/happy');
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => { renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress(); });
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-claude::vendor/future' }).props.accessibilityLabel).toBe('Future model');
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-claude::opus' }).props.accessibilityLabel).toBe('New Opus');
+    });
+
     it('cycles only available coding agents, scopes models, and updates the live send settings', async () => {
         mocks.cliAvailability.claude = true;
         mocks.cliAvailability.gemini = false;
@@ -270,6 +320,8 @@ describe('SessionConfigPanel composer layout', () => {
 
     it('preserves a Magpie model shared by two agents without changing agent from model selection', async () => {
         mocks.cliAvailability.claude = true;
+        mocks.readClaudeModels.mockResolvedValue({ source: 'claude-native', observedAt: 1,
+            models: [{ code: 'gpt-5.6-sol', value: 'Magpie GPT' }, { code: 'opus', value: 'Opus' }] });
         mocks.sessionsOverride = [{ id: 'claude-session', activeAt: 2, metadata: {
             flavor: 'claude', machineId: 'mac', currentModelCode: 'gpt-5.6-sol',
             models: [{ code: 'gpt-5.6-sol', value: 'Magpie GPT' }, { code: 'opus', value: 'Opus' }],
@@ -277,7 +329,7 @@ describe('SessionConfigPanel composer layout', () => {
         const ref = React.createRef<any>();
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-composer-agent-cycle' }).props.onPress());
+        await act(async () => { renderer.root.findByProps({ testID: 'session-composer-agent-cycle' }).props.onPress(); });
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-sol');
         act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());

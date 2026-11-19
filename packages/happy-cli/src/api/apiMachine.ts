@@ -30,6 +30,7 @@ import { createWranglerAdapter } from '@/environment/wranglerAdapter';
 import { createCloudflaredAdapter } from '@/environment/cloudflaredAdapter';
 import { createEnvironmentService } from '@/environment/environmentService';
 import { registerEnvironmentHandlers } from '@/environment/registerEnvironmentHandlers';
+import { registerClaudeModelCatalogHandler } from '@/claude/modelCatalog';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
@@ -205,6 +206,7 @@ export class ApiMachineClient {
             }),
         ]);
         registerEnvironmentHandlers(this.rpcHandlerManager, environmentService);
+        registerClaudeModelCatalogHandler(this.rpcHandlerManager);
         const codingAgents = createCodingAgentService({ runner, env: process.env });
         this.rpcHandlerManager.registerHandler('coding-agents-inspect', (request: unknown) => codingAgents.inspect(request));
         this.rpcHandlerManager.registerHandler('coding-agent-update', async (request: unknown) => {

@@ -26,6 +26,8 @@ export class Session {
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
+    /** Local-only identity of the initialized remote child; never persisted or sent. */
+    modelCatalogConnection?: string | null;
     
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];

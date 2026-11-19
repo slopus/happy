@@ -1782,6 +1782,7 @@ failedContinueTask: "Continue unfinished task",
             cliAutomatic: 'CLI automatic selection',
             refresh: 'Refresh model list',
             refreshFailed: 'Could not refresh models. Reconnect this session and try again.',
+            chooseAgain: 'The saved model has not been verified for this connection. Refresh the catalog or select a model before sending.',
         },
         effort: {
             title: 'EFFORT',

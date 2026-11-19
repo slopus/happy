@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveNewSessionModeSelection } from './newSessionModeSelection';
 
 describe('resolveNewSessionModeSelection', () => {
-    it('resolves raw draft default sentinels to code defaults', () => {
+    it('keeps Claude CLI automatic explicit while resolving the permission default', () => {
         expect(resolveNewSessionModeSelection({
             agent: 'claude',
             permissionMode: 'default',
@@ -11,7 +11,7 @@ describe('resolveNewSessionModeSelection', () => {
             agentDefaultOverrides: {},
         })).toEqual({
             permissionMode: 'bypassPermissions',
-            modelMode: 'opus',
+            modelMode: 'default',
             effortLevel: 'medium',
         });
     });

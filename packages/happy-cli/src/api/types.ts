@@ -375,7 +375,8 @@ export type Metadata = {
    * ACP session config option value (normalized for UI metadata consumers).
    */
   // `code` = protocol value ID, `value` = human label
-  models?: Array<{ code: string; value: string; description?: string | null; serviceTiers?: Array<{ id: string; name: string; description?: string | null }> }>,
+  models?: Array<{ code: string; value: string; description?: string | null; supportedEffortLevels?: string[]; serviceTiers?: Array<{ id: string; name: string; description?: string | null }> }>,
+  modelsUpdatedAt?: number,
   currentModelCode?: string,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,
@@ -397,6 +398,7 @@ export type Metadata = {
     codexSteer?: boolean
     codexAsyncQuestions?: boolean
     codexModelCatalogRefresh?: boolean
+    claudeModelCatalogRefresh?: boolean
     composerPrediction?: boolean
   },
   machineId?: string,

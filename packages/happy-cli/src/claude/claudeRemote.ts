@@ -17,6 +17,11 @@ import { systemPrompt } from "./utils/systemPrompt";
 import { browserCaptureSessionInstruction } from '@/browser/browserStepReportingPrompt';
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
+import { normalizeClaudeModels } from './modelCatalog';
+import type { ClaudeModelCatalog } from '@slopus/happy-wire';
+import { readClaudeModelConnection } from './modelCatalogContext';
+import { getClaudeQueryExecutable } from './sdk/queryExecutable';
+import { buildClaudeProcessEnv } from './sdk/claudeProcessEnv';
 
 export async function claudeRemote(opts: {
     happySessionId?: string,
@@ -34,6 +39,8 @@ export async function claudeRemote(opts: {
     onQueryReady?: (query: { setPermissionMode: (mode: string) => Promise<void> }) => void,
     /** Backend control handshake completed; independent of model output. */
     onProcessorReady?: () => void,
+    onModelCatalog?: (catalog: ClaudeModelCatalog, connectionKey?: string) => void,
+    onModelConnection?: (connectionKey?: string, initialized?: boolean) => void,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -177,6 +184,8 @@ export async function claudeRemote(opts: {
     });
 
     // Start the loop
+    const catalogObservedAt = Date.now();
+    opts.onModelConnection?.();
     const response = query({
         prompt: messages,
         options: sdkOptions,
@@ -194,7 +203,22 @@ export async function claudeRemote(opts: {
         // query() constructs the SDK client synchronously. Only its initialize
         // response proves that the real child/backend has started and accepts
         // the already-installed streaming input/permission handlers.
-        await response.initializationResult();
+        const initialization = await response.initializationResult();
+        let models: ClaudeModelCatalog['models'] | undefined;
+        if (!applicationPolicy) {
+            try { models = normalizeClaudeModels(initialization.models); } catch { /* Older runtimes remain usable. */ }
+        }
+        const connectionKey = models && opts.onModelConnection
+            ? await readClaudeModelConnection(response, buildClaudeProcessEnv(), getClaudeQueryExecutable(response), initialization.account) : undefined;
+        if (!applicationPolicy) opts.onModelConnection?.(connectionKey, true);
+        if (models) {
+            try {
+                opts.onModelCatalog?.({ source: 'claude-native', observedAt: catalogObservedAt, models },
+                    connectionKey);
+            } catch {
+                logger.debug('[claudeRemote] Native model catalog is unavailable');
+            }
+        }
         opts.onProcessorReady?.();
         if (applicationPolicy) {
             void opts.nextMessage().then(next => {

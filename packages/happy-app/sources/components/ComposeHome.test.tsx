@@ -18,6 +18,7 @@ vi.mock('@/sync/sessionStartupTraceRuntime', () => ({ sessionStartupTraceRuntime
 const mocks = vi.hoisted(() => ({
     platformOS: 'web',
     codingAgents: {} as Record<string, string[]>,
+    modelUnavailable: false,
     isDataReady: true,
     sessionRouteBecameInteractive: vi.fn(),
     machineSpawnNewSession: vi.fn(),
@@ -208,7 +209,10 @@ vi.mock('./navigation/Header', () => ({ Header: 'Header' }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 720, headerMaxWidth: 720 } }));
 vi.mock('./MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
 vi.mock('./SubmittedAttachmentPreview', () => ({ SubmittedAttachmentPreview: 'SubmittedAttachmentPreview' }));
-vi.mock('./SessionConfigPanel', () => ({ SessionConfigPanel: ({ renderComposer }: any) => renderComposer?.({ leading: null, trailing: null, below: null }) ?? null }));
+vi.mock('./SessionConfigPanel', () => ({ SessionConfigPanel: ({ renderComposer, ref }: any) => {
+    React.useImperativeHandle(ref, () => ({ getSelection: () => mocks.modelUnavailable ? { modelUnavailable: true } : undefined }));
+    return renderComposer?.({ leading: null, trailing: null, below: null }) ?? null;
+} }));
 vi.mock('./ComposeHomeParticles', () => ({ ComposeHomeParticles: 'ComposeHomeParticles' }));
 vi.mock('./Avatar', () => ({ Avatar: 'Avatar' }));
 vi.mock('./RightSwipePanelHost', () => ({ RightSwipePanelHost: 'RightSwipePanelHost', useRightSwipePanel: () => null }));
@@ -222,6 +226,7 @@ describe('ComposeHome session hydration recovery', () => {
 
     beforeEach(() => {
         mocks.codingAgents = {};
+        mocks.modelUnavailable = false;
         const values = new Map<string, string>();
         vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) });
         vi.clearAllMocks();
@@ -258,6 +263,17 @@ describe('ComposeHome session hydration recovery', () => {
         await act(async () => { composer.props.onChangeText('Please run'); });
         await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
         expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+    it('keeps the draft and asks for model selection instead of sending an unverified saved choice', async () => {
+        mocks.modelUnavailable = true;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<ComposeHome />); });
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onChangeText('Keep this request'); });
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(Modal.alert).toHaveBeenCalledWith('common.error', 'agentInput.model.chooseAgain');
+        expect(useComposeDraft.getState().text).toBe('Keep this request');
         act(() => renderer.unmount());
     });
 

@@ -12,6 +12,8 @@ import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
 import { buildClaudeProcessEnv } from './claudeProcessEnv'
 import { resolveHappyEntrypoint } from './happyEntrypoint'
+import { installedClaudeExecutable } from '../installedClaude'
+import { rememberClaudeQueryExecutable } from './queryExecutable'
 
 /**
  * Wraps the official SDK query() with our QueryOptions adapter
@@ -47,7 +49,9 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         settings: opts?.settingsPath,
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
-        effort: opts?.effort,
+        effort: opts?.effort as Options['effort'],
+        // Match the installed CLI used by local mode and directory discovery.
+        pathToClaudeCodeExecutable: nativeLaunchPolicy() ? nativeClaudeExecutable() : installedClaudeExecutable(),
     }
 
     const applicationPolicy = nativeLaunchPolicy();
@@ -85,8 +89,10 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         }
     }
 
-    return sdkQuery({
+    const result = sdkQuery({
         prompt: params.prompt as string | AsyncIterable<SDKUserMessage>,
         options: sdkOptions,
     })
+    rememberClaudeQueryExecutable(result, sdkOptions.pathToClaudeCodeExecutable!);
+    return result;
 }

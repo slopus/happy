@@ -33,6 +33,7 @@ export type SessionComposerModeSelectorConfig = {
     agentSwitcher?: { id?: string; current: string; next: string | null; onSwitch: () => void; onManage?: () => void };
     onModelChange: (key: string) => void;
     onRefreshModels?: () => Promise<void>;
+    refreshScope?: string;
     onEffortChange: (key: string) => void;
     fastMode?: boolean;
     supportsFast?: boolean;
@@ -107,20 +108,28 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const [modelsRefreshing, setModelsRefreshing] = React.useState(false);
     const [modelRefreshError, setModelRefreshError] = React.useState(false);
     const refreshingModels = React.useRef(false);
+    const refreshGeneration = React.useRef({ scope: props.refreshScope, generation: 0 });
+    if (refreshGeneration.current.scope !== props.refreshScope) refreshGeneration.current = { scope: props.refreshScope, generation: refreshGeneration.current.generation + 1 };
+    React.useEffect(() => {
+        refreshingModels.current = false;
+        setModelsRefreshing(false);
+        setModelRefreshError(false);
+    }, [props.refreshScope]);
     const mounted = React.useRef(true);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     const refreshModels = async () => {
         if (!props.onRefreshModels || refreshingModels.current) return;
         refreshingModels.current = true;
+        const generation = refreshGeneration.current.generation;
+        const current = () => mounted.current && refreshGeneration.current.generation === generation;
         setModelsRefreshing(true);
         setModelRefreshError(false);
         try {
             await props.onRefreshModels();
         } catch {
-            if (mounted.current) setModelRefreshError(true);
+            if (current()) setModelRefreshError(true);
         } finally {
-            refreshingModels.current = false;
-            if (mounted.current) setModelsRefreshing(false);
+            if (current()) { refreshingModels.current = false; setModelsRefreshing(false); }
         }
     };
     const openModels = () => {

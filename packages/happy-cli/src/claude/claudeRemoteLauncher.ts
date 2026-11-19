@@ -23,6 +23,7 @@ import { cleanupAllStagedMediaAttachments, cleanupMediaAttachments, formatMediaA
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { configuration } from '@/configuration';
+import { markClaudeModelConnection } from './modelCatalog';
 
 interface PermissionsField {
     date: number;
@@ -408,6 +409,15 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
                         // Update converter's session ID when new session is found
                         sdkToLogConverter.updateSessionId(sessionId);
                         session.onSessionFound(sessionId);
+                    },
+                    onModelConnection: (connectionKey, initialized) => {
+                        session.modelCatalogConnection = connectionKey ?? null;
+                        session.client.updateMetadata(current => markClaudeModelConnection(current, initialized, connectionKey));
+                    },
+                    onModelCatalog: (catalog) => {
+                        session.client.updateMetadata(current => (current.modelsUpdatedAt ?? 0) > catalog.observedAt ? current : ({
+                            ...current, models: catalog.models, modelsUpdatedAt: catalog.observedAt,
+                        }));
                     },
                     onSDKMetadata: (metadata) => {
                         logger.debug('[remote] SDK metadata received, updating session:', metadata);

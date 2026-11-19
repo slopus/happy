@@ -32,6 +32,49 @@ function resolvePathSafe(filePath) {
     }
 }
 
+// pnpm/--ignore-scripts can leave the vendor's shell error stub in bin/claude.exe
+// while the actual platform optional dependency is already installed.
+function isUninstalledClaudePlaceholder(binPath) {
+    let fd;
+    try {
+        fd = fs.openSync(binPath, 'r');
+        const prefix = Buffer.alloc(80);
+        const bytes = fs.readSync(fd, prefix, 0, prefix.length, 0);
+        return prefix.subarray(0, bytes).toString('utf8').startsWith('echo "Error: claude native binary not installed."');
+    } catch (_) {
+        return false;
+    } finally {
+        if (fd !== undefined) fs.closeSync(fd);
+    }
+}
+
+function resolveClaudeOptionalBinary(pkgDir) {
+    try {
+        let arch = os.arch();
+        if (process.platform === 'darwin' && arch === 'x64') {
+            // Match the vendor wrapper: prefer arm64 under Rosetta (x64 needs AVX).
+            try {
+                if (execSync('sysctl -n sysctl.proc_translated', { encoding: 'utf8', timeout: 1_000, stdio: ['ignore', 'pipe', 'ignore'] }).trim() === '1') arch = 'arm64';
+            } catch (_) { /* Native x64 macOS. */ }
+        }
+        const musl = process.platform === 'linux' && process.report?.getReport()?.header?.glibcVersionRuntime === undefined;
+        const pkgName = `@anthropic-ai/claude-code-${process.platform}-${arch}${musl ? '-musl' : ''}`;
+        const nativePkg = require.resolve(`${pkgName}/package.json`, { paths: [pkgDir] });
+        const binary = path.join(path.dirname(nativePkg), process.platform === 'win32' ? 'claude.exe' : 'claude');
+        return fs.existsSync(binary) ? binary : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function resolveClaudeBinaryCandidate(binPath) {
+    const resolved = resolvePathSafe(binPath);
+    if (!resolved) return null;
+    return isUninstalledClaudePlaceholder(resolved)
+        ? resolveClaudeEntrypoint(path.dirname(path.dirname(resolved)))
+        : resolved;
+}
+
 /**
  * Resolve the Claude Code entrypoint inside a package directory.
  *
@@ -62,6 +105,9 @@ function resolveClaudeEntrypoint(pkgDir) {
         if (!binRel) return null;
         const binPath = path.join(pkgDir, binRel);
         if (fs.existsSync(binPath)) {
+            if (isUninstalledClaudePlaceholder(binPath)) {
+                return pkg.name === '@anthropic-ai/claude-code' ? resolveClaudeOptionalBinary(pkgDir) : null;
+            }
             return binPath;
         }
     } catch (e) {
@@ -110,6 +156,10 @@ function findClaudeInPath() {
         const resolvedPath = resolvePathSafe(claudePath) || claudePath;
 
         if (resolvedPath) {
+            if (isUninstalledClaudePlaceholder(resolvedPath)) {
+                const entrypoint = resolveClaudeEntrypoint(path.dirname(path.dirname(resolvedPath)));
+                return entrypoint ? { path: entrypoint, source: 'npm' } : null;
+            }
             // On Windows, npm creates shell script shims (no extension) for global packages.
             // These cannot be spawned directly by Node.js. When we find such a shim,
             // resolve to the actual cli.js in the adjacent node_modules directory.
@@ -274,7 +324,7 @@ function findHomebrewCliPath() {
     for (const prefix of possiblePrefixes) {
         // Check for binary symlink first (most reliable)
         const binPath = path.join(prefix, 'bin', 'claude');
-        const resolved = resolvePathSafe(binPath);
+        const resolved = resolveClaudeBinaryCandidate(binPath);
         if (resolved && fs.existsSync(resolved)) {
             return resolved;
         }
@@ -438,8 +488,8 @@ function findGlobalClaudeCliPath() {
     // 1. Environment variable (explicit override)
     const envPath = process.env.HAPPY_CLAUDE_PATH;
     if (envPath && fs.existsSync(envPath)) {
-        const resolved = resolvePathSafe(envPath) || envPath;
-        return { path: resolved, source: 'HAPPY_CLAUDE_PATH' };
+        const resolved = resolveClaudeBinaryCandidate(envPath);
+        return resolved ? { path: resolved, source: 'HAPPY_CLAUDE_PATH' } : null;
     }
 
     // 2. Check PATH (respects user's shell config)
@@ -457,7 +507,10 @@ function findGlobalClaudeCliPath() {
     if (homebrewPath) return { path: homebrewPath, source: 'Homebrew' };
 
     const nativePath = findNativeInstallerCliPath();
-    if (nativePath) return { path: nativePath, source: 'native installer' };
+    if (nativePath) {
+        const resolved = resolveClaudeBinaryCandidate(nativePath);
+        if (resolved) return { path: resolved, source: 'native installer' };
+    }
 
     return null;
 }
@@ -607,6 +660,7 @@ function runClaudeCli(cliPath) {
 }
 
 module.exports = {
+    resolveClaudeEntrypoint,
     findGlobalClaudeCliPath,
     findClaudeInPath,
     detectSourceFromPath,

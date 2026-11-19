@@ -123,7 +123,7 @@ export function resolveNewSessionModeSelection(args: {
         draftKey: modelMode,
         fallbackKey: effectiveDefaults.modelMode,
         codeDefaultKey: codeDefaults.modelMode,
-        followDraftKeys: ['default'],
+        followDraftKeys: agent === 'claude' ? [] : ['default'],
         options: modelOptions,
     });
 

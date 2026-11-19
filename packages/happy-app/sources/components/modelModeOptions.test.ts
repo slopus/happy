@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     getAvailableModels,
+    normalizeModelEffortKey,
     getSuggestedModelModes,
     getAvailablePermissionModes,
     getEffortLevelsForModel,
@@ -17,6 +18,22 @@ import {
 const translate = (key: string) => `tr:${key}`;
 
 describe('modelModeOptions', () => {
+    it('resets stale Claude effort to a supported level or CLI default on the next send', () => {
+        const metadata = { models: [{ code: 'small', value: 'Small', supportedEffortLevels: ['low'] }, { code: 'none', value: 'None', supportedEffortLevels: [] }] } as any;
+        expect(normalizeModelEffortKey('claude', 'small', 'max', metadata)).toBe('low');
+        expect(normalizeModelEffortKey('claude', 'none', 'max', metadata)).toBeNull();
+    });
+    it('never invents Claude version numbers when a native catalog is unavailable', () => {
+        expect(getAvailableModels('claude', null, translate).map(model => model.name)).toEqual(['default model', 'Opus', 'Sonnet', 'Haiku']);
+    });
+    it('uses each native Claude model effort range, including a new level and an explicit empty range', () => {
+        const metadata = { models: [
+            { code: 'future', value: 'Future Claude', supportedEffortLevels: ['medium', 'future-effort'] },
+            { code: 'fast', value: 'Fast', supportedEffortLevels: [] },
+        ] } as any;
+        expect(getEffortLevelsForModel('claude', 'future', metadata).map(level => level.key)).toEqual(['medium', 'future-effort']);
+        expect(getEffortLevelsForModel('claude', 'fast', metadata)).toEqual([]);
+    });
     it('offers only the bound ChatGPT account catalog without adding unsupported suggestions', () => {
         const models = getSuggestedModelModes('codex', {
             codexAccountProfileId: 'account-a',

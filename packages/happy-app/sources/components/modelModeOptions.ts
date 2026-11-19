@@ -81,9 +81,9 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: DEFAULT_MODEL_LABEL, description: null },
-        { key: 'opus', name: 'opus 4.8', description: null },
-        { key: 'sonnet', name: 'sonnet 4.6', description: null },
-        { key: 'haiku', name: 'haiku 4.5', description: null },
+        { key: 'opus', name: 'Opus', description: null },
+        { key: 'sonnet', name: 'Sonnet', description: null },
+        { key: 'haiku', name: 'Haiku', description: null },
     ];
 }
 
@@ -281,6 +281,8 @@ export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
 export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string, metadata?: Metadata | null): EffortLevel[] {
     if (flavor === 'claude') {
+        const levels = metadata?.models?.find(model => model.code === modelKey)?.supportedEffortLevels;
+        if (levels) return levels.map(key => ({ key, name: key }));
         return getClaudeEffortLevels();
     }
     if (flavor === 'codex') {
@@ -313,6 +315,12 @@ export function normalizeModelEffortKey(
     effortKey: string | null | undefined,
     metadata?: Metadata | null,
 ): string | null | undefined {
+    if (flavor === 'claude') {
+        const supported = metadata?.models?.find(model => model.code === modelKey)?.supportedEffortLevels;
+        if (!supported) return effortKey;
+        if (!supported.length) return null;
+        return effortKey && supported.includes(effortKey) ? effortKey : supported.includes('medium') ? 'medium' : supported[0];
+    }
     if (flavor !== 'codex') return effortKey;
     const levels = getEffortLevelsForModel(flavor, modelKey, metadata).filter((level) => level.key !== 'default');
     const fallback = levels.find((level) => level.key === 'medium')?.key ?? levels[0]?.key ?? null;

@@ -651,6 +651,10 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
 
         const draft = useNewSessionDraft.getState();
         const liveSelection = configPanelRef.current?.getSelection();
+        if (!activeImageAgent && liveSelection?.modelUnavailable) {
+            Modal.alert(t('common.error'), t('agentInput.model.chooseAgain'));
+            return;
+        }
         const machine = machines.find((m) => m.id === draft.selectedMachineId);
         const spawnAgent = activeImageAgent ? 'codex' : draft.agentType;
         if (!enabledCodingAgents(HEADER_MODE_AGENT_OPTIONS, draft.selectedMachineId, storage.getState().settings.codingAgentMachines, machine?.metadata?.cliAvailability).some(agent => agent.key === spawnAgent)) return;

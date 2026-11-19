@@ -1,4 +1,5 @@
 import { nativeLaunchPolicy } from '@/daemon/appDelegation/nativeLaunchPolicy';
+import { createClaudeModelCatalogReader, isClaudeEffortSupported, readClaudeModelCatalog } from './modelCatalog';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
@@ -271,6 +272,36 @@ export async function runClaude(
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
+    let currentSession: Session | null = null;
+    let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
+    let discoverModels: (() => Promise<import('./modelCatalog').NativeClaudeModelCatalog>) | null = null;
+    if (!applicationPolicy) {
+        const readModels = createClaudeModelCatalogReader(directory => readClaudeModelCatalog({
+            directory, env: { ...process.env, ...options.claudeEnvVars },
+        }));
+        discoverModels = async () => {
+            const inLocalMode = () => currentRunMode === 'local';
+            if (options.claudeArgs?.some(arg => /^--(settings|setting-sources|profile)(=|$)/.test(arg)) || inLocalMode()) {
+                throw new Error('Model discovery is unavailable for this local launch context');
+            }
+            const expected = currentSession?.modelCatalogConnection;
+            if (expected === null) throw new Error('The active Claude connection cannot be verified. Reconnect this session.');
+            const catalog = await readModels(workingDirectory);
+            const actual = currentSession?.modelCatalogConnection;
+            if (inLocalMode() || actual === null || (expected && expected !== actual) || (actual && actual !== catalog.connectionKey)) {
+                throw new Error('Claude connection changed. Reconnect this session before refreshing models.');
+            }
+            await session.updateMetadataAndAwait(current => (current.modelsUpdatedAt ?? 0) > catalog.observedAt ? current : ({
+                ...current, models: catalog.models, modelsUpdatedAt: catalog.observedAt,
+            }));
+            return catalog;
+        };
+        session.rpcHandlerManager.registerHandler('refreshModels', async () => {
+            await discoverModels!();
+            return { success: true };
+        });
+        session.updateMetadata(current => ({ ...current, capabilities: { ...current.capabilities, claudeModelCatalogRefresh: true } }));
+    }
 
     // On reconnect, un-archive the session and skip replaying old messages.
     if (reconnectSessionId) {
@@ -374,7 +405,6 @@ export async function runClaude(
         return false;
     };
 
-    let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
 
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically
@@ -423,7 +453,6 @@ export async function runClaude(
 
     // Variable to track current session instance (updated via onSessionReady callback)
     // Used by hook server to notify Session when Claude changes session ID
-    let currentSession: Session | null = null;
 
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
@@ -493,7 +522,7 @@ export async function runClaude(
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    let currentEffort: string | undefined = DEFAULT_CLAUDE_EFFORT;
 
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = initialPermissionMode;
@@ -663,18 +692,28 @@ export async function runClaude(
             }
 
             // Resolve effort — pass through to Claude SDK as the `effort` option.
-            // Validate against the SDK's accepted set so a stale/garbage value
-            // from the wire doesn't poison the session.
-            let messageEffort = currentEffort;
-            const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+            // The installed runtime, rather than this package's release date, defines supported levels.
+            let effortModels = session.getMetadata()?.models;
+            const requestedEffort = message.meta?.effort;
+            let effortDiscoveryFailed = false;
+            if (typeof requestedEffort === 'string' && !effortModels?.find(model => model.code === (messageModel ?? 'default'))
+                && !isClaudeEffortSupported(requestedEffort, messageModel) && discoverModels) {
+                try { effortModels = (await discoverModels()).models; }
+                catch {
+                    effortDiscoveryFailed = true;
+                    currentEffort = undefined;
+                    session.sendSessionEvent({ type: 'message', message: 'Could not verify model reasoning levels; using the CLI default for this message.' });
+                }
+            }
+            let messageEffort = currentEffort && isClaudeEffortSupported(currentEffort, messageModel, effortModels) ? currentEffort : undefined;
             if (message.meta?.hasOwnProperty('effort')) {
                 const incoming = (message.meta as Record<string, unknown>).effort;
                 if (incoming === null || incoming === undefined) {
                     messageEffort = undefined;
                     currentEffort = undefined;
                     logger.debug(`[loop] Effort reset to default`);
-                } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
-                    messageEffort = incoming as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+                } else if (!effortDiscoveryFailed && typeof incoming === 'string' && isClaudeEffortSupported(incoming, messageModel, effortModels)) {
+                    messageEffort = incoming;
                     currentEffort = messageEffort;
                     logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
                 } else {
