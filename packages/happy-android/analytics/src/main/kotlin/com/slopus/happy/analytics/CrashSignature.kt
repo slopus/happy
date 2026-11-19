@@ -21,10 +21,22 @@ import java.io.File
  */
 data class CrashSignature(val exceptionClass: String?, val causeClass: String?, val frames: String?) {
     companion object {
-        /** Where the platform's classes and the libraries every build has begin; not this build's code. */
+        /**
+         * Where the platform's classes and the libraries every build has begin; not this build's code.
+         * `com.android.` is the boot classpath's (33 packages on Android 15, `internal`, `org.conscrypt`,
+         * `okhttp`, `icu`, `server` among them, and more on some phones), less the Google libraries this
+         * build bundles under it ([BUNDLED]).
+         */
         val PLATFORM = listOf(
             "java.", "javax.", "jdk.", "kotlin.", "kotlinx.", "android.", "androidx.", "dalvik.", "libcore.", "sun.", "com.android.",
         )
+
+        /** This build's own libraries under a [PLATFORM] prefix: Play Billing (its ProxyBillingActivity is ours to launch). */
+        val BUNDLED = listOf("com.android.billingclient.", "com.android.installreferrer.")
+
+        /** Whether [className] is the platform's or a library every build has, by [PLATFORM] and [BUNDLED]. */
+        fun isPlatform(className: String): Boolean =
+            PLATFORM.any { className.startsWith(it) } && BUNDLED.none { className.startsWith(it) }
 
         /** Causes followed at most, so a cycle or a very long chain ends. */
         private const val DEPTH = 16
@@ -58,7 +70,7 @@ data class CrashSignature(val exceptionClass: String?, val causeClass: String?, 
          * there is none.
          */
         fun frames(stack: Array<StackTraceElement>, fromTop: Boolean = false): String? {
-            val first = if (fromTop) 0 else stack.indexOfFirst { frame -> PLATFORM.none { frame.className.startsWith(it) } }
+            val first = if (fromTop) 0 else stack.indexOfFirst { !isPlatform(it.className) }
             if (first < 0) return null
             val frames = StringBuilder()
             var count = 0

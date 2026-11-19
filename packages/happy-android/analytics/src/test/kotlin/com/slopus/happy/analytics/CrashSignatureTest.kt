@@ -124,6 +124,35 @@ class CrashSignatureTest {
     }
 
     @Test
+    fun aBundledLibraryUnderComAndroidIsThisBuildsCode() {
+        // Play's pre-launch crawler starting Play Billing 8.3.0's ProxyBillingActivity with no extras, 2026-11-19.
+        val npe = NullPointerException("Attempt to invoke virtual method 'android.content.IntentSender android.app.PendingIntent.getIntentSender()' on a null object reference").at(
+            frame("android.app.PendingIntent", "getIntentSender", 1366),
+            frame("com.android.billingclient.api.ProxyBillingActivity", "onCreate", 97),
+            frame("android.app.Activity", "performCreate", 8990),
+            frame("android.app.Activity", "performCreate", 8968),
+            frame("android.app.Instrumentation", "callActivityOnCreate", 1526),
+            frame("android.app.ActivityThread", "performLaunchActivity", 3755),
+        )
+        val launch = RuntimeException("Unable to start activity ComponentInfo{com.ex3ndr.happy/com.android.billingclient.api.ProxyBillingActivity}: $npe", npe)
+            .at(*launchFailure(npe).stackTrace)
+        val signature = CrashSignature.of(launch)
+        assertEquals("java.lang.RuntimeException", signature.exceptionClass)
+        assertEquals("java.lang.NullPointerException", signature.causeClass)
+        assertEquals(
+            "com.android.billingclient.api.ProxyBillingActivity.onCreate:97 android.app.Activity.performCreate:8990 android.app.Activity.performCreate:8968 " +
+                "android.app.Instrumentation.callActivityOnCreate:1526 android.app.ActivityThread.performLaunchActivity:3755",
+            signature.frames,
+        )
+        // The boot classpath's com.android packages are still the platform.
+        for (platform in listOf("com.android.internal.os.ZygoteInit", "com.android.org.conscrypt.ConscryptEngine", "com.android.okhttp.internal.http.HttpEngine", "com.android.icu.util.Calendar", "com.android.server.am.ActivityManagerService")) {
+            assertTrue(platform, CrashSignature.isPlatform(platform))
+        }
+        assertFalse(CrashSignature.isPlatform("com.android.billingclient.api.BillingClientImpl"))
+        assertFalse(CrashSignature.isPlatform("com.android.installreferrer.api.InstallReferrerClientImpl"))
+    }
+
+    @Test
     fun anAppFrameStillWinsOverThePlatformFallback() {
         val npe = NullPointerException().at(
             frame("android.app.Activity", "performCreate", 8990),
