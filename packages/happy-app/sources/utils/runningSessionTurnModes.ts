@@ -1,3 +1,4 @@
+import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
 import {
     getSuggestedModelModes,
     normalizeModelEffortKey,
@@ -53,6 +54,10 @@ export function resolveRunningSessionTurnModes(args: {
     const { session, agentDefaultOverrides, translate } = args;
     const metadata = session.metadata;
     const flavor = metadata?.flavor;
+    if (isRetiredAgentFlavor(flavor)) return {
+        availableModels: [], modelMode: metadata?.currentModelCode ? { key: metadata.currentModelCode, name: metadata.currentModelCode } : null,
+        availableEffortLevels: [], effortLevel: null, supportsFast: false,
+    };
     const defaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);
     const availableModels = flavor === 'codex' && !metadata?.models?.length
         ? (metadata?.currentModelCode && metadata.currentModelCode !== 'default'

@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { View, Text, Animated } from 'react-native';
 import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
-import { isRetiredSession } from '@/sync/retiredSessions';
+import { isHiddenRetiredSession as isRetiredSession } from '@/sync/retiredSessions';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Item } from '@/components/Item';

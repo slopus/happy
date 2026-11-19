@@ -7,6 +7,8 @@ describe('settingsFeatureEntries', () => {
 
         expect(entries.map((entry) => entry.key)).not.toContain('image-style-agent');
         expect(entries.map((entry) => entry.key)).not.toContain('my-agents');
+        expect(entries.map((entry) => entry.key)).not.toContain('ask-api');
+        expect(entries.map((entry) => entry.key)).not.toContain('public-image-gateway');
     });
 
     it('does not duplicate the outer usage shortcut inside settings', () => {

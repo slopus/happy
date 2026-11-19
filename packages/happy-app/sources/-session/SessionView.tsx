@@ -88,7 +88,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { ReadingWidthRail } from '@/components/ReadingWidthRail';
 import { Redirect, useRouter, useNavigation } from 'expo-router';
-import { isRetiredSession } from '@/sync/retiredSessions';
+import { isHiddenRetiredSession as isRetiredSession, isRetiredAgentFlavor } from '@/sync/retiredSessions';
 import { SessionRouteCoordinationError, type SessionRouteOwner } from '@/sync/sessionRouteOwnership';
 import { DrawerActions, useIsFocused } from '@react-navigation/native';
 import * as React from 'react';
@@ -2000,7 +2000,7 @@ function SessionViewLoaded({
     ) : null;
 
     const sessionCanAttach = !session.metadata?.flavor || ['claude', 'codex', 'opencode'].includes(session.metadata.flavor);
-    const composer = (
+    const composer = isRetiredAgentFlavor(session.metadata?.flavor) ? null : (
         <ChatComposer
             mode="session"
             discussionMode={supportsDiscussion ? {

@@ -156,7 +156,6 @@ describe('会话编辑器演示页', () => {
             renderer = TestRenderer.create(
                 <SessionComposerDemo
                     agentIconSources={{
-                        ask: 'icon',
                         claude: 'icon',
                         codex: 'icon',
                         gemini: 'icon',
@@ -204,7 +203,6 @@ describe('会话编辑器演示页', () => {
             renderer = TestRenderer.create(
                 <SessionComposerDemo
                     agentIconSources={{
-                        ask: 'icon',
                         claude: 'icon',
                         codex: 'icon',
                         gemini: 'icon',
@@ -245,7 +243,6 @@ describe('会话编辑器演示页', () => {
                 renderer = TestRenderer.create(
                     <SessionComposerDemo
                         agentIconSources={{
-                            ask: 'icon',
                             claude: 'icon',
                             codex: 'icon',
                             gemini: 'icon',

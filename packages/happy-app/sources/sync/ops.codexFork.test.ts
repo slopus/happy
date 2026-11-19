@@ -57,34 +57,6 @@ describe('codex fork ops', () => {
         );
     });
 
-    it('forwards ask API environment variables when spawning a session', async () => {
-        machineRPC.mockResolvedValue({ type: 'success', sessionId: 'happy-ask' });
-
-        const { machineSpawnNewSession, SESSION_START_RPC_TIMEOUT_MS } = await import('./ops');
-        const result = await machineSpawnNewSession({
-            machineId: 'machine-1',
-            directory: '/tmp/project',
-            agent: 'ask',
-            environmentVariables: {
-                HAPPY_DEEPSEEK_API_KEY: 'sk-local',
-                HAPPY_DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
-            },
-        });
-
-        expect(result).toEqual({ type: 'success', sessionId: 'happy-ask' });
-        expect(machineRPC).toHaveBeenCalledWith(
-            'machine-1',
-            'spawn-happy-session',
-            expect.objectContaining({
-                agent: 'ask',
-                environmentVariables: {
-                    HAPPY_DEEPSEEK_API_KEY: 'sk-local',
-                    HAPPY_DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
-                },
-            }),
-            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
-        );
-    });
 
     it('keeps the optional startup trace inside the encrypted spawn parameters', async () => {
         machineRPC.mockResolvedValue({ type: 'success', sessionId: 'happy-traced' });

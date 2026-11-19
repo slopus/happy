@@ -12,7 +12,7 @@ export interface AgentLauncher {
     imageStyleIds: string[];
     imageVariantsPerStyle: number;
     /** Legacy saved presets remain readable, but cannot launch the retired engine. */
-    agentType?: NewSessionAgentType | 'personal';
+    agentType?: NewSessionAgentType | 'personal' | 'ask';
     permissionMode?: PermissionModeKey;
     modelMode?: string;
     effortLevel?: string | null;

@@ -1,14 +1,6 @@
 import type { NewSessionAgentType } from '@/sync/persistence';
 
-type AgentPickerItem<T extends string = NewSessionAgentType> = {
-    key: T;
-    label: string;
-};
-
-export type NewSessionTopLevelMode = 'ask' | 'agent';
-
 export type SessionConfigExperience = {
-    isAskMode: boolean;
     showPath: boolean;
     showModeDetails: boolean;
     showPermission: boolean;
@@ -16,7 +8,6 @@ export type SessionConfigExperience = {
 };
 
 export type RunningSessionInfoExperience = {
-    isAskMode: boolean;
     showPath: boolean;
     showModelDetails: boolean;
     showPermission: boolean;
@@ -28,29 +19,20 @@ export type ComposeHomeExperience = {
     showCreationRail: boolean;
 };
 
-export type HeaderModeSwitchExperience = {
-    visible: boolean;
-    selectedMode: NewSessionTopLevelMode;
-};
-
 export function getSessionConfigExperience(agentType: NewSessionAgentType): SessionConfigExperience {
-    const isAskMode = agentType === 'ask';
     return {
-        isAskMode,
-        showPath: !isAskMode,
+        showPath: true,
         showModeDetails: true,
-        showPermission: !isAskMode,
-        showWorktree: !isAskMode,
+        showPermission: true,
+        showWorktree: true,
     };
 }
 
 export function getRunningSessionInfoExperience(agentType: string | null | undefined): RunningSessionInfoExperience {
-    const isAskMode = agentType === 'ask';
     return {
-        isAskMode,
-        showPath: !isAskMode,
+        showPath: true,
         showModelDetails: true,
-        showPermission: !isAskMode,
+        showPermission: true,
     };
 }
 
@@ -64,46 +46,6 @@ export function getComposeHomeExperience(args: {
     return {
         displayAgentType,
         canAttach: activeImageAgent || agentType === 'claude' || agentType === 'codex' || agentType === 'opencode',
-        showCreationRail: imagePluginInstalled && !activeImageAgent && agentType !== 'ask',
+        showCreationRail: imagePluginInstalled && !activeImageAgent,
     };
-}
-
-export function getHeaderModeSwitchExperience(args: {
-    agentType: NewSessionAgentType;
-    activeImageAgent: boolean;
-    askConfigured: boolean;
-}): HeaderModeSwitchExperience {
-    if (args.activeImageAgent || !args.askConfigured) {
-        return {
-            visible: false,
-            selectedMode: 'agent',
-        };
-    }
-    return {
-        visible: true,
-        selectedMode: getTopLevelModeForAgent(args.agentType),
-    };
-}
-
-export function getTopLevelModeForAgent(agentType: NewSessionAgentType): NewSessionTopLevelMode {
-    return agentType === 'ask' ? 'ask' : 'agent';
-}
-
-export function getCodingAgentPickerItems<T extends AgentPickerItem>(agents: T[]): Array<Exclude<T, { key: 'ask' }>> {
-    return agents.filter((agent) => agent.key !== 'ask') as Array<Exclude<T, { key: 'ask' }>>;
-}
-
-export function selectAgentForTopLevelMode(args: {
-    mode: NewSessionTopLevelMode;
-    currentAgent: NewSessionAgentType;
-    availableCodingAgents: AgentPickerItem[];
-}): NewSessionAgentType {
-    const { mode, currentAgent, availableCodingAgents } = args;
-    if (mode === 'ask') {
-        return 'ask';
-    }
-    if (currentAgent !== 'ask' && availableCodingAgents.some((agent) => agent.key === currentAgent)) {
-        return currentAgent;
-    }
-    return (availableCodingAgents[0]?.key as NewSessionAgentType | undefined) ?? 'opencode';
 }

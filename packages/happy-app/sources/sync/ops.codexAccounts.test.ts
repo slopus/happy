@@ -98,7 +98,7 @@ describe('transparent Codex grants', () => {
         ]);
     });
 
-    it.each(['claude', 'ask', 'gemini', 'opencode', 'openclaw'] as const)('never requests a grant for %s spawn or resume', async (agent) => {
+    it.each(['claude', 'gemini', 'opencode', 'openclaw'] as const)('never requests a grant for %s spawn or resume', async (agent) => {
         await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent, token: 'existing-agent-token' });
         await machineResumeSession({ machineId: 'm1', sessionId: 's1', agent });
         expect(requests).toHaveLength(0);

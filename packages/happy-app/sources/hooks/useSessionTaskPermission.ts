@@ -1,3 +1,4 @@
+import { isRetiredAgentFlavor } from '@/sync/retiredSessions';
 import * as React from 'react';
 import type { Session } from '@/sync/storageTypes';
 import { storage, useSetting } from '@/sync/storage';
@@ -35,8 +36,8 @@ export function useSessionTaskPermission(
     const agent = resolveTaskPermissionAgent(flavor);
     const defaultsFlavor = agent ?? flavor;
     const effectiveDefaults = React.useMemo(
-        () => resolveAgentDefaultConfig(agentDefaultOverrides, defaultsFlavor),
-        [agentDefaultOverrides, defaultsFlavor],
+        () => isRetiredAgentFlavor(flavor) ? { permissionMode: 'default' } : resolveAgentDefaultConfig(agentDefaultOverrides, defaultsFlavor),
+        [agentDefaultOverrides, defaultsFlavor, flavor],
     );
     const currentAgentMode = session.permissionMode
         ?? session.metadata?.currentOperatingModeCode

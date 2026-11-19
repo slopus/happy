@@ -169,3 +169,7 @@ describe('resolveRunningSessionTurnModes', () => {
         expect(result.effortLevel).toBeNull();
     });
 });
+
+it('reads retired Ask model metadata without resolving runnable defaults', () => {
+    expect(resolveRunningSessionTurnModes({ session: { metadata: { flavor: 'ask', currentModelCode: 'legacy-model' } } as any, agentDefaultOverrides: {}, translate })).toEqual({ availableModels: [], modelMode: { key: 'legacy-model', name: 'legacy-model' }, availableEffortLevels: [], effortLevel: null, supportsFast: false });
+});

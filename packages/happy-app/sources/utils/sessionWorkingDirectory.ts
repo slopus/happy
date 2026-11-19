@@ -48,7 +48,7 @@ export type WorkingDirectorySwitchStrategy =
     | 'continuation-unavailable'
     | 'unsupported';
 
-type SupportedWorkingDirectoryAgent = Exclude<NewSessionAgentType, 'ask'>;
+type SupportedWorkingDirectoryAgent = NewSessionAgentType;
 type WorkingDirectoryCapability = {
     agent: SupportedWorkingDirectoryAgent;
     strategy: Exclude<WorkingDirectorySwitchStrategy, 'continuation-unavailable' | 'unsupported'>;

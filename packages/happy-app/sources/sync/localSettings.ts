@@ -98,11 +98,6 @@ export const LocalSettingsSchema = z.object({
     agentSpaceId: z.string().nullable().describe('当前进入的「我的 Agent」空间（agent id），null 为全局视图'),
     hapticFeedbackEnabled: z.boolean().describe('Enable haptic (vibration) feedback for interactions'),
     webSound: WebSoundSettingsSchema.catch(webSoundSettingsDefaults).describe('Browser-only session sound alerts'),
-    askApi: z.object({
-        apiKey: z.string().describe('DeepSeek-compatible API key for Ask mode'),
-        baseUrl: z.string().describe('Optional DeepSeek-compatible API base URL for Ask mode'),
-        tavilyApiKey: z.string().optional().default('').describe('Optional Tavily API key for Ask mode web search'),
-    }).describe('Device-local Ask mode API credentials'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
     // 「我的 Agent」启动预设。**刻意放在设备本地、不随账号同步**：账号设置是「单一加密 blob +
@@ -167,11 +162,6 @@ export const localSettingsDefaults: LocalSettings = {
     agentSpaceId: null,
     hapticFeedbackEnabled: true,
     webSound: webSoundSettingsDefaults,
-    askApi: {
-        apiKey: '',
-        baseUrl: '',
-        tavilyApiKey: '',
-    },
     acknowledgedCliVersions: {},
     agents: [],
     relationshipAdvisorConversations: [],
@@ -192,6 +182,7 @@ function removeDeprecatedLocalSettings(settings: unknown): unknown {
     }
 
     const {
+        askApi: _askApi,
         commandPaletteEnabled: _commandPaletteEnabled,
         commandPaletteShortcutMigrated: _commandPaletteShortcutMigrated,
         ...remainingSettings
@@ -302,10 +293,6 @@ export function localSettingsParse(settings: unknown): LocalSettings {
         relationshipAdvisorConversations: limitRelationshipAdvisorConversations(
             parsed.data.relationshipAdvisorConversations ?? localSettingsDefaults.relationshipAdvisorConversations,
         ),
-        askApi: {
-            ...localSettingsDefaults.askApi,
-            ...parsed.data.askApi,
-        },
     };
 }
 

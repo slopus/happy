@@ -1041,7 +1041,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
     const canSave = name.trim().length > 0 && !duplicate && (list !== null || organization.lists.length < SIDEBAR_LIST_MAX_COUNT);
     const machineLabel = selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || machineId || t('sidebarLists.noPreset');
     const directoryLabel = path ? formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir) : t('sidebarLists.noPreset');
-    const agentLabel = defaultAgent === 'ask' ? t('newSession.askMode') : defaultAgent ? t(AGENT_LABEL_KEYS[defaultAgent]) : t('sidebarLists.noPreset');
+    const agentLabel = defaultAgent ? t(AGENT_LABEL_KEYS[defaultAgent]) : t('sidebarLists.noPreset');
     const focusTrigger = (setting: 'machine' | 'directory' | 'agent') => {
         if (typeof requestAnimationFrame !== 'function') return;
         requestAnimationFrame(() => {

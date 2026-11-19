@@ -117,20 +117,6 @@ async function waitForDevelopmentOverlayToClear(page: Page): Promise<void> {
     await expect(page.locator('.__expo_fast_refresh_show')).toHaveCount(0, { timeout: 120_000 });
 }
 
-async function configureAskApi(page: Page): Promise<void> {
-    await page.addInitScript(() => {
-        const storageKey = 'mmkv.default\\local-settings';
-        const existing = JSON.parse(window.localStorage.getItem(storageKey) ?? '{}') as Record<string, unknown>;
-        window.localStorage.setItem(storageKey, JSON.stringify({
-            ...existing,
-            askApi: {
-                apiKey: 'sidebar-e2e-ask-key',
-                baseUrl: '',
-                tavilyApiKey: '',
-            },
-        }));
-    });
-}
 
 async function captureEvidenceFrame(page: Page, testInfo: TestInfo, name: string): Promise<void> {
     if (!recordEvidence) return;
@@ -307,7 +293,6 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
     const createdSessionIds: string[] = [];
 
     try {
-        await configureAskApi(page);
         machineId = await createMachine(request);
         const alphaId = await createSession(request, {
             name: 'Sidebar Alpha runtime',
@@ -373,9 +358,9 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await page.getByTestId(`sidebar-list-${advisorId}`).click();
         await page.getByTestId(`sidebar-new-session-${advisorId}`).click();
         await expect(page).toHaveURL((url) => url.pathname === '/new' && url.searchParams.get('sidebarListId') === advisorId);
-        const askInput = page.locator('[data-testid="new-session-message-input"]:visible');
-        await expect(askInput).toBeVisible();
-        await expect(askInput).toHaveValue('');
+        const newSessionInput = page.locator('[data-testid="new-session-message-input"]:visible');
+        await expect(newSessionInput).toBeVisible();
+        await expect(newSessionInput).toHaveValue('');
         await captureEvidenceFrame(page, testInfo, '05-plain-list-new-session');
 
         await page.goto(alphaUrl, { timeout: 120_000 });

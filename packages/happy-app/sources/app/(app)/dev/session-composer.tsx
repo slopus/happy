@@ -35,12 +35,11 @@ import {
     type EffortLevel,
 } from '@/components/modelModeOptions';
 
-type AgentKey = 'ask' | 'claude' | 'codex' | 'opencode' | 'openclaw' | 'gemini';
+type AgentKey = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'gemini';
 type AgentIconSources = Record<AgentKey, React.ComponentProps<typeof Image>['source']>;
 
 function getAgentIconSources(): AgentIconSources {
     return {
-        ask: require('@/assets/images/icon-claude.png'),
         claude: require('@/assets/images/icon-claude.png'),
         codex: require('@/assets/images/icon-gpt.png'),
         opencode: require('@/assets/images/icon-gpt.png'),
@@ -50,7 +49,6 @@ function getAgentIconSources(): AgentIconSources {
 }
 
 const AGENTS: { key: AgentKey; label: string }[] = [
-    { key: 'ask', label: 'ask' },
     { key: 'opencode', label: 'opencode' },
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },

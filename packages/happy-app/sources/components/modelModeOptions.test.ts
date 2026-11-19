@@ -133,25 +133,11 @@ describe('modelModeOptions', () => {
         expect(getDefaultPermissionModeKey('claude')).toBe('bypassPermissions');
         expect(getDefaultModelKey('claude')).toBe('opus');
         expect(getDefaultEffortKey('claude')).toBe('medium');
-        expect(getDefaultPermissionModeKey('ask')).toBe('default');
-        expect(getDefaultModelKey('ask')).toBe('deepseek/deepseek-v4-flash');
-        expect(getDefaultEffortKey('ask')).toBeNull();
         expect(getDefaultPermissionModeKey('codex')).toBe('yolo');
         expect(getDefaultModelKey('codex')).toBe('gpt-6.1-sol');
         expect(getDefaultEffortKey('codex')).toBe('medium');
     });
 
-    it('keeps ask mode as provider-backed chat with DeepSeek strength choices', () => {
-        const models = getAvailableModels('ask', null, translate);
-        expect(models).toEqual([
-            { key: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', description: 'fast answers' },
-            { key: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', description: 'stronger answers' },
-        ]);
-        expect(getEffortLevelsForModel('ask', 'deepseek/deepseek-v4-pro')).toEqual([]);
-        expect(getAvailablePermissionModes('ask', null, translate)).toEqual([
-            { key: 'default', name: 'tr:agentInput.permissionMode.default', description: null },
-        ]);
-    });
 
     it('prefers metadata models over hardcoded fallbacks', () => {
         const models = getAvailableModels('gemini', {

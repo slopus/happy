@@ -243,46 +243,6 @@ describe('localSettings desktop Lists and Tags', () => {
     });
 });
 
-describe('localSettings ask API config', () => {
-    it('defaults to an unconfigured ask API', () => {
-        expect(localSettingsDefaults.askApi).toEqual({
-            apiKey: '',
-            baseUrl: '',
-            tavilyApiKey: '',
-        });
-    });
-
-    it('preserves stored ask API credentials locally', () => {
-        const parsed = localSettingsParse({
-            askApi: {
-                apiKey: ' sk-deepseek ',
-                baseUrl: ' https://api.deepseek.com ',
-                tavilyApiKey: ' tvly-local ',
-            },
-        });
-
-        expect(parsed.askApi).toEqual({
-            apiKey: ' sk-deepseek ',
-            baseUrl: ' https://api.deepseek.com ',
-            tavilyApiKey: ' tvly-local ',
-        });
-    });
-
-    it('defaults Tavily credentials when older stored ask API data is missing them', () => {
-        const parsed = localSettingsParse({
-            askApi: {
-                apiKey: ' sk-deepseek ',
-                baseUrl: ' https://api.deepseek.com ',
-            },
-        });
-
-        expect(parsed.askApi).toEqual({
-            apiKey: ' sk-deepseek ',
-            baseUrl: ' https://api.deepseek.com ',
-            tavilyApiKey: '',
-        });
-    });
-});
 
 describe('localSettings relationship advisor history', () => {
     it('migrates the old single transcript into one named conversation', () => {
@@ -350,4 +310,10 @@ describe('localSettings relationship advisor history', () => {
 it('adds project location memory to existing settings and rejects malformed saved values', () => {
     expect(localSettingsParse({}).desktopProjectLocation).toBeNull();
     expect(localSettingsParse({ desktopProjectLocation: ['wrong'], themePack: 'gingham' })).toMatchObject({ desktopProjectLocation: null, themePack: 'gingham' });
+});
+
+it('drops retired Ask credentials without resetting other local settings', () => {
+    const parsed = localSettingsParse({ themePreference: 'dark', askApi: { apiKey: 'retired-test-key' } });
+    expect(parsed.themePreference).toBe('dark');
+    expect(parsed).not.toHaveProperty('askApi');
 });

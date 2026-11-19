@@ -19,6 +19,21 @@ const descriptions = {
   'no-runtime-change': '没有手机运行代码变更；跳过 OTA。',
 };
 
+// Removing an unrelated workspace importer does not change the App native graph.
+// Require the rest of the lockfile to remain byte-for-byte identical.
+function onlyRemovedWorkspaceImporters(before, after, deletedManifests) {
+  const removable = new Set(deletedManifests
+    .filter(file => /^packages\/[^/]+\/package\.json$/.test(file) && file !== 'packages/happy-app/package.json')
+    .map(file => file.slice(0, -'/package.json'.length)));
+  if (!removable.size) return false;
+  const start = before.indexOf('\nimporters:\n');
+  const end = before.indexOf('\npackages:\n', start);
+  if (start < 0 || end < 0) return false;
+  const importers = before.slice(start, end).replace(/^  ([^ \n][^\n]*):\n[\s\S]*?(?=^  [^ \n]|$(?![\s\S]))/gm,
+    (block, key) => removable.has(key) ? '' : block);
+  return before.slice(0, start) + importers + before.slice(end) === after;
+}
+
 function classifyOtaImpact(paths, eventName) {
   if (eventName === 'workflow_dispatch') {
     return { otaCompatible: true, reason: 'manual', native: [], mobile: [], web: [] };
@@ -58,6 +73,14 @@ if (require.main === module) {
       // still mobile-affecting even when its replacement has a .web suffix.
       paths = execFileSync('git', ['diff', '--name-only', '--no-renames', '-z', base, head], { encoding: 'utf8' }).split('\0').filter(Boolean);
     }
+    if (paths.includes('pnpm-lock.yaml')) {
+      const { BASE_SHA: base, HEAD_SHA: head } = process.env;
+      const deleted = execFileSync('git', ['diff', '--diff-filter=D', '--name-only', '-z', base, head], { encoding: 'utf8' }).split('\0').filter(Boolean);
+      const readLock = sha => execFileSync('git', ['show', `${sha}:pnpm-lock.yaml`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+      if (onlyRemovedWorkspaceImporters(readLock(base), readLock(head), deleted)) {
+        paths = paths.filter(file => file !== 'pnpm-lock.yaml');
+      }
+    }
     const result = classifyOtaImpact(paths, eventName);
     if (process.env.GITHUB_OUTPUT) {
       fs.appendFileSync(process.env.GITHUB_OUTPUT, `ota_compatible=${result.otaCompatible}\ndelivery_reason=${result.reason}\n`);
@@ -72,4 +95,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { classifyOtaImpact };
+module.exports = { classifyOtaImpact, onlyRemovedWorkspaceImporters };

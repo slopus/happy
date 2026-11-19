@@ -53,14 +53,12 @@ import { resolveNewSessionModeSelection } from '@/utils/newSessionModeSelection'
 import { getLatestSessionModelMetadata } from '@/utils/newSessionModelMetadata';
 import { supportsCodexFast } from '@/utils/codexFast';
 import {
-    getCodingAgentPickerItems,
     getSessionConfigExperience,
 } from '@/utils/newSessionExperience';
 import { isRunningOnMac } from '@/utils/platform';
 
 // Agent icon assets
 const agentIcons = {
-    ask: require('@/assets/images/icon-claude.png'),
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
     opencode: require('@/assets/images/icon-gpt.png'),
@@ -70,7 +68,6 @@ const agentIcons = {
 
 type AgentKey = NewSessionAgentType;
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
-    { key: 'ask', label: 'ask' },
     { key: 'opencode', label: 'OpenCode' },
     { key: 'claude', label: 'Claude Code' },
     { key: 'codex', label: 'Codex' },
@@ -986,17 +983,16 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         }, [worktreeItems, worktreeKey]);
 
         // Filter available coding agents based on CLI availability from machine metadata.
-        // Ask is a top-level mode, not a coding-agent picker item.
         const availableAgents = React.useMemo(() => {
             const availability = selectedMachine?.metadata?.cliAvailability;
-            const codingAgents = getCodingAgentPickerItems(ALL_AGENTS);
+            const codingAgents = ALL_AGENTS;
             return enabledCodingAgents(codingAgents, selectedMachineId, codingAgentMachines, availability);
         }, [selectedMachine, selectedMachineId, codingAgentMachines]);
 
         // If current coding agent is not available on this machine, switch to the
-        // first available coding agent. Ask mode stays independent of CLI availability.
+        // first available coding agent.
         React.useEffect(() => {
-            if (selectedAgent !== 'ask' && availableAgents.length > 0 && !availableAgents.find(a => a.key === selectedAgent)) {
+            if (availableAgents.length > 0 && !availableAgents.find(a => a.key === selectedAgent)) {
                 setSelectedAgent(availableAgents[0].key);
             }
         }, [availableAgents, selectedAgent, setSelectedAgent]);
@@ -1094,14 +1090,6 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const showPermission = configExperience.showPermission && permissionModes.length > 1;
 
 
-        React.useEffect(() => {
-            if (!configExperience.isAskMode) {
-                return;
-            }
-            if (activePicker && activePicker !== 'machine') {
-                setActivePicker(null);
-            }
-        }, [activePicker, configExperience.isAskMode]);
 
         const modelSelectionScope = JSON.stringify([
             selectedMachineId, selectedAgent, codexAccountProfileId, resolvedModeSelection.modelMode,
@@ -1296,7 +1284,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 case 'worktree':
                     return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems ?? [], selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
                 case 'agent':
-                    return { title: 'Agent', items: getAgentPickerItems(availableAgents), selectedKey: selectedAgent === 'ask' ? null : selectedAgent, searchPlaceholder: 'search agents...' };
+                    return { title: 'Agent', items: getAgentPickerItems(availableAgents), selectedKey: selectedAgent, searchPlaceholder: 'search agents...' };
                 case 'model':
                     return { title: 'Model', items: getModePickerItems(modelModes), selectedKey: currentModelKey, searchPlaceholder: 'search models...' };
                 case 'effort':
@@ -1618,7 +1606,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                             ))
             }</>;
             const modelControl = <>{
-!isOffline && !configExperience.isAskMode && (availableAgents.length === 0 ? (
+!isOffline && (availableAgents.length === 0 ? (
                                 <Pressable testID="session-composer-configure-agents" accessibilityRole="button"
                                     accessibilityLabel={t('codingAgents.noneEnabled')}
                                     onPress={() => router.push({ pathname: '/settings/coding-agents', params: { machineId: selectedMachineId ?? '' } })}
@@ -1756,7 +1744,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     </>
                                 )}
 
-                                {!configExperience.isAskMode && (
+                                {(
                                     <>
                                         <View style={styles.configRow}>
                                             <Pressable
@@ -1873,15 +1861,15 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                             <View style={styles.configRowWithToggle}>
                                 <Pressable
                                     style={(p: { pressed: boolean; hovered?: boolean }) => [styles.collapsedRow, { flex: 1 }, (p.pressed || p.hovered) && styles.configRowPressed]}
-                                    onPress={(event) => togglePicker(configExperience.isAskMode ? 'machine' : 'path', event)}
+                                    onPress={(event) => togglePicker('path', event)}
                                 >
                                     <Ionicons
-                                        name={configExperience.isAskMode ? 'desktop-outline' : 'folder-outline'}
+                                        name={'folder-outline'}
                                         size={15}
                                         color={theme.colors.textSecondary}
                                     />
                                     <Text style={[styles.configLabel, { flex: 1 }]} numberOfLines={1}>
-                                        {configExperience.isAskMode ? machineName : pathName}
+                                        {pathName}
                                     </Text>
                                 </Pressable>
                                 <Pressable
@@ -1903,7 +1891,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     <Ionicons name="desktop-outline" size={14} color={isOffline ? theme.colors.status.disconnected : theme.colors.textSecondary} />
                                 </Pressable>
 
-                                {!configExperience.isAskMode && (
+                                {(
                                     <Pressable
                                         onPress={(event) => togglePicker('agent', event)}
                                         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
@@ -1966,7 +1954,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 )}
                             </View>
                             {renderActivePickerPopover('machine')}
-                            {!configExperience.isAskMode && renderActivePickerPopover('agent')}
+                            {renderActivePickerPopover('agent')}
                             {renderActivePickerPopover('model')}
                             {renderActivePickerPopover('effort')}
                             {renderActivePickerPopover('permission')}

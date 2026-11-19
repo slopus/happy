@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { agentKeys, getCodeAgentDefaults, normalizeAgentKey, resolveAgentDefaultConfig } from './agentDefaults';
 import { settingsDefaults, settingsParse, settingsToSyncPayload } from './settings';
 import { applyLocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
-import { isRetiredSession } from './retiredSessions';
+import { isRetiredSession, isHiddenRetiredSession } from './retiredSessions';
 import { getAvailableModels, getAvailablePermissionModes } from '@/components/modelModeOptions';
 import { getAgentPermissionModeForTaskLevel } from '@/utils/taskPermissionModes';
 import { resolveWorkingDirectoryAgent, resolveWorkingDirectorySwitchStrategy } from '@/utils/sessionWorkingDirectory';
@@ -51,4 +51,15 @@ describe('retired Personal compatibility boundary', () => {
         expect(settingsParse({ sidebarOrganization: { lists: [list], tags: [], sessions: {} } }).sidebarOrganization.lists)
             .toEqual([list]);
     });
+});
+
+it('retains Ask history while denying its runtime and migrating saved presets', () => {
+    const session = { metadata: { flavor: 'ask' } };
+    expect(isRetiredSession(session)).toBe(true);
+    expect(isHiddenRetiredSession(session)).toBe(false);
+    expect(agentKeys).not.toContain('ask');
+    expect(getAvailableModels('ask', null, key => key)).toEqual([]);
+    expect(settingsParse({ customInstructions: 'keep', agentType: 'ask' }).customInstructions).toBe('keep');
+    const list = { id: 'old', name: 'Saved', kind: 'workspace', color: 'blue', machineId: 'm', path: '/saved', defaultAgent: 'ask', createdAt: 1 };
+    expect(localSettingsParse({ sidebarOrganization: { lists: [list], tags: [], sessions: {} } }).sidebarOrganization.lists).toEqual([{ ...list, defaultAgent: null }]);
 });

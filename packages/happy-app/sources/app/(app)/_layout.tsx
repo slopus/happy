@@ -74,13 +74,11 @@ export default function RootLayout() {
             <Stack.Screen name="settings/agents" options={{ headerTitle: t('settings.agentDefaults') }} />
             <Stack.Screen name="settings/appearance" options={{ headerTitle: t('settings.appearance') }} />
             <Stack.Screen name="settings/sound" options={{ headerTitle: getCurrentLanguage().startsWith('zh') ? '声音提醒' : 'Sound alerts' }} />
-            <Stack.Screen name="settings/ask" options={{ headerTitle: t('settings.askApi') }} />
             <Stack.Screen name="settings/connect/claude" options={{ headerTitle: t('connectClaude.title') }} />
             <Stack.Screen name="settings/custom-instructions" options={{ headerTitle: t('settings.customInstructions') }} />
             <Stack.Screen name="settings/features" options={{ headerTitle: t('settings.features') }} />
             <Stack.Screen name="settings/language" options={{ headerTitle: t('settings.language') }} />
             <Stack.Screen name="settings/profile" options={{ headerTitle: t('settingsAccount.editProfile') }} />
-            <Stack.Screen name="settings/public-image-gateway" options={{ headerTitle: t('settings.publicImageGateway') }} />
             <Stack.Screen name="settings/relationship-advisor" options={{ headerTitle: t('relationshipAdvisor.title') }} />
             <Stack.Screen name="settings/skill" options={{ headerTitle: t('settingsSkills.detailTitle') }} />
             <Stack.Screen name="settings/skills" options={{ headerTitle: t('settingsSkills.title') }} />

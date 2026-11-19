@@ -4949,35 +4949,6 @@ test.describe('中文 Web 功能与账户设置语义', () => {
     });
 });
 
-test.describe('中文 Web 服务配置设置语义', () => {
-    test.use({ locale: 'zh-CN' });
-
-    test('Ask API 输入框使用可见标题且不修改配置', async ({ page }) => {
-        await page.setViewportSize({ width: 800, height: 900 });
-        await page.goto(authenticatedRoute('/settings/ask'));
-
-        const apiKey = page.locator('input[aria-label="API Key"]');
-        const apiUrl = page.locator('input[aria-label="API URL"]');
-        const searchKey = page.locator('input[aria-label="Tavily API Key"]');
-
-        await expect(apiKey).toHaveAttribute('type', 'password');
-        await expect(apiUrl).toHaveAttribute('type', 'url');
-        await expect(searchKey).toHaveAttribute('type', 'password');
-        await expect(page.getByRole('button', { name: '清除 Ask API' })).toBeDisabled();
-        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(800);
-    });
-
-    test('公开图片网关区分外部入口与只读状态', async ({ page }) => {
-        await page.setViewportSize({ width: 800, height: 900 });
-        await page.goto(authenticatedRoute('/settings/public-image-gateway'));
-
-        await expect(page.getByRole('button', { name: '打开公开页面' })).toHaveCount(1);
-        await expect(page.getByRole('button', { name: '打开审核后台' })).toHaveCount(1);
-        await expect(page.getByRole('button', { name: 'Mac mini worker' })).toHaveCount(0);
-        await expect(page.getByText('Mac mini worker', { exact: true })).toBeVisible();
-        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(800);
-    });
-});
 
 test.describe('中文 Web Agent 配置语义', () => {
     test.use({ locale: 'zh-CN' });

@@ -1,4 +1,4 @@
-import { isRetiredSession } from '@/sync/retiredSessions';
+import { isHiddenRetiredSession as isRetiredSession } from '@/sync/retiredSessions';
 import type { Router } from "expo-router"
 import { useRouter } from "expo-router"
 import { useCallback } from 'react';

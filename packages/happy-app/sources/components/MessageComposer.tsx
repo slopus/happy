@@ -96,7 +96,7 @@ interface MessageComposerProps {
         contextSize: number;
     };
     alwaysShowContextSize?: boolean;
-    agentType?: 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;

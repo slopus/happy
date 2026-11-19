@@ -1,7 +1,8 @@
+import { tmpdir } from 'node:os';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -99,8 +100,10 @@ let agentHomeDir: string | null = null;
 let activeMachineId: string | null = null;
 let testProjectDir: string | null = null;
 let testWorktreeDir: string | null = null;
-let previousAskBaseUrl: string | undefined;
-let previousDeepSeekApiKey: string | undefined;
+let previousAnthropicBaseUrl: string | undefined;
+let previousAnthropicApiKey: string | undefined;
+let previousClaudeConfigDir: string | undefined;
+let fixtureClaudeConfigDir: string | undefined;
 let fixtureServer: Server | null = null;
 const spawnedSessionIds = new Set<string>();
 
@@ -256,19 +259,27 @@ function containsText(value: unknown, expectedText: string): boolean {
     return Object.values(value).some(item => containsText(item, expectedText));
 }
 
-async function startDeepSeekFixture(): Promise<string> {
-    fixtureServer = createServer((_request, response) => {
-        response.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-        });
+async function startAnthropicFixture(): Promise<string> {
+    fixtureServer = createServer((request, response) => {
+        if (request.url?.endsWith('/count_tokens')) {
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify({ input_tokens: 1 }));
+            return;
+        }
+        response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+        const event = (type: string, data: Record<string, unknown>) => {
+            response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+        };
+        event('message_start', { message: { id: 'msg_fixture', type: 'message', role: 'assistant', content: [], model: 'claude-sonnet-4-6', stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } });
         setTimeout(() => {
-            response.write('data: {"choices":[{"delta":{"content":"fixture "},"finish_reason":null}]}\n\n');
+            event('content_block_start', { index: 0, content_block: { type: 'text', text: '' } });
+            event('content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'fixture ' } });
             setTimeout(() => {
-                response.write('data: {"choices":[{"delta":{"content":"response"},"finish_reason":null}]}\n\n');
-                response.write('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n');
-                response.end('data: [DONE]\n\n');
+                event('content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'response' } });
+                event('content_block_stop', { index: 0 });
+                event('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } });
+                event('message_stop', {});
+                response.end();
             }, 100);
         }, 750);
     });
@@ -489,10 +500,14 @@ async function writeAgentState(
 describe('paws-agent integration', { timeout: 180_000 }, () => {
     beforeAll(async () => {
         previousCurrentEnv = readCurrentEnvName();
-        previousAskBaseUrl = process.env.HAPPY_ASK_BASE_URL;
-        previousDeepSeekApiKey = process.env.HAPPY_DEEPSEEK_API_KEY;
-        process.env.HAPPY_ASK_BASE_URL = await startDeepSeekFixture();
-        process.env.HAPPY_DEEPSEEK_API_KEY = 'paws-agent-fixture-key';
+        previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+        previousAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
+        previousAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
+        process.env.ANTHROPIC_BASE_URL = await startAnthropicFixture();
+        process.env.ANTHROPIC_API_KEY = 'paws-agent-fixture-key';
+        fixtureClaudeConfigDir = mkdtempSync(join(tmpdir(), 'paws-sdk-claude-'));
+        writeFileSync(join(fixtureClaudeConfigDir, 'settings.json'), JSON.stringify({ env: { ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL, ANTHROPIC_API_KEY: 'paws-agent-fixture-key' } }));
+        process.env.CLAUDE_CONFIG_DIR = fixtureClaudeConfigDir;
 
         try {
             await runPnpmAsync(['env:up', '--template', 'authenticated-empty', '--no-web']);
@@ -501,6 +516,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
             if (current && current !== previousCurrentEnv) {
                 integrationEnvName = current;
                 integrationEnvDir = join(environmentsDir, current);
+
             }
         }
 
@@ -524,16 +540,19 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
     });
 
     afterAll(async () => {
-        if (previousAskBaseUrl === undefined) {
-            delete process.env.HAPPY_ASK_BASE_URL;
+        if (previousClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+        else process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
+        if (previousAnthropicBaseUrl === undefined) {
+            delete process.env.ANTHROPIC_BASE_URL;
         } else {
-            process.env.HAPPY_ASK_BASE_URL = previousAskBaseUrl;
+            process.env.ANTHROPIC_BASE_URL = previousAnthropicBaseUrl;
         }
-        if (previousDeepSeekApiKey === undefined) {
-            delete process.env.HAPPY_DEEPSEEK_API_KEY;
+        if (previousAnthropicApiKey === undefined) {
+            delete process.env.ANTHROPIC_API_KEY;
         } else {
-            process.env.HAPPY_DEEPSEEK_API_KEY = previousDeepSeekApiKey;
+            process.env.ANTHROPIC_API_KEY = previousAnthropicApiKey;
         }
+        if (fixtureClaudeConfigDir) rmSync(fixtureClaudeConfigDir, { recursive: true, force: true });
         if (fixtureServer) {
             fixtureServer.closeAllConnections();
             await new Promise<void>(resolvePromise => fixtureServer!.close(() => resolvePromise()));
@@ -642,7 +661,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
                 '--path',
                 testProjectDir,
                 '--agent',
-                'ask',
+                'claude',
                 '--json',
             ], agentEnv),
         ) as {
@@ -671,7 +690,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
 
         expect(status.id).toBe(sessionId);
         expect(status.metadata?.path).toBe(testProjectDir);
-        expect(status.metadata?.flavor).toBe('ask');
+        expect(status.metadata?.flavor).toBe('claude');
 
         const daemonState = readDaemonState(integrationEnvDir);
         expect(daemonState?.httpPort).toBeTruthy();
@@ -702,7 +721,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
                 '--path',
                 testProjectDir,
                 '--agent',
-                'ask',
+                'claude',
                 '--json',
             ], agentEnv),
         );
@@ -751,7 +770,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
                 '--path',
                 testWorktreeDir,
                 '--agent',
-                'ask',
+                'claude',
                 '--json',
             ], agentEnv),
         );
@@ -834,7 +853,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
             const denied = await client.sessions.spawn({
                 machineId: activeMachineId,
                 directory: deniedDirectory,
-                agent: 'ask',
+                agent: 'claude',
             });
             expect(denied).toEqual({ type: 'requestToApproveDirectoryCreation', directory: deniedDirectory });
             expect(existsSync(deniedDirectory)).toBe(false);
@@ -842,14 +861,14 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
             const pending = await client.sessions.spawn({
                 machineId: activeMachineId,
                 directory,
-                agent: 'ask',
+                agent: 'claude',
             });
             expect(pending).toEqual({ type: 'requestToApproveDirectoryCreation', directory });
 
             const approved = await client.sessions.spawn({
                 machineId: activeMachineId,
                 directory,
-                agent: 'ask',
+                agent: 'claude',
                 approvedNewDirectoryCreation: true,
             });
             expect(approved.type).toBe('success');
@@ -872,7 +891,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
             const spawned = await client.sessions.spawn({
                 machineId: activeMachineId,
                 directory: testProjectDir,
-                agent: 'ask',
+                agent: 'claude',
             });
             expect(spawned.type).toBe('success');
             if (spawned.type !== 'success') throw new Error('Expected fixture session to spawn');
@@ -881,15 +900,15 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
             await client.messages.send({ sessionId: spawned.sessionId, text: 'fixture lifecycle' });
             await waitFor(async () => {
                 const state = (await client.sessions.get(spawned.sessionId)).agentState as {
-                    turnStatus?: { status?: string };
+                    claudeThinking?: boolean;
                 } | null;
-                return state?.turnStatus?.status === 'running';
+                return state?.claudeThinking === true;
             }, 20_000, 'fixture session to become busy');
             await waitFor(async () => {
                 const state = (await client.sessions.get(spawned.sessionId)).agentState as {
-                    turnStatus?: { status?: string };
+                    claudeThinking?: boolean;
                 } | null;
-                return state?.turnStatus?.status === 'completed';
+                return state?.claudeThinking === false;
             }, 20_000, 'fixture session to become idle');
             await waitFor(async () => {
                 const history = await client.messages.history(spawned.sessionId);
@@ -917,7 +936,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
         const spawned = await client.sessions.spawn({
             machineId: activeMachineId,
             directory: testProjectDir,
-            agent: 'ask',
+            agent: 'claude',
         });
         expect(spawned.type).toBe('success');
         if (spawned.type !== 'success') throw new Error('Expected fixture session to spawn');
@@ -973,7 +992,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
         const spawned = await client.sessions.spawn({
             machineId: activeMachineId,
             directory: testProjectDir,
-            agent: 'ask',
+            agent: 'claude',
         });
         expect(spawned.type).toBe('success');
         if (spawned.type !== 'success') throw new Error('Expected fixture session to spawn');
@@ -1087,7 +1106,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
             await expect(client.sessions.spawn({
                 machineId: activeMachineId,
                 directory: testProjectDir,
-                agent: 'ask',
+                agent: 'claude',
             })).rejects.toMatchObject({ code: 'MACHINE_OFFLINE' });
         } finally {
             await client.dispose();

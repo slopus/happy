@@ -1,5 +1,5 @@
 import { useSession } from '@/sync/storage';
-import { isRetiredSession } from '@/sync/retiredSessions';
+import { isHiddenRetiredSession as isRetiredSession } from '@/sync/retiredSessions';
 import { Redirect } from 'expo-router';
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";

@@ -77,11 +77,6 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
     ];
 }
 
-export function getAskPermissionModes(translate: Translate): PermissionMode[] {
-    return [
-        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
-    ];
-}
 
 export function getClaudeModelModes(): ModelMode[] {
     return [
@@ -92,12 +87,6 @@ export function getClaudeModelModes(): ModelMode[] {
     ];
 }
 
-export function getAskModelModes(): ModelMode[] {
-    return [
-        { key: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', description: 'fast answers' },
-        { key: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', description: 'stronger answers' },
-    ];
-}
 
 const CODEX_CURRENT_MODELS: ModelMode[] = [
     { key: 'gpt-6-astra', name: 'gpt-6-astra', description: null },
@@ -138,9 +127,6 @@ export function getOpenCodePermissionModes(translate: Translate): PermissionMode
 
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (isRetiredAgentFlavor(flavor)) return [];
-    if (flavor === 'ask') {
-        return getAskPermissionModes(translate);
-    }
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
     }
@@ -175,9 +161,6 @@ export function getOpenCodeModelModes(): ModelMode[] {
 
 export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate): ModelMode[] {
     if (isRetiredAgentFlavor(flavor)) return [];
-    if (flavor === 'ask') {
-        return getAskModelModes();
-    }
     if (flavor === 'codex') {
         return getCodexModelModes();
     }
@@ -347,6 +330,6 @@ export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: strin
 }
 
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {
-    if (isRetiredAgentFlavor(flavor) || flavor === 'ask' || flavor === 'openclaw') return false;
+    if (isRetiredAgentFlavor(flavor) || flavor === 'openclaw') return false;
     return true;
 }

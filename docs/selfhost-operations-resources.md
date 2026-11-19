@@ -311,20 +311,6 @@ OTA 不能替代第一份 APK/IPA/桌面安装包，也不能发布原生依赖�
 
 ## 9. 可选能力及额外资源
 
-### Public Image Gateway
-
-仓库存在 Public Image Gateway MVP：ECS Gateway 接受公开 Prompt，Mac mini Worker 主动拉任务并调用固定的图片生成命令。该 MVP 使用 JSON 文件状态和 ECS 本地结果目录，不适合作为正式公开服务；现有运维记录也已将该 MVP 停服。
-
-如果重新启用正式版，至少新增：
-
-- 独立 Gateway API 计算资源和 HTTPS 路由。
-- 独立 PostgreSQL database/schema，用 lease 队列、事件和额度记录替代 JSON 文件。
-- 独立 OSS 结果图存储。
-- 一个或多个出站 Worker，以及独立的 Worker Token/Provider API Key。
-- 任务租约回收、预算、审核、限流、审计、内容安全和结果保留策略。
-
-这套资源不应与 Paws 核心同步服务混成一个“万能脚本运行时”。参考 [Public Image Gateway MVP](public-image-gateway-mvp.md)。
-
 ### 外部 SaaS 依赖
 
 以下不是核心自托管基础设施，但启用对应产品能力时仍会产生外部依赖：
@@ -473,4 +459,3 @@ Agent 执行机无需对公网开放 daemon 端口；daemon 主动连接中心�
 - [OTA FC 服务](../packages/happy-app/ota-server/code/index.js)
 - [OTA preview workflow](../.github/workflows/ota-preview.yml)
 - [OTA production workflow](../.github/workflows/ota-production.yml)
-- [Public Image Gateway MVP](public-image-gateway-mvp.md)

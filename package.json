@@ -50,7 +50,6 @@
             "packages/happy-server",
             "packages/happy-wire",
             "packages/happy-app-logs",
-            "packages/image-gateway",
             "packages/codium",
             "packages/paws-agent-chrome",
             "packages/paws-agent-party",

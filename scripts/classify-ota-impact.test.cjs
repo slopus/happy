@@ -4,7 +4,7 @@ const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { classifyOtaImpact } = require('./classify-ota-impact.cjs');
+const { classifyOtaImpact, onlyRemovedWorkspaceImporters } = require('./classify-ota-impact.cjs');
 const source = 'packages/happy-app/';
 
 test('Web implementations and public assets skip OTA without implying a native rebuild', () => {
@@ -72,4 +72,14 @@ test('real Git comparison emits workflow outputs and treats mobile-to-Web rename
     const uncertain = run('0'.repeat(40), git('rev-parse', 'HEAD'), 'bad');
     assert.notEqual(uncertain.status, 0);
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('only a deleted non-App workspace importer can bypass lockfile sensitivity', () => {
+  const before = "lockfileVersion: '9.0'\n\nimporters:\n\n  packages/happy-app:\n    dependencies: {}\n\n  packages/retired:\n    devDependencies: {}\n\n  packages/other:\n    dependencies: {}\n\npackages:\n  native@1: {}\n";
+  const after = before.replace('  packages/retired:\n    devDependencies: {}\n\n', '');
+  assert.equal(onlyRemovedWorkspaceImporters(before, after, ['packages/retired/package.json']), true);
+  assert.equal(onlyRemovedWorkspaceImporters(before, after, []), false);
+  assert.equal(onlyRemovedWorkspaceImporters(before, after.replace('native@1', 'native@2'), ['packages/retired/package.json']), false);
+  assert.equal(onlyRemovedWorkspaceImporters(before, after.replace('dependencies: {}', 'dependencies: {changed: 1}'), ['packages/retired/package.json']), false);
+  assert.equal(onlyRemovedWorkspaceImporters(before, before.replace('  packages/happy-app:\n    dependencies: {}\n\n', ''), ['packages/happy-app/package.json']), false);
 });
