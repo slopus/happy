@@ -29,6 +29,7 @@ import { handleSandboxCommand } from './commands/sandbox'
 import { handleServerCommand } from './commands/server'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
+import { isPermissionMode } from './claude/utils/permissionMode'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
@@ -464,7 +465,12 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         } else if (args[i] === '--effort' && i + 1 < args.length) {
           effort = args[++i];
         } else if (args[i] === '--permission-mode' && i + 1 < args.length) {
-          permissionMode = args[++i] as StartOptions['permissionMode'];
+          const value = args[++i];
+          if (isPermissionMode(value)) {
+            permissionMode = value;
+          } else {
+            console.warn(chalk.yellow(`Ignoring unknown --permission-mode '${value}'`));
+          }
         } else if (args[i] === '--yolo' || args[i] === '--dangerously-skip-permissions') {
           permissionMode = 'bypassPermissions';
         }
