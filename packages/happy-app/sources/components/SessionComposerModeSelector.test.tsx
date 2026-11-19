@@ -121,7 +121,7 @@ describe('SessionComposerModeSelector', () => {
         },
     );
 
-    it('opens one panel for model, effort and fast settings', () => {
+    it.each([false, true])('opens model, effort and fast settings with compact=%s', (compact) => {
         const onModelChange = vi.fn(),
             onEffortChange = vi.fn(),
             onFastModeChange = vi.fn();
@@ -129,6 +129,7 @@ describe('SessionComposerModeSelector', () => {
         act(() => {
             renderer = TestRenderer.create(
                 <SessionComposerModeSelector
+                    compact={compact}
                     online
                     model={modelOptions[0]}
                     modelOptions={modelOptions}

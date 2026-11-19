@@ -27,7 +27,7 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
     const hasLineChanges = gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
 
     return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, overflow: 'hidden' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {/* Git icon - always shown */}
             <Octicons
                 name="git-branch"

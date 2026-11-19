@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
-    hapticsLight: vi.fn(), liveText: '', write: vi.fn(),
+    hapticsLight: vi.fn(), liveText: '', write: vi.fn(), width: 390, hasGit: false,
 }));
 
 vi.mock('react-native', async () => {
@@ -33,7 +33,7 @@ vi.mock('react-native', async () => {
         Pressable,
         Text: 'Text',
         View: 'View',
-        useWindowDimensions: () => ({ width: 390, height: 844 }),
+        useWindowDimensions: () => ({ width: mocks.width, height: 844 }),
     };
 });
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', Octicons: 'Octicons' }));
@@ -70,7 +70,7 @@ vi.mock('./autocomplete/useActiveSuggestions', () => ({
     useActiveSuggestions: () => [[], -1, vi.fn(), vi.fn()],
 }));
 vi.mock('./AgentInputAutocomplete', () => ({ AgentInputAutocomplete: 'AgentInputAutocomplete' }));
-vi.mock('./GitStatusBadge', () => ({ GitStatusBadge: 'GitStatusBadge', useHasMeaningfulGitStatus: () => false }));
+vi.mock('./GitStatusBadge', () => ({ GitStatusBadge: 'GitStatusBadge', useHasMeaningfulGitStatus: () => mocks.hasGit }));
 vi.mock('@/sync/storage', () => ({ useSetting: () => false }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 800 } }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
@@ -120,7 +120,7 @@ import { MessageComposer } from './MessageComposer';
 
 describe('MessageComposer unified context entry', () => {
     let renderer: any;
-    beforeEach(() => { vi.clearAllMocks(); mocks.liveText = ''; (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
+    beforeEach(() => { vi.clearAllMocks(); mocks.liveText = ''; mocks.width = 390; mocks.hasGit = false; (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
     afterEach(() => { if (renderer) act(() => renderer.unmount()); });
     const mount = (props: any = {}) => act(() => { renderer = TestRenderer.create(<MessageComposer mode="home" initialValue="" placeholder="Message" onSend={vi.fn()} {...props} />); });
     const input = () => renderer.root.findByType('MultiTextInput');
@@ -142,6 +142,15 @@ describe('MessageComposer unified context entry', () => {
         mount({ mode: 'session', zenMode: true, discussionMode: { active: false, onToggle: vi.fn() } });
         expect(renderer.root.findAllByType('DiscussionModeButton')).toHaveLength(1);
         expect(renderer.root.findAllByProps({ testID: 'composer-context-trigger' })).toHaveLength(0);
+    });
+    it.each([390, 900])('keeps Git accessible and shows counts only on wide toolbars (%s)', width => {
+        mocks.width = width;
+        mocks.hasGit = true;
+        const onFileViewerPress = vi.fn();
+        mount({ mode: 'session', sessionId: 'session', discussionMode: { active: false, onToggle: vi.fn() }, onFileViewerPress });
+        expect(renderer.root.findAllByType('GitStatusBadge')).toHaveLength(width < 600 ? 0 : 1);
+        act(() => renderer.root.findByProps({ testID: 'composer-git-trigger' }).props.onPress());
+        expect(onFileViewerPress).toHaveBeenCalledOnce();
     });
     it.each(['home', 'session'])('opens @ without files or autocomplete props in %s', mode => {
         mount({ mode }); type('@'); expect(menu().props.query).toBe('');

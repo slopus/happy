@@ -221,11 +221,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         justifyContent: 'space-between',
     },
-    discussionActionRow: { flexWrap: 'wrap', rowGap: 8 },
     // Yoga gives positive `flex` an implicit zero basis, even with flexBasis:auto.
-    // Clear the shorthand so narrow rows wrap before the icon can be clipped.
-    discussionActionsLeft: { flex: 0, flexGrow: 1, flexBasis: 'auto', flexShrink: 0, maxWidth: '100%' },
-    discussionActionsRight: { maxWidth: '100%', marginLeft: 'auto' },
+    // Keep the icons at their intrinsic width and give remaining space to the model.
+    discussionActionsLeft: { flex: 0, flexBasis: 'auto', flexShrink: 0 },
+    discussionActionsRight: { flex: 1, minWidth: 0, flexShrink: 1, justifyContent: 'flex-end', marginLeft: 4 },
     machineLabel: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -281,6 +280,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 4,
+        flexShrink: 0,
         zIndex: 2,
     },
     imagePickerButtonActive: {
@@ -1040,7 +1040,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                     <View style={styles.actionButtonsContainer}>
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
                             {/* Row 1: Profile (FIRST), Agent, Git Status */}
-                            <View style={[styles.actionButtonsRow, isSession && props.discussionMode && styles.discussionActionRow]}>
+                            <View testID="composer-actions-row" style={styles.actionButtonsRow}>
                                 <View style={[styles.actionButtonsLeft, isSession && props.discussionMode && styles.discussionActionsLeft]}>
 
                                 {/* The same content chooser as typing @. */}
@@ -1090,7 +1090,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
                                 {/* Git Status Badge (session only) */}
                                 {!props.zenMode && isSession && (
-                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} compact={screenWidth < 600} />
                                 )}
 
                                 </View>
@@ -1101,7 +1101,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     layouts keep the compact composer and use the existing session menu. */}
                                 {props.trailingControls}
                                 {isSession && props.modeSelector ? (
-                                    <SessionComposerModeSelector {...props.modeSelector} />
+                                    <SessionComposerModeSelector {...props.modeSelector} compact={screenWidth < 600} />
                                 ) : null}
 
                                 {/* Primary action: stop while running and empty, send when there is a payload. */}
@@ -1187,7 +1187,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 }));
 
 // Git Status Button Component
-function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
+function GitStatusButton({ sessionId, onPress, compact = false }: { sessionId?: string, onPress?: () => void, compact?: boolean }) {
     const [hovered, setHovered] = React.useState(false);
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
     const styles = stylesheet;
@@ -1199,6 +1199,9 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
 
     return (
         <Pressable
+            testID="composer-git-trigger"
+            accessibilityRole="button"
+            accessibilityLabel="Git"
             style={(p) => ({
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -1207,7 +1210,10 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 paddingVertical: 6,
                 height: 32,
                 opacity: p.pressed ? 0.7 : 1,
-                flex: 1,
+                flex: 0,
+                flexBasis: 'auto',
+                flexShrink: 0,
+                ...(compact ? { width: 32, justifyContent: 'center' as const } : {}),
                 overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
                 backgroundColor: hovered ? theme.colors.surfaceSelected : 'transparent',
             })}
@@ -1219,7 +1225,7 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 onPress?.();
             }}
         >
-            {hasMeaningfulGitStatus ? (
+            {hasMeaningfulGitStatus && !compact ? (
                 <GitStatusBadge sessionId={sessionId} />
             ) : (
                 <Octicons
