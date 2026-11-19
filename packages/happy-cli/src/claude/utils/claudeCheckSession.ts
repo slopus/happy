@@ -1,13 +1,9 @@
 import { logger } from "@/ui/logger";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { getProjectPath } from "./path";
+import { resolveSessionFile } from "./path";
 
 export function claudeCheckSession(sessionId: string, path: string) {
-    const projectDir = getProjectPath(path);
-
-    // Check if session id is in the project dir
-    const sessionFile = join(projectDir, `${sessionId}.jsonl`);
+    const sessionFile = resolveSessionFile(path, sessionId);
     const sessionExists = existsSync(sessionFile);
     if (!sessionExists) {
         logger.debug(`[claudeCheckSession] Path ${sessionFile} does not exist`);

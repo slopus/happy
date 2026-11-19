@@ -7,7 +7,9 @@ import type { EnhancedMode } from './loop';
 vi.mock('@/lib', () => ({ logger: { debug: vi.fn(), debugLargeJson: vi.fn() } }));
 vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn(), debugLargeJson: vi.fn() } }));
 vi.mock('./utils/claudeCheckSession', () => ({ claudeCheckSession: () => true }));
-vi.mock('./utils/path', () => ({ getProjectPath: () => '/fixture/claude-project' }));
+vi.mock('./utils/path', () => ({
+    resolveSessionFile: (_path: string, sessionId: string) => `/fixture/claude-project/${sessionId}.jsonl`,
+}));
 vi.mock('@/modules/watcher/awaitFileExist', () => ({ awaitFileExist: async () => true }));
 
 vi.mock('@/claude/sdk', () => ({

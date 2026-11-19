@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 
 // Mock getProjectPath to use test directory
 vi.mock('./path', () => ({
-    getProjectPath: (path: string) => path
+    getProjectPath: (path: string) => path,
+    resolveSessionFile: (path: string, sessionId: string) => join(path, `${sessionId}.jsonl`)
 }));
 
 describe('claudeCheckSession', () => {
