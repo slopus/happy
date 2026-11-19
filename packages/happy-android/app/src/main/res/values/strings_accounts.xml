@@ -9,5 +9,12 @@
     <string name="account_menu_add">Add</string>
     <string name="account_unlock_failed_title">Couldn\'t unlock your account</string>
     <string name="account_unlock_failed_body">Your phone\'s secure storage didn\'t respond. Your account is still saved on this phone.</string>
-    <string name="account_unlock_failed_other">Use another account</string>
+    <string name="account_unlock_failed_add">Add account</string>
+    <string name="account_unlock_failed_short">Can\'t unlock</string>
+    <string name="account_unlock_failed_body_permanent">This phone can no longer decrypt your saved account. Restore it with your secret key, or remove it.</string>
+    <string name="account_unlock_failed_restore">Restore with secret key</string>
+    <string name="account_unlock_failed_remove">Remove from this phone</string>
+    <string name="account_unlock_failed_remove_title">Remove this account from this phone?</string>
+    <string name="account_unlock_failed_remove_message">Its saved sign-in is deleted from this phone. You can restore the account later with its secret key.</string>
+    <string name="account_unlock_failed_remove_confirm">Remove</string>
 </resources>

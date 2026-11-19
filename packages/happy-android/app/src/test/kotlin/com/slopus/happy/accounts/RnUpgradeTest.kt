@@ -25,6 +25,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -127,7 +128,7 @@ class RnUpgradeTest {
 
     private val rnItem get() = prefs.getString("key_v1-auth_credentials", null)
 
-    private fun locked(graph: AppGraph) = graph.locked.value
+    private fun locked(graph: AppGraph) = graph.accountStore.locked()
 
     /** Not signed out: nothing open, the unlock screen's reason set, the item as it was. */
     private fun assertLocked(graph: AppGraph, item: String?) {
@@ -159,14 +160,21 @@ class RnUpgradeTest {
         val item = rnItem
         for ((failure, told) in failures) {
             val read = FailingKeys(keys, failure)
-            assertTrue(SecureStoreCredentialStore(ExpoSecureStore(prefs, read)).load() is Stored.Unreadable)
+            assertTrue(SecureStoreCredentialStore(ExpoSecureStore(prefs, read)).load(retry = true) is Stored.Unreadable)
             assertEquals("three tries", 1 + ExpoSecureStore.RETRY_MILLIS.size, read.asks)
 
             // The first start after the upgrade: no entry yet, and the unlock screen, not the first one.
-            val graph = graph(FailingKeys(keys, failure))
+            val failing = FailingKeys(keys, failure)
+            val graph = graph(failing)
+            assertEquals("three tries for the whole start", 1 + ExpoSecureStore.RETRY_MILLIS.size, failing.asks)
             assertEquals(failure.toString(), told, graph.rnImportFailure)
             assertLocked(graph, item)
-            assertEquals(UnreadableCredentials.Failed::class, locked(graph)!!::class)
+            assertEquals(null, locked(graph)!!.id)
+            assertEquals(UnreadableCredentials.Failed::class, locked(graph)!!.reason::class)
+            assertFalse("a later read may open it", locked(graph)!!.reason.permanent)
+            // Other reads (a switch, a sign-out) don't ask for it again until a Retry.
+            graph.accountStore.reconcile()
+            assertEquals(1 + ExpoSecureStore.RETRY_MILLIS.size, failing.asks)
         }
         // The Keystore back: the same item opens.
         assertTrue(graph().auth.state.value is AuthState.SignedIn)
@@ -177,21 +185,19 @@ class RnUpgradeTest {
         rnSignedIn()
         rnServerSet()
         val first = graph()
-        val entry = shared(first)!!
-        // Its profile sync names the entry too: stopped, so only this one does.
-        first.close()
-        first.accountStore.updateDisplay(entry.id, AccountDisplay(name = "Ada"))
-        val before = first.accountStore.registry.value
+        // Its profile sync may name it anew at any time: the name isn't what is compared.
+        fun AccountRegistry.unnamed() = copy(entries = entries.map { it.copy(display = null) })
+        val before = first.accountStore.registry.value.unnamed()
 
         // Launch N: the Keystore fails every try.
         val failing = graph(FailingKeys(keys, IllegalStateException("keystore2")))
-        assertEquals(before, failing.accountStore.registry.value)
+        assertEquals(before, failing.accountStore.registry.value.unnamed())
         assertLocked(failing, rnItem)
         assertEquals(RnImportError.Keystore, failing.rnImportFailure?.reason)
 
         // Launch N+1: signed in, as before.
         val next = graph()
-        assertEquals(before, next.accountStore.registry.value)
+        assertEquals(before, next.accountStore.registry.value.unnamed())
         assertEquals(credentials, (next.auth.state.value as AuthState.SignedIn).credentials)
         assertNull(locked(next))
     }
@@ -202,10 +208,14 @@ class RnUpgradeTest {
         // Every try of the start fails; the next succeeds.
         val graph = graph(FailingKeys(keys, ProviderException("keystore2"), failures = 1 + ExpoSecureStore.RETRY_MILLIS.size))
         assertLocked(graph, rnItem)
-        runBlocking { graph.retryUnlock().join() }
+        val retry = graph.retryUnlock()
+        assertTrue("retrying", graph.unlocking.value)
+        runBlocking { retry.join() }
+        assertFalse(graph.unlocking.value)
         assertEquals(credentials, (graph.auth.state.value as AuthState.SignedIn).credentials)
+        assertEquals(OpenAccount.Happy(shared(graph)!!.id), graph.openAccount.value)
         assertEquals(CredentialLocation.Shared, shared(graph)?.location)
-        eventually(message = "unlocked") { locked(graph) == null }
+        eventually(message = "unlocked") { graph.locked.value == null }
     }
 
     @Test
@@ -223,11 +233,168 @@ class RnUpgradeTest {
         assertEquals("the React Native account keeps its place", CredentialLocation.Shared, registry.entry(id)?.location)
         assertEquals(otherId, registry.activeId)
 
-        // Removing the account that can't be read leaves its item.
+        // Removing the account that can't be read: the item it was read from goes, and it doesn't come back.
         graph.accountStore.remove(id)
-        assertEquals(item, rnItem)
-        // Readable again, it comes back.
-        assertTrue(graph().accountStore.registry.value.entries.any { it.id == id && it.location == CredentialLocation.Shared })
+        assertNull(rnItem)
+        assertNull(graph().accountStore.registry.value.entry(id))
+    }
+
+    @Test
+    fun anAccountRemovedWhileUnreadableStaysRemovedWhenItsItemCantBeMatched() {
+        rnSignedIn()
+        val id = shared(graph())!!.id
+        // An entry from before the item's fingerprint was kept.
+        val registryPrefs = context.getSharedPreferences(AccountStore.PREFS_NAME, Context.MODE_PRIVATE)
+        registryPrefs.edit().putString("registry", registryPrefs.getString("registry", null)!!.replace(Regex(""","sharedItem":"[0-9a-f]+""""), "")).commit()
+        val item = rnItem
+
+        val failing = graph(FailingKeys(keys, ProviderException("keystore2")))
+        assertNull(shared(failing)!!.sharedItem)
+        failing.accountStore.remove(id)
+        assertEquals("not known to be its item: left", item, rnItem)
+
+        val next = graph()
+        assertNull("never brought back", next.accountStore.registry.value.entry(id))
+        assertNull(locked(next))
+        assertNull(next.rnImportFailure)
+        assertEquals(AuthState.SignedOut, next.auth.state.value)
+        // A new sign-in takes the place the person gave up.
+        val other = AuthCredentials("other-token", encodeBase64(ByteArray(32) { 9 }, Base64Variant.Url))
+        val otherId = next.accountStore.signIn(other, "https://other.test")
+        assertEquals(CredentialLocation.Shared, next.accountStore.registry.value.entry(otherId)?.location)
+        assertEquals(other, graph().accountStore.credentials(otherId)?.credentials)
+    }
+
+    @Test
+    fun aLockedAccountMakesWayForOneThatReads() {
+        rnSignedIn()
+        val first = graph()
+        val id = shared(first)!!.id
+        val other = AuthCredentials("other-token", encodeBase64(ByteArray(32) { 9 }, Base64Variant.Url))
+        val otherId = first.accountStore.signIn(other, "https://other.test")
+        first.accountStore.select(id)
+
+        val graph = graph(FailingKeys(keys, ProviderException("keystore2")))
+        // The one that reads opens in its place from the first frame, and the person is told it couldn't be.
+        assertEquals(other, (graph.auth.state.value as AuthState.SignedIn).credentials)
+        assertEquals(otherId, graph.accountStore.registry.value.activeId)
+        assertNull(locked(graph))
+        assertEquals(RnImportError.Keystore, graph.rnImportFailure?.reason)
+        // Still here, as one that can't be unlocked: picked, its page opens, not it.
+        assertNotNull(graph.accountStore.registry.value.entry(id))
+        assertNotNull(graph.accountStore.unreadable.value.reason(graph.accountStore.registry.value, id))
+        assertTrue(graph.requestUnlock(id))
+        runBlocking { graph.open(id).join() }
+        assertEquals(otherId, graph.accountStore.registry.value.activeId)
+        assertEquals(other, (graph.auth.state.value as AuthState.SignedIn).credentials)
+        // Nothing told while another is open.
+        assertNull(graph(FailingKeys(keys, ProviderException("keystore2"))).rnImportFailure)
+    }
+
+    @Test
+    fun anItemNoReadWillOpenLocksOnlyUntilThePersonGoesOn() {
+        rnSignedIn()
+        val item = rnItem
+        keys.secretKeys.clear()
+        val graph = graph()
+        assertTrue("only the secret key brings it back", locked(graph)!!.reason.permanent)
+
+        // Use another account, then sign out of everything.
+        val other = AuthCredentials("other-token", encodeBase64(ByteArray(32) { 9 }, Base64Variant.Url))
+        val otherId = graph.accountStore.signIn(other, "https://other.test")
+        assertNull(locked(graph))
+        graph.accountStore.remove(otherId)
+        assertEquals(emptyList<AccountEntry>(), graph.accountStore.registry.value.entries)
+        assertNull(graph.accountStore.registry.value.activeId)
+        assertNull("not the unlock screen again", locked(graph))
+        val next = graph()
+        assertNull(locked(next))
+        assertNull("nothing to tell", next.rnImportFailure)
+        assertEquals("never cleared on its own", item, rnItem)
+    }
+
+    @Test
+    fun removeFromThisPhoneDeletesAnItemNoReadWillOpen() {
+        rnSignedIn()
+        keys.secretKeys.clear()
+        val graph = graph()
+        assertEquals(null, locked(graph)?.id)
+        runBlocking { graph.removeUnreadable(null).join() }
+        assertNull(rnItem)
+        assertNull(locked(graph))
+        assertNull(graph().rnImportFailure)
+    }
+
+    @Test
+    fun anImportedAccountThatNoReadWillOpenIsRemovedWithItsItem() {
+        rnSignedIn()
+        val id = shared(graph())!!.id
+        keys.secretKeys.clear()
+        val graph = graph()
+        assertEquals(id, locked(graph)?.id)
+        assertTrue(locked(graph)!!.reason.permanent)
+        runBlocking { graph.removeUnreadable(id).join(); graph.awaitRemovals() }
+        assertNull(rnItem)
+        assertNull(graph.accountStore.registry.value.entry(id))
+        assertNull(locked(graph))
+    }
+
+    @Test
+    fun theSameAccountSignedInAgainWhileUnreadableKeepsItsPlace() {
+        rnSignedIn()
+        rnServerSet()
+        val first = graph()
+        val id = shared(first)!!.id
+        val other = AuthCredentials("other-token", encodeBase64(ByteArray(32) { 9 }, Base64Variant.Url))
+        val otherId = first.accountStore.signIn(other, "https://other.test")
+        first.close()
+
+        // The other one open: only its profile sync names an entry.
+        val failing = graph(FailingKeys(keys, ProviderException("keystore2")))
+        failing.accountStore.updateDisplay(id, AccountDisplay(name = "Ada"))
+        val before = failing.accountStore.registry.value.entry(id)!!
+        assertEquals(CredentialLocation.Shared, before.location)
+        assertEquals(id, failing.accountStore.signIn(credentials, "https://elsewhere.test"))
+        assertEquals(before.copy(location = CredentialLocation.Own, sharedItem = null), failing.accountStore.registry.value.entry(id))
+        // Its profile sync would name the open one: the other is open, so nothing does.
+        failing.accountStore.select(otherId)
+
+        // The Keystore back: the shared item wins, in the same place.
+        val next = graph()
+        val entry = next.accountStore.registry.value.entry(id)!!
+        assertEquals(before.copy(sharedItem = entry.sharedItem), entry)
+        assertEquals(listOf(id, otherId), next.accountStore.registry.value.ordered.map { it.id })
+        assertNull("the own copy goes", next.accountStore.unreadable.value.own[id])
+        assertFalse(ExpoSecureStore(context.getSharedPreferences(AccountStore.CREDENTIALS_PREFS_NAME, Context.MODE_PRIVATE), keys, keychainService = AccountStore.KEYCHAIN_SERVICE).contains(id))
+    }
+
+    @Test
+    fun aHealthyKeystoreIsAskedAsBefore() {
+        rnSignedIn()
+        val asks = HashMap<String, Int>()
+        val counting = object : SecureStoreKeys by keys {
+            override fun secretKey(alias: String): SecretKey? {
+                asks[alias] = (asks[alias] ?: 0) + 1
+                return keys.secretKey(alias)
+            }
+        }
+        // What the graph asked for at c8b9ee5e6 (before this change), step by step.
+        val graph = graph(counting)
+        // The start's reconcile, then the sign-in state's read.
+        assertEquals(mapOf(RN_ALIAS to 2), asks.toMap())
+        val id = shared(graph)!!.id
+        asks.clear()
+        graph.accountStore.credentials(id)
+        assertEquals(mapOf(RN_ALIAS to 1), asks.toMap())
+        asks.clear()
+        val otherId = graph.accountStore.signIn(AuthCredentials("o", encodeBase64(ByteArray(32) { 9 }, Base64Variant.Url)), "https://other.test")
+        assertEquals(mapOf(RN_ALIAS to 2, OWN_ALIAS to 1), asks.toMap())
+        asks.clear()
+        graph.accountStore.remove(otherId)
+        assertEquals(emptyMap<String, Int>(), asks.toMap())
+        asks.clear()
+        graph.accountStore.remove(id)
+        assertEquals(mapOf(RN_ALIAS to 1), asks.toMap())
     }
 
     @Test
@@ -239,10 +406,13 @@ class RnUpgradeTest {
         val before = first.accountStore.registry.value
         assertEquals(CredentialLocation.Own, before.entry(otherId)?.location)
 
-        val failing = graph(FailingKeys(keys, ProviderException("keystore2"), alias = "AES/GCM/NoPadding:account:keystoreUnauthenticated"))
-        assertEquals(before, failing.accountStore.registry.value)
+        val failing = graph(FailingKeys(keys, ProviderException("keystore2"), alias = OWN_ALIAS))
+        fun AccountRegistry.unnamed() = entries.map { it.copy(display = null) }
+        assertEquals(before.unnamed(), failing.accountStore.registry.value.unnamed())
         assertEquals(setOf(otherId), failing.accountStore.unreadable.value.own.keys)
-        assertTrue("the open one, locked", locked(failing) != null)
+        // The one that reads opens in its place; this one waits in the account menu.
+        assertEquals(credentials, (failing.auth.state.value as AuthState.SignedIn).credentials)
+        assertNull(locked(failing))
         assertNull("not the React Native account's", failing.rnImportFailure)
 
         assertEquals(other, graph().accountStore.credentials(otherId)?.credentials)
@@ -267,7 +437,7 @@ class RnUpgradeTest {
         val counting = object : android.content.SharedPreferences by prefs {
             override fun getString(key: String?, defValue: String?): String? = prefs.getString(key, defValue).also { if (key == "key_v1-auth_credentials") reads++ }
         }
-        assertEquals(Stored.Unreadable(UnreadableCredentials.Item(UnreadableItem.Malformed)), SecureStoreCredentialStore(ExpoSecureStore(counting, keys)).load())
+        assertEquals(Stored.Unreadable(UnreadableCredentials.Item(UnreadableItem.Malformed)), SecureStoreCredentialStore(ExpoSecureStore(counting, keys)).load(retry = true))
         assertEquals(1, reads)
 
         val graph = graph()
@@ -301,6 +471,7 @@ class RnUpgradeTest {
         private const val DEFAULT = "https://api.cluster-fluster.com"
         private const val RN_SERVER = "https://api.cluster-fluster.com/"
         private const val RN_ALIAS = "AES/GCM/NoPadding:key_v1:keystoreUnauthenticated"
+        private const val OWN_ALIAS = "AES/GCM/NoPadding:account:keystoreUnauthenticated"
 
         /** The data file's used part: the size, MMKV's random item-size holder, then `custom-server-url` = [RN_SERVER]. */
         private const val RN_SERVER_CONFIG =

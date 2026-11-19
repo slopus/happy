@@ -72,8 +72,9 @@ sealed interface AnalyticsEvent {
 
     /**
      * The React Native app's account, found on this phone at a start, that
-     * couldn't be opened here, at every start until it opens: the account
-     * stays, behind the unlock screen. Or, once, its server couldn't be trusted. Only why, and for a read that threw the platform
+     * couldn't be opened here, at a start where it is the account the person
+     * would open: the account stays, and another opens in its place or the
+     * unlock screen shows. Or, once, its server couldn't be trusted. Only why, and for a read that threw the platform
      * class of the exception and of its root cause ([AnalyticsSchema.platformClass]);
      * never a message, a trace, the item, its key or its server.
      */

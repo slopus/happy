@@ -8,5 +8,12 @@
     <string name="account_menu_add">Dodaj</string>
     <string name="account_unlock_failed_title">Nie udało się odblokować konta</string>
     <string name="account_unlock_failed_body">Bezpieczny magazyn telefonu nie odpowiedział. Twoje konto nadal jest zapisane na tym telefonie.</string>
-    <string name="account_unlock_failed_other">Użyj innego konta</string>
+    <string name="account_unlock_failed_add">Dodaj konto</string>
+    <string name="account_unlock_failed_short">Nie można odblokować</string>
+    <string name="account_unlock_failed_body_permanent">Ten telefon nie może już odszyfrować zapisanego konta. Przywróć je kluczem tajnym albo je usuń.</string>
+    <string name="account_unlock_failed_restore">Przywróć kluczem tajnym</string>
+    <string name="account_unlock_failed_remove">Usuń z tego telefonu</string>
+    <string name="account_unlock_failed_remove_title">Usunąć to konto z tego telefonu?</string>
+    <string name="account_unlock_failed_remove_message">Zapisane dane logowania zostaną usunięte z tego telefonu. Konto możesz później przywrócić jego kluczem tajnym.</string>
+    <string name="account_unlock_failed_remove_confirm">Usuń</string>
 </resources>

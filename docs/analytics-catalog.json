@@ -364,7 +364,7 @@
       "clients": [
         "android"
       ],
-      "fires": "At a start, the React Native app's account item was found on the phone and couldn't be opened here: the item and its account stay, and the person sees the unlock screen (or, server_unconfirmed, sent once when the account came over but its server couldn't be trusted). A read that throws past the envelope is tried three times in all (about 350 ms) first; one that then succeeds sends nothing. Every start that still can't open the item sends it again, with the start's first events, only if that start sends. Only the reason and, for a read that threw, the exception's platform class and its root cause's; never a message, a trace, the item, its key, the token or the server.",
+      "fires": "At a start, the React Native app's account item was found on the phone and couldn't be opened here, at a start where it is the account the person would open (the selected one, or the only one): another account that can be read opens in its place, else the unlock screen shows (or, server_unconfirmed, sent once when the account came over but its server couldn't be trusted). The item and its account stay. A read that throws past the envelope is tried three times in all (about 350 ms) first; one that then succeeds sends nothing. Once another account is open it isn't sent again. Sent with the start's first events, only if that start sends. Only the reason and, for a read that threw, the exception's platform class and its root cause's; never a message, a trace, the item, its key, the token or the server.",
       "properties": {
         "reason": {
           "enum": [

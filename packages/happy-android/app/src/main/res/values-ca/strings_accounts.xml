@@ -8,5 +8,12 @@
     <string name="account_menu_add">Afegeix</string>
     <string name="account_unlock_failed_title">No s\'ha pogut desbloquejar el teu compte</string>
     <string name="account_unlock_failed_body">L\'emmagatzematge segur del telèfon no ha respost. El teu compte continua desat en aquest telèfon.</string>
-    <string name="account_unlock_failed_other">Fes servir un altre compte</string>
+    <string name="account_unlock_failed_add">Afegeix un compte</string>
+    <string name="account_unlock_failed_short">No es pot desbloquejar</string>
+    <string name="account_unlock_failed_body_permanent">Aquest telèfon ja no pot desxifrar el compte desat. Restaura\'l amb la clau secreta o elimina\'l.</string>
+    <string name="account_unlock_failed_restore">Restaura amb la clau secreta</string>
+    <string name="account_unlock_failed_remove">Elimina d\'aquest telèfon</string>
+    <string name="account_unlock_failed_remove_title">Vols eliminar aquest compte d\'aquest telèfon?</string>
+    <string name="account_unlock_failed_remove_message">S\'esborrarà l\'inici de sessió desat d\'aquest telèfon. Pots restaurar el compte més endavant amb la clau secreta.</string>
+    <string name="account_unlock_failed_remove_confirm">Elimina</string>
 </resources>

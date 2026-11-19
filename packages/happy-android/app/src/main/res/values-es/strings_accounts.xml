@@ -8,5 +8,12 @@
     <string name="account_menu_add">Añadir</string>
     <string name="account_unlock_failed_title">No se pudo desbloquear tu cuenta</string>
     <string name="account_unlock_failed_body">El almacenamiento seguro del teléfono no respondió. Tu cuenta sigue guardada en este teléfono.</string>
-    <string name="account_unlock_failed_other">Usar otra cuenta</string>
+    <string name="account_unlock_failed_add">Añadir cuenta</string>
+    <string name="account_unlock_failed_short">No se puede desbloquear</string>
+    <string name="account_unlock_failed_body_permanent">Este teléfono ya no puede descifrar tu cuenta guardada. Restáurala con tu clave secreta o elimínala.</string>
+    <string name="account_unlock_failed_restore">Restaurar con clave secreta</string>
+    <string name="account_unlock_failed_remove">Eliminar de este teléfono</string>
+    <string name="account_unlock_failed_remove_title">¿Eliminar esta cuenta de este teléfono?</string>
+    <string name="account_unlock_failed_remove_message">El inicio de sesión guardado se borrará de este teléfono. Puedes restaurar la cuenta más tarde con su clave secreta.</string>
+    <string name="account_unlock_failed_remove_confirm">Eliminar</string>
 </resources>

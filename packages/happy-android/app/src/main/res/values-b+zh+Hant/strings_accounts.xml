@@ -8,5 +8,12 @@
     <string name="account_menu_add">新增</string>
     <string name="account_unlock_failed_title">無法解鎖你的帳戶</string>
     <string name="account_unlock_failed_body">手機的安全儲存空間沒有回應。你的帳戶仍儲存在這部手機上。</string>
-    <string name="account_unlock_failed_other">使用其他帳戶</string>
+    <string name="account_unlock_failed_add">新增帳戶</string>
+    <string name="account_unlock_failed_short">無法解鎖</string>
+    <string name="account_unlock_failed_body_permanent">這部手機已無法解密你儲存的帳戶。請用你的密鑰還原，或將其移除。</string>
+    <string name="account_unlock_failed_restore">用密鑰還原</string>
+    <string name="account_unlock_failed_remove">從這部手機移除</string>
+    <string name="account_unlock_failed_remove_title">要從這部手機移除此帳戶嗎？</string>
+    <string name="account_unlock_failed_remove_message">儲存的登入資訊將從這部手機刪除。之後你可以用密鑰還原該帳戶。</string>
+    <string name="account_unlock_failed_remove_confirm">移除</string>
 </resources>

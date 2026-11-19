@@ -52,7 +52,7 @@ data class AccountMenuEntry(
     val thumbhash: String? = null,
     val agent: Boolean = false,
     val active: Boolean = false,
-    /** Can't open as it is: revoked, or its server needs confirming. */
+    /** Can't open as it is: revoked, its server needs confirming, or it can't be unlocked on this phone. */
     val attention: Boolean = false,
     /** What its placeholder is picked by: a Happy account its id, an agent connection its computer's address ([AgentConnections.placeholderSeed]). */
     val seed: String = id,
@@ -75,22 +75,26 @@ data class AccountMenu(val entries: List<AccountMenuEntry> = emptyList()) {
 @Composable
 fun rememberAccountMenu(graph: AppGraph): AccountMenu {
     val registry by graph.accountStore.registry.collectAsStateWithLifecycle()
+    val unreadable by graph.accountStore.unreadable.collectAsStateWithLifecycle()
+    val cantUnlock = stringResource(R.string.account_unlock_failed_short)
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val seeds by produceState(emptyMap<String, String>(), agents) {
         value = agents.mapNotNull { agent -> graph.agentConnections.placeholderSeed(agent.id)?.let { agent.id to it } }.toMap()
     }
     val defaultUrl = graph.serverConfig.defaultUrl
-    return remember(registry, agents, seeds, defaultUrl) {
+    return remember(registry, unreadable, cantUnlock, agents, seeds, defaultUrl) {
         AccountMenu(
             registry.ordered.map { entry ->
+                // Still here, but its item can't be read: picked, its page opens (AppGraph.requestUnlock).
+                val locked = !unreadable.readable(entry)
                 AccountMenuEntry(
                     id = entry.id,
                     name = entry.display?.name ?: entry.display?.username,
-                    detail = entry.serverUrl.takeIf { it != defaultUrl }?.let { url -> runCatching { java.net.URI(url).host }.getOrNull() ?: url },
+                    detail = if (locked) cantUnlock else entry.serverUrl.takeIf { it != defaultUrl }?.let { url -> runCatching { java.net.URI(url).host }.getOrNull() ?: url },
                     imageUrl = entry.display?.avatarUrl,
                     thumbhash = entry.display?.avatarThumbhash,
                     active = registry.activeId == entry.id,
-                    attention = !entry.serverConfirmed,
+                    attention = !entry.serverConfirmed || locked,
                 )
             } + agents.sortedBy { it.addedAt }.map { agent ->
                 AccountMenuEntry(

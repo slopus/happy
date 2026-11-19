@@ -18,11 +18,26 @@ data class AuthCredentials(val token: String, val secret: String) {
 
 /** Why a credential item is there but can't be read. */
 sealed interface UnreadableCredentials {
-    data class Item(val reason: UnreadableItem) : UnreadableCredentials
+    /**
+     * Whether no read of this very item will ever open it here: its key is
+     * gone or doesn't open it, or what it holds isn't an account. Only the
+     * secret key brings the account back. Otherwise a later read may.
+     */
+    val permanent: Boolean
+
+    data class Item(val reason: UnreadableItem) : UnreadableCredentials {
+        override val permanent get() = true
+    }
+
     /** The read threw, every try: the Keystore, or anything else. */
-    data class Failed(val error: Exception) : UnreadableCredentials
+    data class Failed(val error: Exception) : UnreadableCredentials {
+        override val permanent get() = false
+    }
+
     /** It opened, but isn't the account it should be (not `{token, secret}`, or not a 32-byte secret). */
-    data object Invalid : UnreadableCredentials
+    data object Invalid : UnreadableCredentials {
+        override val permanent get() = true
+    }
 }
 
 /** What a credential item holds: nothing, an account's [value], or an item that is there but can't be read. */
@@ -47,15 +62,21 @@ interface CredentialStore {
 /**
  * tokenStorage.ts on Android: the credentials live in expo-secure-store, in
  * the same entry the React Native build uses. An item that is there but
- * can't be read or parsed, after the store's retries, is
- * [Stored.Unreadable], never signed out, and is never deleted
+ * can't be read or parsed is [Stored.Unreadable], never signed out, and is never deleted
  * here, even where expo would (no Keystore key, a key that doesn't open
  * it): it may be the only copy of the person's account.
  */
 class SecureStoreCredentialStore(private val secureStore: ExpoSecureStore) : CredentialStore {
     override fun read(): AuthCredentials? = load().presentOrNull()
 
-    override fun load(): Stored<AuthCredentials> = secureStore.load(KEY, { it }) { HappyJson.decodeFromString(AuthCredentials.serializer(), it) }
+    override fun load(): Stored<AuthCredentials> = load(retry = false)
+
+    /** [load], with [retry] asking a read that throws again ([ExpoSecureStore.getItem]). */
+    fun load(retry: Boolean): Stored<AuthCredentials> =
+        secureStore.load(KEY, retry, { it }) { HappyJson.decodeFromString(AuthCredentials.serializer(), it) }
+
+    /** Which sealed item is there, without reading it ([ExpoSecureStore.fingerprint]); null for none. */
+    fun fingerprint(): String? = secureStore.fingerprint(KEY)
 
     /** Whether the credential item is there, readable or not. */
     fun isStored(): Boolean = secureStore.contains(KEY)
@@ -76,11 +97,12 @@ class SecureStoreCredentialStore(private val secureStore: ExpoSecureStore) : Cre
  * The item under [key], made by [decode]: left in place when it can't be
  * read ([ExpoSecureStore.getItem]'s `keep`), and [Stored.Unreadable] when it
  * can't, or isn't an account with a 32-byte secret ([credentials] of it).
+ * With [retry], a read that throws is tried three times.
  */
-fun <T> ExpoSecureStore.load(key: String, credentials: (T) -> AuthCredentials, decode: (String) -> T): Stored<T> {
+fun <T> ExpoSecureStore.load(key: String, retry: Boolean, credentials: (T) -> AuthCredentials, decode: (String) -> T): Stored<T> {
     var why: UnreadableItem? = null
     val stored = try {
-        getItem(key, keep = true) { why = it }
+        getItem(key, keep = true, retry = retry) { why = it }
     } catch (e: Exception) {
         Log.w(TAG, "Could not read credentials", e)
         return Stored.Unreadable(why?.let(UnreadableCredentials::Item) ?: UnreadableCredentials.Failed(e))
