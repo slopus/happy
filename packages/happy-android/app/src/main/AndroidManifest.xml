@@ -11,6 +11,9 @@
          A phone without one still installs; the scan then asks for the link. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- The ElevenLabs module's Wi-Fi state permissions would otherwise imply a required Wi-Fi
+         feature, hiding the app on devices without Wi-Fi. Nothing here needs Wi-Fi itself. -->
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
     <!-- The attachment sheet's gallery of recent photos and videos (ui/attach/), asked for as it
          opens; Android 14 may give only some (READ_MEDIA_VISUAL_USER_SELECTED). -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
