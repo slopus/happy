@@ -5,17 +5,21 @@ import android.content.SharedPreferences
 import android.util.Base64
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.crypto.Base64Variant
+import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.testing.SoftwareKeys
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.nio.charset.StandardCharsets
+import java.security.ProviderException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -52,6 +56,69 @@ class ExpoSecureStoreTest {
         assertEquals("AES/GCM/NoPadding:key_v1", store.aesAlias(usesKeystoreSuffix = false))
         assertEquals("RSA/None/PKCS1Padding:key_v1:keystoreUnauthenticated", store.hybridAlias(usesKeystoreSuffix = true))
         assertEquals("RSA/None/PKCS1Padding:key_v1", store.hybridAlias(usesKeystoreSuffix = false))
+    }
+
+    @Test
+    fun aReadThatThrowsIsAskedAgainOnlyWhenTheReaderSaysSo() {
+        store.setItem("auth_credentials", "hello")
+        var asks = 0
+        val failing = object : SecureStoreKeys by keys {
+            override fun secretKey(alias: String): SecretKey? {
+                asks++
+                throw ProviderException("keystore2")
+            }
+        }
+        val reader = ExpoSecureStore(prefs, failing, retryMillis = listOf(0, 0))
+        assertThrows(ProviderException::class.java) { reader.getItem("auth_credentials") }
+        assertEquals("once, as expo", 1, asks)
+        assertThrows(ProviderException::class.java) { reader.getItem("auth_credentials", retry = true) }
+        assertEquals(1 + 3, asks)
+    }
+
+    @Test
+    fun eachTryReadsTheItemAfresh() {
+        store.setItem("auth_credentials", "old")
+        var asks = 0
+        // The first try fails while another writer stores a new value.
+        val flaky = object : SecureStoreKeys by keys {
+            override fun secretKey(alias: String): SecretKey? {
+                if (asks++ == 0) {
+                    store.setItem("auth_credentials", "new")
+                    throw ProviderException("keystore2")
+                }
+                return keys.secretKey(alias)
+            }
+        }
+        assertEquals("new", ExpoSecureStore(prefs, flaky, retryMillis = listOf(0, 0)).getItem("auth_credentials", retry = true))
+    }
+
+    @Test
+    fun aValueWrittenDuringAFailedReadIsNotDeleted() {
+        store.setItem("auth_credentials", "old")
+        var asks = 0
+        // While the old value is being opened, another writer stores a new one; the old one then fails to open.
+        val racing = object : SecureStoreKeys by keys {
+            override fun secretKey(alias: String): SecretKey? {
+                if (asks++ == 0) {
+                    store.setItem("auth_credentials", "new")
+                    return KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+                }
+                return keys.secretKey(alias)
+            }
+        }
+        assertNull(ExpoSecureStore(prefs, racing).getItem("auth_credentials"))
+        assertEquals("new", store.getItem("auth_credentials"))
+    }
+
+    @Test
+    fun aFingerprintTellsItemsApartWithoutTheValue() {
+        assertNull(store.fingerprint("auth_credentials"))
+        store.setItem("auth_credentials", "hello")
+        val first = store.fingerprint("auth_credentials")!!
+        assertEquals(32, first.length)
+        assertFalse(prefs.getString("key_v1-auth_credentials", null)!!.contains(first))
+        store.setItem("auth_credentials", "hello")
+        assertTrue("a new seal is a new item", first != store.fingerprint("auth_credentials"))
     }
 
     @Test
@@ -161,12 +228,13 @@ class ExpoSecureStoreTest {
     @Test
     fun credentialsJsonIsWhatTokenStorageWrites() {
         val credentials = SecureStoreCredentialStore(store)
+        val secret = encodeBase64(ByteArray(32) { 1 }, Base64Variant.Url)
         // JSON.stringify({ token, secret })
-        store.setItem("auth_credentials", """{"token":"tok","secret":"c2VjcmV0"}""")
-        assertEquals(AuthCredentials("tok", "c2VjcmV0"), credentials.read())
+        store.setItem("auth_credentials", """{"token":"tok","secret":"$secret"}""")
+        assertEquals(AuthCredentials("tok", secret), credentials.read())
 
-        credentials.write(AuthCredentials("tok2", "c2Vj"))
-        assertEquals("""{"token":"tok2","secret":"c2Vj"}""", store.getItem("auth_credentials"))
+        credentials.write(AuthCredentials("tok2", secret))
+        assertEquals("""{"token":"tok2","secret":"$secret"}""", store.getItem("auth_credentials"))
 
         credentials.clear()
         assertNull(credentials.read())

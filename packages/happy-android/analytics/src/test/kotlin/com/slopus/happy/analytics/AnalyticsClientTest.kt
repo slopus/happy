@@ -77,6 +77,7 @@ class AnalyticsClientTest {
     private val foreground = MutableStateFlow(false)
     private var crash: AnalyticsEvent.AppCrashed? = null
     private var crashAsked = 0
+    private var launch = emptyList<AnalyticsEvent>()
     private val marks = mutableListOf<String?>()
     private val flags = mutableListOf<Set<String>>()
 
@@ -97,6 +98,7 @@ class AnalyticsClientTest {
         crash = { crashAsked++; crash },
         mark = { marks += it },
         flags = if (asksFlags) ({ synchronized(flags) { flags += it } }) else null,
+        launch = launch,
         clock = { now },
         lane = lane,
     ).also {
@@ -563,6 +565,35 @@ class AnalyticsClientTest {
         )
         assertEquals(JsonPrimitive("offline"), events[2]["properties"]!!.jsonObject["error_code"])
         assertEquals(JsonPrimitive(false), events.last()["properties"]!!.jsonObject["is_cold_start"])
+    }
+
+    @Test
+    fun whatTheStartFoundGoesWithItsFirstGenerationOnly() = runTest {
+        launch = listOf(AnalyticsEvent.RnImportFailed(RnImportError.KeyMissing))
+        val client = client()
+        client.flush()
+        val event = batch().single()
+        assertEquals(JsonPrimitive("rn_import_failed"), event["event"])
+        assertEquals(JsonPrimitive("key_missing"), event["properties"]!!.jsonObject["reason"])
+        // Not again in a later generation of the same launch.
+        consent.value = false
+        runCurrent()
+        consent.value = true
+        runCurrent()
+        client.record(AnalyticsEvent.TaskCreated(null))
+        client.flush()
+        assertEquals(listOf("task_created"), names())
+    }
+
+    @Test
+    fun whatAnOptedOutStartFoundIsNeverTold() = runTest {
+        consent.value = false
+        launch = listOf(AnalyticsEvent.RnImportFailed(RnImportError.Keystore))
+        val client = client()
+        consent.value = true
+        runCurrent()
+        client.flush()
+        assertEquals(emptyList<JsonObject>(), posted)
     }
 
     @Test

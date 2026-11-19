@@ -44,6 +44,7 @@ class AnalyticsCatalogTest {
                 "class_name" -> Rule.ClassName
                 "frame_list" -> Rule.FrameList
                 "signal" -> Rule.Signal
+                "platform_class" -> Rule.PlatformClass
                 else -> error("unknown type $type")
             }
         }
@@ -116,6 +117,8 @@ class AnalyticsCatalogTest {
             add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.Crash, "2026.11.1", CrashSignature("java.lang.IllegalArgumentException", "android.content.ActivityNotFoundException", "g80.a:29 yk6.invoke:1214")))
             add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.Crash, "2026.11.1", CrashSignature("o3.f", null, null)))
             add(AnalyticsEvent.AppCrashed(CrashProcess.App, CrashReason.NativeCrash, "2026.11.1", signal = 11))
+            RnImportError.entries.forEach { add(AnalyticsEvent.RnImportFailed(it)) }
+            add(AnalyticsEvent.RnImportFailed(RnImportError.Keystore, "android.security.KeyStoreException", "java.lang.IllegalStateException"))
             PairingMethod.entries.forEach { method ->
                 PairingStart.entries.forEach { start ->
                     add(AnalyticsEvent.MobilePairingCompleted(method, start))

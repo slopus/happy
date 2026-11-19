@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
+import android.util.Log
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
@@ -17,6 +18,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
 import java.security.PrivateKey
 import java.security.ProviderException
@@ -134,7 +136,9 @@ class AndroidKeyStoreKeys(
  *               (without the `:keystore…` suffix when usesKeystoreSuffix is false)
  *
  * Read failures end as expo's do: no Keystore key, or a key that no longer
- * opens the value (app reinstalled), deletes the entry and reads as absent.
+ * opens the value (app reinstalled), deletes the entry and reads as absent
+ * (unless the reader keeps it). A reader may ask for a read that throws to
+ * be tried three times.
  */
 class ExpoSecureStore(
     private val prefs: SharedPreferences,
@@ -142,6 +146,7 @@ class ExpoSecureStore(
     /** `<package>_preferences`, which expo also clears on delete. */
     private val defaultPrefs: SharedPreferences? = null,
     private val keychainService: String = DEFAULT_KEYCHAIN_SERVICE,
+    private val retryMillis: List<Long> = RETRY_MILLIS,
 ) {
     /** Prefs key of [key] (createKeychainAwareKey). */
     fun prefsKey(key: String): String = "$keychainService-$key"
@@ -149,44 +154,98 @@ class ExpoSecureStore(
     /** The keys of this keychain service's items. */
     fun keys(): List<String> = prefs.all.keys.filter { it.startsWith("$keychainService-") }.map { it.removePrefix("$keychainService-") }
 
-    /** getItemImpl / readJSONEncodedItem. Throws [GeneralSecurityException] on anything else that fails. */
-    fun getItem(key: String): String? {
-        val stored = prefs.getString(prefsKey(key), null) ?: prefs.getString(key, null) ?: return null
-        val envelope = SecureStoreEnvelope.decode(stored) ?: throw GeneralSecurityException("Could not parse the SecureStore item for $key")
-        if (envelope.requireAuthentication) {
-            // Needs a biometric prompt; happy-app never stores such items.
-            return null
-        }
-        return try {
-            when (envelope.scheme) {
-                SCHEME_AES -> {
-                    val secretKey = keys.secretKey(aesAlias(envelope.usesKeystoreSuffix)) ?: run {
-                        deleteItem(key)
-                        return null
-                    }
-                    decrypt(envelope, secretKey)
+    /** Whether there is an item under [key], readable or not. */
+    fun contains(key: String): Boolean = prefs.contains(prefsKey(key)) || prefs.contains(key)
+
+    /** The stored value of [key] as it is in the prefs, sealed: what [fingerprint] hashes. */
+    private fun stored(key: String): String? = prefs.getString(prefsKey(key), null) ?: prefs.getString(key, null)
+
+    /**
+     * A digest of [key]'s sealed value (never the value), or null when there
+     * is none: tells one stored item from another without reading it.
+     */
+    fun fingerprint(key: String): String? = stored(key)?.let { value ->
+        MessageDigest.getInstance("SHA-256").digest(value.encodeToByteArray()).take(16).joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * getItemImpl / readJSONEncodedItem. Throws [GeneralSecurityException] on anything else that fails.
+     * [unreadable] is told why an item that is there reads as absent, or fails.
+     * With [retry], a read that throws past the envelope (the Keystore's
+     * errors often pass) is tried again after each of [retryMillis], the
+     * item read afresh each time; a malformed one isn't.
+     * With [keep], an item that can never be read again is left, not deleted as expo does.
+     */
+    fun getItem(key: String, keep: Boolean = false, retry: Boolean = false, unreadable: (UnreadableItem) -> Unit = {}): String? {
+        var tries = 0
+        while (true) {
+            val stored = stored(key) ?: return null
+            val envelope = SecureStoreEnvelope.decode(stored)
+                ?.takeIf { it.scheme == SCHEME_AES || (it.scheme == SCHEME_HYBRID && it.encryptedSecretKey != null) }
+                ?.takeIf { it.tagLengthBits >= MIN_TAG_LENGTH_BITS }
+                ?: run {
+                    unreadable(UnreadableItem.Malformed)
+                    throw GeneralSecurityException("Could not parse the SecureStore item for $key")
                 }
-                SCHEME_HYBRID -> {
-                    val privateKey = keys.privateKey(hybridAlias(envelope.usesKeystoreSuffix)) ?: return null
-                    val encryptedKey = envelope.encryptedSecretKey ?: throw GeneralSecurityException("Hybrid item without a key")
-                    val aesKey = rsaCipher().run {
-                        init(Cipher.DECRYPT_MODE, privateKey)
-                        doFinal(encryptedKey)
-                    }
-                    decrypt(envelope, SecretKeySpec(aesKey, "AES"))
-                }
-                else -> throw GeneralSecurityException("The item for key $key has an unknown encoding scheme ${envelope.scheme}")
+            if (envelope.requireAuthentication) {
+                // Needs a biometric prompt; happy-app never stores such items.
+                unreadable(UnreadableItem.AuthRequired)
+                return null
             }
-        } catch (_: KeyPermanentlyInvalidatedException) {
-            null
-        } catch (_: BadPaddingException) {
-            // A key from a previous install: the value can never be read again.
-            deleteItem(key)
-            null
+            try {
+                return open(key, stored, envelope, keep, unreadable)
+            } catch (e: Exception) {
+                if (!retry || tries == retryMillis.size) throw e
+                Log.w(TAG, "Could not read a $keychainService item, trying again", e)
+                Thread.sleep(retryMillis[tries++])
+            }
         }
     }
 
+    private fun open(key: String, stored: String, envelope: SecureStoreEnvelope, keep: Boolean, unreadable: (UnreadableItem) -> Unit): String? = try {
+        when (envelope.scheme) {
+            SCHEME_AES -> {
+                val secretKey = keys.secretKey(aesAlias(envelope.usesKeystoreSuffix))
+                if (secretKey == null) {
+                    unreadable(UnreadableItem.KeyMissing)
+                    if (!keep) deleteItem(key, stored)
+                    null
+                } else {
+                    decrypt(envelope, secretKey)
+                }
+            }
+            else -> {
+                val privateKey = keys.privateKey(hybridAlias(envelope.usesKeystoreSuffix))
+                if (privateKey == null) {
+                    unreadable(UnreadableItem.KeyMissing)
+                    null
+                } else {
+                    val aesKey = rsaCipher().run {
+                        init(Cipher.DECRYPT_MODE, privateKey)
+                        doFinal(checkNotNull(envelope.encryptedSecretKey))
+                    }
+                    decrypt(envelope, SecretKeySpec(aesKey, "AES"))
+                }
+            }
+        }
+    } catch (_: KeyPermanentlyInvalidatedException) {
+        unreadable(UnreadableItem.KeyInvalidated)
+        null
+    } catch (_: BadPaddingException) {
+        // A key from a previous install: the value can never be read again.
+        unreadable(UnreadableItem.DecryptFailed)
+        if (!keep) deleteItem(key, stored)
+        null
+    }
+
+    /** Deletes [key] only if it still holds [stored]: never a value written meanwhile. */
+    @Synchronized
+    private fun deleteItem(key: String, stored: String) {
+        if (stored(key) == stored) deleteItem(key)
+    }
+
     /** setItemImpl: always the AES scheme under the suffixed alias. */
+    @Synchronized
     fun setItem(key: String, value: String) {
         val alias = aesAlias(usesKeystoreSuffix = true)
         val envelope = try {
@@ -202,6 +261,7 @@ class ExpoSecureStore(
     }
 
     /** deleteItemImpl. The Keystore key stays, as in expo. */
+    @Synchronized
     fun deleteItem(key: String) {
         prefs.edit().remove(prefsKey(key)).remove(key).commit()
         defaultPrefs?.takeIf { it.contains(key) }?.edit()?.remove(key)?.commit()
@@ -231,9 +291,6 @@ class ExpoSecureStore(
     }
 
     private fun decrypt(envelope: SecureStoreEnvelope, key: SecretKey): String {
-        if (envelope.tagLengthBits < MIN_TAG_LENGTH_BITS) {
-            throw GeneralSecurityException("Authentication tag length must be at least $MIN_TAG_LENGTH_BITS bits long")
-        }
         val cipher = Cipher.getInstance(AES_CIPHER)
         cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(envelope.tagLengthBits, envelope.iv))
         return cipher.doFinal(envelope.ciphertext).decodeToString()
@@ -257,7 +314,22 @@ class ExpoSecureStore(
         const val SCHEME_AES = "aes"
         const val SCHEME_HYBRID = "hybrid"
         private const val MIN_TAG_LENGTH_BITS = 96
+        /** Three tries in all, within 350 ms: the first reads are as the app graph is built, which the first frame waits for. */
+        val RETRY_MILLIS = listOf(100L, 250L)
+        private const val TAG = "ExpoSecureStore"
     }
+}
+
+/** Why an item that is there can't be read ([ExpoSecureStore.getItem]). */
+enum class UnreadableItem {
+    /** No Keystore key for it (reinstalled, or restored without it): deleted, as in expo, unless kept. */
+    KeyMissing,
+    KeyInvalidated,
+    /** The key doesn't open it: deleted, as in expo, unless kept. */
+    DecryptFailed,
+    AuthRequired,
+    /** Not expo's envelope, or an unknown scheme. */
+    Malformed,
 }
 
 /** One stored value, as expo-secure-store serialises it. */

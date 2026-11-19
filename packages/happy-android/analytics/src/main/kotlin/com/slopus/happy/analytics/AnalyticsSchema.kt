@@ -20,6 +20,8 @@ object AnalyticsSchema {
         /** app_crashed's frames: 1 to 5, a space apart, each `class.method:line` (Android's) or `binary+0xoffset` (iOS's). */
         data object FrameList : Rule
         data object Signal : Rule
+        /** A platform or JDK class's full name ([platformClass]). */
+        data object PlatformClass : Rule
     }
 
     data class Field(val rule: Rule, val nullable: Boolean = false, val optional: Boolean = false)
@@ -81,6 +83,11 @@ object AnalyticsSchema {
             "cause_class" to Field(Rule.ClassName, nullable = true, optional = true),
             "crash_frames" to Field(Rule.FrameList, nullable = true, optional = true),
             "signal" to Field(Rule.Signal, nullable = true, optional = true),
+        ),
+        "rn_import_failed" to mapOf(
+            "reason" to oneOf<RnImportError>(),
+            "error_class" to Field(Rule.PlatformClass, nullable = true),
+            "error_cause_class" to Field(Rule.PlatformClass, nullable = true),
         ),
         "mobile_pairing_completed" to pairing,
         "mobile_pairing_failed" to pairing + ("error_code" to oneOf<PairingError>()),
@@ -148,6 +155,21 @@ object AnalyticsSchema {
     const val MAX_FRAMES = 5
     const val MAX_FRAMES_LENGTH = 400
 
+    private val platformClassName = Regex("^(java|javax|android|kotlin|dalvik)(\\.[A-Za-z_][A-Za-z0-9_$]*)+$")
+
+    /**
+     * The name of [type], or of the nearest class it extends that is the
+     * platform's or the JDK's: never one of the app's own (or R8's name for
+     * one), so nothing but a standard exception type leaves. Null past
+     * [PLATFORM_CLASS_MAX] characters.
+     */
+    fun platformClass(type: Class<*>): String? =
+        generateSequence(type) { it.superclass }.map { it.name }.firstOrNull(::isPlatformClass)
+
+    private fun isPlatformClass(name: String) = name.length <= PLATFORM_CLASS_MAX && platformClassName.matches(name)
+
+    const val PLATFORM_CLASS_MAX = 100
+
     /**
      * [properties] of event [name] as they may go: unknown properties left
      * out; null when the event isn't listed, a required property is
@@ -198,6 +220,7 @@ object AnalyticsSchema {
         Rule.ClassName -> value is String && isClassName(value)
         Rule.FrameList -> value is String && isFrameList(value)
         Rule.Signal -> value.asWhole()?.let { it in 1..64 } == true
+        Rule.PlatformClass -> value is String && isPlatformClass(value)
     }
 
     private fun Any.asWhole(): Long? = when (this) {

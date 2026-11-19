@@ -6,4 +6,14 @@
 <resources>
     <string name="account_menu_title">账户</string>
     <string name="account_menu_add">添加</string>
+    <string name="account_unlock_failed_title">无法解锁你的账户</string>
+    <string name="account_unlock_failed_body">手机的安全存储没有响应。你的账户仍保存在这部手机上。</string>
+    <string name="account_unlock_failed_add">添加账户</string>
+    <string name="account_unlock_failed_short">无法解锁</string>
+    <string name="account_unlock_failed_body_permanent">这部手机已无法解密你保存的账户。请用你的密钥恢复，或将其移除。</string>
+    <string name="account_unlock_failed_restore">用密钥恢复</string>
+    <string name="account_unlock_failed_remove">从这部手机移除</string>
+    <string name="account_unlock_failed_remove_title">要从这部手机移除此账户吗？</string>
+    <string name="account_unlock_failed_remove_message">保存的登录信息将从这部手机删除。之后你可以用密钥恢复该账户。</string>
+    <string name="account_unlock_failed_remove_confirm">移除</string>
 </resources>

@@ -82,6 +82,14 @@ Errors and results:
   (`crash_frames`) and the app binary's UUID (`binary_id`), for
   symbolicating with the build's dSYM. Never the termination text, a
   message, addresses, memory regions, file paths or thread names.
+- `rn_import_failed` (Android): at a start, the React Native app's account
+  was on the phone but couldn't be opened, with why, at a start where it
+  is the account the person would open (another readable account opens in
+  its place, else the unlock screen shows; the account stays). Or, once, its
+  server couldn't be trusted (`server_unconfirmed`). A Keystore read that
+  throws is tried three times first; `error_class` and
+  `error_cause_class` are the exception's platform classes (never an app
+  class, a message or a trace), null for a reason that isn't an exception.
 - `mobile_pairing_failed`: a phone pairing ended unlinked, with why.
 - `sign_in_failed`: creating, restoring or signing in to an account failed.
   Leaving the flow sends nothing. On Android a Happy account's code is the

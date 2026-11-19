@@ -8,7 +8,8 @@
     "class_name": "string matching ^[A-Za-z_$][A-Za-z0-9_$.]{0,127}$: a class name as the runtime names it (possibly obfuscated by R8), never a message.",
     "frame_list": "1 to 5 stack frames joined by single spaces, at most 400 characters. Each is one of: iOS binary+offset, ^[A-Za-z0-9_.$-]{1,64}\\+0x[0-9a-f]{1,12}$; Android class.method:line, ^[A-Za-z0-9_$.<>-]{1,128}:[0-9]{1,7}$ (the line R8 leaves, retraced with the build's mapping; 0 when unknown). No file names, paths or arguments.",
     "signal": "integer 1..64, a POSIX signal number",
-    "build_uuid": "string matching ^[0-9A-F]{32}$: a binary's build UUID, dashes removed"
+    "build_uuid": "string matching ^[0-9A-F]{32}$: a binary's build UUID, dashes removed",
+    "platform_class": "string matching ^(java|javax|android|kotlin|dalvik)(\\.[A-Za-z_][A-Za-z0-9_$]*)+$, at most 100 characters: the full name of a platform or JDK class. For an app class, clients send the nearest platform class it extends, never the app's own (or obfuscated) name."
   },
   "shared_enums": {
     "provider_kind": [
@@ -418,6 +419,36 @@
           "clients": [
             "ios"
           ]
+        }
+      }
+    },
+    "rn_import_failed": {
+      "tier": "error",
+      "clients": [
+        "android"
+      ],
+      "fires": "At a start, the React Native app's account item was found on the phone and couldn't be opened here, at a start where it is the account the person would open (the selected one, or the only one): another account that can be read opens in its place, else the unlock screen shows (or, server_unconfirmed, sent once when the account came over but its server couldn't be trusted). The item and its account stay. A read that throws past the envelope is tried three times in all (about 350 ms) first; one that then succeeds sends nothing. Once another account is open it isn't sent again. Sent with the start's first events, only if that start sends. Only the reason and, for a read that threw, the exception's platform class and its root cause's; never a message, a trace, the item, its key, the token or the server.",
+      "properties": {
+        "reason": {
+          "enum": [
+            "key_missing",
+            "key_invalidated",
+            "decrypt_failed",
+            "auth_required",
+            "malformed_item",
+            "keystore",
+            "invalid_credentials",
+            "server_unconfirmed",
+            "unknown"
+          ]
+        },
+        "error_class": {
+          "type": "platform_class",
+          "nullable": true
+        },
+        "error_cause_class": {
+          "type": "platform_class",
+          "nullable": true
         }
       }
     },

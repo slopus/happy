@@ -8,6 +8,7 @@ import com.slopus.happy.ui.todos.todoRoutes
 import com.slopus.happy.ui.connection.openAgentSettingsRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import com.slopus.happy.ui.voice.LocalVoiceController
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -90,6 +91,9 @@ import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.start.InstallDesktop
 import com.slopus.happy.ui.start.InstallDesktopRoute
 import com.slopus.happy.ui.start.Start
+import com.slopus.happy.ui.start.UnlockAccount
+import com.slopus.happy.ui.start.UnlockAccountRoute
+import com.slopus.happy.ui.start.UnlockFailed
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.settings.LocalizedContent
 import com.slopus.happy.ui.components.avatar.LocalAnimatedAvatars
@@ -210,12 +214,24 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                 TabletShell(graph, nav, hasHome = open != OpenAccount.None, sidebar = home) {
                     // Inside the shell: on the split, what the call opens is the main panel's new root.
                     CallScreenEffect(graph.calls, nav, agent)
+                    // An account picked that can't be unlocked: its page, not a switch.
+                    LaunchedEffect(graph, nav) { graph.unlockRequests.collect { nav.navigate(UnlockAccountRoute(it)) } }
                     com.slopus.happy.ui.gates.CloudOnboardingEffect(graph, nav, agent)
                     SessionEndedEffect(graph, nav, agent)
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
                     RetainedNavHost(nav, start, motion, modifier = Modifier.backdrop(nav)) {
-                        page<StartRoute> { Start(graph, nav, add) }
+                        page<StartRoute> {
+                            // An account here that can't be read isn't signed out: never the first screen for it.
+                            val locked by graph.locked.collectAsStateWithLifecycle()
+                            val unlocking by graph.unlocking.collectAsStateWithLifecycle()
+                            // Held through a Retry that opens it, until its home replaces this: no first screen between.
+                            var last by remember { mutableStateOf(locked) }
+                            LaunchedEffect(locked) { if (locked != null) last = locked }
+                            val unlock = locked ?: last.takeIf { unlocking }
+                            if (unlock != null) UnlockFailed(graph, nav, add, unlock, unlocking) else Start(graph, nav, add)
+                        }
+                        page<UnlockAccountRoute> { entry -> UnlockAccount(graph, nav, entry.toRoute<UnlockAccountRoute>().id) }
                         page<InstallDesktopRoute> { InstallDesktop(graph, nav, add) }
                         // Home itself, or with home in the tablet's sidebar the empty main panel.
                         page<HomeRoute> { if (LocalHomeInSidebar.current) MainPanelPlaceholder() else home(MainPanelOpener.Push) }
@@ -241,7 +257,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                 DeepLinkEffect(
                     nav, signedIn = signedIn, onOpenSession = { id -> nav.navigate(SessionRoute(id)) }, openConnection = agent, onHappyLink = happyLinks::take,
                     // A terminal link while no Happy account is open: the one it goes to opens, as from home's account menu.
-                    openHappyAccount = { graph.accountStore.registry.value.forTerminal()?.id?.also(switcher::fromHome) != null },
+                    openHappyAccount = { graph.accountStore.registry.value.forTerminal(graph.accountStore.unreadable.value::readable)?.id?.also(switcher::fromHome) != null },
                 )
               }
             }

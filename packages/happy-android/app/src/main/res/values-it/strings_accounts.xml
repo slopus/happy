@@ -6,4 +6,14 @@
 <resources>
     <string name="account_menu_title">Account</string>
     <string name="account_menu_add">Aggiungi</string>
+    <string name="account_unlock_failed_title">Impossibile sbloccare il tuo account</string>
+    <string name="account_unlock_failed_body">L\'archivio sicuro del telefono non ha risposto. Il tuo account è ancora salvato su questo telefono.</string>
+    <string name="account_unlock_failed_add">Aggiungi account</string>
+    <string name="account_unlock_failed_short">Impossibile sbloccare</string>
+    <string name="account_unlock_failed_body_permanent">Questo telefono non riesce più a decifrare l\'account salvato. Ripristinalo con la chiave segreta o rimuovilo.</string>
+    <string name="account_unlock_failed_restore">Ripristina con chiave segreta</string>
+    <string name="account_unlock_failed_remove">Rimuovi da questo telefono</string>
+    <string name="account_unlock_failed_remove_title">Rimuovere questo account da questo telefono?</string>
+    <string name="account_unlock_failed_remove_message">L\'accesso salvato verrà eliminato da questo telefono. Potrai ripristinare l\'account in seguito con la sua chiave segreta.</string>
+    <string name="account_unlock_failed_remove_confirm">Rimuovi</string>
 </resources>

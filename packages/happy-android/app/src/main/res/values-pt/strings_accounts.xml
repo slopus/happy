@@ -6,4 +6,14 @@
 <resources>
     <string name="account_menu_title">Contas</string>
     <string name="account_menu_add">Adicionar</string>
+    <string name="account_unlock_failed_title">Não foi possível desbloquear sua conta</string>
+    <string name="account_unlock_failed_body">O armazenamento seguro do telefone não respondeu. Sua conta continua salva neste telefone.</string>
+    <string name="account_unlock_failed_add">Adicionar conta</string>
+    <string name="account_unlock_failed_short">Não é possível desbloquear</string>
+    <string name="account_unlock_failed_body_permanent">Este telefone não consegue mais descriptografar sua conta salva. Restaure-a com sua chave secreta ou remova-a.</string>
+    <string name="account_unlock_failed_restore">Restaurar com chave secreta</string>
+    <string name="account_unlock_failed_remove">Remover deste telefone</string>
+    <string name="account_unlock_failed_remove_title">Remover esta conta deste telefone?</string>
+    <string name="account_unlock_failed_remove_message">O login salvo será apagado deste telefone. Você pode restaurar a conta depois com a chave secreta dela.</string>
+    <string name="account_unlock_failed_remove_confirm">Remover</string>
 </resources>

@@ -5,6 +5,8 @@ import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.auth.CredentialStorageException
 import com.slopus.happy.auth.InvalidSecretKeyException
 import com.slopus.happy.auth.UnreadableApprovalException
+import com.slopus.happy.auth.UnreadableCredentials
+import com.slopus.happy.auth.UnreadableItem
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.ServerAuthException
 import com.slopus.happy.conversation.ConversationApiException
@@ -52,6 +54,22 @@ object AnalyticsReasons {
         ServerAuthException.Reason.InvalidToken -> SignInError.InvalidToken
         ServerAuthException.Reason.Rejected -> SignInError.Rejected
         ServerAuthException.Reason.WrongServer, ServerAuthException.Reason.CrossOrigin, ServerAuthException.Reason.WrongAudience -> SignInError.WrongServer
+    }
+
+    /** Why the React Native app's credential item can't be opened. */
+    fun rnImport(why: UnreadableCredentials): AnalyticsEvent.RnImportFailed = when (why) {
+        is UnreadableCredentials.Item -> AnalyticsEvent.RnImportFailed(
+            when (why.reason) {
+                UnreadableItem.KeyMissing -> RnImportError.KeyMissing
+                UnreadableItem.KeyInvalidated -> RnImportError.KeyInvalidated
+                UnreadableItem.DecryptFailed -> RnImportError.DecryptFailed
+                UnreadableItem.AuthRequired -> RnImportError.AuthRequired
+                UnreadableItem.Malformed -> RnImportError.MalformedItem
+            },
+        )
+        // Past the envelope, all a read does is ask the Keystore and decrypt.
+        is UnreadableCredentials.Failed -> AnalyticsEvent.RnImportFailed.of(RnImportError.Keystore, why.error)
+        UnreadableCredentials.Invalid -> AnalyticsEvent.RnImportFailed(RnImportError.InvalidCredentials)
     }
 
     /**

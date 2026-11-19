@@ -205,8 +205,9 @@ fun SceneAnimation(
 
 /**
  * A screen-filling state: [art] (or, for errors and offline, a plain
- * [icon]), a title, a line under it and an optional button, centred in the
- * content width and fixed in place.
+ * [icon]), a title, a line under it and an optional button (and any
+ * [secondary] ones, inverted, under it), centred in the content width and
+ * fixed in place. While [busy], the button spins and none can be pressed.
  */
 @Composable
 fun StatePage(
@@ -216,6 +217,8 @@ fun StatePage(
     art: StateArt? = null,
     icon: Ionicon? = null,
     action: Pair<String, () -> Unit>? = null,
+    secondary: List<Pair<String, () -> Unit>> = emptyList(),
+    busy: Boolean = false,
     tag: String = StateAnimationTags.PAGE,
 ) {
     val colors = HappyTheme.colors
@@ -242,7 +245,10 @@ fun StatePage(
             }
             if (action != null) {
                 Spacer(Modifier.size(16.dp))
-                RoundButton(title = action.first, onClick = action.second)
+                RoundButton(title = action.first, onClick = action.second, loading = busy)
+            }
+            for ((title, onClick) in secondary) {
+                RoundButton(title = title, onClick = onClick, display = RoundButtonDisplay.Inverted, enabled = !busy)
             }
         }
     }

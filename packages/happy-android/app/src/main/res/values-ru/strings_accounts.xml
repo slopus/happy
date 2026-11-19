@@ -6,4 +6,14 @@
 <resources>
     <string name="account_menu_title">Аккаунты</string>
     <string name="account_menu_add">Добавить</string>
+    <string name="account_unlock_failed_title">Не удалось разблокировать аккаунт</string>
+    <string name="account_unlock_failed_body">Защищённое хранилище телефона не ответило. Ваш аккаунт по-прежнему сохранён на этом телефоне.</string>
+    <string name="account_unlock_failed_add">Добавить аккаунт</string>
+    <string name="account_unlock_failed_short">Не удаётся разблокировать</string>
+    <string name="account_unlock_failed_body_permanent">Этот телефон больше не может расшифровать сохранённый аккаунт. Восстановите его секретным ключом или удалите.</string>
+    <string name="account_unlock_failed_restore">Восстановить секретным ключом</string>
+    <string name="account_unlock_failed_remove">Удалить с этого телефона</string>
+    <string name="account_unlock_failed_remove_title">Удалить этот аккаунт с этого телефона?</string>
+    <string name="account_unlock_failed_remove_message">Сохранённые данные для входа будут удалены с этого телефона. Позже аккаунт можно восстановить его секретным ключом.</string>
+    <string name="account_unlock_failed_remove_confirm">Удалить</string>
 </resources>

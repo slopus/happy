@@ -6,4 +6,14 @@
 <resources>
     <string name="account_menu_title">アカウント</string>
     <string name="account_menu_add">追加</string>
+    <string name="account_unlock_failed_title">アカウントのロックを解除できませんでした</string>
+    <string name="account_unlock_failed_body">端末のセキュアストレージが応答しませんでした。アカウントはこの端末に保存されたままです。</string>
+    <string name="account_unlock_failed_add">アカウントを追加</string>
+    <string name="account_unlock_failed_short">ロックを解除できません</string>
+    <string name="account_unlock_failed_body_permanent">この端末では保存されたアカウントを復号できなくなりました。シークレットキーで復元するか、削除してください。</string>
+    <string name="account_unlock_failed_restore">シークレットキーで復元</string>
+    <string name="account_unlock_failed_remove">この端末から削除</string>
+    <string name="account_unlock_failed_remove_title">このアカウントをこの端末から削除しますか？</string>
+    <string name="account_unlock_failed_remove_message">保存されたサインイン情報がこの端末から削除されます。あとでシークレットキーを使ってアカウントを復元できます。</string>
+    <string name="account_unlock_failed_remove_confirm">削除</string>
 </resources>

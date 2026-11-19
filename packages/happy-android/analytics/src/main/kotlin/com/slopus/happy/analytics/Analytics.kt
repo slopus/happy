@@ -53,6 +53,9 @@ object Analytics {
      * is made; [links] and [network] feed `agent_connection_lost` while
      * analytics is on. [flags] is told the PostHog flags on for this
      * install, and nothing (an empty set) whenever analytics is off.
+     * [launch] is what this start found before analytics began (an
+     * `rn_import_failed`): kept, as a crash from before is, only if this
+     * launch's first answer is to send.
      */
     fun start(
         context: Context,
@@ -67,6 +70,7 @@ object Analytics {
         links: Flow<ConnectionIncidents.Link?>,
         network: Flow<Boolean>,
         flags: (Set<String>) -> Unit,
+        launch: List<AnalyticsEvent> = emptyList(),
     ) {
         val manager = context.getSystemService(ActivityManager::class.java)
         val signatures = CrashSignatures(File(context.noBackupFilesDir, CrashSignatures.FILE)).also { it.install() }
@@ -93,6 +97,7 @@ object Analytics {
                 signatures.arm(version != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
             },
             flags = flags.takeIf { target.asksFlags },
+            launch = launch,
         )
         this.client = client
         switch.onOff = client::revoke
@@ -335,6 +340,8 @@ internal class AnalyticsClient(
     private val mark: (String?) -> Unit = {},
     /** Told the flags on for this install; null where this build never asks. */
     private val flags: ((Set<String>) -> Unit)? = null,
+    /** What this start found before analytics began; told with [crash], in the first generation only. */
+    private val launch: List<AnalyticsEvent> = emptyList(),
     private val clock: () -> Long = System::currentTimeMillis,
     private val lane: CoroutineContext = Dispatchers.IO.limitedParallelism(1),
     private val flushMillis: Long = 30_000,
@@ -380,7 +387,7 @@ internal class AnalyticsClient(
                 }
                 val generation = withContext(lane) {
                     val generation = begin() ?: return@withContext null
-                    if (first) crash()?.let { if (isLive(generation)) enqueue(it, clock(), generation) }
+                    if (first) (listOfNotNull(crash()) + launch).forEach { if (isLive(generation)) enqueue(it, clock(), generation) }
                     first = false
                     // On the lane, so a [forget] after always clears it.
                     if (isLive(generation)) mark(device.appVersion ?: "-")

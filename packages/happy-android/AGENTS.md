@@ -620,8 +620,44 @@ expo-secure-store 55.0.9's Android storage (`SecureStoreModule.kt`,
   `AES/GCM/NoPadding:key_v1:keystoreUnauthenticated` (no suffix for items
   with `usesKeystoreSuffix: false`). The hybrid RSA scheme (API < 23) is
   read-only, as in expo.
-- Failure handling matches expo: a missing Keystore key or one that no
-  longer opens the value deletes the entry.
+- By default a missing Keystore key or one that no longer opens the value
+  deletes the entry, as expo does. `ExpoSecureStore.getItem(retry = true)`
+  tries a read that throws past the envelope (a Keystore
+  `ProviderException`, `IllegalStateException`, an IO error, …) three times
+  in all, 100 and 250 ms apart, reading the item afresh each time; a
+  malformed envelope or a key that doesn't open the value isn't tried
+  again. Only the start's reconcile and the unlock screen's Retry ask for
+  it; a healthy Keystore is asked exactly as without it.
+- The account stores read with `keep`: an account item that is there but
+  can't be read (`Stored.Unreadable`) is never deleted or written over, and
+  its registry entry stays. When the reason is permanent, `AccountStore`
+  remembers it by the sealed item's fingerprint (a hash, never the value)
+  and doesn't ask the Keystore for it again until a Retry or until the item
+  changes; a transient one is read again, once, on each later reconcile. A
+  sign-in meanwhile
+  goes to an item of its own. Removing the account clears the shared item
+  if it is the one the entry was read from, else never brings that item
+  back (`removedSharedItem`).
+- An account that can't be read never takes over the app, and never stops
+  adding or switching. In the account menu and Settings' accounts card it
+  shows "Can't unlock" with the error mark; picked, its page
+  (`UnlockAccountRoute`) opens instead of a switch (`AppGraph.requestUnlock`).
+  When it was to open and nothing is open, another account that reads (or
+  an agent connection) opens in its place, at start before the first frame;
+  a later Keystore hiccup never moves someone off the account they have
+  open. Removing the open agent connection opens the next usable one, else
+  the first Happy account (one that can't be read shows its unlock state
+  at once); the removed connection never stays selected. Only
+  with nothing else usable does `StartRoute` show `UnlockFailed` (the
+  account menu, Add account, Use Happy Cloud). The page and that screen
+  offer, when a later read may work (the Keystore threw): Retry
+  (`AppGraph.retryUnlock`). When none will (no key, the key doesn't open
+  it, not an account): Restore with secret key, and Remove from this phone
+  after a confirm. Reconciling never stops `AppGraph` or analytics from
+  starting. A start where the React Native item is the account the person
+  would open and can't be read (or whose server can't be trusted, once)
+  sends `rn_import_failed` with the reason and the exception's platform
+  classes (`RnUpgradeTest`, `UnlockFailedTest`).
 
 If expo-secure-store is upgraded in happy-app, diff its Android sources
 against this file. `ExpoSecureStoreTest` runs a copy of expo's read and write code

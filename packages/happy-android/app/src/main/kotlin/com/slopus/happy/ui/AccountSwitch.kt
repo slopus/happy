@@ -137,13 +137,19 @@ class AccountSwitcher internal constructor(
     internal var keepsSettings = false
         private set
 
-    /** Home's account menu: [id] opens, its home dissolving in over the old one's. */
-    fun fromHome(id: String) = start(keep = false) {
-        dissolve.around { open(id) }
+    /** Home's account menu: [id] opens, its home dissolving in over the old one's; one that can't be unlocked opens its page instead. */
+    fun fromHome(id: String) {
+        if (graph.requestUnlock(id)) return
+        start(keep = false) { dissolve.around { open(id) } }
     }
 
-    /** Settings' accounts card or search: [id] opens under Settings, which stays and changes in place. */
-    fun fromSettings(id: String) = start(keep = true) {
+    /** Settings' accounts card or search: [id] opens under Settings, which stays and changes in place; one that can't be unlocked opens its page instead. */
+    fun fromSettings(id: String) {
+        if (graph.requestUnlock(id)) return
+        fromSettingsOpening(id)
+    }
+
+    private fun fromSettingsOpening(id: String) = start(keep = true) {
         val agent = graph.agentConnections.accounts.value.any { it.id == id }
         val otherKind = agent != (graph.openAccount.value is OpenAccount.Agent)
         if (otherKind) (settings ?: dissolve).around { open(id) } else open(id)
