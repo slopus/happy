@@ -1034,3 +1034,11 @@ describe('SessionView deep-link hydration', () => {
 vi.mock('@/components/fileWorkspace/SessionFileWorkspaceProvider', () => ({ SessionFileWorkspaceProvider: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('@/components/fileWorkspace/FileWorkspace', () => ({ FileWorkspace: () => null, FileWorkspaceResizeHandle: () => null }));
 vi.mock('@/components/fileWorkspace/WorkspaceDirectoryTree', () => ({ WorkspaceDirectoryTree: () => null }));
+
+it('lets the task page own navigation without reserving an embedded session header', async () => {
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<SessionView id="mobile-task" embedded projectTaskContext />); });
+    expect(renderer.root.findAllByType('ChatHeaderView')).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'session-content' }).props.style.paddingTop).toBe(0);
+    act(() => renderer.unmount());
+});

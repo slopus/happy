@@ -7,14 +7,14 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 
-export function ProjectConversationEmptyState({ task, onDraft, onFiles, onStart, startLabel, disabled, scrollable = true }: {
-    task: Pick<GoalTask, 'title' | 'goal'>; onDraft?: (value: string) => void; onFiles: () => void; onStart?: () => void; startLabel?: string; disabled?: boolean; scrollable?: boolean;
+export function ProjectConversationEmptyState({ task, onDraft, onFiles, onStart, startLabel, disabled, scrollable = true, compact = false }: {
+    task: Pick<GoalTask, 'title' | 'goal'>; onDraft?: (value: string) => void; onFiles: () => void; onStart?: () => void; startLabel?: string; disabled?: boolean; scrollable?: boolean; compact?: boolean;
 }) {
     const { theme } = useUnistyles();
-    const content = <View style={styles.content}>
-            <View style={styles.eyebrow}><View style={styles.icon}><Ionicons name="chatbubbles-outline" size={23} color={theme.colors.textLink} /></View><Text style={styles.label}>{t('projectGoals.emptyConversationEyebrow')}</Text></View>
+    const content = <View style={[styles.content, compact && { gap: 8 }]}>
+            {!compact && <View style={styles.eyebrow}><View style={styles.icon}><Ionicons name="chatbubbles-outline" size={23} color={theme.colors.textLink} /></View><Text style={styles.label}>{t('projectGoals.emptyConversationEyebrow')}</Text></View>}
             <Text style={styles.kicker}>{t('projectGoals.emptyConversationTitle')}</Text>
-            <Text accessibilityRole="header" style={styles.title}>{task.title}</Text>
+            {!compact && <Text accessibilityRole="header" style={styles.title}>{task.title}</Text>}
             <Text style={styles.hint}>{t('projectGoals.emptyConversationHint')}</Text>
             {!!task.goal && task.goal !== task.title && <View style={styles.goal}><View style={styles.goalRule} /><Text numberOfLines={3} style={styles.goalText}>{task.goal}</Text></View>}
             <View style={styles.actions}>
@@ -25,8 +25,8 @@ export function ProjectConversationEmptyState({ task, onDraft, onFiles, onStart,
             </View>
             {onDraft && <Text style={styles.note}>{t('projectGoals.draftOnlyHint')}</Text>}
         </View>;
-    return scrollable ? <ScrollView testID="project-conversation-empty" style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>{content}</ScrollView>
-        : <View testID="project-conversation-empty" style={styles.staticContainer}>{content}</View>;
+    return scrollable ? <ScrollView testID="project-conversation-empty" style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, compact && { justifyContent: 'flex-start', paddingHorizontal: 18, paddingVertical: 16 }]}>{content}</ScrollView>
+        : <View testID="project-conversation-empty" style={[styles.staticContainer, compact && { paddingHorizontal: 18, paddingVertical: 14 }]}>{content}</View>;
 }
 
 const styles = StyleSheet.create(theme => ({

@@ -13,10 +13,9 @@ export function mergeMobileProjectLocation(current: MobileProjectLocation, patch
     return Object.fromEntries(mobileProjectKeys.map(key => [key, key in patch ? patch[key] : current[key]]));
 }
 
-/** Only directory/Task entry and opening a reader add a screen. Task views and sessions replace it. */
+/** A Task owns one screen; its conversation, documents and auxiliary views replace its params. */
 export function replaceMobileProjectLocation(current: MobileProjectLocation, next: MobileProjectLocation) {
-    return !!current.task && ['machine', 'project', 'feature', 'task'].every(key => current[key as keyof ProjectLocation] === next[key as keyof ProjectLocation])
-        && (current.view === 'reader') === (next.view === 'reader');
+    return !!current.task && ['machine', 'project', 'feature', 'task'].every(key => current[key as keyof ProjectLocation] === next[key as keyof ProjectLocation]);
 }
 
 /** Expo inserts a home anchor on cold links; it is not a visited project parent. */
@@ -31,4 +30,11 @@ export function mobileProjectParent(location: MobileProjectLocation, project?: P
     if (current.task || current.author) return { ...current, task: undefined, conversation: undefined, author: undefined, view: undefined, file: undefined };
     if (current.feature) return project && !project.features.length ? { machine: current.machine } : { ...current, feature: undefined };
     return { machine: current.machine };
+}
+
+/** Android Back first closes the current auxiliary surface, preserving its Task/session. */
+export function mobileProjectBackView(location: MobileProjectLocation): 'chat' | 'files' | undefined {
+    if (!location.task) return;
+    if (location.view === 'reader') return 'files';
+    if (location.view === 'files' || location.view === 'details') return 'chat';
 }

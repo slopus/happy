@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeMobileProjectLocation, replaceMobileProjectLocation, canPopMobileProjectLocation, mobileProjectParent, findProjectForLocation } from './mobileProjectNavigation';
+import { mergeMobileProjectLocation, replaceMobileProjectLocation, canPopMobileProjectLocation, mobileProjectParent, findProjectForLocation, mobileProjectBackView } from './mobileProjectNavigation';
 
 const task = { machine: 'm', project: 'p', feature: 'f', task: 't', conversation: 'recent', view: 'chat' };
 describe('mobile Task route ownership', () => {
@@ -22,7 +22,7 @@ describe('mobile Task route ownership', () => {
     });
     it('replaces views and exact history sessions inside one Task', () => {
         let current = task;
-        for (const view of ['details', 'files', 'chat', 'details', 'chat']) {
+        for (const view of ['details', 'files', 'reader', 'files', 'chat']) {
             const next = mergeMobileProjectLocation(current, { view });
             expect(replaceMobileProjectLocation(current, next)).toBe(true);
             expect(next.conversation).toBe('recent');
@@ -30,9 +30,9 @@ describe('mobile Task route ownership', () => {
         }
         expect(replaceMobileProjectLocation(current, { ...current, conversation: 'older' })).toBe(true);
     });
-    it('pushes only directory/Task entry and reader entry', () => {
+    it('pushes directory and different Task entries while keeping readers in the same workspace', () => {
         expect(replaceMobileProjectLocation({ machine: 'm', project: 'p', feature: 'f' }, task)).toBe(false);
-        expect(replaceMobileProjectLocation(task, { ...task, view: 'reader', file: '/task/file.md' })).toBe(false);
+        expect(replaceMobileProjectLocation(task, { ...task, view: 'reader', file: '/task/file.md' })).toBe(true);
         expect(replaceMobileProjectLocation(task, { ...task, task: 'other' })).toBe(false);
         expect(replaceMobileProjectLocation(task, { ...task, machine: 'other' })).toBe(false);
     });
@@ -42,4 +42,12 @@ describe('mobile Task route ownership', () => {
         expect(mobileProjectParent({ ...task, view: 'reader', file: '/task/file.md' })).toEqual({ ...task, view: 'files', file: undefined });
         expect(mobileProjectParent(task)).toMatchObject({ task: undefined, conversation: undefined, feature: 'f', view: undefined });
     });
+});
+
+it('returns Android Back from a reader to files and from auxiliary views to the same conversation', () => {
+    expect(mobileProjectBackView({ ...task, view: 'reader' })).toBe('files');
+    expect(mobileProjectBackView({ ...task, view: 'files' })).toBe('chat');
+    expect(mobileProjectBackView({ ...task, view: 'details' })).toBe('chat');
+    expect(mobileProjectBackView(task)).toBeUndefined();
+    expect(mobileProjectBackView({ view: 'files' })).toBeUndefined();
 });

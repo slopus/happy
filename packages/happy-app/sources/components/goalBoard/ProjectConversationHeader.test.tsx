@@ -3,18 +3,18 @@ import { act } from 'react';
 // @ts-expect-error react-test-renderer has no declarations.
 import TestRenderer from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mock = vi.hoisted(() => ({ session: { id: 'one', active: false, metadata: {} } as any, sessions: {} as Record<string, any>, deleted: new Set<string>(), busy: false, callbacks: {} as any, archive: vi.fn(), remove: vi.fn(), restore: vi.fn(), alert: vi.fn() }));
+const mock = vi.hoisted(() => ({ session: { id: 'one', active: false, metadata: {} } as any, sessions: {} as Record<string, any>, deleted: new Set<string>(), busy: false, callbacks: {} as any, archive: vi.fn(), remove: vi.fn(), restore: vi.fn(), alert: vi.fn(), unmount: vi.fn() }));
 vi.mock('react-native', () => ({ Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View', Platform: { OS: 'native' }, useWindowDimensions: () => ({ width: 1600, height: 900 }) }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Icon' }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
-vi.mock('react-native-unistyles', () => { const theme = { colors: { shadow: {}, surface: 'surface', divider: 'divider' } }; return { useUnistyles: () => ({ theme }), StyleSheet: { create: (f: any) => f(theme) } }; });
+vi.mock('react-native-unistyles', () => { const theme = { colors: { modal: { backdrop: 'backdrop' }, shadow: {}, surface: 'surface', divider: 'divider' } }; return { useUnistyles: () => ({ theme }), StyleSheet: { create: (f: any) => f(theme) } }; });
 vi.mock('./GoalBoardButton', () => ({ GoalBoardButton: React.forwardRef((props: any, ref: any) => React.createElement('Button', { ...props, ref })) }));
 vi.mock('@/sync/storage', () => ({ useSession: (id: string) => mock.sessions[id], storage: Object.assign((select: any) => select({ sessions: mock.sessions }), { getState: () => ({ sessions: mock.sessions }) }) }));
 vi.mock('@/sync/projectSessionLinks', () => ({ isProjectSessionDeleted: (id: string) => mock.deleted.has(id) }));
 vi.mock('@/modal', () => ({ Modal: { alert: mock.alert } }));
 vi.mock('@/hooks/useProjectModalEscape', () => ({ useProjectModalEscape: () => {} }));
-vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: (_session: any, callbacks: any) => { mock.callbacks = callbacks; return { archiveSession: mock.archive, deleteSession: mock.remove, restoreSession: mock.restore, archivingSession: mock.busy }; } }));
+vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: (_session: any, callbacks: any) => { React.useEffect(() => () => mock.unmount(), []); mock.callbacks = callbacks; return { archiveSession: mock.archive, deleteSession: mock.remove, restoreSession: mock.restore, archivingSession: mock.busy }; } }));
 import { ProjectConversationHeader } from './ProjectConversationHeader';
 let renderer: any;
 const select = vi.fn(), globalChat = vi.fn(), close = vi.fn();
@@ -84,3 +84,36 @@ it('hides an archived machine-history row before its live header is loaded', () 
 });
 
 it('does not close or navigate when remaining-history lookup fails or is cancelled', async () => { setup({ onResolveNext: () => Promise.reject(new Error('cancelled')) }); await act(async () => { mock.callbacks.onAfterDelete(); }); expect(close).not.toHaveBeenCalled(); expect(select).not.toHaveBeenCalled(); });
+
+it('keeps mobile task controls inside the task menu and changes views without replacing a conversation', () => {
+    const onView = vi.fn(), onMenuClose = vi.fn();
+    const menu = { open: false, onClose: onMenuClose, onView, onInfo: vi.fn(), onOrdinary: vi.fn(), onProjectMenu: vi.fn() };
+    setup({ mobile: true, mobileMenu: menu });
+    expect(renderer.root.findAllByProps({ testID: 'test-history' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'test-delete-conversation' })).toHaveLength(0);
+    setup({ mobile: true, mobileMenu: { ...menu, open: true } });
+    press('test-mobile-files');
+    expect(onView).toHaveBeenCalledExactlyOnceWith('files');
+    expect(onMenuClose).toHaveBeenCalledTimes(1);
+    expect(select).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByProps({ testID: 'test-delete-conversation' })).toHaveLength(0);
+    press('test-mobile-manage');
+    press('test-delete-conversation');
+    expect(mock.remove).toHaveBeenCalledTimes(1);
+});
+it('still advances a removed mobile task conversation while its menu is closed', () => {
+    const mobileMenu = { open: false, onClose: vi.fn(), onView: vi.fn(), onInfo: vi.fn(), onOrdinary: vi.fn(), onProjectMenu: vi.fn() };
+    setup({ mobile: true, mobileMenu, sessions: [...props.sessions, { ...props.sessions[0], sessionId: 'two' }] });
+    mock.sessions = { ...mock.sessions, one: { ...mock.session, metadata: { lifecycleState: 'archived' } } };
+    setup({ mobile: true, mobileMenu, sessions: [...props.sessions, { ...props.sessions[0], sessionId: 'two' }] });
+    expect(select).toHaveBeenCalledExactlyOnceWith('two');
+});
+
+it('keeps lifecycle action hooks mounted after closing the mobile sheet for confirmation', () => {
+    const mobileMenu = { open: true, onClose: vi.fn(), onView: vi.fn(), onInfo: vi.fn(), onOrdinary: vi.fn(), onProjectMenu: vi.fn() };
+    setup({ mobile: true, mobileMenu }); press('test-mobile-manage'); press('test-delete-conversation');
+    setup({ mobile: true, mobileMenu: { ...mobileMenu, open: false } });
+    expect(mock.unmount).not.toHaveBeenCalled();
+    act(() => mock.callbacks.onAfterDelete());
+    expect(close).toHaveBeenCalledTimes(1);
+});

@@ -1,10 +1,11 @@
 import * as React from 'react';
-import { ActivityIndicator, Modal as RNModal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, BackHandler, Keyboard, Modal as RNModal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MobileTaskWorkspace } from './MobileTaskWorkspace';
 import { MobileProjectFileReader } from './MobileProjectFileReader';
-import { mergeMobileProjectLocation, replaceMobileProjectLocation, canPopMobileProjectLocation, mobileProjectParent, findProjectForLocation, type MobileProjectLocation } from './mobileProjectNavigation';
+import { mergeMobileProjectLocation, replaceMobileProjectLocation, canPopMobileProjectLocation, mobileProjectParent, findProjectForLocation, mobileProjectBackView, type MobileProjectLocation } from './mobileProjectNavigation';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { GoalArtifact, GoalBoardCatalogEntry, GoalProject, GoalTask, GoalTaskSession } from '@slopus/happy-wire';
 import { Typography } from '@/constants/Typography';
@@ -186,7 +187,19 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const safeArea = useSafeAreaInsets();
     const { width } = useWindowDimensions();
     const mobile = Platform.OS !== 'web' || width < 1100;
+    const taskBackView = mobileProjectBackView(params);
+    useFocusEffect(React.useCallback(() => {
+        if (!mobile || Platform.OS !== 'android' || !taskBackView) return;
+        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+            Keyboard.dismiss();
+            navigate({ view: taskBackView, file: undefined });
+            return true;
+        });
+        return () => subscription.remove();
+    }, [mobile, taskBackView, navigate]));
+
     const [moreOpen, setMoreOpen] = React.useState(false);
+    const [taskMenuOpen, setTaskMenuOpen] = React.useState(false);
     const scopeRef = React.useRef(scope); scopeRef.current = scope;
     React.useEffect(() => {
         scrollPosition.current = catalogStates.get(scope)?.scroll ?? 0;
@@ -326,10 +339,10 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const selectedMachine = machines.find(machine => machine.id === machineId);
     return <ProjectWorkspaceWidthProvider><ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
         {mobile && <View style={[styles.mobileHeader, { backgroundColor: surface }]}>
-            <Button variant="icon" label={t('common.back')} onPress={() => navigation.back(project)} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
+            <Button variant="icon" label={t('common.back')} onPress={() => { if (taskBackView) { Keyboard.dismiss(); navigate({ view: taskBackView, file: undefined }); } else navigation.back(project); }} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
             <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={styles.mobileTitle}>{task?.title || feature?.title || project?.title || t('projectGoals.allProjects')}</Text>
                 {!!(task || feature) && <Text numberOfLines={1} style={styles.meta}>{[project?.title, task ? feature?.title : undefined].filter(Boolean).join(' / ')}</Text>}</View>
-            <Button variant="icon" label={t('sessionSearch.actions.more')} onPress={() => setMoreOpen(true)} testID="project-mobile-more"><Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.text} /></Button>
+            <Button variant="icon" label={t('sessionSearch.actions.more')} onPress={() => task ? setTaskMenuOpen(true) : setMoreOpen(true)} testID="project-mobile-more"><Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.text} /></Button>
         </View>}
         <View style={[styles.header, { backgroundColor: surface }, mobile && { display: 'none' }]}>
 
@@ -380,9 +393,9 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         {(data.error || actionError || cardAction.error) && <View style={styles.errorBar} accessibilityRole="alert"><Text style={styles.error}>{data.error || actionError || cardAction.error}</Text></View>}
         {!machineId && data.status === 'offline' ? <Empty text={t('projectGoals.noMachine')} /> : !scopeDesktop && params.author ? <View style={[styles.author, { backgroundColor: photo && !reduced ? 'transparent' : surface }]}><Text style={[styles.meta, { padding: 12 }]}>{t('projectGoals.authoringHint')}</Text><SessionView key={params.author} id={params.author} embedded fullWidth /></View>
             : task && feature ? <TaskWorkspace key={JSON.stringify([machineId, feature.featurePath, task.id])} machineId={machineId} featurePath={feature.featurePath} task={task}
-                editDelivery={setDeliveryTasks} openCardConversation={openCardConversation} featureTitle={feature.title} catalogScrollPosition={scrollPosition} onCatalogScroll={offset => { scrollPosition.current = offset; catalogStates.set(scope, { query, status: statusFilter, scroll: offset }); }} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+                mobileMenuOpen={taskMenuOpen} closeMobileMenu={() => setTaskMenuOpen(false)} openProjectMenu={() => setMoreOpen(true)} editDelivery={setDeliveryTasks} openCardConversation={openCardConversation} featureTitle={feature.title} catalogScrollPosition={scrollPosition} onCatalogScroll={offset => { scrollPosition.current = offset; catalogStates.set(scope, { query, status: statusFilter, scroll: offset }); }} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter}
                 deselectTask={() => go({ task: undefined, view: 'files' })} openGlobalConversation={() => { void openGlobalConversation(); }} globalBusy={busy} allTasks={tasks} conversationId={params.conversation} agent={agent} offline={data.offline}
-                mobileView={params.view} readerPath={params.file} changeView={view => navigate({ view })} openReader={file => navigate({ file, view: 'reader' })} closeReader={navigation.back}
+                mobileView={params.view} readerPath={params.file} changeView={view => { Keyboard.dismiss(); navigate({ view, file: undefined }); }} openReader={file => { Keyboard.dismiss(); navigate({ file, view: 'reader' }); }} closeReader={() => navigate({ view: 'files', file: undefined })}
                 refresh={data.refresh} selectTask={selectTaskCard} selectConversation={id => navigate({ conversation: id, ...(mobile ? { view: id ? 'chat' : 'details' } : {}) })} />
             : <ScopeCatalog enabled={scopeDesktop} initialTab={params.view === 'files' ? 'files' : undefined} scopePath={params.feature ?? project?.projectPath} machineId={machineId} title={feature?.title ?? project?.title ?? ''} connecting={data.status === 'connecting'} conversationId={params.conversation ?? params.author} agent={agent} offline={data.offline} revision={JSON.stringify([feature?.revision, (selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])} surface={surface} selectConversation={id => navigate({ conversation: id, author: undefined })}><ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: scrollPosition.current, animated: false })} onScroll={event => { scrollPosition.current = event.nativeEvent.contentOffset.y; catalogStates.set(scope, { query, status: statusFilter, scroll: scrollPosition.current }); }} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={[styles.catalogContent, mobile && styles.mobileCatalog]}>
                 <CatalogHeading title={feature ? feature.title : params.feature ? t('projectGoals.loadingTasks') : project ? project.title : t('projectGoals.allProjects')} subtitle={feature ? `${tasks.length} ${t('projectGoals.tasks')}` : project ? project.summary || t('projectGoals.subprojects') : t('projectGoals.galleryDescription')} query={query} setQuery={setQuery} />
@@ -450,7 +463,7 @@ export function TaskCards({ machineId, featurePath, onDelivery, tasks, query, st
     </View>;
 }
 
-type TaskWorkspaceProps = { deselectTask: () => void; openGlobalConversation: () => void; globalBusy: boolean; catalogScrollPosition: React.MutableRefObject<number>; onCatalogScroll: (offset: number) => void; editDelivery: (tasks: GoalTask[]) => void; openCardConversation: (task: GoalTask) => Promise<void>; mobileView?: string; readerPath?: string; changeView: (view: string) => void; openReader: (file: string) => void; closeReader: () => void; featureTitle: string; query: string; setQuery: (value: string) => void; statusFilter: TaskStatusFilter; setStatusFilter: (value: TaskStatusFilter) => void; machineId: string; featurePath: string; task: GoalTask; allTasks: GoalTask[]; conversationId?: string; agent: 'codex' | 'claude'; offline: boolean; refresh: () => Promise<void>; selectTask: (id: string) => void; selectConversation: (id?: string) => void; };
+type TaskWorkspaceProps = { mobileMenuOpen?: boolean; closeMobileMenu: () => void; openProjectMenu: () => void; deselectTask: () => void; openGlobalConversation: () => void; globalBusy: boolean; catalogScrollPosition: React.MutableRefObject<number>; onCatalogScroll: (offset: number) => void; editDelivery: (tasks: GoalTask[]) => void; openCardConversation: (task: GoalTask) => Promise<void>; mobileView?: string; readerPath?: string; changeView: (view: string) => void; openReader: (file: string) => void; closeReader: () => void; featureTitle: string; query: string; setQuery: (value: string) => void; statusFilter: TaskStatusFilter; setStatusFilter: (value: TaskStatusFilter) => void; machineId: string; featurePath: string; task: GoalTask; allTasks: GoalTask[]; conversationId?: string; agent: 'codex' | 'claude'; offline: boolean; refresh: () => Promise<void>; selectTask: (id: string) => void; selectConversation: (id?: string) => void; };
 function TaskWorkspace(props: TaskWorkspaceProps) {
     const { machineId, featurePath, task } = props;
     const binding = React.useMemo(() => projectTaskFiles(machineId, featurePath, task), [machineId, featurePath, task.id, task.indexPath]);
@@ -458,6 +471,7 @@ function TaskWorkspace(props: TaskWorkspaceProps) {
 }
 function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const { task, machineId, featurePath, allTasks, selectTask, selectConversation, refresh, agent, offline } = props;
+    const taskRouter = useRouter();
     const { theme } = useUnistyles();
     const workspace = useFileWorkspace()!;
     const safeArea = useSafeAreaInsets();
@@ -578,7 +592,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const centerOpen = showChat || fileOpen;
     const catalogWidth = getProjectCatalogWidth(rowWidth, rightWidth ?? 0);
     const showTaskFiles = () => { if (mobile) props.changeView('files'); else { setTab('files'); if (fileOpen) setCompactTab('file'); } };
-    const emptyConversation = <ProjectConversationEmptyState task={task} onStart={() => { void start(task, 'chat'); }} startLabel={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={busy || (!history.length && (offline || !canCreateProjectConversation()))} onFiles={showTaskFiles} />;
+    const emptyConversation = <ProjectConversationEmptyState task={task} compact={mobile} onStart={() => { void start(task, 'chat'); }} startLabel={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={busy || (!history.length && (offline || !canCreateProjectConversation()))} onFiles={showTaskFiles} />;
     const changeTab = (value: string) => { setTab(value); if (value === 'details' && showChat) setCompactTab('chat'); else if (value === 'files' && fileOpen) setCompactTab('file'); };
     const canExecute = !readOnly && taskCanExecute(task) && !executionAttempted && !history.some(session => session.executed);
     const details = <ProjectDetailsPanel style={[{ backgroundColor: surface }, wide ? { width: rightWidth, marginLeft: projectPanelGap } : { flex: 1 }]} testID="project-task-panel" tab={tab} onTab={changeTab} showTabs={!mobile}
@@ -591,29 +605,23 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
         {error && <Text accessibilityRole="alert" style={[styles.error, { padding: 12 }]}>{error}</Text>}
         {!readOnly && task.execution?.state === 'uncertain' && <Text style={[styles.meta, { paddingHorizontal: 14, paddingVertical: 6 }]}>{t('projectGoals.executionUncertain')}</Text>}
     </ProjectDetailsPanel>;
-    const chat = <View testID="project-task-chat" style={[styles.chat, { backgroundColor: surface }, wide && fileOpen && compactTab === 'file' && { display: 'none' }]}>
-        <ProjectConversationHeader onGlobal={mobile ? undefined : props.openGlobalConversation} onClose={() => { setError(null); selectConversation(undefined); }} manage={!readOnly && conversationVerified} testIDPrefix="project-task" onResolveNext={resolveNextConversation} sessions={history} selectedId={props.conversationId} onSelect={id => { setError(null); selectConversation(id); }} onNew={canCreateProjectConversation() ? () => { void start(task, 'chat', false, true); } : undefined} onRefresh={() => { void taskHistory.read(); }} loading={taskHistory.loading} error={taskHistory.error} onRetry={() => { void taskHistory.read(); }} onMore={taskHistory.nextCursor ? () => { void taskHistory.read(taskHistory.nextCursor); } : undefined} busy={busy || props.globalBusy} offline={offline} mobile={mobile} />
-        {conversationId && !conversationVerified ? <View style={styles.empty} testID="project-conversation-loading">{!conversationState.error && !conversationRejected && !offline && <ActivityIndicator color={theme.colors.textSecondary} />}<Text style={styles.meta}>{conversationState.error || t(conversationRejected ? 'projectGoals.sessionUnavailable' : offline ? 'projectGoals.offlineArchive' : 'common.loading')}</Text>{conversationState.error && <Button label={t('common.retry')} onPress={conversationState.retry}><Text style={styles.link}>{t('common.retry')}</Text></Button>}</View> : conversationId ? <SafeAreaInsetsContext.Provider value={mobile ? { ...safeArea, top: 0, bottom: 0 } : safeArea}><SessionView key={conversationId} id={conversationId} embedded fullWidth projectTaskContext={mobile} emptyState={desktop || mobile ? appendDraft => <ProjectConversationEmptyState task={task} scrollable={false} onDraft={appendDraft} onFiles={showTaskFiles} /> : undefined} /></SafeAreaInsetsContext.Provider> : desktop || mobile ? emptyConversation : <View style={styles.empty}><Text style={styles.cardTitle}>{t('projectGoals.emptyChat')}</Text><Text style={styles.meta}>{t('projectGoals.emptyChatHint')}</Text><Button label={t('projectGoals.openChat')} disabled={busy || offline || !canCreateProjectConversation()} onPress={() => { void start(task, 'chat'); }}><Text style={styles.link}>{t('projectGoals.openChat')}</Text></Button></View>}
+    const conversationHeader = <ProjectConversationHeader mobileMenu={mobile ? { open: !!props.mobileMenuOpen, onClose: props.closeMobileMenu, onView: props.changeView,
+            onInfo: () => { if (conversationId) taskRouter.push(`/session/${conversationId}/info`); },
+            onOrdinary: () => { if (conversationId) taskRouter.push(`/session/${conversationId}`); }, onProjectMenu: props.openProjectMenu, bottomInset: safeArea.bottom } : undefined} onGlobal={mobile ? undefined : props.openGlobalConversation} onClose={() => { setError(null); selectConversation(undefined); }} manage={!readOnly && conversationVerified} testIDPrefix="project-task" onResolveNext={resolveNextConversation} sessions={history} selectedId={props.conversationId} onSelect={id => { setError(null); selectConversation(id); }} onNew={canCreateProjectConversation() ? () => { void start(task, 'chat', false, true); } : undefined} onRefresh={() => { void taskHistory.read(); }} loading={taskHistory.loading} error={taskHistory.error} onRetry={() => { void taskHistory.read(); }} onMore={taskHistory.nextCursor ? () => { void taskHistory.read(taskHistory.nextCursor); } : undefined} busy={busy || props.globalBusy} offline={offline} mobile={mobile} />;
+    const chat = <View testID="project-task-chat" style={[styles.chat, mobile && { borderWidth: 0, borderRadius: 0 }, { backgroundColor: surface }, wide && fileOpen && compactTab === 'file' && { display: 'none' }]}>
+        {!mobile && conversationHeader}
+        {conversationId && !conversationVerified ? <View style={styles.empty} testID="project-conversation-loading">{!conversationState.error && !conversationRejected && !offline && <ActivityIndicator color={theme.colors.textSecondary} />}<Text style={styles.meta}>{conversationState.error || t(conversationRejected ? 'projectGoals.sessionUnavailable' : offline ? 'projectGoals.offlineArchive' : 'common.loading')}</Text>{conversationState.error && <Button label={t('common.retry')} onPress={conversationState.retry}><Text style={styles.link}>{t('common.retry')}</Text></Button>}</View> : conversationId ? <SafeAreaInsetsContext.Provider value={mobile ? { ...safeArea, top: 0, bottom: 0 } : safeArea}><SessionView key={conversationId} id={conversationId} embedded fullWidth projectTaskContext={mobile} emptyState={desktop || mobile ? appendDraft => <ProjectConversationEmptyState task={task} compact={mobile} scrollable={false} onDraft={appendDraft} onFiles={showTaskFiles} /> : undefined} /></SafeAreaInsetsContext.Provider> : desktop || mobile ? emptyConversation : <View style={styles.empty}><Text style={styles.cardTitle}>{t('projectGoals.emptyChat')}</Text><Text style={styles.meta}>{t('projectGoals.emptyChatHint')}</Text><Button label={t('projectGoals.openChat')} disabled={busy || offline || !canCreateProjectConversation()} onPress={() => { void start(task, 'chat'); }}><Text style={styles.link}>{t('projectGoals.openChat')}</Text></Button></View>}
     </View>;
     const catalogScroll = React.useRef<ScrollView>(null);
     const catalog = <ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: props.catalogScrollPosition.current, animated: false })} onScroll={event => props.onCatalogScroll(event.nativeEvent.contentOffset.y)} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface, borderRadius: 13 }]} contentContainerStyle={styles.taskCatalogContent}>
         <CatalogHeading title={props.featureTitle} subtitle={`${allTasks.length} ${t('projectGoals.tasks')}`} query={props.query} setQuery={props.setQuery} />
         <TaskCards machineId={machineId} featurePath={featurePath} onDelivery={target => props.editDelivery([target])} tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={selectTask} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
     </ScrollView>;
-    if (mobile && props.mobileView === 'reader' && props.readerPath) {
-        const artifact = task.artifacts.find(value => value.path === props.readerPath && value.relation === 'output');
-        return <MobileProjectFileReader scope={JSON.stringify([machineId, featurePath, task.id])} path={props.readerPath} footer={artifact ? readable => <Deliverable {...{ artifact, task, machineId, featurePath, refresh }} openFile={openFile} offline={offline} readable={readable} /> : undefined} />;
-    }
-    if (mobile) return <View style={styles.mobileTaskArea}>
-        <View style={styles.compactTabs}><PanelTabs touchTarget activeTab={mobileView} onTabChange={props.changeView} testIDPrefix="project-workspace" tabs={[
-            { key: 'chat', label: t('projectGoals.mobileChat'), icon: 'chatbubble-outline' },
-            { key: 'details', label: t('projectGoals.details'), icon: 'reader-outline' },
-            { key: 'files', label: t('projectGoals.files'), icon: 'folder-outline' },
-        ]} /></View>
-        <View style={[styles.mobileView, mobileView !== 'chat' && styles.hidden]}>{chat}</View>
-        <View style={[styles.mobileView, mobileView !== 'details' && styles.hidden]}>{details}</View>
-        <View style={[styles.mobileView, mobileView !== 'files' && styles.hidden]}><ProjectArchiveTree machineId={machineId} scopePath={featurePath} taskId={task.id} sessionId="" rootPath={workspace.root} listDirectory={listDirectory} cacheKey={directoryCacheKey} revision={directoryRevision} onOpenFile={path => { void openFile(path); }} /></View>
-    </View>;
+    const reading = props.mobileView === 'reader' && !!props.readerPath;
+    const readingArtifact = task.artifacts.find(value => value.path === props.readerPath && value.relation === 'output');
+    if (mobile) return <MobileTaskWorkspace view={reading ? 'reader' : mobileView} menu={conversationHeader} chat={chat} details={details}
+        files={<ProjectArchiveTree machineId={machineId} scopePath={featurePath} taskId={task.id} sessionId="" rootPath={workspace.root} listDirectory={listDirectory} cacheKey={directoryCacheKey} revision={directoryRevision} onOpenFile={path => { void openFile(path); }} />}
+        reader={props.readerPath ? <MobileProjectFileReader scope={JSON.stringify([machineId, featurePath, task.id])} path={props.readerPath} footer={readingArtifact ? readable => <Deliverable artifact={readingArtifact} {...{ task, machineId, featurePath, refresh }} openFile={openFile} offline={offline} readable={readable} /> : undefined} /> : undefined} />;
     return <View style={styles.taskArea}>
         {!wide && <View style={styles.compactTabs}><PanelTabs activeTab={compactTab} onTabChange={setCompactTab} testIDPrefix="project-workspace" tabs={[{ key: 'tasks', label: t('projectGoals.tasks'), icon: 'grid-outline' }, ...(showChat ? [{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' as const }] : []), ...(fileOpen ? [{ key: 'file', label: t('projectGoals.files'), icon: 'document-outline' as const }] : []), { key: 'details', label: t('projectGoals.details'), icon: 'reader-outline' }]} /></View>}
         <View style={[styles.workspaceRow, !wide && { flexDirection: 'column' }]} onLayout={event => setRowWidth(Math.round(event.nativeEvent.layout.width))}>

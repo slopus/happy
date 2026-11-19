@@ -567,7 +567,8 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
-    const showSessionHeader = !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web');
+    const taskConversation = !!props.embedded && !!props.projectTaskContext;
+    const showSessionHeader = !taskConversation && !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web');
     const headerHeight = useHeaderHeight();
     const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
@@ -1184,7 +1185,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const mainContent = (
         <>
             {/* Status bar shadow for landscape mode */}
-            {isLandscape && deviceType === 'phone' && (
+            {!taskConversation && isLandscape && deviceType === 'phone' && (
                 <View style={{
                     position: 'absolute',
                     top: 0,
@@ -1232,8 +1233,8 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             )}
 
             {/* Content based on state */}
-            <View style={{ flex: 1, paddingTop: showSessionHeader ? safeArea.top + headerHeight + fileHeaderTopInset : 0 }}>
-                {!showSessionHeader && (goalParentAction || workspaceLink) && <View testID="goal-board-parent-floating-action" pointerEvents="box-none"
+            <View testID="session-content" style={{ flex: 1, minHeight: 0, paddingTop: showSessionHeader ? safeArea.top + headerHeight + fileHeaderTopInset : 0 }}>
+                {!taskConversation && !showSessionHeader && (goalParentAction || workspaceLink) && <View testID="goal-board-parent-floating-action" pointerEvents="box-none"
                     style={{ position: 'absolute', top: safeArea.top + 8, right: safeArea.right + 8, zIndex: 2, flexDirection: 'row', gap: 4 }}>
                     {goalParentAction}{workspaceLink}
                 </View>}
@@ -1273,6 +1274,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                         <SessionViewLoaded
                             key={sessionId}
                             emptyState={props.emptyState}
+                            projectTaskContext={taskConversation}
                             composerHandleRef={sessionComposerHandleRef}
                             onManageTags={() => setOrganizerOpen(true)}
                             onRemoveTag={removeSessionTag}
@@ -1662,6 +1664,7 @@ function SessionViewLoaded({
     onRemoveTag,
     tags,
     emptyState,
+    projectTaskContext = false,
 }: {
     sessionId: string;
     routeOwner: SessionRouteOwner;
@@ -1673,6 +1676,7 @@ function SessionViewLoaded({
     onRemoveTag: (tagId: string) => void;
     tags: readonly SidebarTag[];
     emptyState?: SessionViewProps['emptyState'];
+    projectTaskContext?: boolean;
 }) {
     const { theme } = useUnistyles();
     const fileWorkspace = useFileWorkspace();
@@ -2064,6 +2068,7 @@ function SessionViewLoaded({
     const inactiveHint = (isDisconnected || isRecoverableFailure) ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
+                compact={projectTaskContext}
                 resumeCommandBlock={resumeCommandBlock}
                 canResume={canResume}
                 resuming={resumingSession}
@@ -2085,8 +2090,8 @@ function SessionViewLoaded({
 
     const input = (
         <>
-            {inactiveHint}
-            <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+            {!projectTaskContext && inactiveHint}
+            {(!projectTaskContext || tags.length > 0) && <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
                 <View style={sessionCanvasTagStyles.row} testID="session-canvas-tags">
                     {tags.length > 0 ? (
                         <>
@@ -2104,7 +2109,7 @@ function SessionViewLoaded({
                         <Ionicons color={theme.colors.textLink} name="add" size={18} />
                     </Pressable>
                 </View>
-            </CenteredInputWidth>
+            </CenteredInputWidth>}
             <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
                 <MessageStagingQueueView
                     messages={stagedSnapshot.messages.filter(m => m.sessionId === sessionId)}
@@ -2184,17 +2189,19 @@ function SessionViewLoaded({
             )}
 
             {/* Main content area - no padding since header is overlay */}
-            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 8 : 0) }}>
+            <View style={{ flexBasis: 0, flexGrow: 1, flexShrink: 1, minHeight: 0, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 8 : 0) }}>
                 <AgentContentView
                     content={content}
                     input={input}
-                    placeholder={placeholder}
+                    placeholder={projectTaskContext && placeholder ? <>{inactiveHint}{placeholder}</> : placeholder}
+                    conversationFirst={projectTaskContext}
+                    inputAccessory={projectTaskContext && !placeholder ? inactiveHint : undefined}
                 />
             </View >
 
             {/* Back button for landscape phone mode when header is hidden */}
             {
-                isLandscape && deviceType === 'phone' && (
+                !projectTaskContext && isLandscape && deviceType === 'phone' && (
                     <Pressable
                         onPress={() => router.back()}
                         style={{
@@ -2289,6 +2296,7 @@ function SessionCanvasTag({
 }
 
 function InactiveArchivedHint(props: {
+    compact?: boolean;
     resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>> | null;
     canResume: boolean;
     resuming: boolean;
@@ -2315,9 +2323,9 @@ function InactiveArchivedHint(props: {
 
     return (
         <View style={{
-            paddingTop: 12,
-            paddingBottom: 10,
-            gap: 10,
+            paddingTop: props.compact ? 6 : 12,
+            paddingBottom: props.compact ? 6 : 10,
+            gap: props.compact ? 6 : 10,
             alignItems: 'stretch',
         }}>
             <View style={{ paddingHorizontal: 8, gap: 4 }}>
@@ -2333,6 +2341,7 @@ function InactiveArchivedHint(props: {
                     </Text>
                 )}
             </View>
+            <View style={{ flexDirection: props.compact ? 'row' : 'column', gap: props.compact ? 6 : 10 }}>
             {props.failed && props.connected && props.onContinueFailed ? (
                 <Pressable
                     testID="failed-session-continue-button"
@@ -2341,18 +2350,19 @@ function InactiveArchivedHint(props: {
                     disabled={props.continuingFailed || props.continueFailedQueued || (props.continueFailedHistoryLoading && !props.continueFailedHistoryError)}
                     style={({ pressed }) => ({
                         height: 40,
+                        ...(props.compact ? { flex: 1, minWidth: 0 } : {}),
                         borderRadius: 10,
                         backgroundColor: theme.colors.button.primary.background,
                         opacity: props.continuingFailed || props.continueFailedQueued || (props.continueFailedHistoryLoading && !props.continueFailedHistoryError) ? 0.6 : pressed ? 0.8 : 1,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        marginHorizontal: 8,
+                        marginHorizontal: props.compact ? 0 : 8,
                     })}
                 >
                     {props.continuingFailed ? (
                         <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
                     ) : (
-                        <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
+                        <Text numberOfLines={props.compact ? 2 : undefined} style={{ color: theme.colors.button.primary.tint, fontSize: props.compact ? 12 : 15, fontWeight: '600' }}>
                             {props.continueFailedQueued ? t('status.queued', { count: 1 })
                                 : props.continueFailedHistoryLoading ? t(props.continueFailedHistoryError ? 'common.retry' : 'common.loading')
                                 : props.continueFailedHistoryBehind ? t('session.failedContinueViewLatest')
@@ -2368,18 +2378,19 @@ function InactiveArchivedHint(props: {
                     disabled={props.resuming}
                     style={({ pressed }) => ({
                         height: 40,
+                        ...(props.compact ? { flex: 1, minWidth: 0 } : {}),
                         borderRadius: 10,
                         backgroundColor: theme.colors.button.primary.background,
                         opacity: props.resuming ? 0.6 : pressed ? 0.8 : 1,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        marginHorizontal: 8,
+                        marginHorizontal: props.compact ? 0 : 8,
                     })}
                 >
                     {props.resuming ? (
                         <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
                     ) : (
-                        <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
+                        <Text numberOfLines={props.compact ? 2 : undefined} style={{ color: theme.colors.button.primary.tint, fontSize: props.compact ? 12 : 15, fontWeight: '600' }}>
                             {t('sessionInfo.resumeSession')}
                         </Text>
                     )}
@@ -2389,11 +2400,13 @@ function InactiveArchivedHint(props: {
             )}
             {props.onContinue && <Pressable accessibilityRole="button" accessibilityLabel={t('session.continueFresh')}
                 onPress={props.onContinue} disabled={props.continuing}
-                style={({ pressed }) => ({ padding: 12, marginHorizontal: 8, borderRadius: 10,
+                style={({ pressed }) => ({ padding: 12, marginHorizontal: props.compact ? 0 : 8, borderRadius: 10,
+                    ...(props.compact ? { flex: 1, minWidth: 0 } : {}),
                     backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surface,
                     alignItems: 'center', opacity: props.continuing ? 0.6 : 1 })}>
-                <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{t(props.continuing ? 'session.continueCreating' : 'session.continueFresh')}</Text>
+                <Text numberOfLines={props.compact ? 2 : undefined} style={{ color: theme.colors.text, fontWeight: '600', fontSize: props.compact ? 12 : undefined }}>{t(props.continuing ? 'session.continueCreating' : 'session.continueFresh')}</Text>
             </Pressable>}
+            </View>
         </View>
     );
 }
