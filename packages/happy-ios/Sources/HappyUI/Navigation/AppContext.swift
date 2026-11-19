@@ -25,6 +25,60 @@ public final class AppContext {
     var customServerHost: String? {
         account.serverConfig.isCustomServer ? account.serverConfig.displayHost : nil
     }
+
+    private var restoring: Task<Void, Never>?
+
+    /// The stored accounts, read once however many ask: the window's
+    /// coordinator, or Siri in an app launched with no window. The first
+    /// to ask chooses what opens.
+    public func restoreAccounts(openingAgentConnection: Bool = false, preferred: String? = nil) async {
+        if restoring == nil {
+            account.fallsBackToAgentConnection = true
+            let account = account
+            restoring = Task { await account.restore(openingAgentConnection: openingAgentConnection, preferred: preferred) }
+        }
+        await restoring?.value
+    }
+
+    /// The window is in the foreground; before a scene says so, whatever
+    /// the app's state was when this context was made.
+    private lazy var windowActive = UIApplication.shared.applicationState != .background
+    private var connectionHolds = 0
+
+    /// The window came to the foreground or left it.
+    public func windowChanged(active: Bool) {
+        windowActive = active
+        applyForeground(always: true)
+    }
+
+    /// The agent connection kept running as in the foreground, with no
+    /// window in front, until the returned closure is called: Siri's
+    /// intents while they answer. Returns once the connection was told.
+    public func holdConnection() async -> @MainActor () -> Void {
+        connectionHolds += 1
+        await applyForeground().value
+        var released = false
+        return { [weak self] in
+            guard let self, !released else { return }
+            released = true
+            self.connectionHolds -= 1
+            self.applyForeground()
+        }
+    }
+
+    private var toldActive: Bool?
+
+    /// A hold tells the connections only a change; the window, every
+    /// time, as it always has. A later change overtakes one under way
+    /// (`AgentConnections.setForeground`).
+    @discardableResult
+    private func applyForeground(always: Bool = false) -> Task<Void, Never> {
+        let active = windowActive || connectionHolds > 0
+        guard always || active != toldActive else { return Task {} }
+        toldActive = active
+        let connections = account.agentConnections
+        return Task { @MainActor in await connections.setForeground(active) }
+    }
 }
 
 /// Scanning and answering pairing codes: connecting a terminal

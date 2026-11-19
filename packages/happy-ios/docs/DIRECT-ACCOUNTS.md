@@ -37,7 +37,10 @@ closes the request stream; instance teardown closes every client.
 
 Direct credentials use the existing `AccountKeychainBackend` under their own
 `happy-ios:direct-device` service. They contain the secret Tailcat address,
-port, device ID and device token. `direct-accounts.json` contains only cached
+port, device ID and device token. They are readable after the phone's first
+unlock and never leave it (`AfterFirstUnlockThisDeviceOnly`), so Siri can
+reach the computer while the phone is locked; a pairing stored before that is
+rewritten once at launch. `direct-accounts.json` contains only cached
 identity, avatar, selection and revocation state. Keychain enumeration recovers
 entries after metadata corruption; Keychain access errors preserve them.
 The legacy registry and RN-compatible shared item keep their current format.

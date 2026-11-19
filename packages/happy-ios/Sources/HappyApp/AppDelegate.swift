@@ -62,7 +62,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
-        let coordinator = AppCoordinator(window: window, context: CompositionRoot.makeContext())
+        let coordinator = AppCoordinator(window: window, context: CompositionRoot.context)
         self.window = window
         self.coordinator = coordinator
         // Each computer that takes it is told this phone's time zone and language.
@@ -128,6 +128,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         coordinator?.appStateChanged(active: true)
         activeGuest?.setActive(true)
         PushNotifications.shared.appBecameActive()
+        // Siri learns the agents' names for the phrases that take one.
+        HappyShortcuts.updateAppShortcutParameters()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

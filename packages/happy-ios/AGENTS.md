@@ -163,6 +163,15 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   chips and `SessionStarter`; the button in `LegacyHomeViewController`'s
   header beside Settings; docs/agent-voice-call.md "Happy CLI sessions").
   It never reads or writes the server's voice usage.
+- **Siri and Shortcuts** (`HappyApp/AgentIntents.swift`, `HappyUI/Siri`,
+  `HappyCore/Siri`) work on the open agent connection, locked or not, with
+  no setup: "What are my agents doing" (`AgentsSummary`, spoken, never
+  code, paths or IDs), "Tell ‹agent› …" (the words verbatim, through the
+  conversation's own send, as the composer and the call's `message` send)
+  and "Read me ‹agent›'s last reply" (`SpokenReply`). Agents are home's rows
+  (`CallTarget.list`), matched by name (`AgentNameMatch`). While an intent
+  runs it holds the connection in the foreground
+  (`AppContext.holdConnection`), window or not.
 - **An agent connection's voice call** (`HappyCore/Call`, `HappyUI/Call`) is
   the app's only voice, on a Happy account too: home's three-bar button beside compose starts
   it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
@@ -866,8 +875,12 @@ To keep parallel work from colliding:
   expo-secure-store's item; see Scope. The logic is tested on Linux, but a
   real upgrade from an RN build on a device has not been tried yet.
 - The shared item is `WhenUnlocked`, as the RN app wrote it. A cold launch
-  in the background while the phone is locked therefore can't read the
-  credentials, which matters once background sync exists.
+  in the background while the phone is locked therefore can't read a Happy
+  account's credentials, which matters once background sync exists. An
+  agent connection's device credentials are `AfterFirstUnlockThisDeviceOnly`
+  (see docs/DIRECT-ACCOUNTS.md), so Siri reaches the computer while locked;
+  the Happy accounts are read once the phone is unlocked
+  (`AccountController.reconcileWhenUnlocked`).
 - Deletions:
   - Sessions are reconciled by a daily full listing, because the API has
     no tombstone or "deleted since" feed. A server-side deletion feed

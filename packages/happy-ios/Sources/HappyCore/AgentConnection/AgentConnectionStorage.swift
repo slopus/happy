@@ -65,20 +65,17 @@ public struct KeychainAgentConnectionCredentialStore: AgentConnectionCredentialS
         }
         return result
     }
-    /// A team server's refresh token stays on this device and in this app:
-    /// readable after the first unlock (so a refresh works in the
-    /// background), never synced to iCloud Keychain, never restored to or
-    /// migrated onto another device, and rewritten that way when an older
-    /// item had looser protection.
+    /// A team server's refresh token and a paired computer's device token
+    /// stay on this device and in this app: readable after the first
+    /// unlock (so a refresh works in the background, and Siri and a car
+    /// reach the computer while the phone is locked), never synced to
+    /// iCloud Keychain, never restored to or migrated onto another device,
+    /// and rewritten that way when an older item had looser protection.
     public func save(_ credentials: AgentConnectionCredentials, id: String) throws {
         let data = try JSONEncoder().encode(credentials)
-        if credentials.signIn != nil {
-            if try backend.add(query(id), data: data, accessibility: .afterFirstUnlockThisDeviceOnly) == .duplicate {
-                try backend.update(query(id), data: data, accessibility: .afterFirstUnlockThisDeviceOnly)
-            }
-            return
+        if try backend.add(query(id), data: data, accessibility: .afterFirstUnlockThisDeviceOnly) == .duplicate {
+            try backend.update(query(id), data: data, accessibility: .afterFirstUnlockThisDeviceOnly)
         }
-        if try backend.add(query(id), data: data, accessibility: .whenUnlocked) == .duplicate { try backend.update(query(id), data: data) }
     }
     public func remove(id: String) throws { try backend.removeAccount(query(id)) }
 }
@@ -86,7 +83,14 @@ public struct KeychainAgentConnectionCredentialStore: AgentConnectionCredentialS
 /// No direct secret is written to disk or to the RN-compatible item. Reading
 /// all Keychain items must succeed before missing accounts are reconciled.
 actor AgentConnectionStorage {
-    struct Registry: Codable { var accounts: [AgentConnection] = []; var activeID: String? }
+    struct Registry: Codable {
+        var accounts: [AgentConnection] = []
+        var activeID: String?
+        /// Every credential has been written readable after the first
+        /// unlock (`KeychainAgentConnectionCredentialStore.save`). Nil in a
+        /// registry from before, whose pairings were readable only unlocked.
+        var afterFirstUnlock: Bool?
+    }
     static let fileName = "direct-accounts.json"
     private let credentials: any AgentConnectionCredentialStore
     private var file: URL?
@@ -114,6 +118,13 @@ actor AgentConnectionStorage {
         for id in values.keys.sorted() where !registry.accounts.contains(where: { $0.id == id }) { registry.accounts.append(AgentConnection(id: id, name: AgentName.fallback)) }
         if !registry.accounts.contains(where: { $0.id == registry.activeID }) { registry.activeID = nil }
         for index in registry.accounts.indices { registry.accounts[index].status = registry.accounts[index].revoked ? .revoked : .paused }
+        // Pairings an earlier build kept readable only while unlocked are
+        // written again, once, so the computer is reachable while locked.
+        if registry.afterFirstUnlock != true {
+            var rewritten = true
+            for (id, value) in values where (try? credentials.save(value, id: id)) == nil { rewritten = false }
+            if rewritten { registry.afterFirstUnlock = true }
+        }
         try persist()
         return (registry.accounts, registry.activeID, values)
     }

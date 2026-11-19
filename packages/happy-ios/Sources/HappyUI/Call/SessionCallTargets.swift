@@ -46,6 +46,8 @@ final class SessionCallTargets: LiveCallTargets {
     var onChange: ((CallTargetState) -> Void)?
     /// Ended with its call: nothing is held, opened or sent after.
     private var closed = false
+    /// A send is counted as voice's (`voiceSent`); Siri's isn't a call.
+    var countsVoiceSends = true
 
     init(session: Session, shell: ShellViewController?) {
         self.session = session
@@ -348,7 +350,7 @@ final class SessionCallTargets: LiveCallTargets {
             }
             // Refused only when this phone can't keep it: the call's targets are made tasks, never new ones.
             if await chat.conversation.send(id: id, text: text) {
-                Analytics.shared.voiceSent(to: agentId, in: session.snapshot)
+                if countsVoiceSends { Analytics.shared.voiceSent(to: agentId, in: session.snapshot) }
                 return .queued
             }
             return .refused("It couldn't be kept on this phone.")
