@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { createPortal } from 'react-dom';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -15,8 +15,8 @@ import type { ProjectSessionMonitorProps, ProjectTaskSessionsProps } from './Pro
 
 function copy() {
     const zh = getCurrentLanguage().startsWith('zh');
-    return zh ? { title: '全局会话', project: '本项目会话', all: '全部项目', current: '当前项目', synced: '当前账号 · 已同步会话', search: '搜索会话或项目', empty: '当前范围没有匹配的会话', unavailable: '服务器连接中断，执行状态尚未确认', noAttention: '无需处理', open: '查看会话', awaiting: '等待你回复或授权', failed: '执行失败', running: '正在执行', unread: '结果等待查看', unknown: '连接中断，无法确认执行状态', clearTask: '清除任务筛选', scopeUnknown: '独立会话', disconnected: '未连接', countNote: '按会话去重统计；任务的待验收状态保持不变。', labels: { attention: '需处理', running: '执行中', unread: '待查看', unknown: '状态未知' } }
-        : { title: 'Global sessions', project: 'Project sessions', all: 'All projects', current: 'Current project', synced: 'Current account · Synced sessions', search: 'Search sessions or projects', empty: 'No matching sessions in this scope', unavailable: 'Server disconnected; execution status is unconfirmed', noAttention: 'No action needed', open: 'Open session', awaiting: 'Waiting for your reply or approval', failed: 'Execution failed', running: 'Running', unread: 'Result not viewed', unknown: 'Disconnected; execution status unknown', clearTask: 'Clear task filter', scopeUnknown: 'Independent session', disconnected: 'Disconnected', countNote: 'Unique sessions; task acceptance states are unchanged.', labels: { attention: 'Needs action', running: 'Running', unread: 'Unviewed', unknown: 'Unknown' } };
+    return zh ? { title: '全局会话', project: '本项目会话', sessions: '会话', empty: '当前没有这类会话', unavailable: '服务器连接中断，执行状态尚未确认', noAttention: '无需处理', open: '查看会话', awaiting: '等待你回复或授权', failed: '执行失败', running: '正在执行', unread: '结果等待查看', unknown: '连接中断，无法确认执行状态', scopeUnknown: '独立会话', disconnected: '未连接', labels: { attention: '需处理', running: '执行中', unread: '待查看', unknown: '状态未知' } }
+        : { title: 'Global sessions', project: 'Project sessions', sessions: 'Sessions', empty: 'No sessions in this category', unavailable: 'Server disconnected; execution status is unconfirmed', noAttention: 'No action needed', open: 'Open session', awaiting: 'Waiting for your reply or approval', failed: 'Execution failed', running: 'Running', unread: 'Result not viewed', unknown: 'Disconnected; execution status unknown', scopeUnknown: 'Independent session', disconnected: 'Disconnected', labels: { attention: 'Needs action', running: 'Running', unread: 'Unviewed', unknown: 'Unknown' } };
 }
 type ProjectOptions = { scope?: ActivityScope; knownScopes: ActivityScope[] };
 type Monitor = { setProject: React.Dispatch<React.SetStateAction<ProjectOptions>>; rows: SessionActivity[]; scope?: ActivityScope; open: (scope?: ActivityScope, category?: ActivityCategory) => void; close: () => void; isOpen: boolean };
@@ -46,16 +46,15 @@ function SessionMonitorRoot({ scope: initialScope, knownScopes: initialScopes = 
     const machines = storage(s => s.machines);
     const deletionRevision = React.useSyncExternalStore(subscribeProjectSessionDeletions, getProjectSessionDeletionRevision, getProjectSessionDeletionRevision);
     const rows = React.useMemo(() => buildSessionActivity(Object.values(sessions), unread, connected).filter(row => !isProjectSessionDeleted(row.session.id)), [sessions, unread, connected, deletionRevision]);
-    const [isOpen, setOpen] = React.useState(false), [filterScope, setScope] = React.useState<ActivityScope>(), [category, setCategory] = React.useState<ActivityCategory>('attention'), [query, setQuery] = React.useState('');
+    const [isOpen, setOpen] = React.useState(false), [filterScope, setScope] = React.useState<ActivityScope>(), [category, setCategory] = React.useState<ActivityCategory>('attention');
     const router = useRouter();
     const trigger = React.useRef<HTMLElement | null>(null);
     const panel = React.useRef<any>(null);
-    const searchInput = React.useRef<TextInput>(null);
-    React.useEffect(() => { if (isOpen) searchInput.current?.focus(); }, [isOpen]);
+    React.useEffect(() => { if (isOpen) panel.current?.focus(); }, [isOpen]);
     const close = React.useCallback(() => { setOpen(false); queueMicrotask(() => { if (trigger.current?.isConnected) trigger.current.focus(); }); }, []);
     const open = React.useCallback((nextScope?: ActivityScope, nextCategory?: ActivityCategory) => {
         trigger.current = typeof document !== 'undefined' ? document.activeElement as HTMLElement : null;
-        setScope(nextScope); setQuery('');
+        setScope(nextScope);
         const counts = countSessionActivity(nextScope ? rows.filter(row => matchesActivityScope(row, nextScope)) : rows);
         setCategory(nextCategory ?? activityCategories.find(key => counts[key] > 0) ?? 'attention'); setOpen(true);
     }, [rows]);
@@ -71,7 +70,8 @@ function SessionMonitorRoot({ scope: initialScope, knownScopes: initialScopes = 
         const titles = [...knownScopes, ...(scope ? [scope] : [])].filter(owner => matchesActivityScope(row, owner)).sort((a, b) => a.path.length - b.path.length).map(owner => owner.title);
         return titles.length ? [...new Set(titles)].join(' / ') : (row.session.metadata?.goalBoard?.featurePath ?? row.session.metadata?.path)?.replace(/\\/g, '/').split('/').filter(Boolean).pop() || words.scopeUnknown;
     };
-    const visible = scoped.filter(row => row.category === category && `${getSessionName(row.session)} ${row.session.metadata?.name ?? ''} ${origin(row)} ${row.session.metadata?.goalBoard?.featurePath ?? ''} ${row.session.metadata?.path ?? ''}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+    const visible = scoped.filter(row => row.category === category);
+    const panelTitle = filterScope ? `${filterScope.title} · ${words.sessions}` : words.title;
     const { theme } = useUnistyles();
     const context = React.useMemo(() => ({ rows, scope, open, close, isOpen, setProject }), [rows, scope, open, close, isOpen]);
     const [position, setPosition] = React.useState({ x: 84, y: 72 });
@@ -92,7 +92,7 @@ function SessionMonitorRoot({ scope: initialScope, knownScopes: initialScopes = 
     React.useEffect(() => { window.addEventListener('blur', stopDrag); return () => window.removeEventListener('blur', stopDrag); }, []);
     const point = clamp(position);
     return <Context.Provider value={context}>{children}{isOpen && typeof document !== 'undefined' && createPortal(
-        <View ref={panel} role="dialog" aria-modal={false} aria-label={words.title} style={[styles.panel, { position: 'fixed', zIndex: 3000, top: point.y, left: point.x, width: panelWidth, maxHeight: panelHeight } as any]} testID="session-activity-panel">
+        <View ref={panel} role="dialog" tabIndex={-1} aria-modal={false} aria-label={panelTitle} style={[styles.panel, { position: 'fixed', zIndex: 3000, top: point.y, left: point.x, width: panelWidth, maxHeight: panelHeight } as any]} testID="session-activity-panel">
             <View style={[styles.panelHeader, { cursor: 'move', touchAction: 'none', userSelect: 'none' } as any]} testID="session-activity-drag-handle" {...({
                 onPointerDown: startDrag,
                 onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
@@ -101,12 +101,9 @@ function SessionMonitorRoot({ scope: initialScope, knownScopes: initialScopes = 
                     setPosition(clamp({ x: current.left + event.clientX - current.x, y: current.top + event.clientY - current.y }));
                 },
                 onPointerUp: stopDrag, onPointerCancel: stopDrag, onLostPointerCapture: stopDrag,
-            } as any)}><View style={styles.line}><Ionicons name="chatbubbles-outline" size={17} color={theme.colors.textLink} /><Text accessibilityRole="header" style={styles.title}>{words.title}</Text></View><Button variant="icon" label={t('sidebarLists.close')} onPress={close} testID="session-activity-close"><Ionicons name="close" size={18} color={theme.colors.textSecondary} /></Button></View>
-            <View style={styles.scopeRow}><View style={styles.line}><Button variant="chip" label={words.all} selected={!filterScope} onPress={() => { setScope(undefined); setQuery(''); }} testID="session-activity-scope-all"><Text style={styles.small}>{words.all}</Text></Button>{scope && <Button variant="chip" label={words.current} selected={!!filterScope && filterScope.machineId === scope.machineId && filterScope.path === scope.path} onPress={() => { setScope(scope); setQuery(''); }} testID="session-activity-scope-project"><Text style={styles.small}>{words.current}</Text></Button>}</View><Text style={styles.meta}>{words.synced}</Text></View>
-            {filterScope && <View style={styles.scopeRow}><Text numberOfLines={1} style={[styles.meta, { flex: 1 }]}>{filterScope.title}</Text><Button variant="toolbar" label={words.all} onPress={() => setScope(undefined)}><Text style={styles.link}>{words.all}</Text></Button></View>}
+            } as any)}><View style={[styles.line, { flex: 1, minWidth: 0 }]}><Ionicons name="chatbubbles-outline" size={17} color={theme.colors.textLink} /><Text accessibilityRole="header" numberOfLines={1} style={styles.title}>{panelTitle}</Text></View><Button variant="icon" label={t('sidebarLists.close')} onPress={close} testID="session-activity-close"><Ionicons name="close" size={18} color={theme.colors.textSecondary} /></Button></View>
             <View style={styles.tabs}>{activityCategories.filter(key => key !== 'unknown' || counts.unknown > 0 || category === 'unknown').map(key => <Button key={key} variant="toolbar" label={`${words.labels[key]} ${counts[key]}`} selected={category === key} onPress={() => setCategory(key)} testID={`session-activity-tab-${key}`}><Text style={[styles.small, category === key && { color: theme.colors.textLink }]}>{words.labels[key]} {counts[key]}</Text></Button>)}</View>
             {!connected && <Text accessibilityLiveRegion="polite" style={styles.connection}>{words.unavailable}</Text>}
-            <TextInput ref={searchInput} value={query} onChangeText={setQuery} placeholder={words.search} accessibilityLabel={words.search} placeholderTextColor={theme.colors.input.placeholder} style={styles.search} />
             <ScrollView style={styles.scroll} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
                 {!visible.length && <Text style={styles.empty}>{words.empty}</Text>}
                 {visible.map(row => { const session = row.session, machine = machines[session.metadata?.machineId ?? '']; const title = session.metadata?.name || getSessionName(session); const status = row.category === 'attention' ? row.state === 'failed' ? words.failed : words.awaiting : words[row.category]; return <View key={session.id} style={styles.card} testID={`session-activity-row-${session.id}`}>
@@ -114,7 +111,7 @@ function SessionMonitorRoot({ scope: initialScope, knownScopes: initialScopes = 
                     <Text numberOfLines={2} style={styles.rowTitle}>{title}</Text><Text numberOfLines={1} style={styles.small}>{origin(row)}</Text>
                     <View style={styles.between}><View style={[styles.line, { flex: 1, minWidth: 0 }]}><Ionicons name="desktop-outline" size={13} color={theme.colors.textSecondary} /><Text numberOfLines={1} style={[styles.meta, { flexShrink: 1 }]}>{machine?.metadata?.displayName || machine?.metadata?.host || t('projectGoals.machine')}{!row.connected ? ` · ${words.disconnected}` : ''}</Text></View><Button variant="chip" label={words.open} onPress={() => { router.push(`/session/${encodeURIComponent(session.id)}`); }} testID={`session-activity-open-${session.id}`}><Text style={styles.link}>{words.open}</Text><Ionicons name="arrow-forward" size={13} color={theme.colors.textLink} /></Button></View>
                 </View> })}
-            </ScrollView><Text style={styles.footer}>{words.countNote}</Text>
+            </ScrollView>
         </View>
     , document.body)}</Context.Provider>;
 }
@@ -145,17 +142,14 @@ export function ProjectTaskSessions({ task, machineId, featurePath, onFallback, 
 const styles = StyleSheet.create(theme => ({
     panel: { position: 'absolute', borderRadius: 14, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, overflow: 'hidden', boxShadow: `0 12px 40px ${theme.colors.shadow.color}` },
     panelHeader: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    title: { ...Typography.default('semiBold'), color: theme.colors.text, fontSize: 15 },
-    scopeRow: { paddingHorizontal: 10, paddingBottom: 6, gap: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' },
+    title: { ...Typography.default('semiBold'), color: theme.colors.text, fontSize: 15, flexShrink: 1 },
     tabs: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: theme.colors.divider, flexDirection: 'row', paddingHorizontal: 10, gap: 2, flexWrap: 'wrap' },
-    search: { margin: 10, marginBottom: 0, borderWidth: 1, borderColor: theme.colors.divider, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: theme.colors.input.background, color: theme.colors.text, fontSize: 12 },
     scroll: { flexShrink: 1 }, list: { padding: 10, gap: 8 },
     card: { borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh, borderRadius: 10, padding: 10, gap: 6 },
     between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }, line: { flexDirection: 'row', alignItems: 'center', gap: 6 }, dot: { width: 6, height: 6, borderRadius: 3 },
     rowTitle: { ...Typography.default('semiBold'), fontSize: 13, lineHeight: 18, color: theme.colors.text },
     small: { ...Typography.default(), fontSize: 12, lineHeight: 17, color: theme.colors.textSecondary },
     meta: { ...Typography.default(), fontSize: 10, lineHeight: 15, color: theme.colors.textSecondary }, link: { ...Typography.default(), fontSize: 11, color: theme.colors.textLink },
-    footer: { borderTopWidth: 1, borderTopColor: theme.colors.divider, padding: 8, fontSize: 10, lineHeight: 16, color: theme.colors.textSecondary },
     empty: { padding: 35, textAlign: 'center', color: theme.colors.textSecondary, fontSize: 12 }, connection: { paddingHorizontal: 16, paddingTop: 10, fontSize: 11, color: theme.colors.status.error },
     summary: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 2, marginLeft: 6 },
 }));

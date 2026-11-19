@@ -43,13 +43,13 @@ describe('project session monitor',()=>{
         press('session-activity-open-one');expect(panels()).toHaveLength(1);
         act(()=>renderer.update(tree(false)));expect(panels()).toHaveLength(1);expect(items()).toHaveLength(1);
     });
-    it('labels a pinned project scope after switching projects and can clear it',()=>{
+    it('labels scoped results in the title and reopens global results from the global entry',()=>{
         const tree=(title:string,path:string)=><ProjectSessionMonitor><GlobalSessionEntry /><ProjectSessionMonitor scope={{machineId:'m1',path,title}}><ProjectSessionSummary /></ProjectSessionMonitor></ProjectSessionMonitor>;
         act(()=>renderer.update(tree('Project A','/p')));press('project-session-running');expect(items()).toHaveLength(1);
         act(()=>renderer.update(tree('Project B','/other')));
-        const current=renderer.root.findAllByType('Button').find((n:any)=>n.props.testID==='session-activity-scope-project');
-        expect(current.props.selected).toBe(false);expect(JSON.stringify(renderer.toJSON())).toContain('Project A');
-        press('session-activity-scope-all');expect(items()).toHaveLength(2);
+        expect(panels()[0].props['aria-label']).toBe('Project A · 会话');
+        press('global-session-entry');press('global-session-entry');expect(items()).toHaveLength(2);
+        expect(panels()[0].props['aria-label']).toBe('全局会话');
     });
     it('clamps dragging to the viewport and cancels on lost capture',()=>{
         press('global-session-entry');const handle=renderer.root.findAllByType('View').find((n:any)=>n.props.testID==='session-activity-drag-handle');
@@ -59,11 +59,13 @@ describe('project session monitor',()=>{
         act(()=>handle.props.onLostPointerCapture());act(()=>handle.props.onPointerMove({pointerId:2,clientX:100,clientY:100}));
         expect(panels()[0].props.style[1]).toMatchObject({left:1228,top:12});
     });
-    it('searches full explicit project bindings and available catalogue names',()=>{
+    it('shows catalogue names without scope controls, search or explanatory chrome',()=>{
         mocks.state={...mocks.state,sessions:{bound:{id:'bound',presence:'online',thinking:true,updatedAt:1,metadata:{machineId:'m1',path:'/code',goalBoard:{featurePath:'/archive/project-a/features/shared',taskId:'t'}},agentState:{}}}};
         act(()=>renderer.update(app()));press('global-session-entry');press('session-activity-tab-running');
-        act(()=>renderer.root.findByType('TextInput').props.onChangeText('project-a'));expect(items()).toHaveLength(1);
-        act(()=>renderer.root.findByType('TextInput').props.onChangeText('Design Library'));expect(items()).toHaveLength(1);
+        const content=JSON.stringify(renderer.toJSON());
+        expect(content).toContain('Design Library');
+        expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
+        expect(content).not.toMatch(/全部项目|当前账号|已同步会话|去重统计|搜索会话/);
     });
     it('checks durable deletion markers only for activity candidates, even when closed',()=>{
         mocks.deletedReads=[];const idle=Object.fromEntries(Array.from({length:200},(_,i)=>['idle'+i,{id:'idle'+i,presence:'online',thinking:false,updatedAt:1,agentState:{},metadata:{path:'/idle'}}]));
@@ -78,7 +80,7 @@ describe('project session monitor',()=>{
         mocks.state={...mocks.state,sessions:{}};act(()=>renderer.update(<ProjectSessionMonitor><ProjectTaskSessions task={task} machineId="m1" featurePath="/p" onFallback={fallback} offline /></ProjectSessionMonitor>));
         expect(renderer.root.findAllByType('Button').find((n:any)=>n.props.testID==='project-task-chat-t1').props.disabled).toBe(true);
     });
-    it('opens global work, filters to the current project, searches and closes without navigating',()=>{press('global-session-entry');press('session-activity-tab-running');expect(items()).toHaveLength(2);press('session-activity-scope-project');expect(items()).toHaveLength(1);act(()=>renderer.root.findByType('TextInput').props.onChangeText('不存在'));expect(items()).toHaveLength(0);press('session-activity-close');expect(panels()).toHaveLength(0);expect(mocks.push).not.toHaveBeenCalled()});
+    it('opens global work and scoped project activity without navigating',()=>{press('global-session-entry');press('session-activity-tab-running');expect(items()).toHaveLength(2);press('session-activity-close');press('project-session-running');expect(items()).toHaveLength(1);press('session-activity-close');expect(panels()).toHaveLength(0);expect(mocks.push).not.toHaveBeenCalled()});
     it('opens exactly the chosen real session without clearing unread itself',()=>{press('project-session-unread');press('session-activity-open-done');expect(mocks.push).toHaveBeenCalledExactlyOnceWith('/session/done');expect(mocks.state.unreadSessionIds.has('done')).toBe(true);expect(panels()).toHaveLength(1)});
     it('subscribes to state changes, hides deletions and treats socket loss as unknown',()=>{press('global-session-entry');press('session-activity-tab-running');mocks.state={...mocks.state,socketStatus:'disconnected'};act(()=>renderer.update(app()));expect(items()).toHaveLength(0);press('session-activity-tab-unknown');expect(items()).toHaveLength(2);mocks.deleted.add('one');mocks.state={...mocks.state,sessions:{...mocks.state.sessions}};act(()=>renderer.update(app()));expect(items()).toHaveLength(1)});
     it('does not consume Escape from the underlying chat or other overlays',()=>{
