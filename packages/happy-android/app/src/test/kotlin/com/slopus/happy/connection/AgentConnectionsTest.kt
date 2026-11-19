@@ -317,7 +317,10 @@ class AgentConnectionsTest {
         assertTrue(pairing.calls.isEmpty())
     }
     @Test
-    fun closingAPairingRecordsHowItEndedOnce() = runBlocking {
+    fun aPairingRecordsHowItEndedAsItEndsAndOnlyOnce() = runBlocking {
+        fun completed(start: com.slopus.happy.analytics.PairingStart) = AnalyticsEvent.MobilePairingCompleted(PairingMethod.Direct, start)
+        fun failed(error: PairingError) = AnalyticsEvent.MobilePairingFailed(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.Scan, error)
+
         val pairing = FakeDaemon()
         transport = { pairing }
         val paired = flow(pairing, start = PairingStart.OpenedLink)
@@ -325,26 +328,46 @@ class AgentConnectionsTest {
         paired.await<PairingState.Compare>()
         paired.confirm()
         paired.await<PairingState.Paired>()
+        // Kept: recorded already, as the screen opens the agent's home without closing.
+        assertEquals(listOf(completed(com.slopus.happy.analytics.PairingStart.OpenedLink)), recorded.toList())
         paired.close()
         paired.close()
+        assertEquals(1, recorded.size)
+
         val mismatched = flow(FakeDaemon())
         mismatched.start(pairingCode())
         mismatched.await<PairingState.Compare>()
         mismatched.reject()
+        assertEquals(failed(PairingError.EmojiMismatch), recorded.last())
         mismatched.close()
+
+        val badProof = flow(FakeDaemon(badDaemonMac = true))
+        badProof.start(pairingCode())
+        badProof.await<PairingState.Compare>()
+        badProof.confirm()
+        badProof.await<PairingState.Failed>()
+        assertEquals(failed(PairingError.InvalidProof), recorded.last())
+        badProof.close()
+
+        val expired = flow(FakeDaemon())
+        expired.start(pairingCode(e = PAIRING_NOW - 1))
+        assertEquals(failed(PairingError.Expired), recorded.last())
+        expired.close()
+        assertEquals(4, recorded.size)
+
         val left = flow(FakeDaemon(), start = PairingStart.PasteLink)
         left.start(pairingCode())
         left.await<PairingState.Compare>()
+        assertEquals(4, recorded.size)
         left.close()
-        val expired = flow(FakeDaemon())
-        expired.start(pairingCode(e = PAIRING_NOW - 1))
-        expired.close()
+        left.close()
         assertEquals(
             listOf(
-                AnalyticsEvent.MobilePairingCompleted(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.OpenedLink),
-                AnalyticsEvent.MobilePairingFailed(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.Scan, PairingError.EmojiMismatch),
+                completed(com.slopus.happy.analytics.PairingStart.OpenedLink),
+                failed(PairingError.EmojiMismatch),
+                failed(PairingError.InvalidProof),
+                failed(PairingError.Expired),
                 AnalyticsEvent.MobilePairingCancelled(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.PasteLink),
-                AnalyticsEvent.MobilePairingFailed(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.Scan, PairingError.Expired),
             ),
             recorded.toList(),
         )

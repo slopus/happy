@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** How a pairing code reached the phone: scanned, pasted, or a link that opened the app. */
 enum class PairingStart { Scan, PasteLink, OpenedLink }
@@ -41,8 +42,12 @@ sealed interface PairingState {
  * One pairing from a scanned or pasted `happy://direct?` code to a kept
  * agent: connect and exchange keys, show the emoji, and on the person's
  * word wait for the agent's confirmation before keeping anything.
- * Closing at any point before that rejects the pairing. Closing records
- * how it ended: `mobile_pairing_completed`, `_failed` and why, or `_cancelled`.
+ * Closing at any point before that rejects the pairing. How it ended is
+ * recorded once, as it ends (iOS's `AgentPairingScreens`):
+ * `mobile_pairing_completed` once the agent is kept, `_failed` and why as
+ * it fails, or `_cancelled` when it is closed before either. A kept agent
+ * opens its home without closing this screen first, so closing comes late
+ * or never.
  */
 class PairingFlow(
     private val scope: CoroutineScope,
@@ -62,15 +67,16 @@ class PairingFlow(
     private var service: PairingService? = null
     private var job: Job? = null
     /** The person said the emoji don't match. */
-    private var mismatch = false
-    private var reported = false
+    @Volatile private var mismatch = false
+    /** Its ending was recorded; it ends on [scope]'s threads or the screen's. */
+    private val reported = AtomicBoolean(false)
 
     fun start(code: String) {
         if (mutableState.value != null) return
         val parsed = try {
             PairingLink.parse(code, now())
         } catch (e: AgentConnectionException) {
-            mutableState.value = PairingState.Failed(null, e.message ?: "", e.reason)
+            end(PairingState.Failed(null, e.message ?: "", e.reason))
             return
         }
         link = parsed
@@ -92,7 +98,7 @@ class PairingFlow(
         run(compare.agentName) {
             val credentials = service.confirm()
             transport?.close()
-            mutableState.value = PairingState.Paired(accounts.add(credentials, link.name))
+            end(PairingState.Paired(accounts.add(credentials, link.name)))
         }
     }
 
@@ -101,19 +107,23 @@ class PairingFlow(
         val name = mutableState.value?.agentName
         mismatch = true
         stop()
-        mutableState.value = PairingState.Failed(name, AgentConnectionException.Reason.Rejected.message, AgentConnectionException.Reason.Rejected)
+        end(PairingState.Failed(name, AgentConnectionException.Reason.Rejected.message, AgentConnectionException.Reason.Rejected))
     }
 
-    /** The screen went away. An unfinished pairing is rejected. */
+    /** The screen went away. An unfinished pairing is rejected, and recorded as cancelled. */
     fun close() {
         if (mutableState.value !is PairingState.Paired) stop()
-        report()
+        mutableState.value?.let(::report)
     }
 
-    private fun report() {
-        val state = mutableState.value ?: return
-        if (reported) return
-        reported = true
+    /** Recorded before the screen sees it, so nothing it opens comes first. */
+    private fun end(state: PairingState) {
+        report(state)
+        mutableState.value = state
+    }
+
+    private fun report(state: PairingState) {
+        if (!reported.compareAndSet(false, true)) return
         val method = PairingMethod.Direct
         record(
             when {
@@ -156,7 +166,7 @@ class PairingFlow(
     }
 
     private suspend fun fail(name: String, reason: AgentConnectionException.Reason) {
-        mutableState.value = PairingState.Failed(name, reason.message, reason)
+        end(PairingState.Failed(name, reason.message, reason))
         transport?.close()
     }
 }

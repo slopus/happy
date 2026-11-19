@@ -372,11 +372,13 @@ app code calls `Analytics` and its typed events, and maps its own types in
      `report.observe(state)`, the two `report` lines in `close`, and the
      `CallReport` class.
    - `connection/PairingFlow.kt`: the `record` parameter, the `mismatch`
-     and `reported` fields, `mismatch = true` in `reject`, and `report()`
-     with its call in `close`.
+     and `reported` fields (with the `AtomicBoolean` import),
+     `mismatch = true` in `reject`, `report()` with its call in `close`,
+     and `end` (its callers set `mutableState.value` instead).
    - `connection/ServerSignInFlow.kt`: the `record` parameter, the
-     `reported` field, and the end of `close` from `if (reported) return`
-     to `event?.let(record)`.
+     `reported` field (with the `AtomicBoolean` import), the end of `close`
+     from `if (!reported.compareAndSet(false, true)) return` to
+     `event?.let(record)`, and the `record` line in `done`.
    - `conversation/Conversation.kt`: the `address`, `record` and
      `errorShown` parameters; the `errorShown(…)` line in the load; in the
      send loop, `var made` with its comment, `made = true`,
@@ -387,7 +389,8 @@ app code calls `Analytics` and its typed events, and maps its own types in
      `recordCreated`, `recordStarted`, `providerKind` and `recordSent`.
    - `sync/MessageSender.kt`: `recordSent(…)` with its call.
    - `ui/chat/ChatRoutes.kt`: the `onSendFailureShown = …` line.
-   - `payments/Offers.kt`: `Analytics.record(…Presented…)` and its comment.
+   - `payments/Offers.kt`: the `record` parameter, and `record(…Presented…)`
+     in `ask` with its comment.
    - `payments/Subscription.kt`: the `.also { … }` on `restore`'s result,
      `val sheet` and the `when (update)` block in `bought`, the
      `paywall`/`paywallError` calls after `post(…)` (back to
