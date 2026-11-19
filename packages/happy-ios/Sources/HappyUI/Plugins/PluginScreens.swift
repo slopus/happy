@@ -42,13 +42,14 @@ final class PluginMarks {
         self.arrived = arrived
     }
 
-    func apply(_ image: PluginImage?, to row: inout SettingsRow) {
+    /// `scale`: the display's, for the pixels the picture is read at.
+    func apply(_ image: PluginImage?, scale: CGFloat, to row: inout SettingsRow) {
         row.icon = ("plugin", .blue)
         guard let image else { return }
         row.squareImage = true
         row.image = pictures[image.path] ?? ThumbHashImages.image(image.thumbhash)
         guard asked.insert(image.path).inserted else { return }
-        let pixels = Int(SettingsLayout.Metrics.tile * UIScreen.main.scale)
+        let pixels = Int(SettingsLayout.Metrics.tile * max(1, scale))
         Task { @MainActor [weak self, session] in
             guard let picture = await session.images.picture(image.path, thumbhash: image.thumbhash, pixels: pixels) else { return }
             self?.pictures[image.path] = picture
@@ -132,7 +133,7 @@ final class PluginsViewController: SettingsPageViewController {
         return cards
     }
 
-    private func mark(_ image: PluginImage?, in row: inout SettingsRow) { marks.apply(image, to: &row) }
+    private func mark(_ image: PluginImage?, in row: inout SettingsRow) { marks.apply(image, scale: traitCollection.displayScale, to: &row) }
 
     private func open(_ pluginId: String) {
         PluginScreens.open(pluginId: pluginId, session: session, from: self)
@@ -267,7 +268,7 @@ final class PluginViewController: SettingsPageViewController {
         return row
     }
 
-    private func mark(_ image: PluginImage?, in row: inout SettingsRow) { marks.apply(image, to: &row) }
+    private func mark(_ image: PluginImage?, in row: inout SettingsRow) { marks.apply(image, scale: traitCollection.displayScale, to: &row) }
 
     // MARK: Acts
 

@@ -115,7 +115,6 @@ final class ChatDeliveryView: UIView {
         isUserInteractionEnabled = false
         isAccessibilityElement = false
         for layer in [clockFrame, clockMinute, sent, read, failed, failedBang] {
-            layer.contentsScale = UIScreen.main.scale
             self.layer.addSublayer(layer)
         }
         for check in [sent, read] {
@@ -126,8 +125,11 @@ final class ChatDeliveryView: UIView {
         }
         clockFrame.lineWidth = 1
         clockFrame.fillColor = nil
-        clockHour.contentsScale = UIScreen.main.scale
         clockFrame.addSublayer(clockHour)
+        applyScale()
+        // The display's own scale, read again when the view moves to
+        // another display (an iPhone Duo's two have their own).
+        registerForTraitChanges([UITraitDisplayScale.self]) { (self: Self, _) in self.applyScale() }
         sent.path = Self.fullCheck
         read.path = Self.partialCheck
         clockFrame.path = Self.clockFrame
@@ -185,6 +187,13 @@ final class ChatDeliveryView: UIView {
         if moves {
             if !sent.isHidden && !showedSent { pop(sent) }
             if !read.isHidden && !showedRead { pop(read) }
+        }
+    }
+
+    private func applyScale() {
+        let scale = max(1, traitCollection.displayScale)
+        for layer in [clockFrame, clockHour, clockMinute, sent, read, failed, failedBang] where layer.contentsScale != scale {
+            layer.contentsScale = scale
         }
     }
 
