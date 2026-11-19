@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { read } = vi.hoisted(() => ({ read: vi.fn() }));
+const { read, externalRead } = vi.hoisted(() => ({ read: vi.fn(), externalRead: vi.fn() }));
 vi.mock('@/sync/ops', () => ({
+    sessionReadFile: externalRead,
     sessionWorkspaceReadFile: read,
     sessionWorkspaceWriteFile: vi.fn(),
 }));
@@ -9,7 +10,7 @@ vi.mock('@/text', () => ({ t: (key: string, params?: { path: string }) => `${key
 
 import { readWorkspaceText } from './fileIO';
 
-beforeEach(() => { read.mockReset(); });
+beforeEach(() => { read.mockReset(); externalRead.mockReset(); });
 
 describe('workspace file reads', () => {
     it('decodes an empty or UTF-8 file and computes the content baseline', async () => {
@@ -34,4 +35,11 @@ describe('workspace file reads', () => {
         await expect(readWorkspaceText('session', '/project/doc.md')).rejects.toThrow('Access denied: symlink outside workspace');
         expect(read).toHaveBeenCalledTimes(1);
     });
+});
+
+it('uses the existing read-only file RPC for outside-project references', async () => {
+    externalRead.mockResolvedValue({ success: true, content: Buffer.from('# Skill').toString('base64') });
+    expect((await readWorkspaceText('session', '/skills/SKILL.md', true)).content).toBe('# Skill');
+    expect(externalRead).toHaveBeenCalledWith('session', '/skills/SKILL.md');
+    expect(read).not.toHaveBeenCalled();
 });

@@ -1727,13 +1727,13 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('retains the legacy reader for a desktop handoff outside the project root', () => {
+    it('opens a desktop handoff outside the project root without leaving the conversation', () => {
         mocks.isDataReady = true; mocks.windowWidth = 1400; mocks.isTablet = true; mocks.platformOS = 'web';
         const openReference = vi.fn();
         const value = { sessionId: 'session-1', enabled: true, root: '/work', snapshot: { open: true, active: '/work/a.md', tabs: ['/work/a.md'], documents: {} }, maximized: false, chatWidth: 430, openRequestId: 0, openReference } as any;
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={value}><SessionView id="session-1" fileOpenRequest={{ path: '/outside/a.md', requestId: 'outside' }} /></FileWorkspaceContext.Provider>); });
-        expect(openReference).not.toHaveBeenCalled(); expect(mocks.routerPush.mock.calls[0][0]).toContain('/session/session-1/file?path=');
+        expect(openReference).toHaveBeenCalledWith('/outside/a.md'); expect(mocks.routerPush).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 

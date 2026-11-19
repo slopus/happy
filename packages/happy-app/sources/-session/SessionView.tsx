@@ -1,6 +1,4 @@
 import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
-import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
-import { legacySessionFileHref } from '@/utils/sessionFileNavigation';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
 import { FileWorkspace, FileWorkspaceResizeHandle } from '@/components/fileWorkspace/FileWorkspace';
 import { getWorkspaceChatWidth, getWorkspaceChatMaximumWidth, workspaceChatMinWidth } from '@/components/fileWorkspace/documentPresentation';
@@ -758,12 +756,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         const key = `${sessionId}:${request.requestId}`;
         if (handledFileRequest.current === key) return;
         handledFileRequest.current = key;
-        if (resolveSessionFilePath(request.path, fileWorkspace.root)?.withinSessionRoot) {
-            void fileWorkspace.openReference(request.path);
-        } else {
-            // Project-external paths retain the existing read-only route.
-            router.push(legacySessionFileHref(sessionId, request.path));
-        }
+        void fileWorkspace.openReference(request.path);
     }, [isFocused, sessionId, props.fileOpenRequest?.requestId, props.fileOpenRequest?.path, fileWorkspace?.enabled, fileWorkspace?.root]);
     const revealedFileRequest = React.useRef(0);
     React.useEffect(() => {

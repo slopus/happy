@@ -268,7 +268,9 @@ it('announces each explicit file open with its owning session, including the act
     await act(async () => { await value.openReference('/work/方案.md'); });
     expect(value.openRequestId).toBe(2);
     await act(async () => { await value.openReference('/outside/private.md'); });
-    expect(value.openRequestId).toBe(2);
+    expect(value.openRequestId).toBe(3);
+    expect(value.snapshot.documents['/outside/private.md'].readOnly).toBe(true);
+    expect(mocks.reads).toHaveBeenCalledWith('session', '/outside/private.md', true);
     await act(async () => { renderer.unmount(); });
 });
 
@@ -310,4 +312,15 @@ it('restores all twenty cached tabs and their drafts before attempting a new han
     expect(mocks.persisted[last]).toEqual({ draft: '# Unsaved last tab', hash: 'base' });
     expect(value.snapshot.tabs).not.toContain('/work/new.md');
     await act(async () => { renderer.unmount(); });
+});
+
+it('restores an external read-only file reference in the same session scope after remount', async () => {
+    mocks.socket = 'connected'; let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(node()); await tick(); });
+    const reference = { path: '/skills/SKILL.md', hash: 'skill-baseline', quote: 'Selected text' };
+    await act(async () => { await value.openReference(reference.path); value.setReference(reference); await tick(); });
+    await act(async () => { renderer.unmount(); await tick(); });
+    await act(async () => { renderer = TestRenderer.create(node()); await tick(); });
+    expect(value.reference).toEqual(reference);
+    await act(async () => { renderer.unmount(); await tick(); });
 });

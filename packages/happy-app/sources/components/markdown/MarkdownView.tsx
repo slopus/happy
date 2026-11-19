@@ -96,8 +96,8 @@ export const MarkdownView = React.memo((props: {
     const handleLinkPress = React.useCallback((url: string) => {
         const file = fileLinksEnabled && workspace ? parseSessionFileLink(url, { sessionRoot: workspace.root }) : null;
         if (file?.withinSessionRoot && workspace) { void workspace.openReference(url); return; }
-        // Chat may reference Skill files or other projects. The independent
-        // viewer uses the existing readFile permission boundary; document
+        // Chat may reference Skill files or other projects. The desktop
+        // workspace reads those through the existing read-only RPC; document
         // previews remain scoped to their workspace.
         if (file && !props.readOnly) { openSessionFile(url); return; }
         if (!isHttpMarkdownLink(url)) { return; }

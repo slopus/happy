@@ -112,3 +112,19 @@ describe('reviewed draft data protection', () => {
         expect(controller.getSnapshot().documents[root + '/plan.md']).toMatchObject({ draft: '# New typing', conflict: true });
     });
 });
+
+ it('opens an external reference read-only and refuses edits, restored drafts and writes', async () => {
+    const writes: string[] = [];
+    const c = new FileWorkspaceController({ root: '/work', allowExternalReadOnly: true,
+        read: async () => ({ content: '# Skill', hash: 'h' }),
+        write: async path => { writes.push(path); return { hash: 'new' }; },
+    });
+    await c.open('/skills/SKILL.md');
+    expect(c.getSnapshot().active).toBe('/skills/SKILL.md');
+    expect(c.getSnapshot().documents['/skills/SKILL.md']).toMatchObject({ content: '# Skill', readOnly: true });
+    c.edit('/skills/SKILL.md', 'changed');
+    c.restoreDraft('/skills/SKILL.md', { draft: 'cached edit', hash: 'h' });
+    expect(await c.save('/skills/SKILL.md')).toBe(false);
+    expect(c.getSnapshot().documents['/skills/SKILL.md'].draft).toBe('# Skill');
+    expect(writes).toEqual([]);
+ });

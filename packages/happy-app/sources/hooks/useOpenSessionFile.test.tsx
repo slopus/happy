@@ -39,11 +39,11 @@ it('never opens a different session file in the current workspace', () => {
     expect(openReference).not.toHaveBeenCalled(); expect(state.navigate.mock.calls[0][0].params.id).toBe('s');
     act(() => renderer.unmount());
 });
-it('retains the independent viewer for files outside the current authorized project', () => {
+it('opens outside-project files in the desktop workspace without leaving chat', () => {
     state.workspace = { sessionId: 's', enabled: true, root: '/work', openReference: vi.fn() };
     let renderer: any; act(() => { renderer = TestRenderer.create(<Probe />); });
     act(() => open('/other/a.md'));
-    expect(state.push.mock.calls[0][0]).toContain('/session/s/file?path='); expect(state.navigate).not.toHaveBeenCalled();
+    expect(state.workspace.openReference).toHaveBeenCalledWith('/other/a.md'); expect(state.push).not.toHaveBeenCalled();
     act(() => renderer.unmount());
 });
 it.each([{web:false,desktop:true},{web:true,desktop:false}])('keeps the existing small-screen/native viewer: %o', config => {

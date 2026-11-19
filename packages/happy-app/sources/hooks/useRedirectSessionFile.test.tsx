@@ -17,7 +17,7 @@ it('redirects an old desktop file URL back to its conversation with a selected t
  expect(redirect).toBe(true);expect(state.navigate.mock.calls[0][0].params.id).toBe('s');
  act(()=>renderer.update(<Probe/>));expect(state.navigate).toHaveBeenCalledTimes(1);act(()=>renderer.unmount());
 });
-it.each([{path:'/outside/a.md'},{positioned:true}])('preserves legacy behavior outside the project or for positioned links: %o',props=>{
+it.each([{positioned:true}])('preserves legacy behavior for positioned links: %o',props=>{
  let renderer:any;act(()=>{renderer=TestRenderer.create(<Probe {...props}/>);});
  expect(redirect).toBe(false);expect(state.navigate).not.toHaveBeenCalled();act(()=>renderer.unmount());
 });
@@ -29,3 +29,5 @@ it('waits for root metadata and only redirects when desktop layout is available'
 it('keeps the native file screen',()=>{
  state.web=false;let renderer:any;act(()=>{renderer=TestRenderer.create(<Probe/>);});expect(redirect).toBe(false);expect(state.navigate).not.toHaveBeenCalled();act(()=>renderer.unmount());
 });
+
+it('redirects external desktop file URLs into the conversation too',()=>{ let r:any;act(()=>{r=TestRenderer.create(<Probe path="/outside/a.md"/>);});expect(redirect).toBe(true);expect(state.navigate.mock.calls[0][0].params.id).toBe('s');act(()=>r.unmount());});

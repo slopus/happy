@@ -1,9 +1,9 @@
-import { sessionWorkspaceReadFile, sessionWorkspaceWriteFile } from '@/sync/ops';
+import { sessionReadFile, sessionWorkspaceReadFile, sessionWorkspaceWriteFile } from '@/sync/ops';
 import { t } from '@/text';
-export async function readWorkspaceBytes(sessionId: string, path: string, limit = 10 * 1024 * 1024): Promise<Uint8Array> {
+export async function readWorkspaceBytes(sessionId: string, path: string, limit = 10 * 1024 * 1024, externalReadOnly = false): Promise<Uint8Array> {
     let response;
     try {
-        response = await sessionWorkspaceReadFile(sessionId, path);
+        response = await (externalReadOnly ? sessionReadFile : sessionWorkspaceReadFile)(sessionId, path);
     } catch (error) {
         if (error instanceof Error && (error.name === 'TimeoutError' || error.message === 'operation has timed out' || error.message === 'RPC call timed out')) {
             throw new Error(t('fileWorkspace.readTimeout'));
@@ -22,8 +22,8 @@ export async function readWorkspaceBytes(sessionId: string, path: string, limit 
     if (bytes.byteLength > limit) throw new Error(t('fileWorkspace.tooLarge'));
     return bytes;
 }
-export async function readWorkspaceText(sessionId: string, path: string) {
-    const bytes = await readWorkspaceBytes(sessionId, path, 2 * 1024 * 1024);
+export async function readWorkspaceText(sessionId: string, path: string, externalReadOnly = false) {
+    const bytes = await readWorkspaceBytes(sessionId, path, 2 * 1024 * 1024, externalReadOnly);
     if (bytes.includes(0)) throw new Error(t('fileWorkspace.binary'));
     const content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource))).map(x => x.toString(16).padStart(2, '0')).join('');

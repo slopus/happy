@@ -40,6 +40,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
     const scrollView = React.useRef<ScrollView>(null);
     const path = workspace?.snapshot.active;
     const document = path ? workspace?.snapshot.documents[path] : null;
+    const readOnly = workspace?.readOnly || document?.readOnly;
     const closeHistory = React.useCallback(() => {
         setHistoryPath(null);
         if (historyExpanded.current) { historyExpanded.current = false; workspace?.setMaximized(false); }
@@ -91,7 +92,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
         const url = URL.createObjectURL(document.media ? new Blob([document.media.bytes as BlobPart], { type: document.media.mime }) : new Blob([document.phase === 'ready' ? document.draft : cachedDraft?.draft ?? ''], { type: 'text/plain;charset=utf-8' }));
         const anchor = globalThis.document.createElement('a'); anchor.href = url; anchor.download = path.split('/').pop() ?? 'file'; anchor.click(); URL.revokeObjectURL(url);
     };
-    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: readingSurface === 'inherited' ? 'transparent' : photoSkin ? (reducedTransparency ? theme.colors.desktopSkin.readingSolid : readingSurface === 'compact' ? theme.colors.desktopSkin.readingCompact : theme.colors.desktopSkin.readingWide) : theme.colors.surface, borderRadius: framed ? 13 : 20, borderWidth: framed ? StyleSheet.hairlineWidth : 0, borderColor: theme.colors.divider, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (workspace.readOnly || historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
+    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: readingSurface === 'inherited' ? 'transparent' : photoSkin ? (reducedTransparency ? theme.colors.desktopSkin.readingSolid : readingSurface === 'compact' ? theme.colors.desktopSkin.readingCompact : theme.colors.desktopSkin.readingWide) : theme.colors.surface, borderRadius: framed ? 13 : 20, borderWidth: framed ? StyleSheet.hairlineWidth : 0, borderColor: theme.colors.divider, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (readOnly || historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
         <View style={{flex:1,minHeight:0}} {...(historyPath === path ? {"aria-hidden":true,inert:true} : {}) as any}>
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: framed ? 48 : 46, backgroundColor: readingSurface === 'inherited' ? 'transparent' : photoSkin ? 'transparent' : theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
             <ScrollView horizontal style={{ flex: 1, minWidth: 0 }} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 6 }}>
@@ -112,7 +113,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
                     <Button label={`${t('fileWorkspace.closeTab')}: ${file}`} icon="close-outline" compact disabled={snapshot.documents[file]?.saving} onPress={() => close([file])} />
                 </View>)}
             </ScrollView>
-            {!workspace.readOnly && /\.(md|markdown|html?)$/i.test(path) && <Button label={t('fileWorkspace.history')} icon="time-outline" compact={workspaceWidth > 0 && workspaceWidth < 400} testID="workspace-history-open" onPress={() => setHistoryPath(path)} />}
+            {!readOnly && /\.(md|markdown|html?)$/i.test(path) && <Button label={t('fileWorkspace.history')} icon="time-outline" compact={workspaceWidth > 0 && workspaceWidth < 400} testID="workspace-history-open" onPress={() => setHistoryPath(path)} />}
             {onToggleFileTree && <Button label={fileTreeExpanded ? t('fileWorkspace.hideFileTree') : t('fileWorkspace.showFileTree')} icon={fileTreeExpanded ? 'chevron-forward-outline' : 'folder-open-outline'} compact testID="workspace-toggle-file-tree" onPress={onToggleFileTree} />}
             <Button label={workspace.maximized ? t('fileWorkspace.restore') : t('fileWorkspace.maximize')} icon={workspace.maximized ? 'contract-outline' : 'expand-outline'} compact onPress={() => workspace.setMaximized(!workspace.maximized)} />
             <Button label={t('fileWorkspace.close')} icon="close-outline" compact onPress={() => controller.setOpen(false)} />
@@ -125,7 +126,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
             <Button label={t('fileWorkspace.refresh')} icon="refresh-outline" compact onPress={() => { void refresh(); }} disabled={document?.saving} />
             <Button label={t('fileWorkspace.mention')} icon="at-outline" compact disabled={document?.phase !== 'ready' || dirty || !document.hash} onPress={() => { if (document?.hash) workspace.setReference({ path, hash: document.hash, ...(quote ? { quote } : {}), ...(currentArtifact ? {artifact:{workspaceId:currentArtifact.artifact.workspaceId,artifactId:currentArtifact.artifact.id,expectedRevision:currentArtifact.workingRevision,...(currentArtifact.readRef.kind === 'version' ? {versionId:currentArtifact.readRef.versionId}: {})}} : {}) }); }} />
             <Button label={t('fileWorkspace.download')} icon="download-outline" compact onPress={download} disabled={document?.phase !== 'ready' && !cachedDraft} />
-            <Button label={document?.saving ? t('common.loading') : t('fileWorkspace.save')} icon="save-outline" testID="workspace-save" onPress={() => { void controller.save(path); }} disabled={workspace.readOnly || !dirty || document?.saving || document?.conflict} />
+            <Button label={document?.saving ? t('common.loading') : t('fileWorkspace.save')} icon="save-outline" testID="workspace-save" onPress={() => { void controller.save(path); }} disabled={readOnly || !dirty || document?.saving || document?.conflict} />
         </View>
         {!!sessionId && preview && /\.(md|markdown)$/i.test(path) && <FileAnnotationHint sessionId={sessionId} />}
         {workspace.draftCacheError && <Text accessibilityRole="alert" style={{ padding: 10, color: theme.colors.textDestructive }}>{t('fileWorkspace.draftCacheUnavailable')}</Text>}
@@ -144,7 +145,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
                         const selected = globalThis.window?.getSelection();
                         if (selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) setQuote(selected.toString().slice(0, 4000));
                     } } as any)}>
-                        {preview ? <AnnotatableFile sessionId={sessionId} file={annotationFile}><MarkdownView markdown={document.draft} typography="document" readOnly fileLinks={!workspace.readOnly} sessionId={sessionId} annotationTargets={!!sessionId} /></AnnotatableFile> : <CodeEditor readOnly={workspace.readOnly} value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
+                        {preview ? <AnnotatableFile sessionId={sessionId} file={annotationFile}><MarkdownView markdown={document.draft} typography="document" readOnly fileLinks={!readOnly} sessionId={sessionId} annotationTargets={!!sessionId} /></AnnotatableFile> : <CodeEditor readOnly={readOnly} value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
                     </View>
                 </ScrollView>}
             </View>

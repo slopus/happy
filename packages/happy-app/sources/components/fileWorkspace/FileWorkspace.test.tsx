@@ -200,3 +200,17 @@ it('inherits the project reading surface without stacking another translucent la
     expect(renderer.root.findByProps({ testID: 'file-workspace' }).props.style.backgroundColor).toBe(theme.colors.desktopSkin.readingSolid);
     act(() => renderer.unmount());
 });
+
+it('keeps an external desktop tab read-only with save and history unavailable', async () => {
+    controller = new FileWorkspaceController({ root: '/work', allowExternalReadOnly: true,
+        read: async () => ({ content: '# Skill', hash: 'h' }), write: vi.fn(),
+    });
+    await controller.open('/skills/SKILL.md');
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    expect(renderer.root.findByProps({ testID: 'workspace-save' }).props.disabled).toBe(true);
+    expect(renderer.root.findAllByProps({ testID: 'workspace-history-open' })).toHaveLength(0);
+    act(() => renderer.root.findByProps({ label: 'fileWorkspace.code' }).props.onPress());
+    expect(renderer.root.findByType('CodeEditor').props.readOnly).toBe(true);
+    act(() => renderer.unmount());
+});

@@ -11,7 +11,7 @@ export function useRedirectSessionFile(sessionId: string, path: string, position
     const session = useSession(sessionId);
     const router = useRouter();
     const redirect = desktopAvailable && !positioned
-        && !!resolveSessionFilePath(path, session?.metadata?.path)?.withinSessionRoot;
+        && !!session?.metadata?.path && !!resolveSessionFilePath(path, session.metadata.path);
     React.useEffect(() => {
         if (redirect) router.navigate(sessionFileWorkspaceHref(sessionId, path));
     }, [redirect, sessionId, path]);

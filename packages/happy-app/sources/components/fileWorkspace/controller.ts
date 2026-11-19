@@ -3,6 +3,7 @@ import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 export type FileDocument = {
     path: string; revision: number; phase: 'loading' | 'ready' | 'error'; content: string; draft: string;
     hash: string | null; draftBaseHash: string | null; saving: boolean; conflict: boolean; error: string | null;
+    readOnly?: boolean;
     media?: { bytes: Uint8Array; mime: string };
     fileRevision?: string;
 };
@@ -11,6 +12,7 @@ export type FileWorkspaceSnapshot = {
 };
 export type FileWorkspaceIO = {
     root: string;
+    allowExternalReadOnly?: boolean;
     read: (path: string, signal?: AbortSignal) => Promise<{ content: string; hash: string; media?: FileDocument['media']; fileRevision?: string }>;
     write: (path: string, content: string, expectedHash: string) => Promise<{ hash: string; fileRevision?: string }>;
     isCurrent?: () => boolean;
@@ -42,25 +44,25 @@ export class FileWorkspaceController {
     async open(raw: string) {
         if (!this.current()) return;
         const resolved = resolveSessionFilePath(raw, this.io.root);
-        if (!resolved?.withinSessionRoot) return;
+        if (!resolved || (!resolved.withinSessionRoot && !this.io.allowExternalReadOnly)) return;
         const path = resolved.absolutePath;
         const exists = this.snapshot.documents[path];
         if (!exists && this.snapshot.tabs.length >= 20) throw new Error('FILE_WORKSPACE_TAB_LIMIT');
         this.commit({ ...this.snapshot, open: true, active: path,
             tabs: exists ? this.snapshot.tabs : [...this.snapshot.tabs, path],
             documents: exists ? this.snapshot.documents : { ...this.snapshot.documents, [path]: {
-                path, revision: 0, phase: 'loading', content: '', draft: '', hash: null, draftBaseHash: null, saving: false, conflict: false, error: null,
+                path, readOnly: !resolved.withinSessionRoot, revision: 0, phase: 'loading', content: '', draft: '', hash: null, draftBaseHash: null, saving: false, conflict: false, error: null,
             } },
         });
         if (!exists) await this.refresh(path);
     }
     edit(path: string, draft: string) {
-        if (this.snapshot.documents[path]?.media) return;
+        if (this.snapshot.documents[path]?.media || this.snapshot.documents[path]?.readOnly) return;
         if (this.snapshot.documents[path]?.phase === 'ready' && this.snapshot.documents[path].draft !== draft) { this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1); this.update(path, { draft }); }
     }
     restoreDraft(path: string, saved: { draft: string; hash: string }) {
         const entry = this.snapshot.documents[path];
-        if (!entry || documentDirty(entry)) return;
+        if (!entry || entry.readOnly || documentDirty(entry)) return;
         if (entry.phase !== 'ready') { this.restoredDrafts.set(path, saved); this.commit({ ...this.snapshot }); return; }
         this.update(path, { draft: saved.draft, draftBaseHash: saved.hash, conflict: saved.hash !== entry.hash });
     }
@@ -121,7 +123,7 @@ export class FileWorkspaceController {
     }
     async save(path: string) {
         const entry = this.snapshot.documents[path];
-        if (!this.current() || !entry || entry.phase !== 'ready' || !entry.hash || entry.conflict || entry.saving) return false;
+        if (!this.current() || !entry || entry.readOnly || entry.phase !== 'ready' || !entry.hash || entry.conflict || entry.saving) return false;
         if (!documentDirty(entry)) return true;
         const content = entry.draft, expectedHash = entry.hash;
         const token = {}; this.requests.set(path, token);
