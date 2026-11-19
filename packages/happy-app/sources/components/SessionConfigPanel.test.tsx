@@ -231,11 +231,12 @@ describe('SessionConfigPanel composer layout', () => {
         vi.useRealTimers();
     });
 
-    it('opens agent management in the settings panel with the selected machine', async () => {
+    it('keeps agent settings out of the model popup while retaining the brand switch', async () => {
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-composer-agent-manage' }).props.onPress());
-        expect(mocks.openSettingsRoute).toHaveBeenCalledWith('/settings/coding-agents', { machineId: 'mac' });
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-manage' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'session-composer-agent-cycle' })).toBeDefined();
+        expect(mocks.openSettingsRoute).not.toHaveBeenCalled();
     });
 
     it('shows configuration instead of a disabled model picker when no agents are enabled', async () => {

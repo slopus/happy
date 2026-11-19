@@ -1688,7 +1688,6 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     onFastModeChange={setFastMode}
                                     agentSwitcher={{
                                         id: selectedAgent,
-                                        onManage: () => openSettingsRoute('/settings/coding-agents', { machineId: selectedMachineId ?? '' }),
                                         current: ALL_AGENTS.find(agent => agent.key === selectedAgent)?.label ?? selectedAgent,
                                         next: nextCycleAgent?.label ?? null,
                                         onSwitch: switchComposerAgent,
