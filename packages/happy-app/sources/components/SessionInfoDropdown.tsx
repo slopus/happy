@@ -15,6 +15,7 @@ import {
     canKeepSessionInfoExpansion,
     type SessionInfoExpandedRow,
 } from '@/utils/sessionInfoDropdownState';
+import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import { useSessionTaskPermission } from '@/hooks/useSessionTaskPermission';
 import type { TaskPermissionLevel } from '@/utils/taskPermissionModes';
 import { sessionRefreshModels } from '@/sync/ops';
@@ -82,6 +83,20 @@ interface SessionInfoDropdownProps {
 
 export const SessionInfoDropdown = React.memo(({ session, machineName, online, top, canCopySessionId = false, onClose, onShareSession, onViewDetails }: SessionInfoDropdownProps) => {
     const { theme } = useUnistyles();
+    const panelRef = React.useRef<View>(null);
+    useWebPopoverDismiss({
+        enabled: true,
+        onDismiss: onClose,
+        isInside: (target) => {
+            const panel = panelRef.current as unknown as HTMLElement | null;
+            if (panel?.contains(target)) return true;
+            // The trigger owns its toggle; closing on pointerdown would reopen it on click.
+            const trigger = target instanceof Element
+                ? target.closest('[data-testid="session-header-more-button"], [data-testid="session-header-chip"]')
+                : null;
+            return !!trigger && !!panel?.parentElement?.parentElement?.contains(trigger);
+        },
+    });
     const metadata = session.metadata;
     const flavor = metadata?.flavor ?? undefined;
     const agentLabel = resolveSessionInfoAgentLabel(flavor, t);
@@ -309,7 +324,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
     return (
         <>
             <Pressable style={[styles.backdrop, { top }]} onPress={onClose} />
-            <View style={[styles.dropdown, { top }]}>
+            <View pointerEvents={Platform.OS === 'web' ? 'box-none' : 'auto'} style={[styles.dropdown, { top }]}>
                 <View
                     {...(Platform.OS === 'web' ? {
                         dataSet: {
@@ -319,6 +334,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                         },
                     } as any : {})}
                     style={styles.configBox}
+                    ref={panelRef}
                     testID="session-agent-panel"
                 >
                     <View style={styles.section} testID="session-agent-panel-runtime-location">

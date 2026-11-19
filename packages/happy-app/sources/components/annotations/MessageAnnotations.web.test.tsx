@@ -139,7 +139,10 @@ it('supports whitespace dismissal, IME-safe Enter, a saved comment bubble and pr
     expect(target.textContent).toBe('需要修改的完整段落。');
     expect(document.querySelectorAll('[data-testid=file-annotation-pending-pin]')).toHaveLength(1);
     expect(document.querySelector('[data-testid=annotation-editor]')!.contains(document.querySelector('[data-testid=file-annotation-pending-pin]'))).toBe(true);
-    act(() => document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })));
+    const outside = document.createElement('button'); document.body.append(outside);
+    outside.addEventListener('pointerdown', event => event.stopPropagation());
+    act(() => outside.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })));
+    outside.remove();
     expect(document.querySelector('[data-testid=annotation-editor]')).toBeNull(); expect(annotationDraftStore.getSnapshot(sessionId)).toHaveLength(0);
     expect(target.style.paddingTop).toBe('6px');
     act(() => target.click()); typeComment('简化这一段');

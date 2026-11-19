@@ -1,3 +1,4 @@
+import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import * as React from 'react';
 import {
     AccessibilityInfo,
@@ -1017,6 +1018,13 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
     const machineTriggerRef = React.useRef<View>(null);
     const directoryTriggerRef = React.useRef<View>(null);
     const agentTriggerRef = React.useRef<View>(null);
+    const settingPanelRef = React.useRef<View>(null);
+    useWebPopoverDismiss({
+        enabled: visible && openSetting !== null,
+        onDismiss: () => setOpenSetting(null),
+        isInside: target => [settingPanelRef, machineTriggerRef, directoryTriggerRef, agentTriggerRef]
+            .some(ref => !!(ref.current as unknown as HTMLElement | null)?.contains(target)),
+    });
     const selectedMachine = React.useMemo(
         () => machines.find((machine) => machine.id === machineId) ?? null,
         [machineId, machines],
@@ -1121,7 +1129,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                         <Feather color={theme.colors.textSecondary} name={openSetting === 'machine' ? 'chevron-up' : 'chevron-down'} size={16} />
                     </Pressable>
                     {openSetting === 'machine' ? (
-                        <View testID="sidebar-list-machine-picker">
+                        <View ref={settingPanelRef} testID="sidebar-list-machine-picker">
                             <PickerContent
                                 embedded
                                 fixedItems={[{ key: '__none__', label: t('sidebarLists.noPreset') }]}
@@ -1157,7 +1165,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                         <Feather color={theme.colors.textSecondary} name={openSetting === 'directory' ? 'chevron-up' : 'chevron-down'} size={16} />
                     </Pressable>
                     {openSetting === 'directory' ? (
-                        <View style={styles.editorSettingChoices} testID="sidebar-list-directory-picker">
+                        <View ref={settingPanelRef} style={styles.editorSettingChoices} testID="sidebar-list-directory-picker">
                             <Choice label={t('sidebarLists.noPreset')} onPress={() => { setPath(''); setOpenSetting(null); focusTrigger('directory'); }} selected={path.trim().length === 0} testID="sidebar-list-directory-none" />
                             <PathPickerContent
                                 embedded
@@ -1192,7 +1200,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                         <Feather color={theme.colors.textSecondary} name={openSetting === 'agent' ? 'chevron-up' : 'chevron-down'} size={16} />
                     </Pressable>
                     {openSetting === 'agent' ? (
-                        <View accessibilityLabel={t('sidebarLists.defaultAgent')} accessibilityRole="radiogroup" style={[styles.choices, styles.editorSettingChoices]} testID="sidebar-list-agent-choices">
+                        <View ref={settingPanelRef} accessibilityLabel={t('sidebarLists.defaultAgent')} accessibilityRole="radiogroup" style={[styles.choices, styles.editorSettingChoices]} testID="sidebar-list-agent-choices">
                             <Choice label={t('sidebarLists.noPreset')} onPress={() => { setDefaultAgent(null); setOpenSetting(null); focusTrigger('agent'); }} selected={defaultAgent === null} />
                             {AGENT_TYPES.map((agent) => <Choice key={agent} label={t(AGENT_LABEL_KEYS[agent])} onPress={() => { setDefaultAgent(agent); setOpenSetting(null); focusTrigger('agent'); }} selected={defaultAgent === agent} />)}
                         </View>

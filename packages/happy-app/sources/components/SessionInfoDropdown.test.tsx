@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -147,7 +148,8 @@ const session = {
     },
 } as any;
 
-function renderPanel(online: boolean, sharingEnabled = true) {
+function renderPanel(online: boolean, sharingEnabled = true, panelNode?: HTMLElement) {
+    const onClose = vi.fn();
     const onShareSession = vi.fn();
     let renderer: any;
     act(() => {
@@ -157,13 +159,14 @@ function renderPanel(online: boolean, sharingEnabled = true) {
                 machineName="Atlas Mac mini"
                 online={online}
                 top={64}
-                onClose={vi.fn()}
+                onClose={onClose}
                 onShareSession={sharingEnabled ? onShareSession : undefined}
                 onViewDetails={vi.fn()}
             />,
+            { createNodeMock: (element: any) => element.props.testID === "session-agent-panel" ? panelNode ?? null : null },
         );
     });
-    return { renderer, onShareSession };
+    return { renderer, onShareSession, onClose };
 }
 
 describe('SessionInfoDropdown', () => {
@@ -178,6 +181,31 @@ describe('SessionInfoDropdown', () => {
 
     afterEach(() => {
         consoleErrorSpy.mockRestore();
+        document.body.replaceChildren();
+    });
+
+    it('keeps panel and owning trigger clicks inside, but dismisses outside the chat and across stopped bubbling', () => {
+        const screen = document.createElement('div');
+        screen.innerHTML = '<header><button data-testid="session-header-more-button">More</button><button data-testid="session-header-chip">Chip</button></header><div><div id="panel"><button>Model</button></div></div><button id="blank">Chat</button>';
+        document.body.append(screen);
+        const panel = screen.querySelector<HTMLElement>('#panel')!;
+        const { renderer, onClose } = renderPanel(true, true, panel);
+        const down = (target: Element) => act(() => { target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 })); });
+        down(panel.querySelector('button')!);
+        down(screen.querySelector('[data-testid="session-header-more-button"]')!);
+        down(screen.querySelector('[data-testid="session-header-chip"]')!);
+        expect(onClose).not.toHaveBeenCalled();
+        const blank = screen.querySelector('#blank')!;
+        blank.addEventListener('pointerdown', event => event.stopPropagation());
+        down(blank); expect(onClose).toHaveBeenCalledOnce();
+        down(document.body); expect(onClose).toHaveBeenCalledTimes(2);
+        // A trigger belonging to another embedded conversation is outside.
+        const other = document.createElement('button'); other.dataset.testid = 'session-header-more-button'; document.body.append(other);
+        down(other); expect(onClose).toHaveBeenCalledTimes(3);
+        const wrapper = renderer.root.findByProps({ pointerEvents: 'box-none' });
+        expect(wrapper).toBeTruthy();
+        act(() => renderer.unmount());
+        down(document.body); expect(onClose).toHaveBeenCalledTimes(3);
     });
 
     it('preserves Ask and third-party flavor identity instead of relabeling them as Claude', () => {

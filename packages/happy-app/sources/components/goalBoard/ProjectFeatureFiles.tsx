@@ -1,3 +1,4 @@
+import { WebModalBackdrop } from '@/components/WebModalBackdrop';
 import * as React from 'react';
 import { Modal, Text, View, useWindowDimensions } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -32,7 +33,7 @@ function FeatureFilesContent({ machineId, featurePath, title, onClose }: { machi
         catch (error) { return { success: false, error: String(error) }; }
     }, [machineId, featurePath]);
     const narrow = width < 850;
-    return <Modal visible transparent animationType="none" onRequestClose={onClose}><View style={styles.backdrop}><View style={[styles.dialog, { width: width - 32, height: height - 48 }]} testID="project-feature-files-panel">
+    return <Modal visible transparent animationType="none" onRequestClose={onClose}><View style={styles.backdrop}><WebModalBackdrop onClose={onClose} testID="project-feature-files-backdrop" /><View style={[styles.dialog, { width: width - 32, height: height - 48 }]} testID="project-feature-files-panel">
         <View style={styles.header}><Text numberOfLines={1} style={styles.title}>{title} · {t('projectGoals.featureFiles')}</Text><Button label={t('projectGoals.featureFiles')} selected={treeOpen} onPress={() => setTreeOpen(value => !value)}><Text style={styles.link}>{t('projectGoals.featureFiles')}</Text></Button><Button label={t('common.back')} onPress={onClose}><Text style={styles.link}>{t('common.back')}</Text></Button></View>
         <View style={styles.row}>
             {treeOpen && <View style={[styles.tree, { width: narrow ? '100%' : 300 }]}><ProjectArchiveTree machineId={machineId} scopePath={featurePath} sessionId="" rootPath={featurePath} listDirectory={listDirectory} revision={revision} cacheKey={JSON.stringify([getRuntimeAccountSelection(), machineId, featurePath, 'feature'])} onOpenFile={path => { void workspace.openReference(path); if (narrow) setTreeOpen(false); }} /></View>}

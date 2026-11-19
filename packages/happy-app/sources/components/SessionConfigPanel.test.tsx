@@ -231,6 +231,35 @@ describe('SessionConfigPanel composer layout', () => {
         vi.useRealTimers();
     });
 
+    it('dismisses sidebar pickers outside while allowing the current trigger to toggle closed', async () => {
+        const listeners = new Map<string, (event: any) => void>();
+        const ElementClass = globalThis.HTMLElement as any;
+        ElementClass.prototype.contains = function(target: unknown) { return this === target; };
+        vi.stubGlobal('Node', ElementClass);
+        vi.stubGlobal('document', {
+            addEventListener: (name: string, listener: any) => listeners.set(name, listener),
+            removeEventListener: (name: string) => listeners.delete(name),
+        });
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="sidebar" collapsible={false} />); });
+            const trigger = Object.assign(new ElementClass(), { contains: (target: any) => target === trigger });
+            const findTrigger = () => renderer.root.findByProps({ testID: 'session-config-path-trigger' });
+            act(() => findTrigger().props.onPress({ currentTarget: trigger }));
+            expect(renderer.root.findAllByProps({ testID: 'session-config-inline-picker-path' })).toHaveLength(1);
+            act(() => listeners.get('pointerdown')?.({ button: 0, target: trigger }));
+            expect(renderer.root.findAllByProps({ testID: 'session-config-inline-picker-path' })).toHaveLength(1);
+            act(() => findTrigger().props.onPress({ currentTarget: trigger }));
+            expect(renderer.root.findAllByProps({ testID: 'session-config-inline-picker-path' })).toHaveLength(0);
+            act(() => findTrigger().props.onPress({ currentTarget: trigger }));
+            act(() => listeners.get('pointerdown')?.({ button: 0, target: new ElementClass() }));
+            expect(renderer.root.findAllByProps({ testID: 'session-config-inline-picker-path' })).toHaveLength(0);
+        } finally {
+            if (renderer) act(() => renderer.unmount()); renderer = undefined;
+            delete ElementClass.prototype.contains;
+            vi.stubGlobal('document', undefined); vi.stubGlobal('Node', undefined);
+        }
+    });
+
     it('keeps agent settings out of the model popup while retaining the brand switch', async () => {
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());

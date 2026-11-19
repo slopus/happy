@@ -1,3 +1,4 @@
+import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import { SessionComposerPermissionSelector } from './SessionComposerPermissionSelector';
 import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode } from '@/utils/taskPermissionModes';
 import { ComposerTooltip } from './DesktopShortcutTooltip';
@@ -839,6 +840,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const activePickerRef = React.useRef<PickerType | null>(null);
         const previousPickerRef = React.useRef<PickerType | null>(null);
         const pickerTriggerRefs = React.useRef<Partial<Record<PickerType, HTMLElement>>>({});
+        const inlinePickerRef = React.useRef<View>(null);
         const webPickerDialogRef = React.useRef<any>(null);
         const webPickerCloseRef = React.useRef<any>(null);
         activePickerRef.current = activePicker;
@@ -1212,7 +1214,6 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const togglePicker = React.useCallback((type: PickerType, event?: GestureResponderEvent) => {
             if (
                 Platform.OS === 'web'
-                && !isSidebar
                 && event
                 && typeof HTMLElement !== 'undefined'
                 && event.currentTarget instanceof HTMLElement
@@ -1223,7 +1224,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             }
             setActivePicker(v => v === type ? null : type);
-        }, [isSidebar]);
+        }, []);
 
         // Collapse the open picker (option picked / dismissed).
         const dismissPicker = React.useCallback(() => {
@@ -1232,6 +1233,16 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             }
             setActivePicker(null);
         }, []);
+
+        const usesModalPicker = !isSidebar && (Platform.OS === 'web' || Platform.OS === 'android');
+        useWebPopoverDismiss({
+            enabled: !!activePicker && !usesModalPicker,
+            onDismiss: dismissPicker,
+            isInside: (target) => {
+                const panel = inlinePickerRef.current as unknown as HTMLElement | null;
+                return !!panel?.contains(target) || Object.values(pickerTriggerRefs.current).some(trigger => trigger?.contains(target));
+            },
+        });
 
         React.useEffect(() => {
             const previousPicker = previousPickerRef.current;
@@ -1451,7 +1462,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         // composer. iOS and desktop sidebars retain their existing inline layout.
         const isWeb = Platform.OS === 'web';
         const isAndroid = Platform.OS === 'android';
-        const usesModalPicker = !isSidebar && (isWeb || isAndroid);
+
         const renderPickerContent = React.useCallback((type: PickerType, embedded: boolean) => (
             type === 'path' ? (
                 <PathPickerContent
@@ -1491,7 +1502,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
             const embedded = isSidebar || !isWeb;
             return (
-                <View testID={`session-config-inline-picker-${type}`} style={[
+                <View ref={inlinePickerRef} testID={`session-config-inline-picker-${type}`} style={[
                     styles.popover,
                     isSidebar
                         ? styles.sidebarPopover

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import * as React from 'react';
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -830,6 +831,34 @@ describe('DesktopSidebarSessionsNavigation', () => {
         expect(renderer.root.findAllByProps({ testID: 'sidebar-delete-list' }).length).toBeGreaterThan(0);
         expect(mocks.navigate).not.toHaveBeenCalled();
         act(() => renderer.unmount());
+    });
+
+    it('collapses List settings on outside pointerdown without closing the form or losing its draft', () => {
+        const nodes = new Map<string, HTMLElement>();
+        for (const id of ['sidebar-list-machine-picker', 'sidebar-list-directory-picker', 'sidebar-list-agent-choices', 'sidebar-list-machine-trigger', 'sidebar-list-directory-trigger', 'sidebar-list-agent-trigger']) {
+            const node = document.createElement('div'); nodes.set(id, node); document.body.append(node);
+        }
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />, { createNodeMock: (element: any) => nodes.get(element.props.testID) ?? null }); });
+        const press = (id: string) => act(() => renderer.root.findByProps({ testID: id }).props.onPress());
+        const down = (node: Element) => act(() => { node.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 })); });
+        press('desktop-sidebar-tab-lists'); press('sidebar-create-list-button');
+        act(() => renderer.root.findByProps({ testID: 'sidebar-list-name-input' }).props.onChangeText('Draft name'));
+        press('sidebar-list-machine-trigger');
+        down(nodes.get('sidebar-list-machine-picker')!);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-list-machine-picker' })).toHaveLength(1);
+        down(nodes.get('sidebar-list-machine-trigger')!); press('sidebar-list-machine-trigger');
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-list-machine-picker' })).toHaveLength(0);
+        press('sidebar-list-machine-trigger');
+        act(() => renderer.root.findByProps({ testID: 'sidebar-list-machine-picker' }).findByType('PickerContent').props.onSelect('mac'));
+        down(nodes.get('sidebar-list-directory-picker')!);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-list-directory-picker' })).toHaveLength(1);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-list-directory-picker' }).findByType('PathPickerContent').props.onChangeValue('/project'));
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-list-directory-picker' })).toHaveLength(0);
+        press('sidebar-list-agent-trigger'); down(document.body);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-list-agent-choices' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'sidebar-list-name-input' }).props.value).toBe('Draft name');
+        act(() => renderer.unmount()); for (const node of nodes.values()) node.remove();
     });
 
     it('shows one compact List form and opens each launch setting only when selected', () => {

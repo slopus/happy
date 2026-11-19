@@ -1,3 +1,4 @@
+import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import * as React from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +15,7 @@ import { contextPlugins, contextSessions, contextSites, filterContextItems, type
 export type ComposerContextPickerHandle = { handleKey: (event: KeyPressEvent) => boolean };
 type Props = {
     query: string;
+    ownerRef?: React.RefObject<View | null>;
     sessionId?: string;
     onSelect: (item: ContextItem) => void;
     onPickFiles?: () => void;
@@ -88,15 +90,15 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
         return false;
     }, [items.length, safeSelected, select, props.onClose]);
     React.useImperativeHandle(ref, () => ({ handleKey }), [handleKey]);
-    React.useEffect(() => {
-        if (Platform.OS !== 'web') return;
-        const outside = (event: MouseEvent) => {
-            const node = rootRef.current as unknown as HTMLElement;
-            if (node && !node.contains(event.target as Node) && !(event.target as HTMLElement).closest?.('[data-testid="message-composer-content"]')) props.onClose(false);
-        };
-        document.addEventListener('mousedown', outside);
-        return () => document.removeEventListener('mousedown', outside);
-    }, [props.onClose]);
+    useWebPopoverDismiss({
+        enabled: true,
+        onDismiss: () => props.onClose(false),
+        isInside: target => {
+            const node = rootRef.current as unknown as HTMLElement | null;
+            const owner = props.ownerRef?.current as unknown as HTMLElement | null;
+            return !!node?.contains(target) || !!owner?.contains(target);
+        },
+    });
     let offset = 0;
     rowOffsets.current.clear();
     return <View ref={rootRef} style={styles.container} testID="composer-context-picker">

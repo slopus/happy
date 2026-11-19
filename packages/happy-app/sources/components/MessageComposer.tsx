@@ -1,3 +1,4 @@
+import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import { ComposerActionIcon } from './ComposerActionIcon';
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
@@ -565,6 +566,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     const inputRef = React.useRef<MultiTextInputHandle>(null);
     const composerContentRef = React.useRef<View>(null);
     const composerPanelRef = React.useRef<View>(null);
+    const autocompleteOverlayRef = React.useRef<View>(null);
 
     // The input refreshes its imperative handle whenever its callbacks change.
     // Forward each operation to the live handle rather than retaining the first
@@ -777,8 +779,23 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
     // Use the tracked selection from inputState
     const activeWord = useActiveWord(inputState.text, inputState.selection, autocompletePrefixes);
+    const [dismissedAutocomplete, setDismissedAutocomplete] = React.useState<string | null>(null);
+    const autocompleteDismissed = dismissedAutocomplete === contextIdentity;
+    React.useEffect(() => {
+        // A dismissal belongs to the current input state, not a text value the
+        // user might return to later by deleting or moving the cursor.
+        setDismissedAutocomplete(current => current === contextIdentity ? current : null);
+        setDismissedContext(current => current === contextIdentity ? current : null);
+    }, [contextIdentity]);
     // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
-    const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord?.startsWith('@') || contextOpen ? null : activeWord, autocompleteSuggestions, { clampSelection: true, wrapAround: true });
+    const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord?.startsWith('@') || contextOpen || autocompleteDismissed ? null : activeWord, autocompleteSuggestions, { clampSelection: true, wrapAround: true });
+
+    useWebPopoverDismiss({
+        enabled: !contextOpen && suggestions.length > 0 && !autocompleteDismissed,
+        onDismiss: () => setDismissedAutocomplete(contextIdentity),
+        isInside: target => [autocompleteOverlayRef, composerPanelRef]
+            .some(ref => !!(ref.current as unknown as HTMLElement | null)?.contains(target)),
+    });
 
     const predictionText = !hasText && references.length === 0 && !hasImages && !props.hasContext && !isSendBlocked
         && !props.isSending && !props.showAbortButton ? props.predictionText : null;
@@ -892,14 +909,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 handleSuggestionSelect(indexToSelect);
                 return true;
             } else if (event.key === 'Escape') {
-                // Clear suggestions by collapsing selection (triggers activeWord to clear)
-                if (inputRef.current) {
-                    const cursorPos = inputState.selection.start;
-                    inputRef.current.setTextAndSelection(inputState.text, {
-                        start: cursorPos,
-                        end: cursorPos
-                    });
-                }
+                // Dismiss this text/cursor state without rewriting the user's draft.
+                setDismissedAutocomplete(contextIdentity);
                 return true;
             }
         }
@@ -952,7 +963,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
         return false; // Key was not handled
-    }, [contextOpen, closeContext, suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled, predictionText, acceptPrediction, props.onDismissPrediction]);
+    }, [contextOpen, closeContext, contextIdentity, suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled, predictionText, acceptPrediction, props.onDismissPrediction]);
 
 
 
@@ -967,8 +978,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 { maxWidth: readingWidth }
             ]} ref={composerContentRef} testID="message-composer-content">
                 {/* Autocomplete suggestions overlay */}
-                {!contextOpen && suggestions.length > 0 && (
-                    <View style={[
+                {!contextOpen && !autocompleteDismissed && suggestions.length > 0 && (
+                    <View ref={autocompleteOverlayRef} testID="composer-autocomplete-overlay" style={[
                         styles.autocompleteOverlay,
                         { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
                     ]}>
@@ -1161,6 +1172,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                     <ComposerContextHost anchorRef={composerPanelRef}>
                         <ComposerContextPicker
                             ref={contextPickerRef}
+                            ownerRef={composerContentRef}
                             query={mentionWord?.activeWord.slice(1) ?? ''}
                             sessionId={props.sessionId}
                             onSelect={selectContext}

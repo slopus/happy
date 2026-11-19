@@ -118,9 +118,9 @@ function FloatingPanel({ anchor, children, label, onClose, testId = 'annotation-
     React.useEffect(() => {
         const pointer = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node) && !ignoreOutside?.contains(event.target as Node)) onClose(); };
         const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); } };
-        document.addEventListener('pointerdown', pointer);
+        document.addEventListener('pointerdown', pointer, true);
         document.addEventListener('keydown', key, true);
-        return () => { document.removeEventListener('pointerdown', pointer); document.removeEventListener('keydown', key, true); };
+        return () => { document.removeEventListener('pointerdown', pointer, true); document.removeEventListener('keydown', key, true); };
     }, [onClose, ignoreOutside]);
     const capsule = variant === 'capsule';
     const surface: React.CSSProperties = { boxSizing: 'border-box', padding: capsule ? '6px 7px 6px 12px' : variant === 'bubble' ? '11px 18px' : variant === 'preview' ? 0 : 16, borderRadius: capsule ? 999 : variant === 'bubble' ? 26 : 14, color: c.text, background: c.surface, border: `1px solid ${variant === 'panel' ? c.divider : `color-mix(in srgb, ${c.text} 9%, ${c.surface})`}`, boxShadow: variant === 'preview' ? `0 6px 16px ${c.shadow.color}, 0 1px 3px ${c.shadow.color}` : variant === 'panel' ? `0 8px 36px ${c.shadow.color}` : `0 2px 8px color-mix(in srgb, ${c.shadow.color} 16%, transparent), 0 1px 2px color-mix(in srgb, ${c.shadow.color} 5%, transparent)` };
@@ -395,9 +395,9 @@ function AnnotationSource({ sessionId, messageId, file, children }: Omit<Annotat
         };
         const pointer = (event: PointerEvent) => { if (!(event.target as Element).closest('[data-testid=annotation-add]')) dismiss(); };
         const key = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(); };
-        document.addEventListener('pointerdown', pointer); document.addEventListener('keydown', key); document.addEventListener('selectionchange', collapse);
+        document.addEventListener('pointerdown', pointer, true); document.addEventListener('keydown', key); document.addEventListener('selectionchange', collapse);
         window.addEventListener('scroll', reposition, true); window.addEventListener('resize', dismiss);
-        return () => { document.removeEventListener('pointerdown', pointer); document.removeEventListener('keydown', key); document.removeEventListener('selectionchange', collapse); window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', dismiss); };
+        return () => { document.removeEventListener('pointerdown', pointer, true); document.removeEventListener('keydown', key); document.removeEventListener('selectionchange', collapse); window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', dismiss); };
     }, [selection, messageId]);
     React.useEffect(() => () => {
         if (!file || editRequest?.sessionId !== sessionId) return;
@@ -409,8 +409,8 @@ function AnnotationSource({ sessionId, messageId, file, children }: Omit<Annotat
         const dismiss = (event: PointerEvent) => {
             if (!(event.target instanceof Element) || !event.target.closest('[data-testid="annotation-badge"],[data-testid="file-annotation-bubble"],[data-testid="annotation-editor"],[data-testid="file-annotation-preview"],[data-testid="annotation-file-summary"]')) fileAnnotationUi.update(sessionId, { activeId: undefined });
         };
-        document.addEventListener('pointerdown', dismiss);
-        return () => document.removeEventListener('pointerdown', dismiss);
+        document.addEventListener('pointerdown', dismiss, true);
+        return () => document.removeEventListener('pointerdown', dismiss, true);
     }, [file?.path, sessionId, ui.activeId]);
     const moving = (data: AnnotationSelection, target?: HTMLElement): MovingAnchor => ({
         getAnchor: () => source.current ? annotationRange(source.current, data)?.getBoundingClientRect() ?? null : null,

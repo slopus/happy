@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -69,6 +70,23 @@ describe('Codex account UI with real metadata API and controller', () => {
         });
     });
     afterEach(() => { act(() => renderer?.unmount()); vi.useRealTimers(); vi.unstubAllGlobals(); });
+    it('closes an account binding picker outside without changing the binding, and preserves its trigger toggle', () => {
+        const cell = document.createElement('div'); const option = document.createElement('button'); cell.append(option); document.body.append(cell);
+        const bind = vi.fn();
+        const controller = { profiles: [profile()], bindings: [{ machineId: 'a', profileId: id, version: 3 }], loading: false, busy: false, bind } as any;
+        act(() => { renderer = TestRenderer.create(<CodexAccountBindingCell controller={controller} machine={machines[0]} width={208} />, {
+            createNodeMock: (element: any) => element.props.testID === 'codex-binding-cell-a' ? cell : null,
+        }); });
+        const pressTrigger = () => act(() => renderer.root.findByProps({ testID: 'codex-binding-a' }).props.onPress());
+        const down = (node: Element) => act(() => { node.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 })); });
+        pressTrigger(); down(option);
+        expect(renderer.root.findAllByProps({ testID: 'codex-binding-menu-a' })).toHaveLength(1);
+        pressTrigger(); expect(renderer.root.findAllByProps({ testID: 'codex-binding-menu-a' })).toHaveLength(0);
+        pressTrigger(); down(document.body);
+        expect(renderer.root.findAllByProps({ testID: 'codex-binding-menu-a' })).toHaveLength(0);
+        expect(bind).not.toHaveBeenCalled();
+        cell.remove();
+    });
     async function render() { await act(async () => { renderer = TestRenderer.create(<Harness />); }); }
     async function press(testID: string) { await act(async () => { await renderer.root.findByProps({ testID }).props.onPress(); }); }
     const card = () => renderer.root.findByProps({ testID: `codex-account-${id}` });

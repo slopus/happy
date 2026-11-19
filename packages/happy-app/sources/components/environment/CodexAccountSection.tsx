@@ -1,3 +1,4 @@
+import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import * as React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -135,9 +136,15 @@ export function CodexAccountBindingCell({ controller, machine, width }: { contro
     const binding = controller.bindings.find(b => b.machineId === machine.id);
     const profile = controller.profiles.find(p => p.id === binding?.profileId);
     const [menuVersion, setMenuVersion] = React.useState<number | null>(null);
+    const cellRef = React.useRef<View>(null);
+    useWebPopoverDismiss({
+        enabled: menuVersion !== null,
+        onDismiss: () => setMenuVersion(null),
+        isInside: target => !!(cellRef.current as unknown as HTMLElement | null)?.contains(target),
+    });
     const name = profile?.displayName ?? t(binding?.profileId ? 'codexAccounts.removed' : 'codexAccounts.unbound');
     const disabled = controller.loading || controller.busy || !binding;
-    return <View style={[styles.bindingCell, { width }]} testID={`codex-binding-cell-${machine.id}`}>
+    return <View ref={cellRef} style={[styles.bindingCell, { width }]} testID={`codex-binding-cell-${machine.id}`}>
         <AccountButton testID={`codex-binding-${machine.id}`} label={`${machine.name} · ${t('codexAccounts.defaultAccount')} · ${name}`} disabled={disabled}
             onPress={() => setMenuVersion(menuVersion === null ? binding!.version : null)}>
             <Text numberOfLines={1} style={styles.bindingName}>{name} ▾</Text>

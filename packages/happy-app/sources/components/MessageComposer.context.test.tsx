@@ -1,3 +1,5 @@
+vi.mock('@/hooks/useWebPopoverDismiss', () => ({ useWebPopoverDismiss: (options: any) => { dismissOptions = options; } }));
+let dismissOptions: any;
 vi.mock('./ComposerReferenceChips', () => ({ ComposerReferenceChips: 'ComposerReferenceChips' }));
 vi.mock('./ComposerContextPicker', () => ({ ComposerContextPicker: 'ComposerContextPicker' }));
 vi.mock('./DiscussionModeButton', () => ({ DiscussionModeButton: 'DiscussionModeButton' }));
@@ -11,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
-    hapticsLight: vi.fn(), liveText: '', write: vi.fn(), width: 390, hasGit: false,
+    suggestions: [] as any[], hapticsLight: vi.fn(), liveText: '', write: vi.fn(), width: 390, hasGit: false,
 }));
 
 vi.mock('react-native', async () => {
@@ -67,7 +69,7 @@ vi.mock('./Shaker', async () => {
 vi.mock('./StatusDot', () => ({ StatusDot: 'StatusDot' }));
 
 vi.mock('./autocomplete/useActiveSuggestions', () => ({
-    useActiveSuggestions: () => [[], -1, vi.fn(), vi.fn()],
+    useActiveSuggestions: (query: string | null) => [query ? mocks.suggestions : [], -1, vi.fn(), vi.fn()],
 }));
 vi.mock('./AgentInputAutocomplete', () => ({ AgentInputAutocomplete: 'AgentInputAutocomplete' }));
 vi.mock('./GitStatusBadge', () => ({ GitStatusBadge: 'GitStatusBadge', useHasMeaningfulGitStatus: () => mocks.hasGit }));
@@ -130,6 +132,30 @@ describe('MessageComposer unified context entry', () => {
         input().props.onChangeText(text);
     });
     const menu = () => renderer.root.findByType('ComposerContextPicker');
+    it('dismisses slash suggestions on outside and Escape without changing draft, and reopens after typing', () => {
+        mocks.suggestions = [{ key: 'compact', text: '/compact', component: () => null }];
+        mount({ autocompletePrefixes: ['/'] });
+        type('/co');
+        expect(renderer.root.findAllByType('AgentInputAutocomplete')).toHaveLength(1);
+        expect(dismissOptions.enabled).toBe(true);
+        act(() => dismissOptions.onDismiss());
+        expect(renderer.root.findAllByType('AgentInputAutocomplete')).toHaveLength(0);
+        expect(mocks.liveText).toBe('/co');
+        type('/com'); expect(renderer.root.findAllByType('AgentInputAutocomplete')).toHaveLength(1);
+        type('/co'); expect(renderer.root.findAllByType('AgentInputAutocomplete')).toHaveLength(1);
+        type('/com');
+        act(() => { expect(input().props.onKeyPress({ key: 'Escape' })).toBe(true); });
+        expect(renderer.root.findAllByType('AgentInputAutocomplete')).toHaveLength(0);
+        expect(mocks.liveText).toBe('/com');
+        mocks.suggestions = [];
+    });
+    it('reopens @ context after editing away from and back to a previously dismissed query', () => {
+        mount(); type('@a');
+        act(() => menu().props.onClose(false));
+        expect(renderer.root.findAllByType('ComposerContextPicker')).toHaveLength(0);
+        type('@ab'); expect(renderer.root.findAllByType('ComposerContextPicker')).toHaveLength(1);
+        type('@a'); expect(renderer.root.findAllByType('ComposerContextPicker')).toHaveLength(1);
+    });
     it('places the discussion icon beside content selection inside the input panel', () => {
         mount({ mode: 'session', discussionMode: { active: true, onToggle: vi.fn() }, permissionSelector: {} });
         const panel = renderer.root.findByProps({ testID: 'composer-input-panel' });
