@@ -10,7 +10,7 @@
 import os from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFile, execSync } from 'node:child_process';
 
 /** Default command name for the agy binary (looked up on PATH). */
 export const AGY_BIN = 'agy';
@@ -173,35 +173,52 @@ export interface AgyMetadataModelOption {
   description?: string;
 }
 
-export const FALLBACK_AGY_MODEL_OPTIONS: readonly AgyMetadataModelOption[] = [
-  { code: 'Gemini 4 Neon (High)', value: 'Gemini 4 Neon (High)', description: 'gemini-4-neon-high' },
-  { code: 'Gemini 4 Neon (XHigh)', value: 'Gemini 4 Neon (XHigh)', description: 'gemini-4-neon-xhigh' },
-  { code: 'Gemini 4 Neon (Medium)', value: 'Gemini 4 Neon (Medium)', description: 'gemini-4-neon-medium' },
-  { code: 'Gemini 4 Neon (Low)', value: 'Gemini 4 Neon (Low)', description: 'gemini-4-neon-low' },
-  { code: 'Gemini 4 Hydrogen (High)', value: 'Gemini 4 Hydrogen (High)', description: 'gemini-4-hydrogen-high' },
-  { code: 'Gemini 4 Hydrogen (XHigh)', value: 'Gemini 4 Hydrogen (XHigh)', description: 'gemini-4-hydrogen-xhigh' },
-  { code: 'Gemini 4 Hydrogen (Medium)', value: 'Gemini 4 Hydrogen (Medium)', description: 'gemini-4-hydrogen-medium' },
-  { code: 'Gemini 4 Hydrogen (Low)', value: 'Gemini 4 Hydrogen (Low)', description: 'gemini-4-hydrogen-low' },
-  { code: 'Gemini 4 Argon (High)', value: 'Gemini 4 Argon (High)', description: 'gemini-4-argon-high' },
-  { code: 'Gemini 4 Argon (Medium)', value: 'Gemini 4 Argon (Medium)', description: 'gemini-4-argon-medium' },
-  { code: 'Gemini 4 Argon (Low)', value: 'Gemini 4 Argon (Low)', description: 'gemini-4-argon-low' },
-  { code: 'Gemini 4 Carbon (High)', value: 'Gemini 4 Carbon (High)', description: 'gemini-4-carbon-high' },
-  { code: 'Gemini 4 Carbon (Medium)', value: 'Gemini 4 Carbon (Medium)', description: 'gemini-4-carbon-medium' },
-  { code: 'Gemini 4 Carbon (Low)', value: 'Gemini 4 Carbon (Low)', description: 'gemini-4-carbon-low' },
-  { code: 'Orchestrator (Neon)', value: 'Orchestrator (Neon)', description: 'gemini-pro-orchestrator-neon' },
-  { code: 'Orchestrator (Carbon)', value: 'Orchestrator (Carbon)', description: 'gemini-pro-orchestrator' },
-  { code: 'Orchestrator (Argon)', value: 'Orchestrator (Argon)', description: 'gemini-pro-orchestrator-argon' },
-  { code: 'Gemini 3.8 Flash (High)', value: 'Gemini 3.8 Flash (High)', description: 'gemini-3.8-flash-high' },
-  { code: 'Gemini 3.8 Flash (Medium)', value: 'Gemini 3.8 Flash (Medium)', description: 'gemini-3.8-flash-medium' },
-  { code: 'Gemini 3.8 Flash (Low)', value: 'Gemini 3.8 Flash (Low)', description: 'gemini-3.8-flash-low' },
-  { code: 'Claude Opus 5.5 (High)', value: 'Claude Opus 5.5 (High)', description: 'claude-opus-5-5-high' },
-  { code: 'Claude Opus 5.5 (Medium)', value: 'Claude Opus 5.5 (Medium)', description: 'claude-opus-5-5-medium' },
-  { code: 'Claude Opus 5.5 (Low)', value: 'Claude Opus 5.5 (Low)', description: 'claude-opus-5-5-low' },
-  { code: 'Claude Sonnet 5.5 (High)', value: 'Claude Sonnet 5.5 (High)', description: 'claude-sonnet-5-5-high' },
-  { code: 'Claude Sonnet 5.5 (Medium)', value: 'Claude Sonnet 5.5 (Medium)', description: 'claude-sonnet-5-5-medium' },
-  { code: 'Claude Sonnet 5.5 (Low)', value: 'Claude Sonnet 5.5 (Low)', description: 'claude-sonnet-5-5-low' },
-  { code: 'GPT-OSS 120B (Medium)', value: 'GPT-OSS 120B (Medium)', description: 'gpt-oss-120b-medium' },
-];
+/**
+ * Collapse an agy display name to the model row Happy's pickers list:
+ * "Gemini 4 Argon (High)" becomes "Gemini 4 Argon", whose effort is picked
+ * separately. Single-variant names ("Orchestrator (Neon)", "GPT-OSS 120B
+ * (Medium)") and unknown efforts pass through unchanged.
+ */
+export function agyModelFamily(label: string): string {
+  const m = /^(.+) \(([^)]+)\)$/.exec(label);
+  if (!m || !AGY_EFFORTS_BY_MODEL[m[1]]) {
+    return label;
+  }
+  return AGY_EFFORTS.includes(m[2].toLowerCase() as AgyEffort) ? m[1] : label;
+}
+
+/**
+ * The `agy models` list as one row per model, matching the iOS and Android
+ * catalogs: the apps prefer `metadata.models` over their hardcoded list and
+ * look effort levels up by row, so a flattened "Gemini 4 Argon (High)" row
+ * would hide the effort picker.
+ */
+export function toAgyFamilyModelOptions(
+  options: readonly AgyMetadataModelOption[],
+): AgyMetadataModelOption[] {
+  const seen = new Set<string>();
+  const families: AgyMetadataModelOption[] = [];
+  for (const option of options) {
+    const family = agyModelFamily(option.code);
+    if (seen.has(family)) continue;
+    seen.add(family);
+    families.push(family === option.code ? option : { code: family, value: family });
+  }
+  return families;
+}
+
+/** Published until `agy models` answers, and kept when it can't. */
+export const FALLBACK_AGY_MODEL_OPTIONS: readonly AgyMetadataModelOption[] =
+  AGY_MODELS.map((model) => ({ code: model, value: model }));
+
+/**
+ * The model to run when none was asked for: Gemini 4 Hydrogen, or Gemini 3.8
+ * Flash when the account's `agy models` doesn't list Hydrogen, so a tier
+ * without it doesn't fail every turn.
+ */
+export function pickDefaultAgyModel(available: readonly string[]): string {
+  return available.includes(DEFAULT_AGY_MODEL) ? DEFAULT_AGY_MODEL : AGY_GEMINI_3_8_FLASH_MODEL;
+}
 
 /**
  * Parse `agy models` stdout (`<slug>\t<Display Name>`) into session metadata
@@ -224,22 +241,27 @@ export function parseAgyModelsOutput(raw: string): AgyMetadataModelOption[] {
   return parsed;
 }
 
-export function discoverAgyModelOptions(): AgyMetadataModelOption[] {
-  try {
-    const raw = execFileSync(resolveAgyBin(), ['models'], {
-      encoding: 'utf8',
-      timeout: 4_000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-      windowsHide: true,
-    });
-    const parsed = parseAgyModelsOutput(raw);
-    if (parsed.length > 0) {
-      return parsed;
+/**
+ * Ask `agy models` for the account's models, one row per model. Resolves to
+ * null when agy is missing, offline, unauthenticated, or lists nothing; the
+ * session keeps FALLBACK_AGY_MODEL_OPTIONS then.
+ */
+export function discoverAgyModelOptions(): Promise<AgyMetadataModelOption[] | null> {
+  return new Promise((resolve) => {
+    try {
+      const child = execFile(resolveAgyBin(), ['models'], {
+        encoding: 'utf8',
+        timeout: 4_000,
+        windowsHide: true,
+      }, (error, stdout) => {
+        const parsed = error ? [] : toAgyFamilyModelOptions(parseAgyModelsOutput(stdout));
+        resolve(parsed.length > 0 ? parsed : null);
+      });
+      child.stdin?.end();
+    } catch {
+      resolve(null);
     }
-  } catch {
-    // Fall back to static catalog when agy is offline or unauthenticated.
-  }
-  return [...FALLBACK_AGY_MODEL_OPTIONS];
+  });
 }
 
 /** Timeout passed to `agy --print-timeout` for a single print turn. */
