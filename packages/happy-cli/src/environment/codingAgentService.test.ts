@@ -14,6 +14,18 @@ function fixture() {
   return { service, run, realpath, advance: () => { time += 600_001; } };
 }
 describe('coding agent management', () => {
+  it('checks only the requested agent and preserves other rows update tickets', async () => {
+    const { service, run } = fixture();
+    const first = await service.inspect({ checkUpdates: true, id: 'codex' });
+    expect(first.agents.map(agent => agent.id)).toEqual(['codex']);
+    const token = first.agents[0]!.updateToken;
+    run.mockClear();
+    const other = await service.inspect({ checkUpdates: true, id: 'claude' });
+    expect(other.agents.map(agent => agent.id)).toEqual(['claude']);
+    expect(run).not.toHaveBeenCalled();
+    expect(await service.update({ id: 'codex', updateToken: token })).toMatchObject({ success: true });
+  });
+
   it('preserves Windows installation detection without executing npm shims or offering unsafe updates', async () => {
     const run = vi.fn();
     const service = createCodingAgentService({ runner: { run }, platform: 'win32', availability: () => ({ codex: true, claude: true, opencode: false }) });

@@ -12,7 +12,7 @@ export const CodingAgentObservationSchema = z.object({
   updateToken: z.string().uuid().optional(),
 }).strict();
 export type CodingAgentObservation = z.infer<typeof CodingAgentObservationSchema>;
-export const CodingAgentsInspectRequestSchema = z.object({ checkUpdates: z.boolean().default(false) }).strict();
+export const CodingAgentsInspectRequestSchema = z.object({ checkUpdates: z.boolean().default(false), id: CodingAgentIdSchema.optional() }).strict();
 export const CodingAgentsInspectResponseSchema = z.object({ agents: z.array(CodingAgentObservationSchema), checkedAt: z.number() }).strict();
 export type CodingAgentsInspectResponse = z.infer<typeof CodingAgentsInspectResponseSchema>;
 export const CodingAgentUpdateRequestSchema = z.object({ id: CodingAgentIdSchema, updateToken: z.string().uuid() }).strict();

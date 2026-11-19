@@ -4,6 +4,7 @@ import { ComposerTooltip } from './DesktopShortcutTooltip';
 import { SessionComposerModeSelector } from './SessionComposerModeSelector';
 import React from 'react';
 import { useRouter } from 'expo-router';
+import { useDesktopSettingsModal } from './DesktopSettingsModal';
 import { enabledCodingAgents } from '@/utils/codingAgentSelection';
 import {
     View,
@@ -778,6 +779,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const { theme } = useUnistyles();
         const viewport = useWindowDimensions();
         const router = useRouter();
+        const { openRoute: openSettingsRoute } = useDesktopSettingsModal();
         const codingAgentMachines = useSetting('codingAgentMachines');
         const isSidebar = layout === 'sidebar';
         const isComposer = layout === 'composer';
@@ -1613,7 +1615,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 !isOffline && (availableAgents.length === 0 ? (
                                 <Pressable testID="session-composer-configure-agents" accessibilityRole="button"
                                     accessibilityLabel={t('codingAgents.noneEnabled')}
-                                    onPress={() => router.push({ pathname: '/settings/coding-agents', params: { machineId: selectedMachineId ?? '' } })}
+                                    onPress={() => openSettingsRoute('/settings/coding-agents', { machineId: selectedMachineId ?? '' })}
                                     style={({ pressed }) => [styles.composerConfigCompactTrigger, pressed && styles.composerConfigCompactPressed]}>
                                     <Ionicons name="settings-outline" size={16} color={theme.colors.textSecondary} />
                                     <Text style={styles.composerConfigCompactText}>{t('settings.codingAgents')}</Text>
@@ -1631,7 +1633,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     onFastModeChange={setFastMode}
                                     agentSwitcher={{
                                         id: selectedAgent,
-                                        onManage: () => router.push({ pathname: '/settings/coding-agents', params: { machineId: selectedMachineId ?? '' } }),
+                                        onManage: () => openSettingsRoute('/settings/coding-agents', { machineId: selectedMachineId ?? '' }),
                                         current: ALL_AGENTS.find(agent => agent.key === selectedAgent)?.label ?? selectedAgent,
                                         next: nextCycleAgent?.label ?? null,
                                         onSwitch: switchComposerAgent,

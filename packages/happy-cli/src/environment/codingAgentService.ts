@@ -32,7 +32,7 @@ export function createCodingAgentService(deps: Deps) {
   const readPackage = deps.readPackage ?? (async path => { try { return JSON.parse(await readFile(path, 'utf8')) as { name?: string }; } catch { return null; } });
   const tickets = new Map<string, Ticket>();
   let busy = false;
-  let inspection = 0;
+  const inspections = new Map<CodingAgentId, number>();
   const inspectRun: ProcessRunner['run'] = async (executable, args, options) => {
     try { return await deps.runner.run(executable, args, options); }
     catch { return { exitCode: null, stdout: '', stderr: '', timedOut: false }; }
@@ -113,26 +113,30 @@ export function createCodingAgentService(deps: Deps) {
   }
   async function inspect(raw: unknown): Promise<CodingAgentsInspectResponse> {
     const request = CodingAgentsInspectRequestSchema.parse(raw);
+    const ids = request.id ? [request.id] : CodingAgentIdSchema.options;
     // Windows npm/Powershell shims cannot be executed by our shell-free runner.
     // Preserve the existing platform detector and require manual management until
     // a verified native/JS-entry adapter exists; never offer a broken updater.
     if ((deps.platform ?? process.platform) === 'win32') {
       tickets.clear();
       const availability = (deps.availability ?? detectCLIAvailability)();
-      return { agents: CodingAgentIdSchema.options.map(id => ({ id, installed: availability[id] === true,
+      return { agents: ids.map(id => ({ id, installed: availability[id] === true,
         executable: null, version: null, latestVersion: null, source: 'manual',
         reason: availability[id] === true ? 'manual-update' : 'not-installed' })), checkedAt: now() };
     }
     for (const [key, ticket] of tickets) if (ticket.expires < now()) tickets.delete(key);
-    // Each inspection supersedes the previous preview; tickets never accumulate.
-    const currentInspection = request.checkUpdates ? ++inspection : inspection;
-    if (request.checkUpdates) tickets.clear();
-    const results = await Promise.all(CodingAgentIdSchema.options.map(async id => {
+    // A row refresh supersedes only that agent's preview, preserving other rows.
+    if (request.checkUpdates) {
+      for (const id of ids) inspections.set(id, (inspections.get(id) ?? 0) + 1);
+      for (const [key, ticket] of tickets) if (ids.includes(ticket.id)) tickets.delete(key);
+    }
+    const currentInspections = new Map(ids.map(id => [id, inspections.get(id)]));
+    const results = await Promise.all(ids.map(async id => {
       try { return await probe(id, request.checkUpdates); }
       catch { return { agent: { id, installed: false, executable: null, version: null, latestVersion: null, source: 'manual', reason: 'check-failed' } as CodingAgentObservation, updater: null, args: [], identity: '' }; }
     }));
     for (const { agent, updater, args, identity } of results) {
-      if (currentInspection !== inspection) continue;
+      if (currentInspections.get(agent.id) !== inspections.get(agent.id)) continue;
       if (agent.reason === 'update-available' && agent.version && agent.executable && agent.latestVersion && updater) {
         const token = randomUUID();
         tickets.set(token, { id: agent.id, version: agent.version, path: agent.executable, updater, args, target: agent.latestVersion, identity, expires: now() + 600_000 });

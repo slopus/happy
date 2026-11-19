@@ -85,7 +85,7 @@ for (const label of ['A', 'B']) {
     manager.registerHandler('browseDirectory', async () => ({ success: true, path: sandbox, entries: [], parentPath: null }));
     manager.registerHandler('get-path-suggestions', async () => ({ suggestions: [sandbox] }));
     manager.registerHandler('goalProjects', async () => ({ success: true, projects: [] }));
-    manager.registerHandler('coding-agents-inspect', async request => { metrics.inspections.push({ machine: label, checkUpdates: request.checkUpdates }); return service.inspect(request); });
+    manager.registerHandler('coding-agents-inspect', async request => { metrics.inspections.push({ machine: label, checkUpdates: request.checkUpdates, id: request.id }); return service.inspect(request); });
     manager.registerHandler('coding-agent-update', async request => { const result = await service.update(request); metrics.updates.push({ machine: label, id: request.id, success: result.success, reason: result.reason }); return result; });
     manager.registerHandler('spawn-happy-session', async input => {
         assert(Object.hasOwn(packages, input.agent));

@@ -58,8 +58,9 @@ describe('coding agent settings', () => {
         let renderer: any;
         mocks.update.mockResolvedValue({ success: true, reason: 'updated', agent: { ...agent, version: '1.1.0', updateToken: undefined } });
         await act(async () => { renderer = TestRenderer.create(<CodingAgentsSettings />); });
-        await act(async () => renderer.root.findByProps({ testID: 'coding-agents-check' }).props.onPress());
-        expect(mocks.inspect).toHaveBeenLastCalledWith('m1', true);
+        await act(async () => renderer.root.findByProps({ testID: 'coding-agent-check-claude' }).props.onPress());
+        expect(mocks.inspect).toHaveBeenLastCalledWith('m1', true, 'claude');
+        expect(renderer.root.findAllByProps({ testID: 'coding-agents-check' })).toHaveLength(0);
         const button = renderer.root.findByProps({ accessibilityLabel: 'codingAgents.update Claude Code' });
         await act(async () => { button.props.onPress(); button.props.onPress(); });
         expect(mocks.update).toHaveBeenCalledOnce();
@@ -67,6 +68,19 @@ describe('coding agent settings', () => {
         expect(renderer.root.findAllByProps({ accessibilityLabel: 'codingAgents.update Claude Code' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
+    it('keeps other agent versions and update actions when a row is checked', async () => {
+        const codex = { ...agent, id: 'codex', version: '2.0.0', latestVersion: '2.1.0' };
+        mocks.inspect.mockResolvedValueOnce({ agents: [agent, codex] }).mockResolvedValueOnce({ agents: [{ ...agent, version: '1.1.0', updateToken: undefined }] });
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<CodingAgentsSettings />); });
+        await act(async () => renderer.root.findByProps({ testID: 'coding-agent-check-claude' }).props.onPress());
+        expect(mocks.inspect).toHaveBeenLastCalledWith('m1', true, 'claude');
+        const row = renderer.root.findByProps({ testID: 'coding-agent-row-codex' });
+        expect(row.findAllByType('Text').some((node: any) => String(node.props.children).includes('2.0.0'))).toBe(true);
+        expect(renderer.root.findAllByProps({ accessibilityLabel: 'codingAgents.update Codex' })).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+
     it('shows an old-daemon error without changing enabled settings', async () => {
         mocks.inspect.mockRejectedValue(new Error('RPC method not available'));
         let renderer: any;

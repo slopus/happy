@@ -10,6 +10,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    openSettingsRoute: vi.fn(),
     browseDirectory: vi.fn(),
     listWorktrees: vi.fn().mockResolvedValue([]),
     modelTriggerFocus: vi.fn(),
@@ -28,6 +29,8 @@ const mocks = vi.hoisted(() => ({
     draftStore: null as any,
     configuredAgents: { mac: ['codex', 'claude'], 'other-mac': ['codex'] } as Record<string, string[]>,
 }));
+
+vi.mock('./DesktopSettingsModal', () => ({ useDesktopSettingsModal: () => ({ openRoute: mocks.openSettingsRoute }) }));
 
 vi.mock('@/hooks/useCodexAccounts', () => ({ useCodexAccounts: () => mocks.codexAccounts }));
 
@@ -226,10 +229,18 @@ describe('SessionConfigPanel composer layout', () => {
         vi.useRealTimers();
     });
 
+    it('opens agent management in the settings panel with the selected machine', async () => {
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-agent-manage' }).props.onPress());
+        expect(mocks.openSettingsRoute).toHaveBeenCalledWith('/settings/coding-agents', { machineId: 'mac' });
+    });
+
     it('shows configuration instead of a disabled model picker when no agents are enabled', async () => {
         mocks.configuredAgents = { mac: [] };
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />); });
-        expect(renderer.root.findByProps({ testID: 'session-composer-configure-agents' })).toBeDefined();
+        act(() => renderer.root.findByProps({ testID: 'session-composer-configure-agents' }).props.onPress());
+        expect(mocks.openSettingsRoute).toHaveBeenCalledWith('/settings/coding-agents', { machineId: 'mac' });
         expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-selector' })).toHaveLength(0);
     });
 

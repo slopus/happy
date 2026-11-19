@@ -20,7 +20,7 @@ export function agentManagerActor(page, runtime) {
         await page.goto(`${base}/settings/coding-agents?machineId=${id}`);
         await page.waitForSelector('[data-testid="coding-agent-enable-codex"]');
         await wait(() => {
-            const node = document.querySelector('[data-testid="coding-agents-check"]');
+            const node = document.querySelector('[data-testid="coding-agent-check-codex"]');
             return node && node.getAttribute('aria-disabled') !== 'true';
         });
         return id;

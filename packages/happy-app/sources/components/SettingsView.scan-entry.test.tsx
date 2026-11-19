@@ -128,6 +128,14 @@ describe('SettingsView scan entry', () => {
         expect(scannerItems[0].props.onPress).toEqual(expect.any(Function));
     });
 
+    it('places coding agent management first in the existing General settings panel', () => {
+        const entry = renderer.root.findByProps({ testID: 'settings-coding-agents' });
+        expect(entry.parent.props.title).toBe('settings.general');
+        expect(entry.parent.findAllByType('Item')[0]).toBe(entry);
+        act(() => entry.props.onPress());
+        expect(settingsNavigation.push).toHaveBeenCalledWith('/settings/coding-agents');
+    });
+
     it('opens archived sessions from settings', () => {
         const archive = renderer.root.findByProps({ testID: 'settings-archive-entry' });
         expect(archive.props.title).toBe('sessionHistory.archiveTitle');
