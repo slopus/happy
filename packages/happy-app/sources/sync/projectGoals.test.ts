@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+import { FileWorkspaceController } from '@/components/fileWorkspace/controller';
 import { markProjectSessionDeleted } from './projectSessionLinks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GoalTask } from '@slopus/happy-wire';
@@ -75,6 +77,46 @@ describe('project Task transport and conservative attempt state', () => {
         mocks.rpc.mockImplementation(async () => { abort.abort(); return { success: true, content: Buffer.alloc(65536, 'a').toString('base64'), size: 1024 * 1024, revision: 'r', offset: 0, transferId: 'transfer' }; });
         await expect(projectTaskFiles('machine', '/archive', task).readText('/archive/task/large.txt', abort.signal)).rejects.toThrow();
         expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    });
+});
+
+// Resolve the exact polyfill React Native installs in Libraries/Core/setUpXHR.
+const nativeRequire = createRequire(createRequire(import.meta.url).resolve('react-native/package.json'));
+const { AbortController: NativeAbortController } = nativeRequire('abort-controller/dist/abort-controller');
+describe('native Task file cancellation compatibility', () => {
+    const path = '/archive/task/index.md';
+    const response = { success: true, content: 'IyDkuK3mlocK', size: 9, revision: 'r', offset: 0, transferId: 'transfer' };
+    it('opens a UTF-8 task document with the AbortSignal provided by React Native', async () => {
+        const binding = projectTaskFiles('machine', '/archive', task);
+        mocks.rpc.mockResolvedValue(response);
+        const controller = new FileWorkspaceController({ root: binding.root,
+            read: (file, signal) => binding.readText(file, signal), write: binding.writeText });
+        vi.stubGlobal('AbortController', NativeAbortController);
+        try {
+            await controller.open(path);
+            expect(controller.getSnapshot().documents[path]).toMatchObject({ phase: 'ready', content: '# 中文\n', error: null });
+        } finally { vi.unstubAllGlobals(); }
+    });
+    it('rejects a native signal already cancelled before sending a read', async () => {
+        const abort = new NativeAbortController(); abort.abort();
+        await expect(projectTaskFiles('machine', '/archive', task).readText(path, abort.signal)).rejects.toThrow('File read aborted');
+        expect(mocks.rpc).not.toHaveBeenCalled();
+    });
+    it('stops after the in-flight chunk when a native file read is cancelled', async () => {
+        const abort = new NativeAbortController();
+        mocks.rpc.mockImplementation(async () => { abort.abort(); return { ...response, size: 18 }; });
+        await expect(projectTaskFiles('machine', '/archive', task).readText(path, abort.signal)).rejects.toThrow('File read aborted');
+        expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    });
+    it('preserves an explicit null cancellation reason from browser signals', async () => {
+        const abort = new AbortController(); abort.abort(null);
+        await expect(projectTaskFiles('machine', '/archive', task).readText(path, abort.signal)).rejects.toBeNull();
+        expect(mocks.rpc).not.toHaveBeenCalled();
+    });
+    it('preserves the cancellation reason from modern browser signals', async () => {
+        const abort = new AbortController(); const reason = new Error('reader closed'); abort.abort(reason);
+        await expect(projectTaskFiles('machine', '/archive', task).readText(path, abort.signal)).rejects.toBe(reason);
+        expect(mocks.rpc).not.toHaveBeenCalled();
     });
 });
 
