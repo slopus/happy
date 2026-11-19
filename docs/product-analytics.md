@@ -335,7 +335,8 @@ can stay or go:
   analytics module's uncaught-exception handler, ahead of the platform's,
   writes the exception's class, its root cause's and up to five frames
   from the first outside the platform and the libraries (`java.`,
-  `kotlin.`, `androidx.` and so on) to `noBackupFilesDir/crash_signature`,
+  `kotlin.`, `androidx.` and so on; when the crash has none, the innermost
+  cause's own top frames) to `noBackupFilesDir/crash_signature`,
   with the process id. The next start reads and deletes it, and it goes
   with `app_crashed` only when the system's record of that same process
   says it crashed. Turning analytics off deletes it. Store builds are
