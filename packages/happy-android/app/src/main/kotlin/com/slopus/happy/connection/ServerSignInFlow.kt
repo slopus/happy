@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Where one team server sign-in stands, as its screen draws it. */
 sealed interface ServerSignInState {
@@ -66,9 +67,11 @@ val ServerSignInState.server: String? get() = when (this) {
  * `instanceId` checked against [expectedInstance], and the server kept as
  * an agent connection. [replacing] signs an existing one in again. The
  * verifier and state live only in this object: a sign-in the app was
- * killed during starts over. Closing records how it ended
- * (`team_server_signed_in` or `sign_in_failed`; nothing when it was left),
- * whatever retries came before.
+ * killed during starts over. `team_server_signed_in` is recorded as the
+ * server is kept (the screen opens its home without closing first, so
+ * closing comes late or never); closing records `sign_in_failed` for one
+ * that ended failed, whatever retries came before, and nothing when it was
+ * left.
  */
 class ServerSignInFlow(
     private val scope: CoroutineScope,
@@ -98,7 +101,7 @@ class ServerSignInFlow(
     /** A new member's profile as the server suggests it: the name shown, the email saved with theirs. */
     private var suggestion: ProfileSuggestion? = null
     private var job: Job? = null
-    private var reported = false
+    private val reported = AtomicBoolean(false)
 
     /** Where [startWith] gets its token, kept for [retry]. */
     private var tokenSource: (suspend (AgentOrigin) -> Pair<OAuthGrant, OAuthCredential>)? = null
@@ -296,8 +299,7 @@ class ServerSignInFlow(
         job?.cancel()
         pending = null
         grant = null
-        if (reported) return
-        reported = true
+        if (!reported.compareAndSet(false, true)) return
         // Left without signing in sends nothing.
         val event = when (val state = mutableState.value) {
             is ServerSignInState.Done -> AnalyticsEvent.TeamServerSignedIn
@@ -314,7 +316,7 @@ class ServerSignInFlow(
         if (onboarded != null) {
             // Onboarded with the token it had: the connection goes on as it was.
             connections.update(onboarded) { it.copy(signInRequired = false, profileRequired = false) }
-            connections.accounts.value.firstOrNull { it.id == onboarded }?.let { mutableState.value = ServerSignInState.Done(it, photoFailed) }
+            connections.accounts.value.firstOrNull { it.id == onboarded }?.let { done(ServerSignInState.Done(it, photoFailed)) }
             return
         }
         val (granted, credential) = grant ?: return
@@ -324,8 +326,14 @@ class ServerSignInFlow(
             ?: throw ServerAuthException(ServerAuthException.Reason.Rejected)
         val account = connections.addServer(origin, credential.copy(userId = userId), granted.access, fallbackName = HappyCloud.handle(origin.value) ?: origin.host, replacing = replacing)
         grant = null
-        mutableState.value = ServerSignInState.Done(account, photoFailed)
+        done(ServerSignInState.Done(account, photoFailed))
         if (replacing != null && account.id != replacing) onReplaced(account.id)
+    }
+
+    /** Recorded before the screen sees it, so the home it opens comes after. */
+    private fun done(state: ServerSignInState.Done) {
+        if (reported.compareAndSet(false, true)) record(AnalyticsEvent.TeamServerSignedIn)
+        mutableState.value = state
     }
 
     /**

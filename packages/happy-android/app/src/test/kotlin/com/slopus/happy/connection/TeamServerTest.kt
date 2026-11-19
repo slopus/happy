@@ -681,16 +681,20 @@ class TeamServerTest {
     }
 
     @Test
-    fun closingASignInRecordsHowItEndedOnce() = runBlocking {
+    fun aSignInRecordsHowItEndedOnce() = runBlocking {
         val recorded = mutableListOf<AnalyticsEvent>()
         val done = ServerSignInFlow(scope, connections(), auth, expectedInstance = INSTANCE, record = { recorded += it })
         throughBrowser(done, "u1", health(INSTANCE))
         withTimeout(5_000) { done.state.first { it is ServerSignInState.Done } }
+        // Kept: recorded already, as the screen opens the server's home without closing.
+        assertEquals(listOf<AnalyticsEvent>(AnalyticsEvent.TeamServerSignedIn), recorded)
         done.close()
         done.close()
         val wrong = ServerSignInFlow(scope, connections(), auth, expectedInstance = INSTANCE, record = { recorded += it })
         throughBrowser(wrong, "u1", health("z9y8x7w6v5u4t3s2r1q0p9o8"))
         withTimeout(5_000) { wrong.state.first { it is ServerSignInState.Failed } }
+        // A failure may be retried: it is recorded as the sign-in closes.
+        assertEquals(1, recorded.size)
         wrong.close()
         val left = ServerSignInFlow(scope, connections(), auth, record = { recorded += it })
         left.close()

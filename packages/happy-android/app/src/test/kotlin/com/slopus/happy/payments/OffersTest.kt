@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.PaywallStep
+import com.slopus.happy.analytics.PurchaseProduct
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -32,6 +35,7 @@ class OffersTest {
     private val store = FakeStore()
     private val rc = FakeRevenueCat()
     private val activity: Activity by lazy { Robolectric.buildActivity(Activity::class.java).get() }
+    private val recorded = ArrayList<AnalyticsEvent>()
 
     @Before fun clear() {
         preferences.edit().clear().commit()
@@ -40,7 +44,7 @@ class OffersTest {
 
     private fun TestScope.setUp(): Pair<Subscription, Offers> {
         val subscription = Subscription(backgroundScope, store, rc, preferences, now = { now })
-        val offers = Offers(backgroundScope, subscription, CallIntro(introPreferences))
+        val offers = Offers(backgroundScope, subscription, CallIntro(introPreferences), record = { recorded += it })
         subscription.refresh()
         runCurrent()
         return subscription to offers
@@ -191,5 +195,27 @@ class OffersTest {
         val (_, again) = setUp()
         assertTrue(again.welcomes())
         assertFalse(again.welcomes())
+    }
+
+    /** `paywall_presented` is a purchase screen, as on iOS: voice's welcome is the first tap's greeting, not one. */
+    @Test
+    fun theWelcomeIsNoPaywallAndTheOtherSheetsOnSaleAre() = runTest {
+        val (_, offers) = setUp()
+        val presented = AnalyticsEvent.Paywall(PaywallStep.Presented, PurchaseProduct.Pro)
+        assertTrue(offers.offer is Offer.OnSale)
+        for (sheet in listOf(OfferSheet.Welcome(offers.offer), OfferSheet.Used(null, offers.offer), OfferSheet.Required(offers.offer))) {
+            val asked = async { offers.ask(sheet) }
+            runCurrent()
+            offers.dismiss()
+            asked.await()
+        }
+        assertEquals(listOf(presented, presented), recorded)
+        // Nothing on sale: no purchase screen, whichever sheet.
+        recorded.clear()
+        val required = async { offers.ask(OfferSheet.Required(Offer.Unavailable)) }
+        runCurrent()
+        offers.dismiss()
+        required.await()
+        assertEquals(emptyList<AnalyticsEvent>(), recorded)
     }
 }

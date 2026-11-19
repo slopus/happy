@@ -136,6 +136,7 @@ class Offers(
     private val scope: CoroutineScope,
     private val subscription: Subscription,
     val intro: CallIntro,
+    private val record: (AnalyticsEvent) -> Unit = Analytics::record,
 ) {
     private val guard = Any()
     private val mutableSheet = MutableStateFlow<OfferSheet?>(null)
@@ -184,8 +185,9 @@ class Offers(
                 mutableSheet.value = sheet
             }
         }
-        // A sheet with the subscription for sale on it; Android sells that one product.
-        if (sheet.offer is Offer.OnSale) Analytics.record(AnalyticsEvent.Paywall(PaywallStep.Presented, PurchaseProduct.Pro))
+        // A sheet with the subscription for sale on it; Android sells that one product. Voice's welcome
+        // is the first tap's greeting, not a purchase screen, as on iOS (9d092c908).
+        if (sheet.offer is Offer.OnSale && sheet !is OfferSheet.Welcome) record(AnalyticsEvent.Paywall(PaywallStep.Presented, PurchaseProduct.Pro))
         try {
             return waiting.await()
         } finally {
