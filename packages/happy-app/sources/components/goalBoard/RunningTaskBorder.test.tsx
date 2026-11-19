@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { GoalTask } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
 
-const store = create<{ sessions: Record<string, Session> }>(() => ({ sessions: {} }));
+const store = create<{ sessions: Record<string, Session>; socketStatus: string }>(() => ({ sessions: {}, socketStatus: 'connected' }));
 const cache = vi.hoisted(() => ({ history: [] as any[] }));
 vi.mock('@/sync/storage', () => ({ storage: (...args: any[]) => (store as any)(...args) }));
 vi.mock('@/sync/apiSocket', () => ({ apiSocket: {} }));
@@ -34,7 +34,7 @@ function mount(patch: any = {}) {
 }
 const glows = () => view.root.findAllByProps({ className: 'paws-task-flow' }).length;
 const update = (sessions: Session[]) => act(() => store.setState({ sessions: Object.fromEntries(sessions.map(s => [s.id, s])) }));
-beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; store.setState({ sessions: {} }); cache.history = []; });
+beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; store.setState({ sessions: {}, socketStatus: 'connected' }); cache.history = []; });
 afterEach(() => { act(() => view?.unmount()); view = undefined; });
 
 it('starts and stops on live session events while the task remains awaiting review', () => {
@@ -92,4 +92,9 @@ it.each(['pending', 'review', 'done', 'running'] as const)('uses live execution 
     update([session('independent')]); expect(glows()).toBe(1);
     update([]); expect(glows()).toBe(0);
     expect(archivedTask.status).toBe(status);
+});
+
+it('stops the border immediately on transport loss before any header refresh', () => {
+    update([session('transport-stale')]); mount(); expect(glows()).toBe(1);
+    act(() => store.setState({ socketStatus: 'disconnected' })); expect(glows()).toBe(0);
 });

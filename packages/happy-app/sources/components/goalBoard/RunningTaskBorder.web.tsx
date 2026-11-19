@@ -18,6 +18,7 @@ export function RunningTaskBorder({ task, machineId, featurePath }: RunningTaskB
     // remains the archive's acceptance state and never drives this animation.
     const cached = readProjectCache(projectCacheKey('history', machineId, featurePath, task.id), projectHistorySchema);
     const active = storage(state => {
+        if (state.socketStatus !== 'connected') return false;
         const history = mergeProjectTaskHistory(cached?.value.sessions ?? [], Object.values(state.sessions), {
             machineId, featurePath, taskId: task.id, directory: task.indexPath.replace(/[\\/][^\\/]+$/, ''),
         });

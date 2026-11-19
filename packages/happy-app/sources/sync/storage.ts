@@ -1054,6 +1054,23 @@ export const storage = create<StorageState>()((set, get) => {
                 socketStatus: status
             };
 
+            // Transport reconnection is not evidence that cached workers are still
+            // alive. Only a subsequent authoritative header/presence event may
+            // restore online status; keep the durable turn outcome untouched.
+            if (status !== 'connected') {
+                let sessions = state.sessions;
+                for (const session of Object.values(state.sessions)) {
+                    if (session.presence !== 'online') continue;
+                    if (sessions === state.sessions) sessions = { ...state.sessions };
+                    sessions[session.id] = { ...session, presence: session.activeAt };
+                }
+                if (sessions !== state.sessions) {
+                    updates.sessions = sessions;
+                    updates.sessionListViewData = buildSessionListViewData(sessions, state.unreadSessionIds);
+                    updates.sessionsData = state.sessionsData?.map(item => typeof item === 'string' ? item : sessions[item.id] ?? item) ?? null;
+                }
+            }
+
             // Update timestamp based on status
             if (status === 'connected') {
                 updates.socketLastConnectedAt = now;

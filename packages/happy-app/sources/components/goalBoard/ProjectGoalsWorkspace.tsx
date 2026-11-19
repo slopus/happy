@@ -46,6 +46,7 @@ import { openExternalUrl } from '@/utils/openExternalUrl';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { GoalBoardCard } from './GoalBoardCard';
 import { RunningTaskBorder } from './RunningTaskBorder';
+import { ProjectSessionMonitor, GlobalSessionEntry, ProjectSessionSummary, ProjectTaskSessions } from '../sessionActivity/ProjectSessionMonitor';
 import { ProjectGalleryLoading } from './ProjectGallery';
 import { ProjectLibrary } from './ProjectLibrary';
 import { ProjectFeatureLibrary } from './ProjectFeatureLibrary';
@@ -337,7 +338,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         onOpened: (task, conversation) => go({ task, conversation, view: 'chat' }) });
     const tasks = feature?.tasks ?? [];
     const selectedMachine = machines.find(machine => machine.id === machineId);
-    return <ProjectWorkspaceWidthProvider><ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
+    return <ProjectSessionMonitor knownScopes={data.projects.flatMap(entry => [{ machineId, path: entry.projectPath, title: entry.title }, ...entry.features.map(feature => ({ machineId, path: feature.featurePath, title: feature.title }))])} scope={feature ? { machineId, path: feature.featurePath, title: feature.title } : project ? { machineId, path: project.projectPath, title: project.title } : undefined}><ProjectWorkspaceWidthProvider><ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
         {mobile && <View style={[styles.mobileHeader, { backgroundColor: surface }]}>
             <Button variant="icon" label={t('common.back')} onPress={() => { if (taskBackView) { Keyboard.dismiss(); navigate({ view: taskBackView, file: undefined }); } else navigation.back(project); }} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
             <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={styles.mobileTitle}>{task?.title || feature?.title || project?.title || t('projectGoals.allProjects')}</Text>
@@ -356,6 +357,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 {feature && feature.featurePath !== project?.projectPath && <><Ionicons name="chevron-forward" size={13} color={theme.colors.textSecondary} /><Button variant="toolbar" label={feature.title} onPress={() => go({ task: undefined })}><Text numberOfLines={1} style={styles.body}>{feature.title}</Text></Button></>}
             </View>
             <View style={styles.line}>
+                <GlobalSessionEntry />
                 <Button variant="toolbar" label={t('projectGoals.chooseMachine')} disabled={readOnly} expanded={machineMenuOpen} onPress={() => setMachineMenuOpen(value => !value)} testID="project-machine-picker"><Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} /><Text numberOfLines={1} style={[styles.meta, { maxWidth: 200 }]}>{selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || t('projectGoals.machine')}</Text><Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} /></Button>
                 <Button variant="toolbar" label={t('projectGoals.refresh')} disabled={data.loading || ((!machineId || data.offline) && !data.canRetryMachine)} onPress={() => { setScopeRefresh(value => value + 1); void data.refresh(); }} testID="project-goals-refresh">{data.loading ? <ActivityIndicator size="small" color={theme.colors.textSecondary} /> : <Ionicons name="refresh-outline" size={17} color={theme.colors.textSecondary} />}</Button>
                 {(data.stale || data.status === 'offline' || data.status === 'connecting') && <Text testID="project-data-status" style={[styles.meta, { maxWidth: 220 }]} accessibilityLiveRegion="polite">{t(data.status === 'offline' ? 'projectGoals.offlineArchive' : data.status === 'connecting' ? 'projectGoals.connecting' : data.error ? 'projectGoals.cachedContent' : 'projectGoals.refreshing')}</Text>}
@@ -411,7 +413,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
             </ScrollView></ScopeCatalog>}
         {savedFile && <ProjectSavedFile key={savedFile.projectPath} machineId={machineId} item={savedFile} onClose={() => setSavedFile(null)} />}
         {feature && !!deliveryTasks?.length && <ProjectDeliveryEditor key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} tasks={deliveryTasks} onClose={() => setDeliveryTasks(null)} onSaved={data.refresh} onDiscuss={target => { setDeliveryTasks(null); if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} />}
-    </View></ProjectSurfaces.Provider></ProjectWorkspaceWidthProvider>;
+    </View></ProjectSurfaces.Provider></ProjectWorkspaceWidthProvider></ProjectSessionMonitor>;
 }
 
 function ScopeCatalog({ scopePath, children, enabled, ...props }: Omit<React.ComponentProps<typeof ProjectOverviewWorkspace>, 'scopePath'> & { scopePath?: string; enabled: boolean }) {
@@ -426,7 +428,7 @@ function ProjectLoading({ kind }: { kind: 'projects' | 'features' | 'tasks' }) {
 
 function CatalogHeading({ title, subtitle, query, setQuery }: { title: string; subtitle: string; query: string; setQuery: (value: string) => void }) {
     const { theme } = useUnistyles();
-    return <View style={styles.catalogHeading} testID="project-catalog-heading"><View style={{ gap: 8, flexShrink: 1 }}><Text accessibilityRole="header" style={styles.heading}>{title}</Text><Text style={styles.meta}>{subtitle}</Text></View>
+    return <View style={styles.catalogHeading} testID="project-catalog-heading"><View style={{ gap: 8, flexShrink: 1 }}><Text accessibilityRole="header" style={styles.heading}>{title}</Text><View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}><Text style={styles.meta}>{subtitle}</Text><ProjectSessionSummary /></View></View>
         <TextInput style={styles.search} placeholder={t('projectGoals.search')} placeholderTextColor={theme.colors.input.placeholder} value={query} onChangeText={setQuery} accessibilityLabel={t('projectGoals.search')} /></View>;
 }
 
@@ -456,7 +458,7 @@ export function TaskCards({ machineId, featurePath, onDelivery, tasks, query, st
             <View style={styles.taskCardContent}>
                 <Text numberOfLines={2} style={styles.cardTitle}>{task.title}</Text><Text numberOfLines={2} style={styles.taskGoal}>{task.goal || task.title}</Text><View style={styles.taskDelivery}><Ionicons name="document-text-outline" size={13} color={theme.colors.textLink} /><Text numberOfLines={2} style={[styles.meta, { flex: 1 }]}>{task.expectedDeliverables.join(' · ') || t('projectGoals.noExpected')}</Text></View></View>
         </Button>
-        {onAction && mobile ? <View style={styles.mobileCardActions}><Button variant="primary" label={actionLabel?.(task) ?? t('projectGoals.chooseChat')} disabled={offline || busy} busy={busy} testID={`project-task-continue-${task.id}`} onPress={() => onAction(task, 'chat')}><Ionicons name="chatbubble-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{actionLabel?.(task) ?? t('projectGoals.chooseChat')}</Text></Button></View> : onAction && <View style={styles.cardActions}><Button variant="toolbar" label={t('projectGoals.openChat')} disabled={offline || busy} onPress={() => onAction(task, 'chat')} testID={`project-task-chat-${task.id}`}><Ionicons name="chatbubble-outline" size={17} color={theme.colors.textSecondary} /></Button>
+        {onAction && mobile ? <View style={styles.mobileCardActions}><Button variant="primary" label={actionLabel?.(task) ?? t('projectGoals.chooseChat')} disabled={offline || busy} busy={busy} testID={`project-task-continue-${task.id}`} onPress={() => onAction(task, 'chat')}><Ionicons name="chatbubble-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{actionLabel?.(task) ?? t('projectGoals.chooseChat')}</Text></Button></View> : onAction && <View style={styles.cardActions}><ProjectTaskSessions task={task} machineId={machineId} featurePath={featurePath} disabled={busy} offline={offline} onFallback={() => onAction(task, 'chat')} />
             {!isReadOnlyProjectPreview() && !hideExecution && taskCanExecute(task) && <Button variant="toolbar" label={t('projectGoals.execute')} disabled={offline || busy} onPress={() => onAction(task, 'execute')}><Ionicons name="play" size={17} color={theme.colors.textLink} /></Button>}</View>}
         <RunningTaskBorder task={task} machineId={machineId} featurePath={featurePath} />
     </GoalBoardCard>)}</View>{!visible.length && <View style={styles.noFilteredTasks}><Text style={styles.meta}>{t('goalBoard.noMatches')}</Text></View>}
