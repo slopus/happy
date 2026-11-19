@@ -54,10 +54,6 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <!-- app.config.js scheme: happy://terminal?<key> (ui/connect/DeepLinks.kt), and
                  happy://oauth/callback, team server sign-in's redirect URI (MainActivity.oauthCallback) -->
             <intent-filter>
@@ -75,6 +71,18 @@
                 <data android:scheme="https" android:host="app.happy.engineering" android:pathPrefix="/bot/invite/" />
             </intent-filter>
         </activity>
+        <!-- The launcher entry. The React Native app's was com.ex3ndr.happy.MainActivity, and
+             home-screen icons store that component: some launchers drop an icon whose
+             component is gone after an update. Never rename or remove this alias. -->
+        <activity-alias
+            android:name="com.ex3ndr.happy.MainActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
         <!-- Our QR scanner (ui/connect/QrScanner.kt): a full-screen camera, started for a result. -->
         <activity
             android:name=".ui.connect.QrScannerActivity"
