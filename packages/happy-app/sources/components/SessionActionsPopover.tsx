@@ -95,7 +95,18 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export function SessionActionsPopover({
+// Initialize only on first use, then retain the controller while hidden so
+// useHappyAction keeps the in-flight guard when the menu is reopened.
+export function SessionActionsPopover(props: SessionActionsPopoverProps) {
+    const [initialized, setInitialized] = React.useState(false);
+    if (!initialized) {
+        if (!props.visible || !props.anchor) return null;
+        setInitialized(true);
+    }
+    return <VisibleSessionActionsPopover {...props} />;
+}
+
+function VisibleSessionActionsPopover({
     anchor,
     extraActions,
     onAfterArchive,

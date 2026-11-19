@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { SessionRequestError } from './apiSessions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -504,6 +505,54 @@ describe('active-first session bootstrap', () => {
         await syncForTest.hydrateHistoricalSessionPage();
 
         expect(mocks.fetchPage).toHaveBeenCalledWith(syncForTest.credentials, { limit: 50 });
+    });
+
+    it('yields to input between bounded warm-cache publications during native startup', async () => {
+        Object.assign(Platform, { OS: 'android' });
+        saveSessionWarmSnapshots('warm-account', Array.from({ length: 35 }, (_, index) => snapshot(`warm-${index}`)));
+        const publications: number[] = [];
+        const apply = mocks.state.applySessions;
+        const observer = vi.spyOn(mocks.state, 'applySessions').mockImplementation((rows, options) => {
+            apply(rows, options);
+            publications.push(Object.keys(mocks.state.sessions).length);
+        });
+        let visibleAtInput: number | undefined;
+        const input = setTimeout(() => { visibleAtInput = Object.keys(mocks.state.sessions).length; }, 0);
+        try {
+            await syncForTest.restoreSessionWarmCache();
+            expect(visibleAtInput).toBeGreaterThan(0);
+            expect(visibleAtInput).toBeLessThan(35);
+            expect(publications).toEqual([10, 20, 30, 35]);
+            expect(Object.keys(mocks.state.sessions)).toHaveLength(35);
+            expect(mocks.state.readyCount).toBe(1);
+        } finally { clearTimeout(input); observer.mockRestore(); Object.assign(Platform, { OS: 'web' }); }
+    });
+
+    it('stops a yielded warm restore when the account changes without evicting the old cache', async () => {
+        saveSessionWarmSnapshots('warm-account', Array.from({ length: 35 }, (_, index) => snapshot(`old-${index}`)));
+        let switchHandled = false;
+        const accountSwitch = setTimeout(() => {
+            switchHandled = true;
+            syncForTest.encryption = { ...syncForTest.encryption };
+            syncForTest.sessionWarmCacheAccountKey = 'new-account';
+            mocks.state.sessions = {};
+        }, 0);
+        try {
+            await syncForTest.restoreSessionWarmCache();
+            expect(switchHandled).toBe(true);
+            expect(mocks.state.sessions).toEqual({});
+            expect(mocks.state.readyCount).toBe(0);
+            expect(loadSessionWarmCache('warm-account').snapshots).toHaveLength(35);
+        } finally { clearTimeout(accountSwitch); }
+    });
+
+    it('lets network initialization continue when the optional warm-cache writer fails', async () => {
+        saveSessionWarmSnapshots('warm-account', [snapshot('optional-cache')]);
+        const writer = vi.spyOn(syncForTest, 'writeSessionSnapshots').mockRejectedValueOnce(new Error('optional cache restore failed'));
+        try {
+            await expect(syncForTest.restoreSessionWarmCache()).resolves.toBeUndefined();
+            expect(mocks.state.readyCount).toBe(0);
+        } finally { writer.mockRestore(); }
     });
 
     it('restores encrypted session and message wire cache before network bootstrap', async () => {

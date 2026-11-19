@@ -83,15 +83,27 @@ describe('history decryption responsiveness', () => {
         expect(result[39]?.content).toEqual({ index: 39 });
     });
 
-    it('keeps native decryption free of browser scheduling delays', async () => {
-        platform.OS = 'android';
-        let inputHandled = false;
-        const input = setTimeout(() => { inputHandled = true; }, 0);
+    it.each(['android', 'ios'])('services input during a large %s initialization batch', async (os) => {
+        platform.OS = os;
+        vi.stubGlobal('scheduler', undefined);
+        let processed = 0;
+        let processedAtInput: number | undefined;
+        const nativeCodec = {
+            encrypt: codec.encrypt,
+            decrypt: async (bytes: Uint8Array[]) => {
+                const result = await codec.decrypt(bytes);
+                processed += bytes.length;
+                return result;
+            },
+        };
+        const input = setTimeout(() => { processedAtInput = processed; }, 0);
         try {
-            const session = new SessionEncryption('session', codec, new EncryptionCache());
-            const result = await session.decryptMessages(messages(100));
-            expect(result).toHaveLength(100);
-            expect(inputHandled).toBe(false);
+            const result = await new SessionEncryption('session', nativeCodec, new EncryptionCache()).decryptMessages(messages(100));
+            expect(processedAtInput).toBeGreaterThan(0);
+            expect(processedAtInput).toBeLessThan(100);
+            expect(result.map(message => message?.content)).toEqual(
+                Array.from({ length: 100 }, (_, index) => ({ index })),
+            );
         } finally { clearTimeout(input); platform.OS = 'web'; }
     });
 });

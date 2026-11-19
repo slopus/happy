@@ -1,3 +1,4 @@
+import * as warmCacheReview from './sessionWarmCache';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Native update identity has its own tests; these suites do not host Expo modules.
@@ -1109,4 +1110,123 @@ describe('selected composer context reaches the real encrypted writer', () => {
         expect(storage.getState().sessionMessages['writer-session']).toBe(visible);
         expect(storage.getState().currentViewingSessionId).toBeNull();
     });
+});
+
+
+it.each(['unsupported', 'changed'])('batches native reconciliation and services input before completion (%s)', async (mode) => {
+    Object.assign(Platform, { OS: 'android' });
+    subject.sessionWarmCacheAccountKey = 'review-startup-owner';
+    const rows = Array.from({ length: 150 }, (_, index) => snapshot({ id: `startup-${index}` }));
+    await subject.writeSessionSnapshots(async () => rows, { replace: false });
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    mocks.fetchSnapshot.mockImplementation(async (_credentials: unknown, id: string) => {
+        activeRequests++;
+        maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+        try { await Promise.resolve(); return snapshot({ id, metadataVersion: 2 }); }
+        finally { activeRequests--; }
+    });
+    vi.mocked(fetchSessionChanges).mockResolvedValue(mode === 'unsupported' ? { kind: 'unsupported' } : {
+        kind: 'page', nextCursor: 'next', hasMore: false,
+        changes: rows.map((row, index) => ({ sessionId: row.id, revision: String(index + 1), deleted: false,
+            lastMessageSeq: row.seq, metadataVersion: 2, agentStateVersion: 0 })),
+    });
+    const persistence = vi.spyOn(warmCacheReview, 'saveSessionWarmSnapshots');
+    const parse = JSON.parse;
+    let fullCacheParses = 0;
+    const parser = vi.spyOn(JSON, 'parse').mockImplementation((value, reviver) => {
+        if (typeof value === 'string' && value.includes('"accountId":"review-startup-owner"')) fullCacheParses++;
+        return parse(value, reviver);
+    });
+    let inputHandled = false;
+    const timer = setTimeout(() => { inputHandled = true; }, 0);
+    try {
+        await subject.reconcileNativeHistory(subject.credentials);
+        expect(inputHandled).toBe(true);
+        expect(mocks.fetchSnapshot).toHaveBeenCalledTimes(150);
+        expect(maxActiveRequests).toBeLessThanOrEqual(4);
+        expect(persistence.mock.calls.length).toBeLessThanOrEqual(38);
+        expect(fullCacheParses).toBeLessThanOrEqual(38);
+        expect(Object.values(storage.getState().sessions).every(row => row.metadataVersion === 2)).toBe(true);
+        parser.mockRestore();
+        expect(loadSessionWarmCache('review-startup-owner').snapshots.every(row => row.metadataVersion === 2)).toBe(true);
+        expect(subject.nativeHistoryCursor).toBe(mode === 'changed' ? 'next' : undefined);
+    } finally { clearTimeout(timer); parser.mockRestore(); persistence.mockRestore(); }
+});
+
+
+it('keeps healthy native rows progressing past a failed batch and retries without advancing the cursor', async () => {
+    Object.assign(Platform, { OS: 'android' });
+    const rows = Array.from({ length: 8 }, (_, index) => snapshot({ id: `partial-${index}` }));
+    await subject.writeSessionSnapshots(async () => rows, { replace: false });
+    subject.nativeHistoryCursor = 'previous';
+    vi.mocked(fetchSessionChanges).mockResolvedValue({ kind: 'page', nextCursor: 'next', hasMore: false,
+        changes: rows.map((row, index) => ({ sessionId: row.id, revision: String(index + 1), deleted: false,
+            lastMessageSeq: row.seq, metadataVersion: 2, agentStateVersion: 0 })),
+    });
+    mocks.fetchSnapshot.mockImplementation(async (_credentials, id: string) => {
+        if (id === 'partial-0') throw new Error('one unavailable row');
+        return snapshot({ id, metadataVersion: 2 });
+    });
+    await expect(subject.reconcileHistory()).rejects.toThrow('one unavailable row');
+    expect(subject.nativeHistoryCursor).toBe('previous');
+    expect(rows.slice(1).map(row => storage.getState().sessions[row.id].metadataVersion)).toEqual(Array(7).fill(2));
+    mocks.fetchSnapshot.mockImplementation(async (_credentials, id: string) => snapshot({ id, metadataVersion: 2 }));
+    await subject.reconcileHistory();
+    expect(subject.nativeHistoryCursor).toBe('next');
+    expect(storage.getState().sessions['partial-0'].metadataVersion).toBe(2);
+});
+
+it('does not resurrect a row deleted while its native batch request is in flight', async () => {
+    Object.assign(Platform, { OS: 'android' });
+    const rows = Array.from({ length: 4 }, (_, index) => snapshot({ id: `delete-batch-${index}` }));
+    subject.sessionWarmCacheAccountKey = 'delete-batch-account';
+    await subject.writeSessionSnapshots(async () => rows, { replace: false });
+    const started = deferred<void>();
+    const response = deferred<ApiSessionSnapshot>();
+    mocks.fetchSnapshot.mockImplementation(async (_credentials, id: string) => {
+        if (id === 'delete-batch-0') { started.resolve(); return response.promise; }
+        return snapshot({ id, metadataVersion: 2 });
+    });
+    const pending = subject.reconcileHistory();
+    await started.promise;
+    sync.removeSessionLocally('delete-batch-0');
+    response.resolve(snapshot({ id: 'delete-batch-0', metadataVersion: 2 }));
+    await pending;
+    expect(storage.getState().sessions['delete-batch-0']).toBeUndefined();
+    expect(loadSessionWarmCache('delete-batch-account').snapshots.some(row => row.id === 'delete-batch-0')).toBe(false);
+    expect(storage.getState().sessions['delete-batch-1'].metadataVersion).toBe(2);
+});
+
+it('stops native background batches at an account switch during the input turn', async () => {
+    Object.assign(Platform, { OS: 'android' });
+    const rows = Array.from({ length: 8 }, (_, index) => snapshot({ id: `switch-batch-${index}` }));
+    await subject.writeSessionSnapshots(async () => rows, { replace: false });
+    mocks.fetchSnapshot.mockImplementation(async (_credentials, id: string) => snapshot({ id, metadataVersion: 2 }));
+    let switched = false;
+    const input = setTimeout(() => {
+        switched = true;
+        subject.encryption = encryption();
+        subject.credentials = { token: 'other-test-account' };
+        storage.setState({ sessions: {}, sessionsData: [] });
+    }, 0);
+    try {
+        await subject.reconcileHistory();
+        expect(switched).toBe(true);
+        expect(mocks.fetchSnapshot).toHaveBeenCalledTimes(4);
+        expect(storage.getState().sessions).toEqual({});
+        expect(subject.nativeHistoryCursor).toBeUndefined();
+    } finally { clearTimeout(input); }
+});
+
+
+it('bounds native requests when an entire reconciliation batch fails', async () => {
+    Object.assign(Platform, { OS: 'android' });
+    const rows = Array.from({ length: 12 }, (_, index) => snapshot({ id: `offline-batch-${index}` }));
+    await subject.writeSessionSnapshots(async () => rows, { replace: false });
+    subject.nativeHistoryCursor = 'previous';
+    mocks.fetchSnapshot.mockRejectedValue(new Error('network unavailable'));
+    await expect(subject.reconcileHistory()).rejects.toThrow('network unavailable');
+    expect(mocks.fetchSnapshot).toHaveBeenCalledTimes(4);
+    expect(subject.nativeHistoryCursor).toBe('previous');
 });

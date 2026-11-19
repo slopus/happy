@@ -4,9 +4,8 @@ import { ApiMessage } from '../apiTypes';
 import { DecryptedMessage, Metadata, MetadataSchema, AgentState, AgentStateSchema } from '../storageTypes';
 import { EncryptionCache } from './encryptionCache';
 import { Decryptor, Encryptor } from './encryptor';
-import { Platform } from 'react-native';
 
-async function yieldToBrowser(): Promise<void> {
+async function yieldToUI(): Promise<void> {
     const scheduler = (globalThis as typeof globalThis & {
         scheduler?: { yield?: () => Promise<void> };
     }).scheduler;
@@ -67,21 +66,19 @@ export class SessionEncryption {
             }
         }
 
-        // Promise.all alone does not yield the main thread: decoding the entire
-        // history window and preparing every AES operation is synchronous.
-        // Bound that work on Web, then yield a task (not another microtask) so
-        // scrolling, input and paint can run between batches. Native keeps its
-        // existing bridge batch behavior.
-        const batchSize = Platform.OS === 'web' ? 16 : Math.max(1, toDecrypt.length);
+        // Native crypto wrappers can resolve synchronously too. An async
+        // function or Promise.all doesn't let input run between microtasks.
+        // Bound decoding/decryption on every platform and yield a real task.
+        const batchSize = 16;
         const decryptedForCache: DecryptedMessage[] = [];
         let lastYieldAt = Date.now();
         for (let offset = 0; offset < toDecrypt.length; offset += batchSize) {
             // Give pending input a turn after the first batch. Thereafter use
             // a time budget so cheap rows do not pay a clamped timer per batch
             // on browsers without scheduler.yield.
-            if (Platform.OS === 'web' && offset > 0
+            if (offset > 0
                 && (offset === batchSize || Date.now() - lastYieldAt >= 8)) {
-                await yieldToBrowser();
+                await yieldToUI();
                 lastYieldAt = Date.now();
             }
             const batch = toDecrypt.slice(offset, offset + batchSize);
@@ -125,8 +122,8 @@ export class SessionEncryption {
         // replace the crypto stall with one long cache-maintenance task.
         lastYieldAt = Date.now();
         for (let offset = 0; offset < decryptedForCache.length; offset += batchSize) {
-            if (offset > 0 && Platform.OS === 'web' && Date.now() - lastYieldAt >= 8) {
-                await yieldToBrowser();
+            if (offset > 0 && Date.now() - lastYieldAt >= 8) {
+                await yieldToUI();
                 lastYieldAt = Date.now();
             }
             for (const result of decryptedForCache.slice(offset, offset + batchSize)) {

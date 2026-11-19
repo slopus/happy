@@ -272,8 +272,6 @@ export const SessionRowActions = React.memo(function SessionRowActions({
     const { width: viewportWidth } = useWindowDimensions();
     const canHover = useWebHoverCapability();
     const session = useSession(sessionId);
-    const quickActions = useSessionQuickActions(session!);
-    const sessionArchived = session ? isSessionArchived(session) : false;
     const useMoreAction = shouldUseSessionRowMoreAction(Platform.OS, viewportWidth, canHover);
     const showInline = !useMoreAction && visible;
     const actionClusterRef = React.useRef<any>(null);
@@ -309,10 +307,6 @@ export const SessionRowActions = React.memo(function SessionRowActions({
 
     if (!session) return null;
 
-    const handleAction = (callback: () => void) => (event: any) => {
-        stopSessionRowActionPropagation(event);
-        callback();
-    };
     const openMenu = (event: any) => {
         stopSessionRowActionPropagation(event);
         onContextAnchorChange(contextAnchor ? null : anchorFromEvent(event));
@@ -321,33 +315,8 @@ export const SessionRowActions = React.memo(function SessionRowActions({
     return (
         <View ref={actionClusterRef} style={styles.actionCluster}>
             <View style={styles.actions} testID={`session-row-actions-${sessionId}`}>
-                {showInline ? (
-                    <>
-                        <Text numberOfLines={1} style={styles.actionStatus} testID="session-row-hover-status">
-                            {statusLabel}
-                        </Text>
-                        <SessionRowActionButton
-                            active={quickActions.sessionPinned}
-                            icon="pin"
-                            label={quickActions.sessionPinned ? t('sessionInfo.unpinSession') : t('sessionInfo.pinSession')}
-                            onPress={handleAction(quickActions.togglePinSession)}
-                            testID="session-row-pin-action"
-                        />
-                        <SessionRowActionButton
-                            disabled={quickActions.deletingSession}
-                            icon="trash"
-                            label={t('sessionInfo.deleteSession')}
-                            onPress={handleAction(quickActions.deleteSession)}
-                            testID="session-row-delete-action"
-                        />
-                        <SessionRowActionButton
-                            disabled={quickActions.archivingSession || quickActions.restoringSession}
-                            icon={sessionArchived ? 'undo' : 'archive'}
-                            label={sessionArchived ? t('sessionInfo.restoreSession') : t('sessionInfo.archiveSession')}
-                            onPress={handleAction(sessionArchived ? quickActions.restoreSession : quickActions.archiveSession)}
-                            testID={sessionArchived ? 'session-row-restore-action' : 'session-row-archive-action'}
-                        />
-                    </>
+                {!useMoreAction ? (
+                    <InlineSessionRowActions session={session} statusLabel={statusLabel} visible={showInline} />
                 ) : null}
                 {useMoreAction ? (
                     <SessionRowActionButton
@@ -370,6 +339,51 @@ export const SessionRowActions = React.memo(function SessionRowActions({
         </View>
     );
 });
+
+// Phone rows only need the menu trigger. Keep the full action state machine
+// out of their render path; the popover initializes it when opened.
+function InlineSessionRowActions({ session, statusLabel, visible }: {
+    session: NonNullable<ReturnType<typeof useSession>>;
+    statusLabel: string;
+    visible: boolean;
+}) {
+    const styles = stylesheet;
+    const quickActions = useSessionQuickActions(session);
+    const sessionArchived = isSessionArchived(session);
+    if (!visible) return null;
+    const handleAction = (callback: () => void) => (event: any) => {
+        stopSessionRowActionPropagation(event);
+        callback();
+    };
+    return (
+        <>
+            <Text numberOfLines={1} style={styles.actionStatus} testID="session-row-hover-status">
+                {statusLabel}
+            </Text>
+            <SessionRowActionButton
+                active={quickActions.sessionPinned}
+                icon="pin"
+                label={quickActions.sessionPinned ? t('sessionInfo.unpinSession') : t('sessionInfo.pinSession')}
+                onPress={handleAction(quickActions.togglePinSession)}
+                testID="session-row-pin-action"
+            />
+            <SessionRowActionButton
+                disabled={quickActions.deletingSession}
+                icon="trash"
+                label={t('sessionInfo.deleteSession')}
+                onPress={handleAction(quickActions.deleteSession)}
+                testID="session-row-delete-action"
+            />
+            <SessionRowActionButton
+                disabled={quickActions.archivingSession || quickActions.restoringSession}
+                icon={sessionArchived ? 'undo' : 'archive'}
+                label={sessionArchived ? t('sessionInfo.restoreSession') : t('sessionInfo.archiveSession')}
+                onPress={handleAction(sessionArchived ? quickActions.restoreSession : quickActions.archiveSession)}
+                testID={sessionArchived ? 'session-row-restore-action' : 'session-row-archive-action'}
+            />
+        </>
+    );
+}
 
 const SessionRowActionButton = React.memo(function SessionRowActionButton({
     active = false,

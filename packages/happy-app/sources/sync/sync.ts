@@ -1213,32 +1213,52 @@ class Sync {
         });
         // Only refresh cached identities, not every historical body/snapshot.
         // Absence from a bounded list or a changes page is never a tombstone.
-        let index = 0;
-        const results = await Promise.allSettled(Array.from({ length: Math.min(4, ids.length) }, async () => {
-            while (index < ids.length && current()) {
-                const id = ids[index++];
-                if (!storage.getState().sessions[id]) continue;
-                let metadataVersion = changes.get(id)?.metadataVersion ?? 0;
-                let agentStateVersion = changes.get(id)?.agentStateVersion ?? 0;
-                await this.writeSessionSnapshots(async () => {
+        // Keep the existing four-request concurrency, but commit each group
+        // once. Per-row writers repeatedly parsed/serialized the entire warm
+        // cache and never reached the writer's internal between-batch yield.
+        const batchSize = 4;
+        let failure: PromiseRejectedResult | undefined;
+        for (let offset = 0; offset < ids.length; offset += batchSize) {
+            if (offset > 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
+            if (!current()) return;
+            const expected = new Map<string, { metadataVersion: number; agentStateVersion: number }>();
+            let requestFailure: PromiseRejectedResult | undefined;
+            let allRequestsFailed = false;
+            // Capture the writer's deletion generation BEFORE starting HTTP.
+            // Fetching outside this writer could resurrect a deleted session.
+            await this.writeSessionSnapshots(async () => {
+                const results = await Promise.allSettled(ids.slice(offset, offset + batchSize).map(async id => {
+                    if (!current() || !storage.getState().sessions[id]) return null;
                     const fresh = await fetchSessionSnapshot(credentials, id);
-                    if (!current()) return [];
-                    if (!fresh) { this.removeSessionLocally(id); return []; }
-                    metadataVersion = Math.max(metadataVersion, fresh.metadataVersion);
-                    agentStateVersion = Math.max(agentStateVersion, fresh.agentStateVersion);
-                    return [fresh];
-                });
-                if (!current()) return;
+                    if (!current()) return null;
+                    if (!fresh) { this.removeSessionLocally(id); return null; }
+                    expected.set(id, {
+                        metadataVersion: Math.max(changes.get(id)?.metadataVersion ?? 0, fresh.metadataVersion),
+                        agentStateVersion: Math.max(changes.get(id)?.agentStateVersion ?? 0, fresh.agentStateVersion),
+                    });
+                    return fresh;
+                }));
+                requestFailure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+                allRequestsFailed = results.every(result => result.status === 'rejected');
+                // Healthy responses still commit when another request fails;
+                // the cursor stays unchanged so the failed row can be retried.
+                return results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []);
+            });
+            if (!current()) return;
+            for (const [id, version] of expected) {
                 const applied = storage.getState().sessions[id];
-                // A skipped key/decryption or stale HTTP response must not
-                // acknowledge a change whose snapshot is still missing locally.
-                if (applied && (applied.metadataVersion < metadataVersion || applied.agentStateVersion < agentStateVersion)) {
-                    throw new Error('Native history snapshot was not applied');
+                // Skipped decryption or a stale response must not acknowledge
+                // a change whose snapshot is still missing locally.
+                if (applied && (applied.metadataVersion < version.metadataVersion || applied.agentStateVersion < version.agentStateVersion)) {
+                    failure ??= { status: 'rejected', reason: new Error('Native history snapshot was not applied') };
                 }
             }
-        }));
-        const failure = results.find(result => result.status === 'rejected');
-        if (current() && failure?.status === 'rejected') throw failure.reason;
+            failure ??= requestFailure;
+            // One broken row must not starve later healthy rows on every retry.
+            // A completely failed network batch stops further requests instead.
+            if (allRequestsFailed) break;
+        }
+        if (current() && failure) throw failure.reason;
         // Failed page/metadata reads leave the old cursor for the next retry.
         if (current() && supported) this.nativeHistoryCursor = cursor;
     };
@@ -1267,33 +1287,38 @@ class Sync {
         if (!accountKey) return;
         const warmCache = loadSessionWarmCache(accountKey);
         if (warmCache.snapshots.length === 0) return;
-        let restoredSessionCount = 0;
+        const owner = this.captureHistoryOwner('');
+        const current = () => owner.isCurrent() && this.sessionWarmCacheAccountKey === accountKey;
+        // Use the writer's bounded batches and real task yields. Restoring one
+        // snapshot per call bypassed that scheduler and rebuilt the entire list
+        // for every cached session in one uninterrupted microtask chain.
+        let restored: HydratedSession[];
+        try {
+            restored = await this.writeSessionSnapshots(async () => warmCache.snapshots, { replace: false }, undefined, false);
+        } catch {
+            // Warm state is optional. Let normal network bootstrap recover from
+            // a store/cache failure instead of failing authenticated startup.
+            return;
+        }
+        if (!current()) return;
+        const restoredIds = new Set(restored.map(session => session.id));
         for (const snapshot of warmCache.snapshots) {
-            try {
-                const restored = await this.writeSessionSnapshots(async () => [snapshot], { replace: false }, undefined, false);
-                if (restored.length === 0) {
-                    removeSessionFromWarmCache(accountKey, snapshot.id);
-                    continue;
-                }
-                restoredSessionCount += restored.length;
-            } catch {
-                // The cache is only a startup accelerator. A stale key or one
-                // corrupt ciphertext must not block login or healthy entries;
-                // evict it and let the network bootstrap restore the session.
-                removeSessionFromWarmCache(accountKey, snapshot.id);
-            }
+            // The writer isolates corrupt ciphertext within each batch, so a
+            // bad entry still cannot prevent healthy sessions from restoring.
+            if (!restoredIds.has(snapshot.id)) removeSessionFromWarmCache(accountKey, snapshot.id);
         }
         for (const [sessionId, page] of Object.entries(warmCache.latestPages)) {
+            if (!current()) return;
             if (!storage.getState().sessions[sessionId]) continue;
             try {
                 this.retainSessionMessageCache(sessionId);
                 const lease = this.sessionMessageLoadGate.enter(sessionId);
                 await this.applyLatestMessagePage(sessionId, page, this.sessionMessageLoadGate.begin(lease), 'warm-cache');
             } catch {
-                removeSessionFromWarmCache(accountKey, sessionId);
+                if (current()) removeSessionFromWarmCache(accountKey, sessionId);
             }
         }
-        if (restoredSessionCount > 0) storage.getState().applyReady();
+        if (current() && restored.length > 0) storage.getState().applyReady();
     };
 
     async #init() {
