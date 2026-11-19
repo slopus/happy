@@ -3,6 +3,7 @@ import { Platform, Pressable, Text, View } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
+import { BrowserNotificationSettings } from '@/components/BrowserNotificationSettings';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -53,6 +54,7 @@ export default function SoundSettingsScreen() {
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
+            <BrowserNotificationSettings />
             <ItemGroup title={label('声音提醒', 'Sound alerts')} footer={label('声音设置只保存在当前浏览器。首次启用请点击试听，以允许浏览器播放声音。', 'Sound settings stay in this browser. Click Preview once to allow playback.')}>
                 <Item
                     title={label('开启声音提醒', 'Enable sound alerts')}

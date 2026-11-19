@@ -22,6 +22,13 @@ it('keeps a device-local reading width within the supported range', () => {
     expect(localSettingsParse({ desktopReadingWidth: 'wide' }).desktopReadingWidth).toBe(960);
 });
 
+it('keeps browser completion notifications opt-in and independent of existing sound preferences', () => {
+    const webSound = { ...localSettingsDefaults.webSound, enabled: true, volume: 0.55 };
+    expect(localSettingsParse({ webSound })).toMatchObject({ webSound, webCompletionNotificationsEnabled: false });
+    expect(localSettingsParse({ webCompletionNotificationsEnabled: true }).webCompletionNotificationsEnabled).toBe(true);
+    expect(localSettingsParse({ webCompletionNotificationsEnabled: 'invalid' }).webCompletionNotificationsEnabled).toBe(false);
+});
+
 describe('local web sound preferences', () => {
     it('keeps sound off for existing installations until the user enables it', () => {
         expect(localSettingsParse({}).webSound).toEqual(localSettingsDefaults.webSound);

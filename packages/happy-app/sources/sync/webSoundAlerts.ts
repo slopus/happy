@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { storage } from './storage';
+import { startWebCompletionNotifications } from './webCompletionNotifications';
 import { resolveSessionState } from '@/utils/sessionUtils';
 import type { ApiEphemeralSessionEventUpdate } from './apiTypes';
 import type { WebSoundSettingsSchema } from './localSettings';
@@ -105,6 +106,7 @@ let listening = false;
 export function startWebSoundAlerts(): void {
     if (listening || Platform.OS !== 'web' || typeof storage.subscribe !== 'function') return;
     listening = true;
+    startWebCompletionNotifications();
     storage.subscribe((next, previous) => {
         if (!next.isDataReady || !previous.isDataReady) return;
         for (const [id, session] of Object.entries(next.sessions)) {
