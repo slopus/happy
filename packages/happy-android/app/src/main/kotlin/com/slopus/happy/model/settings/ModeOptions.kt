@@ -100,7 +100,9 @@ object ModeOptions {
     private val unlistedClaudeModelNames = mapOf("claude-sonnet-5" to "Sonnet 5")
 
     private val codexModelModes = listOf(
-        ModeOption("gpt-6-astra", "GPT-6 Astra", "most capable"),
+        ModeOption("gpt-6.2-astra", "GPT-6.2 Astra", "most capable"),
+        ModeOption("gpt-6.2-sol", "GPT-6.2 Sol"),
+        ModeOption("gpt-6-astra", "GPT-6 Astra"),
         ModeOption("gpt-6.1-sol", "GPT-6.1 Sol"),
         ModeOption("gpt-6.1-terra", "GPT-6.1 Terra"),
         ModeOption("gpt-6-sol", "GPT-6 Sol"),
@@ -179,6 +181,8 @@ object ModeOptions {
 
     // What each model publishes in Codex's registry, in its order.
     private val codexEffortsByModel = mapOf(
+        "gpt-6.2-astra" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+        "gpt-6.2-sol" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
         "gpt-6-astra" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
         "gpt-6.1-sol" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),
         "gpt-6.1-terra" to listOf("low", "medium", "high", "xhigh", "max", "ultra"),

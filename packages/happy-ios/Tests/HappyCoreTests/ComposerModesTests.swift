@@ -159,9 +159,12 @@ final class ModelModeOptionsTests: XCTestCase {
     func testCuratedCodexModelsMostCapableFirst() {
         let models = Options.hardcodedModelModes(flavor: "codex")
         XCTAssertEqual(keys(models), [
-            "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+            "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna",
+            "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
         ])
-        XCTAssertEqual(models[0].name, "GPT-6 Astra")
+        XCTAssertEqual(models[0].name, "GPT-6.2 Astra")
+        XCTAssertEqual(models[0].description, "most capable")
+        XCTAssertNil(models[2].description, "GPT-6 Astra is no longer the most capable")
         XCTAssertEqual(models[0].providerId, "openai")
         XCTAssertEqual(models[0].providerName, "OpenAI")
     }
@@ -170,11 +173,12 @@ final class ModelModeOptionsTests: XCTestCase {
         let models = Options.hardcodedModelModes(flavor: "codex")
         let withCustom = Options.includeConfiguredModel(flavor: "codex", models: models, configured: "my-workspace-model")
         XCTAssertEqual(keys(withCustom), [
-            "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+            "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna",
+            "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
             "my-workspace-model",
         ])
         XCTAssertEqual(withCustom.last, ModeOption(key: "my-workspace-model", name: "my-workspace-model", description: "custom model"))
-        XCTAssertEqual(models.count, 8)
+        XCTAssertEqual(models.count, 10)
         XCTAssertEqual(Options.includeConfiguredModel(flavor: "gemini", models: models, configured: "my-workspace-model"), models)
         XCTAssertEqual(Options.includeConfiguredModel(flavor: "openclaw", models: models, configured: "my-workspace-model"), models)
     }
@@ -225,7 +229,7 @@ final class ModelModeOptionsTests: XCTestCase {
     func testEveryCodexModelGetsTheLevelsItsRegistryPublishes() {
         let full = ["low", "medium", "high", "xhigh", "max", "ultra"]
         let luna = ["low", "medium", "high", "xhigh", "max"]
-        for model in ["gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra"] {
+        for model in ["gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra"] {
             XCTAssertEqual(keys(Options.effortLevelsForModel(flavor: "codex", modelKey: model)), full, model)
         }
         for model in ["gpt-6-luna", "gpt-5.6-luna"] {

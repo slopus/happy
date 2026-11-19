@@ -50,10 +50,14 @@ class ModeOptionsTest {
         assertEquals(AgentDefaults.CLI_VERSION_WITH_FABLE_5_2, ModeOptions.modelModes("claude")[0].sinceCliVersion)
         assertTrue(ModeOptions.modelModes("claude").drop(1).all { it.sinceCliVersion == null })
         assertEquals(
-            listOf("gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"),
+            listOf(
+                "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna",
+                "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+            ),
             ModeOptions.modelModes("codex").map { it.key },
         )
         assertEquals("most capable", ModeOptions.modelModes("codex")[0].description)
+        assertNull("GPT-6 Astra is no longer the most capable", ModeOptions.modelModes("codex")[2].description)
         assertEquals(6, ModeOptions.modelModes("gemini").size)
         assertEquals(listOf("default"), ModeOptions.modelModes("openclaw").map { it.key })
         assertEquals("Gemini 4 Neon", ModeOptions.modelModes("agy")[0].name)
@@ -95,6 +99,8 @@ class ModeOptionsTest {
         assertEquals("Ultra", ModeOptions.effortDisplayName("ultra"))
 
         assertEquals(listOf("Low", "Medium", "High", "xHigh", "Max"), ModeOptions.effortLevelsForModel("claude", "claude-haiku-5-5").map { it.name })
+        assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), ModeOptions.effortLevelsForModel("codex", "gpt-6.2-astra").map { it.key })
+        assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), ModeOptions.effortLevelsForModel("codex", "gpt-6.2-sol").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), ModeOptions.effortLevelsForModel("codex", "gpt-6.1-sol").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), ModeOptions.effortLevelsForModel("codex", "gpt-6.1-terra").map { it.key })
         assertEquals(listOf("low", "medium", "high", "xhigh", "max"), ModeOptions.effortLevelsForModel("codex", "gpt-6-luna").map { it.key })

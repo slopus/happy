@@ -231,7 +231,9 @@ public enum AgentDefaults {
             ]
         case .codex:
             [
-                Option("gpt-6-astra", "GPT-6 Astra", "most capable"),
+                Option("gpt-6.2-astra", "GPT-6.2 Astra", "most capable"),
+                Option("gpt-6.2-sol", "GPT-6.2 Sol"),
+                Option("gpt-6-astra", "GPT-6 Astra"),
                 Option("gpt-6.1-sol", "GPT-6.1 Sol"),
                 Option("gpt-6.1-terra", "GPT-6.1 Terra"),
                 Option("gpt-6-sol", "GPT-6 Sol"),
@@ -289,6 +291,8 @@ public enum AgentDefaults {
             keys = ["low", "medium", "high", "xhigh", "max"]
         case .codex:
             let byModel: [String: [String]] = [
+                "gpt-6.2-astra": ["low", "medium", "high", "xhigh", "max", "ultra"],
+                "gpt-6.2-sol": ["low", "medium", "high", "xhigh", "max", "ultra"],
                 "gpt-6-astra": ["low", "medium", "high", "xhigh", "max", "ultra"],
                 "gpt-6.1-sol": ["low", "medium", "high", "xhigh", "max", "ultra"],
                 "gpt-6.1-terra": ["low", "medium", "high", "xhigh", "max", "ultra"],
