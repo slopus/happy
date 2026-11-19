@@ -128,6 +128,8 @@ export const ru: TranslationStructure = {
         emptyConversationTitle: "Начните с этой задачи",
         emptyConversationHint: "Обсудите цель, вопросы или следующие шаги либо выберите, с чего начать.",
         discussNextStep: "Наметить следующий шаг",
+        organizeArchive: "Упорядочить",
+        organizeArchiveDraft: ({ title, path }: { title: string; path: string }) => `Используй навык Goal First, чтобы упорядочить архив «${title}» в ${path}. Проверь принадлежность результатов, имена файлов и ссылки. Исправь однозначные проблемы с принадлежностью и перечисли изменения.`,
         discussDelivery: "Обсудить результаты работы",
         viewTaskFiles: "Посмотреть файлы задачи",
         draftOnlyHint: "Выбор отправной точки только заполняет черновик. Проверьте его перед отправкой.",

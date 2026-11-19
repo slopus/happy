@@ -117,6 +117,8 @@ export const es: TranslationStructure = {
         emptyConversationTitle: "Empieza con esta tarea",
         emptyConversationHint: "Habla sobre el objetivo, tus preguntas o el siguiente paso, o elige un punto de partida.",
         discussNextStep: "Planear el siguiente paso",
+        organizeArchive: "Organizar",
+        organizeArchiveDraft: ({ title, path }: { title: string; path: string }) => `Usa la habilidad Goal First para organizar el archivo de «${title}» en ${path}. Revisa la ubicación de los entregables, los nombres de archivo y los enlaces. Corrige los problemas de atribución clara y resume los cambios.`,
         discussDelivery: "Hablar sobre los entregables",
         viewTaskFiles: "Ver archivos de la tarea",
         draftOnlyHint: "Elegir un punto de partida solo rellena un borrador. Revísalo antes de enviarlo.",

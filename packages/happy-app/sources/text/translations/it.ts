@@ -117,6 +117,8 @@ export const it: TranslationStructure = {
         emptyConversationTitle: "Inizia da questa attività",
         emptyConversationHint: "Parla dell’obiettivo, dei dubbi o del prossimo passo, oppure scegli un punto di partenza.",
         discussNextStep: "Pianifica il prossimo passo",
+        organizeArchive: "Organizza",
+        organizeArchiveDraft: ({ title, path }: { title: string; path: string }) => `Usa la skill Goal First per organizzare l’archivio di «${title}» in ${path}. Controlla la collocazione dei risultati, i nomi dei file e i collegamenti. Correggi i problemi di attribuzione chiara e riepiloga le modifiche.`,
         discussDelivery: "Discuti i risultati da consegnare",
         viewTaskFiles: "Visualizza i file dell’attività",
         draftOnlyHint: "Scegliere un punto di partenza compila solo una bozza. Controllala prima di inviarla.",

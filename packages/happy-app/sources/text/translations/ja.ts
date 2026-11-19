@@ -120,6 +120,8 @@ export const ja: TranslationStructure = {
         emptyConversationTitle: "このタスクから始めましょう",
         emptyConversationHint: "目標や疑問、次のステップについて話すか、話題のきっかけを選んでください。",
         discussNextStep: "次のステップを整理",
+        organizeArchive: "整理",
+        organizeArchiveDraft: ({ title, path }: { title: string; path: string }) => `Goal First スキルで「${title}」のアーカイブ（${path}）を整理してください。成果物の所属、ファイル名、案内リンクを確認し、所属が明確な問題を修正して変更をまとめてください。`,
         discussDelivery: "成果物について相談",
         viewTaskFiles: "タスクのファイルを表示",
         draftOnlyHint: "きっかけを選ぶと下書きに入力されます。内容を確認してから送信してください。",

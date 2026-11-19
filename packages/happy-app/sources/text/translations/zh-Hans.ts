@@ -199,6 +199,8 @@ export const zhHans: TranslationStructure = {
         emptyConversationTitle: "从这项任务开始",
         emptyConversationHint: "聊聊目标、问题或下一步，也可以选择一个起点。",
         discussNextStep: "梳理下一步",
+        organizeArchive: "整理",
+        organizeArchiveDraft: ({ title, path }: { title: string; path: string }) => `使用 Goal First Skill 整理「${title}」的归档，范围为 ${path}。检查产物归属、文件命名和渐进式索引，修正归属明确的问题，并告诉我改了什么。`,
         discussDelivery: "讨论交付内容",
         viewTaskFiles: "查看任务文件",
         draftOnlyHint: "选择起点只会填入草稿，确认后再发送。",

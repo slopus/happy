@@ -117,6 +117,8 @@ export const ca: TranslationStructure = {
         emptyConversationTitle: "Comença amb aquesta tasca",
         emptyConversationHint: "Parla de l’objectiu, els dubtes o el pas següent, o tria un punt de partida.",
         discussNextStep: "Planifica el pas següent",
+        organizeArchive: "Organitza",
+        organizeArchiveDraft: ({ title, path }: { title: string; path: string }) => `Fes servir l’habilitat Goal First per organitzar l’arxiu de «${title}» a ${path}. Revisa la ubicació dels lliurables, els noms dels fitxers i els enllaços. Corregeix els problemes amb una atribució clara i resumeix els canvis.`,
         discussDelivery: "Parla dels lliurables",
         viewTaskFiles: "Mostra els fitxers de la tasca",
         draftOnlyHint: "Triar un punt de partida només omple un esborrany. Revisa’l abans d’enviar-lo.",

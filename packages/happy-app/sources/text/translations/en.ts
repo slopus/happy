@@ -139,6 +139,8 @@ export const en: TranslationStructure = {
         emptyConversationTitle: "Start with this task",
         emptyConversationHint: "Discuss goals, questions, or next steps, or choose a starting point.",
         discussNextStep: "Plan the next step",
+        organizeArchive: "Organize",
+        organizeArchiveDraft: ({ title, path }: { title: string; path: string }) => `Use the Goal First skill to organize the archive for “${title}” at ${path}. Check deliverable ownership, file names, and navigation links. Fix issues with clear ownership and summarize the changes.`,
         discussDelivery: "Discuss deliverables",
         viewTaskFiles: "View task files",
         draftOnlyHint: "Choosing a starting point fills a draft. Review it before sending.",

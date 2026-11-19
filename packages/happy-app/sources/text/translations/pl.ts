@@ -128,6 +128,8 @@ export const pl: TranslationStructure = {
         emptyConversationTitle: "Zacznij od tego zadania",
         emptyConversationHint: "Porozmawiaj o celu, pytaniu lub kolejnym kroku albo wybierz punkt wyjścia.",
         discussNextStep: "Zaplanuj kolejny krok",
+        organizeArchive: "Uporządkuj",
+        organizeArchiveDraft: ({ title, path }: { title: string; path: string }) => `Użyj umiejętności Goal First, aby uporządkować archiwum „${title}” w ${path}. Sprawdź przypisanie rezultatów, nazwy plików i odnośniki. Napraw jednoznaczne problemy z przypisaniem i podsumuj zmiany.`,
         discussDelivery: "Omów rezultaty",
         viewTaskFiles: "Zobacz pliki zadania",
         draftOnlyHint: "Wybór punktu wyjścia tylko uzupełnia szkic. Sprawdź go przed wysłaniem.",

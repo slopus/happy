@@ -9,7 +9,7 @@ vi.mock('react-native', () => ({ Platform: { OS: 'web' }, Pressable: 'Pressable'
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Icon' }));
 vi.mock('react-native-unistyles', () => { const theme = { colors: { text: 'text', textLink: 'link', textSecondary: 'secondary', textDestructive: 'error', divider: 'divider' } }; return { useUnistyles: () => ({ theme }), StyleSheet: { create: (f: any) => f(theme) } }; });
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
-vi.mock('@/text', () => ({ t: (key: string) => key }));
+vi.mock('@/text', () => ({ t: (key: string, params?: { title: string; path: string }) => key === 'projectGoals.organizeArchiveDraft' ? `Goal First: ${params?.title} at ${params?.path}` : key }));
 vi.mock('@/auth/accountRuntime', () => ({ getRuntimeAccountSelection: () => mock.owner }));
 vi.mock('@/sync/storage', () => ({ storage: Object.assign((select: any) => select({ sessions: mock.sessions }), { getState: () => ({ sessions: mock.sessions }) }) }));
 vi.mock('@/sync/sync', () => ({ sync: { ensureSessionHydrated: vi.fn().mockResolvedValue(false) } }));
@@ -24,7 +24,6 @@ vi.mock('./ProjectArchiveTree', () => ({ ProjectArchiveTree: 'Tree' }));
 vi.mock('@/components/fileWorkspace/FileWorkspace', () => ({ FileWorkspace: 'File' }));
 vi.mock('./ProjectConversationHeader', () => ({ ProjectConversationHeader: 'ConversationHeader' }));
 vi.mock('./ProjectDetailsPanel', () => ({ ProjectDetailsPanel: ({ header, children, footer }: any) => <>{header}{children}{footer}</> }));
-vi.mock('./ProjectConversationEmptyState', () => ({ ProjectConversationEmptyState: 'Empty' }));
 vi.mock('./GoalBoardButton', () => ({ GoalBoardButton: 'Button' }));
 vi.mock('@/-session/SessionView', () => ({ SessionView: 'Session' }));
 import { ProjectOverviewWorkspace } from './ProjectOverviewWorkspace';
@@ -180,4 +179,19 @@ it('cancels a global remaining-history lookup after leaving the screen', async (
     act(() => mock.blur?.());
     await act(async () => { resolve([{ ...session, sessionId: 'older' }]); await expect(lookup).rejects.toThrow('cancelled'); });
     expect(select).not.toHaveBeenCalled(); expect(machineStartGoalAuthor).not.toHaveBeenCalled();
+});
+
+it('offers only archive organization in the global empty chat and fills a scoped draft', () => {
+    mock.history = [session];
+    mock.sessions.existing = { metadata: { machineId: 'machine', path: '/scope', goalBoard: { featurePath: '/scope' } } };
+    setup('existing');
+    const appendDraft = vi.fn();
+    const emptyState = renderer.root.findByType('Session').props.emptyState;
+    act(() => renderer.update(emptyState(appendDraft)));
+
+    const actions = renderer.root.findAllByType('Button');
+    expect(actions.map((button: any) => button.props.testID)).toEqual(['project-empty-organize-archive']);
+    expect(appendDraft).not.toHaveBeenCalled();
+    act(() => actions[0].props.onPress());
+    expect(appendDraft).toHaveBeenCalledExactlyOnceWith('Goal First: Scope at /scope');
 });
