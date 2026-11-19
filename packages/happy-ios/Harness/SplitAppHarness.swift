@@ -315,14 +315,17 @@ private struct SplitComposeMachine: HomeOps, HomeSessionOps {
     }
 }
 
-/// The whole app, offline, as an iPad shows it (`-screen split`): the
-/// seeded Happy CLI account (`SeededAccount`), or with `-agent` a Happy
-/// Agent answering from fixtures, under AppCoordinator's own split view.
+/// The whole app, offline, as a wide window shows it (`-screen split`):
+/// the seeded Happy CLI account (`SeededAccount`), or with `-agent` a
+/// Happy Agent answering from fixtures, under AppCoordinator's own split
+/// view, which collapses to one stack where the window is narrow.
 ///
 /// For screenshots and recordings, after launch: `-open <session id or
 /// agent id>` opens a chat from the sidebar, `-info` pushes its profile,
 /// `-settings` opens Settings instead, `-hideSidebar` hides the sidebar,
 /// `-dark` darkens the window, `-landscape` turns it on its side,
+/// `-geometry` logs the window's size, safe area, size classes and split
+/// each time they change (`[geometry]`), as a fold or an unfold does,
 /// `-resizeLoop` narrows and widens the window in turn, `-narrow` leaves
 /// an iPad's window 600 wide, `-animated` pushes the chat `-open` opens as
 /// a tap does, for a recording of the push, `-linkLoop` has the switcher
@@ -445,6 +448,28 @@ final class SplitAppHarness {
             if arguments.contains("-pageProbe"), let page = shell.topViewController {
                 try? await Task.sleep(for: .seconds(1))
                 self.pageProbe = PageScrollProbe(window: window, page: page)
+            }
+            // The window as it is now, each time it changes: a fold, an
+            // unfold or a turn (`[geometry]`), for measuring an iPhone Duo.
+            if arguments.contains("-geometry") {
+                Task { @MainActor [weak window, weak shell] in
+                    var last = ""
+                    while let window, let shell {
+                        let traits = window.traitCollection
+                        var edge = "-"
+                        #if compiler(>=6.4.1)
+                        if #available(iOS 27.1, *) { edge = "\(traits.verticalBarEdge.rawValue)" }
+                        #endif
+                        let line = "[geometry] window=\(window.bounds.size) safe=\(window.safeAreaInsets)"
+                            + " h=\(traits.horizontalSizeClass == .regular ? "regular" : "compact") v=\(traits.verticalSizeClass == .regular ? "regular" : "compact")"
+                            + " scale=\(traits.displayScale) split=\(shell.isExpanded) stack=\(shell.stack.map { String(describing: type(of: $0)) })"
+                            + " verticalBarEdge=\(edge) statusBar=\(window.windowScene?.statusBarManager?.statusBarFrame ?? .zero)"
+                            + " main=\(shell.main.view.convert(shell.main.view.bounds, to: window))"
+                            + " presented=\(shell.presentedViewController.map { String(describing: type(of: $0)) } ?? "-") callBar=\(shell.callBarShown)"
+                        if line != last { print(line); last = line }
+                        try? await Task.sleep(for: .milliseconds(300))
+                    }
+                }
             }
             if arguments.contains("-hideSidebar") {
                 try? await Task.sleep(for: .milliseconds(500))

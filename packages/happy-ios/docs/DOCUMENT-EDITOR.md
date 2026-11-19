@@ -254,8 +254,8 @@ menu.
   (`scaled`). A size change restyles the document.
 - **Light and dark.** Colours are `Palette.document*` tokens with light
   and dark values.
-- **iPad.** Text keeps to the readable column (`ContentWidthLimit`),
-  centred.
+- **Wide windows.** Text keeps to the readable column
+  (`ContentWidthLimit`), centred.
 - **VoiceOver.**
   - It reads the text, and the bar's buttons have labels.
   - Objects are named: divider, picture with its caption, table.

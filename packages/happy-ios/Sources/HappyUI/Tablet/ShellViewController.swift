@@ -4,9 +4,9 @@ import HappyLayout
 import UIKit
 import UltraView
 
-/// The window's root (docs/IPAD.md). On an iPhone it holds the app's one
-/// navigation stack, `phone`. On an iPad it holds a `UISplitViewController`
-/// with the system sidebar:
+/// The window's root (docs/IPAD.md). It holds a `UISplitViewController`
+/// with the system sidebar, on any device whose window can grow roomy
+/// enough (an iPad, an iPhone Duo open in landscape):
 ///
 ///     sidebar (primary)        main panel (secondary)
 ///     [home]                   [chat, profile, …] or the placeholder
@@ -30,8 +30,8 @@ import UltraView
 /// shell is the delegate of every stack in it.
 public final class ShellViewController: UIViewController {
     let context: AppContext
-    /// The phone's stack: the only one on an iPhone, and the split's compact
-    /// column on an iPad.
+    /// The phone's stack: the split's compact column, and the only one when
+    /// there is no split.
     let phone: UINavigationController
     let split: UISplitViewController?
     let sidebar: SidebarNavigationController
@@ -79,9 +79,12 @@ public final class ShellViewController: UIViewController {
     /// What fills the window under the bar: `phone` or the split.
     private var content: UIViewController?
 
-    /// `splits`: hold the split view, as an iPad does. A test can ask for
-    /// it on any device.
-    public init(context: AppContext, phone: UINavigationController, splits: Bool = UIDevice.current.userInterfaceIdiom == .pad) {
+    /// `splits`: hold the split view. Every device does: whether it shows is
+    /// the window's width and size classes (`SplitRule`), never the idiom,
+    /// so an iPhone Duo open in landscape gets the sidebar and folded the
+    /// phone's one stack, and a fold mid-session moves the same screens
+    /// between them. A test can leave it out.
+    public init(context: AppContext, phone: UINavigationController, splits: Bool = true) {
         self.context = context
         self.phone = phone
         sidebar = SidebarNavigationController(context: context)
@@ -123,7 +126,7 @@ public final class ShellViewController: UIViewController {
             return
         }
         split.delegate = self
-        registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (self: Self, _) in self.updateMode() }
+        registerForTraitChanges([UITraitHorizontalSizeClass.self, UITraitVerticalSizeClass.self]) { (self: Self, _) in self.updateMode() }
         split.preferredSplitBehavior = .tile
         split.presentsWithGesture = true
         // The button is put in the main panel's bar, at its root's leading
@@ -403,6 +406,7 @@ public final class ShellViewController: UIViewController {
         let wanted = SplitRule.showsSplit(
             width: width,
             isRegularWidth: traitCollection.horizontalSizeClass == .regular,
+            isRegularHeight: traitCollection.verticalSizeClass != .compact,
             showsHome: Self.isHome(stack.first)
         )
         let forcedCompact = split.traitOverrides.contains(UITraitHorizontalSizeClass.self)
@@ -610,7 +614,9 @@ final class MainColumnViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        main.view.setLayoutFrame(MainPanelLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets)).panel)
+        let layout = MainPanelLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets),
+                                     sidebarOnLeft: view.effectiveUserInterfaceLayoutDirection == .leftToRight)
+        main.view.setLayoutFrame(layout.panel)
     }
 }
 
