@@ -70,6 +70,8 @@ public enum AgentDefaults {
     /// Opus 5.5 needs this happy-cli or newer.
     public static let cliVersionWithOpus55 = "1.2.6-beta.0"
     static let claudeModelBeforeOpus55 = "claude-opus-5"
+    /// Fable 5.2 needs this happy-cli or newer (its Agent SDK knows the model).
+    public static let cliVersionWithFable52 = "1.2.7-beta.0"
     /// Gemini 4 model+effort expansion in agy needs this happy-cli or newer.
     public static let cliVersionWithAgyGemini4 = "1.2.7-beta.0"
     static let agyModelBeforeGemini4 = "Gemini 3.8 Flash"

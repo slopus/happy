@@ -87,7 +87,7 @@ object ModeOptions {
 
     // The current generation by full model ID, one row each: every one is 1M-native.
     private val claudeModelModes = listOf(
-        ModeOption("claude-fable-5-2", "Fable 5.2", "1M context"),
+        ModeOption("claude-fable-5-2", "Fable 5.2", "1M context", AgentDefaults.CLI_VERSION_WITH_FABLE_5_2),
         ModeOption("claude-fable-5-1", "Fable 5.1"),
         ModeOption("claude-fable-5", "Fable 5"),
         ModeOption("claude-opus-5-5", "Opus 5.5"),
@@ -228,6 +228,10 @@ object ModeOptions {
     fun filterPermissionModesForCli(modes: List<ModeOption>, cliVersion: String?): List<ModeOption> =
         modes.filter { com.slopus.happy.model.modeSupportedByCli(it, cliVersion) }
 
+    /** filterModelModesForCli: the hardcoded lists less models the CLI predates; [keeping], a saved pick, stays. */
+    fun filterModelModesForCli(models: List<ModeOption>, cliVersion: String?, keeping: String? = null): List<ModeOption> =
+        models.filter { it.key == keeping || com.slopus.happy.model.modeSupportedByCli(it, cliVersion) }
+
     /** modeHacks.ts `hackMode`: OpenCode's doubled "build, build" and "plan/plan" names. */
     fun hackMode(mode: ModeOption): ModeOption {
         val name = mode.name.trim().lowercase()
@@ -303,7 +307,8 @@ object ModeOptions {
      * (Astra first per provider), then its current model and a locally
      * picked `provider:model` key as disabled rows when the catalog lacks
      * them. Otherwise the session metadata's models (Codex gets a `default`
-     * row first), else the hardcoded list with [selectedKey] kept.
+     * row first), else the hardcoded list less what the session's CLI
+     * predates, with [selectedKey] kept.
      */
     fun availableModels(
         flavor: String?,
@@ -355,7 +360,8 @@ object ModeOptions {
             if (flavor == "codex" && published.none { it.key == "default" }) return listOf(ModeOption("default", "default model")) + published
             return published
         }
-        return includeConfiguredModel(flavor, modelModes(flavor), selectedKey)
+        val models = filterModelModesForCli(modelModes(flavor), metadata?.version, AgentDefaults.retireModelMode(flavor, selectedKey))
+        return includeConfiguredModel(flavor, models, selectedKey)
     }
 
     /** resolveCurrentOption: the first of [preferredKeys] the list has. */

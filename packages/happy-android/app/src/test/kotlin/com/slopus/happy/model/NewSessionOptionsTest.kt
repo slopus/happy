@@ -130,6 +130,16 @@ class NewSessionOptionsTest {
         assertEquals("Claude Code", options.agent.name)
     }
 
+    @Test fun fable52WaitsForTheCliThatRunsIt() {
+        // happyCliVersion 1.0.0 predates Fable 5.2; a stale pick falls to the default.
+        val old = resolve(NewSessionDraft(selectedMachineId = "m1", agentType = AgentType.Claude, modelMode = "claude-fable-5-2"))
+        assertTrue(old.models.flatMap { it.options }.none { it.key == "claude-fable-5-2" })
+        assertEquals("claude-opus-5", old.model?.key)
+        val current = machine("m3", machineMetadata { put("happyCliVersion", "1.2.7-beta.0"); cliAvailability(claude = true) })
+        val new = resolve(NewSessionDraft(selectedMachineId = "m3", agentType = AgentType.Claude, modelMode = "claude-fable-5-2"), listOf(current))
+        assertEquals("claude-fable-5-2", new.model?.key)
+    }
+
     @Test fun happyAgentOffersItsOwnCatalog() {
         val options = resolve(NewSessionDraft(selectedMachineId = "m1", agentType = AgentType.Rig), listOf(studio, rig))
         assertEquals(listOf("OpenAI", "Anthropic"), options.models.map { it.title })

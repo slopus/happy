@@ -2,7 +2,9 @@ package com.slopus.happy.model.settings
 
 import com.slopus.happy.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -45,6 +47,8 @@ class ModeOptionsTest {
             ModeOptions.modelModes("claude").map { it.key },
         )
         assertEquals("1M context", ModeOptions.modelModes("claude")[0].description)
+        assertEquals(AgentDefaults.CLI_VERSION_WITH_FABLE_5_2, ModeOptions.modelModes("claude")[0].sinceCliVersion)
+        assertTrue(ModeOptions.modelModes("claude").drop(1).all { it.sinceCliVersion == null })
         assertEquals(
             listOf("gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"),
             ModeOptions.modelModes("codex").map { it.key },
@@ -73,6 +77,16 @@ class ModeOptionsTest {
 
         val gemini = ModeOptions.modelModes("gemini")
         assertEquals(gemini, ModeOptions.includeConfiguredModel("gemini", gemini, "gemini-1"))
+    }
+
+    @Test
+    fun fable52OnlyForACliThatRunsIt() {
+        val claude = ModeOptions.modelModes("claude")
+        assertFalse(ModeOptions.filterModelModesForCli(claude, "1.2.6").any { it.key == "claude-fable-5-2" })
+        assertFalse(ModeOptions.filterModelModesForCli(claude, "garbage").any { it.key == "claude-fable-5-2" })
+        assertEquals(claude, ModeOptions.filterModelModesForCli(claude, "1.2.7-beta.0"))
+        assertEquals("an unknown CLI is not gated", claude, ModeOptions.filterModelModesForCli(claude, null))
+        assertEquals("a saved pick stays", claude, ModeOptions.filterModelModesForCli(claude, "1.2.6", keeping = "claude-fable-5-2"))
     }
 
     @Test

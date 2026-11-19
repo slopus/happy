@@ -134,7 +134,11 @@ public struct ComposerModes: Equatable, Sendable {
         )
         let modelOptions = Options.includeConfiguredModel(
             flavor: agentType,
-            models: Options.hardcodedModelModes(flavor: agentType),
+            models: Options.filterModelModesForCli(
+                Options.hardcodedModelModes(flavor: agentType),
+                cliVersion: cliVersion,
+                keeping: defaults.modelMode
+            ),
             configured: defaults.modelMode
         )
         let permission = Options.resolveCurrentOption(permissionOptions, preferredKeys: [

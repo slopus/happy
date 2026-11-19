@@ -114,6 +114,19 @@ class ComposerModesTest {
     }
 
     @Test
+    fun aSessionsCliGatesFable52() {
+        fun keys(version: String?, selected: String? = null) =
+            ModeOptions.availableModels("claude", plain("claude") { version?.let { put("version", it) } }, translate, selected).map { it.key }
+        assertFalse("claude-fable-5-2" in keys("1.2.6"))
+        assertEquals(6, keys("1.2.6").size)
+        assertEquals("claude-fable-5-2", keys("1.2.7-beta.0").first())
+        assertEquals("claude-fable-5-2", keys(null).first())
+        // A saved pick keeps its own row on an older CLI.
+        val saved = ModeOptions.availableModels("claude", plain("claude") { put("version", "1.2.6") }, translate, "claude-fable-5-2")
+        assertEquals(ModeOptions.modelModes("claude"), saved)
+    }
+
+    @Test
     fun groupsKeepFirstSeenProviderOrder() {
         val groups = ModeOptions.groupModelsByProvider(
             listOf(

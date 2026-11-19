@@ -336,7 +336,8 @@ fun resolveNewSessionOptions(
             PickerSection(providerId, group.first().providerName, group.map { PickerOption(it.key, it.name) })
         }
     } else {
-        val models = ModeOptions.includeConfiguredModel(agentType.wire, ModeOptions.modelModes(agentType.wire), defaults.modelMode)
+        val supported = ModeOptions.filterModelModesForCli(ModeOptions.modelModes(agentType.wire), cliVersion, defaults.modelMode)
+        val models = ModeOptions.includeConfiguredModel(agentType.wire, supported, defaults.modelMode)
         listOf(PickerSection("__models__", null, models.map { it.toPicker() }))
     }
     val modelOptions = modelSections.flatMap { it.options }

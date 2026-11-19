@@ -105,6 +105,9 @@ object AgentDefaults {
     const val CLI_VERSION_WITH_OPUS_5_5 = "1.2.6-beta.0"
     private const val CLAUDE_MODEL_BEFORE_OPUS_5_5 = "claude-opus-5"
 
+    /** Fable 5.2 needs the Agent SDK happy-cli 1.2.7-beta.0 first requires. */
+    const val CLI_VERSION_WITH_FABLE_5_2 = "1.2.7-beta.0"
+
     /** Gemini 4 model+effort expansion in agy requires happy-cli 1.2.7-beta.0 or newer. */
     const val CLI_VERSION_WITH_AGY_GEMINI_4 = "1.2.7-beta.0"
     private const val AGY_MODEL_BEFORE_GEMINI_4 = "Gemini 3.8 Flash"

@@ -147,7 +147,8 @@ public enum ModelModeOptions {
         }
     }
 
-    /// `getHardcodedModelModes`, with each row's provider.
+    /// `getHardcodedModelModes`, with each row's provider. A Claude model
+    /// is tagged with the CLI that first runs it.
     public static func hardcodedModelModes(flavor: String?) -> [ModeOption] {
         let agent = hardcodedAgent(flavor)
         return AgentDefaults.hardcodedModels(agent).map { option in
@@ -156,6 +157,7 @@ public enum ModelModeOptions {
                 key: option.key,
                 name: option.name,
                 description: option.description,
+                sinceCliVersion: agent == .claude ? claudeModelSinceCliVersion[option.key] : nil,
                 providerId: provider?.id,
                 providerName: provider?.name
             )
@@ -204,11 +206,18 @@ public enum ModelModeOptions {
         modes.filter { modeSupportedByCli(sinceCliVersion: $0.sinceCliVersion, cliVersion: cliVersion) }
     }
 
+    /// `filterModelModesForCli`: drops hardcoded models the CLI predates.
+    /// `keeping` is a saved pick, which stays selectable on any CLI.
+    public static func filterModelModesForCli(_ models: [ModeOption], cliVersion: String?, keeping: String? = nil) -> [ModeOption] {
+        models.filter { $0.key == keeping || modeSupportedByCli(sinceCliVersion: $0.sinceCliVersion, cliVersion: cliVersion) }
+    }
+
     // MARK: A session's options
 
     /// `getAvailableModels`. Happy Agent sessions list their own catalog
     /// (keys `provider:model`), with the selected model kept, disabled, if
-    /// it left. Others prefer metadata models, then the hardcoded list.
+    /// it left. Others prefer metadata models, then the hardcoded list
+    /// gated on the session's CLI (`metadata.version`).
     public static func availableModels(flavor: String?, metadata: JSONValue?, selectedKey: String? = nil) -> [ModeOption] {
         if RigCatalog.isRigV1(metadata) {
             var models = RigCatalog.sortedForPicker(RigCatalog.models(metadata)).map { model in
@@ -267,7 +276,12 @@ public enum ModelModeOptions {
             }
             return metadataModels
         }
-        return includeConfiguredModel(flavor: flavor, models: hardcodedModelModes(flavor: flavor), configured: selectedKey)
+        let models = filterModelModesForCli(
+            hardcodedModelModes(flavor: flavor),
+            cliVersion: metadata?["version"]?.stringValue,
+            keeping: AgentDefaults.retireModelMode(selectedKey, flavor: flavor)
+        )
+        return includeConfiguredModel(flavor: flavor, models: models, configured: selectedKey)
     }
 
     /// `getAvailablePermissionModes`. Happy Agent sessions list their own
@@ -453,6 +467,9 @@ public enum ModelModeOptions {
 
     /// The mode keys a CLI version gates (`PERMISSION_MODE_SINCE_CLI_VERSION`).
     static let permissionModeSinceCliVersion = ["auto": AgentDefaults.cliVersionWithAuto]
+
+    /// The Claude model keys a CLI version gates.
+    static let claudeModelSinceCliVersion = ["claude-fable-5-2": AgentDefaults.cliVersionWithFable52]
 
     /// Names for Claude models that left the list but can still be saved.
     static let unlistedClaudeModelNames = ["claude-sonnet-5": "Sonnet 5"]

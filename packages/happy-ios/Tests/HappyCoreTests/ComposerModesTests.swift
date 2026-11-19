@@ -459,6 +459,32 @@ final class ModelModeOptionsTests: XCTestCase {
         XCTAssertTrue(Options.modeSupportedByCli(sinceCliVersion: nil, cliVersion: "not-a-version"))
     }
 
+    func testFable52IsGatedOnTheCLIThatRunsIt() {
+        let models = Options.hardcodedModelModes(flavor: "claude")
+        XCTAssertEqual(models[0].sinceCliVersion, "1.2.7-beta.0")
+        XCTAssertTrue(models.dropFirst().allSatisfy { $0.sinceCliVersion == nil })
+        XCTAssertTrue(Options.hardcodedModelModes(flavor: "codex").allSatisfy { $0.sinceCliVersion == nil })
+
+        func offered(_ version: String?, selected: String? = nil) -> [String] {
+            keys(Options.availableModels(flavor: "claude", metadata: claudeOn(version), selectedKey: selected))
+        }
+        XCTAssertFalse(offered("1.2.6").contains("claude-fable-5-2"))
+        XCTAssertFalse(offered("not-a-version").contains("claude-fable-5-2"))
+        XCTAssertEqual(offered("1.2.6").count, 6)
+        XCTAssertEqual(offered("1.2.7-beta.0"), keys(models))
+        XCTAssertEqual(offered(nil), keys(models), "an unknown CLI is not gated")
+        // A saved pick stays selectable, as its own row.
+        XCTAssertEqual(offered("1.2.6", selected: "claude-fable-5-2"), keys(models))
+        XCTAssertEqual(
+            Options.availableModels(flavor: "claude", metadata: claudeOn("1.2.6"), selectedKey: "claude-fable-5-2").first?.name,
+            "Fable 5.2"
+        )
+    }
+
+    private func claudeOn(_ version: String?) -> JSONValue {
+        .object(["flavor": .string("claude")].merging(version.map { ["version": .string($0)] } ?? [:]) { $1 })
+    }
+
     func testWhetherTheSessionCLICanParseASavedKey() {
         XCTAssertFalse(Options.permissionModeSupportedByCli("auto", cliVersion: "1.2.1-beta.1"))
         XCTAssertFalse(Options.permissionModeSupportedByCli("auto", cliVersion: "1.2.0"))
@@ -685,7 +711,7 @@ final class ComposerModesTests: XCTestCase {
         XCTAssertEqual(modes.modelMode?.key, "claude-opus-5-5")
         XCTAssertEqual(modes.effortLevel?.key, "medium")
         XCTAssertEqual(modes.availableModes.count, 5)
-        XCTAssertEqual(modes.availableModels.count, 7)
+        XCTAssertEqual(modes.availableModels.count, 6, "no Fable 5.2 before 1.2.7-beta.0")
         XCTAssertEqual(modes.availableEffortLevels.map(\.key), ["low", "medium", "high", "xhigh", "max"])
     }
 
@@ -778,6 +804,19 @@ final class ComposerModesTests: XCTestCase {
         XCTAssertEqual(modes.modelMode?.key, "claude-opus-5")
         XCTAssertEqual(modes.effortLevel?.key, "medium")
         XCTAssertEqual(modes.availableModes.map(\.key), ["acceptEdits", "plan", "bypassPermissions", "default"])
+    }
+
+    func testANewSessionOffersFable52OnlyToACLIThatRunsIt() {
+        func modes(_ cliVersion: String?, overrides: [String: JSONValue] = [:], pick: String? = nil) -> ComposerModes {
+            ComposerModes.newSession(agentType: "claude", picks: ComposerPicks(modelMode: pick), agentDefaultOverrides: overrides, cliVersion: cliVersion)
+        }
+        XCTAssertFalse(modes("1.2.6").availableModels.contains { $0.key == "claude-fable-5-2" })
+        XCTAssertEqual(modes("1.2.6", pick: "claude-fable-5-2").modelMode?.key, "claude-opus-5-5", "a stale pick falls to the default")
+        XCTAssertEqual(modes("1.2.7-beta.0", pick: "claude-fable-5-2").modelMode?.key, "claude-fable-5-2")
+        XCTAssertEqual(modes(nil).availableModels.first?.key, "claude-fable-5-2")
+        let saved = modes("1.2.6", overrides: ["claude": json(#"{ "modelMode": "claude-fable-5-2" }"#)])
+        XCTAssertEqual(saved.modelMode?.key, "claude-fable-5-2")
+        XCTAssertEqual(saved.modelMode?.name, "Fable 5.2")
     }
 
     func testANewSessionKeepsASavedModelRow() {
