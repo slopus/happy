@@ -1114,6 +1114,10 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         // Wait for the selected model to follow the draft before validating its effort.
         // Otherwise an intermediate model/agent render can overwrite a valid choice.
         React.useEffect(() => {
+            // An absent Codex catalog means the connection is still hydrating,
+            // not that the chosen model has no effort controls. Do not erase
+            // the persisted choice before its capabilities can be validated.
+            if (selectedAgent === 'codex' && !modelMetadata?.models?.length) return;
             if (currentModelKey !== resolvedModeSelection.modelMode) return;
             const defaultEffort = resolvedModeSelection.effortLevel;
             if (defaultEffort && effortLevels.length > 0) {
@@ -1124,7 +1128,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 setEffortIndex(0);
                 draft.setEffortLevel(effortLevels[0]?.key ?? null);
             }
-        }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, resolvedModeSelection.modelMode, currentModelKey, effortLevels]);
+        }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, resolvedModeSelection.modelMode, currentModelKey, effortLevels, selectedAgent, modelMetadata]);
 
         // Auto collapse config once when user starts typing (mobile only, collapsible).
         // On desktop (web / Mac Catalyst) the panel stays expanded. Also skip on

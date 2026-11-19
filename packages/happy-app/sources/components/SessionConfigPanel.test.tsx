@@ -301,6 +301,24 @@ describe('SessionConfigPanel composer layout', () => {
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-terra');
     });
 
+    it.each(['low', 'high', 'xhigh', 'max'])('preserves %s effort while the Codex connection catalog hydrates', async (effort) => {
+        mocks.draftStore.setState({ effortLevel: effort });
+        mocks.sessionsOverride = [];
+        const ref = React.createRef<any>();
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />);
+        });
+        expect(mocks.draftStore.getState().effortLevel).toBe(effort);
+        expect(ref.current.getSelection().effortKey).toBeNull();
+        mocks.sessionsOverride = [{ id: 'hydrated', activeAt: 20, metadata: {
+            machineId: 'mac', flavor: 'codex', currentModelCode: 'gpt-5.6-sol',
+            models: [{ code: 'gpt-5.6-sol', value: 'Sol' }],
+            thoughtLevels: ['low', 'medium', 'high', 'xhigh', 'max'].map(code => ({ code, value: code })),
+        } }];
+        await act(async () => renderer.update(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />));
+        expect(ref.current.getSelection().effortKey).toBe(effort);
+    });
+
     it('retains an explicit agent launch entry when no model catalog exists', async () => {
         mocks.sessionsOverride = [];
         const ref = React.createRef<any>();
