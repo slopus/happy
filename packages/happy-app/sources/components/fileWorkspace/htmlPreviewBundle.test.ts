@@ -9,7 +9,7 @@ beforeEach(() => {
     URL.revokeObjectURL = vi.fn();
 });
 describe('isolated HTML bundle', () => {
-    it('loads CSS-relative images once, keeps inline interaction, and revokes all resource URLs', async () => {
+    it('embeds CSS-relative images for an opaque sandbox without parent Blob URLs', async () => {
         const read = vi.fn(async (path: string) => {
             if (path === '/work/demo/css/style.css') return encode('body { background: url(../image.png); }');
             if (path === '/work/demo/image.png') return encode('image');
@@ -18,15 +18,16 @@ describe('isolated HTML bundle', () => {
         });
         const result = await buildHtmlFilePreview('<link rel="stylesheet" href="css/style.css"><script src="app.js"></script><button onclick="this.textContent=\'done\'">go</button>', '/work/demo/index.html', '/work', read);
         expect(read.mock.calls.map(call => call[0])).toEqual(['/work/demo/css/style.css', '/work/demo/image.png', '/work/demo/app.js']);
-        expect(result.html).toContain('blob:test-1');
+        expect(result.html).toContain('data:image/png;base64,aW1hZ2U=');
+        expect(URL.createObjectURL).not.toHaveBeenCalled();
         expect(result.html).toContain('connect-src');
         expect(result.html).toContain('onclick=');
-        result.dispose(); expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
+        result.dispose(); expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     });
-    it('rejects remote and escaping dependencies and revokes partial work on error', async () => {
+    it('rejects remote and escaping dependencies without creating parent-origin URLs', async () => {
         const read = vi.fn(async () => encode('x'));
         await expect(buildHtmlFilePreview('<img src="ok.png"><script src="https://evil/x.js"></script>', '/work/index.html', '/work', read)).rejects.toThrow();
-        expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
+        expect(URL.revokeObjectURL).not.toHaveBeenCalled();
         await expect(buildHtmlFilePreview('<img src="../private">', '/work/index.html', '/work', read)).rejects.toThrow();
         expect(read).toHaveBeenCalledTimes(1);
     });
@@ -52,9 +53,19 @@ it('bundles local video sources and poster images with their media MIME types', 
     const read = vi.fn(async () => encode('bytes'));
     const result = await buildHtmlFilePreview('<video poster="poster.jpg"><source src="film.mp4" type="video/mp4"></video>', '/work/index.html', '/work', read);
     const doc = new DOMParser().parseFromString(result.html, 'text/html');
-    expect(doc.querySelector('video')?.getAttribute('poster')).toMatch(/^blob:/);
+    expect(doc.querySelector('video')?.getAttribute('poster')).toMatch(/^data:image\/jpeg;base64,/);
     expect(read).toHaveBeenCalledWith('/work/poster.jpg');
     expect(read).toHaveBeenCalledWith('/work/film.mp4');
-    expect(vi.mocked(URL.createObjectURL).mock.calls.map(([blob]) => (blob as Blob).type)).toContain('video/mp4');
+    expect(doc.querySelector('source')?.getAttribute('src')).toMatch(/^data:video\/mp4;base64,/);
+    expect(result.html).toContain('media-src blob: data:');
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    result.dispose();
+});
+
+it('preserves arbitrary binary bytes in an embedded asset larger than an apply argument limit', async () => {
+    const bytes = Uint8Array.from({ length: 100000 }, (_, i) => i % 256);
+    const result = await buildHtmlFilePreview('<img src="image.png">', '/work/index.html', '/work', async () => bytes);
+    const src = new DOMParser().parseFromString(result.html, 'text/html').querySelector('img')!.getAttribute('src')!;
+    expect(Uint8Array.from(atob(src.slice(src.indexOf(',') + 1)), c => c.charCodeAt(0))).toEqual(bytes);
     result.dispose();
 });

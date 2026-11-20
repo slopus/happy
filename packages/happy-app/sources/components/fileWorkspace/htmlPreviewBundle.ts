@@ -1,13 +1,14 @@
 import * as css from 'css-tree';
 import { t } from '@/text';
 import { resolvePreviewPath } from './previewResources';
+import { encodeBase64 } from '@/encryption/base64';
 const mime = (path: string) => ({ css: 'text/css', js: 'text/javascript', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', woff: 'font/woff', woff2: 'font/woff2', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg' }[path.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream');
 /** Static local dependencies only. Never receives app credentials or a tool bridge. */
 export async function buildHtmlFilePreview(content: string, path: string, root: string, read: (path: string) => Promise<Uint8Array>) {
     const doc = new DOMParser().parseFromString(content, 'text/html');
-    const urls: string[] = [], cache = new Map<string, Promise<Uint8Array>>();
+    const cache = new Map<string, Promise<Uint8Array>>();
     let total = 0;
-    const dispose = () => urls.forEach(url => URL.revokeObjectURL(url));
+    const dispose = () => {}; // Embedded data has no parent-origin object URLs to retain.
     const load = (file: string) => {
         if (!cache.has(file)) {
             if (cache.size >= 128) throw new Error(t('fileWorkspace.tooLarge'));
@@ -19,8 +20,8 @@ export async function buildHtmlFilePreview(content: string, path: string, root: 
         if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(reference)) return reference;
         const target = resolvePreviewPath(reference, owner, root);
         const bytes = await load(target.path);
-        const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mime(target.path) }));
-        urls.push(url); return url + target.fragment;
+        // Opaque sandbox frames cannot fetch Blob URLs owned by the parent.
+        return `data:${mime(target.path)};base64,${encodeBase64(bytes)}` + target.fragment;
     };
     const stylesheet = async (text: string, owner: string, declarations = false) => {
         const tree = css.parse(text, { context: declarations ? 'declarationList' : 'stylesheet' });
@@ -60,7 +61,7 @@ export async function buildHtmlFilePreview(content: string, path: string, root: 
         for (const node of Array.from(doc.querySelectorAll<HTMLVideoElement>('video[poster]'))) node.setAttribute('poster', await resource(node.getAttribute('poster') ?? '', path));
         doc.querySelectorAll('a[href]').forEach(node => { if (!node.getAttribute('href')?.startsWith('#')) node.removeAttribute('href'); });
         const policy = doc.createElement('meta'); policy.httpEquiv = 'Content-Security-Policy';
-        policy.content = "default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline' blob:; img-src blob: data:; font-src blob:; media-src blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+        policy.content = "default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline' blob:; img-src blob: data:; font-src blob: data:; media-src blob: data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
         doc.head.prepend(policy);
         return { html: '<!doctype html>' + doc.documentElement.outerHTML, dispose };
     } catch (error) { dispose(); throw error; }
