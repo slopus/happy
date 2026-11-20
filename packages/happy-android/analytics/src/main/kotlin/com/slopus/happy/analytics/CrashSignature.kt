@@ -12,17 +12,31 @@ import java.io.File
  *
  * The frames start at the first one outside the platform and the libraries
  * [PLATFORM] names, so they are where the crash left code this build
- * carries. A store build is shrunk by R8, which renames classes and
+ * carries. A crash thrown and wrapped by the platform alone (a framework
+ * NullPointerException as an activity launches) has no such frame: then
+ * they are the innermost cause's own top frames. A store build is shrunk by R8, which renames classes and
  * packages alike (`g80.a`, the Kotlin and AndroidX libraries too) and keeps
  * no line table: the line is the one R8 leaves (its instruction offset),
  * and the build's mapping turns the frames back into source lines.
  */
 data class CrashSignature(val exceptionClass: String?, val causeClass: String?, val frames: String?) {
     companion object {
-        /** Where the platform's classes and the libraries every build has begin; not this build's code. */
+        /**
+         * Where the platform's classes and the libraries every build has begin; not this build's code.
+         * `com.android.` is the boot classpath's (33 packages on Android 15, `internal`, `org.conscrypt`,
+         * `okhttp`, `icu`, `server` among them, and more on some phones), less the Google libraries this
+         * build bundles under it ([BUNDLED]).
+         */
         val PLATFORM = listOf(
             "java.", "javax.", "jdk.", "kotlin.", "kotlinx.", "android.", "androidx.", "dalvik.", "libcore.", "sun.", "com.android.",
         )
+
+        /** This build's own libraries under a [PLATFORM] prefix: Play Billing (its ProxyBillingActivity is ours to launch). */
+        val BUNDLED = listOf("com.android.billingclient.", "com.android.installreferrer.")
+
+        /** Whether [className] is the platform's or a library every build has, by [PLATFORM] and [BUNDLED]. */
+        fun isPlatform(className: String): Boolean =
+            PLATFORM.any { className.startsWith(it) } && BUNDLED.none { className.startsWith(it) }
 
         /** Causes followed at most, so a cycle or a very long chain ends. */
         private const val DEPTH = 16
@@ -32,8 +46,10 @@ data class CrashSignature(val exceptionClass: String?, val causeClass: String?, 
             return CrashSignature(
                 exceptionClass = error.javaClass.name.takeIf(AnalyticsSchema::isClassName),
                 causeClass = causes.lastOrNull()?.javaClass?.name?.takeIf(AnalyticsSchema::isClassName),
-                // A wrapper thrown from the platform alone (a Looper's) has its frames in a cause.
-                frames = (listOf(error) + causes).firstNotNullOfOrNull { frames(it.stackTrace) },
+                // A wrapper thrown from the platform alone (a Looper's) has its frames in a cause; with none
+                // of this build's anywhere, where the innermost cause was thrown, platform or not.
+                frames = (listOf(error) + causes).firstNotNullOfOrNull { frames(it.stackTrace) }
+                    ?: (causes.reversed() + error).firstNotNullOfOrNull { frames(it.stackTrace, fromTop = true) },
             )
         }
 
@@ -48,9 +64,13 @@ data class CrashSignature(val exceptionClass: String?, val causeClass: String?, 
             return seen.drop(1)
         }
 
-        /** Up to five frames from the first outside [PLATFORM], a space apart and within the catalog's length; null when there is none. */
-        fun frames(stack: Array<StackTraceElement>): String? {
-            val first = stack.indexOfFirst { frame -> PLATFORM.none { frame.className.startsWith(it) } }
+        /**
+         * Up to five frames from the first outside [PLATFORM] (or the first of all, [fromTop]), a
+         * space apart and within the catalog's length, fewer where five would be longer; null when
+         * there is none.
+         */
+        fun frames(stack: Array<StackTraceElement>, fromTop: Boolean = false): String? {
+            val first = if (fromTop) 0 else stack.indexOfFirst { !isPlatform(it.className) }
             if (first < 0) return null
             val frames = StringBuilder()
             var count = 0
