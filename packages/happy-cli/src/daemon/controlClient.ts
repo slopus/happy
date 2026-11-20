@@ -12,7 +12,7 @@ import type { CodexEffort } from '@/modules/common/registerCommonHandlers';
 export type SpawnDaemonSessionOptions = {
   directory: string;
   sessionId?: string;
-  agent?: 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
+  agent?: 'claude' | 'codex' | 'gemini' | 'opencode' | 'antigravity' | 'openclaw';
   model?: string;
   effort?: CodexEffort;
   environmentVariables?: Record<string, string>;

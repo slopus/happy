@@ -13,7 +13,7 @@ import { Item } from '@/components/Item';
 import { t } from '@/text';
 import { CodingAgentIcon } from './CodingAgentIcon';
 import { inspectCodingAgents, updateCodingAgent } from './codingAgentOps';
-export const codingAgentLabels: Record<CodingAgentId, string> = { codex: 'Codex', claude: 'Claude Code', opencode: 'OpenCode', gemini: 'Gemini CLI', openclaw: 'OpenClaw' };
+export const codingAgentLabels: Record<CodingAgentId, string> = { codex: 'Codex', claude: 'Claude Code', opencode: 'OpenCode', antigravity: 'Antigravity', gemini: 'Gemini CLI', openclaw: 'OpenClaw' };
 export default function CodingAgentsSettings() {
     const { theme } = useUnistyles();
     const params = useLocalSearchParams<{ machineId?: string }>();

@@ -38,6 +38,8 @@ export function resolveSessionInfoAgentLabel(
             return translate('agentInput.agent.gemini');
         case 'opencode':
             return translate('agentInput.agent.opencode');
+        case 'antigravity':
+            return translate('agentInput.agent.antigravity');
         case 'openclaw':
             return translate('agentInput.agent.openclaw');
         case 'claude':

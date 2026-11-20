@@ -66,6 +66,7 @@ const agentIcons = {
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
     opencode: require('@/assets/images/icon-gpt.png'),
+    antigravity: require('@/assets/images/icon-antigravity.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
 };
@@ -73,6 +74,7 @@ const agentIcons = {
 type AgentKey = NewSessionAgentType;
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'opencode', label: 'OpenCode' },
+    { key: 'antigravity', label: 'Antigravity' },
     { key: 'claude', label: 'Claude Code' },
     { key: 'codex', label: 'Codex' },
     { key: 'openclaw', label: 'OpenClaw' },
@@ -1073,7 +1075,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 ...model, key: `${selectedAgent}::${model.key}`,
             }));
         }, [modelModes, selectedAgent]);
-        const cycleAgents = ['codex', 'claude', 'opencode', 'gemini', 'openclaw']
+        const cycleAgents = ['codex', 'claude', 'opencode', 'antigravity', 'gemini', 'openclaw']
             .flatMap(key => availableAgents.filter(agent => agent.key === key));
         const nextCycleAgent = cycleAgents.length > 1
             ? cycleAgents[(cycleAgents.findIndex(agent => agent.key === selectedAgent) + 1) % cycleAgents.length]

@@ -23,6 +23,7 @@ const flavorIcons = {
     codex: require('@/assets/images/icon-gpt.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
     opencode: require('@/assets/images/icon-gpt.png'),
+    antigravity: require('@/assets/images/icon-antigravity.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
 };
 

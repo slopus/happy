@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { resolveExecutable } from '@/environment/processRunner';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -489,10 +491,11 @@ type PendingTurn = {
   timeout: NodeJS.Timeout;
 };
 
-function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
+function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'antigravity' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
   }
+  if (agentName === 'antigravity') return 'antigravity';
   if (agentName === 'opencode') {
     return 'opencode';
   }
@@ -606,7 +609,9 @@ export async function runAcp(opts: {
   const backend = new AcpBackend({
     agentName: opts.agentName,
     cwd: process.cwd(),
-    command: opts.command,
+    command: opts.agentName === 'antigravity' && opts.command === 'agy'
+      ? await resolveExecutable('agy', process.env.PATH, [join(homedir(), '.local/bin/agy')]) ?? 'agy'
+      : opts.command,
     args: opts.args,
     mcpServers,
     permissionHandler,

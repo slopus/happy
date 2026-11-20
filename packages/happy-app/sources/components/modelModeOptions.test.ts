@@ -227,3 +227,15 @@ describe('modelModeOptions', () => {
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
     });
 });
+
+
+describe('Antigravity connection catalog', () => {
+    it('uses the default before discovery and the live model catalog afterwards', () => {
+        const translate = (key: string) => key;
+        expect(getAvailableModels('antigravity', null, translate).map(option => option.key)).toEqual(['default']);
+        const metadata = {
+            models: [{ code: 'gemini-4-neon', value: 'Gemini 4 Neon' }],
+        };
+        expect(getAvailableModels('antigravity', metadata as any, translate).map(option => option.key)).toEqual(['gemini-4-neon']);
+    });
+});

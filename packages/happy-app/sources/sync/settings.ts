@@ -83,7 +83,7 @@ export const AgentLauncherListSchema = z.array(z.object({
     })).default([]),
     // 空间预设的默认引擎 / 模型 / 思考强度（进入该 Agent 新建会话时套用）。
     // Retired flavors remain stored so a legacy launcher cannot silently switch engines.
-    agentType: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw', 'personal']).optional(),
+    agentType: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'antigravity', 'openclaw', 'personal']).optional(),
     runtime: z.enum(['relationship-advisor']).optional(),
     permissionMode: z.string().optional(),
     modelMode: z.string().optional(),
@@ -145,6 +145,7 @@ export const SettingsSchema = z.object({
             codex: z.boolean().optional(),
             gemini: z.boolean().optional(),
             opencode: z.boolean().optional(),
+            antigravity: z.boolean().optional(),
             openclaw: z.boolean().optional(),
         })).default({}),
         global: z.object({
@@ -152,6 +153,7 @@ export const SettingsSchema = z.object({
             codex: z.boolean().optional(),
             gemini: z.boolean().optional(),
             opencode: z.boolean().optional(),
+            antigravity: z.boolean().optional(),
             openclaw: z.boolean().optional(),
         }).default({}),
     }).default({ perMachine: {}, global: {} }).describe('Tracks which CLI installation warnings user has dismissed (per-machine or globally)'),

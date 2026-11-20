@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export const CodingAgentIdSchema = z.enum(['codex', 'claude', 'opencode', 'gemini', 'openclaw']);
+export const CodingAgentIdSchema = z.enum(['codex', 'claude', 'opencode', 'antigravity', 'gemini', 'openclaw']);
 export type CodingAgentId = z.infer<typeof CodingAgentIdSchema>;
 export const CodingAgentObservationSchema = z.object({
   id: CodingAgentIdSchema,

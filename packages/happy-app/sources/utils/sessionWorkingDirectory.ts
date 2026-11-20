@@ -63,6 +63,7 @@ const WORKING_DIRECTORY_CAPABILITIES = {
     codex: { agent: 'codex', strategy: 'continue-context', requiresContinuation: true },
     gemini: { agent: 'gemini', strategy: 'new-session', requiresContinuation: false },
     opencode: { agent: 'opencode', strategy: 'new-session', requiresContinuation: false },
+    antigravity: { agent: 'antigravity', strategy: 'new-session', requiresContinuation: false },
     openclaw: { agent: 'openclaw', strategy: 'new-session', requiresContinuation: false },
 } satisfies WorkingDirectoryCapabilityMap;
 

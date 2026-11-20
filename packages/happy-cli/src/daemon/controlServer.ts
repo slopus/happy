@@ -154,7 +154,7 @@ export function startDaemonControlServer({
         body: z.object({
           directory: z.string(),
           sessionId: z.string().optional(),
-          agent: z.enum(['claude', 'codex', 'gemini', 'opencode', 'openclaw']).optional(),
+          agent: z.enum(['claude', 'codex', 'gemini', 'opencode', 'antigravity', 'openclaw']).optional(),
           model: z.string().min(1).optional(),
           effort: codexEffortSchema.optional(),
           environmentVariables: z.record(z.string(), z.string()).optional(),

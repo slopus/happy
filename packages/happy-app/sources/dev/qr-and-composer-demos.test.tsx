@@ -159,7 +159,7 @@ describe('会话编辑器演示页', () => {
                         claude: 'icon',
                         codex: 'icon',
                         gemini: 'icon',
-                        opencode: 'icon',
+                        antigravity: 'icon', opencode: 'icon',
                         openclaw: 'icon',
                     }}
                 />,
@@ -206,7 +206,7 @@ describe('会话编辑器演示页', () => {
                         claude: 'icon',
                         codex: 'icon',
                         gemini: 'icon',
-                        opencode: 'icon',
+                        antigravity: 'icon', opencode: 'icon',
                         openclaw: 'icon',
                     }}
                 />,
@@ -246,7 +246,7 @@ describe('会话编辑器演示页', () => {
                             claude: 'icon',
                             codex: 'icon',
                             gemini: 'icon',
-                            opencode: 'icon',
+                            antigravity: 'icon', opencode: 'icon',
                             openclaw: 'icon',
                         }}
                     />,

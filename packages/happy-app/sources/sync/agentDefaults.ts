@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { isRetiredAgentFlavor } from './retiredSessions';
 
-export const agentKeys = ['claude', 'codex', 'gemini', 'opencode', 'openclaw'] as const;
+export const agentKeys = ['claude', 'codex', 'gemini', 'opencode', 'antigravity', 'openclaw'] as const;
 export type AgentKey = typeof agentKeys[number];
 
 export const AgentDefaultOverrideSchema = z.object({
@@ -15,6 +15,7 @@ export const AgentDefaultOverridesSchema = z.object({
     codex: AgentDefaultOverrideSchema.optional(),
     gemini: AgentDefaultOverrideSchema.optional(),
     opencode: AgentDefaultOverrideSchema.optional(),
+    antigravity: AgentDefaultOverrideSchema.optional(),
     openclaw: AgentDefaultOverrideSchema.optional(),
 }).passthrough().default({});
 
@@ -35,12 +36,13 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     codex: { permissionMode: 'yolo', modelMode: 'gpt-6.1-sol', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     opencode: { permissionMode: 'default', modelMode: 'sub2api/gpt-5.5', effortLevel: null },
+    antigravity: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
 };
 
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
     if (isRetiredAgentFlavor(flavor)) throw new Error('personal-agent-retired');
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'opencode' || flavor === 'openclaw') {
+    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'opencode' || flavor === 'antigravity' || flavor === 'openclaw') {
         return flavor;
     }
     return 'claude';

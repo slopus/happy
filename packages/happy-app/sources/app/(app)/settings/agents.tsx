@@ -42,6 +42,7 @@ const agentLabels: Record<AgentKey, string> = {
     codex: 'Codex',
     gemini: 'Gemini',
     opencode: 'OpenCode',
+    antigravity: 'Antigravity',
     openclaw: 'OpenClaw',
 };
 

@@ -127,6 +127,7 @@ export function getOpenCodePermissionModes(translate: Translate): PermissionMode
 
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (isRetiredAgentFlavor(flavor)) return [];
+    if (flavor === 'antigravity') return [{ key: 'default', name: translate('agentInput.permissionMode.default'), description: null }];
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
     }
@@ -161,6 +162,7 @@ export function getOpenCodeModelModes(): ModelMode[] {
 
 export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate): ModelMode[] {
     if (isRetiredAgentFlavor(flavor)) return [];
+    if (flavor === 'antigravity') return [{ key: 'default', name: DEFAULT_MODEL_LABEL, description: null }];
     if (flavor === 'codex') {
         return getCodexModelModes();
     }

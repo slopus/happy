@@ -373,6 +373,20 @@ describe('runAcp', () => {
     } finally { await mocks.getKillHandler()!(); await run; }
   });
 
+  it('keeps Antigravity identity instead of restoring it as a generic ACP session', async () => {
+    const run = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'],
+    });
+    await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+    try {
+      expect(mocks.mockGetOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({
+        metadata: expect.objectContaining({ flavor: 'antigravity' }),
+      }));
+      expect(mocks.backendState.constructorArgs).toMatchObject({ command: '/test/agy', args: ['acp'] });
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
   it('wires backend messages through mapper into session envelopes', async () => {
     const runPromise = runAcp({
       credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },

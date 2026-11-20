@@ -4,6 +4,7 @@ import { SvgXml } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
 import { codingAgentBrandIcons } from './brandIcons';
 const fallback = {
+    antigravity: require('@/assets/images/icon-antigravity.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
 };

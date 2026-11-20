@@ -534,7 +534,7 @@ export async function startDaemon(): Promise<void> {
           // Construct command for the CLI
           const agent = options.agent ?? 'opencode';
           const cliPath = resolveHappyCLIEntrypoint(startupIntegration.workerEntrypoint(agent));
-          if (!['claude', 'codex', 'gemini', 'opencode', 'openclaw'].includes(agent)) {
+          if (!['claude', 'codex', 'gemini', 'opencode', 'antigravity', 'openclaw'].includes(agent)) {
             return {
               type: 'error',
               errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
@@ -546,7 +546,7 @@ export async function startDaemon(): Promise<void> {
           const resumeFragment = resumeId
             ? ` --resume ${shellescape(resumeId)}`
             : '';
-          const agentCommand = agent === 'opencode' ? 'acp opencode' : agent;
+          const agentCommand = agent === 'opencode' || agent === 'antigravity' ? `acp ${agent}` : agent;
           const codexOptions = agent === 'codex'
             ? `${options.model ? ` --model ${shellescape(options.model)}` : ''}${options.effort ? ` --effort ${shellescape(options.effort)}` : ''}`
             : '';
@@ -656,6 +656,10 @@ export async function startDaemon(): Promise<void> {
             case undefined:
               agentCommand = 'opencode';
               args = ['acp', 'opencode'];
+              break;
+            case 'antigravity':
+              agentCommand = 'antigravity';
+              args = ['acp', 'antigravity'];
               break;
             case 'openclaw':
               agentCommand = 'openclaw';

@@ -238,7 +238,7 @@ export interface SpawnSessionOptions {
     traceId?: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini' | 'opencode' | 'openclaw';
+    agent?: 'codex' | 'claude' | 'gemini' | 'opencode' | 'antigravity' | 'openclaw';
     /** Connection used for the selected model catalog; null means native Codex. */
     expectedCodexAccountProfileId?: string | null;
     environmentVariables?: Record<string, string>;

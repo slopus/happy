@@ -14,6 +14,17 @@ function fixture() {
   return { service, run, realpath, advance: () => { time += 600_001; } };
 }
 describe('coding agent management', () => {
+  it('probes native Antigravity via agy and never looks up a guessed npm package', async () => {
+    const run = vi.fn(async () => ({ stdout: '1.5.13', stderr: '', exitCode: 0, timedOut: false }));
+    const resolve = vi.fn(async (name: string) => name === 'agy' ? '/home/test/.local/bin/agy' : null);
+    const service = createCodingAgentService({ runner: { run }, resolve, env: {}, home: '/home/test' });
+    expect((await service.inspect({ id: 'antigravity', checkUpdates: true })).agents[0]).toMatchObject({
+      id: 'antigravity', installed: true, version: '1.5.13', reason: 'manual-update',
+    });
+    expect(resolve).toHaveBeenCalledWith('agy');
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith('/home/test/.local/bin/agy', ['--version'], expect.anything());
+  });
   it('checks only the requested agent and preserves other rows update tickets', async () => {
     const { service, run } = fixture();
     const first = await service.inspect({ checkUpdates: true, id: 'codex' });

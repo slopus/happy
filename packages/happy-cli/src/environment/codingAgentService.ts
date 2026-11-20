@@ -9,7 +9,7 @@ import {
 import { resolveExecutable, type ProcessRunner } from './processRunner';
 import { compareVersions } from './pawsCliAdapter';
 import { detectCLIAvailability } from '../utils/detectCLI';
-const packages: Record<CodingAgentId, string> = {
+const packages: Record<Exclude<CodingAgentId, 'antigravity'>, string> = {
   codex: '@openai/codex', claude: '@anthropic-ai/claude-code', opencode: 'opencode-ai', gemini: '@google/gemini-cli', openclaw: 'openclaw',
 };
 type Deps = {
@@ -39,11 +39,16 @@ export function createCodingAgentService(deps: Deps) {
   };
   const options = { timeoutMs: 15_000, maxOutputBytes: 4096, env };
   async function probe(id: CodingAgentId, check: boolean): Promise<Probe> {
-    const executable = await resolve(id);
+    const executable = await resolve(id === 'antigravity' ? 'agy' : id);
     const agent: CodingAgentObservation = { id, installed: executable !== null, executable, version: null, latestVersion: null, source: 'manual', reason: executable ? 'manual-update' : 'not-installed' };
     if (!executable) return { agent, updater: null, args: [], identity: '' };
     const version = await inspectRun(executable, ['--version'], options);
     if (version.exitCode === 0 && !version.timedOut) agent.version = semver.exec(version.stdout.trim())?.[1] ?? null;
+    // Antigravity uses Google's native installer, not an npm package.
+    if (id === 'antigravity') {
+      agent.reason = agent.version ? 'manual-update' : 'check-failed';
+      return { agent, updater: null, args: [], identity: '' };
+    }
     const actual = await real(executable);
     const npm = await resolve('npm');
     const packageName = id === 'opencode' && agent.version?.startsWith('2.') ? '@opencode/cli' : packages[id];

@@ -1485,6 +1485,7 @@ failedContinueTask: "Продолжить незавершённую задач�
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            antigravity: 'Antigravity',
             opencode: 'OpenCode',
             openclaw: 'OpenClaw',
         },

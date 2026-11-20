@@ -705,6 +705,7 @@ ${chalk.bold('Usage:')}
   happy gemini            Start Gemini mode (ACP)
   happy acp               Start a generic ACP-compatible agent
   happy acp opencode      Start OpenCode mode (ACP)
+  happy acp antigravity   Start Google Antigravity (agy ACP)
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
   happy notify            Send push notification

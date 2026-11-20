@@ -6,11 +6,15 @@ describe('KNOWN_ACP_AGENTS', () => {
     expect(KNOWN_ACP_AGENTS).toEqual({
       gemini: { command: 'gemini', args: ['--experimental-acp'] },
       opencode: { command: 'opencode', args: ['acp'] },
+      antigravity: { command: 'agy', args: ['acp'] },
     });
   });
 });
 
 describe('resolveAcpAgentConfig', () => {
+  it('launches the official Antigravity executable in ACP mode', () => {
+    expect(resolveAcpAgentConfig(['antigravity'])).toEqual({ agentName: 'antigravity', command: 'agy', args: ['acp'] });
+  });
   it('resolves known agent names to predefined command + args', () => {
     expect(resolveAcpAgentConfig(['gemini'])).toEqual({
       agentName: 'gemini',

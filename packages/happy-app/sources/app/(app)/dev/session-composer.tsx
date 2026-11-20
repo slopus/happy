@@ -35,7 +35,7 @@ import {
     type EffortLevel,
 } from '@/components/modelModeOptions';
 
-type AgentKey = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'gemini';
+type AgentKey = 'claude' | 'codex' | 'opencode' | 'antigravity' | 'openclaw' | 'gemini';
 type AgentIconSources = Record<AgentKey, React.ComponentProps<typeof Image>['source']>;
 
 function getAgentIconSources(): AgentIconSources {
@@ -43,6 +43,7 @@ function getAgentIconSources(): AgentIconSources {
         claude: require('@/assets/images/icon-claude.png'),
         codex: require('@/assets/images/icon-gpt.png'),
         opencode: require('@/assets/images/icon-gpt.png'),
+        antigravity: require('@/assets/images/icon-antigravity.png'),
         openclaw: require('@/assets/images/icon-openclaw.png'),
         gemini: require('@/assets/images/icon-gemini.png'),
     };

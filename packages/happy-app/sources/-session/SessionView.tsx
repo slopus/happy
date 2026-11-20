@@ -113,6 +113,7 @@ const AGENT_LABELS: Record<string, string> = {
     claude: 'claude code',
     codex: 'codex',
     opencode: 'opencode',
+    antigravity: 'Antigravity',
     openclaw: 'openclaw',
     gemini: 'gemini',
 };

@@ -113,7 +113,7 @@ export type AgentRequest = {
     payload: unknown;
 };
 
-export type SupportedAgent = 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'personal';
+export type SupportedAgent = 'claude' | 'codex' | 'gemini' | 'opencode' | 'antigravity' | 'openclaw' | 'personal';
 
 /** Reasoning levels accepted by the Codex CLI. */
 export type CodexEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
