@@ -81,25 +81,23 @@ extension UIViewController {
     }
 }
 
-/// How wide content may grow (`ContentWidthLimit`): 800 on an iPad,
-/// unlimited on a phone.
+/// How wide content may grow (`ContentWidthLimit`): 800 wherever the
+/// window has more room than that, whatever the device.
 @MainActor
 public enum ContentWidth {
     /// `layout.maxWidth`: messages, the composer, item groups, settings.
-    public static var maxWidth: CGFloat { ContentWidthLimit.maxWidth(isPad: isPad) }
+    public static var maxWidth: CGFloat { ContentWidthLimit.readable }
     /// `layout.headerMaxWidth`: header rows.
     public static var headerMaxWidth: CGFloat { maxWidth }
-
-    private static let isPad = UIDevice.current.userInterfaceIdiom == .pad
 }
 
 extension UIScrollView {
     /// Holds a scrolling page to the readable column (`ContentWidth`),
     /// centred: the page lays itself out at the width this returns, and the
     /// margins either side are the scroll view's insets, so the page is
-    /// still the window's to scroll. The whole width on a phone, less the
-    /// safe area's sides, so a phone held sideways keeps the page off the
-    /// camera.
+    /// still the window's to scroll. The whole width when narrower, less
+    /// the safe area's sides, so a phone held sideways keeps the page off
+    /// the camera.
     func readableColumn(width: CGFloat) -> CGFloat {
         let column = ChatColumn(rowWidth: width, maxContentWidth: ContentWidth.maxWidth, sides: LayoutInsets(safeAreaInsets))
         let right = max(0, width - column.x - column.width)

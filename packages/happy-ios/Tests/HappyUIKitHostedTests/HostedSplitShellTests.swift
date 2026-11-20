@@ -34,8 +34,10 @@ private struct Unreachable: AgentTransport {
 /// panel; the sidebar hidden and shown; and the one stack rewritten, screen
 /// for screen, as the window narrows to a phone's and widens again.
 ///
-/// Runs on an iPad, where AppCoordinator's shell holds the split view.
-/// With `HAPPY_PREVIEW_DIR` set, it writes what each state looked like.
+/// Runs wherever the window is roomy enough to split: an iPad, or an
+/// iPhone Duo open in landscape (951 × 669). The rule is the window's,
+/// never the device's, so the same tests hold on both. With `HAPPY_PREVIEW_DIR` set,
+/// it writes what each state looked like.
 @MainActor
 final class HostedSplitShellTests: XCTestCase {
     private final class Fades: @unchecked Sendable {
@@ -67,10 +69,33 @@ final class HostedSplitShellTests: XCTestCase {
         guard condition() else { throw Never(what: what) }
     }
 
+    /// Skips unless the scene is roomy enough for the split: an iPhone, or
+    /// a Duo folded or open in portrait, is the phone.
+    private func requireSplit() async throws {
+        let scene = try await hostedActiveScene()
+        let traits = scene.traitCollection
+        try XCTSkipUnless(SplitRule.showsSplit(width: scene.coordinateSpace.bounds.width,
+                                               isRegularWidth: traits.horizontalSizeClass == .regular,
+                                               isRegularHeight: traits.verticalSizeClass != .compact, showsHome: true),
+                          "a window roomy enough for the split")
+    }
+
+    /// The scene's width: the window's when nothing has narrowed it.
+    private func sceneWidth(_ app: App) -> CGFloat {
+        app.window.windowScene?.coordinateSpace.bounds.width ?? app.window.bounds.width
+    }
+
+    /// The window less its safe area's sides, where the readable column is
+    /// centred. An iPad's are 0; an iPhone Duo's right is its status bar's
+    /// column.
+    private func panelArea(_ window: UIWindow) -> CGRect {
+        window.bounds.inset(by: UIEdgeInsets(top: 0, left: window.safeAreaInsets.left, bottom: 0, right: window.safeAreaInsets.right))
+    }
+
     /// A seeded Happy CLI account (and optionally a second one) in a
     /// window AppCoordinator owns, the scene's whole size.
     private func app(twoAccounts: Bool = false, style: UIUserInterfaceStyle = .light) async throws -> App {
-        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "an iPad's split view")
+        try await requireSplit()
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -139,9 +164,10 @@ final class HostedSplitShellTests: XCTestCase {
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
-        let device = max(UIScreen.main.bounds.width, UIScreen.main.bounds.height) > 1300 ? "13in" : "11in"
+        let scene = window.windowScene?.coordinateSpace.bounds.size ?? window.bounds.size
+        let device = UIDevice.current.userInterfaceIdiom == .pad ? (max(scene.width, scene.height) > 1300 ? "ipad-13in" : "ipad-11in") : "phone-\(Int(scene.width))"
         let style = window.traitCollection.userInterfaceStyle == .dark ? "dark" : "light"
-        try image.pngData()?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("ipad-\(device)-\(name)-\(style).png"))
+        try image.pngData()?.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(device)-\(name)-\(style).png"))
     }
 
     // MARK: Selection and the main panel
@@ -281,7 +307,7 @@ final class HostedSplitShellTests: XCTestCase {
         shell.setSidebarHidden(true)
         try await until("hidden") { !shell.showsSidebar }
         try await Task.sleep(for: .milliseconds(500))
-        let middle = app.window.bounds.midX
+        let middle = panelArea(app.window).midX
 
         home.push(.settings, context: app.context)
         try await settle(shell)
@@ -291,7 +317,7 @@ final class HostedSplitShellTests: XCTestCase {
         XCTAssertFalse(cards.isEmpty, "Settings showed no cards")
         for card in cards {
             let frame = card.convert(card.bounds, to: app.window)
-            XCTAssertEqual(frame.width, ContentWidthLimit.tablet - 2 * SettingsLayout.Metrics.side, "\(frame)")
+            XCTAssertEqual(frame.width, ContentWidthLimit.readable - 2 * SettingsLayout.Metrics.side, "\(frame)")
             XCTAssertEqual(frame.midX, middle, accuracy: 0.5, "\(frame)")
         }
         try await capture(app, "settings-hidden")
@@ -345,7 +371,7 @@ final class HostedSplitShellTests: XCTestCase {
         // Narrowed and widened again, it stays hidden.
         try await resize(app, width: 700)
         try await until("collapsed") { !shell.isExpanded }
-        try await resize(app, width: UIScreen.main.bounds.width)
+        try await resize(app, width: sceneWidth(app))
         try await until("expanded") { shell.isExpanded }
         try await Task.sleep(for: .milliseconds(400))
         XCTAssertEqual(split.displayMode, .secondaryOnly, "the window's choice came back")
@@ -461,8 +487,63 @@ final class HostedSplitShellTests: XCTestCase {
         try await until("split at 768") { shell.isExpanded }
         try await resize(app, width: 767)
         try await until("a phone at 767") { !shell.isExpanded }
-        try await resize(app, width: UIScreen.main.bounds.width)
+        try await resize(app, width: sceneWidth(app))
         try await until("split again") { shell.isExpanded }
+        withExtendedLifetime(app.coordinator) {}
+    }
+
+    // MARK: Folding
+
+    /// An iPhone Duo folded and opened again mid-session, as the window
+    /// sees it: the cover display's 466 and compact, then the open
+    /// display's width and regular again. A fold is the same width and
+    /// size-class rule as a resize, so the same screens move: home, a chat
+    /// and its info, with a sheet up over them and the call's bar showing,
+    /// all as they were.
+    func testFoldingAndOpeningAgainKeepsTheStackTheSheetAndTheCall() async throws {
+        let app = try await app()
+        let shell = app.shell
+        let home = try XCTUnwrap(home(shell))
+        let open = app.window.bounds.size
+        addTeardownBlock { @MainActor in
+            CallController.shared.close()
+            app.window.traitOverrides.remove(UITraitHorizontalSizeClass.self)
+        }
+        home.push(.session(id: "seeded-main"), context: app.context)
+        try await settle(shell)
+        let chat = try XCTUnwrap(shell.main.viewControllers.first as? LegacyChatViewController)
+        chat.push(.sessionInfo(id: "seeded-main"), context: app.context)
+        try await settle(shell)
+        let info = try XCTUnwrap(shell.main.topViewController as? SessionInfoViewController)
+        CallController.shared.showFixture("listening", from: home)
+        try await until("the call's bar") { shell.callBarShown }
+        let sheet = UIViewController()
+        shell.present(sheet, animated: false)
+        try await until("the sheet") { shell.presentedViewController === sheet }
+
+        // Folded: the cover display, compact.
+        app.window.traitOverrides.horizontalSizeClass = .compact
+        app.window.frame = CGRect(x: 0, y: 0, width: 466, height: 678)
+        app.window.layoutIfNeeded()
+        try await until("folded") { !shell.isExpanded }
+        XCTAssertEqual(shell.phone.viewControllers, [home, chat, info], "home, then the chat and its info: the same screens")
+        XCTAssertTrue(shell.sidebar.viewControllers.isEmpty)
+        XCTAssertTrue(shell.presentedViewController === sheet, "the sheet stays up")
+        XCTAssertTrue(shell.callBarShown, "the call's bar stays")
+        try await capture(app, "folded")
+
+        // Open again: regular and wide.
+        app.window.traitOverrides.remove(UITraitHorizontalSizeClass.self)
+        app.window.frame = CGRect(origin: .zero, size: open)
+        app.window.layoutIfNeeded()
+        try await until("open") { shell.isExpanded }
+        XCTAssertEqual(shell.sidebar.viewControllers, [home])
+        XCTAssertEqual(shell.main.viewControllers, [chat, info])
+        XCTAssertTrue(shell.phone.viewControllers.isEmpty)
+        XCTAssertEqual(list(shell)?.selectedSessionId, "seeded-main", "the selection came back")
+        XCTAssertTrue(shell.presentedViewController === sheet, "the sheet stays up")
+        XCTAssertTrue(shell.callBarShown, "the call's bar stays")
+        sheet.dismiss(animated: false)
         withExtendedLifetime(app.coordinator) {}
     }
 
@@ -479,7 +560,7 @@ final class HostedSplitShellTests: XCTestCase {
     /// stays selected beside it; narrowed, nothing is selected over the
     /// chat; widened, the row is selected again.
     func testAnAgentRowOpensBesideTheSidebarAndStaysSelected() async throws {
-        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "an iPad's split view")
+        try await requireSplit()
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

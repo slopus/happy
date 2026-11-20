@@ -28,7 +28,7 @@ final class ScreenLayoutTests: XCTestCase {
         XCTAssertEqual(phone.empty, rect(0, 120, 390, 634))
 
         // 1366 less 800 is 566, half of it 283.
-        let pad = HomeLayout(size: CGSize(width: 1366, height: 1024), contentTop: 120, chromeTop: 110, listBottom: 90, maxWidth: ContentWidthLimit.tablet)
+        let pad = HomeLayout(size: CGSize(width: 1366, height: 1024), contentTop: 120, chromeTop: 110, listBottom: 90, maxWidth: ContentWidthLimit.readable)
         XCTAssertEqual(pad.content, rect(283, 0, 800, 1024))
         XCTAssertEqual(pad.empty, rect(283, 120, 800, 814))
         // The insets are the list's own, so they stay as they were.
