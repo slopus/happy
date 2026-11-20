@@ -408,7 +408,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     onQueryReady: (q) => {
                         permissionHandler.setPermissionModeUpdater(async (mode) => {
                             await q.setPermissionMode(mode);
-                        });
+                        }, q.permissionMode);
                     },
                     onThinkingChange: session.onThinkingChange,
                     claudeEnvVars: session.claudeEnvVars,
