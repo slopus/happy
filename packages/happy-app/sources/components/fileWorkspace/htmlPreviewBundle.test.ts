@@ -47,3 +47,14 @@ it('embeds locally read classic script bytes without an opaque-frame blob reques
     expect(doc.querySelector('script')?.textContent).toContain('DOMContentLoaded');
     result.dispose();
 });
+
+it('bundles local video sources and poster images with their media MIME types', async () => {
+    const read = vi.fn(async () => encode('bytes'));
+    const result = await buildHtmlFilePreview('<video poster="poster.jpg"><source src="film.mp4" type="video/mp4"></video>', '/work/index.html', '/work', read);
+    const doc = new DOMParser().parseFromString(result.html, 'text/html');
+    expect(doc.querySelector('video')?.getAttribute('poster')).toMatch(/^blob:/);
+    expect(read).toHaveBeenCalledWith('/work/poster.jpg');
+    expect(read).toHaveBeenCalledWith('/work/film.mp4');
+    expect(vi.mocked(URL.createObjectURL).mock.calls.map(([blob]) => (blob as Blob).type)).toContain('video/mp4');
+    result.dispose();
+});

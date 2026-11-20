@@ -1,7 +1,7 @@
 import * as css from 'css-tree';
 import { t } from '@/text';
 import { resolvePreviewPath } from './previewResources';
-const mime = (path: string) => ({ css: 'text/css', js: 'text/javascript', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', woff: 'font/woff', woff2: 'font/woff2' }[path.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream');
+const mime = (path: string) => ({ css: 'text/css', js: 'text/javascript', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', woff: 'font/woff', woff2: 'font/woff2', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg' }[path.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream');
 /** Static local dependencies only. Never receives app credentials or a tool bridge. */
 export async function buildHtmlFilePreview(content: string, path: string, root: string, read: (path: string) => Promise<Uint8Array>) {
     const doc = new DOMParser().parseFromString(content, 'text/html');
@@ -57,6 +57,7 @@ export async function buildHtmlFilePreview(content: string, path: string, root: 
                 node.textContent = code.replace(/<\/script/gi, '<\\/script');
             } else node.setAttribute('src', await resource(node.getAttribute('src') ?? '', path));
         }
+        for (const node of Array.from(doc.querySelectorAll<HTMLVideoElement>('video[poster]'))) node.setAttribute('poster', await resource(node.getAttribute('poster') ?? '', path));
         doc.querySelectorAll('a[href]').forEach(node => { if (!node.getAttribute('href')?.startsWith('#')) node.removeAttribute('href'); });
         const policy = doc.createElement('meta'); policy.httpEquiv = 'Content-Security-Policy';
         policy.content = "default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline' blob:; img-src blob: data:; font-src blob:; media-src blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";

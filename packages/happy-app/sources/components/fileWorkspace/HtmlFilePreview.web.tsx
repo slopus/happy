@@ -6,6 +6,7 @@ import { t } from '@/text';
 import { WorkspaceButton } from './WorkspaceButton';
 import { readWorkspaceBytes } from './fileIO';
 import { buildHtmlFilePreview } from './htmlPreviewBundle';
+import { readChunkedBytes } from './readChunkedBytes';
 
 export const HtmlFilePreview = React.memo(function HtmlFilePreview({ sessionId, path, content, root, revision = 0, readBytes, onReady }: { sessionId: string; path: string; content: string; root: string; revision?: number; readBytes?: (path: string, signal?: AbortSignal) => Promise<Uint8Array>; onReady?: (ready: boolean) => void }) {
     const { theme } = useUnistyles();
@@ -17,7 +18,20 @@ export const HtmlFilePreview = React.memo(function HtmlFilePreview({ sessionId, 
         let cancelled = false; let cleanup: (() => void) | undefined;
         const abort = new AbortController();
         setResult({}); setInteractive(false); onReady?.(false);
-        void buildHtmlFilePreview(content, path, root, readBytes ? file => readBytes(file, abort.signal) : file => readWorkspaceBytes(sessionId, file)).then(value => {
+        // Bound archive readers retain their original root. Normal session links
+        // outside the workspace use the existing read-only RPC, scoped here to
+        // the selected HTML directory for all relative dependencies.
+        const external = !readBytes && !path.startsWith(root.replace(/\/+$/, '') + '/');
+        const previewRoot = external ? path.slice(0, path.lastIndexOf('/')) || '/' : root;
+        const read = async (file: string) => {
+            if (readBytes) return readBytes(file, abort.signal);
+            if (/\.(mp4|webm|mp3|wav|ogg)$/i.test(file)) {
+                const { apiSocket } = await import('@/sync/apiSocket');
+                return readChunkedBytes((offset, length, revision) => apiSocket.sessionRPC(sessionId, 'readFileChunk', { path: file, scopeRoot: previewRoot, offset, length, ...(revision ? { revision } : {}) }), abort.signal);
+            }
+            return readWorkspaceBytes(sessionId, file, undefined, external);
+        };
+        void buildHtmlFilePreview(content, path, previewRoot, read).then(value => {
             if (cancelled) { value.dispose(); return; }
             cleanup = value.dispose; setResult({ html: value.html }); onReady?.(true);
         }).catch(() => { if (!cancelled) setResult({ error: t('fileWorkspace.previewFailed') }); });
