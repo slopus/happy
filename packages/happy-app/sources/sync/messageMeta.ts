@@ -55,7 +55,8 @@ export function resolveMessageModeMeta(
         : normalizeModelEffortKey(flavor, modelMode ?? 'default', requestedEffort, session.metadata);
     const supportsEffort = !flavor
         || flavor === 'claude'
-        || flavor === 'codex';
+        || flavor === 'codex'
+        || flavor === 'antigravity';
     if (supportsEffort && effort !== undefined) {
         meta.effort = effort === 'default' ? null : effort;
     }

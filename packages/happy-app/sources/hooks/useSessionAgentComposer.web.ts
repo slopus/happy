@@ -118,7 +118,7 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
                 supportsFast: supportsCodexFast(modelMetadata, selection.modelMode), fastMode: choice?.fastMode === true,
                 onFastModeChange: enabled => update({ fastMode: enabled }),
             } : base),
-            online,
+            online: online && (pending || base.online),
             agentSwitcher: { id: selected, current: agents.find(a => a.key === selected)!.label,
                 next: busy || cycle.length < 2 ? null : next.label,
                 onSwitch: () => { if (!busy && cycle.length > 1) setDraft(previous => ({ scope, agent: next.key, choices: previous.scope === scope ? previous.choices : {} })); },

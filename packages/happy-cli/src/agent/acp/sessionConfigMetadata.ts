@@ -190,6 +190,14 @@ export function mergeAcpSessionConfigIntoMetadata(metadata: Metadata, snapshot: 
 
     applyConfigCategory(next, modeOption, 'mode');
     applyConfigCategory(next, modelOption, 'model');
+    if (metadata.flavor === 'antigravity' && next.models) {
+      next.models = next.models.map(model => {
+        const prior = metadata.models?.find(item => item.code === model.code)?.supportedEffortLevels;
+        const levels = model.code === modelOption?.currentValue
+          ? flattenConfigSelectOptions(thoughtLevelOption?.options).map(level => level.code) : prior;
+        return levels === undefined ? model : { ...model, supportedEffortLevels: levels };
+      });
+    }
     applyConfigCategory(next, thoughtLevelOption, 'thought_level');
   }
 
@@ -216,4 +224,24 @@ export function mergeAcpSessionConfigIntoMetadata(metadata: Metadata, snapshot: 
   }
 
   return next;
+}
+
+/** agy advertises legacy base-effort IDs alongside categorized configOptions.
+ * Use those actual IDs only to seed unobserved model ranges; the current
+ * model's configOptions remain authoritative and are revalidated before use.
+ */
+export function mergeAntigravityLegacyEfforts(metadata: Metadata, legacy: SessionModelState): Metadata {
+  if (metadata.flavor !== 'antigravity' || !metadata.models) return metadata;
+  return { ...metadata, models: metadata.models.map(model => {
+    const levels = model.code === metadata.currentModelCode && metadata.thoughtLevels
+      ? metadata.thoughtLevels.map(level => level.code)
+      : model.supportedEffortLevels ?? legacy.availableModels.flatMap(variant => {
+        const prefix = `${model.code}-`;
+        if (!variant.modelId.startsWith(prefix)) return [];
+        const effort = variant.modelId.slice(prefix.length);
+        return ['low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ? [effort] : [];
+      });
+    return levels.length || model.supportedEffortLevels !== undefined || (model.code === metadata.currentModelCode && metadata.thoughtLevels)
+      ? { ...model, supportedEffortLevels: [...new Set(levels)] } : model;
+  }) };
 }

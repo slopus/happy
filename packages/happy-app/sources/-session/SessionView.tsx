@@ -1,3 +1,4 @@
+import { useAgyConfig } from '@/hooks/useAgyConfig';
 import { useSessionAttachmentDraft } from '@/hooks/useSessionAttachmentDraft';
 import { useSessionAgentComposer } from '@/hooks/useSessionAgentComposer';
 import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
@@ -1746,15 +1747,18 @@ function SessionViewLoaded({
         agentDefaultOverrides,
         translate: t,
     }), [agentDefaultOverrides, session]);
+    const agyConfig = useAgyConfig(sessionId, session.metadata?.flavor);
     const handleModelChange = React.useCallback((key: string) => {
+        if (session.metadata?.flavor === 'antigravity') { void agyConfig.apply({ model: key }); return; }
         storage.getState().updateSessionModelMode(sessionId, key);
         if (!supportsCodexFast(session.metadata, key)) {
             storage.getState().updateSessionFastMode(sessionId, false);
         }
-    }, [session.metadata, sessionId]);
+    }, [session.metadata, sessionId, agyConfig.apply]);
     const handleEffortChange = React.useCallback((key: string) => {
+        if (session.metadata?.flavor === 'antigravity') { void agyConfig.apply({ effort: key }); return; }
         storage.getState().updateSessionEffortLevel(sessionId, key);
-    }, [sessionId]);
+    }, [sessionId, session.metadata?.flavor, agyConfig.apply]);
     const handleFastModeChange = React.useCallback((enabled: boolean) => {
         storage.getState().updateSessionFastMode(sessionId, enabled);
     }, [sessionId]);
@@ -1762,7 +1766,7 @@ function SessionViewLoaded({
     const modeSelector = React.useMemo(() => ({
         unifiedCodex: session.metadata?.flavor === 'codex',
         refreshScope: sessionId,
-        online: !isDisconnected,
+        online: !isDisconnected && !agyConfig.busy,
         model: nextTurnModes.modelMode,
         modelOptions: nextTurnModes.availableModels,
         effort: nextTurnModes.effortLevel,
@@ -1779,7 +1783,7 @@ function SessionViewLoaded({
         fastMode: session.fastMode === true,
         supportsFast: nextTurnModes.supportsFast,
         onFastModeChange: handleFastModeChange,
-    }), [handleEffortChange, handleFastModeChange, handleModelChange, handleRefreshModels, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor, session.metadata?.capabilities?.codexModelCatalogRefresh, session.metadata?.capabilities?.claudeModelCatalogRefresh, sessionId]);
+    }), [agyConfig.busy, handleEffortChange, handleFastModeChange, handleModelChange, handleRefreshModels, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor, session.metadata?.capabilities?.codexModelCatalogRefresh, session.metadata?.capabilities?.claudeModelCatalogRefresh, sessionId]);
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。
@@ -2051,7 +2055,7 @@ function SessionViewLoaded({
             onSend={agentComposer?.pendingAgent ? () => { void agentComposer.submit(); } : handleSend}
             newSessionAgent={agentComposer?.pendingAgent}
             isSending={agentComposer?.sending}
-            isSendDisabled={Boolean(agentComposer?.pendingAgent && agentComposer.disabled)}
+            isSendDisabled={agyConfig.busy || Boolean(agentComposer?.pendingAgent && agentComposer.disabled)}
             onQueue={!agentComposer?.pendingAgent && isTaskRunning ? handleSend : undefined}
             sendLabel={agentComposer?.pendingAgent ? t('sidebar.newSession') : isTaskRunning ? t('messageQueue.enqueueSend') : undefined}
             sendHint={agentComposer?.pendingAgent ? t('agentInput.newAgentSessionHint') : isTaskRunning ? t('messageQueue.enqueueHint') : undefined}

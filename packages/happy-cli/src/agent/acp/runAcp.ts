@@ -33,6 +33,7 @@ import {
   extractModeStateFromPayload,
   extractModelStateFromPayload,
   mergeAcpSessionConfigIntoMetadata,
+  mergeAntigravityLegacyEfforts,
 } from './sessionConfigMetadata';
 import type { SessionConfigOption, SessionModeState, SessionModelState } from '@agentclientprotocol/sdk';
 import { registerSessionTitleWorker } from '@/title/sessionTitleWorker';
@@ -276,6 +277,7 @@ function formatEnvelopeForServerLog(agentName: string, envelope: SessionEnvelope
 type AcpSwitchMode = {
   attachmentError?: string;
   imageBatchId?: string;
+  effort?: string | null;
   permissionMode?: string;
   model?: string | null;
 };
@@ -330,12 +332,13 @@ function flattenSelectOptions(options: unknown): AcpSelectableOption[] {
 
 function extractConfigSelector(
   configOptions: SessionConfigOption[],
-  category: 'mode' | 'model',
+  category: 'mode' | 'model' | 'thought_level',
 ): AcpConfigSelector | null {
   const optionMatchesCategory = (option: SessionConfigOption): boolean => {
     if (option.category === category) {
       return true;
     }
+    if (category === 'thought_level') return false;
     // Some ACP providers omit category; fallback to id/name heuristics.
     const id = normalizeComparable(option.id);
     const name = normalizeComparable(option.name);
@@ -581,6 +584,14 @@ export async function runAcp(opts: {
   let currentModel: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;
   let modelSelector: AcpConfigSelector | null = null;
+  let effortSelector: AcpConfigSelector | null = null;
+  let configSnapshot: SessionConfigOption[] = [];
+  let configTail: Promise<unknown> = Promise.resolve();
+  const serializeConfig = <T>(action: () => Promise<T>): Promise<T> => {
+    const next = configTail.then(action);
+    configTail = next.catch(() => {});
+    return next;
+  };
   let hasCategorizedModeConfig = false;
   let hasCategorizedModelConfig = false;
   let legacyModes: SessionModeState | null = null;
@@ -731,9 +742,11 @@ export async function runAcp(opts: {
       }
       const switched = await backend.setSessionConfigOption(modelSelector.configId, resolved);
       if (switched) {
+        if (opts.agentName === 'antigravity' && modelSelector.currentCode !== resolved) throw new Error('Model change was not confirmed');
         modelSelector.currentCode = resolved;
         return;
       }
+      if (opts.agentName === 'antigravity') throw new Error('Model change failed');
     }
 
     if (!legacyModels) {
@@ -755,6 +768,19 @@ export async function runAcp(opts: {
         ...legacyModels,
         currentModelId: resolvedLegacyModel,
       };
+    }
+  };
+
+  const switchEffortIfRequested = async (effort: string | null | undefined) => {
+    if (!effort) return;
+    const selector = effortSelector;
+    if (!selector || !selector.options.some(option => option.code === effort)) {
+      throw new Error(`Unsupported reasoning effort for the selected model: ${effort}`);
+    }
+    if (selector.currentCode === effort) return;
+    if (!await backend.setSessionConfigOption(selector.configId, effort)
+      || effortSelector?.currentCode !== effort) {
+      throw new Error(`Failed to confirm reasoning effort: ${effort}`);
     }
   };
 
@@ -800,6 +826,8 @@ export async function runAcp(opts: {
         hasCategorizedModelConfig = configOptions.some(option => option.type === 'select' && option.category === 'model');
         modeSelector = extractConfigSelector(configOptions, 'mode');
         modelSelector = extractConfigSelector(configOptions, 'model');
+        effortSelector = extractConfigSelector(configOptions, 'thought_level');
+        configSnapshot = configOptions;
         if (verbose) {
           if (modeSelector) {
             sawModes = true;
@@ -820,9 +848,10 @@ export async function runAcp(opts: {
             logAcp('muted', `Outgoing model options from ${opts.agentName}: not reported in config options`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
-          mergeAcpSessionConfigIntoMetadata(currentMetadata, { configOptions }),
-        );
+        session.updateMetadata((currentMetadata) => {
+          const next = mergeAcpSessionConfigIntoMetadata(currentMetadata, { configOptions });
+          return legacyModels ? mergeAntigravityLegacyEfforts(next, legacyModels) : next;
+        });
       }
     }
 
@@ -859,6 +888,7 @@ export async function runAcp(opts: {
         if (!hasCategorizedModelConfig) session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { models }),
         );
+        if (hasCategorizedModelConfig && opts.agentName === 'antigravity') session.updateMetadata(currentMetadata => mergeAntigravityLegacyEfforts(currentMetadata, models));
       }
     }
 
@@ -950,6 +980,7 @@ export async function runAcp(opts: {
       logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
     }
     const mode: AcpSwitchMode = { permissionMode: currentPermissionMode, model: currentModel,
+      ...(opts.agentName === 'antigravity' ? { effort: message.meta?.effort ?? null } : {}),
       ...(claimedImages.length ? { imageBatchId: randomUUID() } : {}) };
     void processUserMessage(async () => {
       const results = await Promise.all(claimedImages);
@@ -994,6 +1025,18 @@ export async function runAcp(opts: {
   }
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
+  if (opts.agentName === 'antigravity') session.rpcHandlerManager.registerHandler('setAcpConfig', async (request: { model?: string; effort?: string | null }) => serializeConfig(async () => {
+    if (shouldExit || !acpSessionId || thinking || pendingTurn) throw new Error('Session must be idle to change configuration');
+    if (request.model !== undefined) {
+      if (typeof request.model !== 'string' || !modelSelector?.options.some(option => option.code === request.model)) throw new Error('Unknown model');
+      await switchModelIfRequested(request.model);
+      if (modelSelector?.currentCode !== request.model) throw new Error('Model change was not confirmed');
+    }
+    if (request.effort !== undefined && request.effort !== null && typeof request.effort !== 'string') throw new Error('Invalid effort');
+    await switchEffortIfRequested(request.effort);
+    return { configOptions: configSnapshot };
+  }));
+
   registerSessionTitleWorker(session, 'acp');
 
   archiveCurrentSession = (reason?: string) => {
@@ -1049,13 +1092,19 @@ export async function runAcp(opts: {
       const turnEnded = waitForTurnEnd();
       // Backend errors can settle the turn before sendPrompt rejects.
       void turnEnded.catch(() => {});
+      let promptStarted = false;
       try {
-        if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
-          await switchPermissionModeIfRequested(batch.mode.permissionMode);
-        }
-        if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
-          await switchModelIfRequested(batch.mode.model);
-        }
+        await serializeConfig(async () => {
+          if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
+            await switchPermissionModeIfRequested(batch.mode.permissionMode);
+          }
+          if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
+            await switchModelIfRequested(batch.mode.model);
+            if (opts.agentName === 'antigravity' && modelSelector?.currentCode !== batch.mode.model) throw new Error('Model change was not confirmed');
+          }
+          if (opts.agentName === 'antigravity') await switchEffortIfRequested(batch.mode.effort);
+        });
+        promptStarted = true;
         const images = (batch.attachments ?? []).filter((a): a is ImageAttachment => !isMediaAttachment(a));
         if (images.length) await backend.sendPrompt(acpSessionId, batch.message, images);
         else await backend.sendPrompt(acpSessionId, batch.message);
@@ -1066,8 +1115,8 @@ export async function runAcp(opts: {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
-        if (error instanceof AcpImagePromptError) {
-          sendEnvelopes(sessionManager.mapMessage({ type: 'model-output', textDelta: error.message }));
+        if (error instanceof AcpImagePromptError || !promptStarted) {
+          sendEnvelopes(sessionManager.mapMessage({ type: 'model-output', textDelta: error instanceof Error ? error.message : String(error) }));
           sendEnvelopes(sessionManager.endTurn('failed'));
           clearPendingTurn();
           thinking = false;

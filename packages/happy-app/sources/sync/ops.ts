@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { asyncQuestionResponseSchema, type AsyncQuestionAction, type AsyncQuestionResponse } from '@slopus/happy-wire';
 import { ClaudeModelCatalogSchema, type ClaudeModelCatalog } from '@slopus/happy-wire';
 /**
@@ -777,6 +778,22 @@ export async function sessionRestoreMetadata(
  * Abort the current session operation
  */
 /** A user action refreshes the catalog on its own execution connection. */
+const agyConfigResponse = z.object({ configOptions: z.array(z.object({
+    id: z.string(), category: z.string().optional(), type: z.string(), currentValue: z.string(),
+    options: z.unknown().optional(),
+})) });
+
+export async function sessionSetAgyConfig(sessionId: string, request: { model?: string; effort?: string }): Promise<{ model: string; effort: string | null }> {
+    const result = agyConfigResponse.parse(await apiSocket.sessionRPC(sessionId, 'setAcpConfig', request, {
+        timeoutMs: 30_000, overallTimeoutMs: 30_000,
+    }));
+    const model = result.configOptions.find(option => option.type === 'select' && option.category === 'model');
+    const effort = result.configOptions.find(option => option.type === 'select' && option.category === 'thought_level');
+    if (!model || (request.model && model.currentValue !== request.model)
+        || (request.effort && effort?.currentValue !== request.effort)) throw new Error('agy did not confirm the requested configuration');
+    return { model: model.currentValue, effort: effort?.currentValue ?? null };
+}
+
 export async function sessionRefreshModels(sessionId: string): Promise<void> {
     const result = await apiSocket.sessionRPC<{ success: boolean }, {}>(sessionId, 'refreshModels', {}, {
         timeoutMs: 30_000, overallTimeoutMs: 30_000,

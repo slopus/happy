@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => {
   const backendState = {
     listeners: [] as Array<(message: any) => void>,
     prompts: [] as Array<{ sessionId: string; prompt: string; images?: unknown[] }>,
+    configResponse: null as null | ((id: string, value: string) => any),
     setConfigOptionCalls: [] as Array<{ configId: string; value: string }>,
     setModeCalls: [] as string[],
     setModelCalls: [] as string[],
@@ -166,6 +167,8 @@ vi.mock('./AcpBackend', () => ({
 
     async setSessionConfigOption(configId: string, value: string) {
       mocks.backendState.setConfigOptionCalls.push({ configId, value });
+      const update = mocks.backendState.configResponse?.(configId, value);
+      if (update) for (const listener of mocks.backendState.listeners) listener(update);
       return true;
     }
 
@@ -212,6 +215,7 @@ describe('runAcp', () => {
     mocks.backendState.listeners = [];
     mocks.backendState.prompts = [];
     mocks.backendState.setConfigOptionCalls = [];
+    mocks.backendState.configResponse = null;
     mocks.backendState.setModeCalls = [];
     mocks.backendState.setModelCalls = [];
     mocks.backendState.startSessionMessages = [];
@@ -628,6 +632,25 @@ describe('runAcp', () => {
     } finally { await mocks.getKillHandler()!(); await run; }
   });
 
+  it('applies model then its refreshed effort before prompting Antigravity', async () => {
+    const config = (model: string, levels: string[], effort: string) => ({ type: 'event', name: 'config_options_update', payload: { configOptions: [
+      { type: 'select', id: 'model', category: 'model', name: 'Model', currentValue: model, options: ['neon', 'argon'].map(value => ({ value, name: value })) },
+      { type: 'select', id: 'thought_level', category: 'thought_level', name: 'Thinking Level', currentValue: effort, options: levels.map(value => ({ value, name: value })) },
+    ] } });
+    mocks.backendState.startSessionMessages = [config('neon', ['high', 'xhigh'], 'xhigh')];
+    mocks.backendState.configResponse = (id: string, value: string) => config('argon', ['low', 'medium', 'high'], id === 'thought_level' ? value : 'medium');
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
+    await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+    try {
+      const result = await mocks.sessionHandlers.get('setAcpConfig')!({ model: 'argon' });
+      expect(result.configOptions.find((option: any) => option.category === 'thought_level').options.map((x: any) => x.value)).toEqual(['low', 'medium', 'high']);
+      await expect(mocks.sessionHandlers.get('setAcpConfig')!({ effort: 'xhigh' })).rejects.toThrow('Unsupported reasoning effort');
+      mocks.getUserMessageHandler()!({ content: { text: 'hi' }, meta: { model: 'argon', effort: 'high' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([{ configId: 'model', value: 'argon' }, { configId: 'thought_level', value: 'high' }]);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
   it('keeps selectable config catalogs when Antigravity also publishes legacy model IDs', async () => {
     mocks.backendState.startSessionMessages = [
       { type: 'event', name: 'config_options_update', payload: { configOptions: [
@@ -652,11 +675,12 @@ describe('runAcp', () => {
     });
     await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
     try {
-      const metadata = mocks.mockSession.updateMetadata.mock.calls.reduce<Record<string, unknown>>((current, [apply]) => apply(current), {});
-      expect(metadata.models).toEqual([{ code: 'gemini-4-neon', value: 'Gemini 4 Neon' }, { code: 'gemini-3.8-flash', value: 'Gemini 3.8 Flash' }]);
+      const metadata = mocks.mockSession.updateMetadata.mock.calls.reduce<Record<string, unknown>>((current, [apply]) => apply(current), { flavor: 'antigravity' });
+      expect(metadata.models).toEqual([{ code: 'gemini-4-neon', value: 'Gemini 4 Neon', supportedEffortLevels: [] }, { code: 'gemini-3.8-flash', value: 'Gemini 3.8 Flash' }]);
       expect(metadata.currentModelCode).toBe('gemini-4-neon');
       expect(metadata.currentOperatingModeCode).toBe('plan');
       expect(metadata.operatingModes).toEqual([{ code: 'default', value: 'Default' }, { code: 'plan', value: 'Plan' }]);
+      mocks.backendState.configResponse = (id, value) => ({ ...mocks.backendState.startSessionMessages[0], payload: { configOptions: mocks.backendState.startSessionMessages[0].payload.configOptions.map((option: any) => option.id === id ? { ...option, currentValue: value } : option) } });
       mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'Use the selected model' }, meta: { model: 'gemini-3.8-flash' } });
       await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
       expect(mocks.backendState.setConfigOptionCalls).toContainEqual({ configId: 'model', value: 'gemini-3.8-flash' });

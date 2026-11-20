@@ -282,6 +282,10 @@ export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
 export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string, metadata?: Metadata | null): EffortLevel[] {
+    if (flavor === 'antigravity') {
+        if (metadata?.currentModelCode === modelKey) return mapMetadataOptions(metadata.thoughtLevels);
+        return (metadata?.models?.find(model => model.code === modelKey)?.supportedEffortLevels ?? []).map(key => ({ key, name: key }));
+    }
     if (flavor === 'claude') {
         const levels = metadata?.models?.find(model => model.code === modelKey)?.supportedEffortLevels;
         if (levels) return levels.map(key => ({ key, name: key }));
@@ -322,6 +326,12 @@ export function normalizeModelEffortKey(
         if (!supported) return effortKey;
         if (!supported.length) return null;
         return effortKey && supported.includes(effortKey) ? effortKey : supported.includes('medium') ? 'medium' : supported[0];
+    }
+    if (flavor === 'antigravity') {
+        const levels = getEffortLevelsForModel(flavor, modelKey, metadata);
+        if (effortKey && levels.some(level => level.key === effortKey)) return effortKey;
+        const current = metadata?.currentModelCode === modelKey ? metadata.currentThoughtLevelCode : null;
+        return current && levels.some(level => level.key === current) ? current : null;
     }
     if (flavor !== 'codex') return effortKey;
     const levels = getEffortLevelsForModel(flavor, modelKey, metadata).filter((level) => level.key !== 'default');

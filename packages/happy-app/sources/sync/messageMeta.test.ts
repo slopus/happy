@@ -250,3 +250,11 @@ describe('resolveMessageModeMeta', () => {
         expect(meta).toEqual(expected);
     });
 });
+
+it('carries Antigravity effort to the executor, dropping stale cross-model values', () => {
+    const session = { modelMode: 'argon', effortLevel: 'high', metadata: { flavor: 'antigravity', currentModelCode: 'argon',
+        currentThoughtLevelCode: 'medium', thoughtLevels: [{ code: 'medium', value: 'Medium' }, { code: 'high', value: 'High' }] } } as any;
+    expect(resolveMessageModeMeta(session).effort).toBe('high');
+    session.effortLevel = 'xhigh';
+    expect(resolveMessageModeMeta(session).effort).toBe('medium');
+});

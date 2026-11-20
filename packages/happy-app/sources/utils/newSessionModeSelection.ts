@@ -1,5 +1,6 @@
 import {
     getEffortLevelsForModel,
+    normalizeModelEffortKey,
     getHardcodedModelModes,
     getHardcodedPermissionModes,
     type ModeOption,
@@ -128,7 +129,9 @@ export function resolveNewSessionModeSelection(args: {
     });
 
     const effortOptions = getEffortLevelsForModel(agent, resolvedModelMode, effortMetadata);
-    const resolvedEffortLevel = resolveEffortKey({
+    const resolvedEffortLevel = agent === 'antigravity'
+        ? (!effortLevel || effortLevel === 'default' ? null : normalizeModelEffortKey(agent, resolvedModelMode, effortLevel, effortMetadata) ?? null)
+        : resolveEffortKey({
         draftKey: effortLevel,
         fallbackKey: effectiveDefaults.effortLevel,
         codeDefaultKey: codeDefaults.effortLevel,

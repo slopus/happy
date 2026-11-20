@@ -1,3 +1,4 @@
+import { isAgyConfigPending } from './agyConfigPending';
 import { resolveComposerReferences, parseComposerDraft, composerReferenceDisplay, buildComposerReferenceExcerpt } from './composerReferences';
 import { saveSessionWarmMessageTime } from './sessionWarmCache';
 import { getConversationMessageTime } from './sessionConversationTime';
@@ -1960,6 +1961,7 @@ class Sync {
     private failedCodexRecovery = new FailedCodexSessionRecovery();
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<LocalMessageQueueReceipt> {
+        if (isAgyConfigPending(sessionId)) throw new Error('Wait for the model configuration to finish before sending');
         if (isRetiredSession(storage.getState().sessions[sessionId] ?? {})) throw new Error('personal-agent-retired');
         const userSentAt = Date.now();
         options = { ...options, userSentAt };

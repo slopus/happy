@@ -1,3 +1,4 @@
+import { useAgyConfig } from '@/hooks/useAgyConfig';
 import * as React from 'react';
 import { View, Text, Pressable, Platform, LayoutAnimation } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -187,18 +188,21 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
             setExpanded(null);
         }
     }, [animateNext, taskPermission.onLevelChange]);
+    const agyConfig = useAgyConfig(session.id, session.metadata?.flavor);
     const applyModel = React.useCallback((key: string) => {
+        if (session.metadata?.flavor === 'antigravity') { void agyConfig.apply({ model: key }); setExpanded(null); return; }
         if (!online) return;
         storage.getState().updateSessionModelMode(session.id, key);
         animateNext();
         setExpanded(null);
-    }, [session.id, animateNext, online]);
+    }, [session.id, session.metadata?.flavor, agyConfig.apply, animateNext, online]);
     const applyEffort = React.useCallback((key: string) => {
+        if (session.metadata?.flavor === 'antigravity') { void agyConfig.apply({ effort: key }); setExpanded(null); return; }
         if (!online) return;
         storage.getState().updateSessionEffortLevel(session.id, key);
         animateNext();
         setExpanded(null);
-    }, [session.id, animateNext, online]);
+    }, [session.id, session.metadata?.flavor, agyConfig.apply, animateNext, online]);
     const copySessionId = React.useCallback(async () => {
         await Clipboard.setStringAsync(`Happy sessionId: ${session.id}`);
         onClose();

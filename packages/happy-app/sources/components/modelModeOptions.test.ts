@@ -239,3 +239,19 @@ describe('Antigravity connection catalog', () => {
         expect(getAvailableModels('antigravity', metadata as any, translate).map(option => option.key)).toEqual(['gemini-4-neon']);
     });
 });
+
+describe('Antigravity dynamic effort', () => {
+    const metadata = { currentModelCode: 'neon', currentThoughtLevelCode: 'xhigh',
+        thoughtLevels: [{ code: 'xhigh', value: 'Extra' }], models: [
+            { code: 'argon', value: 'Argon', supportedEffortLevels: ['low', 'medium', 'high'] },
+        ] } as any;
+    it('uses only the selected model catalog, never another model snapshot', () => {
+        expect(getEffortLevelsForModel('antigravity', 'neon', metadata)).toEqual([{ key: 'xhigh', name: 'Extra', description: null }]);
+        expect(getEffortLevelsForModel('antigravity', 'argon', metadata).map(x => x.key)).toEqual(['low', 'medium', 'high']);
+        expect(getEffortLevelsForModel('antigravity', 'unknown', metadata)).toEqual([]);
+    });
+    it('drops unsupported effort and follows agy current value only for that model', () => {
+        expect(normalizeModelEffortKey('antigravity', 'argon', 'xhigh', metadata)).toBeNull();
+        expect(normalizeModelEffortKey('antigravity', 'neon', 'low', metadata)).toBe('xhigh');
+    });
+});

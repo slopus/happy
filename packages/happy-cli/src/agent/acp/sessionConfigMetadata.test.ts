@@ -3,6 +3,7 @@ import type { Metadata } from '@/api/types';
 import type { SessionConfigOption } from '@agentclientprotocol/sdk';
 import {
   extractConfigOptionsFromPayload,
+  mergeAntigravityLegacyEfforts,
   mergeAcpSessionConfigIntoMetadata,
 } from './sessionConfigMetadata';
 
@@ -181,4 +182,28 @@ describe('sessionConfigMetadata', () => {
     expect(extractConfigOptionsFromPayload({ configOptions: [option] })).toEqual([option]);
     expect(extractConfigOptionsFromPayload({})).toBeNull();
   });
+});
+
+it('records only observed Antigravity model ranges and preserves them across model switches', () => {
+  const config = (model: string, levels: string[]) => ({ configOptions: [
+    { type: 'select', category: 'model', id: 'model', name: 'Model', currentValue: model, options: ['neon', 'argon', 'unknown'].map(value => ({ value, name: value })) },
+    { type: 'select', category: 'thought_level', id: 'thought_level', name: 'Thinking Level', currentValue: levels[0], options: levels.map(value => ({ value, name: value })) },
+  ] as SessionConfigOption[] });
+  const initial = mergeAcpSessionConfigIntoMetadata({ ...createBaseMetadata(), flavor: 'antigravity' }, config('neon', ['high', 'xhigh']));
+  const next = mergeAcpSessionConfigIntoMetadata(initial, config('argon', ['low', 'high']));
+  expect(next.models?.find(model => model.code === 'neon')?.supportedEffortLevels).toEqual(['high', 'xhigh']);
+  expect(next.models?.find(model => model.code === 'argon')?.supportedEffortLevels).toEqual(['low', 'high']);
+  expect(next.models?.find(model => model.code === 'unknown')?.supportedEffortLevels).toBeUndefined();
+  expect(next.thoughtLevels?.map(level => level.code)).toEqual(['low', 'high']);
+});
+
+it('uses only actually advertised agy variants for unobserved model ranges', () => {
+  const metadata = { ...createBaseMetadata(), flavor: 'antigravity', currentModelCode: 'neon',
+    thoughtLevels: [{ code: 'high', value: 'High' }], models: [{ code: 'neon', value: 'Neon' }, { code: 'argon', value: 'Argon' }, { code: 'other', value: 'Other' }] } as Metadata;
+  const next = mergeAntigravityLegacyEfforts(metadata, { currentModelId: 'neon-high', availableModels: [
+    { modelId: 'neon-xhigh', name: 'Neon (XHigh)' }, { modelId: 'argon-low', name: 'Argon (Low)' }, { modelId: 'argon-high', name: 'Argon (High)' },
+  ] });
+  expect(next.models?.find(model => model.code === 'neon')?.supportedEffortLevels).toEqual(['high']);
+  expect(next.models?.find(model => model.code === 'argon')?.supportedEffortLevels).toEqual(['low', 'high']);
+  expect(next.models?.find(model => model.code === 'other')?.supportedEffortLevels).toBeUndefined();
 });

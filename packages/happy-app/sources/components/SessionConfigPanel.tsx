@@ -1181,7 +1181,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 draft.setEffortLevel(idx >= 0 ? defaultEffort : effortLevels[effortLevels.length - 1]?.key ?? null);
             } else {
                 setEffortIndex(0);
-                draft.setEffortLevel(effortLevels[0]?.key ?? null);
+                draft.setEffortLevel(selectedAgent === 'antigravity' ? null : effortLevels[0]?.key ?? null);
             }
         }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, resolvedModeSelection.modelMode, currentModelKey, effortLevels, selectedAgent, modelMetadata]);
 
@@ -1330,7 +1330,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
         const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS.find(a => a.key === selectedAgent) ?? availableAgents[0] ?? ALL_AGENTS[0];
         const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
-        const currentEffort = effortLevels[effortIndex] ?? effortLevels[0];
+        const currentEffort = selectedAgent === 'antigravity'
+            ? effortLevels.find(level => level.key === resolvedModeSelection.effortLevel) ?? null
+            : effortLevels[effortIndex] ?? effortLevels[0] ?? null;
         const permissionStyle = currentPermission?.key !== 'default' ? getPermissionStyle(currentPermission.key) : null;
 
         // Display values

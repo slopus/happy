@@ -1,3 +1,4 @@
+import { beginAgyConfig, finishAgyConfig } from './agyConfigPending';
 import * as warmCacheReview from './sessionWarmCache';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -986,6 +987,25 @@ describe('real session writer composition', () => {
 
 
 describe('confirmed user-send navigation clock', () => {
+    it('blocks stale message metadata until the shared ACP configuration request finishes', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        beginAgyConfig('writer-session');
+        try {
+            await expect(sync.sendMessage('writer-session', 'during config')).rejects.toThrow('Wait for the model configuration');
+            expect(subject.pendingOutbox.has('writer-session')).toBe(false);
+        } finally { finishAgyConfig('writer-session'); }
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        storage.getState().updateSessionModelMode('writer-session', 'argon');
+        storage.getState().updateSessionEffortLevel('writer-session', 'high');
+        const session = storage.getState().sessions['writer-session'];
+        session.metadata = { ...session.metadata!, flavor: 'antigravity', currentModelCode: 'argon', currentThoughtLevelCode: 'high',
+            thoughtLevels: [{ code: 'high', value: 'High' }] };
+        const crypto = subject.encryption.getSessionEncryption('writer-session');
+        const encrypt = vi.spyOn(crypto, 'encryptRawRecord');
+        await sync.sendMessage('writer-session', 'after config');
+        expect(encrypt.mock.calls.at(-1)?.[0]).toMatchObject({ meta: { model: 'argon', effort: 'high' } });
+    });
+
     it('waits for the exact text ACK, ignoring draft, attachments and Agent activity', async () => {
         await sync.ensureSessionHydrated('writer-session');
         vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
