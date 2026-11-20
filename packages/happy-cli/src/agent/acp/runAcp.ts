@@ -581,6 +581,8 @@ export async function runAcp(opts: {
   let currentModel: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;
   let modelSelector: AcpConfigSelector | null = null;
+  let hasCategorizedModeConfig = false;
+  let hasCategorizedModelConfig = false;
   let legacyModes: SessionModeState | null = null;
   let legacyModels: SessionModelState | null = null;
   let sawSlashCommands = false;
@@ -792,6 +794,10 @@ export async function runAcp(opts: {
           }
         }
 
+        // Match metadata reconciliation: only explicitly categorized selects
+        // take precedence over legacy catalogs (selectors also use heuristics).
+        hasCategorizedModeConfig = configOptions.some(option => option.type === 'select' && option.category === 'mode');
+        hasCategorizedModelConfig = configOptions.some(option => option.type === 'select' && option.category === 'model');
         modeSelector = extractConfigSelector(configOptions, 'mode');
         modelSelector = extractConfigSelector(configOptions, 'model');
         if (verbose) {
@@ -831,7 +837,7 @@ export async function runAcp(opts: {
             logAcp('muted', `  mode=${mode.id} name=${mode.name}${formatOptionalDetail(mode.description, 160)}`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
+        if (!hasCategorizedModeConfig) session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { modes }),
         );
       }
@@ -848,7 +854,9 @@ export async function runAcp(opts: {
             logAcp('muted', `  model=${model.modelId} name=${model.name}`);
           }
         }
-        session.updateMetadata((currentMetadata) =>
+        // Offer identifiers accepted by the preferred config selector, not
+        // legacy aliases such as Antigravity's model IDs with effort suffixes.
+        if (!hasCategorizedModelConfig) session.updateMetadata((currentMetadata) =>
           mergeAcpSessionConfigIntoMetadata(currentMetadata, { models }),
         );
       }

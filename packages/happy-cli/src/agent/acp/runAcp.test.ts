@@ -609,6 +609,60 @@ describe('runAcp', () => {
     expect(mocks.backendState.disposeCalls).toBe(1);
   });
 
+  it.each([undefined, 'model'])('retains legacy modes and model fallback with model category %s', async (category) => {
+    mocks.backendState.startSessionMessages = [
+      { type: 'event', name: 'config_options_update', payload: { configOptions: [
+        { type: 'select', id: 'model', name: 'Model', ...(category ? { category } : {}), currentValue: 'base-model', options: [
+          { value: 'base-model', name: 'Base model' },
+        ] },
+      ] } },
+      { type: 'event', name: 'models_update', payload: { currentModelId: 'legacy-model', availableModels: [{ modelId: 'legacy-model', name: 'Legacy model' }] } },
+      { type: 'event', name: 'modes_update', payload: { currentModeId: 'legacy-mode', availableModes: [{ id: 'legacy-mode', name: 'Legacy mode' }] } },
+    ];
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'custom', command: '/test/agent', args: [] });
+    await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+    try {
+      const metadata = mocks.mockSession.updateMetadata.mock.calls.reduce<Record<string, unknown>>((current, [apply]) => apply(current), {});
+      expect(metadata.models).toEqual([{ code: category ? 'base-model' : 'legacy-model', value: category ? 'Base model' : 'Legacy model' }]);
+      expect(metadata.operatingModes).toEqual([{ code: 'legacy-mode', value: 'Legacy mode' }]);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('keeps selectable config catalogs when Antigravity also publishes legacy model IDs', async () => {
+    mocks.backendState.startSessionMessages = [
+      { type: 'event', name: 'config_options_update', payload: { configOptions: [
+        { type: 'select', id: 'model', name: 'Model', category: 'model', currentValue: 'gemini-4-neon', options: [
+          { value: 'gemini-4-neon', name: 'Gemini 4 Neon' }, { value: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
+        ] },
+        { type: 'select', id: 'mode', name: 'Mode', category: 'mode', currentValue: 'default', options: [
+          { value: 'default', name: 'Default' }, { value: 'plan', name: 'Plan' },
+        ] },
+      ] } },
+      { type: 'event', name: 'current_mode_update', payload: { currentModeId: 'plan' } },
+      { type: 'event', name: 'models_update', payload: { currentModelId: 'gemini-4-neon-high', availableModels: [
+        { modelId: 'gemini-4-neon-high', name: 'Gemini 4 Neon (High)' },
+      ] } },
+      { type: 'event', name: 'modes_update', payload: { currentModeId: 'legacy', availableModes: [
+        { id: 'legacy', name: 'Legacy mode' },
+      ] } },
+    ];
+    const run = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'],
+    });
+    await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+    try {
+      const metadata = mocks.mockSession.updateMetadata.mock.calls.reduce<Record<string, unknown>>((current, [apply]) => apply(current), {});
+      expect(metadata.models).toEqual([{ code: 'gemini-4-neon', value: 'Gemini 4 Neon' }, { code: 'gemini-3.8-flash', value: 'Gemini 3.8 Flash' }]);
+      expect(metadata.currentModelCode).toBe('gemini-4-neon');
+      expect(metadata.currentOperatingModeCode).toBe('plan');
+      expect(metadata.operatingModes).toEqual([{ code: 'default', value: 'Default' }, { code: 'plan', value: 'Plan' }]);
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'Use the selected model' }, meta: { model: 'gemini-3.8-flash' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      expect(mocks.backendState.setConfigOptionCalls).toContainEqual({ configId: 'model', value: 'gemini-3.8-flash' });
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
   it('updates session metadata with ACP config options (models and operating modes)', async () => {
     mocks.backendState.startSessionMessages = [
       {

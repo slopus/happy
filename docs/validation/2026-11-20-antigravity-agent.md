@@ -35,3 +35,12 @@
 - https://antigravity.google/docs/cli/acp/
 - https://antigravity.google/cli/install.sh
 - 品牌图标：https://antigravity.google/assets/image/antigravity-logo.png ，仅作品牌标识。
+
+
+## ACP 目录补修
+
+真实 agy 同时返回 configOptions 的基础模型ID和 legacy models 的带effort后缀ID。旧事件顺序让后到的legacy目录覆盖metadata，但切换走config selector，导致界面提供的ID不匹配。回归先红，准确复现基础ID被effortID覆盖。
+
+修复只让显式category的select目录优先，判定与现有metadata归并一致；无config/无category/仅model config时保留legacy回退。不缓存重放其他字段，current_mode_update后不会被后续legacy模型事件还原。24项ACP回归、CLI typecheck/构建通过，独立审查确认初版guard和完整快照方案的边界均已消除。
+
+真实官方setSessionConfigOption(model,gemini-3.8-flash)成功，模型准确回复AGY_FLASH_READY。补修仅CLI，不改变App原生或JS制品。
