@@ -78,7 +78,6 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'Claude Code' },
     { key: 'codex', label: 'Codex' },
     { key: 'openclaw', label: 'OpenClaw' },
-    { key: 'gemini', label: 'Gemini' },
 ];
 
 export type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };

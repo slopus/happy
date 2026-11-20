@@ -125,3 +125,7 @@ describe('resolveAgentLaunchConfig', () => {
         });
     });
 });
+
+it('rejects saved Gemini CLI launchers instead of launching a different agent', () => {
+    expect(resolveAgentLaunchConfig({ agent: { ...persistedAgent, agentType: 'gemini' }, draft: {}, defaults: {} }).type).toBe('error');
+});

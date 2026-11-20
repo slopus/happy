@@ -1,5 +1,8 @@
 import { z } from 'zod';
 export const CodingAgentIdSchema = z.enum(['codex', 'claude', 'opencode', 'antigravity', 'gemini', 'openclaw']);
+// Keep the wire enum readable for stored sessions and responses from older daemons.
+// New-session choices and support management use this current product list.
+export const supportedCodingAgentIds = ['codex', 'claude', 'opencode', 'antigravity', 'openclaw'] as const satisfies readonly z.infer<typeof CodingAgentIdSchema>[];
 export type CodingAgentId = z.infer<typeof CodingAgentIdSchema>;
 export const CodingAgentObservationSchema = z.object({
   id: CodingAgentIdSchema,

@@ -19,7 +19,7 @@ import type { SessionAgentComposerArgs, SessionAgentComposer } from './useSessio
 const agents: { key: NewSessionAgentType; label: string }[] = [
     { key: 'codex', label: 'Codex' }, { key: 'claude', label: 'Claude Code' },
     { key: 'opencode', label: 'OpenCode' }, { key: 'antigravity', label: 'Antigravity' },
-    { key: 'gemini', label: 'Gemini' }, { key: 'openclaw', label: 'OpenClaw' },
+    { key: 'openclaw', label: 'OpenClaw' },
 ];
 type Choice = { permissionMode?: string | null; modelMode?: string | null; effortLevel?: string | null; fastMode?: boolean };
 export function useSessionAgentComposer(args: SessionAgentComposerArgs): SessionAgentComposer | undefined {

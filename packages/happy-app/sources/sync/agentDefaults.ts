@@ -1,8 +1,10 @@
 import * as z from 'zod';
+import { supportedCodingAgentIds } from '@slopus/happy-wire';
 import { isRetiredAgentFlavor } from './retiredSessions';
 
-export const agentKeys = ['claude', 'codex', 'gemini', 'opencode', 'antigravity', 'openclaw'] as const;
-export type AgentKey = typeof agentKeys[number];
+export const agentKeys = ['claude', ...supportedCodingAgentIds.filter(id => id !== 'claude')] as const;
+// Gemini remains a readable historical flavor, but is no longer a launch choice.
+export type AgentKey = typeof agentKeys[number] | 'gemini';
 
 export const AgentDefaultOverrideSchema = z.object({
     permissionMode: z.string().optional(),

@@ -54,6 +54,17 @@ describe('coding agent settings', () => {
         expect(mocks.configured.m1).toEqual([]);
         act(() => renderer.unmount());
     });
+    it('hides Gemini CLI and excludes old opt-ins from the enabled count', async () => {
+        mocks.configured = { m1: ['gemini', 'codex'] };
+        mocks.inspect.mockResolvedValue({ agents: [agent, { ...agent, id: 'gemini' }], checkedAt: 1 });
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<CodingAgentsSettings />); });
+        expect(renderer.root.findAllByProps({ testID: 'coding-agent-row-gemini' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'codingAgents.enabledCount 1')).toBe(true);
+        expect(renderer.root.findAllByProps({ testID: 'coding-agent-row-antigravity' })).toHaveLength(1);
+        expect(mocks.configured.m1).toEqual(['gemini', 'codex']);
+        act(() => renderer.unmount());
+    });
     it('checks on click, performs one update and consumes its token', async () => {
         let renderer: any;
         mocks.update.mockResolvedValue({ success: true, reason: 'updated', agent: { ...agent, version: '1.1.0', updateToken: undefined } });

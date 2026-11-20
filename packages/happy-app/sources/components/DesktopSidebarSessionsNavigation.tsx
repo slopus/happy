@@ -1,3 +1,4 @@
+import { supportedCodingAgentIds } from '@slopus/happy-wire';
 import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import * as React from 'react';
 import {
@@ -73,7 +74,7 @@ import { SessionHistoryList } from './SessionHistoryList';
 import { SessionListRecovery } from './SessionListRecovery';
 import { isSidebarGroupExpanded, setSidebarGroupExpanded } from '@/utils/sidebarGroupExpansion';
 
-const AGENT_TYPES = ['codex', 'claude', 'opencode', 'antigravity', 'gemini', 'openclaw'] as const satisfies readonly NewSessionAgentType[];
+const AGENT_TYPES = supportedCodingAgentIds satisfies readonly NewSessionAgentType[];
 const AGENT_LABEL_KEYS = {
     codex: 'agentInput.agent.codex',
     claude: 'agentInput.agent.claude',

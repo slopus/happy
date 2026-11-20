@@ -3,7 +3,7 @@ import { View, Text, Pressable, Switch, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { CodingAgentIdSchema, type CodingAgentId, type CodingAgentObservation } from '@slopus/happy-wire';
+import { supportedCodingAgentIds, type CodingAgentId, type CodingAgentObservation } from '@slopus/happy-wire';
 import { useAllMachines, useSettingMutable, storage } from '@/sync/storage';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -25,7 +25,8 @@ export default function CodingAgentsSettings() {
     const machine = machines.find(item => item.id === machineId);
     const online = !!machine && isMachineOnline(machine);
     const [configured, setConfigured] = useSettingMutable('codingAgentMachines');
-    const enabled = configured[machineId] ?? ['codex'];
+    const selection = configured[machineId] ?? ['codex'];
+    const enabled = supportedCodingAgentIds.filter(id => selection.includes(id));
     const [observations, setObservations] = React.useState<CodingAgentObservation[]>([]);
     const [busy, setBusy] = React.useState<'inspect' | CodingAgentId | null>(null);
     const [checking, setChecking] = React.useState<CodingAgentId | null>(null);
@@ -95,7 +96,7 @@ export default function CodingAgentsSettings() {
                 <Text style={styles.secondary}>{enabled.length ? `${t('codingAgents.enabledCount')} ${enabled.length}` : t('codingAgents.noneEnabled')}</Text>
                 {busy === 'inspect' ? <ActivityIndicator size="small" color={theme.colors.textLink} /> : null}
             </View>
-            {CodingAgentIdSchema.options.map(id => {
+            {supportedCodingAgentIds.map(id => {
                 const agent = observations.find(item => item.id === id);
                 const installed = agent?.installed === true || machine?.metadata?.cliAvailability?.[id] === true;
                 const status = !online ? t('codingAgents.offline') : !installed ? t('codingAgents.notInstalled') : agent?.version ? `CLI ${agent.version}` : t('codingAgents.detected');

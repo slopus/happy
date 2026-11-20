@@ -77,7 +77,6 @@ const AGENT_LABELS: Record<string, string> = {
     opencode: 'opencode',
     antigravity: 'Antigravity',
     openclaw: 'openclaw',
-    gemini: 'gemini',
 };
 
 const HEADER_MODE_AGENT_OPTIONS = Object.entries(AGENT_LABELS).map(([key, label]) => ({ key: key as NewSessionAgentType, label }));
