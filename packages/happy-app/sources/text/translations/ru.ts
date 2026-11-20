@@ -2051,6 +2051,11 @@ failedContinueTask: "Продолжить незавершённую задач�
     },
 
     message: {
+        structuredSummaryCopy: 'Копировать оригинал',
+        structuredSummaryView: 'Открыть резюме',
+        structuredSummaryTitle: 'Структурированное резюме',
+        structuredSummaryAnalysis: 'Примечания',
+        structuredSummaryContent: 'Резюме',
         switchedToMode: ({ mode }: { mode: string }) => `Переключено в режим ${mode}`,
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,

@@ -2046,6 +2046,11 @@ failedContinueTask: "Continuar tarefa pendente",
     },
 
     message: {
+        structuredSummaryCopy: 'Copiar original',
+        structuredSummaryView: 'Ver resumo',
+        structuredSummaryTitle: 'Resumo estruturado',
+        structuredSummaryAnalysis: 'Notas',
+        structuredSummaryContent: 'Resumo',
         switchedToMode: ({ mode }: { mode: string }) => `Mudou para o modo ${mode}`,
         unknownEvent: 'Evento desconhecido',
         usageLimitUntil: ({ time }: { time: string }) => `Limite de uso atingido até ${time}`,

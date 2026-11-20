@@ -2045,6 +2045,11 @@ failedContinueTask: "Continua il lavoro in sospeso",
     },
 
     message: {
+        structuredSummaryCopy: 'Copia originale',
+        structuredSummaryView: 'Visualizza riepilogo',
+        structuredSummaryTitle: 'Riepilogo strutturato',
+        structuredSummaryAnalysis: 'Note',
+        structuredSummaryContent: 'Riepilogo',
         switchedToMode: ({ mode }: { mode: string }) => `Passato alla modalità ${mode}`,
         unknownEvent: 'Evento sconosciuto',
         usageLimitUntil: ({ time }: { time: string }) => `Limite di utilizzo raggiunto fino a ${time}`,

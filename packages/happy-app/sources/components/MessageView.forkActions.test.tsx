@@ -14,12 +14,14 @@ vi.mock('react-native', () => ({
     ActivityIndicator: 'ActivityIndicator',
     Platform: { OS: 'web', select: (options: Record<string, unknown>) => options.web ?? options.default },
     Pressable: 'Pressable',
+    ScrollView: 'ScrollView',
     Text: 'Text',
     TextInput: 'TextInput',
     View: 'View',
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }));
+vi.mock('./DesktopDialogFrame', () => ({ DesktopDialogFrame: 'DesktopDialogFrame' }));
 vi.mock('./markdown/MarkdownView', () => ({ MarkdownView: 'MarkdownView' }));
 vi.mock('./tools/ToolView', () => ({ ToolView: 'ToolView' }));
 vi.mock('./ConversationActivityStrip', () => ({ ConversationActivityStrip: 'ConversationActivityStrip' }));
@@ -415,6 +417,89 @@ describe('MessageView persistent option receipts', () => {
         await expect(markdown.props.onOptionDismiss('stable-key:0')).rejects.toThrow('Read-only transcript');
         expect(syncMocks.sendMessage).not.toHaveBeenCalled();
         expect(syncMocks.recordMessageOptionResponse).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+});
+
+
+describe('MessageView structured handoff compatibility', () => {
+    const text = '<analysis>\nStill needs verification.\n</analysis>\n<summary>\n## Changes\nCandidate built.\n</summary>';
+    it.each(['web', 'android'])('opens a handoff dialog on %s while keeping original copy text', async platform => {
+        const { Platform } = await import('react-native');
+        const original = Platform.OS;
+        Object.assign(Platform, { OS: platform });
+        let renderer: any;
+        try {
+            act(() => { renderer = TestRenderer.create(<MessageView message={{ ...agentMessage, text }} metadata={null} showAgentMessageActions />); });
+            const toggle = () => renderer.root.findByProps({ testID: 'structured-summary-toggle' });
+            expect(toggle().props.accessibilityState.expanded).toBe(false);
+            expect(toggle().props['aria-expanded']).toBe(false);
+            expect(renderer.root.findAllByType('MarkdownView')).toHaveLength(0);
+            expect(renderer.root.findAllByType('DesktopDialogFrame')).toHaveLength(0);
+            act(() => toggle().props.onPress());
+            expect(toggle().props.accessibilityState.expanded).toBe(true);
+            expect(toggle().props['aria-expanded']).toBe(true);
+            expect(renderer.root.findAllByType('MarkdownView').map((n: any) => n.props.markdown))
+                .toEqual(['Still needs verification.', '## Changes\nCandidate built.']);
+            const header = renderer.root.findByType('DesktopDialogFrame').props.headerActions;
+            act(() => header.props.onPress());
+            expect(Clipboard.setStringAsync).toHaveBeenCalledWith(text);
+            const dialog = renderer.root.findByType('DesktopDialogFrame');
+            expect(dialog.props.title).toBe('message.structuredSummaryTitle');
+            act(() => dialog.props.onClose());
+            expect(renderer.root.findAllByType('DesktopDialogFrame')).toHaveLength(0);
+            expect(renderer.root.findAllByType('MarkdownView')).toHaveLength(0);
+            act(() => toggle().props.onPress());
+            expect(renderer.root.findAllByType('DesktopDialogFrame')).toHaveLength(1);
+        } finally {
+            if (renderer) act(() => renderer.unmount());
+            Object.assign(Platform, { OS: original });
+        }
+    });
+    it('keeps code examples and incomplete streamed messages in the ordinary renderer', () => {
+        for (const markdown of ['```xml\n' + text + '\n```', text.slice(0, -10), 'Normal response']) {
+            let renderer: any;
+            act(() => { renderer = TestRenderer.create(<MessageView message={{ ...agentMessage, text: markdown }} metadata={null} />); });
+            expect(renderer.root.findAllByProps({ testID: 'structured-summary-toggle' })).toHaveLength(0);
+            expect(renderer.root.findByType('MarkdownView').props.markdown).toBe(markdown);
+            act(() => renderer.unmount());
+        }
+    });
+    it.each([false, true])('keeps summary dialogs read-only even when transcript restricted=%s', restricted => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(
+            <TranscriptReadOnlyContext.Provider value={restricted}>
+                <TranscriptRestrictedContentContext.Provider value={restricted}>
+                    <MessageView message={{ ...agentMessage, text }} metadata={null} sessionId="original-session" />
+                </TranscriptRestrictedContentContext.Provider>
+            </TranscriptReadOnlyContext.Provider>,
+        ); });
+        act(() => renderer.root.findByProps({ testID: 'structured-summary-toggle' }).props.onPress());
+        const blocks = renderer.root.findAllByType('MarkdownView');
+        expect(blocks).toHaveLength(2);
+        for (const block of blocks) {
+            expect(block.props.readOnly).toBe(true);
+            expect(block.props.optionsInactive).toBe(true);
+            expect(block.props.onOptionPress).toBeUndefined();
+            expect(block.props.onOptionDismiss).toBeUndefined();
+            expect(block.props.sessionId).toBe('original-session');
+        }
+        act(() => renderer.unmount());
+    });
+    it('forks with the original tagged reply rather than the displayed sections', () => {
+        const onFork = vi.fn();
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<MessageView message={{ ...agentMessage, text }} metadata={null}
+            showAgentMessageActions agentForkTarget={{ ...forkTarget, messageText: text }} onForkFromMessage={onFork} />); });
+        act(() => renderer.root.findByProps({ testID: 'message-agent-fork-agent-1' }).props.onPress());
+        expect(onFork.mock.calls[0][2]).toBe(text);
+        act(() => renderer.unmount());
+    });
+    it('does not expose native thinking as a structured handoff', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<MessageView message={{ ...agentMessage, text, isThinking: true }} metadata={null} />); });
+        expect(renderer.root.findAllByProps({ testID: 'structured-summary-toggle' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('MarkdownView')).toHaveLength(0);
         act(() => renderer.unmount());
     });
 });

@@ -2221,6 +2221,11 @@ failedContinueTask: "繼續未完成的工作",
     },
 
     message: {
+        structuredSummaryCopy: '複製原文',
+        structuredSummaryView: '查看摘要',
+        structuredSummaryTitle: '結構化摘要',
+        structuredSummaryAnalysis: '說明',
+        structuredSummaryContent: '摘要',
         switchedToMode: ({ mode }: { mode: string }) => `已切換到 ${mode} 模式`,
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,

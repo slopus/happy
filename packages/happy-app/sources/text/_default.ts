@@ -3001,6 +3001,11 @@ failedContinueTask: "Continue unfinished task",
     },
 
     message: {
+        structuredSummaryCopy: 'Copy original',
+        structuredSummaryView: 'View summary',
+        structuredSummaryTitle: 'Structured summary',
+        structuredSummaryAnalysis: 'Notes',
+        structuredSummaryContent: 'Summary',
         switchedToMode: ({ mode }: { mode: string }) => `Switched to ${mode} mode`,
         unknownEvent: 'Unknown event',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,

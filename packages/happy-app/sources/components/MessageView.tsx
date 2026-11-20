@@ -6,6 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { AsyncQuestionCard } from "./AsyncQuestionCard";
 import { MarkdownView } from "./markdown/MarkdownView";
+import { parseStructuredSummary } from "./markdown/parseStructuredSummary";
+import { StructuredSummaryView } from "./StructuredSummaryView";
 import { AnnotatableMessage } from "./annotations/MessageAnnotations";
 import { t } from '@/text';
 import { Modal } from '@/modal';
@@ -482,6 +484,11 @@ function AgentTextBlock(props: {
     if (copyFeedbackTimerRef.current) clearTimeout(copyFeedbackTimerRef.current);
   }, []);
 
+  const structuredSummary = React.useMemo(() => parseStructuredSummary(props.message.text), [props.message.text]);
+  const renderMarkdown = (markdown: string, viewOnly = false) => (
+    <MarkdownView readOnly={restrictedContent || viewOnly} optionKey={optionKey} optionResponses={props.metadata?.messageOptionResponses} optionResponse={props.optionResponse} optionsInactive={viewOnly || props.optionsInactive || readOnly} onOptionDismiss={viewOnly ? undefined : handleOptionDismiss} markdown={markdown} onOptionPress={!viewOnly && !readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+  );
+
   // Hide thinking messages
   if (props.message.isThinking) {
     return null;
@@ -527,7 +534,9 @@ function AgentTextBlock(props: {
           return sessionRespondAsyncQuestion(props.sessionId, action);
         }}
       /> : <AnnotatableMessage sessionId={props.sessionId} messageId={props.message.id} enabled={!readOnly && !restrictedContent}>
-        <MarkdownView readOnly={restrictedContent} optionKey={optionKey} optionResponses={props.metadata?.messageOptionResponses} optionResponse={props.optionResponse} optionsInactive={props.optionsInactive || readOnly} onOptionDismiss={handleOptionDismiss} markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+        {structuredSummary
+          ? <StructuredSummaryView key={props.message.id} sections={structuredSummary} renderMarkdown={text => renderMarkdown(text, true)} onCopy={copyMessage} copied={isCopied} />
+          : renderMarkdown(props.message.text)}
       </AnnotatableMessage>}
       {showActions && (
         <View
