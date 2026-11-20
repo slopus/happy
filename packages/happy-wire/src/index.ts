@@ -22,3 +22,5 @@ export * from './bots';
 export * from './skillCommand';
 export * from './codingAgents';
 export * from './claudeModelCatalog';
+
+export * from "./goalReview";

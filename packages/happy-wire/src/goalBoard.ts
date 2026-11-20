@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { GoalReviewSchema } from './goalReview';
 
 // Keep encrypted RPC frames below Socket.IO's 1 MB default. Larger originals
 // use the existing authenticated, encrypted HTTP attachment lane.
@@ -25,6 +26,7 @@ export const GoalTaskSchema = z.object({
     progress: label.optional(), nextStep: label.optional(), dependencies: z.array(label).max(30),
     expectedDeliverables: z.array(label).max(30), artifacts: z.array(GoalArtifactSchema).max(50), batch: label.optional(),
     acceptanceCriteria: z.array(label).max(30).optional(),
+    review: GoalReviewSchema.optional(),
     execution: z.object({ state: z.enum(['never', 'starting', 'submitted', 'historical', 'uncertain']), sessionId: label.optional() }).optional(),
 });
 export type GoalTask = z.infer<typeof GoalTaskSchema>;

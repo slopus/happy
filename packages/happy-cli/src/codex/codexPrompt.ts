@@ -1,3 +1,4 @@
+import { GOAL_MAINTENANCE_INSTRUCTION } from '@slopus/happy-wire';
 import type { PermissionMode } from '@/api/types';
 import { BROWSER_STEP_REPORTING_INSTRUCTION, browserCaptureSessionInstruction } from '@/browser/browserStepReportingPrompt';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
@@ -126,6 +127,7 @@ export function buildCodexTurnPrompt(opts: {
         parts.push(
             CODEX_HAPPY_SYSTEM_PROMPT_START,
             CODEX_SKILL_PATH_RESOLUTION_INSTRUCTION,
+            GOAL_MAINTENANCE_INSTRUCTION,
             CODEX_HAPPY_SYSTEM_PROMPT_END,
         );
     }

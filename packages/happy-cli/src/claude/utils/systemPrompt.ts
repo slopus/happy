@@ -1,6 +1,6 @@
 import { BROWSER_STEP_REPORTING_INSTRUCTION } from "@/browser/browserStepReportingPrompt";
 import { trimIdent } from "@/utils/trimIdent";
-import { INTERACTIVE_PREVIEW_INSTRUCTION } from "@slopus/happy-wire";
+import { GOAL_MAINTENANCE_INSTRUCTION, INTERACTIVE_PREVIEW_INSTRUCTION } from "@slopus/happy-wire";
 
 /**
  * Base system prompt shared across all configurations
@@ -11,4 +11,5 @@ export const systemPrompt = (() => trimIdent(`
     When the user requests independent sessions for separate tasks, call mcp__happy__start_session once per task and include each returned <happy-session> block in your reply. Children have separate histories and share the filesystem; supply full task context and use separate worktrees for concurrent edits.
     ${BROWSER_STEP_REPORTING_INSTRUCTION}
     ${INTERACTIVE_PREVIEW_INSTRUCTION}
+    ${GOAL_MAINTENANCE_INSTRUCTION}
 `))();

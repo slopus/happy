@@ -489,6 +489,9 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'goal-review') {
+    const { runGoalReviewCommand } = await import('./modules/goalBoard/reviewCommand');
+    await runGoalReviewCommand(args.slice(1));
   } else if (subcommand === 'daemon') {
     // Show daemon management help
     const daemonSubcommand = args[1]

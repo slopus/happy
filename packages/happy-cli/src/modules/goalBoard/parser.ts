@@ -2,7 +2,7 @@ import { readdir, stat, lstat } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { GoalArtifact, GoalArtifactKind, GoalBoardSnapshot, GoalTask, GoalTaskStatus } from '@slopus/happy-wire';
-import { readGoalDeliveryAgreement, withoutGoalDeliveryAgreement, writeGoalDeliveryAgreement } from '@slopus/happy-wire';
+import { readGoalReview, withoutGoalReview, readGoalDeliveryAgreement, withoutGoalDeliveryAgreement, writeGoalDeliveryAgreement } from '@slopus/happy-wire';
 import { safePath, within, type CatalogRecord } from './catalog';
 import { openAuthorizedFile } from './authorizedFiles';
 
@@ -233,7 +233,9 @@ export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: 
     const ordered = authoritative.sort((a, b) => (a.code || '\uffff' + a.path).localeCompare(b.code || '\uffff' + b.path));
     for (const task of ordered) {
         try {
-            const index = await load(task.path);
+            const original = await load(task.path);
+            const review = readGoalReview(original);
+            const index = withoutGoalReview(original);
             const fields = fieldsOf(index, message => warn(`${basename(dirname(task.path))}: ${message}`));
             const promptPath = await safePath(root, join(dirname(task.path), 'PROMPT.md')).catch(() => undefined);
             const prompt = promptPath ? await load(promptPath).catch(error => { warn(`${basename(dirname(task.path))}: ${error.message}`); return ''; }) : '';
@@ -243,6 +245,7 @@ export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: 
             const code = task.code || index.match(/全局\s*(G\d{2,})/)?.[1];
             const delivery = readGoalDeliveryAgreement(index);
             const result: GoalTask = {
+                review,
                 id: /^GFT-[a-z0-9]{8}$/.test(scalar(fields, ['task_id']) || '') ? scalar(fields, ['task_id'])! : digest(task.path), code, indexPath: task.path, promptPath,
                 title: titleOf(index) || basename(dirname(task.path)),
                 status: statuses.has(scalar(fields, ['status']) || '') ? scalar(fields, ['status']) as GoalTaskStatus : 'unknown',

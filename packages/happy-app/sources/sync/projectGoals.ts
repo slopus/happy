@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { GoalProjectSchema, GoalScopeOverviewSchema, GoalBoardSnapshotSchema, GoalTaskSessionSchema, type GoalTask, type GoalBoardSnapshot } from '@slopus/happy-wire';
+import { goalOutputRecognition, GoalProjectSchema, GoalScopeOverviewSchema, GoalBoardSnapshotSchema, GoalTaskSessionSchema, type GoalTask, type GoalBoardSnapshot } from '@slopus/happy-wire';
 import { projectFileHash } from './projectFileHash';
 import { assertAccountRuntime, getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { isProjectSessionDeleted } from './projectSessionLinks';
@@ -221,7 +221,7 @@ export function taskApproval(task: GoalTask): 'accepted' | 'changed' | 'unreview
     // Only explicit confirmation receipts for actual final outputs count.
     // Task execution and the presence of acceptance criteria are independent.
     if (!outputs.some(artifact => artifact.available)) return 'noDeliverables';
-    if (outputs.every(artifact => artifact.available && artifact.approval?.status === 'accepted')) return 'accepted';
+    if (outputs.every(artifact => artifact.available && (artifact.approval?.status === 'accepted' || !!goalOutputRecognition(task, artifact)))) return 'accepted';
     if (outputs.some(artifact => artifact.approval?.status === 'changed')) return 'changed';
     return 'unreviewed';
 }

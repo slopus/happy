@@ -40,7 +40,9 @@ import { useProjectConversation } from './useProjectConversation';
 import { ProjectConversationEmptyState } from './ProjectConversationEmptyState';
 import { ProjectTaskSwitcher } from './ProjectTaskSwitcher';
 import { ProjectTaskDetails } from './ProjectTaskDetails';
-import { ProjectTaskStatus } from './ProjectTaskStatus';
+import { ProjectTaskProgress } from './ProjectTaskProgress';
+import { ProjectRetrospective, type ReviewTask } from './ProjectRetrospective';
+import { buildRetrospectivePrompt } from '@/sync/projectReview';
 import { PanelTabs } from '@/components/PanelTabs';
 import { Modal } from '@/modal';
 import { openExternalUrl } from '@/utils/openExternalUrl';
@@ -181,6 +183,8 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const [machineMenuOpen, setMachineMenuOpen] = React.useState(false);
     const [busy, setBusy] = React.useState(false);
     const [actionError, setActionError] = React.useState<string | null>(null);
+    const [reviewOpen, setReviewOpen] = React.useState(false);
+    React.useEffect(() => { setReviewOpen(false); }, [scope]);
     const [deliveryTasks, setDeliveryTasks] = React.useState<GoalTask[] | null>(null);
     React.useEffect(() => { setDeliveryTasks(null); }, [scope]);
     const [agent, setAgent] = React.useState<'codex' | 'claude'>(() => useNewSessionDraft.getState().agentType === 'claude' ? 'claude' : 'codex');
@@ -269,6 +273,23 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
             navigate({ author: result.sessionId, conversation: undefined, task: undefined });
         } catch (error) { if (alive.current) setActionError(error instanceof Error ? error.message : String(error)); }
         finally { if (alive.current) setBusy(false); }
+    };
+    const startRetrospective = async (selected: ReviewTask[]) => {
+        if (busy || readOnly || !selected.length) return;
+        const owner = accountKey(), requestedScope = scope;
+        setBusy(true); setActionError(null);
+        try {
+            const scopePath = params.feature ?? project?.projectPath;
+            if (!scopePath) throw new Error(t('projectGoals.sessionUnavailable'));
+            const result = await machineStartGoalAuthor(machineId, { scopePath, requestId: requestId(), agent });
+            if (!alive.current || !focused.current || accountKey() !== owner || scopeRef.current !== requestedScope) return;
+            if (result.type !== 'success') throw new Error(result.type === 'error' ? result.errorMessage : t('projectGoals.sessionUnavailable'));
+            await ensureSessionHydratedWithRetry(result.sessionId);
+            if (!alive.current || !focused.current || accountKey() !== owner || scopeRef.current !== requestedScope) return;
+            storage.getState().updateSessionDraft(result.sessionId, buildRetrospectivePrompt(scopePath, selected.map(item => item.task)));
+            setReviewOpen(false);
+            navigate({ author: result.sessionId, conversation: undefined, task: undefined });
+        } finally { if (alive.current) setBusy(false); }
     };
     const cardOpening = React.useRef(false);
     const cardAttempts = React.useRef(new Map<string, string>());
@@ -359,6 +380,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 {feature && feature.featurePath !== project?.projectPath && <><Ionicons name="chevron-forward" size={13} color={theme.colors.textSecondary} /><Button variant="toolbar" label={feature.title} onPress={() => go({ task: undefined })}><Text numberOfLines={1} style={styles.body}>{feature.title}</Text></Button></>}
             </View>
             <View style={styles.line}>
+                {(feature || project) && <Button variant="toolbar" label={t('projectGoals.retrospective')} disabled={busy || data.offline || readOnly} onPress={() => setReviewOpen(true)} testID="project-goals-retrospective"><Ionicons name="clipboard-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.retrospective')}</Text></Button>}
                 <GlobalSessionEntry />
                 <Button variant="toolbar" label={t('projectGoals.chooseMachine')} disabled={readOnly} expanded={machineMenuOpen} onPress={() => setMachineMenuOpen(value => !value)} testID="project-machine-picker"><Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} /><Text numberOfLines={1} style={[styles.meta, { maxWidth: 200 }]}>{selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || t('projectGoals.machine')}</Text><Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} /></Button>
                 <Button variant="toolbar" label={t('projectGoals.refresh')} disabled={data.loading || ((!machineId || data.offline) && !data.canRetryMachine)} onPress={() => { setScopeRefresh(value => value + 1); void data.refresh(); }} testID="project-goals-refresh">{data.loading ? <ActivityIndicator size="small" color={theme.colors.textSecondary} /> : <Ionicons name="refresh-outline" size={17} color={theme.colors.textSecondary} />}</Button>
@@ -404,7 +426,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
             : <ScopeCatalog enabled={scopeDesktop} initialTab={params.view === 'files' ? 'files' : undefined} scopePath={params.feature ?? project?.projectPath} machineId={machineId} title={feature?.title ?? project?.title ?? ''} connecting={data.status === 'connecting'} conversationId={params.conversation ?? params.author} agent={agent} offline={data.offline} revision={JSON.stringify([feature?.revision, (selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])} surface={surface} selectConversation={id => navigate({ conversation: id, author: undefined })}><ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: scrollPosition.current, animated: false })} onScroll={event => { scrollPosition.current = event.nativeEvent.contentOffset.y; catalogStates.set(scope, { query, status: statusFilter, scroll: scrollPosition.current }); }} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={[styles.catalogContent, mobile && styles.mobileCatalog]}>
                 <CatalogHeading githubUrl={project?.githubUrl} title={feature ? feature.title : params.feature ? t('projectGoals.loadingTasks') : project ? project.title : t('projectGoals.allProjects')} subtitle={feature ? `${tasks.length} ${t('projectGoals.tasks')}` : project ? project.summary || t('projectGoals.subprojects') : t('projectGoals.galleryDescription')} query={query} setQuery={setQuery} />
                 {params.task && feature && !task && <Text style={styles.error}>{t('projectGoals.taskMissing')}</Text>}
-                {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards globalCard={!mobile ? <GlobalConversationCard selected={!!params.conversation || !!params.author} busy={busy} onPress={() => { void openGlobalConversation(); }} /> : undefined} machineId={machineId} featurePath={feature.featurePath} onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={selectTaskCard} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
+                {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards globalCard={!mobile ? <GlobalConversationCard selected={!!params.conversation || !!params.author} busy={busy} onPress={() => { void openGlobalConversation(); }} /> : undefined} machineId={machineId} featurePath={feature.featurePath} onRefresh={data.refresh} onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={selectTaskCard} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
                     : project ? <ProjectFeatureLibrary machineId={machineId} entries={[...(project.direct ? [project.direct] : []), ...project.features]} query={query} projectPath={project.projectPath} onSelect={chooseFeature} />
                         : <ProjectLibrary key={machineId} machineId={machineId} projects={data.projects} loaded={data.loaded} query={query} onSelect={chooseProject} onOpenItem={item => {
                             if (item.kind === 'file') setSavedFile(item);
@@ -414,6 +436,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 {feature && !tasks.length && <Empty text={t('projectGoals.emptyTasks')} />}
             </ScrollView></ScopeCatalog>}
         {savedFile && <ProjectSavedFile key={savedFile.projectPath} machineId={machineId} item={savedFile} onClose={() => setSavedFile(null)} />}
+        {reviewOpen && <ProjectRetrospective key={scope} machineId={machineId} featurePaths={feature ? [feature.featurePath] : [...new Set([...(project?.features.map(item => item.featurePath) ?? []), ...(project?.direct ? [project.direct.featurePath] : [])])]} disabled={readOnly || data.offline || busy} onClose={() => setReviewOpen(false)} onStart={startRetrospective} onSaved={data.refresh} onOpenTask={item => { setReviewOpen(false); go({ feature: item.featurePath, task: item.task.id }); }} />}
         {feature && !!deliveryTasks?.length && <ProjectDeliveryEditor key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} tasks={deliveryTasks} onClose={() => setDeliveryTasks(null)} onSaved={data.refresh} onDiscuss={target => { setDeliveryTasks(null); if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} />}
     </View></ProjectSurfaces.Provider></ProjectWorkspaceWidthProvider></ProjectSessionMonitor>;
 }
@@ -436,15 +459,17 @@ function CatalogHeading({ title, subtitle, query, setQuery, githubUrl }: { githu
 
 type TaskStatusFilter = 'all' | GoalTask['status'];
 function ApprovalTag({ task }: { task: GoalTask }) {
+    const { theme } = useUnistyles();
     const state = taskApproval(task);
-    const label = state === 'accepted' ? 'accepted' : state === 'changed' ? 'changed' : state !== 'noDeliverables' ? 'notReviewed'
-        : task.artifacts.some(artifact => artifact.relation === 'output') ? 'finalsMissing' : task.expectedDeliverables.length ? 'awaitingDelivery' : 'agreeDelivery';
-    return <View style={[styles.tag, state === 'accepted' ? styles.acceptedTag : styles.pendingTag]}><Text numberOfLines={2} style={[styles.tagText, { maxWidth: 110 }, state === 'accepted' ? styles.acceptedText : styles.pendingText]}>{t(`projectGoals.${label}`)}</Text></View>;
+    const needsDecision = task.review?.decisions.some(item => !item.answer);
+    const label = needsDecision ? 'needsJudgment' : state === 'accepted' ? 'accepted' : state === 'changed' ? 'changed' : state === 'unreviewed' ? 'notReviewed' : 'autoMaintainDelivery';
+    const warning = needsDecision || state === 'changed';
+    return <View style={[styles.tag, state === 'accepted' ? styles.acceptedTag : warning ? styles.pendingTag : { backgroundColor: theme.colors.surfaceSelected }]}><Text numberOfLines={2} style={[styles.tagText, { maxWidth: 110 }, state === 'accepted' ? styles.acceptedText : warning ? styles.pendingText : { color: theme.colors.textSecondary }]}>{t(`projectGoals.${label}`)}</Text></View>;
 }
-export function TaskCards({ globalCard, machineId, featurePath, onDelivery, tasks, query, status, setStatus, selectedId, onSelect, onAction, offline, busy, hideExecution, mobile = false, actionLabel }: {
+export function TaskCards({ globalCard, machineId, featurePath, onRefresh, onDelivery, tasks, query, status, setStatus, selectedId, onSelect, onAction, offline, busy, hideExecution, mobile = false, actionLabel }: {
     globalCard?: React.ReactNode; machineId: string; featurePath: string;
     query: string; status: TaskStatusFilter; setStatus: (status: TaskStatusFilter) => void; mobile?: boolean; actionLabel?: (task: GoalTask) => string;
-    onDelivery?: (task: GoalTask) => void;
+    onDelivery?: (task: GoalTask) => void; onRefresh?: () => Promise<void>;
     tasks: GoalTask[]; selectedId?: string; onSelect: (id: string) => void; onAction?: (task: GoalTask, action: 'chat' | 'execute') => void; offline?: boolean; busy?: boolean; hideExecution?: boolean;
 }) {
     const { theme } = useUnistyles();
@@ -457,7 +482,7 @@ export function TaskCards({ globalCard, machineId, featurePath, onDelivery, task
             {(['all', ...statuses] as const).map(value => <Button key={value} variant="chip" selected={status === value} label={value === 'all' ? t('goalBoard.allTasks') : t(`goalBoard.status.${value}`)} onPress={() => setStatus(value)} testID={`project-task-filter-${value}`}><Text style={status === value ? styles.link : styles.meta}>{value === 'all' ? t('goalBoard.allTasks') : t(`goalBoard.status.${value}`)}</Text><Text style={styles.taskNumber}>{value === 'all' ? tasks.length : tasks.filter(task => task.status === value).length}</Text></Button>)}
         </View>
         <View style={[styles.grid, desktopGrid]}>{globalCard}{visible.map(task => <GoalBoardCard key={task.id} selected={selectedId === task.id} style={[styles.taskCard, mobile && styles.mobileTaskCard, task.status === 'running' && styles.runningCard]} testID={`project-task-card-${task.id}`}>
-        <View style={[styles.line, { justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 8 }]}><View style={styles.line}><Text style={styles.taskNumber}>{task.code || `TASK ${String(tasks.indexOf(task) + 1).padStart(2, '0')}`}</Text><ProjectTaskStatus status={task.status} /></View><Button variant="toolbar" label={t('projectGoals.editDelivery')} disabled={!onDelivery || offline || busy || isReadOnlyProjectPreview()} onPress={() => onDelivery?.(task)} testID={`project-task-delivery-${task.id}`}><ApprovalTag task={task} /></Button></View>
+        <View style={[styles.line, { justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 8 }]}><View style={styles.line}><Text style={styles.taskNumber}>{task.code || `TASK ${String(tasks.indexOf(task) + 1).padStart(2, '0')}`}</Text><ProjectTaskProgress compact machineId={machineId} featurePath={featurePath} task={task} disabled={offline || busy} onSaved={onRefresh} /></View><Button variant="toolbar" label={t('projectGoals.editDelivery')} disabled={!onDelivery || offline || busy || isReadOnlyProjectPreview()} onPress={() => onDelivery?.(task)} testID={`project-task-delivery-${task.id}`}><ApprovalTag task={task} /></Button></View>
         <Button variant="card" selected={selectedId === task.id} label={task.title} onPress={() => onSelect(task.id)}>
             <View style={styles.taskCardContent}>
                 <Text numberOfLines={2} style={styles.cardTitle}>{task.title}</Text><Text numberOfLines={2} style={styles.taskGoal}>{task.goal || task.title}</Text><View style={styles.taskDelivery}><Ionicons name="document-text-outline" size={13} color={theme.colors.textLink} /><Text numberOfLines={2} style={[styles.meta, { flex: 1 }]}>{task.expectedDeliverables.join(' · ') || t('projectGoals.noExpected')}</Text></View></View>
@@ -602,7 +627,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const changeTab = (value: string) => { setTab(value); if (value === 'details' && showChat) setCompactTab('chat'); else if (value === 'files' && fileOpen) setCompactTab('file'); };
     const canExecute = !readOnly && taskCanExecute(task) && !executionAttempted && !history.some(session => session.executed);
     const details = <ProjectDetailsPanel style={[{ backgroundColor: surface }, wide ? { width: rightWidth, marginLeft: projectPanelGap } : { flex: 1 }]} testID="project-task-panel" tab={tab} onTab={changeTab} showTabs={!mobile}
-        header={mobile ? <><ProjectTaskStatus status={task.status} /><ApprovalTag task={task} /></> : <><ProjectTaskSwitcher tasks={allTasks} selectedId={task.id} onSelect={selectTask} /><View style={{ flex: 1 }} /><ProjectTaskStatus status={task.status} /></>} footer={<>{readOnly && <Text style={styles.meta}>{t(canCreateProjectConversation() ? 'projectGoals.previewChatHint' : 'projectGoals.readOnlyArchive')}</Text>}<Button variant="primary" label={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={busy || (!history.length && (offline || !canCreateProjectConversation()))} onPress={() => { void start(task, 'chat'); }} testID="project-task-open-chat"><Ionicons name="chatbubble-outline" size={16} color={theme.colors.text} /><Text style={styles.body}>{t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')}</Text></Button>
+        header={mobile ? <><ProjectTaskProgress machineId={machineId} featurePath={featurePath} task={task} disabled={offline || busy} onSaved={props.refresh} /><ApprovalTag task={task} /></> : <><ProjectTaskSwitcher tasks={allTasks} selectedId={task.id} onSelect={selectTask} /><View style={{ flex: 1 }} /><ProjectTaskProgress machineId={machineId} featurePath={featurePath} task={task} disabled={offline || busy} onSaved={props.refresh} /></>} footer={<>{readOnly && <Text style={styles.meta}>{t(canCreateProjectConversation() ? 'projectGoals.previewChatHint' : 'projectGoals.readOnlyArchive')}</Text>}<Button variant="primary" label={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={busy || (!history.length && (offline || !canCreateProjectConversation()))} onPress={() => { void start(task, 'chat'); }} testID="project-task-open-chat"><Ionicons name="chatbubble-outline" size={16} color={theme.colors.text} /><Text style={styles.body}>{t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')}</Text></Button>
             {!mobile && canExecute && <Button variant="primary" label={t('projectGoals.execute')} disabled={busy || offline} onPress={() => { void start(task, 'execute'); }} testID="project-task-execute"><Ionicons name="play" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.execute')}</Text></Button>}{busy && <ActivityIndicator size="small" color={theme.colors.textSecondary} />}</>}>
         {!mobile && tab === 'files' ? <ProjectArchiveTree machineId={machineId} scopePath={featurePath} taskId={task.id} sessionId={conversationId ?? ''} rootPath={workspace.root} listDirectory={listDirectory} cacheKey={directoryCacheKey} revision={directoryRevision} onOpenFile={path => { void openFile(path); }} />
             : <ScrollView style={styles.detailScroll}><ProjectTaskDetails task={task} number={allTasks.indexOf(task) + 1} approval={<ApprovalTag task={task} />} editDisabled={busy || (!history.length && (!canCreateProjectConversation() || offline))} onEdit={() => { void start(task, 'chat'); }} onDelivery={() => props.editDelivery([task])} deliveryDisabled={readOnly || offline || busy}>
@@ -621,7 +646,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const catalogScroll = React.useRef<ScrollView>(null);
     const catalog = <ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: props.catalogScrollPosition.current, animated: false })} onScroll={event => props.onCatalogScroll(event.nativeEvent.contentOffset.y)} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface, borderRadius: 13 }]} contentContainerStyle={styles.taskCatalogContent}>
         <CatalogHeading githubUrl={props.githubUrl} title={props.featureTitle} subtitle={`${allTasks.length} ${t('projectGoals.tasks')}`} query={props.query} setQuery={props.setQuery} />
-        <TaskCards globalCard={!mobile ? <GlobalConversationCard busy={props.globalBusy || busy} onPress={props.openGlobalConversation} /> : undefined} machineId={machineId} featurePath={featurePath} onDelivery={target => props.editDelivery([target])} tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={selectTask} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
+        <TaskCards globalCard={!mobile ? <GlobalConversationCard busy={props.globalBusy || busy} onPress={props.openGlobalConversation} /> : undefined} machineId={machineId} featurePath={featurePath} onRefresh={props.refresh} onDelivery={target => props.editDelivery([target])} tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={selectTask} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
     </ScrollView>;
     const reading = props.mobileView === 'reader' && !!props.readerPath;
     const readingArtifact = task.artifacts.find(value => value.path === props.readerPath && value.relation === 'output');

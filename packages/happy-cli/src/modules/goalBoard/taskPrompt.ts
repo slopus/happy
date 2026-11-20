@@ -1,9 +1,11 @@
+import { GOAL_MAINTENANCE_INSTRUCTION } from '@slopus/happy-wire';
 import type { GoalTask } from '@slopus/happy-wire';
 
 /** Context points to the authoritative records; it does not claim new execution authorization. */
 export function goalBoardTaskPrompt(task: GoalTask, featurePath: string): string {
     return [
         'Continue this Goal First task using its authoritative local records.',
+        GOAL_MAINTENANCE_INSTRUCTION,
         'First read the task index and full PROMPT, verify the existing user authorization, prerequisites and repository instructions. Task selection here does not authorize broader work. Do not change task status merely because this session was created.',
         `Feature: ${featurePath}`,
         `Task: ${task.code ? task.code + ' ' : ''}${task.title}`,

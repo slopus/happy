@@ -4,6 +4,7 @@ import { mkdir, open, readdir, rename, realpath, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { goalOutputRecognition } from '@slopus/happy-wire';
 import type { GoalTask, GoalTaskSession } from '@slopus/happy-wire';
 import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSummary, type CatalogRecord } from './catalog';
 import { digest, goalFileRevision, goalOf, titleOf, parseBoard, readBoundedFile } from './parser';
@@ -257,7 +258,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
                 try {
                     if (artifact.path) await safePath(directory, artifact.path);
                     const approval = await readJSON<Approval>(join(await identities.state(task), `approval-${digest(artifact.id)}.json`));
-                    artifact.approval = { status: !approval ? 'unreviewed' : approval.revision === artifact.revision ? 'accepted' : 'changed', reviewedAt: approval?.reviewedAt };
+                    artifact.approval = { status: goalOutputRecognition(task, artifact) ? 'accepted' : !approval ? 'unreviewed' : approval.revision === artifact.revision ? 'accepted' : 'changed', reviewedAt: approval?.reviewedAt };
                 } catch { artifact.approval = { status: 'unreviewed' }; }
             }
         }

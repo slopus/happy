@@ -1,3 +1,4 @@
+import { GOAL_MAINTENANCE_INSTRUCTION } from '@slopus/happy-wire';
 import { describe, expect, it } from 'vitest';
 
 import { BROWSER_STEP_REPORTING_INSTRUCTION } from '@/browser/browserStepReportingPrompt';
@@ -28,7 +29,7 @@ describe('buildCodexTurnPrompt', () => {
 
         expect(prompt).toBe(
             `${CODEX_HAPPY_SYSTEM_PROMPT_START}\n\n` +
-            `${CODEX_SKILL_PATH_RESOLUTION_INSTRUCTION}\n\n` +
+            `${CODEX_SKILL_PATH_RESOLUTION_INSTRUCTION}\n\n${GOAL_MAINTENANCE_INSTRUCTION}\n\n` +
             `${CODEX_HAPPY_SYSTEM_PROMPT_END}\n\n` +
             'inspect the installed WebSearch Skill',
         );
