@@ -2,6 +2,9 @@
   "code": "es",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "Este es un enlace de descarga, no un código de vinculación. Si estás configurando Happy Desktop, haz clic en «Downloaded and opened» en tu computadora y escanea el código de vinculación que aparece.",
+    "scan.restoreDeviceLink": "Este código restaura una cuenta de Happy CLI en el dispositivo que lo muestra. En un dispositivo donde ya hayas iniciado sesión con esa cuenta, abre Ajustes → Copia de seguridad y restauración → Vincular nuevo dispositivo y escanea el código.",
+    "scan.notPairing": "Esto no es un código ni un enlace de vinculación. Usa el código o el enlace de vinculación que aparece en el dispositivo que quieres conectar.",
     "voiceStatusBar.tapToEnd": "toca para finalizar",
     "voiceStatusBar.connecting": "Conectando…",
     "voiceStatusBar.error": "Error de conexión",

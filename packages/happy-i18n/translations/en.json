@@ -2,6 +2,9 @@
   "code": "en",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "This is a download link, not a pairing code. If you’re setting up Happy Desktop, click ‘Downloaded and opened’ on your computer, then scan the pairing code it shows.",
+    "scan.restoreDeviceLink": "This code restores a Happy CLI account on the device showing it. On a device already signed in to that account, open Settings → Backup & Restore → Link New Device and scan this code.",
+    "scan.notPairing": "This isn’t a pairing code or link. Use the pairing code or link shown on the device you want to connect.",
     "voiceStatusBar.tapToEnd": "tap to end",
     "voiceStatusBar.connecting": "Connecting…",
     "voiceStatusBar.error": "Connection error",

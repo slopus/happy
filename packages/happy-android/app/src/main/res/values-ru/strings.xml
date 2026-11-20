@@ -4,6 +4,10 @@
   packages/happy-i18n/translations/ru.json (ru). Do not edit.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
+    <string name="scan_download_link">Это ссылка для скачивания, а не код подключения. Если вы настраиваете Happy Desktop, нажмите «Downloaded and opened» на компьютере и отсканируйте появившийся код подключения.</string>
+    <string name="scan_restore_device_link">Этот код восстанавливает аккаунт Happy CLI на устройстве, где он показан. На устройстве, где вы уже вошли в этот аккаунт, откройте «Настройки» → «Резервное копирование и восстановление» → «Привязать новое устройство» и отсканируйте код.</string>
+    <string name="scan_not_pairing">Это не код и не ссылка для подключения. Воспользуйтесь кодом или ссылкой для подключения на устройстве, которое хотите подключить.</string>
+
     <string name="voice_status_bar_tap_to_end">нажмите, чтобы завершить</string>
     <string name="voice_status_bar_connecting">Подключение…</string>
     <string name="voice_status_bar_error">Ошибка соединения</string>

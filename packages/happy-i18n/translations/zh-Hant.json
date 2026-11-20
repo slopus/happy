@@ -2,6 +2,9 @@
   "code": "zh-Hant",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "這是下載連結，不是配對碼。如果你正在設定 Happy Desktop，請在電腦上點選「Downloaded and opened」，然後掃描顯示的配對碼。",
+    "scan.restoreDeviceLink": "此代碼用於在顯示它的裝置上還原 Happy CLI 帳戶。請在已登入該帳戶的裝置上開啟「設定 → 備份與還原 → 連結新裝置」，然後掃描此代碼。",
+    "scan.notPairing": "這不是配對碼或配對連結。請使用要連接的裝置上顯示的配對碼或配對連結。",
     "voiceStatusBar.tapToEnd": "點按結束",
     "voiceStatusBar.connecting": "連接中…",
     "voiceStatusBar.error": "連接錯誤",

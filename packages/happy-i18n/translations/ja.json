@@ -2,6 +2,9 @@
   "code": "ja",
   "rule": "one-other",
   "entries": {
+    "scan.downloadLink": "これはダウンロード用のリンクで、ペアリングコードではありません。Happy Desktop を設定している場合は、パソコンで「Downloaded and opened」をクリックし、表示されたペアリングコードをスキャンしてください。",
+    "scan.restoreDeviceLink": "このコードを表示している端末に Happy CLI アカウントを復元します。そのアカウントにログイン済みの端末で「設定」→「バックアップと復元」→「新しいデバイスをリンク」を開き、このコードをスキャンしてください。",
+    "scan.notPairing": "これはペアリング用のコードやリンクではありません。接続したいデバイスに表示されているペアリングコードまたはリンクを使ってください。",
     "voiceStatusBar.tapToEnd": "タップして終了",
     "voiceStatusBar.connecting": "接続中…",
     "voiceStatusBar.error": "接続エラー",

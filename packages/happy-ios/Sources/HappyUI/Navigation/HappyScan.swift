@@ -80,7 +80,6 @@ enum HappyScan {
         busy: (Bool) -> Void = { _ in }
     ) async -> Result {
         let route = route(text, intent: intent, context: context)
-        log.debug("code \(describe(text), privacy: .public) → \(String(describing: route).prefix(40), privacy: .public)")
         switch route {
         case .connectAgent:
             PairingFlow.openIfAgentPairing(text, context: context, on: controller, start: start)
@@ -102,7 +101,7 @@ enum HappyScan {
             return await signIn(to: link, context: context, start: start, on: controller)
         case .problem(let problem):
             Analytics.shared.scanFailed(problem, start: start)
-            report(problem, on: controller)
+            report(problem, input: text, on: controller)
             return .ended
         }
     }
@@ -275,10 +274,11 @@ enum HappyScan {
         return .signingIn
     }
 
-    private static func report(_ problem: ScanProblem, on controller: UIViewController) {
+    private static func report(_ problem: ScanProblem, input: String, on controller: UIViewController) {
         switch problem {
         case .notHappy:
-            Alerts.show(Strings.Scan.notHappyTitle, Strings.Scan.notHappy, on: controller)
+            let message = Strings.Scan.isDesktopDownload(input) ? Strings.Scan.downloadLink : Strings.Scan.notHappy
+            Alerts.show(Strings.Scan.notHappyTitle, message, on: controller)
         case .invalidTerminal, .invalidAccount:
             Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
         case .agentConnection(let error):
@@ -298,13 +298,6 @@ enum HappyScan {
         guard var top = window.rootViewController else { return nil }
         while let next = top.presentedViewController, !next.isBeingDismissed, !(next is UIAlertController) { top = next }
         return top
-    }
-
-    /// The scheme and host only: a direct code carries a pairing token.
-    private static func describe(_ text: String) -> String {
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let head = text.firstIndex(of: "?").map { String(text[..<$0]) } ?? String(text.prefix(24))
-        return "\(head) (\(text.utf8.count) bytes)"
     }
 }
 #endif
