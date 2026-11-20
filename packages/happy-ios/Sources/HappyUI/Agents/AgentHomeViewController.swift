@@ -263,11 +263,27 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     private var restingToolbarItems: [UIBarButtonItem] {
         let search = navigationItem.searchBarPlacementBarButtonItem
         search.identifier = Self.searchIdentifier
-        return [search, .flexibleSpace()] + (mayWrite ? [recordItem, composeItem] : [])
+        return Self.atTheFoot([search, .flexibleSpace()] + (mayWrite ? [recordItem, composeItem] : []))
     }
 
     /// The bar's room, the microphone, and compose's room.
-    private var recordingToolbarItems: [UIBarButtonItem] { [recordBarItem, .flexibleSpace(), recordItem, composeRoom] }
+    private var recordingToolbarItems: [UIBarButtonItem] { Self.atTheFoot([recordBarItem, .flexibleSpace(), recordItem, composeRoom]) }
+
+    /// iOS 27.1 runs a toolbar down the side, under the status bar, on a
+    /// device that has one (an iPhone Duo, folded or open).
+    /// Home's stays at the foot, as on every other phone: the microphone's
+    /// recording bar grows along it from search's field, and the
+    /// microphone, a view of its own, can't go into a vertical bar, so
+    /// UIKit split the toolbar, search and compose up the side and the
+    /// microphone alone at the foot over the list.
+    private static func atTheFoot(_ items: [UIBarButtonItem]) -> [UIBarButtonItem] {
+        #if compiler(>=6.4.1)
+        if #available(iOS 27.1, *) {
+            for item in items where item.axisBehavior != .horizontalOnly { item.axisBehavior = .horizontalOnly }
+        }
+        #endif
+        return items
+    }
 
     /// The toolbar morphs into the recording bar and back
     /// (`setToolbarItems(_:animated:)`): the bar's glass grows from

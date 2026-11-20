@@ -142,7 +142,7 @@ final class OnboardingPluginsViewController: CloudStageViewController, Onboardin
         guard let image else { return Self.glyph }
         if let picture = pictures[image.path] { return picture }
         if asked.insert(image.path).inserted {
-            let pixels = Int(CloudServerRowLayout.Metrics.picture * UIScreen.main.scale)
+            let pixels = Int(CloudServerRowLayout.Metrics.picture * max(1, traitCollection.displayScale))
             Task { @MainActor [weak self, session] in
                 guard let picture = await session.images.picture(image.path, thumbhash: image.thumbhash, pixels: pixels) else { return }
                 self?.pictures[image.path] = picture
