@@ -6,7 +6,7 @@ import { SessionComposerModeSelector } from './SessionComposerModeSelector';
 import React from 'react';
 import { useRouter } from 'expo-router';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
-import { enabledCodingAgents } from '@/utils/codingAgentSelection';
+import { enabledCodingAgents, getCodingAgentCycle } from '@/utils/codingAgentSelection';
 import {
     View,
     Text,
@@ -1075,8 +1075,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 ...model, key: `${selectedAgent}::${model.key}`,
             }));
         }, [modelModes, selectedAgent]);
-        const cycleAgents = ['codex', 'claude', 'opencode', 'antigravity', 'gemini', 'openclaw']
-            .flatMap(key => availableAgents.filter(agent => agent.key === key));
+        const cycleAgents = getCodingAgentCycle(availableAgents);
         const nextCycleAgent = cycleAgents.length > 1
             ? cycleAgents[(cycleAgents.findIndex(agent => agent.key === selectedAgent) + 1) % cycleAgents.length]
             : null;

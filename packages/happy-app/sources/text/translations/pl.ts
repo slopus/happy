@@ -1426,6 +1426,7 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
         "enable": "Enable"
 },
     agentInput: {
+        newAgentSessionHint: 'Otwiera nową sesję z wybranym agentem. Ta rozmowa i jej szkic zostaną zachowane.',
         switchCodingAgent: 'Zmień agenta programistycznego',
         stop: 'Zatrzymaj',
         asyncQuestion: {

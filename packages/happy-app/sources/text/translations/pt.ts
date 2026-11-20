@@ -1409,6 +1409,7 @@ failedContinueTask: "Continuar tarefa pendente",
         "enable": "Enable"
 },
     agentInput: {
+        newAgentSessionHint: 'Abre uma nova sessão com o agente selecionado; esta conversa e seu rascunho são mantidos.',
         switchCodingAgent: 'Alternar agente de programação',
         stop: 'Parar',
         asyncQuestion: {

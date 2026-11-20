@@ -1,3 +1,5 @@
+import { useSessionAttachmentDraft } from '@/hooks/useSessionAttachmentDraft';
+import { useSessionAgentComposer } from '@/hooks/useSessionAgentComposer';
 import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
 import { FileWorkspace, FileWorkspaceResizeHandle } from '@/components/fileWorkspace/FileWorkspace';
@@ -1781,9 +1783,21 @@ function SessionViewLoaded({
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。
-    const { selectedImages, pickImages, pickAttachment, removeImage, clearImages, addImages, prepareAddImages } = useImagePicker();
+    const attachmentDraft = useSessionAttachmentDraft(sessionId);
+    const { selectedImages, pickImages, pickAttachment, removeImage, clearImages, addImages, prepareAddImages } = useImagePicker({ selection: attachmentDraft });
     const selectedImagesRef = React.useRef(selectedImages);
     selectedImagesRef.current = selectedImages;
+
+    const agentComposer = useSessionAgentComposer({
+        session, base: modeSelector,
+        flushDraft: () => composerHandleRef.current?.flushDraft(),
+        readSubmission: () => {
+            const liveMessage = composerHandleRef.current?.getMessage() ?? '';
+            const annotated = prepareAnnotatedMessage(sessionId, liveMessage);
+            return { prompt: buildFileContextMessage(annotated.text, fileWorkspace?.reference ?? null).text,
+                images: selectedImagesRef.current };
+        },
+    });
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -2018,7 +2032,7 @@ function SessionViewLoaded({
                     nextTurnModes.modelMode, nextTurnModes.effortLevel, session.permissionMode, session.fastMode,
                     session.metadata?.path, workingDirectory.currentPath]),
                 readyToDisplay: !isSyncingResults,
-                enabled: isFocused && !isDisconnected && isLoaded && isAtLatest
+                enabled: !agentComposer?.pendingAgent && isFocused && !isDisconnected && isLoaded && isAtLatest
                     && isCodexSessionFlavor(session.metadata?.flavor)
                     && !hasMoreNewer && session.metadata?.capabilities?.composerPrediction === true
                     && session.agentState?.turnStatus?.status === 'completed'
@@ -2034,25 +2048,28 @@ function SessionViewLoaded({
             blockSend={false}
             hasContext={annotations.length > 0 || !!fileWorkspace?.reference}
             contextContent={<><AnnotationComposer sessionId={sessionId} /><FileReferencePill /></>}
-            onSend={handleSend}
-            onQueue={isTaskRunning ? handleSend : undefined}
-            sendLabel={isTaskRunning ? t('messageQueue.enqueueSend') : undefined}
-            sendHint={isTaskRunning ? t('messageQueue.enqueueHint') : undefined}
+            onSend={agentComposer?.pendingAgent ? () => { void agentComposer.submit(); } : handleSend}
+            newSessionAgent={agentComposer?.pendingAgent}
+            isSending={agentComposer?.sending}
+            isSendDisabled={Boolean(agentComposer?.pendingAgent && agentComposer.disabled)}
+            onQueue={!agentComposer?.pendingAgent && isTaskRunning ? handleSend : undefined}
+            sendLabel={agentComposer?.pendingAgent ? t('sidebar.newSession') : isTaskRunning ? t('messageQueue.enqueueSend') : undefined}
+            sendHint={agentComposer?.pendingAgent ? t('agentInput.newAgentSessionHint') : isTaskRunning ? t('messageQueue.enqueueHint') : undefined}
             onAbort={isDisconnected ? undefined : handleAbort}
-            showAbortButton={sessionStatus.state === 'running'}
+            showAbortButton={sessionStatus.state === 'running' && !agentComposer?.pendingAgent}
             selectedImages={selectedImages}
-            onPickImages={sessionCanAttach ? (session.metadata?.flavor === 'opencode' ? pickImages : pickAttachment) : undefined}
+            onPickImages={agentComposer?.pendingAgent ? (['claude', 'codex'].includes(agentComposer.pendingAgent) ? pickAttachment : agentComposer.pendingAgent === 'opencode' ? pickImages : undefined) : sessionCanAttach ? (session.metadata?.flavor === 'opencode' ? pickImages : pickAttachment) : undefined}
             onRemoveImage={removeImage}
-            onAddImages={sessionCanAttach ? addImages : undefined}
-            onPrepareAddImages={sessionCanAttach ? prepareAddImages : undefined}
-            imageAttachmentsOnly={session.metadata?.flavor === 'opencode'}
+            onAddImages={(agentComposer?.pendingAgent ? ['claude', 'codex', 'opencode'].includes(agentComposer.pendingAgent) : sessionCanAttach) ? addImages : undefined}
+            onPrepareAddImages={(agentComposer?.pendingAgent ? ['claude', 'codex', 'opencode'].includes(agentComposer.pendingAgent) : sessionCanAttach) ? prepareAddImages : undefined}
+            imageAttachmentsOnly={(agentComposer?.pendingAgent ?? session.metadata?.flavor) === 'opencode'}
             autocompletePrefixes={autocompletePrefixes}
             autocompleteSuggestions={handleAutocompleteSuggestions}
             usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
             zenMode={zenMode}
-            permissionSelector={discussing ? undefined : permissionSelector}
-            modeSelector={modeSelector}
+            permissionSelector={discussing ? undefined : agentComposer?.permissionSelector ?? permissionSelector}
+            modeSelector={agentComposer?.modeSelector ?? modeSelector}
             directorySelector={directorySelector}
             machineName={composerMachineName}
         />

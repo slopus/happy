@@ -1408,6 +1408,7 @@ failedContinueTask: "Continua il lavoro in sospeso",
         "enable": "Enable"
 },
     agentInput: {
+        newAgentSessionHint: 'Opens a new session with the selected Coding Agent; this conversation and its draft are kept.',
         switchCodingAgent: 'Cambia agente di programmazione',
         stop: 'Ferma',
         asyncQuestion: {

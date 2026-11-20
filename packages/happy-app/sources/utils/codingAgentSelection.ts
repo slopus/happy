@@ -7,3 +7,9 @@ export function enabledCodingAgents<T extends { key: string }>(
     const enabled = machineId ? configured?.[machineId] ?? ['codex'] : ['codex'];
     return agents.filter(agent => enabled.includes(agent.key) && (!availability || availability[agent.key] === true));
 }
+
+/** Same stable cycle order in new and existing session composers. */
+export function getCodingAgentCycle<T extends { key: string }>(agents: T[]): T[] {
+    return ['codex', 'claude', 'opencode', 'antigravity', 'gemini', 'openclaw']
+        .flatMap(key => agents.filter(agent => agent.key === key));
+}

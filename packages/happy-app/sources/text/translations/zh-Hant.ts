@@ -1476,6 +1476,7 @@ failedContinueTask: "繼續未完成的工作",
         "enable": "启用"
 },
     agentInput: {
+        newAgentSessionHint: '將使用所選 Coding Agent 新建會話；目前對話和草稿保留。',
         switchCodingAgent: '切換程式設計智能體',
         stop: '停止',
         asyncQuestion: {

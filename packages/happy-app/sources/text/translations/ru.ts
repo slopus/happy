@@ -1426,6 +1426,7 @@ failedContinueTask: "Продолжить незавершённую задач�
         "enable": "Enable"
 },
     agentInput: {
+        newAgentSessionHint: 'Открывает новый сеанс с выбранным агентом. Текущий разговор и черновик сохраняются.',
         switchCodingAgent: 'Сменить агента программирования',
         stop: 'Стоп',
         asyncQuestion: {

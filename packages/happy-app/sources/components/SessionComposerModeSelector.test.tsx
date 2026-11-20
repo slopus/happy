@@ -600,6 +600,32 @@ describe('SessionComposerModeSelector', () => {
         expect(placement.left + placement.width).toBeLessThanOrEqual(390);
     });
 
+    it('owns the entire Escape gesture so dismissing the staged Agent does not navigate away', () => {
+        const listeners: Record<string, (event: any) => void> = {};
+        const captures: Record<string, boolean> = {};
+        vi.stubGlobal('window', {
+            addEventListener: (name: string, fn: (event: any) => void, capture: boolean) => { listeners[name] = fn; captures[name] = capture; },
+            removeEventListener: (name: string) => { delete listeners[name]; },
+        });
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online model={modelOptions[0]} modelOptions={modelOptions}
+            effort={effortOptions[0]} effortOptions={effortOptions} onModelChange={vi.fn()} onEffortChange={vi.fn()} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const down = { key: 'Escape', repeat: false, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+        act(() => listeners.keydown(down));
+        expect(captures.keydown).toBe(true);
+        expect(down.stopImmediatePropagation).toHaveBeenCalledOnce();
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
+        const repeated = { key: 'Escape', repeat: true, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+        act(() => listeners.keydown(repeated));
+        expect(repeated.stopImmediatePropagation).toHaveBeenCalledOnce();
+        const up = { key: 'Escape', preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+        act(() => listeners.keyup(up));
+        expect(up.stopImmediatePropagation).toHaveBeenCalledOnce();
+        act(() => renderer.unmount());
+        vi.unstubAllGlobals();
+    });
+
     it('dismisses an open panel when the web viewport changes', () => {
         const listeners: Record<string, EventListener> = {};
         vi.stubGlobal('window', {

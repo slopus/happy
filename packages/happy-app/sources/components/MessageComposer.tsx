@@ -1,3 +1,4 @@
+import { ComposerAgentAction, getComposerAgentActionStyle } from './ComposerAgentAction';
 import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import { ComposerActionIcon } from './ComposerActionIcon';
 import { Ionicons } from '@expo/vector-icons';
@@ -73,6 +74,8 @@ interface MessageComposerProps {
     sendIcon?: React.ReactNode;
     sendLabel?: string;
     sendHint?: string;
+    /** Web-only staged Agent switch. null keeps the reversible normal-send surface. */
+    newSessionAgent?: string | null;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
     connectionStatus?: {
@@ -538,7 +541,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     referencesRef.current = references;
     const [hasText, setHasText] = React.useState(() => props.initialValue.trim().length > 0);
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
-    const hasPayload = hasText || hasImages || !!props.hasContext;
+    const hasPayload = hasText || hasImages || !!props.hasContext || Boolean(props.newSessionAgent);
     const primaryAction = resolveComposerPrimaryAction({
         mode: props.mode,
         showAbortButton: props.showAbortButton ?? false,
@@ -883,10 +886,10 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         hapticsLight();
         // Live read avoids stalling behind the transitioned `hasText`.
         const liveHasText = (inputRef.current?.getText() ?? '').trim().length > 0 || referencesRef.current.length > 0;
-        if (liveHasText || hasImages || props.hasContext) {
+        if (liveHasText || hasImages || props.hasContext || props.newSessionAgent) {
             props.onSend();
         }
-    }, [handleBlockedSendAttempt, hasImages, props.hasContext, isSendBlocked, props.isSendDisabled, props.isSending, props.onSend]);
+    }, [handleBlockedSendAttempt, hasImages, props.hasContext, isSendBlocked, props.isSendDisabled, props.isSending, props.onSend, props.newSessionAgent]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -936,6 +939,9 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             return true;
         }
 
+        // Staged navigation always needs an explicit click, never an accidental Enter/Tab.
+        if (props.newSessionAgent && (event.key === 'Enter' || event.key === 'Tab')) return false;
+
         // Original key handling
         if (Platform.OS === 'web') {
             // On mobile web (touch devices), Enter should insert a newline since
@@ -963,7 +969,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
         return false; // Key was not handled
-    }, [contextOpen, closeContext, contextIdentity, suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled, predictionText, acceptPrediction, props.onDismissPrediction]);
+    }, [contextOpen, closeContext, contextIdentity, suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled, predictionText, acceptPrediction, props.onDismissPrediction, props.newSessionAgent]);
 
 
 
@@ -1109,13 +1115,15 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
                                 {/* Primary action: stop while running and empty, send when there is a payload. */}
                                 <Shaker
+                                    testID="message-composer-action-surface"
                                     ref={shakerRef}
                                     style={[
                                         styles.sendButton,
                                         hoveredAction === 'send' && styles.sendButtonHovered,
                                         (isAbortAction || isAbortConfirmationArmed || canPressSendButton || props.isSending)
                                             ? styles.sendButtonActive
-                                            : styles.sendButtonInactive
+                                            : styles.sendButtonInactive,
+                                        getComposerAgentActionStyle(props.newSessionAgent, t('sidebar.newSession'))
                                     ]}
                                 >
                                     <Pressable
@@ -1148,7 +1156,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             ? isAborting
                                             : !canPressSendButton}
                                     >
-                                        {((isAbortAction || isAbortConfirmationArmed) && isAborting)
+                                        <ComposerAgentAction agent={props.newSessionAgent} label={t('sidebar.newSession')} busy={props.isSending}
+                                            fallback={<>{((isAbortAction || isAbortConfirmationArmed) && isAborting)
                                             || (!isAbortAction && !isAbortConfirmationArmed && props.isSending) ? (
                                             <ActivityIndicator
                                                 size="small"
@@ -1158,7 +1167,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             <Text style={styles.abortConfirmationLabel}>Esc</Text>
                                         ) : (
                                             <ComposerActionIcon size={Platform.OS === 'web' ? 20 : 24} stop={isAbortAction} color={theme.colors.button.composer.tint} />
-                                        )}
+                                        )}</>} />
                                         <ComposerTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('agentInput.stop') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && hoveredAction === 'send'} />
                                     </Pressable>
                                 </Shaker>

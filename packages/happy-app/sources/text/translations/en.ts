@@ -1420,6 +1420,7 @@ failedContinueTask: "Continue unfinished task",
         "enable": "Enable"
 },
     agentInput: {
+        newAgentSessionHint: 'Opens a new session with the selected Coding Agent; this conversation and its draft are kept.',
         switchCodingAgent: 'Switch coding agent',
         stop: 'Stop',
         asyncQuestion: {

@@ -1411,6 +1411,7 @@ failedContinueTask: "未完了の作業を続ける",
         "enable": "Enable"
 },
     agentInput: {
+        newAgentSessionHint: '選択した Coding Agent で新しいセッションを開きます。現在の会話と下書きは保持されます。',
         switchCodingAgent: 'コーディングエージェントを切り替える',
         stop: '停止',
         asyncQuestion: {

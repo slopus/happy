@@ -176,18 +176,31 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     React.useEffect(() => {
         if (pendingEffort && props.effort?.key === pendingEffort) setPendingEffort(null);
     }, [pendingEffort, props.effort?.key]);
+    const escapePending = React.useRef(false);
     React.useEffect(() => {
-        if (!open || Platform.OS !== 'web' || typeof window === 'undefined') return;
+        if (Platform.OS !== 'web' || typeof window === 'undefined') return;
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                close();
-            }
+            if ((!open && !escapePending.current) || event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (event.repeat) return;
+            escapePending.current = true;
+            close();
         };
-        window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('resize', close);
+        const onKeyUp = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || !escapePending.current) return;
+            escapePending.current = false;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        };
+        // Capture before the route's Escape handler and retain keyup ownership
+        // after closing, otherwise the same gesture also closes the session.
+        window.addEventListener('keydown', onKeyDown, true);
+        window.addEventListener('keyup', onKeyUp, true);
+        if (open) window.addEventListener('resize', close);
         return () => {
-            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keydown', onKeyDown, true);
+            window.removeEventListener('keyup', onKeyUp, true);
             window.removeEventListener('resize', close);
         };
     }, [open, close]);
