@@ -378,7 +378,11 @@ public final class AccountController {
                 if let computer = computers.first(where: { $0.id == preferred }) ?? computers.first { try await agentConnections.select(computer.id) }
             }
             if showsAgentConnections, let active = agentConnections.active {
-                _ = try await reconcile()
+                // Launched while locked (by Siri or a car): the Happy
+                // accounts' items are readable only unlocked, the agent
+                // connection's after the first unlock. It opens all the
+                // same, and the accounts are read once the phone unlocks.
+                do { _ = try await reconcile() } catch { reconcileWhenUnlocked() }
                 localSettings = settings(for: active.id)
                 state = .agentConnection(active)
                 notifyAccounts()
@@ -407,6 +411,32 @@ public final class AccountController {
             }
         } catch {
             // A locked Keychain or an unreadable cache never deletes credentials.
+        }
+    }
+
+    private var unlockWatch: NSObjectProtocol?
+    /// UIKit's `protectedDataDidBecomeAvailableNotification`, by name: this
+    /// module imports no UIKit.
+    static let protectedDataAvailable = Notification.Name("UIApplicationProtectedDataDidBecomeAvailable")
+
+    /// The Happy accounts read again once the phone is unlocked, for the
+    /// switcher, unless something read them first.
+    private func reconcileWhenUnlocked() {
+        guard unlockWatch == nil else { return }
+        unlockWatch = NotificationCenter.default.addObserver(forName: Self.protectedDataAvailable, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let watch = self.unlockWatch else { return }
+                NotificationCenter.default.removeObserver(watch)
+                self.unlockWatch = nil
+                Task { @MainActor in
+                    // An operation under way reads them itself.
+                    guard !self.registryLoaded, !self.busy else { return }
+                    self.busy = true
+                    defer { self.finishOperation() }
+                    guard (try? await self.reconcile()) != nil else { return }
+                    self.notifyAccounts()
+                }
+            }
         }
     }
 

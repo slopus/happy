@@ -32,10 +32,38 @@ final class ServerTokenKeychainTests: XCTestCase {
         XCTAssertEqual(keychain.items.stored(item("older"))?.accessibility, .afterFirstUnlockThisDeviceOnly)
         XCTAssertTrue(keychain.items.calls.contains { if case .updateProtection(_, _, .afterFirstUnlockThisDeviceOnly) = $0 { true } else { false } })
 
-        // A paired computer's item is unchanged.
+        // A paired computer's device token is kept the same way, so Siri
+        // and a car reach it while the phone is locked.
         let paired = AgentConnectionCredentials(address: "tcAddress", port: 24781, deviceID: "d", deviceToken: CanonicalBase64URL.encode(Data(repeating: 7, count: 32)))
         try store.save(paired, id: "mac")
-        XCTAssertEqual(keychain.items.stored(item("mac"))?.accessibility, .whenUnlocked)
+        XCTAssertEqual(keychain.items.stored(item("mac"))?.accessibility, .afterFirstUnlockThisDeviceOnly)
+    }
+
+    /// A pairing an earlier build wrote readable only while unlocked is
+    /// written again at the next launch, once, value unchanged.
+    func testAnOlderPairingIsRewrittenReadableAfterFirstUnlockAtLaunch() async throws {
+        let keychain = AccountsKeychain()
+        let store = KeychainAgentConnectionCredentialStore(backend: keychain)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let paired = AgentConnectionCredentials(address: "tcAddress", port: 24781, deviceID: "d", deviceToken: CanonicalBase64URL.encode(Data(repeating: 7, count: 32)))
+        let bytes = try JSONEncoder().encode(paired)
+        // As an earlier build left it: the item, and a registry naming it.
+        _ = try keychain.add(item("mac"), data: bytes, accessibility: .whenUnlocked)
+        let old = #"{"accounts":[{"id":"mac","name":"Mac","addedAt":0,"revoked":false,"status":"paused"}],"activeID":"mac"}"#
+        try Data(old.utf8).write(to: directory.appendingPathComponent(AgentConnectionStorage.fileName))
+
+        let storage = AgentConnectionStorage(credentials: store, directory: directory)
+        let loaded = try await storage.load()
+        XCTAssertEqual(loaded.credentials["mac"], paired)
+        XCTAssertEqual(keychain.items.stored(item("mac"))?.accessibility, .afterFirstUnlockThisDeviceOnly)
+        XCTAssertEqual(try keychain.items.stored(item("mac")).map { try JSONDecoder().decode(AgentConnectionCredentials.self, from: $0.data) }, paired)
+
+        // Done once: the next launch writes nothing.
+        keychain.items.resetCalls()
+        _ = try await AgentConnectionStorage(credentials: store, directory: directory).load()
+        XCTAssertFalse(keychain.items.calls.contains { if case .updateProtection = $0 { true } else { false } })
     }
 
     #if canImport(Security)
