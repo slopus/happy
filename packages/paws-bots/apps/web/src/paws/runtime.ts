@@ -1,5 +1,7 @@
+import { serveSessionTools } from './session-tools';
 /** Host integration is lexical to this bundle; it never patches window.fetch or storage. */
 export type HostOptions = {
+  onSessionTool?: (request: { id: string; tool: string; args: Record<string, unknown> }, signal: AbortSignal) => Promise<unknown>;
   runtimeUrl: string;
   ticket: string;
   expiresAt: number;
@@ -45,6 +47,7 @@ export async function connect(root: HTMLElement, options: HostOptions) {
   active.sessionKey = lease.sessionKey; active.expiresAt = lease.expiresAt;
   // Native space id is deterministic per Paws account; no Paws credential enters this bundle.
   storageNamespace = `paws:bots:${url.origin}:${lease.accountKey}:${lease.spaceId}:`;
+  if (options.onSessionTool) void serveSessionTools(pawsFetch, options.onSessionTool, controller.signal).catch(() => { /* Tool calls fail closed; the bot chat stays available. */ });
   localStore.setItem("rakazo:space-id", lease.spaceId);
   localStore.setItem("rakazo.uiLocale", lease.locale === "zh" ? "zh-CN" : "en");
   root.dataset.theme = lease.appearance === "dark" ? "dark" : "light";

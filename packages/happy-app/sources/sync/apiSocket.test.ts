@@ -70,6 +70,15 @@ function createApiSocket(encryption: Encryption): ApiSocket {
 }
 
 describe('ApiSocket RPC', () => {
+    it('does not emit a control RPC if its caller is invalidated during encryption', async () => {
+        let current = true;
+        const { encryption, machineEncryption } = createEncryption();
+        machineEncryption.encryptRaw.mockImplementation(async () => { current = false; return 'encrypted'; });
+        const socket = createApiSocket(encryption); mocks.socket.connected = true;
+        await expect(socket.machineRPC('machine', 'resume-happy-session', {}, { isCurrent: () => current } as any)).rejects.toThrow('RPC caller invalidated');
+        expect(mocks.rpcEmitWithAck).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.socket.connected = false;

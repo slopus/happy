@@ -309,6 +309,8 @@ export type CodexListRewindPointsResult =
     | { type: 'error'; errorMessage: string };
 
 export interface ResumeSessionOptions {
+    /** Route-independent caller lifetime, checked through credential preparation and RPC emission. */
+    isCurrent?: () => boolean;
     machineId: string;
     sessionId: string;
     /** Source session flavor; required so Codex never silently skips authorization. */
@@ -363,21 +365,28 @@ async function machineStartSession(
     isCodex: boolean,
     parameters: Record<string, unknown>,
     expectedCodexAccountProfileId?: string | null,
+    isCurrent?: () => boolean,
 ): Promise<SpawnSessionResult> {
     let grant: string | undefined;
     const redact = (message: string) => grant ? message.replaceAll(grant, '[redacted]') : message;
     let dispatching = false;
+    const assertCurrent = () => {
+        if (isCurrent?.() === false) throw new Error('Session caller invalidated');
+    };
     try {
+        assertCurrent();
         if (isCodex) {
             let actualProfileId: string | null = null;
             const { TokenStorage } = await import('@/auth/tokenStorage');
             const credentials = await TokenStorage.getCredentials().catch(() => null);
+            assertCurrent();
             // A bound account deliberately overrides the machine-local login.
             // An unbound machine falls through to its own Codex auth.json, so
             // normal Paws use does not require duplicating an existing login.
             if (credentials) {
                 try {
                     const authorization = await createCodexSessionGrant(credentials, machineId);
+                    assertCurrent();
                     grant = authorization.grant;
                     actualProfileId = authorization.profile.id;
                 } catch (error) {
@@ -388,11 +397,12 @@ async function machineStartSession(
                 throw new CodexAccountError('binding-version-conflict');
             }
         }
+        assertCurrent();
         dispatching = true;
         const result = normalizeSpawnSessionResult(await apiSocket.machineRPC<SpawnSessionResult, Record<string, unknown>>(
             machineId, method,
             { ...parameters, ...(grant ? { codexSessionGrant: grant } : {}) },
-            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
+            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS, ...(isCurrent ? { isCurrent } : {}) },
         ));
         return result.type === 'error' ? { ...result, errorMessage: redact(result.errorMessage) } as SpawnSessionResult : result;
     } catch (error) {
@@ -594,7 +604,7 @@ export async function machineResumeSession(
         return { type: 'error', errorMessage: 'personal-agent-retired' };
     }
     const { machineId, sessionId, agent, model, permissionMode, effort, expectedFailedTurn, expectedWorkerPid } = options;
-    return machineStartSession(machineId, 'resume-happy-session', agent === 'codex', { sessionId, model, permissionMode, effort, ...(expectedFailedTurn ? { expectedFailedTurn } : {}), ...(expectedWorkerPid ? { expectedWorkerPid } : {}) });
+    return machineStartSession(machineId, 'resume-happy-session', agent === 'codex', { sessionId, model, permissionMode, effort, ...(expectedFailedTurn ? { expectedFailedTurn } : {}), ...(expectedWorkerPid ? { expectedWorkerPid } : {}) }, undefined, options.isCurrent);
 }
 
 /**

@@ -53,6 +53,8 @@ export type SyncSocketListener = (state: SyncSocketState) => void;
 export const DEFAULT_RPC_ACK_TIMEOUT_MS = 60_000;
 
 export interface RpcCallOptions {
+    /** Caller ownership/lifetime fence; rechecked immediately before emission. */
+    isCurrent?: () => boolean;
     timeoutMs?: number;
     overallTimeoutMs?: number;
 }
@@ -276,6 +278,10 @@ export class ApiSocket {
         getEncryption: () => RawEncryption,
         options?: RpcCallOptions,
     ): Promise<R> {
+        const assertCaller = () => {
+            if (options?.isCurrent?.() === false) throw new Error('RPC caller invalidated');
+        };
+        assertCaller();
         const rpcSocket = this.socket;
         if (!rpcSocket?.connected) {
             throw new Error('Socket not connected');
@@ -322,6 +328,7 @@ export class ApiSocket {
         const traceId = startupTraceIdFromParams(params);
         const encryptedParams = await withinOverallDeadline(encryption.encryptRaw(params));
 
+        assertCaller();
         if (this.socket !== rpcSocket || !rpcSocket.connected) {
             throw new Error('Socket not connected');
         }

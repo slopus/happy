@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 import { BotsFrame } from './BotsFrame.web';
 
+const steward = vi.hoisted(() => ({ execute: vi.fn(), dispose: vi.fn() }));
+vi.mock('./sessionStewardHost.web', () => ({ createSessionStewardHost: () => steward }));
+
 vi.mock('react-native', () => ({ Platform: { OS: 'web', select: (values: any) => values.web ?? values.default } }));
 
 vi.mock('react-native-unistyles', async () => {
@@ -41,6 +44,7 @@ describe('Bots workspace mount boundary', () => {
         expect(mountRuntime.mock.calls[0][0]).toBe(host);
         const options = (mountRuntime.mock.calls as any)[0][1];
         expect(options.ticket).toBe('s'.repeat(43));
+        expect(options.onSessionTool).toBe(steward.execute);
         const { appThemes } = await import('@/themePacks');
         expect(options.theme['--accent']).toBe(appThemes.ginghamDark.colors.surfaceSelected);
         expect(options.theme['--secondary']).toBe(appThemes.ginghamDark.colors.surfacePressed);
@@ -50,7 +54,7 @@ describe('Bots workspace mount boundary', () => {
         expect(mountRuntime).toHaveBeenCalledTimes(1);
         expect(dispose).not.toHaveBeenCalled();
         await act(async () => tree.unmount()); tree = null;
-        expect(dispose).toHaveBeenCalledOnce(); expect(style.remove).not.toHaveBeenCalled(); expect(script.remove).toHaveBeenCalledOnce();
+        expect(dispose).toHaveBeenCalledOnce(); expect(steward.dispose).toHaveBeenCalledOnce(); expect(style.remove).not.toHaveBeenCalled(); expect(script.remove).toHaveBeenCalledOnce();
     });
     it('ignores a late library load after leaving the screen', async () => {
         await mount(); const style = nodes[0];

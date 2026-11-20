@@ -17,6 +17,9 @@ import {
 import { SKILL_TOOL_NAMES } from "./skill-tools.js";
 
 export const READ_ONLY_AGENT_TOOLS = new Set([
+  "paws_sessions_list",
+  "paws_session_read",
+  "paws_session_result",
   "computer_observe",
   "list_files",
   "list_fleet",
@@ -98,6 +101,7 @@ export function offersAgentConnectionTools(options: {
 }
 
 export function selectBuiltinToolsForRun(options: {
+  pawsSessions?: boolean;
   ticketBoardEnabled?: boolean;
   phoneCallsEnabled?: boolean;
   historyRetrievalEnabled?: boolean;
@@ -169,6 +173,7 @@ export function selectBuiltinToolsForRun(options: {
   ).filter(
     (tool) =>
       !disabled.has(tool.name) &&
+      ((options.pawsSessions && ownerStartedRun && !options.groupId && !options.messagingChannelRun) || !tool.name.startsWith("paws_session")) &&
       (options.trigger !== "created" || CREATED_RUN_TOOL_NAMES.has(tool.name)) &&
       (options.trigger !== BACKGROUND_HELPER_TRIGGER ||
         BACKGROUND_HELPER_TOOL_NAMES.has(tool.name)) &&

@@ -1,3 +1,4 @@
+import { pawsSessionHandlers } from './paws-session-tools.js';
 import type { AgentToolExecutionObserver } from "@rakazo/adapter-kit";
 import { BACKGROUND_HELPER_TRIGGER, toolResultTaintsRun } from "@rakazo/core";
 import { isTerminatingReplyResult } from "./approval-effect.js";
@@ -40,6 +41,7 @@ import { refusal } from "./tool-refusal.js";
 import { argumentGiven } from "./update-bot-patch.js";
 
 const TOOL_HANDLERS = new Map<string, ToolHandler>([
+  ...Object.entries(pawsSessionHandlers),
   ...Object.entries(computerTools),
   ...Object.entries(fileTools),
   ...Object.entries(pageTools),

@@ -154,3 +154,62 @@ client together. With the hoisted linker, a package-local Prisma 6 CLI and a
 root-level client otherwise trigger Prisma's implicit package installation from
 inside postinstall. Bots DB keeps its explicitly declared Prisma 7 toolchain and
 separate generated output; do not use a global Prisma override to merge them.
+
+## Web session steward (source implementation)
+
+The pinned Paws chief can use `paws_sessions_list`, `paws_session_read`,
+`paws_session_send`, `paws_session_resume` and `paws_session_result` in its owner's
+Web conversation. These are coding-session tools, separate from Rakazo fleet tools.
+They reuse the logged-in Paws host's authentication, encryption and existing send /
+resume operations. No Paws bearer or account secret is passed to Bots. Selected
+history and tool results intentionally enter the Bots backend/model conversation.
+
+The gateway carries bounded reverse RPC over one lease-bound SSE connection.
+Listing returns a non-secret `connectionId`; subsequent tools must use that routing
+nonce. It pins reads, writes and result tracking to the same tab. A disconnected
+nonce cannot be rebound, so an uncertain write cannot automatically execute in a
+new tab. Pending work fails closed on disconnect, lease expiry or sign-out. The
+Web callback also fences asynchronous send/resume against account/server switches.
+Read requests are discarded after settlement; write receipts live only for that
+connection, bounded per client, and are removed on disconnect. The Bots durable
+effect/approval journal remains responsible for worker retry safety across restart.
+
+`paws_sessions_list` uses server pagination, not the 150-row SDK list or the visible
+sidebar. History reads decrypt detached pages without navigating or moving the
+user's scroll position. Metadata/status are authoritative server snapshots; online
+presence remains the existing Web connection observation. The model must separate
+execution outcomes from tests/deployment/acceptance evidence. History is untrusted
+input, and send/resume use the existing consequential-action approval policy.
+
+A send receipt means **queued**, not accepted by the remote agent. Results match
+accepted `localIds` in `turn-start` and the same root turn's `turn-end`; idle state,
+other turns, subagents and legacy events without that link cannot prove completion.
+Result waits subscribe before reading history, wake only on store changes and have
+one 20-second deadline. There is no polling or automatic mutation retry. Closing
+Bots stops follow-up, but does not undo instructions already delivered remotely.
+Resume acknowledges original-session launch only and never replays an old prompt.
+
+### Activation and verification boundary
+
+The source worker overlay accepts optional `PAWS_BOTS_SESSION_TOOLS_URL` (a trusted,
+fixed root gateway URL reachable **from the worker**) and `PAWS_BOTS_BRIDGE_SECRET`
+(the existing gateway bootstrap secret). These are server environment values,
+never bot secrets or model arguments. Keep the gateway private; do not change its
+loopback binding or expose a host port to make a test pass. Configure an existing
+verified private transport if worker and gateway are on different hosts/networks.
+Missing configuration leaves the tools unavailable. No production environment or
+service is changed by this source patch. Native clients do not install the callback.
+
+Upgrade the gateway and source worker along with the embedded Web assets. A Web
+bundle alone does not activate the feature. Before claiming live acceptance, verify
+worker→gateway reachability, real owner-only tool calls, account switch while a grant
+is pending, full paginated history, exact completion, and a real remote resume.
+
+Targeted source checks:
+
+```sh
+node --test integrations/rakazo/gateway/*.test.mjs
+pnpm --filter happy-app exec vitest run sources/components/bots sources/sync/apiSocket.test.ts sources/sync/ops.codexAccounts.test.ts
+pnpm --filter @rakazo/adapters exec vitest run --root ../.. packages/adapters/src/paws-session-tools.test.ts
+pnpm --filter @rakazo/web exec vitest run --root ../.. apps/web/src/paws
+```

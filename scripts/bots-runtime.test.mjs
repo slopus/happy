@@ -2,7 +2,11 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
-const source = stripTypeScriptTypes(readFileSync(new URL('../packages/paws-bots/apps/web/src/paws/runtime.ts', import.meta.url), 'utf8').replace('import.meta.env.PAWS_EMBEDDED', 'true'));
+const sessionToolsSource = stripTypeScriptTypes(readFileSync(new URL('../packages/paws-bots/apps/web/src/paws/session-tools.ts', import.meta.url), 'utf8'));
+const sessionToolsUrl = `data:text/javascript;base64,${Buffer.from(sessionToolsSource).toString('base64')}`;
+// Keep the real dependency: data URL modules cannot resolve relative imports.
+const source = stripTypeScriptTypes(readFileSync(new URL('../packages/paws-bots/apps/web/src/paws/runtime.ts', import.meta.url), 'utf8').replace('import.meta.env.PAWS_EMBEDDED', 'true'))
+    .replace("from './session-tools'", `from '${sessionToolsUrl}'`);
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
 const store = () => {

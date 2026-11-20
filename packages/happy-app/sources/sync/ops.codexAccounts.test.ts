@@ -27,6 +27,14 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('transparent Codex grants', () => {
+    it('does not resume after its Web owner disconnects during credential preparation', async () => {
+        let current = true;
+        vi.stubGlobal('fetch', async () => { current = false; return Response.json({ grant: 'a'.repeat(43), expiresAt: '2026-09-11T00:01:00Z', profile: { id: '00000000-0000-4000-8000-000000000001', displayName: 'Work', credentialVersion: 1 } }); });
+        const result = await machineResumeSession({ machineId: 'm1', sessionId: 's1', agent: 'codex', isCurrent: () => current } as any);
+        expect(result).toMatchObject({ type: 'error' });
+        expect(machineRPC).not.toHaveBeenCalled();
+    });
+
     it.each([null, '00000000-0000-4000-8000-000000000002'])('rejects a changed connection before RPC (expected %s)', async (expectedCodexAccountProfileId) => {
         expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex', expectedCodexAccountProfileId }))
             .toMatchObject({ type: 'error', codexAccountErrorCode: 'binding-version-conflict' });

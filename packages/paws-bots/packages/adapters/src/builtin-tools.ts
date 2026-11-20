@@ -1,3 +1,4 @@
+import { pawsSessionTools } from './paws-session-tools.js';
 import type { ConnectorTool } from "@rakazo/adapter-kit";
 import {
   ATTACHMENT_MAX_COUNT,
@@ -248,6 +249,7 @@ const fleetGroupTargetProperties = {
 };
 
 export const builtinAgentTools: ConnectorTool[] = [
+  ...pawsSessionTools,
   {
     name: "generate_image",
     description:

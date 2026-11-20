@@ -21,6 +21,9 @@ services:
     image: ${PAWS_BOTS_SOURCE_IMAGE:-paws-bots-app:monorepo}
     build: *source-build
     environment:
+      # Optional reverse tools: server-only configuration, never sent to models.
+      PAWS_BOTS_SESSION_TOOLS_URL: ${PAWS_BOTS_SESSION_TOOLS_URL:-}
+      PAWS_BOTS_BRIDGE_SECRET: ${PAWS_BOTS_BRIDGE_SECRET:-}
       SANDBOX_PROVIDER: docker
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}

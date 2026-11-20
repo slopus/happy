@@ -1,8 +1,10 @@
+import { createSessionStewardHost } from './sessionStewardHost.web';
+import type { StewardRequest } from './sessionSteward.web';
 import * as React from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { loadBotsAssets } from './botsAssets.web';
 
-type HostOptions = Omit<BotsFrameProps, 'expiresAt'> & { expiresAt: number; theme: Record<string, string> };
+type HostOptions = Omit<BotsFrameProps, 'expiresAt'> & { expiresAt: number; theme: Record<string, string>; onSessionTool?: (request: StewardRequest, signal: AbortSignal) => Promise<unknown> };
 declare global {
     interface Window { PawsBots?: { mount(element: HTMLElement, options: HostOptions): () => void } }
 }
@@ -69,6 +71,7 @@ export function BotsFrame(props: BotsFrameProps) {
         let cancelled = false;
         let dispose: (() => void) | undefined;
         let releaseAssets: (() => void) | undefined;
+        let steward: ReturnType<typeof createSessionStewardHost> | undefined;
         let entry = document.querySelector<HTMLMetaElement>('meta[name="paws-bots-entry"]')?.content;
         let css = document.querySelector<HTMLMetaElement>('meta[name="paws-bots-style"]')?.content;
         const fail = () => { if (!cancelled) props.onFailure(); };
@@ -86,9 +89,10 @@ export function BotsFrame(props: BotsFrameProps) {
             const runtime = await assets.ready;
             if (cancelled) return;
             if (Date.now() >= props.expiresAt) throw new Error('Bots launch expired');
-            dispose = runtime.mount(host, { ...props, theme: colors });
+            steward = createSessionStewardHost();
+            dispose = runtime.mount(host, { ...props, theme: colors, onSessionTool: steward.execute });
         })().catch(fail);
-        return () => { cancelled = true; dispose?.(); releaseAssets?.(); };
+        return () => { cancelled = true; dispose?.(); steward?.dispose(); releaseAssets?.(); };
     }, [props.runtimeUrl, props.ticket, props.expiresAt, props.onAuthenticated, props.onFailure]);
     React.useEffect(() => {
         const host = element.current;

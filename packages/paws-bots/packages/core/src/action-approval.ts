@@ -6,6 +6,7 @@ export { isSecretAskBlock } from "./ask-kind.js";
 import { humanizeToolName } from "./events.js";
 
 const APPROVAL_EXEMPT_TOOLS = new Set([
+  "paws_sessions_list", "paws_session_read", "paws_session_result",
   "computer_observe",
   "computer_act",
   "browser_navigate",
@@ -68,6 +69,7 @@ const OUTSIDE_RUN_SAFE_BUILTIN_TOOLS = new Set([
 ]);
 
 const APPROVAL_REQUIRED_BUILTIN_TOOLS = new Set([
+  "paws_session_send", "paws_session_resume",
   "generate_image",
   "generate_video",
   "service_call",

@@ -1,3 +1,4 @@
+import { pawsSessionBridgeConfigured } from './paws-session-tools.js';
 import type { AgentRunRequest, ComputerRef, SemanticMemoryProvider } from "@rakazo/adapter-kit";
 import { DEFAULT_CONTEXT_STRATEGY, runContinueJob } from "@rakazo/adapter-kit";
 import type { MessageBlock, RunStatus } from "@rakazo/contracts";
@@ -1372,6 +1373,7 @@ export function createRunExecutor(executorDeps: ExecutorDeps) {
         );
         const builtins = [
           ...selectBuiltinToolsForRun({
+            pawsSessions: Boolean(userComputerOwnerId) && /^c[a-f0-9]{24}$/.test(bot.id) && pawsSessionBridgeConfigured(),
             ticketBoardEnabled: deps.ticketBoardEnabled,
             // A call rings the bot's own person, whose chat it is; other members of a shared
             // Space reach it by message for now.

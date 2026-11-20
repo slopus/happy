@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { SessionToolBroker } from './session-tools.mjs';
 import https from 'node:https';
 import { readFileSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -87,12 +88,12 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-async function readJson(req) {
+async function readJson(req, maxBytes = 8192) {
   const chunks = [];
   let length = 0;
   for await (const chunk of req) {
     length += chunk.length;
-    if (length > 8192) throw new Error('Request too large');
+    if (length > maxBytes) throw new Error('Request too large');
     chunks.push(chunk);
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -123,6 +124,7 @@ export function createGateway(config, dependencies = {}) {
   const state = dependencies.state ?? new GatewayState();
   const sessionCache = dependencies.sessionCache ?? new NativeSessionCache();
   const bootstrap = dependencies.bootstrap ?? ((subject) => bootstrapNative({ ...config, subject, secret: config.identitySecret, sessionCache }));
+  const sessionTools = new SessionToolBroker();
   const gateway = http.createServer(async (req, res) => {
     const disconnect = new AbortController();
     res.once('close', () => { if (!res.writableEnded) disconnect.abort(new Error('Client disconnected')); });
@@ -185,10 +187,35 @@ export function createGateway(config, dependencies = {}) {
         res.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'no-store', 'service-worker-allowed': '/', 'x-content-type-options': 'nosniff' });
         return res.end(req.method === 'HEAD' ? undefined : url.pathname === '/sw.js' ? worker : loader);
       }
+      if (url.pathname === '/__paws/session-tools') {
+        if (req.method !== 'POST' || caller || !sameSecret(req.headers['x-paws-bridge-secret'], config.bridgeSecret)) return json(res, 403, { error: 'Forbidden' });
+        try { return json(res, 200, { result: await sessionTools.call(await readJson(req)) }); }
+        catch (error) { return json(res, 409, { error: error.message }); }
+      }
       if (url.pathname.startsWith('/__paws/')) return json(res, 404, { error: 'Not found' });
       const privateRoute = /^\/(?:api|rpc)(?:\/|$)/.test(pathname);
       const lease = state.lease(req.headers['x-paws-rakazo-session']);
       if (privateRoute && (!lease || (embeddedCaller && lease.parentOrigin !== caller) || (caller && caller !== config.publicOrigin && !embeddedCaller))) return json(res, 401, { error: 'A Paws Bots client lease is required' });
+      if (pathname.startsWith('/api/paws-session-tools/')) {
+        if (!lease || !embeddedCaller || lease.platform !== 'web' || lease.parentOrigin !== caller) return json(res, 403, { error: 'Forbidden' });
+        const key = req.headers['x-paws-rakazo-session'];
+        if (pathname === '/api/paws-session-tools/stream' && req.method === 'GET') {
+          let disconnect;
+          try { disconnect = sessionTools.connect(key, lease, frame => res.write(`data: ${JSON.stringify(frame)}\n\n`)); }
+          catch { return json(res, 409, { error: 'Web client already connected' }); }
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
+          res.write(': connected\n\n');
+          const unwatch = state.watchLease(key, () => { disconnect(); res.destroy(); });
+          res.once('close', () => { disconnect(); unwatch(); });
+          return;
+        }
+        if (pathname === '/api/paws-session-tools/result' && req.method === 'POST') {
+          const body = await readJson(req, 128 * 1024);
+          if (!state.lease(key)) return json(res, 401, { error: 'Lease expired' });
+          return json(res, 200, { accepted: sessionTools.reply(key, body.id, body.result) });
+        }
+        return json(res, 404, { error: 'Not found' });
+      }
       if (pathname.startsWith('/api/auth/') && !AUTH_READ.has(pathname)) {
         if (pathname === '/api/auth/sign-out' && req.method === 'POST') {
           state.revoke(req.headers['x-paws-rakazo-session']);
@@ -304,6 +331,7 @@ export function createGateway(config, dependencies = {}) {
     socket.once('close', () => upstream.destroy());
     upstream.end();
   });
+  gateway.on('close', () => sessionTools.close());
   return { server: gateway, state, sessionCache };
 }
 
