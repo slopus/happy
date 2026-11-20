@@ -11,6 +11,9 @@ services:
     image: ${PAWS_BOTS_SOURCE_IMAGE:-paws-bots-app:monorepo}
     build: *source-build
     environment:
+      # The API can execute interactive turns directly, alongside the worker.
+      PAWS_BOTS_SESSION_TOOLS_URL: ${PAWS_BOTS_SESSION_TOOLS_URL:-}
+      PAWS_BOTS_BRIDGE_SECRET: ${PAWS_BOTS_BRIDGE_SECRET:-}
       SANDBOX_PROVIDER: docker
       COMPUTER_SETTINGS_ENABLED: "true"
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091

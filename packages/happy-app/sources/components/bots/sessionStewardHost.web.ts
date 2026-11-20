@@ -91,7 +91,8 @@ export function createSessionStewardHost() {
       else
         params.set(
           "before_seq",
-          String(input.beforeSeq ?? Number.MAX_SAFE_INTEGER),
+          // Match the main sync path: message seq is PostgreSQL int4.
+          String(input.beforeSeq ?? 2_147_483_647),
         );
       const response = await apiSocket.request(
         `/v3/sessions/${encodeURIComponent(id)}/messages?${params}`,

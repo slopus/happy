@@ -191,8 +191,8 @@ Resume acknowledges original-session launch only and never replays an old prompt
 
 ### Activation and verification boundary
 
-The source worker overlay accepts optional `PAWS_BOTS_SESSION_TOOLS_URL` (a trusted,
-fixed root gateway URL reachable **from the worker**) and `PAWS_BOTS_BRIDGE_SECRET`
+The source API and worker overlays accept optional `PAWS_BOTS_SESSION_TOOLS_URL` (a trusted,
+fixed root gateway URL reachable **from both API and worker**) and `PAWS_BOTS_BRIDGE_SECRET`
 (the existing gateway bootstrap secret). These are server environment values,
 never bot secrets or model arguments. Keep the gateway private; do not change its
 loopback binding or expose a host port to make a test pass. Configure an existing
@@ -200,7 +200,9 @@ verified private transport if worker and gateway are on different hosts/networks
 Missing configuration leaves the tools unavailable. No production environment or
 service is changed by this source patch. Native clients do not install the callback.
 
-Upgrade the gateway and source worker along with the embedded Web assets. A Web
+Upgrade the gateway, source API and worker along with the embedded Web assets.
+The API attaches an interactive run executor even with an external worker, so both
+processes require the same bridge configuration and source version. A Web
 bundle alone does not activate the feature. Before claiming live acceptance, verify
 worker→gateway reachability, real owner-only tool calls, account switch while a grant
 is pending, full paginated history, exact completion, and a real remote resume.
