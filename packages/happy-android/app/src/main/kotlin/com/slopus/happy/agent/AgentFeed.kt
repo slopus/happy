@@ -3,6 +3,8 @@ package com.slopus.happy.agent
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 /** One row of an agent connection's home. [key] is stable for the row's whole life. */
 @Immutable
@@ -53,7 +55,20 @@ sealed interface AgentFeedRow {
      * it and none waits on a question (desktop's project and workspace
      * `activity`).
      */
-    data class Folder(val id: String, val name: String, val depth: Int, val mark: FolderMark? = null, val running: Boolean = false, val lineChanges: WorkspaceLineChanges? = null) : AgentFeedRow {
+    data class Folder(
+        val id: String,
+        val name: String,
+        val depth: Int,
+        val mark: FolderMark? = null,
+        val running: Boolean = false,
+        val lineChanges: WorkspaceLineChanges? = null,
+        /**
+         * What archiving this row archives on the computer: a worktree's
+         * workspace, with its chats; null for a project, which the agent
+         * archives only as a whole project.
+         */
+        val archive: ArchiveTarget? = null,
+    ) : AgentFeedRow {
         override val key get() = "folder-$id"
     }
 
@@ -84,6 +99,8 @@ sealed interface AgentFeedRow {
         val delegating: Boolean = false,
         val workspaceId: String? = null,
         val lineChanges: WorkspaceLineChanges? = null,
+        /** What archiving this row archives on the computer; null where the person may not archive it from home. */
+        val archive: ArchiveTarget? = null,
     ) : AgentFeedRow {
         override val key get() = "agent-$agentId"
 
@@ -106,6 +123,18 @@ sealed interface AgentFeedRow {
 }
 
 enum class ConversationKind { Bot, Task, Project, Subtask }
+
+/**
+ * What a home row's archive asks the computer to archive
+ * ([AgentSession.archive]): a task (`task`, its task ID), one conversation
+ * (`agent`, its agent ID: a project's chat or a subtask) or a worktree's
+ * workspace (`workspace`, its workspace ID, with its chats). Desktop
+ * archives the same ones from a conversation's tab or its sidebar: a task
+ * only where the person may (`canArchive`), its subtasks likewise, a bot's
+ * subtasks always, and never a bot itself.
+ */
+@Immutable
+data class ArchiveTarget(val kind: String, val id: String)
 
 /** What a project's folder wears (API.md "Projects", `avatar`). */
 @Immutable
@@ -200,6 +229,9 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 seed: String? = null, happy: Boolean = false,
                 /** A bot muted on the desktop: listed, its subtasks too, without activity or unread (iOS SidebarRows' `muted`). */
                 muted: Boolean = false,
+                archive: ArchiveTarget? = null,
+                /** Its subtasks may be archived: a bot's always, a task's where the task may be. */
+                subtasksArchivable: Boolean = false,
             ): Boolean {
                 if (agentId in removed) return false
                 val agent = catalog.agents[agentId] ?: return false
@@ -223,12 +255,14 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     waiting = !muted && wire.wait != null,
                     workspaceId = wire.workspaceId,
                     lineChanges = git[wire.workspaceId]?.takeIf { it.visible },
+                    archive = archive,
                 )
                 var delegating = false
                 if (nesting < 2) {
                     for (child in (agent["subtasks"] as? JsonArray).orEmpty()) {
                         val childId = (child as? JsonObject)?.string("id") ?: continue
-                        if (agentRows(childId, null, ConversationKind.Subtask, depth + 1, parentId = agentId, nesting = nesting + 1, muted = muted)) delegating = true
+                        val childArchive = ArchiveTarget("agent", childId).takeIf { subtasksArchivable }
+                        if (agentRows(childId, null, ConversationKind.Subtask, depth + 1, parentId = agentId, nesting = nesting + 1, muted = muted, archive = childArchive, subtasksArchivable = subtasksArchivable)) delegating = true
                     }
                 }
                 val row = rows[at] as AgentFeedRow.Conversation
@@ -297,6 +331,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     agentRows(
                         agentId, intents.titles[id] ?: bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"), seed = id, happy = happy,
                         muted = DesktopSettings.botMuted(catalog.settingValues, id),
+                        subtasksArchivable = true,
                     )
                 }
             }
@@ -305,6 +340,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     val agentId = (task["agent"] as? JsonObject)?.string("id") ?: return@forEach
                     val id = task.string("id")
                     if (id != null && id in removed) return@forEach
+                    // Desktop's `canArchive`: absent on a computer that doesn't say, where the task is the person's own.
+                    val archivable = (task["canArchive"] as? JsonPrimitive)?.booleanOrNull != false
                     // In a team a task wears its author's face (iOS a2597f4d6): the person's own from the profile,
                     // another member's as read, else that member's placeholder.
                     val author = task.string("ownerUserId")?.takeIf { catalog.userId != null }
@@ -316,6 +353,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     agentRows(
                         agentId, id?.let(intents.titles::get) ?: task.string("name"), ConversationKind.Task, 0,
                         picture = author?.takeIf { photo != null }?.let(TeamUser::photoPath), thumbhash = photo, seed = author ?: id ?: agentId,
+                        archive = id?.takeIf { archivable }?.let { ArchiveTarget("task", it) },
+                        subtasksArchivable = archivable,
                     )
                 }
             }
@@ -329,16 +368,21 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                             val agentId = (embedded as? JsonObject)?.string("id") ?: return@forEach
                             // A workspace-bound subtask shows under the work that made it.
                             if (catalog.agents[agentId]?.get("subtask")?.toString() == "true") return@forEach
-                            agentRows(agentId, null, ConversationKind.Project, depth)
+                            agentRows(agentId, null, ConversationKind.Project, depth, archive = ArchiveTarget("agent", agentId), subtasksArchivable = true)
                         }
                     }
                     series(project, 1)
                     catalog.workspaces.values
-                        .filter { it.string("projectId") == id && it.string("id") != id && active(it) && it.string("id") !in owned }
+                        // One archiving here is gone at once, with its chats.
+                        .filter { it.string("projectId") == id && it.string("id") != id && active(it) && it.string("id") !in owned && it.string("id") !in removed }
                         .sortedWith(byOrderKey)
                         .forEach { workspace ->
                             val workspaceAt = rows.size
-                            rows += AgentFeedRow.Folder(workspace.string("id").orEmpty(), workspace.string("name").orEmpty(), 1, lineChanges = git[workspace.string("id")]?.takeIf { it.visible })
+                            val workspaceId = workspace.string("id").orEmpty()
+                            rows += AgentFeedRow.Folder(
+                                workspaceId, workspace.string("name").orEmpty(), 1, lineChanges = git[workspaceId]?.takeIf { it.visible },
+                                archive = ArchiveTarget("workspace", workspaceId),
+                            )
                             series(workspace, 2)
                             folderActivity(workspaceAt)
                         }

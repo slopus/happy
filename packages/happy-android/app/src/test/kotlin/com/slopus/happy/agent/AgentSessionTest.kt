@@ -1523,6 +1523,43 @@ class AgentSessionTest {
     }
 
     @Test
+    fun anArchivedWorkspaceLeavesHomeWithItsChatsAndNamesTheVersionItArchives(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(
+            projects = listOf(Wire.project("p1", "rig", listOf(Wire.agent("ap1", workspaceId = "p1", title = "Main", orderKey = "1")))),
+            workspaces = listOf(Wire.workspace("w1", "p1", "fix-login", listOf(Wire.agent("aw1", workspaceId = "w1", title = "In the workspace", orderKey = "1")))),
+        )
+        val archives = ArrayList<Pair<String, String?>>()
+        val transport = { _: AgentConnectionCredentials ->
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                    agent.calls += "$method $path"
+                    return when {
+                        method == "GET" && path == "/v0/workspaces/w1" -> TransportResponse(200, body = "{\"workspace\":{\"id\":\"w1\",\"version\":\"v5\"}}".toByteArray())
+                        path == "/v0/workspaces/w1/archive" -> {
+                            archives += path to headers["If-Match"]
+                            TransportResponse(202, body = "{\"workspace\":{\"id\":\"w1\",\"status\":\"archiving\"}}".toByteArray())
+                        }
+                        else -> agent.request(method, path, credential, body, headers)
+                    }
+                }
+            }
+        }
+        val session = sessions(transport = transport).session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { it == listOf("ap1", "aw1") }
+        // The worktree's workspace names its archive; the project archives only as a whole project.
+        val folders = session.feed.value.rows.filterIsInstance<AgentFeedRow.Folder>()
+        assertEquals(listOf(null, ArchiveTarget("workspace", "w1")), folders.map { it.archive })
+
+        session.archive("workspace", "w1")
+        // Gone at once with its chat, and still gone once the computer has taken it.
+        eventually({ session.feed.value }) { feed -> feed.rows.none { it is AgentFeedRow.Folder && it.id == "w1" } && feed.conversations.map { it.agentId } == listOf("ap1") }
+        eventually({ session.intents.pending.value }) { it.isEmpty() }
+        assertEquals(listOf("/v0/workspaces/w1/archive" to "v5"), archives)
+        assertEquals(listOf("ap1"), session.feed.value.conversations.map { it.agentId })
+    }
+
+    @Test
     fun hidingProjectsOnTheDesktopHidesThemHereLiveAndAChangeHereIsSent(): Unit = runBlocking {
         agent.bootstrap = Wire.bootstrap(
             bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1"))),
