@@ -2,8 +2,8 @@ import { parseSpecialCommand, type SpecialCommandType } from '@/parsers/specialC
 import type { PendingAttachment } from '@/utils/MessageQueue2';
 
 type CodexUserTextQueue<T> = {
-    push: (message: string, mode: T, attachments?: PendingAttachment[]) => void;
-    pushIsolateAndClear: (message: string, mode: T, attachments?: PendingAttachment[]) => PendingAttachment[];
+    push: (message: string, mode: T, attachments?: PendingAttachment[], localId?: string) => void;
+    pushIsolateAndClear: (message: string, mode: T, attachments?: PendingAttachment[], localId?: string) => PendingAttachment[];
 };
 
 export type CodexUserTextEnqueueResult = {
@@ -24,14 +24,15 @@ export function enqueueCodexUserText<T>(opts: {
     text: string;
     mode: T;
     attachments?: PendingAttachment[];
+    localId?: string;
     queue: CodexUserTextQueue<T>;
 }): CodexUserTextEnqueueResult {
     const isolatedCommand = getIsolatedCommand(opts.text);
     if (isolatedCommand) {
-        const displacedAttachments = opts.queue.pushIsolateAndClear(opts.text, opts.mode, opts.attachments) ?? [];
+        const displacedAttachments = opts.queue.pushIsolateAndClear(opts.text, opts.mode, opts.attachments, opts.localId) ?? [];
         return { status: isolatedCommand, displacedAttachments };
     }
 
-    opts.queue.push(opts.text, opts.mode, opts.attachments);
+    opts.queue.push(opts.text, opts.mode, opts.attachments, opts.localId);
     return { status: 'queued', displacedAttachments: [] };
 }

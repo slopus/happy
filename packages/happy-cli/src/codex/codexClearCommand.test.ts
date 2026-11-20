@@ -12,6 +12,14 @@ function createDeferred<T>() {
 }
 
 describe('enqueueCodexUserText', () => {
+    it.each(['hello', '/plan explain the change'])('preserves accepted message IDs for %s', async (text) => {
+        const mode = { permissionMode: 'default' as const };
+        const queue = new MessageQueue2<typeof mode>(() => 'same-mode');
+        enqueueCodexUserText({ text, mode, localId: 'accepted-user-message', queue });
+        const batch = await queue.waitForMessagesAndGetAsString();
+        expect(batch?.localIds).toEqual(['accepted-user-message']);
+    });
+
     it('queues /clear in isolation instead of batching it into a model prompt', () => {
         const mode = { permissionMode: 'default' as const };
         const queue = {
@@ -26,7 +34,7 @@ describe('enqueueCodexUserText', () => {
         });
 
         expect(result).toEqual({ status: 'clear', displacedAttachments: [] });
-        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('  /clear  ', mode, undefined);
+        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('  /clear  ', mode, undefined, undefined);
         expect(queue.push).not.toHaveBeenCalled();
     });
 
@@ -44,7 +52,7 @@ describe('enqueueCodexUserText', () => {
         });
 
         expect(result).toEqual({ status: 'skills', displacedAttachments: [] });
-        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('/skills', mode, undefined);
+        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('/skills', mode, undefined, undefined);
         expect(queue.push).not.toHaveBeenCalled();
     });
 
@@ -62,7 +70,7 @@ describe('enqueueCodexUserText', () => {
         });
 
         expect(result).toEqual({ status: 'goal', displacedAttachments: [] });
-        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('/goal Reduce p95 latency', mode, undefined);
+        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('/goal Reduce p95 latency', mode, undefined, undefined);
         expect(queue.push).not.toHaveBeenCalled();
     });
 
@@ -90,7 +98,7 @@ describe('enqueueCodexUserText', () => {
         });
 
         expect(result).toEqual({ status: expected, displacedAttachments: [] });
-        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith(text, mode, undefined);
+        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith(text, mode, undefined, undefined);
         expect(queue.push).not.toHaveBeenCalled();
     });
 
@@ -110,7 +118,7 @@ describe('enqueueCodexUserText', () => {
         });
 
         expect(result).toEqual({ status: 'queued', displacedAttachments: [] });
-        expect(queue.push).toHaveBeenCalledWith('look at this', mode, attachments);
+        expect(queue.push).toHaveBeenCalledWith('look at this', mode, attachments, undefined);
         expect(queue.pushIsolateAndClear).not.toHaveBeenCalled();
     });
 

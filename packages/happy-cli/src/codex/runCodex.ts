@@ -742,6 +742,7 @@ export async function runCodex(opts: {
             }
             const enqueueResult = enqueueCodexUserText({
                 text: message.content.text,
+                localId: message.localId,
                 mode: enhancedMode,
                 attachments: attachmentsForThisMessage,
                 queue: messageQueue,
