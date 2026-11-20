@@ -58,6 +58,7 @@ import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.components.TitleAlignment
+import com.slopus.happy.ui.settings.openExternalUrl
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -245,7 +246,9 @@ fun GetHelpButton() {
 /**
  * "Get help": the public places to ask, iOS's `Strings.helpLinks` in its
  * order (Discord, the two X accounts, known issues), then Cancel; more
- * than three, so they stack.
+ * than three, so they stack. A phone with no browser keeps the alert's
+ * dismissal and nothing opens ([openExternalUrl]); the scanner shows this
+ * outside the app's [com.slopus.happy.ui.browser.ProvideLinks].
  */
 @Composable
 fun GetHelpAlert(onDismiss: () -> Unit) {
@@ -255,10 +258,10 @@ fun GetHelpAlert(onDismiss: () -> Unit) {
             title = stringResource(R.string.onboarding_get_help),
             message = stringResource(R.string.onboarding_help_message),
             buttons = listOf(
-                AlertButton(stringResource(R.string.onboarding_help_discord)) { uriHandler.openUri(OnboardingSpec.HELP_DISCORD_URL) },
-                AlertButton(stringResource(R.string.onboarding_help_bra1n_dump)) { uriHandler.openUri(OnboardingSpec.HELP_BRA1N_DUMP_URL) },
-                AlertButton(stringResource(R.string.onboarding_help_ex3ndr)) { uriHandler.openUri(OnboardingSpec.HELP_EX3NDR_URL) },
-                AlertButton(stringResource(R.string.onboarding_help_issues)) { uriHandler.openUri(OnboardingSpec.HELP_ISSUES_URL) },
+                AlertButton(stringResource(R.string.onboarding_help_discord)) { openExternalUrl(uriHandler, OnboardingSpec.HELP_DISCORD_URL) },
+                AlertButton(stringResource(R.string.onboarding_help_bra1n_dump)) { openExternalUrl(uriHandler, OnboardingSpec.HELP_BRA1N_DUMP_URL) },
+                AlertButton(stringResource(R.string.onboarding_help_ex3ndr)) { openExternalUrl(uriHandler, OnboardingSpec.HELP_EX3NDR_URL) },
+                AlertButton(stringResource(R.string.onboarding_help_issues)) { openExternalUrl(uriHandler, OnboardingSpec.HELP_ISSUES_URL) },
                 AlertButton(stringResource(R.string.common_cancel)),
             ),
         ),
