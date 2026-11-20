@@ -91,5 +91,29 @@ describe('Claude Settings', () => {
       const result = shouldIncludeCoAuthoredBy();
       expect(result).toBe(true);
     });
+
+    it('returns false when attribution.commit is set to empty string', () => {
+      const settingsPath = join(testClaudeDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ attribution: { commit: '' } }));
+
+      const result = shouldIncludeCoAuthoredBy();
+      expect(result).toBe(false);
+    });
+
+    it('returns true when attribution.commit is set to a non-empty string', () => {
+      const settingsPath = join(testClaudeDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ attribution: { commit: 'Custom Attribution' } }));
+
+      const result = shouldIncludeCoAuthoredBy();
+      expect(result).toBe(true);
+    });
+
+    it('returns false when includeCoAuthoredBy is true but attribution.commit is empty string', () => {
+      const settingsPath = join(testClaudeDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ includeCoAuthoredBy: true, attribution: { commit: '' } }));
+
+      const result = shouldIncludeCoAuthoredBy();
+      expect(result).toBe(false);
+    });
   });
 });
