@@ -239,14 +239,17 @@ class ConversationScreenActions(
  * say so in bodyLarge, 32 in. A new chat asks what it will be in the middle
  * instead ([NewWorkChoicePanel]).
  *
- * Where the chat can ask side questions ([SideQuestion.offered]: the
- * computer serves them and the chat's model answers them), the "/" list
- * offers `/btw` first, which a pick leaves as `/btw ` for its question, and
- * a submitted `/btw <question>` is never a message: it asks [sideThread]
- * in [SideQuestionPanel], over the top of the transcript under the bar. A
- * bare `/btw` only says how to use it, in [SideQuestionUsage] over the
- * composer, until the composer is edited again. Elsewhere `/btw` is what
- * it would be without them.
+ * Where the computer serves side questions, a submitted `/btw <question>`
+ * is never a message, whatever the chat's model: it asks [sideThread] in
+ * [SideQuestionPanel], over the top of the transcript under the bar, where
+ * a model that answers none says so. A bare `/btw` only says how to use it,
+ * in [SideQuestionUsage] over the composer, until the composer is edited
+ * again. The "/" list offers `/btw` first, which a pick leaves as `/btw `
+ * for its question, only where the model it is answered with answers side
+ * questions ([SideQuestion.offered]): the agent's own mode
+ * ([ConversationState.agentMode]), or before its first message the
+ * composer's. Where the computer serves none, `/btw` is what it would be
+ * without them.
  */
 @Composable
 fun ConversationScreen(
@@ -287,15 +290,18 @@ fun ConversationScreen(
     // "/" opens the agent's commands over the composer, as desktop's palette does; a new chat's, the computer's skills.
     val commands by rememberUpdatedState(state.commands)
     val onCommand by rememberUpdatedState(actions.onCommand)
-    // "/btw" where the chat can ask side questions, asked as the person types and sends: health may be read after the screen opens.
+    // "/btw", asked as the person types and sends: health may be read after the screen opens.
     val latest by rememberUpdatedState(state)
     val sideQuestions by rememberUpdatedState(actions.sideQuestions)
     val btw by rememberUpdatedState(
         SlashCommand(SideQuestion.COMMAND, hasArguments = true, description = stringResource(R.string.side_question_command), kind = SlashCommand.SIDE_QUESTION),
     )
-    val asksSideQuestions = remember { { latest.created && SideQuestion.offered(sideQuestions?.served?.invoke() == true, latest.catalog, latest.mode) } }
+    // Taken wherever the computer serves side questions, whatever the model, so it never goes out as a message.
+    val takesSideQuestions = remember { { latest.created && sideQuestions?.served?.invoke() == true } }
+    // Offered where the model it is answered with answers them: the agent's own mode, or before its first message the composer's.
+    val offersSideQuestions = remember { { SideQuestion.offered(takesSideQuestions(), latest.catalog, latest.agentMode ?: latest.mode) } }
     val commandSource = remember(state.agent?.id) {
-        ConversationCommands(state.agent?.id, { if (asksSideQuestions()) SideQuestion.commands(commands, btw) else commands }) { command -> onCommand(command.name, null) }
+        ConversationCommands(state.agent?.id, { if (offersSideQuestions()) SideQuestion.commands(commands, btw) else commands }) { command -> onCommand(command.name, null) }
     }
     val autocomplete = com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete(
         text,
@@ -571,7 +577,7 @@ fun ConversationScreen(
                     )
                     if (phase == TranscriptPhase.Rows) Box(Modifier.matchParentSize().aboveKeyboard(keyboard)) { ConversationJump(listState, state.activity, dockHeight) }
                     // The side questions over the top of the transcript, under the bar; the dock and its lists stay over them.
-                    actions.sideQuestions?.let { side -> SideQuestionPanel(sideThread, side, top, keyboard, bubble, Modifier.liftBackdrop(lift, blur)) }
+                    actions.sideQuestions?.let { side -> SideQuestionPanel(sideThread, side, top, keyboard, bubble, dock = { dock }, modifier = Modifier.liftBackdrop(lift, blur)) }
                     Column(
                         Modifier
                             .align(Alignment.BottomCenter)
@@ -629,7 +635,7 @@ fun ConversationScreen(
                                 onTextChange = onComposerText,
                                 onSend = { words, attachments ->
                                     // "/btw <question>" asks the side panel, and a bare "/btw" only says how: neither is ever a message.
-                                    val side = actions.sideQuestions?.takeIf { attachments.isEmpty() && asksSideQuestions() }
+                                    val side = actions.sideQuestions?.takeIf { attachments.isEmpty() && takesSideQuestions() }
                                     val asked = side?.let { SideQuestion.question(words) }
                                     if (side != null && asked != null) {
                                         flight.grounded = true

@@ -1153,6 +1153,22 @@ class ConversationTest {
         assertEquals(picked.json(), agent.requests.last { it.second.endsWith("/send") }.third!!["mode"])
     }
 
+    @Test fun `the agent's own mode is its last message's, never the composer's pick until that is sent`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val bootstrapped = Mode.parse(Json.parseToJsonElement(FakeAgent.MODE))
+        assertEquals(bootstrapped, chat.state.value.agentMode)
+        val picked = Mode("claude", "anthropic/opus-5", "max", null, "read_only")
+        chat.setMode(picked)
+        advanceUntilIdle()
+        assertEquals(picked, chat.state.value.mode)
+        assertEquals("a pick alone leaves the agent running as it was", bootstrapped, chat.state.value.agentMode)
+        chat.send("Go")
+        advanceUntilIdle()
+        assertEquals(picked, chat.state.value.agentMode)
+    }
+
     @Test fun `pictures go inline with the words, in order`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)

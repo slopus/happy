@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.conversation.ConversationState
@@ -27,12 +28,14 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * `/btw` in a Happy Agent chat's composer ([ConversationScreen]): where the
- * computer serves side questions and the chat's model answers them, a
- * `/btw <question>` asks the side panel and is never a message, a bare
- * `/btw` only shows "Usage: /btw <your question>" over the composer until
- * it is edited, and the "/" list offers `/btw` first, which a pick leaves
- * as `/btw `. Anywhere else `/btw` is what it was.
+ * `/btw` in a Happy Agent chat's composer ([ConversationScreen]): wherever
+ * the computer serves side questions, a `/btw <question>` asks the side
+ * panel and is never a message, whatever the model, and a bare `/btw` only
+ * shows "Usage: /btw <your question>" over the composer until it is edited.
+ * The "/" list offers `/btw` first, which a pick leaves as `/btw `, where the
+ * model it is answered with answers side questions: the agent's own mode,
+ * not the composer's pick. Where the computer serves none, `/btw` is what
+ * it was.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -110,11 +113,38 @@ class SideQuestionCommandTest {
         assertTrue(asked.isEmpty())
     }
 
-    @Test fun `in a chat whose model answers none, btw goes as it did`() {
+    @Test fun `in a chat whose model answers none, btw is still never a message`() {
         show(SideQuestionFixtures.conversation(mode = SideQuestionFixtures.codex, commands = listOf(compact)))
         send("/btw which file?")
-        assertEquals(listOf("/btw which file?"), sent)
-        assertTrue(asked.isEmpty())
+        // The computer says the model answers none, in the panel.
+        assertEquals(listOf("which file?"), asked)
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test fun `the list goes by the agent's own model, not the one the composer picked`() {
+        // Picked Codex but sent nothing yet: the agent still runs Claude, which answers.
+        show(SideQuestionFixtures.conversation(mode = SideQuestionFixtures.codex, agentMode = SideQuestionFixtures.claude, commands = listOf(compact)))
+        rule.node(ConversationComposerTags.INPUT).performTextInput("/")
+        rule.waitUntil(5_000) { listRows().fetchSemanticsNodes().size == 2 }
+        rule.onNode(hasText("/btw"), useUnmergedTree = true).assertExists()
+    }
+
+    @Test fun `picking a model that answers doesn't offer btw while the agent runs one that doesn't`() {
+        show(SideQuestionFixtures.conversation(mode = SideQuestionFixtures.claude, agentMode = SideQuestionFixtures.codex, commands = listOf(compact)))
+        rule.node(ConversationComposerTags.INPUT).performTextInput("/")
+        rule.waitUntil(5_000) { listRows().fetchSemanticsNodes().size == 1 }
+        rule.onNode(hasText("/btw"), useUnmergedTree = true).assertDoesNotExist()
+        rule.node(ConversationComposerTags.INPUT).performTextReplacement("")
+        send("/btw which file?")
+        assertEquals("still taken, never sent", listOf("which file?"), asked)
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test fun `before its first message the composer's pick decides the list`() {
+        show(SideQuestionFixtures.conversation(mode = SideQuestionFixtures.claude, agentMode = null, commands = listOf(compact)))
+        rule.node(ConversationComposerTags.INPUT).performTextInput("/")
+        rule.waitUntil(5_000) { listRows().fetchSemanticsNodes().size == 2 }
+        rule.onNode(hasText("/btw"), useUnmergedTree = true).assertExists()
     }
 
     @Test fun `a new chat has nothing to ask about, and its btw is its first message`() {

@@ -13,10 +13,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The `/btw` side threads of one agent connection, one per chat
@@ -30,9 +32,12 @@ import kotlinx.coroutines.launch
  * as history, as a follow-up is. A question is asked with one request and
  * collected with as many more as it needs, each answered within about 20 s
  * (API.md "Side questions"); the first is never sent twice, since a second
- * would be a second question, and a later one is asked again after a
- * transient failure. Closing drops the question on the computer too, the
- * moment it is known, even while its first request is still on its way.
+ * would be a second question. Collecting outlasts a dropped link: it waits
+ * for the link and asks again for as long as the computer keeps the
+ * question, ten minutes from asking ([EXPIRY_MILLIS]), and then lets it go.
+ * Closing drops the question on the computer too (`DELETE`), the moment it
+ * is known, even while its first request is still on its way; so does
+ * giving up on one.
  *
  * In memory only: a process that dies has no question to rejoin, and one
  * left on the computer expires there.
@@ -40,8 +45,12 @@ import kotlinx.coroutines.launch
 class SideThreads(
     private val scope: CoroutineScope,
     private val api: ConversationApi,
-    /** The link to the computer is up: a question asked without it says so at once instead of waiting out its request. */
-    private val online: () -> Boolean = { true },
+    /**
+     * The link to the computer is up: a question asked without it says so at
+     * once instead of waiting out its request, and one being collected waits
+     * for it to come back.
+     */
+    private val online: StateFlow<Boolean> = MutableStateFlow(true),
     private val retryDelayMillis: Long = 600,
 ) {
     /** The question a thread waits on: its exchange, its id once the computer named it, and whether its thread was closed meanwhile. */
@@ -117,7 +126,7 @@ class SideThreads(
         val thread = state.value[agentId] ?: return
         val index = thread.exchanges.indexOfFirst { it.answer == SideAnswer.Queued }
         if (index < 0) return
-        if (!online()) {
+        if (!online.value) {
             settle(agentId, index, SideAnswer.Notice(Problem.Link(AgentConnectionException.Reason.Unavailable)))
             return next(agentId)
         }
@@ -139,6 +148,13 @@ class SideThreads(
     }
 
     private suspend fun answer(agentId: String, question: String, history: List<SideTurn>, ask: Asking): SideAnswer {
+        withTimeoutOrNull(EXPIRY_MILLIS) { collected(agentId, question, history, ask) }?.let { return it }
+        // Ten minutes and still no answer: the computer forgets an uncollected question then, and so does the thread.
+        synchronized(lock) { ask.id }?.let { forget(agentId, it) }
+        return SideAnswer.Notice(Problem.SideQuestionGone)
+    }
+
+    private suspend fun collected(agentId: String, question: String, history: List<SideTurn>, ask: Asking): SideAnswer {
         // Not this job's child: closed while it is on its way, it still answers, and the question it made is dropped then.
         val posted = scope.async { api.askSideQuestion(agentId, question, history) }
         var reply = try {
@@ -168,9 +184,12 @@ class SideThreads(
                     reply = try {
                         collect(agentId, now.id)
                     } catch (e: CancellationException) {
-                        if (currentCoroutineContext().isActive) return refusal(e, asking = false)
-                        throw e
+                        if (!currentCoroutineContext().isActive) throw e
+                        forget(agentId, now.id)
+                        return refusal(e, asking = false)
                     } catch (e: Exception) {
+                        // Given up on: the computer needn't go on answering it, unless it has let it go already.
+                        if (!(e is ConversationApiException && e.status == 404)) forget(agentId, now.id)
                         return refusal(e, asking = false)
                     }
                 }
@@ -178,7 +197,12 @@ class SideThreads(
         }
     }
 
-    /** `GET …/side-questions/:id`, asked again after a transient failure: it changes nothing, and an answer it lost is a `404` then. */
+    /**
+     * `GET …/side-questions/:id`, asked again after a transient failure (it
+     * changes nothing, and an answer it lost is a `404` then): an unreachable
+     * computer is asked again once the link is back. [answer]'s ten minutes
+     * bound it.
+     */
     private suspend fun collect(agentId: String, id: String): SideReply {
         var attempt = 0
         while (true) {
@@ -187,8 +211,9 @@ class SideThreads(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (!Conversation.transient(e) || ++attempt >= COLLECT_ATTEMPTS) throw e
-                delay(retryDelayMillis * attempt)
+                if (!Conversation.transient(e)) throw e
+                if (e is AgentConnectionException) online.first { it }
+                delay((retryDelayMillis * ++attempt).coerceAtMost(MAX_RETRY_DELAY_MILLIS))
             }
         }
     }
@@ -206,8 +231,11 @@ class SideThreads(
     }
 
     companion object {
-        /** Requests a question is collected with before a run of transient failures is given up on. */
-        const val COLLECT_ATTEMPTS = 3
+        /** How long the computer keeps a question nobody collects (API.md: 10 minutes after it was asked); collecting gives up then. */
+        const val EXPIRY_MILLIS = 10 * 60_000L
+
+        /** The longest wait between two tries at collecting a question. */
+        const val MAX_RETRY_DELAY_MILLIS = 5_000L
 
         /** Earlier exchanges sent with a question at most (API.md: 50), the newest kept. */
         const val HISTORY_LIMIT = 50
@@ -229,13 +257,14 @@ class SideThreads(
         /**
          * Why no answer came. What the person can act on is a notice in plain
          * words: no link to the computer, nothing to answer from yet (`409
-         * harness_not_running`), a model that answers none (`501`), a question
-         * no longer there (`404` while collecting). The rest is a failure.
+         * harness_not_running`), a model that answers none (`501`), whether
+         * asking or collecting, and a question no longer there (`404` while
+         * collecting). The rest is a failure.
          */
         internal fun refusal(e: Exception, asking: Boolean): SideAnswer = when {
             e is AgentConnectionException && e.reason == AgentConnectionException.Reason.Unavailable -> SideAnswer.Notice(Problem.Link(e.reason))
-            e is ConversationApiException && asking && e.code == "harness_not_running" -> SideAnswer.Notice(Problem.SideQuestionUnready)
-            e is ConversationApiException && asking && (e.code == "unsupported" || e.status == 501) -> SideAnswer.Notice(Problem.SideQuestionUnsupported)
+            e is ConversationApiException && e.code == "harness_not_running" -> SideAnswer.Notice(Problem.SideQuestionUnready)
+            e is ConversationApiException && (e.code == "unsupported" || e.status == 501) -> SideAnswer.Notice(Problem.SideQuestionUnsupported)
             e is ConversationApiException && !asking && e.status == 404 -> SideAnswer.Notice(Problem.SideQuestionGone)
             else -> SideAnswer.Failed(Conversation.describe(e))
         }

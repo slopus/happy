@@ -6,15 +6,23 @@ import android.graphics.Bitmap
 import android.graphics.Insets
 import android.view.View
 import android.view.WindowInsets
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -23,6 +31,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
@@ -40,11 +49,14 @@ import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.chat.MessageTags
+import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.components.GlassBarTags
 import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import com.slopus.happy.ui.theme.DarkColors
+import com.slopus.happy.ui.theme.LightColors
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,14 +67,16 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * The `/btw` panel over a Happy Agent chat ([SideQuestionPanel]'s spec):
  * under the bar where the transcript's first row rests, 12 in from the
  * column as the composer, at most 60% of the room under its top that the
- * keyboard leaves, scrolling inside and opening at its latest answer; each
- * answer copies alone; it takes no Back, and the chat stays usable under
- * it. Pictures go under build/conversation-screens.
+ * keyboard leaves and never under the composer, scrolling inside and
+ * opening at its latest answer; each answer copies alone; touches on it stop
+ * at it; it takes no Back, and the chat stays usable under it. Pictures go
+ * under build/conversation-screens.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -96,6 +110,12 @@ class SideQuestionPanelTest {
     }
 
     private fun inPanel(tag: String) = rule.onAllNodes(hasTestTag(tag) and hasAnyAncestor(hasTestTag(SideQuestionTags.PANEL)), useUnmergedTree = true)
+
+    /** The card's own ground, above the title at mid-width: clear of its words and its rounded corners. */
+    private fun cardGround(): Int {
+        val card = rule.node(SideQuestionTags.PANEL).captureToImage().asAndroidBitmap()
+        return card.getPixel(card.width / 2, (6 * rule.density.density).roundToInt())
+    }
 
     /** Where the panel's top rests: the transcript's, the glass bar and its feather down. */
     private fun restingTop(): Dp = rule.node(GlassBarTags.BAR).bounds.bottom + GlassSpec.feather
@@ -135,7 +155,39 @@ class SideQuestionPanelTest {
         assertDp("ask 8 after the field", field.right + 8.dp, ask.left)
         // A short thread is its own height, well under the cap.
         assertTrue("wraps: $panel", panel.height.value < (891.dp - restingTop()).value * SideQuestionSpec.MAX_SHARE)
+        assertEquals("the light card's ground", LightColors.surfaceHigh.toArgb(), cardGround())
         shot("side-question-short")
+    }
+
+    @Test fun `touches on it stop at it and never reach the chat under it`() {
+        var under = 0
+        rule.setHappyContent {
+            Box(Modifier.fillMaxSize()) {
+                // The chat under the panel.
+                Box(Modifier.fillMaxSize().clickable { under++ }.testTag(UNDER))
+                SideQuestionPanel(
+                    SideThread(listOf(SideQuestionFixtures.answered(response = "The retry loop in `uploader.ts`."))),
+                    SideQuestionActions(served = { true }),
+                    top = 100.dp,
+                    keyboard = rememberKeyboardLift(),
+                    bubble = userMessageBubblePalette(null, false),
+                    dock = { 0 },
+                )
+            }
+        }
+        rule.waitForIdle()
+        // Its words, and the room above the follow-up field.
+        rule.node(SideQuestionTags.TITLE).performClick()
+        rule.node(SideQuestionTags.SUBTITLE).performClick()
+        val panel = rule.node(SideQuestionTags.PANEL)
+        val above = rule.node(SideQuestionTags.FIELD).bounds.top - panel.bounds.top - 6.dp
+        panel.performTouchInput { click(Offset(width / 2f, above.toPx())) }
+        rule.waitForIdle()
+        assertEquals("nothing reached the chat", 0, under)
+        // Under it, the chat takes the tap.
+        rule.node(UNDER).performTouchInput { click(Offset(width / 2f, height - 20f)) }
+        rule.waitForIdle()
+        assertEquals(1, under)
     }
 
     @Test fun `a long thread takes at most 60 percent of the room under its top, scrolls inside, and opens at its latest answer`() {
@@ -177,6 +229,27 @@ class SideQuestionPanelTest {
         assertDp("60% of what the keyboard leaves", maxOf(SideQuestionSpec.minHeight.value, room.value * SideQuestionSpec.MAX_SHARE).dp, panel.height)
         assertTrue("clear of the keyboard", panel.bottom.value < 891 - keyboardPx / density)
         shot("side-question-keyboard")
+    }
+
+    @Test @Config(qualifiers = "w891dp-h411dp-land-xxhdpi", sdk = [35])
+    fun `on its side with the keyboard up it ends above the composer, its field in view`() {
+        show(SideQuestionFixtures.long())
+        rule.runOnUiThread {
+            compose.rootView.dispatchApplyWindowInsets(
+                WindowInsets.Builder()
+                    .setInsets(WindowInsets.Type.ime(), Insets.of(0, 0, 0, 450))
+                    .setVisible(WindowInsets.Type.ime(), true)
+                    .build(),
+            )
+        }
+        rule.waitForIdle()
+        val panel = rule.node(SideQuestionTags.PANEL).bounds
+        val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
+        val field = rule.node(SideQuestionTags.FIELD).bounds
+        assertTrue("above the composer: $panel over $composer", panel.bottom <= composer.top + TOLERANCE)
+        assertTrue("the 160 gave way: $panel", panel.height < SideQuestionSpec.minHeight)
+        assertTrue("its field in view: $field in $panel", field.top >= panel.top - TOLERANCE && field.bottom <= panel.bottom + TOLERANCE)
+        shot("side-question-landscape-keyboard")
     }
 
     @Test fun `copy takes the answer alone`() {
@@ -260,12 +333,17 @@ class SideQuestionPanelTest {
 
     @Test fun `in the dark it is the dark theme's card`() {
         show(SideThread(listOf(SideQuestionFixtures.answered())), dark = true)
-        rule.node(SideQuestionTags.PANEL).assertExists()
+        assertEquals(DarkColors.surfaceHigh.toArgb(), cardGround())
         shot("side-question-dark")
     }
 
     @Test fun `with no thread there is no panel`() {
         show(null)
         assertFalse(rule.onAllNodesWithTag(SideQuestionTags.PANEL, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    private companion object {
+        /** What stands for the chat under the panel in a test of touches alone. */
+        const val UNDER = "test.under"
     }
 }

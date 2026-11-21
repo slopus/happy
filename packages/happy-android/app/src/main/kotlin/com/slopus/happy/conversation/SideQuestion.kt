@@ -11,7 +11,8 @@ import kotlinx.serialization.json.JsonObject
  * Claude Code's `/btw` in a Happy Agent chat (happy-agent API.md "Side
  * questions"): a question about the chat that the harness answers once,
  * from the conversation, without adding the question or the answer to it.
- * Where the chat can't ask one ([offered]), `/btw` is whatever it was before.
+ * Wherever the computer serves side questions, `/btw` is taken as one and
+ * never sent as a message; where it serves none, `/btw` is what it was.
  */
 object SideQuestion {
     /** The command's name, without its slash. */
@@ -27,11 +28,13 @@ object SideQuestion {
     fun question(text: String): String? = command.matchEntire(text.trim())?.groupValues?.get(1)?.trim()
 
     /**
-     * Whether a chat offers `/btw`: its computer serves side questions
-     * (health's `capabilities.sideQuestions`, [served]) and the model the
-     * chat runs answers them (its definition's `sideQuestions`,
-     * [ModeCatalog.sideQuestions]). Never read from a model's id or its
-     * provider: a route and the flag that advertises it ship together.
+     * Whether a chat's "/" list offers `/btw`: its computer serves side
+     * questions (health's `capabilities.sideQuestions`, [served]) and the
+     * model they are answered with, [mode], answers them (its definition's
+     * `sideQuestions`, [ModeCatalog.sideQuestions]). That is the agent's own
+     * mode (API.md `GET …/mode`), or before its first message the composer's.
+     * Never read from a model's id or its provider: a route and the flag
+     * that advertises it ship together.
      */
     fun offered(served: Boolean, catalog: ModeCatalog?, mode: Mode?): Boolean =
         served && mode != null && catalog?.answersSideQuestions(mode.modelId) == true

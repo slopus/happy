@@ -816,7 +816,7 @@ class AgentSession internal constructor(
                 throw com.slopus.happy.conversation.ConversationApiException(e.status, e.code, e.message, e.body as? JsonObject)
             }
         },
-        online = { statusState.value == AgentLinkStatus.Connected },
+        online = status.map { it == AgentLinkStatus.Connected }.stateIn(scope, SharingStarted.Eagerly, status.value == AgentLinkStatus.Connected),
     )
 
     init {

@@ -42,6 +42,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -178,9 +180,12 @@ class SideQuestionActions(
  * Spec: its top rests at [top], where the transcript's first row rests
  * (under the bar and its feather, so the bar is never covered); 12 in from
  * the content column's edges, as the composer's pill; a surfaceHigh card,
- * radius 16, a 12 shadow. It takes at most 60% of the room under its top
- * that the navigation bar and the keyboard leave (read where it lays out,
- * as the keyboard rests), never capped under 160, and wraps a short thread.
+ * radius 16, a 12 shadow, and touches on it stop at it, as on the bar. It
+ * takes at most 60% of the room under its top that the navigation bar and
+ * the keyboard leave (read where it lays out, as the keyboard rests), never
+ * capped under 160, and wraps a short thread; but it always ends above the
+ * composer and what sits on it ([dock]), the 160 giving way. Short of room,
+ * the follow-up field stays in view and the header gives way first.
  * Header: "Side question" 16/22 semibold and the subtitle 13/18
  * textSecondary 2 under it, 16 in and 14 from the top, 10 above a hairline;
  * close, a 48 button with a 22 glyph, 4 in from the top end. The thread
@@ -207,6 +212,8 @@ internal fun SideQuestionPanel(
     keyboard: KeyboardLift,
     /** The person's bubble colours in this chat, which the questions wear. */
     bubble: BubblePalette,
+    /** The height of the chat's dock (the composer and what sits on it) over the keyboard, read where it lays out. */
+    dock: () -> Int,
     modifier: Modifier = Modifier,
 ) {
     val reduceMotion = rememberReduceMotion()
@@ -218,7 +225,7 @@ internal fun SideQuestionPanel(
         visible = thread != null,
         enter = if (reduceMotion) EnterTransition.None else fadeIn(tween(SideQuestionSpec.FADE_MILLIS)),
         exit = if (reduceMotion) ExitTransition.None else fadeOut(tween(SideQuestionSpec.FADE_MILLIS)),
-        modifier = modifier.underBar(top, keyboard, navigation),
+        modifier = modifier.underBar(top, keyboard, navigation, dock),
     ) {
         // Its words are its own: a long press lifts nothing of the chat's.
         CompositionLocalProvider(LocalMessageLift provides null, LocalCodeCopy provides CodeCopy.Icon) {
@@ -232,13 +239,16 @@ internal fun SideQuestionPanel(
  * that the navigation bar and the resting keyboard leave
  * ([KeyboardLift.rest], read where it lays out: the keyboard settling
  * measures it again and composes nothing), never capped under
- * [SideQuestionSpec.minHeight].
+ * [SideQuestionSpec.minHeight], and never reaching under the [dock] over
+ * the keyboard, which the floor gives way to.
  */
-private fun Modifier.underBar(top: Dp, keyboard: KeyboardLift, navigation: WindowInsets): Modifier = layout { measurable, constraints ->
+private fun Modifier.underBar(top: Dp, keyboard: KeyboardLift, navigation: WindowInsets, dock: () -> Int): Modifier = layout { measurable, constraints ->
     val at = top.roundToPx()
     val max = if (!constraints.hasBoundedHeight) Constraints.Infinity else {
         val room = (constraints.maxHeight - at - navigation.getBottom(this) - keyboard.rest).coerceAtLeast(0)
-        maxOf(SideQuestionSpec.minHeight.roundToPx(), (room * SideQuestionSpec.MAX_SHARE).roundToInt())
+        val share = maxOf(SideQuestionSpec.minHeight.roundToPx(), (room * SideQuestionSpec.MAX_SHARE).roundToInt())
+        // What the keyboard and the dock leave: a phone on its side with the keyboard up has little more.
+        minOf(share, (constraints.maxHeight - at - keyboard.rest - dock()).coerceAtLeast(0))
     }
     val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = max))
     layout(placeable.width, at + placeable.height) { placeable.place(0, at) }
@@ -249,44 +259,74 @@ private fun SideQuestionCard(thread: SideThread, actions: SideQuestionActions, b
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(SideQuestionSpec.radius)
     val title = stringResource(R.string.side_question_title)
-    Column(
-        Modifier
+    Layout(
+        content = {
+            Column {
+                SideQuestionHeader(title, actions.onClose)
+                Hairline(colors.divider)
+            }
+            SideThreadView(thread, bubble, Modifier)
+            Column {
+                Hairline(colors.divider)
+                FollowUp(thread.draft, actions)
+            }
+        },
+        modifier = Modifier
             .contentMaxWidth(LocalWindowLayout.current)
             .padding(horizontal = SideQuestionSpec.marginHorizontal)
             .testTag(SideQuestionTags.PANEL)
+            // Touches on it stop at it, as on the bar, rather than reaching the chat under it.
+            .pointerInput(Unit) {}
             .shadow(SideQuestionSpec.shadow, shape)
             .clip(shape)
             .background(colors.surfaceHigh)
             .semantics { paneTitle = title },
-    ) {
-        Row(Modifier.fillMaxWidth()) {
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(start = SideQuestionSpec.headerStart, top = SideQuestionSpec.headerTop, bottom = SideQuestionSpec.headerBottom),
-            ) {
-                Text(title, style = SideQuestionSpec.title, color = colors.text, modifier = Modifier.testTag(SideQuestionTags.TITLE))
-                Text(
-                    stringResource(R.string.side_question_subtitle),
-                    style = SideQuestionSpec.subtitle,
-                    color = colors.textSecondary,
-                    modifier = Modifier.padding(top = SideQuestionSpec.subtitleGap).testTag(SideQuestionTags.SUBTITLE),
-                )
-            }
-            IconButton(
-                onClick = actions.onClose,
-                modifier = Modifier
-                    .padding(top = SideQuestionSpec.closeInset, end = SideQuestionSpec.closeInset)
-                    .testTag(SideQuestionTags.CLOSE)
-                    .size(SideQuestionSpec.close),
-            ) {
-                Icon(Ionicon.Close, SideQuestionSpec.closeGlyph, colors.textSecondary, contentDescription = stringResource(R.string.conversation_close))
-            }
+    ) { (header, exchanges, field), constraints ->
+        val width = constraints.maxWidth
+        val whole = Constraints(minWidth = width, maxWidth = width)
+        val headerPlaceable = header.measure(whole)
+        val fieldPlaceable = field.measure(whole)
+        val fixed = headerPlaceable.height + fieldPlaceable.height
+        val room = if (constraints.hasBoundedHeight) (constraints.maxHeight - fixed).coerceAtLeast(0) else Constraints.Infinity
+        val exchangesPlaceable = exchanges.measure(whole.copy(maxHeight = room))
+        val height = (fixed + exchangesPlaceable.height).let { if (constraints.hasBoundedHeight) it.coerceAtMost(constraints.maxHeight) else it }
+        layout(width, height) {
+            // From the foot up: short of room, the field stays in view and the header gives way first.
+            val fieldAt = height - fieldPlaceable.height
+            fieldPlaceable.place(0, fieldAt)
+            exchangesPlaceable.place(0, fieldAt - exchangesPlaceable.height)
+            headerPlaceable.place(0, fieldAt - exchangesPlaceable.height - headerPlaceable.height)
         }
-        Hairline(colors.divider)
-        SideThreadView(thread, bubble, Modifier.weight(1f, fill = false))
-        Hairline(colors.divider)
-        FollowUp(thread.draft, actions)
+    }
+}
+
+/** The title, the subtitle under it, and close at the top end. */
+@Composable
+private fun SideQuestionHeader(title: String, onClose: () -> Unit) {
+    val colors = HappyTheme.colors
+    Row(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = SideQuestionSpec.headerStart, top = SideQuestionSpec.headerTop, bottom = SideQuestionSpec.headerBottom),
+        ) {
+            Text(title, style = SideQuestionSpec.title, color = colors.text, modifier = Modifier.testTag(SideQuestionTags.TITLE))
+            Text(
+                stringResource(R.string.side_question_subtitle),
+                style = SideQuestionSpec.subtitle,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(top = SideQuestionSpec.subtitleGap).testTag(SideQuestionTags.SUBTITLE),
+            )
+        }
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier
+                .padding(top = SideQuestionSpec.closeInset, end = SideQuestionSpec.closeInset)
+                .testTag(SideQuestionTags.CLOSE)
+                .size(SideQuestionSpec.close),
+        ) {
+            Icon(Ionicon.Close, SideQuestionSpec.closeGlyph, colors.textSecondary, contentDescription = stringResource(R.string.conversation_close))
+        }
     }
 }
 
