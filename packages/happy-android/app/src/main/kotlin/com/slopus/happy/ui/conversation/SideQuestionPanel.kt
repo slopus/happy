@@ -185,7 +185,9 @@ class SideQuestionActions(
  * the keyboard leave (read where it lays out, as the keyboard rests), never
  * capped under 160, and wraps a short thread; but it always ends above the
  * composer and what sits on it ([dock]), the 160 giving way. Short of room,
- * the follow-up field stays in view and the header gives way first.
+ * the follow-up field stays in view; a header that doesn't fit whole above
+ * it steps aside, never cut through its words, and the thread takes its
+ * place until there is room again.
  * Header: "Side question" 16/22 semibold and the subtitle 13/18
  * textSecondary 2 under it, 16 in and 14 from the top, 10 above a hairline;
  * close, a 48 button with a 22 glyph, 4 in from the top end. The thread
@@ -286,16 +288,19 @@ private fun SideQuestionCard(thread: SideThread, actions: SideQuestionActions, b
         val whole = Constraints(minWidth = width, maxWidth = width)
         val headerPlaceable = header.measure(whole)
         val fieldPlaceable = field.measure(whole)
-        val fixed = headerPlaceable.height + fieldPlaceable.height
-        val room = if (constraints.hasBoundedHeight) (constraints.maxHeight - fixed).coerceAtLeast(0) else Constraints.Infinity
+        val bounded = constraints.hasBoundedHeight
+        // A header that doesn't fit whole above the field steps aside, rather than be cut through its words.
+        val withHeader = !bounded || headerPlaceable.height + fieldPlaceable.height <= constraints.maxHeight
+        val fixed = fieldPlaceable.height + if (withHeader) headerPlaceable.height else 0
+        val room = if (bounded) (constraints.maxHeight - fixed).coerceAtLeast(0) else Constraints.Infinity
         val exchangesPlaceable = exchanges.measure(whole.copy(maxHeight = room))
-        val height = (fixed + exchangesPlaceable.height).let { if (constraints.hasBoundedHeight) it.coerceAtMost(constraints.maxHeight) else it }
+        val height = (fixed + exchangesPlaceable.height).let { if (bounded) it.coerceAtMost(constraints.maxHeight) else it }
         layout(width, height) {
-            // From the foot up: short of room, the field stays in view and the header gives way first.
+            // From the foot up: short of room, the field stays in view.
             val fieldAt = height - fieldPlaceable.height
             fieldPlaceable.place(0, fieldAt)
             exchangesPlaceable.place(0, fieldAt - exchangesPlaceable.height)
-            headerPlaceable.place(0, fieldAt - exchangesPlaceable.height - headerPlaceable.height)
+            if (withHeader) headerPlaceable.place(0, fieldAt - exchangesPlaceable.height - headerPlaceable.height)
         }
     }
 }
