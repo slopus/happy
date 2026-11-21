@@ -1,15 +1,14 @@
 #if canImport(UIKit)
-import AVFAudio
 import HappyCore
 import HappyLayout
 import UIKit
 
-/// The agent connection's voice call: started from home's voice button,
-/// shown as the bar across the window's top (`ShellViewController`), bound
-/// to the one connection it started on. It ends in the background, on an
-/// audio interruption or a lost route, and when the connection changes.
-/// What each call said is kept for the connection's next one
-/// (`CallHistory`), and a call that ends unasked plays `CallDropSound`.
+/// The phone's front end for the agent connection's voice call
+/// (`AgentCall`): started from home's voice button, shown as the bar
+/// across the window's top (`ShellViewController`), bound to the one
+/// connection it started on. It ends in the background and when the
+/// connection changes, and closes when the call's audio is taken
+/// (`AgentCall.onInterrupted`).
 @MainActor
 final class CallController {
     static let shared = CallController()
@@ -17,48 +16,25 @@ final class CallController {
     /// header's call button (`CallBarButtonItem`).
     static let stateDidChange = Notification.Name("CallController.stateDidChange")
 
-    private var session: CallSession?
-    private var context: CallContext?
-    private var targets: SessionCallTargets?
-    private var directoryWatch: Watch?
-    private var directorySettle: DirectorySettle?
+    private var call: AgentCall?
     private var connectionID: String?
     private weak var shell: ShellViewController?
     private var clock: Timer?
     private(set) var state: CallState = .idle
     /// A call has the microphone: dictation waits for it to end.
     var holdsMicrophone: Bool { state.isLive }
-    private var focus: String?
     private var observers: [NSObjectProtocol] = []
     #if DEBUG
     private var fixture: Task<Void, Never>?
     #endif
 
-    /// The build's public hosted agent, if it has one (`CallAgent`).
-    private static var grants: any CallGrantSource {
-        CallAgent.hostedAgentId.map { PublicAgentCallGrants(agentId: $0) } ?? UnconfiguredCallGrants()
-    }
-
     /// 20 free minutes in 30 days, or the subscription's 2 hours a month.
-    private let allowance = CallAllowance(period: { Offers.shared.month() })
+    private var allowance: CallAllowance { AgentCall.allowance }
     private let offers = Offers.shared
 
     private init() {
-        let center = NotificationCenter.default
-        let stops: [(Notification.Name, CallEnding)] = [(UIApplication.didEnterBackgroundNotification, .background),
-                                                        (AVAudioSession.mediaServicesWereResetNotification, .interrupted)]
-        for (name, ending) in stops {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.hangUp(ending) }
-            })
-        }
-        observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
-            let began = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue
-            MainActor.assumeIsolated { if began { self?.hangUp(.interrupted) } }
-        })
-        observers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
-            let lost = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue
-            MainActor.assumeIsolated { if lost { self?.hangUp(.interrupted) } }
+        observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hangUp(.background) }
         })
     }
 
@@ -83,87 +59,29 @@ final class CallController {
         close()
         self.shell = shell
         connectionID = account.accountID
-        let targets = SessionCallTargets(session: account, shell: shell)
-        let context = CallContext(targets: targets)
-        let history = CallHistory(store: account.offline.map { OfflineCallHistoryStore(offline: $0) })
-        let call = CallSession(grants: Self.grants, allowance: allowance, permission: {
-            await AVAudioApplication.requestRecordPermission()
-        }, history: history) { grant, request, events in
-            try await ElevenLabsCallConnection.connect(grant: grant, request: request, events: events)
-        }
-        // Not the person's own end, nor the agent's goodbye: those were heard coming.
-        call.onEnded = { ending in if ending.isUnexpected { CallDropSound.play() } }
-        Task { [weak call] in
-            await context.onRestart {
-                await MainActor.run { call?.requestRestart() } ?? CallToolResult(text: #"{"ok":false,"reason":"The call has ended."}"#, isError: true)
-            }
-        }
-        // What a read's refresh found after the read answered: context, never a cue.
-        Task { [weak call] in
-            await context.onReading { line in
-                Task { @MainActor in call?.deliver(CallUpdate(context: [line])) }
-            }
-        }
-        self.targets = targets
-        self.context = context
-        session = call
+        let call = AgentCall(session: account, shell: shell)
+        self.call = call
+        // Each callback belongs to this call: once it ends, or another one
+        // starts, what it still says goes nowhere.
         call.onState = { [weak self, weak call] state in
-            guard let self, let call, self.session === call else { return }
-            // Ended, it hears from nothing more: only its bar stays, saying why.
-            if case .ended = state { self.letGo() }
+            guard let self, let call, self.call === call else { return }
             self.show(state)
-        }
-        call.onOverflow = { [weak self, weak call] in
-            Task {
-                let update = await context.resync()
-                guard let self, let call, self.session === call else { return }
-                self.deliver(update)
-            }
         }
         // The agent hung up: as if End were tapped, with no bar left.
         call.onHangUp = { [weak self, weak call] in
-            guard let self, let call, self.session === call else { return }
+            guard let self, let call, self.call === call else { return }
             self.close()
         }
+        // The system took the audio: one that was live leaves no bar.
+        call.onInterrupted = { [weak self, weak call] ending in
+            guard let self, let call, self.call === call else { return }
+            self.hangUp(ending)
+        }
         call.onLevel = { [weak self, weak call] level in
-            guard let self, let call, self.session === call else { return }
+            guard let self, let call, self.call === call else { return }
             self.shell?.callBar.update(level: level)
         }
-        // Each callback belongs to this call: once it ends, or another one
-        // starts, what it still says goes nowhere.
-        targets.onChange = { [weak self, weak call] state in
-            guard let self, let call, self.session === call else { return }
-            Task {
-                let update = await context.targetChanged(state)
-                if self.session === call { self.deliver(update) }
-            }
-        }
-        // A change to the sidebar settles for a second from the first one,
-        // never longer, then goes as one update of what changed.
-        let settle = DirectorySettle { [weak self, weak call] in
-            guard let self, let call, self.session === call else { return }
-            let update = await context.directoryUpdate()
-            if self.session === call { self.deliver(update) }
-        }
-        directorySettle = settle
-        directoryWatch = targets.watchDirectory { [weak self, weak call, weak settle] rows in
-            guard let self, let call, self.session === call else { return }
-            Task {
-                guard await context.directoryChanged(rows), self.session === call else { return }
-                settle?.changed()
-            }
-        }
-        focus = targets.focusedNow
-        call.start(language: nil, context: {
-            let initial = await context.initial(previous: history.slots, person: await Self.person(account))
-            await Self.hold(await context.followed, in: targets)
-            return initial
-        }, tool: { call in
-            let result = await context.handle(call)
-            // A message makes where it went one the call hears from.
-            await Self.hold(await context.followed, in: targets)
-            return result
-        })
+        call.start()
         // A call that can't start says so in the bar; one that can starts connecting there.
         show(call.state)
     }
@@ -171,34 +89,7 @@ final class CallController {
     /// The screen on top changed: the conversation in front is the call's
     /// focus, and the latest it has visited.
     func topDidChange() {
-        guard state.isLive, let targets, let context else { return }
-        let now = targets.focusedNow
-        guard now != focus else { return }
-        focus = now
-        let call = session
-        Task {
-            let update = await context.focusChanged(to: now)
-            guard session === call else { return }
-            deliver(update)
-            await Self.hold(await context.followed, in: targets)
-        }
-    }
-
-    /// Who the call talks to, in a team: the person's name on this
-    /// computer; nil outside one, or while it can't be read.
-    private static func person(_ account: Session) async -> String? {
-        guard account.home.userId != nil else { return nil }
-        var name = account.profile.state.name
-        if name.isEmpty { name = (try? await account.client.profile())?.name ?? "" }
-        name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? nil : name
-    }
-
-    /// Exactly the conversations the call hears from stay read: one that
-    /// dropped out of the last visited is let go.
-    private static func hold(_ followed: [String], in targets: SessionCallTargets) async {
-        for id in targets.following where !followed.contains(id) { await targets.follow(id, false) }
-        for id in followed where !targets.following.contains(id) { await targets.follow(id, true) }
+        call?.topDidChange()
     }
 
     /// The window's connection changed: a call bound to another one ends.
@@ -207,37 +98,17 @@ final class CallController {
         close()
     }
 
-    private func deliver(_ update: CallUpdate) {
-        guard !update.isEmpty else { return }
-        session?.deliver(update)
-    }
-
     /// End: the call, or the bar of one that ended; `ending` says why, for
     /// the call's history.
     func close(_ ending: CallEnding = .hungUp) {
         #if DEBUG
         fixture?.cancel(); fixture = nil
         #endif
-        let old = session
-        session = nil
+        let old = call
+        call = nil
         old?.stop(ending)
-        letGo()
         connectionID = nil
         show(.idle)
-    }
-
-    /// What the call followed, let go of: its context and the conversations it held.
-    private func letGo() {
-        let context = self.context
-        self.context = nil
-        Task { await context?.close() }
-        targets?.close()
-        targets = nil
-        directoryWatch?.invalidate()
-        directoryWatch = nil
-        directorySettle?.cancel()
-        directorySettle = nil
-        focus = nil
     }
 
     /// The call stops for the system; one that was live leaves no bar.
@@ -253,7 +124,7 @@ final class CallController {
         updateClock()
         guard let shell else { return }
         let bar = shell.callBar
-        bar.onMute = { [weak self] in Task { await self?.session?.toggleMute() } }
+        bar.onMute = { [weak self] in Task { await self?.call?.toggleMute() } }
         bar.onEnd = { [weak self] in self?.close() }
         bar.onTap = { [weak self] in
             switch self?.state {
