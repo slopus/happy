@@ -7,9 +7,9 @@ import com.slopus.happy.sync.rigCanUseAttachments
 // attachmentSupport.ts: which agents take images, and what a send does with
 // attachments an agent can't take.
 
-/** supportsImageAttachmentsForFlavor: sessions without a flavor, Claude and Codex. */
+/** supportsImageAttachmentsForFlavor: sessions without a flavor, Claude, Codex, and Antigravity CLI. */
 fun supportsImageAttachmentsForFlavor(flavor: String?): Boolean =
-    flavor.isNullOrEmpty() || flavor == "claude" || flavor == "codex"
+    flavor.isNullOrEmpty() || flavor == "claude" || flavor == "codex" || flavor == "agy"
 
 data class ImageAttachmentSendPlan(
     val supportsAttachments: Boolean,

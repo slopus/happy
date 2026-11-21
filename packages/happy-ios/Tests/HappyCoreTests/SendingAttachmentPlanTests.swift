@@ -32,6 +32,14 @@ final class SendingAttachmentPlanTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(rigPlan.rejected, [oversized, document])
         XCTAssertTrue(rigPlan.shouldShowUnsupportedAlert)
         XCTAssertTrue(rigPlan.shouldSendText)
+        session.metadata = .object(["flavor": .string("agy")])
+        let agyPlan = OutboxSender.attachmentPlan(
+            OutgoingMessage(text: "", attachments: [image]), session: session
+        )
+        XCTAssertEqual(agyPlan.accepted, [image])
+        XCTAssertTrue(agyPlan.rejected.isEmpty)
+        XCTAssertFalse(agyPlan.shouldShowUnsupportedAlert)
+        XCTAssertTrue(agyPlan.shouldSendText)
         session.metadata = .object(["flavor": .string("gemini")])
         let unsupportedPlan = OutboxSender.attachmentPlan(
             OutgoingMessage(text: " ", attachments: [image]), session: session

@@ -63,8 +63,8 @@ fun canUseAttachments(metadata: SessionMetadata?): Boolean =
  * once made, so pictures are offered and the start names any it refuses.
  */
 fun canUseAttachments(starting: AgentType): Boolean = when (starting) {
-    AgentType.Claude, AgentType.Codex, AgentType.Rig -> true
-    AgentType.Gemini, AgentType.OpenClaw, AgentType.Agy -> false
+    AgentType.Claude, AgentType.Codex, AgentType.Agy, AgentType.Rig -> true
+    AgentType.Gemini, AgentType.OpenClaw -> false
 }
 
 /**
