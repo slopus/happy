@@ -71,6 +71,7 @@ class SideThreadsTest {
 
     private fun TestScope.threads(computer: Computer, online: StateFlow<Boolean> = MutableStateFlow(true)) = SideThreads(
         // Not backgroundScope: advanceUntilIdle leaves its work alone. Cancelled after each test.
+        // While a request is held open, runCurrent: advanceUntilIdle would run the clock on to the ten minutes a question is kept.
         CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }),
         ConversationApi(computer.request),
         online = online,
@@ -115,9 +116,9 @@ class SideThreadsTest {
         computer.post { answered("q2", "uploader.ts") }
         val threads = threads(computer)
         threads.ask("a1", "What are you working on?")
-        advanceUntilIdle()
+        runCurrent()
         threads.ask("a1", "Which file?")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf(SideAnswer.Asking, SideAnswer.Queued), threads.answers())
         assertEquals("one question at a time", 1, computer.paths("POST").size)
         first.complete(Unit)
@@ -156,7 +157,7 @@ class SideThreadsTest {
         computer.get(CompletableDeferred()) { answered("q1", "Never seen.") }
         val threads = threads(computer)
         threads.ask("a1", "Which file?")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf<SideAnswer>(SideAnswer.Asking), threads.answers())
         threads.close("a1")
         advanceUntilIdle()
@@ -170,9 +171,9 @@ class SideThreadsTest {
         computer.post(posted) { answering("q1") }
         val threads = threads(computer)
         threads.ask("a1", "Which file?")
-        advanceUntilIdle()
+        runCurrent()
         threads.close("a1")
-        advanceUntilIdle()
+        runCurrent()
         assertTrue("nothing to drop before the computer names it", computer.paths("DELETE").isEmpty())
         posted.complete(Unit)
         advanceUntilIdle()
@@ -188,10 +189,10 @@ class SideThreadsTest {
         computer.post { answered("q2", "new") }
         val threads = threads(computer)
         threads.ask("a1", "First?")
-        advanceUntilIdle()
+        runCurrent()
         threads.close("a1")
         threads.ask("a1", "Second?")
-        advanceUntilIdle()
+        runCurrent()
         old.complete(Unit)
         advanceUntilIdle()
         val exchange = threads.threads.value["a1"]!!.exchanges.single()
@@ -207,7 +208,7 @@ class SideThreadsTest {
         val threads = threads(computer)
         threads.ask("a1", "One?")
         threads.ask("a2", "Two?")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals("two", (threads.answers("a2")!!.single() as SideAnswer.Answered).response)
         assertEquals(listOf<SideAnswer>(SideAnswer.Asking), threads.answers("a1"))
         held.complete(Unit)
@@ -225,7 +226,7 @@ class SideThreadsTest {
         val seen = ArrayList<SideThread?>()
         val screen = launch { threads.thread("a1").collect { seen += it } }
         threads.ask("a1", "What are you working on?")
-        advanceUntilIdle()
+        runCurrent()
         screen.cancel()
         held.complete(Unit)
         advanceUntilIdle()

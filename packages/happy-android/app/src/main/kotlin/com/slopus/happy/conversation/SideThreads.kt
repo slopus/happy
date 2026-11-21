@@ -200,7 +200,8 @@ class SideThreads(
     /**
      * `GET …/side-questions/:id`, asked again after a transient failure (it
      * changes nothing, and an answer it lost is a `404` then): an unreachable
-     * computer is asked again once the link is back. [answer]'s ten minutes
+     * computer is asked again once the link is back. A model that answers
+     * none (`501`) is a refusal, never asked again. [answer]'s ten minutes
      * bound it.
      */
     private suspend fun collect(agentId: String, id: String): SideReply {
@@ -211,7 +212,7 @@ class SideThreads(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (!Conversation.transient(e)) throw e
+                if (!Conversation.transient(e) || unsupported(e)) throw e
                 if (e is AgentConnectionException) online.first { it }
                 delay((retryDelayMillis * ++attempt).coerceAtMost(MAX_RETRY_DELAY_MILLIS))
             }
@@ -264,9 +265,12 @@ class SideThreads(
         internal fun refusal(e: Exception, asking: Boolean): SideAnswer = when {
             e is AgentConnectionException && e.reason == AgentConnectionException.Reason.Unavailable -> SideAnswer.Notice(Problem.Link(e.reason))
             e is ConversationApiException && e.code == "harness_not_running" -> SideAnswer.Notice(Problem.SideQuestionUnready)
-            e is ConversationApiException && (e.code == "unsupported" || e.status == 501) -> SideAnswer.Notice(Problem.SideQuestionUnsupported)
+            unsupported(e) -> SideAnswer.Notice(Problem.SideQuestionUnsupported)
             e is ConversationApiException && !asking && e.status == 404 -> SideAnswer.Notice(Problem.SideQuestionGone)
             else -> SideAnswer.Failed(Conversation.describe(e))
         }
+
+        /** `501 unsupported`: the model the agent's mode selects answers no side questions, however often it is asked. */
+        private fun unsupported(e: Exception): Boolean = e is ConversationApiException && (e.code == "unsupported" || e.status == 501)
     }
 }
