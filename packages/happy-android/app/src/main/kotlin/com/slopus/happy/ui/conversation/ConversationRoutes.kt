@@ -503,6 +503,9 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         session.catalog.map { ChatAddress.of(it, conversation.agentId).chiefOfStaff }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(false)
     val roleCanSend = permissions.allows(if (chief) Permission.BOTS_MANAGE else Permission.CONTENT_WRITE)
+    // The chat's /btw thread, which the connection keeps: shown again, answered meanwhile, on the way back.
+    val sideThread by remember(session, conversation.agentId) { session.sideQuestions.thread(conversation.agentId) }
+        .collectAsStateWithLifecycle(initialValue = remember(session, conversation.agentId) { session.sideQuestions.threads.value[conversation.agentId] })
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) { com.slopus.happy.ui.references.ProvideBusyLinks(references, session.references) {
         ConversationScreen(
@@ -510,6 +513,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             opensAttach = route.attach,
             roleCanSend = roleCanSend,
             roleCanCompose = permissions.canWrite,
+            sideThread = sideThread,
             link = link,
             usage = usage,
             onRefreshUsage = session.usage::refresh,
@@ -566,6 +570,13 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },
                     onOpenPipelineRun = { notice -> nav.navigate(PipelineRunRoute(route.connectionId, notice.runId, notice.pipelineName)) },
                     workspace = if (session.client.cloud) null else session::workspaceSource,
+                    sideQuestions = SideQuestionActions(
+                        served = { session.client.sideQuestions },
+                        onAsk = { question -> session.sideQuestions.ask(conversation.agentId, question) },
+                        onDraftChange = { draft -> session.sideQuestions.setDraft(conversation.agentId, draft) },
+                        onAskDraft = { session.sideQuestions.askDraft(conversation.agentId) },
+                        onClose = { session.sideQuestions.close(conversation.agentId) },
+                    ),
                     // The values typed into a secret go in this one request to the computer and nowhere else.
                     secrets = SecretRequestActions(
                         secrets = { ConversationApi(session.conversationRequest()).secrets() },

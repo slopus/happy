@@ -41,6 +41,15 @@ sealed interface Problem {
     /** The person's role on the team doesn't allow it (a team server's `403 forbidden`). */
     data object Forbidden : Problem
 
+    /** A side question found no conversation to answer from: before the agent's first turn, or just after a compaction (`409 harness_not_running`). */
+    data object SideQuestionUnready : Problem
+
+    /** The chat's model answers no side questions (`501 unsupported`). */
+    data object SideQuestionUnsupported : Problem
+
+    /** A side question is no longer on the computer: collected, cancelled or expired (`404` while collecting it). */
+    data object SideQuestionGone : Problem
+
     /** Nothing says why. */
     data object Unknown : Problem
 }

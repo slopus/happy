@@ -57,8 +57,13 @@ data class ModeCatalog(
     val windows: Map<String, ContextWindow> = emptyMap(),
     val providers: List<ModeProvider> = providersOf(models),
     val defined: Map<String, ModelChoice> = emptyMap(),
+    /** The ids of the models that answer side questions (`/btw`): those whose definition says `sideQuestions: true`. */
+    val sideQuestions: Set<String> = emptySet(),
 ) {
     fun provider(id: String): ModeProvider? = providers.firstOrNull { it.id == id }
+
+    /** Whether model [modelId] answers side questions, as the computer defines it ([sideQuestions]). */
+    fun answersSideQuestions(modelId: String): Boolean = modelId in sideQuestions
 
     /** The model as its account lists it, whatever the account's state; else as the computer defines it. */
     fun model(providerId: String, modelId: String): ModelChoice? =
@@ -128,7 +133,8 @@ data class ModeCatalog(
                 (id to window).takeIf { window.tokens != null }
             }?.toMap().orEmpty()
             val defined = definitions?.keys?.associateWith { choice("", "", null, it, null) }.orEmpty()
-            return ModeCatalog(models, ConversationApi.defaultModeOf(config), windows, providers, defined)
+            val sideQuestions = definitions?.filterValues { it.obj?.get("sideQuestions").bool == true }?.keys.orEmpty()
+            return ModeCatalog(models, ConversationApi.defaultModeOf(config), windows, providers, defined, sideQuestions)
         }
 
         /** One account per provider [models] name, as a catalog made by hand lists them. */
