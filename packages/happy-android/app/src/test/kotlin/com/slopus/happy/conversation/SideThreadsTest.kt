@@ -7,11 +7,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -65,7 +69,7 @@ class SideThreadsTest {
     )
     private fun refused(status: Int, code: String, error: String) = TransportResponse(status, body = """{"error":"$error","code":"$code"}""".toByteArray())
 
-    private fun TestScope.threads(computer: Computer, online: () -> Boolean = { true }) = SideThreads(
+    private fun TestScope.threads(computer: Computer, online: StateFlow<Boolean> = MutableStateFlow(true)) = SideThreads(
         // Not backgroundScope: advanceUntilIdle leaves its work alone. Cancelled after each test.
         CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }),
         ConversationApi(computer.request),
@@ -283,15 +287,15 @@ class SideThreadsTest {
 
     @Test fun `offline, a question says so at once and nothing is asked`() = runTest {
         val computer = Computer()
-        var online = false
+        val online = MutableStateFlow(false)
         computer.post { answered("q1", "Here.") }
-        val threads = threads(computer, online = { online })
+        val threads = threads(computer, online)
         threads.ask("a1", "Which file?")
         threads.ask("a1", "And then?")
         val offline = SideAnswer.Notice(Problem.Link(AgentConnectionException.Reason.Unavailable))
         assertEquals(listOf(offline, offline), threads.answers())
         assertTrue(computer.requests.isEmpty())
-        online = true
+        online.value = true
         threads.ask("a1", "Now?")
         advanceUntilIdle()
         assertEquals("Here.", (threads.answers()!!.last() as SideAnswer.Answered).response)
@@ -302,22 +306,86 @@ class SideThreadsTest {
         assertEquals(offline, threads.answers()!!.last())
     }
 
-    @Test fun `collecting is asked again after a transient failure, a few times`() = runTest {
+    @Test fun `collecting is asked again after a transient failure`() = runTest {
         val computer = Computer()
         computer.post { answering("q1") }
         computer.get { refused(503, "unavailable", "Restarting.") }
+        // The link still says it is up, but this request didn't get through.
         computer.get { throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) }
         computer.get { answered("q1", "Back.") }
-        computer.post { answering("q2") }
-        repeat(SideThreads.COLLECT_ATTEMPTS) { computer.get { throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) } }
         val threads = threads(computer)
         threads.ask("a1", "One?")
         advanceUntilIdle()
         assertEquals("Back.", (threads.answers()!!.single() as SideAnswer.Answered).response)
-        threads.ask("a1", "Two?")
+        assertEquals(3, computer.paths("GET").size)
+        assertTrue(computer.paths("DELETE").isEmpty())
+    }
+
+    @Test fun `a link that drops while Claude answers is waited for, and the answer still lands`() = runTest {
+        val computer = Computer()
+        val online = MutableStateFlow(true)
+        computer.post { answering("q1") }
+        computer.get {
+            online.value = false
+            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+        }
+        computer.get { answered("q1", "Still here.") }
+        val threads = threads(computer, online)
+        threads.ask("a1", "Which file?")
+        // A minute without the link: nothing is asked meanwhile, and the question is still being answered.
+        advanceTimeBy(60_000)
+        assertEquals(1, computer.paths("GET").size)
+        assertEquals(listOf<SideAnswer>(SideAnswer.Asking), threads.answers())
+        online.value = true
+        advanceTimeBy(SideThreads.MAX_RETRY_DELAY_MILLIS)
+        runCurrent()
+        assertEquals("Still here.", (threads.answers()!!.single() as SideAnswer.Answered).response)
+        assertTrue(computer.paths("DELETE").isEmpty())
+    }
+
+    @Test fun `ten minutes without the answer, the question is let go, on the computer too`() = runTest {
+        val computer = Computer()
+        val online = MutableStateFlow(true)
+        computer.post { answering("q1") }
+        computer.get {
+            online.value = false
+            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+        }
+        val threads = threads(computer, online)
+        threads.ask("a1", "Which file?")
+        advanceTimeBy(SideThreads.EXPIRY_MILLIS - 1_000)
+        assertEquals(listOf<SideAnswer>(SideAnswer.Asking), threads.answers())
+        assertTrue(computer.paths("DELETE").isEmpty())
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(listOf<SideAnswer>(SideAnswer.Notice(Problem.SideQuestionGone)), threads.answers())
+        assertEquals(listOf("/v0/agents/a1/side-questions/q1"), computer.paths("DELETE"))
+    }
+
+    @Test fun `a refusal while collecting reads as one while asking, and a question given up on is dropped there`() = runTest {
+        val computer = Computer()
+        computer.post { answering("q1") }
+        computer.get { refused(409, "harness_not_running", "The conversation was compacted.") }
+        computer.post { answering("q2") }
+        computer.get { refused(501, "unsupported", "This model answers no side questions.") }
+        computer.post { answering("q3") }
+        computer.get { refused(400, "bad_request", "Bad side question id.") }
+        computer.post { answering("q4") }
+        computer.get { refused(404, "not_found", "Side question not found.") }
+        val threads = threads(computer)
+        listOf("One?", "Two?", "Three?", "Four?").forEach { threads.ask("a1", it) }
         advanceUntilIdle()
-        assertEquals(SideAnswer.Notice(Problem.Link(AgentConnectionException.Reason.Unavailable)), threads.answers()!!.last())
-        assertEquals(3 + SideThreads.COLLECT_ATTEMPTS, computer.paths("GET").size)
+        assertEquals(
+            listOf(
+                SideAnswer.Notice(Problem.SideQuestionUnready),
+                SideAnswer.Notice(Problem.SideQuestionUnsupported),
+                SideAnswer.Failed(Problem.Said("Bad side question id.")),
+                SideAnswer.Notice(Problem.SideQuestionGone),
+            ),
+            threads.answers(),
+        )
+        // One the computer let go of already needs nothing.
+        assertEquals(listOf("q1", "q2", "q3").map { "/v0/agents/a1/side-questions/$it" }, computer.paths("DELETE"))
     }
 
     @Test fun `a canned answer is kept as said, and blank words are no answer`() = runTest {

@@ -95,7 +95,15 @@ data class ConversationState(
     /** The last page of older history failed; it waits for Retry rather than asking again by itself. */
     val olderFailed: Boolean = false,
     val agent: AgentInfo? = null,
+    /** The composer's mode: what the next message runs with (its pick, else the draft's, else the agent's). */
     val mode: Mode? = null,
+    /**
+     * The agent's own mode, the one its last submitted message carried (API.md
+     * `GET …/mode`), as its bootstrap said and this phone's sends since; null
+     * before its first message. A side question is answered with it, whatever
+     * the composer picked since.
+     */
+    val agentMode: Mode? = null,
     /** What the composer can pick from; null until the computer's configuration is read. */
     val catalog: ModeCatalog? = null,
     /** The slash commands the agent offers, in its order; empty until read, and where it offers none. */
@@ -292,6 +300,7 @@ class Conversation(
     private var agent: AgentInfo? = null
     private var mode: Mode? = null
     private var picked: Mode? = null
+    private var agentMode: Mode? = null
     private var catalog: ModeCatalog? = null
     private var catalogRead: Deferred<ModeCatalog>? = null
     /** A new chat until its first message is in: unpicked, it opens on the person's start rather than the catalog's default. */
@@ -564,6 +573,7 @@ class Conversation(
 
     private fun adopt(start: Bootstrap, read: HistoryRead) {
         agent = start.agent
+        agentMode = start.mode
         mode = picked ?: start.draft?.mode ?: start.mode ?: mode
         start.draft?.let { adoptDraft(it) }
         val anchorRun = read.anchor?.let { id -> runs.indexOfFirst { id in it.second } }?.takeIf { it >= 0 }
@@ -1166,6 +1176,8 @@ class Conversation(
                     // All there, whatever the transport told on the way; the echo clears them.
                     images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Done) }
                     next.accepted = true
+                    // The computer runs the agent with the mode its last message carried: this one's now.
+                    agentMode = mode
                     // The first message of new work is its start: the person's next new chat opens on it.
                     if (starting) {
                         starting = false
@@ -1835,6 +1847,7 @@ class Conversation(
             rows = newestFirst,
             agent = agent,
             mode = mode,
+            agentMode = agentMode,
             catalog = catalog,
             working = working,
             activity = activity,

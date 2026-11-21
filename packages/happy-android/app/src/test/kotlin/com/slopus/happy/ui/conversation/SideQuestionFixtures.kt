@@ -59,9 +59,10 @@ internal object SideQuestionFixtures {
         ).flatMap { builder.rows(it, "a1", null, false) }.asReversed()
     }
 
-    fun conversation(mode: Mode = claude, created: Boolean = true, commands: List<SlashCommand> = emptyList()) =
+    /** [mode] is the composer's, [agentMode] the agent's own (its last message's), which side questions are answered with. */
+    fun conversation(mode: Mode = claude, created: Boolean = true, commands: List<SlashCommand> = emptyList(), agentMode: Mode? = mode) =
         if (created) {
-            ConversationState(created = true, loaded = true, rows = transcript, agent = agent, mode = mode, catalog = catalog, commands = commands)
+            ConversationState(created = true, loaded = true, rows = transcript, agent = agent, mode = mode, agentMode = agentMode, catalog = catalog, commands = commands)
         } else {
             ConversationState(loaded = true, mode = mode, catalog = catalog, newWork = com.slopus.happy.conversation.NewWork(com.slopus.happy.conversation.WorkChoice()))
         }
