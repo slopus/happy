@@ -6,6 +6,7 @@ const {
     mockLoop,
     mockNotifyDaemonSessionStarted,
     mockReadSettings,
+    mockReadSessionPermissionMode,
     mockStartHappyServer,
     mockStartHookServer,
     mockRegisterKillSessionHandler,
@@ -15,6 +16,7 @@ const {
     mockLoop: vi.fn(),
     mockNotifyDaemonSessionStarted: vi.fn(),
     mockReadSettings: vi.fn(),
+    mockReadSessionPermissionMode: vi.fn(),
     mockStartHappyServer: vi.fn(),
     mockStartHookServer: vi.fn(),
     mockRegisterKillSessionHandler: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock('@/persistence', () => ({
 
 vi.mock('@/claude/utils/sessionScanner', () => ({
     createSessionScanner: mockCreateSessionScanner,
+    readSessionPermissionMode: mockReadSessionPermissionMode,
 }));
 
 vi.mock('@/claude/loop', () => ({
@@ -110,6 +113,7 @@ async function expectPromptRejectsFast(promise: Promise<unknown>, pattern: RegEx
 }
 
 async function startRemoteRunClaudeHarness(opts: {
+    startingMode?: 'local' | 'remote';
     metadata?: Record<string, unknown>;
     updateAgentState?: ReturnType<typeof vi.fn>;
     registerHandler?: ReturnType<typeof vi.fn>;
@@ -168,7 +172,7 @@ async function startRemoteRunClaudeHarness(opts: {
         token: 'token',
         encryption: { type: 'legacy', secret: new Uint8Array(32) },
     } as any, {
-        startingMode: 'remote',
+        startingMode: opts.startingMode ?? 'remote',
         shouldStartDaemon: false,
     });
 
@@ -182,7 +186,7 @@ async function startRemoteRunClaudeHarness(opts: {
     if (!scannerOptions || !loopOptions) {
         throw new Error('runClaude harness did not start');
     }
-    const runtimeSession = { thinking: false, cleanup: vi.fn() };
+    const runtimeSession = { sessionId: 'claude-session-1', path: loopOptions.path, thinking: false, cleanup: vi.fn() };
     loopOptions.onSessionReady(runtimeSession);
     const goalActionHandler = registerHandler.mock.calls.find(([method]) => method === 'goal-action')?.[1];
 
@@ -269,6 +273,7 @@ describe('runClaude remote JSONL scanner', () => {
             onNewSession: vi.fn(),
             cleanup: vi.fn(),
         });
+        mockReadSessionPermissionMode.mockResolvedValue(undefined);
     });
 
     afterEach(() => {
@@ -279,6 +284,93 @@ describe('runClaude remote JSONL scanner', () => {
             }
         }
         originalListeners.clear();
+    });
+
+    it.each(['auto', 'acceptEdits'])('preserves terminal %s on the first app turn and later turns', async mode => {
+        mockReadSessionPermissionMode.mockResolvedValue(mode);
+        const harness = await startRemoteRunClaudeHarness({ startingMode: 'local' });
+        try {
+            const onMessage = harness.sessionClient.onUserMessage.mock.calls[0][0];
+            await onMessage({ content: { text: 'take over' }, meta: {} });
+            harness.loopOptions.onModeChange('remote');
+            await onMessage({ content: { text: 'continue' }, meta: {} });
+            expect(harness.loopOptions.messageQueue.queue.map((item: any) => item.mode.permissionMode))
+                .toEqual([mode, mode]);
+            expect(mockReadSessionPermissionMode).toHaveBeenCalledOnce();
+            expect(mockReadSessionPermissionMode).toHaveBeenCalledWith(harness.runtimeSession.path, 'claude-session-1');
+        } finally {
+            await harness.finish();
+        }
+    });
+
+    it('keeps an explicit app pick after restoring the terminal mode, including concurrent messages', async () => {
+        const read = createDeferred<string>();
+        mockReadSessionPermissionMode.mockReturnValue(read.promise);
+        const harness = await startRemoteRunClaudeHarness({ startingMode: 'local' });
+        try {
+            const onMessage = harness.sessionClient.onUserMessage.mock.calls[0][0];
+            const first = onMessage({ content: { text: 'take over' }, meta: { permissionMode: 'plan' } });
+            const second = onMessage({ content: { text: 'continue' }, meta: {} });
+            read.resolve('auto');
+            await Promise.all([first, second]);
+            expect(harness.loopOptions.messageQueue.queue.map((item: any) => item.mode.permissionMode))
+                .toEqual(['plan', 'plan']);
+            expect(mockReadSessionPermissionMode).toHaveBeenCalledOnce();
+        } finally {
+            await harness.finish();
+        }
+    });
+
+    it('restores the latest terminal mode after an explicit control switch and a later handoff', async () => {
+        mockReadSessionPermissionMode.mockResolvedValueOnce('auto').mockResolvedValueOnce('acceptEdits');
+        const harness = await startRemoteRunClaudeHarness({ startingMode: 'local' });
+        try {
+            const onMessage = harness.sessionClient.onUserMessage.mock.calls[0][0];
+            harness.loopOptions.onModeChange('remote');
+            await onMessage({ content: { text: 'first handoff' }, meta: {} });
+            harness.loopOptions.onModeChange('local');
+            harness.loopOptions.onModeChange('remote');
+            await onMessage({ content: { text: 'second handoff' }, meta: {} });
+            expect(harness.loopOptions.messageQueue.queue.map((item: any) => item.mode.permissionMode))
+                .toEqual(['auto', 'acceptEdits']);
+            expect(mockReadSessionPermissionMode).toHaveBeenCalledTimes(2);
+        } finally {
+            await harness.finish();
+        }
+    });
+
+    it('does not restore a terminal mode for sessions started remotely', async () => {
+        mockReadSessionPermissionMode.mockResolvedValue('bypassPermissions');
+        const harness = await startRemoteRunClaudeHarness();
+        try {
+            await harness.sessionClient.onUserMessage.mock.calls[0][0]({ content: { text: 'hello' }, meta: {} });
+            expect(harness.loopOptions.messageQueue.queue[0].mode.permissionMode).toBeUndefined();
+            expect(mockReadSessionPermissionMode).not.toHaveBeenCalled();
+        } finally {
+            await harness.finish();
+        }
+    });
+
+    it('keeps the sandbox permission policy when restoring a terminal mode', async () => {
+        mockReadSettings.mockResolvedValue({ machineId: 'machine-1', sandboxConfig: { enabled: true } });
+        mockReadSessionPermissionMode.mockResolvedValue('plan');
+        const harness = await startRemoteRunClaudeHarness({ startingMode: 'local' });
+        try {
+            await harness.sessionClient.onUserMessage.mock.calls[0][0]({ content: { text: 'take over' }, meta: {} });
+            expect(harness.loopOptions.messageQueue.queue[0].mode.permissionMode).toBe('bypassPermissions');
+        } finally {
+            await harness.finish();
+        }
+    });
+
+    it('keeps configuration inheritance when no terminal mode is recorded', async () => {
+        const harness = await startRemoteRunClaudeHarness({ startingMode: 'local' });
+        try {
+            await harness.sessionClient.onUserMessage.mock.calls[0][0]({ content: { text: 'take over' }, meta: {} });
+            expect(harness.loopOptions.messageQueue.queue[0].mode.permissionMode).toBeUndefined();
+        } finally {
+            await harness.finish();
+        }
     });
 
     it('does not forward terminal JSONL messages while local mode owns the transcript', async () => {
