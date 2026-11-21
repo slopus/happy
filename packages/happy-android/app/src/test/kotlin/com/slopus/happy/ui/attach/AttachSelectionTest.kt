@@ -53,9 +53,8 @@ class AttachSelectionTest {
     }
 
     @Test fun `the empty chat takes pictures by the harness its first send starts`() {
-        // happy-ios 20e20e0a8: Claude, Codex and Happy Agent (a bot or a task too); not Gemini, OpenClaw or Antigravity.
         assertEquals(
-            listOf(AgentType.Claude, AgentType.Codex, AgentType.Rig),
+            listOf(AgentType.Claude, AgentType.Codex, AgentType.Agy, AgentType.Rig),
             AgentType.entries.filter { canUseAttachments(starting = it) },
         )
     }

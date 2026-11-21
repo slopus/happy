@@ -70,7 +70,7 @@ public struct OutboxSender: ChatSending {
         if rig {
             supportsAttachments = policy?["enabled"]?.boolValue == true
         } else {
-            supportsAttachments = flavor == nil || flavor == "" || flavor == "claude" || flavor == "codex"
+            supportsAttachments = flavor == nil || flavor == "" || flavor == "claude" || flavor == "codex" || flavor == "agy"
         }
         func allowed(_ attachment: OutgoingAttachment) -> Bool {
             guard supportsAttachments else {
