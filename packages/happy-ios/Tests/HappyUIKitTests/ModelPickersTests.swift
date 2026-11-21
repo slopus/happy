@@ -63,6 +63,46 @@ final class ModelPickersTests: XCTestCase {
         XCTAssertEqual(content.selected, 2)
     }
 
+    /// A model with a choice of speed lists its speeds under the efforts,
+    /// each under its heading; a pick sets the tier, the default as null.
+    /// A speed other than the default follows the effort on its chip.
+    func testTheEffortListOffersTheModelsSpeeds() {
+        let config = self.config.replacingOccurrences(
+            of: #""GPT Sol", "efforts": ["low", "medium", "high"], "defaultEffort": "medium", "serviceTiers": []"#,
+            with: #""GPT Sol", "efforts": ["low", "medium", "high"], "defaultEffort": "medium", "serviceTiers": ["priority", "ultrafast"], "serviceTierOptions": [{"id": null, "label": "Regular"}, {"id": "priority", "label": "Fast"}, {"id": "ultrafast", "label": "Ultrafast"}]"#
+        )
+        let catalog = ModelCatalog(response: Data(config.utf8))!
+        var sol = AgentWire.Mode(providerId: "codex", modelId: "openai/sol", effort: "high", serviceTier: nil, permissionMode: "auto")
+        let menus = ModelMenus(catalog: catalog, selection: sol)
+        let content = ModelPickers.effortContent(menus)
+        XCTAssertEqual(content.label, "Select effort and speed")
+        let headings: [String] = content.lines.compactMap { if case .heading(let title, nil, [], nil, _) = $0 { title } else { nil } }
+        XCTAssertEqual(headings, ["Effort", "Speed"])
+        XCTAssertEqual(content.lines.filter { $0 == .separator }.count, 1)
+        XCTAssertEqual(options(content.lines).map(\.label), ["Low", "Medium", "High", "Regular", "Fast", "Ultrafast"])
+        XCTAssertEqual(options(content.lines).filter(\.checked).map(\.label), ["High", "Regular"])
+        XCTAssertEqual(content.selected, 3, "it opens on the effort")
+        XCTAssertEqual(ModelPickers.chips(menus).effort, "High")
+        let fast = options(content.lines).first { $0.label == "Fast" }!
+        let picked = ModelPickers.pick(fast.key, menus: menus, catalog: catalog)
+        XCTAssertEqual(picked?.serviceTier, "priority")
+        XCTAssertEqual(picked?.effort, "high")
+        sol.serviceTier = "priority"
+        let onFast = ModelMenus(catalog: catalog, selection: sol)
+        XCTAssertEqual(ModelPickers.chips(onFast).effort, "High · Fast")
+        let regular = options(ModelPickers.effortContent(onFast).lines).first { $0.label == "Regular" }!
+        XCTAssertEqual(ModelPickers.pick(regular.key, menus: onFast, catalog: catalog)?.serviceTier, .some(nil))
+        // Ultrafast is its own choice, sent as the computer names it.
+        let ultrafast = options(ModelPickers.effortContent(onFast).lines).first { $0.label == "Ultrafast" }!
+        XCTAssertEqual(ModelPickers.pick(ultrafast.key, menus: onFast, catalog: catalog)?.serviceTier, "ultrafast")
+        XCTAssertNil(ModelPickers.pick("speed\tturbo", menus: onFast, catalog: catalog), "a speed the model doesn't offer")
+        // A model without one lists its efforts alone, as before.
+        let sonnet = ModelPickers.effortContent(self.menus)
+        XCTAssertEqual(sonnet.label, "Select effort")
+        XCTAssertFalse(sonnet.lines.contains { if case .heading = $0 { true } else { false } })
+        XCTAssertNil(ModelPickers.pick("speed\t", menus: self.menus, catalog: catalog))
+    }
+
     /// A service's accounts, the one it lists checked, with what is left of
     /// its week; that account's windows under them.
     func testAServicesAccountsWithTheirUsage() {

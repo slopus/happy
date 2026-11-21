@@ -286,6 +286,12 @@ extension Strings {
 
     public static let provider = "Provider"
     public static let effort = "Effort"
+    /// Desktop's Speed menu; its choices are named by the computer.
+    public static let speed = "Speed"
+    /// The effort chip's name when it opens the speeds too.
+    public static let effortAndSpeedKind = "Effort and speed"
+    /// The effort chip with a speed other than the default: "High · Fast".
+    public static func effortAndSpeed(_ effort: String, _ speed: String) -> String { "\(effort) · \(speed)" }
     public static let modelsNotConfigured = "Models not configured"
     public static let hiddenAccount = "Hidden account. It still works; it’s only kept out of the lists."
     public static func accountRemoved(_ name: String) -> String { "The \(name) account is no longer configured on this Happy Agent." }
@@ -309,6 +315,8 @@ extension Strings {
     /// The lists' names, as desktop labels its panels.
     public static let selectModel = "Select model"
     public static let selectEffort = "Select effort"
+    public static let selectSpeed = "Select speed"
+    public static let selectEffortAndSpeed = "Select effort and speed"
     public static func accountsOf(_ service: String) -> String { "\(service) account" }
     /// A service's heading, read aloud: its account and each window it shows.
     public static func headingLabel(_ service: String, _ account: String, _ windows: [String]) -> String {

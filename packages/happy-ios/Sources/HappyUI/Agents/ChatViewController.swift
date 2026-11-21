@@ -454,7 +454,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             Task { await conversation.useDrafts(drafts) }
         }
         // A failure card names the models it offers from the catalog.
-        modelsWatch = session.models.watch { [weak self] in self?.updateChips(); self?.replan() }
+        modelsWatch = session.models.watch { [weak self] in self?.reconcileSpeed(); self?.updateChips(); self?.replan() }
         session.models.load()
         updateChips()
     }
@@ -1134,6 +1134,19 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         focusesAfterPick = false
         guard focuses, view.window != nil else { return }
         card.focus()
+    }
+
+    /// The catalog changed: a speed picked here, or new work's, that its
+    /// account no longer offers goes back to the default, as desktop's
+    /// draft drops it, so the chip and what is sent agree.
+    private func reconcileSpeed() {
+        guard picked != nil || (opensFocused && chat.items.isEmpty),
+              let catalog = session.models.catalog, let mode else { return }
+        let next = catalog.reconcileSpeed(mode)
+        guard next != mode else { return }
+        picked = next
+        let conversation = conversation
+        Task { await conversation.setMode(next) }
     }
 
     /// A pick from the model control or the "+" sheet's permission.

@@ -108,6 +108,77 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(dropped.notice)
     }
 
+    /// The daemon's speed menu (`serviceTierOptions`), as desktop's Speed
+    /// menu offers it: in its order and words, only with a choice to make,
+    /// on an account that works, and never made up when the daemon sends none.
+    func testSpeedsAreTheDaemonsMenu() throws {
+        let response = """
+        {"config": {
+            "defaults": {"providerId": "codex", "modelId": "openai/sol"},
+            "models": {
+                "openai/sol": {"name": "GPT Sol", "efforts": ["low", "high"], "defaultEffort": "low", "serviceTiers": ["priority", "ultrafast"],
+                    "serviceTierOptions": [{"id": null, "label": "Regular"}, {"id": "priority", "label": "Fast"}, {"id": "ultrafast", "label": "Ultrafast"}, {"id": "unknown", "label": "Odd"}]},
+                "openai/old": {"name": "Old", "efforts": ["low"], "defaultEffort": "low", "serviceTiers": ["priority"]},
+                "anthropic/opus-5": {"name": "Opus 5", "efforts": ["low"], "defaultEffort": "low", "serviceTiers": [],
+                    "serviceTierOptions": [{"id": null, "label": "Regular"}]}
+            },
+            "providers": {
+                "codex": {"type": "codex", "enabled": true, "models": [{"id": "openai/sol", "enabled": true}, {"id": "openai/old", "enabled": true}]},
+                "bedrock": {"type": "bedrock", "enabled": true, "models": [{"id": "openai/sol", "enabled": true, "serviceTiers": [],
+                    "serviceTierOptions": [{"id": null, "label": "Regular"}]}]},
+                "off": {"type": "codex", "enabled": false, "models": [{"id": "openai/sol", "enabled": true}]},
+                "claude": {"type": "claude", "enabled": true, "models": [{"id": "anthropic/opus-5", "enabled": true}]}
+            }
+        }}
+        """
+        let catalog = try XCTUnwrap(ModelCatalog(response: Data(response.utf8)))
+        func selection(_ provider: String, _ model: String, _ tier: String? = nil) -> AgentWire.Mode {
+            var mode = mode(provider, model, "low")
+            mode.serviceTier = tier
+            return mode
+        }
+        // A tier the model can't take is no choice.
+        let regular = ModelCatalog.Speed(id: nil, label: "Regular"), fast = ModelCatalog.Speed(id: "priority", label: "Fast")
+        let ultrafast = ModelCatalog.Speed(id: "ultrafast", label: "Ultrafast")
+        XCTAssertEqual(catalog.provider("codex")?.models.first?.speeds, [regular, fast, ultrafast])
+        let sol = ModelMenus(catalog: catalog, selection: selection("codex", "openai/sol"))
+        XCTAssertEqual(sol.speeds, [regular, fast, ultrafast])
+        XCTAssertEqual(sol.speed, regular)
+        XCTAssertEqual(ModelMenus(catalog: catalog, selection: selection("codex", "openai/sol", "priority")).speed, fast)
+        XCTAssertEqual(ModelMenus(catalog: catalog, selection: selection("codex", "openai/sol", "ultrafast")).speed, ultrafast)
+        // A tier the menu no longer has shows the default.
+        XCTAssertEqual(ModelMenus(catalog: catalog, selection: selection("codex", "openai/sol", "gone")).speed, regular)
+        // A reference's menu replaces the shared one; the default alone is no choice.
+        XCTAssertEqual(catalog.provider("bedrock")?.models.first?.speeds, [regular])
+        XCTAssertEqual(ModelMenus(catalog: catalog, selection: selection("bedrock", "openai/sol")).speeds, [])
+        XCTAssertEqual(ModelMenus(catalog: catalog, selection: selection("claude", "anthropic/opus-5")).speeds, [])
+        // An older daemon's tiers without a menu make none.
+        XCTAssertEqual(ModelMenus(catalog: catalog, selection: selection("codex", "openai/old")).speeds, [])
+        XCTAssertNil(ModelMenus(catalog: catalog, selection: selection("codex", "openai/old")).speed)
+        // Nothing is sent to a switched-off account, so it has no speed to pick.
+        XCTAssertEqual(ModelMenus(catalog: catalog, selection: selection("off", "openai/sol")).speeds, [])
+        // Fast carries to a model on an account that has it and is dropped on one that doesn't.
+        let picked = selection("codex", "openai/sol", "priority")
+        XCTAssertEqual(catalog.select(providerId: "codex", modelId: "openai/old", from: picked).serviceTier, "priority")
+        XCTAssertNil(catalog.select(providerId: "bedrock", modelId: "openai/sol", from: picked).serviceTier)
+        XCTAssertNil(catalog.select(providerId: "claude", modelId: "anthropic/opus-5", from: picked).serviceTier)
+        XCTAssertEqual(catalog.select(providerId: "codex", modelId: "openai/sol", from: selection("codex", "openai/sol", "ultrafast")).serviceTier, "ultrafast")
+        // A new session starts on the speed last used with the model there,
+        // Ultrafast as it is; one the account no longer offers is Regular.
+        func remembered(_ provider: String, _ tier: String?) -> ModelPreferences {
+            ModelPreferences(modelId: "openai/sol", providerId: provider, memory: [.init(providerId: provider, modelId: "openai/sol", effort: nil, serviceTier: tier)])
+        }
+        XCTAssertEqual(catalog.startMode(remembered("codex", "ultrafast")).serviceTier, "ultrafast")
+        XCTAssertNil(catalog.startMode(remembered("codex", "gone")).serviceTier)
+        XCTAssertNil(catalog.startMode(remembered("bedrock", "ultrafast")).serviceTier)
+        // Taken back by the computer, a picked speed falls to the default.
+        let ultra = selection("codex", "openai/sol", "ultrafast")
+        XCTAssertEqual(catalog.reconcileSpeed(ultra), ultra)
+        XCTAssertNil(catalog.reconcileSpeed(selection("bedrock", "openai/sol", "ultrafast")).serviceTier)
+        XCTAssertNil(catalog.reconcileSpeed(selection("off", "openai/sol", "priority")).serviceTier)
+        XCTAssertEqual(catalog.reconcileSpeed(selection("bedrock", "openai/sol")), selection("bedrock", "openai/sol"))
+    }
+
     func testNames() {
         XCTAssertEqual(ModelMenus.serviceName("open_router-pro"), "Open Router Pro")
         XCTAssertEqual(ModelMenus.effortName("xhigh"), "Extra High")

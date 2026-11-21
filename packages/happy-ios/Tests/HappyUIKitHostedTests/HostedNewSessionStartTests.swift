@@ -87,14 +87,15 @@ private actor StartComputer: AgentTransport {
         .init(status: 200, body: try JSONEncoder().encode(value))
     }
 
-    /// Claude is the computer's default; Codex serves GPT Sol.
+    /// Claude is the computer's default; Codex serves GPT Sol, at three speeds.
     static let config = """
     {"config": {
         "defaults": {"providerId": "claude", "modelId": "anthropic/opus-5", "effort": "high", "permissionMode": "auto"},
         "models": {
             "anthropic/opus-5": {"name": "Opus 5", "efforts": ["low", "medium", "high", "max"], "defaultEffort": "high", "serviceTiers": [], "contextWindow": 1000000},
             "anthropic/sonnet-5": {"name": "Sonnet 5", "efforts": ["low", "medium", "high"], "defaultEffort": "high", "serviceTiers": [], "contextWindow": 200000},
-            "openai/sol": {"name": "GPT Sol", "efforts": ["low", "medium", "high", "xhigh"], "defaultEffort": "medium", "serviceTiers": ["priority"], "contextWindow": 400000}
+            "openai/sol": {"name": "GPT Sol", "efforts": ["low", "medium", "high", "xhigh"], "defaultEffort": "medium", "serviceTiers": ["priority", "ultrafast"], "contextWindow": 400000,
+                "serviceTierOptions": [{"id": null, "label": "Regular"}, {"id": "priority", "label": "Fast"}, {"id": "ultrafast", "label": "Ultrafast"}]}
         },
         "providers": {
             "claude": {"name": "Current CLI", "type": "claude", "enabled": true, "models": [{"id": "anthropic/opus-5", "enabled": true}, {"id": "anthropic/sonnet-5", "enabled": true}]},
@@ -170,7 +171,7 @@ final class HostedNewSessionStartTests: XCTestCase {
         try await pair()
         let (_, card) = try await newWork()
         XCTAssertEqual(card.configuration.model?.accessibilityLabel, "Model: GPT Sol")
-        XCTAssertEqual(card.configuration.effort?.accessibilityLabel, "Effort: Extra High")
+        XCTAssertEqual(card.configuration.effort?.accessibilityLabel, "Effort and speed: Extra High · Fast")
         try await keep("new-session-composer")
 
         card.setText("Tidy the release notes", selection: NSRange(location: 22, length: 0))
@@ -194,6 +195,47 @@ final class HostedNewSessionStartTests: XCTestCase {
         let held = await computer.settings
         let memory = held[ModelPreferences.Key.memory]?.arrayValue
         XCTAssertEqual(memory?.last?["modelId"], .string("openai/sol"))
+    }
+
+    /// GPT Sol's effort chip opens its efforts and, under them, the speeds
+    /// the computer names; Ultrafast picked goes with the first message as
+    /// it is and is remembered for the model. Opus has no speeds to offer.
+    func testTheEffortChipOffersTheModelsSpeeds() async throws {
+        try await pair()
+        let (chat, card) = try await newWork()
+        chat.agentInputCard(card, didPress: .effort)
+        try await wait { self.line("picker-row:speed\tultrafast") != nil }
+        XCTAssertNotNil(line("picker-heading:Speed"))
+        XCTAssertEqual(line("picker-row:speed\tpriority")?.accessibilityTraits.contains(.selected), true)
+        try await keep("speed-picker-gpt-sol")
+
+        line("picker-row:speed\tultrafast")?.sendActions(for: .touchUpInside)
+        try await wait { card.configuration.effort?.accessibilityLabel == "Effort and speed: Extra High · Ultrafast" }
+        try await Task.sleep(for: .milliseconds(400))
+        try await keep("speed-chip-ultrafast")
+
+        card.setText("Tidy the release notes", selection: NSRange(location: 22, length: 0))
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await wait {
+            let held = await self.computer.settings
+            let sends = await self.computer.sends
+            return !sends.isEmpty && held[ModelPreferences.Key.memory]?.arrayValue?.last?["serviceTier"] == .string("ultrafast")
+        }
+        let sends = await computer.sends
+        XCTAssertEqual(sends.first?["mode"]?["serviceTier"], .string("ultrafast"))
+
+        chat.agentInputCard(card, didSelect: "model\tclaude\nanthropic/opus-5", in: .model)
+        try await wait { card.configuration.model?.accessibilityLabel == "Model: Opus 5" }
+        XCTAssertEqual(card.configuration.effort?.accessibilityLabel, "Effort: High")
+        chat.agentInputCard(card, didPress: .effort)
+        try await wait { self.line("picker-row:effort\tmax") != nil }
+        XCTAssertNil(line("picker-heading:Speed"))
+        XCTAssertNil(line("picker-row:speed\t"))
+        try await keep("speed-picker-opus")
+    }
+
+    private func line(_ id: String) -> PickerLineView? {
+        window.flatMap { Self.views($0).compactMap { $0 as? PickerLineView }.first { $0.accessibilityIdentifier == id } }
     }
 
     /// A computer's Settings has Agents after Voice, as a Happy account's

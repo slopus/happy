@@ -5,6 +5,19 @@ import HappyWire
 /// desktop's `happyAgentModelCatalogProject` reads it: every provider in the
 /// order the daemon lists them, each with the models it has switched on.
 public struct ModelCatalog: Equatable, Sendable {
+    /// One choice of the speed menu (`serviceTierOptions`), named as the
+    /// daemon names it.
+    public struct Speed: Equatable, Sendable {
+        /// Sent unchanged as `mode.serviceTier`; nil is the default route.
+        public var id: String?
+        public var label: String
+
+        public init(id: String?, label: String) {
+            self.id = id
+            self.label = label
+        }
+    }
+
     public struct Model: Equatable, Sendable {
         public var id: String
         public var name: String
@@ -12,18 +25,22 @@ public struct ModelCatalog: Equatable, Sendable {
         public var efforts: [String]
         public var defaultEffort: String
         public var serviceTiers: [String]
+        /// The speed menu in order, the default among it. Empty from a
+        /// daemon that predates it: no menu is made up from `serviceTiers`.
+        public var speeds: [Speed]
         /// The hard window in tokens; nil for a custom model whose limit is unknown.
         public var contextWindow: Int?
         /// The measured size at which the daemon compacts on its own, below
         /// the window; nil from an older daemon or a model without one.
         public var autoCompactWindow: Int?
 
-        public init(id: String, name: String, efforts: [String], defaultEffort: String, serviceTiers: [String] = [], contextWindow: Int? = nil, autoCompactWindow: Int? = nil) {
+        public init(id: String, name: String, efforts: [String], defaultEffort: String, serviceTiers: [String] = [], speeds: [Speed] = [], contextWindow: Int? = nil, autoCompactWindow: Int? = nil) {
             self.id = id
             self.name = name
             self.efforts = efforts
             self.defaultEffort = defaultEffort
             self.serviceTiers = serviceTiers
+            self.speeds = speeds
             self.contextWindow = contextWindow
             self.autoCompactWindow = autoCompactWindow
         }
@@ -83,12 +100,20 @@ public struct ModelCatalog: Equatable, Sendable {
         func model(_ id: String, _ reference: JSONValue?) -> Model? {
             guard let definition = definitions[id] else { return nil }
             let efforts = (reference?["efforts"] ?? definition["efforts"])?.arrayValue?.compactMap(\.stringValue) ?? []
+            let tiers = (reference?["serviceTiers"] ?? definition["serviceTiers"])?.arrayValue?.compactMap(\.stringValue) ?? []
+            // A reference's menu replaces the shared one whole. A tier the
+            // model can't take is no choice: it would be dropped on sending.
+            let speeds = ((reference?["serviceTierOptions"] ?? definition["serviceTierOptions"])?.arrayValue ?? []).compactMap { option -> Speed? in
+                guard let label = option["label"]?.stringValue, let id = option["id"], id == .null || id.stringValue.map(tiers.contains) == true else { return nil }
+                return Speed(id: id.stringValue, label: label)
+            }
             return Model(
                 id: id,
                 name: reference?["name"]?.stringValue ?? definition["name"]?.stringValue ?? id,
                 efforts: efforts,
                 defaultEffort: (reference?["defaultEffort"] ?? definition["defaultEffort"])?.stringValue ?? efforts.first ?? "medium",
-                serviceTiers: (reference?["serviceTiers"] ?? definition["serviceTiers"])?.arrayValue?.compactMap(\.stringValue) ?? [],
+                serviceTiers: tiers,
+                speeds: speeds,
                 // The window is the model's own, whichever account serves it.
                 contextWindow: definition["contextWindow"]?.numberValue.map { Int($0) },
                 autoCompactWindow: definition["autoCompactWindow"]?.numberValue.map { Int($0) }
@@ -158,6 +183,18 @@ public struct ModelCatalog: Equatable, Sendable {
         return AgentWire.Mode(providerId: providerId, modelId: modelId, effort: effort, serviceTier: tier, permissionMode: current.permissionMode)
     }
 
+    /// `happyAgentSelectionServiceTierReconcile`: the mode without a speed
+    /// its account no longer offers, as the computer may take one back
+    /// (`config.updated`); the default route then, as desktop's draft has it.
+    public func reconcileSpeed(_ mode: AgentWire.Mode) -> AgentWire.Mode {
+        guard let tier = mode.serviceTier else { return mode }
+        let provider = provider(mode.providerId)
+        if provider?.isDisabled == false, provider?.models.first(where: { $0.id == mode.modelId })?.serviceTiers.contains(tier) == true { return mode }
+        var regular = mode
+        regular.serviceTier = nil
+        return regular
+    }
+
     /// The model's definition, from its account or the shared list.
     public func model(_ mode: AgentWire.Mode) -> Model? {
         provider(mode.providerId)?.models.first { $0.id == mode.modelId } ?? models.first { $0.id == mode.modelId }
@@ -175,6 +212,8 @@ public struct ModelMenus: Equatable, Sendable {
         public var label: String
         public var efforts: [String]
         public var defaultEffort: String
+        /// None on an account that is switched off or gone.
+        public var speeds: [ModelCatalog.Speed]
         public var disabled: Bool
     }
 
@@ -259,7 +298,7 @@ public struct ModelMenus: Equatable, Sendable {
     }
 
     static func choice(_ model: ModelCatalog.Model, disabled: Bool) -> Choice {
-        Choice(id: model.id, label: model.name, efforts: model.efforts, defaultEffort: model.defaultEffort, disabled: disabled)
+        Choice(id: model.id, label: model.name, efforts: model.efforts, defaultEffort: model.defaultEffort, speeds: disabled ? [] : model.speeds, disabled: disabled)
     }
 
     /// The selected service, and its account.
@@ -271,6 +310,19 @@ public struct ModelMenus: Equatable, Sendable {
     public var effort: String? {
         guard let current else { return selection.effort }
         return current.efforts.contains(selection.effort) ? selection.effort : current.defaultEffort
+    }
+
+    /// The selected model's speeds when there is a choice to make, as
+    /// desktop shows its Speed menu only with two or more; else none.
+    public var speeds: [ModelCatalog.Speed] {
+        guard let current, current.speeds.count > 1 else { return [] }
+        return current.speeds
+    }
+
+    /// The speed shown: the selection's when its model offers it, else the
+    /// default; nil without a choice.
+    public var speed: ModelCatalog.Speed? {
+        speeds.first { $0.id == selection.serviceTier } ?? speeds.first { $0.id == nil }
     }
 
     /// `composerModelAccountModel`: the model an account is switched onto,

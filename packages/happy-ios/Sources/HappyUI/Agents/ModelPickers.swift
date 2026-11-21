@@ -175,10 +175,12 @@ final class ModelState {
 /// The "+" sheet's permission stays a native menu.
 @MainActor
 enum ModelPickers {
-    enum Kind: String { case model, provider, effort, permission }
+    enum Kind: String { case model, provider, effort, speed, permission }
     typealias Line = PickerContent.Line
 
-    /// The chips' labels for a mode: provider, model, effort.
+    /// The chips' labels for a mode: provider, model, effort. A speed other
+    /// than the default follows the effort on its chip, which opens both;
+    /// a model with speeds and no efforts names its speed there alone.
     static func chips(_ menus: ModelMenus?) -> (provider: String, model: String, effort: String?) {
         guard let menus, !menus.services.isEmpty || menus.current != nil else {
             return ("", Strings.modelsNotConfigured, nil)
@@ -188,7 +190,9 @@ enum ModelPickers {
             service.accounts.count > 1 ? Strings.serviceAccount(service.label, menus.selectedAccount?.label ?? service.label) : service.label
         } ?? menus.selection.providerId
         let effort = menus.current.flatMap { $0.efforts.isEmpty ? nil : menus.effort.map(ModelMenus.effortName) }
-        return (provider, menus.current?.label ?? menus.selection.modelId, effort)
+        let speed = menus.speed.flatMap { $0.id != nil || effort == nil ? $0.label : nil }
+        let chip = effort.map { effort in speed.map { Strings.effortAndSpeed(effort, $0) } ?? effort } ?? speed
+        return (provider, menus.current?.label ?? menus.selection.modelId, chip)
     }
 
     /// The card's model control, in its own bar beside send as desktop's
@@ -208,7 +212,8 @@ enum ModelPickers {
             model.accessibilityLabel += ". \(Strings.usageWarning(warning, now: now))."
         }
         card.configuration.model = model
-        card.configuration.effort = labels.effort.map { chip(Strings.effort, $0) }
+        let kind = menus?.speeds.isEmpty == false ? Strings.effortAndSpeedKind : Strings.effort
+        card.configuration.effort = labels.effort.map { chip(kind, $0) }
     }
 
     /// The window the selected account warns about, if it runs low.
@@ -274,14 +279,29 @@ enum ModelPickers {
         )
     }
 
-    /// The selected model's efforts, least to most, the current one checked.
+    /// The selected model's efforts, least to most, the current one
+    /// checked. When it offers a choice of speed (desktop's Speed menu),
+    /// the speeds follow under their own heading, the efforts under theirs.
     static func effortContent(_ menus: ModelMenus) -> PickerContent {
         let current = menus.effort
+        let efforts: [Line] = (menus.current?.efforts ?? []).map { level in
+            .option(key: key(.effort, level), label: ModelMenus.effortName(level), checked: level == current, disabled: false, gauge: nil)
+        }
+        let speeds = menus.speeds
+        guard !speeds.isEmpty else {
+            return PickerContent(
+                id: "picker-efforts", label: Strings.selectEffort, lines: efforts,
+                minWidth: PickerMetrics.effortsMinWidth, maxWidth: PickerMetrics.modelsMaxWidth
+            )
+        }
+        func heading(_ title: String) -> Line { .heading(service: title, account: nil, gauges: [], opens: nil, label: title) }
+        var lines: [Line] = efforts.isEmpty ? [] : [heading(Strings.effort)] + efforts + [.separator]
+        lines.append(heading(Strings.speed))
+        lines += speeds.map { speed in
+            .option(key: key(.speed, speed.id ?? ""), label: speed.label, checked: speed == menus.speed, disabled: false, gauge: nil)
+        }
         return PickerContent(
-            id: "picker-efforts", label: Strings.selectEffort,
-            lines: (menus.current?.efforts ?? []).map { level in
-                .option(key: key(.effort, level), label: ModelMenus.effortName(level), checked: level == current, disabled: false, gauge: nil)
-            },
+            id: "picker-efforts", label: efforts.isEmpty ? Strings.selectSpeed : Strings.selectEffortAndSpeed, lines: lines,
             minWidth: PickerMetrics.effortsMinWidth, maxWidth: PickerMetrics.modelsMaxWidth
         )
     }
@@ -371,7 +391,8 @@ enum ModelPickers {
     /// What a pick makes the mode; nil leaves it as it is (a key that
     /// isn't a pick).
     static func pick(_ key: String, menus: ModelMenus, catalog: ModelCatalog) -> AgentWire.Mode? {
-        let parts = key.split(separator: "\t", maxSplits: 1).map(String.init)
+        // The default speed's id is empty, so an empty part is kept.
+        let parts = key.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 2, let kind = Kind(rawValue: parts[0]) else { return nil }
         let id = parts[1]
         let current = menus.selection
@@ -386,6 +407,13 @@ enum ModelPickers {
         case .effort:
             var mode = current
             mode.effort = id
+            return mode
+        case .speed:
+            // The default route is the empty id; it goes out as null.
+            let tier = id.isEmpty ? nil : id
+            guard menus.speeds.contains(where: { $0.id == tier }) else { return nil }
+            var mode = current
+            mode.serviceTier = tier
             return mode
         case .permission:
             guard permissionModes.contains(id) else { return nil }
@@ -469,7 +497,7 @@ final class PickerPresenter {
         guard menus != self.menus || usage != self.usage else { return }
         self.menus = menus
         self.usage = usage
-        if list == .effort, menus.current?.efforts.isEmpty != false { return close(animated: true) }
+        if list == .effort, menus.current?.efforts.isEmpty != false, menus.speeds.isEmpty { return close(animated: true) }
         place(opening: false)
     }
 
