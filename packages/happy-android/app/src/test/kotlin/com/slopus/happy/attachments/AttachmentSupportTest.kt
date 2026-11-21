@@ -9,7 +9,7 @@ import org.junit.Test
 class AttachmentSupportTest {
     @Test
     fun flavorsThatTakeImages() {
-        listOf(null, "", "claude", "codex").forEach { assertTrue("$it", supportsImageAttachmentsForFlavor(it)) }
+        listOf(null, "", "claude", "codex", "agy").forEach { assertTrue("$it", supportsImageAttachmentsForFlavor(it)) }
         listOf("gemini", "openclaw", "custom-agent").forEach { assertFalse(it, supportsImageAttachmentsForFlavor(it)) }
     }
 
