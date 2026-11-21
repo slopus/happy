@@ -20,6 +20,9 @@ fun Resources.problemText(problem: Problem): String = when (problem) {
     is Problem.CommandGone -> getString(R.string.conversation_command_gone, problem.name)
     is Problem.CommandBusy -> getString(R.string.conversation_command_busy, problem.name)
     Problem.Forbidden -> getString(R.string.problem_forbidden)
+    Problem.SideQuestionUnready -> getString(R.string.side_question_unready)
+    Problem.SideQuestionUnsupported -> getString(R.string.side_question_unsupported)
+    Problem.SideQuestionGone -> getString(R.string.side_question_gone)
     Problem.Unknown -> getString(R.string.conversation_problem_unknown)
 }
 

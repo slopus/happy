@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import com.slopus.happy.conversation.SideQuestion
+import com.slopus.happy.conversation.SideThread
+import com.slopus.happy.conversation.SlashCommand
 import com.slopus.happy.conversation.SlashCommands
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -214,6 +217,8 @@ class ConversationScreenActions(
     val onOpenPipelineRun: ((com.slopus.happy.pipelines.PipelineRunNotice) -> Unit)? = null,
     /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
     val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
+    /** `/btw`, the chat's side questions ([SideQuestionPanel]); null where the chat can't ask them, and `/btw` is what it was. */
+    val sideQuestions: SideQuestionActions? = null,
 )
 
 /**
@@ -233,6 +238,18 @@ class ConversationScreenActions(
  * read a spinner sits centred; an empty chat and one that could not be read
  * say so in bodyLarge, 32 in. A new chat asks what it will be in the middle
  * instead ([NewWorkChoicePanel]).
+ *
+ * Where the computer serves side questions, a submitted `/btw <question>`
+ * is never a message, whatever the chat's model: it asks [sideThread] in
+ * [SideQuestionPanel], over the top of the transcript under the bar, where
+ * a model that answers none says so. A bare `/btw` only says how to use it,
+ * in [SideQuestionUsage] over the composer, until the composer is edited
+ * again. The "/" list offers `/btw` first, which a pick leaves as `/btw `
+ * for its question, only where the model it is answered with answers side
+ * questions ([SideQuestion.offered]): the agent's own mode
+ * ([ConversationState.agentMode]), or before its first message the
+ * composer's. Where the computer serves none, `/btw` is what it would be
+ * without them.
  */
 @Composable
 fun ConversationScreen(
@@ -252,6 +269,8 @@ fun ConversationScreen(
     roleCanSend: Boolean = true,
     /** The person's role starts new work: the header's compose shows. */
     roleCanCompose: Boolean = true,
+    /** The chat's `/btw` thread as the connection keeps it ([com.slopus.happy.conversation.SideThreads]); null while none is open. */
+    sideThread: SideThread? = null,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -266,14 +285,29 @@ fun ConversationScreen(
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
     val workspaceId = state.agent?.workspaceId
     val workspace = remember(actions, workspaceId) { workspaceId?.let { id -> actions.workspace?.invoke(id) } }
+    // A bare "/btw" says how to ask over the composer, until the composer is edited again.
+    var sideUsage by remember { mutableStateOf(false) }
     // "/" opens the agent's commands over the composer, as desktop's palette does; a new chat's, the computer's skills.
     val commands by rememberUpdatedState(state.commands)
     val onCommand by rememberUpdatedState(actions.onCommand)
-    val commandSource = remember(state.agent?.id) { ConversationCommands(state.agent?.id, { commands }) { command -> onCommand(command.name, null) } }
+    // "/btw", asked as the person types and sends: health may be read after the screen opens.
+    val latest by rememberUpdatedState(state)
+    val sideQuestions by rememberUpdatedState(actions.sideQuestions)
+    val btw by rememberUpdatedState(
+        SlashCommand(SideQuestion.COMMAND, hasArguments = true, description = stringResource(R.string.side_question_command), kind = SlashCommand.SIDE_QUESTION),
+    )
+    // Taken wherever the computer serves side questions, whatever the model, so it never goes out as a message.
+    val takesSideQuestions = remember { { latest.created && sideQuestions?.served?.invoke() == true } }
+    // Offered where the model it is answered with answers them: the agent's own mode, or before its first message the composer's.
+    val offersSideQuestions = remember { { SideQuestion.offered(takesSideQuestions(), latest.catalog, latest.agentMode ?: latest.mode) } }
+    val commandSource = remember(state.agent?.id) {
+        ConversationCommands(state.agent?.id, { if (offersSideQuestions()) SideQuestion.commands(commands, btw) else commands }) { command -> onCommand(command.name, null) }
+    }
     val autocomplete = com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete(
         text,
         onTextChange = {
             text = it
+            sideUsage = false
             actions.onDraftChange(it)
         },
         source = commandSource,
@@ -365,6 +399,7 @@ fun ConversationScreen(
     var returned by remember { mutableStateOf<ComposerReturn?>(null) }
     val onComposerText: (String) -> Unit = {
         text = it
+        sideUsage = false
         actions.onDraftChange(it)
     }
     // A held message lifts over the chat, blurred and veiled behind it above the composer (iOS 8c2a92172).
@@ -541,6 +576,8 @@ fun ConversationScreen(
                             .testTag(ConversationScreenTags.FADE),
                     )
                     if (phase == TranscriptPhase.Rows) Box(Modifier.matchParentSize().aboveKeyboard(keyboard)) { ConversationJump(listState, state.activity, dockHeight) }
+                    // The side questions over the top of the transcript, under the bar; the dock and its lists stay over them.
+                    actions.sideQuestions?.let { side -> SideQuestionPanel(sideThread, side, top, keyboard, bubble, dock = { dock }, modifier = Modifier.liftBackdrop(lift, blur)) }
                     Column(
                         Modifier
                             .align(Alignment.BottomCenter)
@@ -591,11 +628,23 @@ fun ConversationScreen(
                                 modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).padding(16.dp).testTag(ConversationScreenTags.READ_ONLY),
                             )
                         } else {
+                            if (sideUsage) SideQuestionUsage()
                             ConversationComposer(
                                 state = state,
                                 text = text,
                                 onTextChange = onComposerText,
                                 onSend = { words, attachments ->
+                                    // "/btw <question>" asks the side panel, and a bare "/btw" only says how: neither is ever a message.
+                                    val side = actions.sideQuestions?.takeIf { attachments.isEmpty() && takesSideQuestions() }
+                                    val asked = side?.let { SideQuestion.question(words) }
+                                    if (side != null && asked != null) {
+                                        flight.grounded = true
+                                        // The words that asked go, as a send's draft does.
+                                        actions.onDraftChange("")
+                                        sideUsage = asked.isEmpty()
+                                        if (asked.isNotEmpty()) side.onAsk(asked)
+                                        return@ConversationComposer true
+                                    }
                                     // "/name" and what follows runs that command; its words are never a message. A new chat's
                                     // first skill is its first message, drawn as one while the agent is made (Conversation.send).
                                     val invoked = if (attachments.isEmpty() && state.created) SlashCommands.invocation(words.trim(), state.commands) else null
