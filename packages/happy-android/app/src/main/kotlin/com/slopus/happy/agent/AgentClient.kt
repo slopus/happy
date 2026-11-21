@@ -260,6 +260,7 @@ class AgentClient private constructor(
         val capabilities = health["capabilities"] as? JsonObject
         webSocketTunnels = capabilities?.get("webSocketTunnels") == JsonPrimitive(true)
         search = capabilities?.get("search") == JsonPrimitive(true)
+        sideQuestions = capabilities?.get("sideQuestions") == JsonPrimitive(true)
     }
     private val blocked = MutableStateFlow(false)
 
@@ -277,10 +278,19 @@ class AgentClient private constructor(
     @Volatile var search: Boolean = false
         private set
 
+    /**
+     * Health's `capabilities.sideQuestions`, false until health is read: the
+     * computer answers `…/side-questions`, so a chat whose model does too
+     * offers `/btw` ([com.slopus.happy.conversation.SideQuestion.offered]).
+     */
+    @Volatile var sideQuestions: Boolean = false
+        private set
+
     /** What health said, kept so a tunnel needn't ask again. */
     fun noteHealth(info: AgentInfo) {
         webSocketTunnels = info.webSocketTunnels
         search = info.search
+        sideQuestions = info.sideQuestions
     }
 
     internal fun blockTunnels() {

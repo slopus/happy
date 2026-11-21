@@ -309,6 +309,33 @@ open class ConversationApi(
         throw ConversationApiException(409, "conflict", null)
     }
 
+    /**
+     * Asks [agentId]'s harness a side question (API.md `POST
+     * …/side-questions`, Claude Code's `/btw`), with the earlier exchanges of
+     * the same thread as [history] when there are any. It waits up to 20 s:
+     * the answer, or that it is still answering. An archived agent is asked
+     * too and stays archived. `409 harness_not_running`: nothing to answer
+     * from yet; `501 unsupported`: the agent's model answers none.
+     */
+    open suspend fun askSideQuestion(agentId: String, question: String, history: List<SideTurn> = emptyList()): SideReply {
+        val body = buildJsonObject {
+            put("question", question)
+            if (history.isNotEmpty()) put("history", buildJsonArray {
+                history.forEach { turn -> add(buildJsonObject { put("question", turn.question); put("response", turn.response) }) }
+            })
+        }
+        return SideReply.parse(call("POST", "/v0/agents/${escape(agentId)}/side-questions", body)) ?: throw invalid()
+    }
+
+    /** Waits up to 20 s more for side question [id], answered as [askSideQuestion] is; `404` once it is gone, cancelled or expired. */
+    open suspend fun sideQuestion(agentId: String, id: String): SideReply =
+        SideReply.parse(call("GET", "/v0/agents/${escape(agentId)}/side-questions/${escape(id)}")) ?: throw invalid()
+
+    /** Stops answering side question [id] and forgets it; also when it is already gone. */
+    open suspend fun cancelSideQuestion(agentId: String, id: String) {
+        call("DELETE", "/v0/agents/${escape(agentId)}/side-questions/${escape(id)}")
+    }
+
     open suspend fun abort(agentId: String) {
         call("POST", "/v0/agents/${escape(agentId)}/abort", JsonObject(emptyMap()))
     }

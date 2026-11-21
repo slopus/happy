@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A Happy Agent chat's side questions, Claude Code's /btw (ui/conversation/SideQuestionPanel).
+  Not in happy-app's catalogs: the panel's words are the former web app's sideQuestion block.
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="side_question_title">順便提問</string>
+    <string name="side_question_subtitle">根據此聊天作答——這裡的內容不會加入對話。</string>
+    <string name="side_question_follow_up">繼續追問…</string>
+    <string name="side_question_ask">提問</string>
+    <string name="side_question_answering">Claude 正在回答…</string>
+    <string name="side_question_queued">正在等待上一個問題的回答…</string>
+    <string name="side_question_no_answer">Claude 沒有給出回答。</string>
+    <string name="side_question_failed">無法取得回答：%1$s</string>
+    <string name="side_question_unready">此聊天中還沒有可供 Claude Code 作答的內容。請先傳送一則訊息；之後即使 Claude 正在忙碌，也可以使用 /btw。</string>
+    <string name="side_question_unsupported">此聊天的模型不支援順便提問。</string>
+    <string name="side_question_gone">此順便提問已無法使用。請重新提問。</string>
+    <string name="side_question_usage">用法：/btw &lt;你的問題&gt;</string>
+    <!-- /btw's row in the composer's slash-command list. -->
+    <string name="side_question_command">詢問有關此聊天的問題，而不加入對話</string>
+</resources>

@@ -2214,6 +2214,10 @@ focus moves between the two fields. While it is up, the chat under it is
 out of TalkBack's tree. Compose text has no exclusion paths, so every
 line keeps clear of the collapse button, not only the first two.
 
+### Side questions
+
+`/btw <question>` in a Happy Agent chat is Claude Code's side question (happy-agent API.md, "Side questions"): never a message, it asks the harness about the chat and shows the answer in `ui/conversation/SideQuestionPanel`, over the top of the transcript where its first row rests (the bar never covered), not modal, at most 60% of the room under its top that the navigation bar and the resting keyboard leave, scrolling inside. It is offered only where health says `capabilities.sideQuestions` (`AgentClient.sideQuestions`) and the definition of the chat's model says `sideQuestions` (`ModeCatalog.sideQuestions`, `SideQuestion.offered`), never by the model's id or provider; elsewhere `/btw` is what it was. There the "/" list offers `/btw` first (`SlashCommand.SIDE_QUESTION`, which a pick leaves as `/btw `), and a bare `/btw` only says "Usage: /btw <your question>" over the composer, on the phone alone. The threads are the connection's (`AgentSession.sideQuestions`, `conversation/SideThreads`), so leaving the chat keeps its thread and the question being answered; only the panel's close ends one, and drops that question with `DELETE`. A thread asks one question at a time, each with the earlier answers Claude gave itself as `history`; the first `POST` is never sent twice, a `GET` is after a transient failure. An answer is Markdown with the chat's copy button, which copies the answer alone; a canned (`synthetic`) one has none and is never sent back. Words are in `strings_side_question.xml`; refusals are `Problem` cases.
+
 ### Pasting a picture
 
 The agent composer's field carries a content receiver

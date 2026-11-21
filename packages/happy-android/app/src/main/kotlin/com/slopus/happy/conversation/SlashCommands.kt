@@ -29,6 +29,9 @@ data class SlashCommand(
 ) {
     val isSkill: Boolean get() = kind == SKILL
 
+    /** The phone's own `/btw` ([SideQuestion]), not the agent's: picked, it waits for its question. */
+    val isSideQuestion: Boolean get() = kind == SIDE_QUESTION
+
     fun json(): JsonObject = buildJsonObject {
         put("name", name)
         put("hasArguments", hasArguments)
@@ -40,6 +43,8 @@ data class SlashCommand(
     companion object {
         const val SKILL = "skill"
         const val COMPACTION = "compaction"
+        /** [isSideQuestion]'s kind, which no agent sends. */
+        const val SIDE_QUESTION = "side_question"
 
         fun parse(value: JsonElement?): SlashCommand? {
             val o = value.obj ?: return null

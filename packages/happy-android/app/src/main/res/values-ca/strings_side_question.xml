@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A Happy Agent chat's side questions, Claude Code's /btw (ui/conversation/SideQuestionPanel).
+  Not in happy-app's catalogs: the panel's words are the former web app's sideQuestion block.
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="side_question_title">Pregunta al marge</string>
+    <string name="side_question_subtitle">Resposta basada en aquest xat — res d’aquí no s’afegeix a la conversa.</string>
+    <string name="side_question_follow_up">Fes una altra pregunta…</string>
+    <string name="side_question_ask">Pregunta</string>
+    <string name="side_question_answering">Claude està responent…</string>
+    <string name="side_question_queued">Esperant la resposta anterior…</string>
+    <string name="side_question_no_answer">Claude no té cap resposta.</string>
+    <string name="side_question_failed">No s’ha pogut obtenir una resposta: %1$s</string>
+    <string name="side_question_unready">Claude Code encara no té res en aquest xat en què basar una resposta. Envia primer un missatge; després, /btw funciona fins i tot mentre Claude està ocupat.</string>
+    <string name="side_question_unsupported">El model d’aquest xat no pot respondre preguntes al marge.</string>
+    <string name="side_question_gone">Aquesta pregunta al marge ja no està disponible. Torna-la a fer.</string>
+    <string name="side_question_usage">Ús: /btw &lt;la teva pregunta&gt;</string>
+    <!-- /btw's row in the composer's slash-command list. -->
+    <string name="side_question_command">Pregunta sobre aquest xat sense afegir-hi res</string>
+</resources>
