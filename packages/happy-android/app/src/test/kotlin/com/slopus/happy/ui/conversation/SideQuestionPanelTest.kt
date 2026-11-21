@@ -232,7 +232,7 @@ class SideQuestionPanelTest {
     }
 
     @Test @Config(qualifiers = "w891dp-h411dp-land-xxhdpi", sdk = [35])
-    fun `on its side with the keyboard up it ends above the composer, its field in view`() {
+    fun `on its side with the keyboard up it ends above the composer, its field in view and its header whole or aside`() {
         show(SideQuestionFixtures.long())
         rule.runOnUiThread {
             compose.rootView.dispatchApplyWindowInsets(
@@ -249,6 +249,16 @@ class SideQuestionPanelTest {
         assertTrue("above the composer: $panel over $composer", panel.bottom <= composer.top + TOLERANCE)
         assertTrue("the 160 gave way: $panel", panel.height < SideQuestionSpec.minHeight)
         assertTrue("its field in view: $field in $panel", field.top >= panel.top - TOLERANCE && field.bottom <= panel.bottom + TOLERANCE)
+        // The header doesn't fit whole over the field there: it steps aside, never cut through its words, and the thread takes its place.
+        val density = compose.resources.displayMetrics.density
+        val cut = rule.onAllNodesWithTag(SideQuestionTags.TITLE).fetchSemanticsNodes().filter { title ->
+            val top = title.positionInRoot.y / density
+            title.layoutInfo.isPlaced && (top < panel.top.value - TOLERANCE.value || top + title.size.height / density > panel.bottom.value + TOLERANCE.value)
+        }
+        assertTrue("no title cut at the card's edge: $cut", cut.isEmpty())
+        val thread = rule.node(SideQuestionTags.THREAD).bounds
+        assertDp("the thread in the header's place", panel.top, thread.top)
+        assertTrue("the thread shows: $thread", thread.height > 0.dp)
         shot("side-question-landscape-keyboard")
     }
 
