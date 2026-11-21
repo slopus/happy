@@ -60,6 +60,7 @@ fun FixtureScreens(transport: FixtureTransport, scope: CoroutineScope, onConvers
                     ConversationScreenActions(
                         onBack = {},
                         onDraftChange = conversation::setDraft,
+                        onModeChange = conversation::setMode,
                         onSend = { words, attachments -> conversation.send(words, attachments) },
                         onSendPending = { words, attachments, pending -> conversation.send(words, attachments, pending) },
                         onAnswer = conversation::answer,

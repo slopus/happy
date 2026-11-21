@@ -24,4 +24,6 @@
     <string name="conversation_usage_hours_ago">%1$d h fa</string>
     <string name="conversation_usage_at">alle %1$s</string>
     <string name="conversation_usage_signed_out">Disconnesso</string>
+    <string name="conversation_speed_chip">Velocità: %1$s</string>
+    <string name="conversation_speed">Velocità</string>
 </resources>

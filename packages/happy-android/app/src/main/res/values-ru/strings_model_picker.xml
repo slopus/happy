@@ -24,4 +24,6 @@
     <string name="conversation_usage_hours_ago">%1$d ч назад</string>
     <string name="conversation_usage_at">в %1$s</string>
     <string name="conversation_usage_signed_out">Вход не выполнен</string>
+    <string name="conversation_speed_chip">Скорость: %1$s</string>
+    <string name="conversation_speed">Скорость</string>
 </resources>

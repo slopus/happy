@@ -24,4 +24,6 @@
     <string name="conversation_usage_hours_ago">hace %1$d h</string>
     <string name="conversation_usage_at">a las %1$s</string>
     <string name="conversation_usage_signed_out">Sesión cerrada</string>
+    <string name="conversation_speed_chip">Velocidad: %1$s</string>
+    <string name="conversation_speed">Velocidad</string>
 </resources>

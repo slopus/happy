@@ -8,7 +8,7 @@ import androidx.compose.runtime.Immutable
  * provider type) with their accounts in the catalog's order, the models
  * each lists, and what is selected. The model chip lists the services'
  * models, a service's heading opens its accounts, and the effort chip lists
- * the selected model's efforts.
+ * the selected model's efforts, then its speeds when its menu has two or more.
  */
 @Immutable
 data class ModelMenus(
@@ -17,6 +17,8 @@ data class ModelMenus(
     /** The selected model, listed or not. */
     val current: ModelChoice?,
     val notice: Notice?,
+    /** The selected model's speed menu on its account (`happyAgentMenusDerive`), none while the account is off. */
+    val speeds: List<ServiceTierOption> = emptyList(),
 ) {
     @Immutable
     data class Account(val id: String, val label: String, val models: List<Choice>)
@@ -58,6 +60,13 @@ data class ModelMenus(
             val current = current ?: return selection.effort
             return if (selection.effort in current.efforts) selection.effort else current.defaultEffort ?: selection.effort
         }
+
+    /** Speed is a choice: the selected model's menu has two speeds or more. */
+    val offersSpeed: Boolean get() = speeds.size >= 2
+
+    /** The speed shown checked: the selection's when the menu offers it, else the menu's Regular (`id: null`). */
+    val speed: ServiceTierOption?
+        get() = speeds.firstOrNull { it.id == selection.serviceTier } ?: speeds.firstOrNull { it.id == null }
 
     /** Nothing to list and no model to name: "Models not configured". */
     val isEmpty: Boolean get() = services.isEmpty() && current == null
@@ -116,7 +125,8 @@ data class ModelMenus(
                 selected.hidden -> Notice.Hidden
                 else -> null
             }
-            return ModelMenus(services, selection, current, notice)
+            val speeds = if (selected?.isDisabled == false) current?.serviceTierOptions.orEmpty() else emptyList()
+            return ModelMenus(services, selection, current, notice, speeds)
         }
     }
 }

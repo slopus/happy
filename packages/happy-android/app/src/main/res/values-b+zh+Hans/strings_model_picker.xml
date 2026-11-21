@@ -24,4 +24,6 @@
     <string name="conversation_usage_hours_ago">%1$d 小时前</string>
     <string name="conversation_usage_at">%1$s</string>
     <string name="conversation_usage_signed_out">已退出登录</string>
+    <string name="conversation_speed_chip">速度：%1$s</string>
+    <string name="conversation_speed">速度</string>
 </resources>

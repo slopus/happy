@@ -38,7 +38,8 @@ data class ModelPreferences(
      * defaultSelectionResolve: the default model (else the catalog's) on the
      * account picked last when it serves it, else the catalog's default
      * account, else the first that does; the default effort where the model
-     * runs it, else the model's own; the speed last used with it there. Each
+     * runs it, else the model's own; the speed last used with it there while
+     * its menu still offers it (Ultrafast included), else Regular. Each
      * falls back on its own. Null for a catalog with no default.
      */
     fun startMode(catalog: ModeCatalog): Mode? {
@@ -48,7 +49,7 @@ data class ModelPreferences(
             val serving = catalog.providers.filter { provider -> !provider.isDisabled && !provider.hidden && provider.models.any { it.modelId == modelId } }
             val provider = serving.firstOrNull { it.id == providerId } ?: serving.firstOrNull { it.id == defaults?.providerId } ?: serving.firstOrNull() ?: continue
             val model = provider.models.first { it.modelId == modelId }
-            val tier = memory.lastOrNull { it.providerId == provider.id && it.modelId == modelId }?.serviceTier?.takeIf { it in model.serviceTiers }
+            val tier = memory.lastOrNull { it.providerId == provider.id && it.modelId == modelId }?.serviceTier?.takeIf(model::offersTier)
             return Mode(provider.id, modelId, effortFor(model) ?: defaults?.effort ?: defaultEffort, tier, permission)
         }
         defaults ?: return null

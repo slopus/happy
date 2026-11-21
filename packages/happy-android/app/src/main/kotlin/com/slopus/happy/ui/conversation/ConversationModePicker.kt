@@ -42,7 +42,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 object ConversationModeTags {
     /** The composer's model chip. */
     const val MODEL = "conversation.modes.model"
-    /** The composer's effort chip. */
+    /** The composer's effort chip, which holds the speed too. */
     const val EFFORT = "conversation.modes.effort"
     const val PICKER = "conversation.modes.picker"
     const val OPTIONS = "conversation.modes.options"
@@ -66,8 +66,11 @@ internal fun permissionName(key: String): String = permissionText[key]?.first?.l
 /**
  * The composer's model control as desktop's `ComposerModelControl` and iOS's
  * chips (e2238fdc4): the model, and its effort, each a chip opening its own
- * list ([ModelPicker]). While the selected account runs low a ring before
- * the model's name warns of it, and the chip reads the warning out. Before
+ * list ([ModelPicker]). A model whose speed menu has a choice takes its
+ * speed in the effort's list, and the effort chip reads "High · Fast" (the
+ * daemon's label) on any speed but the default. While the selected account
+ * runs low a ring before the model's name warns of it, and the chip reads
+ * the warning out. Before
  * the computer's models are read it shows what the chat runs with and does
  * nothing; with none, "Models not configured".
  */
@@ -82,9 +85,10 @@ internal fun ConversationModelChips(
 ) {
     val current = mode ?: catalog?.defaults ?: return
     val menus = remember(catalog, current) { catalog?.let { ModelMenus.of(it, current) } }
-    val (model, effort) = if (catalog == null) {
-        (current.modelId to ModeOptions.effortDisplayName(current.effort))
+    val labels = if (catalog == null) {
+        ChipLabels(current.modelId, ModeOptions.effortDisplayName(current.effort))
     } else modelChipLabels(menus)
+    val model = labels.model
     val modelLabel = stringResource(R.string.conversation_model_chip, model)
     // The ring and its words while the selected account runs low.
     val spoken = warning?.let { "$modelLabel. ${usageWarningText(it)}." } ?: modelLabel
@@ -105,16 +109,20 @@ internal fun ConversationModelChips(
             }
             Text(model, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = HappyTheme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (effort != null) {
-            val effortLabel = stringResource(R.string.conversation_effort_chip, effort)
+        val second = labels.second
+        if (second != null) {
+            val effortLabel = listOfNotNull(
+                labels.effort?.let { stringResource(R.string.conversation_effort_chip, it) },
+                labels.speed?.let { stringResource(R.string.conversation_speed_chip, it) },
+            ).joinToString(", ")
             Text(
-                effort,
+                second,
                 style = MaterialTheme.typography.labelLarge,
                 color = HappyTheme.colors.text,
                 maxLines = 1,
                 modifier = Modifier
                     .clip(MaterialTheme.shapes.small)
-                    .clickable(enabled = (menus?.current?.efforts?.size ?: 0) > 0, role = Role.Button) { onOpen(PickerList.Effort) }
+                    .clickable(enabled = (menus?.current?.efforts?.size ?: 0) > 0 || menus?.offersSpeed == true, role = Role.Button) { onOpen(PickerList.Effort) }
                     .semantics(mergeDescendants = true) { contentDescription = effortLabel }
                     .onPlaced { anchors?.set(1, it) }
                     .padding(horizontal = 8.dp, vertical = 12.dp)

@@ -169,6 +169,8 @@ internal object PickerKeys {
     fun model(providerId: String, modelId: String) = "model\t$providerId\n$modelId"
     fun account(providerId: String) = "provider\t$providerId"
     fun effort(level: String) = "effort\t$level"
+    /** A speed: its id as the menu gives it, null for the default route. */
+    fun speed(tier: String?) = "tier\t${tier.orEmpty()}"
 
     /** What a pick makes the mode; null leaves it as it is. */
     fun pick(key: String, menus: ModelMenus, catalog: ModeCatalog): Mode? {
@@ -182,17 +184,34 @@ internal object PickerKeys {
                 catalog.pick(current, account.id, model.id, effort = current.effort)
             }
             "effort" -> current.copy(effort = id)
+            "tier" -> current.copy(serviceTier = id.ifEmpty { null })
             else -> null
         }
     }
 }
 
-/** The chips' words for the selection: the model, and its effort when it has any. */
+/**
+ * The chips' words: the model, its effort when it has any, and its speed's
+ * label when its menu offers a choice ([tiered] when that speed isn't the
+ * default route).
+ */
+internal data class ChipLabels(val model: String, val effort: String? = null, val speed: String? = null, val tiered: Boolean = false) {
+    /** The second chip: the effort, "· Fast" after it on a speed other than the default; the speed alone for a model without efforts. */
+    val second: String?
+        get() = when {
+            effort == null -> speed
+            speed != null && tiered -> "$effort · $speed"
+            else -> effort
+        }
+}
+
+/** The chips' words for the selection. */
 @Composable
-internal fun modelChipLabels(menus: ModelMenus?): Pair<String, String?> {
-    if (menus == null || menus.isEmpty) return stringResource(R.string.conversation_models_not_configured) to null
+internal fun modelChipLabels(menus: ModelMenus?): ChipLabels {
+    if (menus == null || menus.isEmpty) return ChipLabels(stringResource(R.string.conversation_models_not_configured))
     val effort = menus.current?.takeIf { it.efforts.isNotEmpty() }?.let { menus.effort?.let(ModeOptions::effortDisplayName) }
-    return (menus.current?.name ?: menus.selection.modelId) to effort
+    val speed = menus.speed?.takeIf { menus.offersSpeed }
+    return ChipLabels(menus.current?.name ?: menus.selection.modelId, effort, speed?.label, tiered = speed?.id != null)
 }
 
 /** `usageAge`: how long ago, in a word. */
@@ -272,11 +291,29 @@ internal fun modelLines(menus: ModelMenus, usage: Map<String, AccountUsage>, now
     return lines
 }
 
-/** The selected model's efforts, least to most, the current one checked. */
-internal fun effortLines(menus: ModelMenus): List<PickerLine> =
-    menus.current?.efforts.orEmpty().map { level ->
+/**
+ * The selected model's efforts, least to most, the current one checked;
+ * then, when its speed menu has two or more, the speeds under a heading in
+ * the daemon's order and words (desktop's Speed control: Regular, Fast,
+ * Ultrafast…).
+ */
+@Composable
+internal fun effortLines(menus: ModelMenus): List<PickerLine> {
+    val lines = ArrayList<PickerLine>()
+    menus.current?.efforts.orEmpty().mapTo(lines) { level ->
         PickerLine.Option(PickerKeys.effort(level), ModeOptions.effortDisplayName(level), checked = level == menus.effort, disabled = false)
     }
+    if (menus.offersSpeed) {
+        if (lines.isNotEmpty()) lines += PickerLine.Separator
+        val title = stringResource(R.string.conversation_speed)
+        lines += PickerLine.Heading(title, null, emptyList(), null, title)
+        val checked = menus.speed
+        menus.speeds.mapTo(lines) { option ->
+            PickerLine.Option(PickerKeys.speed(option.id), option.label, checked = option == checked, disabled = false)
+        }
+    }
+    return lines
+}
 
 /**
  * A service's accounts, the one it lists checked, each with what is left of
@@ -502,10 +539,12 @@ private fun PickerPanel(
                     .padding(ModelPickerSpec.inset)
                     .then(if (covered) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
+                // The first checked line: the effort list checks a speed too.
+                val checked = lines.indexOfFirst { it is PickerLine.Option && it.checked }
                 lines.forEachIndexed { index, line ->
                     val startsBlock = index > 0 && line !is PickerLine.Option
                     if (startsBlock) Spacer(Modifier.height(ModelPickerSpec.gap))
-                    val placed = if (line is PickerLine.Option && line.checked) {
+                    val placed = if (index == checked) {
                         Modifier.onPlaced { checkedTop = it.positionInParent().y.toInt(); checkedHeight = it.size.height }
                     } else Modifier
                     PickerLineView(line, placed) { onTap(line) }

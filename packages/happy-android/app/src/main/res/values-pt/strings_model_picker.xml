@@ -24,4 +24,6 @@
     <string name="conversation_usage_hours_ago">há %1$d h</string>
     <string name="conversation_usage_at">às %1$s</string>
     <string name="conversation_usage_signed_out">Desconectado</string>
+    <string name="conversation_speed_chip">Velocidade: %1$s</string>
+    <string name="conversation_speed">Velocidade</string>
 </resources>

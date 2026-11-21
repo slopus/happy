@@ -7,6 +7,9 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.onChild
 import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -52,7 +55,8 @@ class ModelPickerTest {
                 "opus":{"name":"Opus 5 1M","efforts":["low","medium","high","max"],"defaultEffort":"high"},
                 "sonnet":{"name":"Sonnet 5","efforts":["low","high"],"defaultEffort":"high"},
                 "haiku":{"name":"Haiku 5","efforts":["low"],"defaultEffort":"low"},
-                "sol":{"name":"GPT-6 Sol","efforts":["low","medium","high","xhigh"],"defaultEffort":"medium"}
+                "sol":{"name":"GPT-6 Sol","efforts":["low","medium","high","xhigh"],"defaultEffort":"medium","serviceTiers":["priority","ultrafast"],
+                    "serviceTierOptions":[{"id":null,"label":"Regular"},{"id":"priority","label":"Fast"},{"id":"ultrafast","label":"Ultrafast"}]}
             },
             "providers":{
                 "claude":{"name":"Current CLI","type":"claude","enabled":true,"hidden":false,"models":[{"id":"opus","enabled":true},{"id":"sonnet","enabled":true},{"id":"haiku","enabled":true,"hidden":true}]},
@@ -147,6 +151,40 @@ class ModelPickerTest {
         rule.waitForIdle()
         assertEquals(listOf(mode.copy(effort = "max")), picks)
         rule.node(ModelPickerTags.PANEL).assertDoesNotExist()
+    }
+
+    @Test fun `a model without a speed menu offers no speed`() {
+        show()
+        rule.node(ConversationModeTags.EFFORT).performClick()
+        rule.waitForIdle()
+        rule.node(ModelPickerTags.option(PickerKeys.effort("high"))).assertExists()
+        rule.node(ModelPickerTags.option(PickerKeys.speed(null))).assertDoesNotExist()
+        rule.onNodeWithText("Speed").assertDoesNotExist()
+    }
+
+    @Test fun `a model with a speed menu lists it in the effort list in the daemon's words, and a pick sends its id`() {
+        val picks = ArrayList<Mode>()
+        val sol = Mode("codex", "sol", "medium", null, "auto")
+        show(picks = picks, current = sol)
+        rule.onNodeWithText("Medium").assertExists()
+        rule.node(ConversationModeTags.EFFORT).performClick()
+        rule.waitForIdle()
+        rule.node(ModelPickerTags.heading("Speed")).assertExists()
+        rule.node(ModelPickerTags.option(PickerKeys.speed(null))).onChild().assertIsSelected()
+        rule.node(ModelPickerTags.option(PickerKeys.speed("priority"))).onChild().assertIsNotSelected()
+        rule.node(ModelPickerTags.option(PickerKeys.speed("ultrafast"))).onChild().assertIsNotSelected()
+        rule.node(ModelPickerTags.option(PickerKeys.effort("medium"))).onChild().assertIsSelected()
+        rule.onNodeWithText("Ultrafast").assertExists()
+        shot("model-picker-speed")
+        rule.node(ModelPickerTags.option(PickerKeys.speed("ultrafast"))).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf(sol.copy(serviceTier = "ultrafast")), picks)
+        rule.node(ModelPickerTags.PANEL).assertDoesNotExist()
+    }
+
+    @Test fun `the effort chip names the speed while it isn't the default`() {
+        show(current = Mode("codex", "sol", "high", "ultrafast", "auto"))
+        rule.onNodeWithText("High · Ultrafast").assertExists()
     }
 
     @Test fun `the model chip wears the ring of the selected account and the heading its warning`() {

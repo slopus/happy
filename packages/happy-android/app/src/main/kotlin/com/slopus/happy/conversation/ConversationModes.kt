@@ -7,6 +7,7 @@ import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.chat.strings
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 
 /** One model a provider offers, as `GET /v0/config` defines it. */
@@ -20,7 +21,16 @@ data class ModelChoice(
     val efforts: List<String>,
     val defaultEffort: String?,
     val serviceTiers: List<String>,
-)
+    /** The speed menu in the daemon's order (`serviceTierOptions`); empty from a daemon that sends none. */
+    val serviceTierOptions: List<ServiceTierOption> = emptyList(),
+) {
+    /** [tier] is one of the speeds the menu offers (`null` is Regular when the menu has it). */
+    fun offersTier(tier: String?): Boolean = serviceTierOptions.any { it.id == tier }
+}
+
+/** One speed (API.md `serviceTierOptions[]`): the id sent as `mode.serviceTier` unchanged (null clears it) and the daemon's own label. */
+@Immutable
+data class ServiceTierOption(val id: String?, val label: String)
 
 /**
  * One account on the computer (`config.providers`), switched off, hidden or
@@ -69,8 +79,8 @@ data class ModeCatalog(
      * `happyAgentSelectionModelUpdate`: [current] on another model, on an
      * account that can serve it. Its effort is [effort] when the model runs
      * it (the current one when the model stays), else the model's own
-     * default, never one carried over it may not support; a service tier it
-     * doesn't offer is dropped. Unchanged when the account can't serve it.
+     * default, never one carried over it may not support; a service tier its
+     * speed menu doesn't offer is dropped. Unchanged when the account can't serve it.
      */
     fun pick(current: Mode, providerId: String, modelId: String, effort: String? = current.effort.takeIf { providerId == current.providerId && modelId == current.modelId }): Mode {
         val provider = provider(providerId)?.takeIf { !it.isDisabled }
@@ -79,8 +89,19 @@ data class ModeCatalog(
             providerId = providerId,
             modelId = modelId,
             effort = effort?.takeIf { it in choice.efforts || choice.efforts.isEmpty() } ?: choice.defaultEffort ?: choice.efforts.firstOrNull() ?: current.effort,
-            serviceTier = current.serviceTier?.takeIf { it in choice.serviceTiers },
+            serviceTier = current.serviceTier?.takeIf(choice::offersTier),
         )
+    }
+
+    /**
+     * `happyAgentSelectionServiceTierReconcile`: [mode] without a speed its
+     * account no longer offers (a configuration change took it away), or on
+     * an account switched off; the model, effort and access stay.
+     */
+    fun reconcileTier(mode: Mode): Mode {
+        val tier = mode.serviceTier ?: return mode
+        val offered = provider(mode.providerId)?.isDisabled != true && model(mode.providerId, mode.modelId)?.offersTier(tier) == true
+        return if (offered) mode else mode.copy(serviceTier = null)
     }
 
     companion object {
@@ -103,6 +124,17 @@ data class ModeCatalog(
                     efforts = field("efforts").strings.orEmpty(),
                     defaultEffort = field("defaultEffort").str,
                     serviceTiers = field("serviceTiers").strings.orEmpty(),
+                    // The reference's menu replaces the definition's whole: eligibility is per account.
+                    serviceTierOptions = field("serviceTierOptions").arr.orEmpty().mapNotNull { option ->
+                        val o = option.obj ?: return@mapNotNull null
+                        val id = o["id"]
+                        val label = o["label"].str ?: return@mapNotNull null
+                        when {
+                            id is JsonNull -> ServiceTierOption(null, label)
+                            id.str != null -> ServiceTierOption(id.str, label)
+                            else -> null
+                        }
+                    },
                 )
             }
             val providers = root["providers"].obj?.mapNotNull { (providerId, value) ->

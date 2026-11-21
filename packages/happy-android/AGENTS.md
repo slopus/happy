@@ -2199,6 +2199,22 @@ reconnect read `/v0/config` again (`Conversation.rereadCatalog`), so a
 model hidden on the computer leaves the list while it is open. Words are
 in `strings_model_picker.xml`.
 
+Speed is desktop's Speed control. Its menu is the daemon's own
+(`serviceTierOptions`, API.md `GET /v0/config`): the provider reference's
+menu over the model definition's, as eligibility is per account. The effort
+list ends with it under a Speed heading only when it has two choices or
+more (`ModelMenus.offersSpeed`). Each choice shows the daemon's label and
+sends its `id` unchanged as `mode.serviceTier` (`null` for the default
+route, `"priority"`, `"ultrafast"`…). The client never names tiers or makes
+a menu up from `serviceTiers`: an older daemon without the field gets none.
+The effort chip reads "High · Fast" on any choice but the default. The
+speed rides the mode like effort: the draft, each message, and the model
+memory a new chat starts from (`ModelPreferences.startMode` restores a
+remembered tier only while the account's menu still has it). A model or
+account whose menu lacks the tier drops it (`ModeCatalog.pick`), and so
+does a configuration change that takes it away (`reconcileTier` in
+`Conversation.rereadCatalog`).
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

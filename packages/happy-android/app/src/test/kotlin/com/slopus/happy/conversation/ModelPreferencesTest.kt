@@ -19,13 +19,14 @@ class ModelPreferencesTest {
             "defaults":{"providerId":"claude","modelId":"opus","effort":"high","permissionMode":"workspace_write"},
             "models":{
                 "opus":{"name":"Opus","efforts":["low","medium","high","max"],"defaultEffort":"high","serviceTiers":[]},
-                "sol":{"name":"Sol","efforts":["low","high","xhigh"],"defaultEffort":"high","serviceTiers":["priority"]},
+                "sol":{"name":"Sol","efforts":["low","high","xhigh"],"defaultEffort":"high","serviceTiers":["priority","ultrafast"],
+                    "serviceTierOptions":[{"id":null,"label":"Regular"},{"id":"priority","label":"Fast"},{"id":"ultrafast","label":"Ultrafast"}]},
                 "luna":{"name":"Luna","efforts":[],"serviceTiers":[]}
             },
             "providers":{
                 "claude":{"type":"claude","enabled":true,"hidden":false,"models":[{"id":"opus"}]},
                 "codex":{"type":"codex","enabled":true,"hidden":false,"models":[{"id":"sol"},{"id":"luna"}]},
-                "codex-work":{"type":"codex","enabled":true,"hidden":false,"models":[{"id":"sol"}]},
+                "codex-work":{"type":"codex","enabled":true,"hidden":false,"models":[{"id":"sol","serviceTiers":["priority"],"serviceTierOptions":[{"id":null,"label":"Regular"},{"id":"priority","label":"Fast"}]}]},
                 "codex-off":{"type":"codex","enabled":false,"hidden":false,"models":[{"id":"sol"}]},
                 "codex-hidden":{"type":"codex","enabled":true,"hidden":true,"models":[{"id":"sol"}]}
             }}}""",
@@ -67,6 +68,9 @@ class ModelPreferencesTest {
         assertEquals("high", ModelPreferences(defaultModelId = "sol", defaultEffort = "max").startMode(catalog)?.effort)
         // A speed the model no longer offers is dropped.
         assertNull(ModelPreferences(defaultModelId = "opus", memory = listOf(ModelMemory("claude", "opus", null, "priority"))).startMode(catalog)?.serviceTier)
+        // Ultrafast comes back as itself where the account's menu still has it, else Regular.
+        assertEquals("ultrafast", ModelPreferences(defaultModelId = "sol", providerId = "codex", memory = listOf(ModelMemory("codex", "sol", null, "ultrafast"))).startMode(catalog)?.serviceTier)
+        assertNull(ModelPreferences(defaultModelId = "sol", providerId = "codex-work", memory = listOf(ModelMemory("codex-work", "sol", null, "ultrafast"))).startMode(catalog)?.serviceTier)
         // A permission mode saved wins over the catalog's.
         assertEquals("full_access", ModelPreferences(access = "full_access").startMode(catalog)?.permissionMode)
     }

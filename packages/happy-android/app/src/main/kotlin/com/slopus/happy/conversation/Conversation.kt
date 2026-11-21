@@ -1433,7 +1433,10 @@ class Conversation(
         return true
     }
 
-    /** Reads the computer's models again (`config.updated`, a reconnect): hidden accounts and models, names, windows. */
+    /**
+     * Reads the computer's models again (`config.updated`, a reconnect): hidden accounts and models, names,
+     * windows, and each account's speeds; a speed taken away is dropped from the mode, as desktop's draft does.
+     */
     private fun rereadCatalog() {
         scope.launch(lane) {
             val found = try {
@@ -1447,6 +1450,8 @@ class Conversation(
             if (found != catalog) {
                 catalog = found
                 adoptStartMode()
+                mode = mode?.let(found::reconcileTier)
+                picked = picked?.let(found::reconcileTier)
                 publish()
             }
         }

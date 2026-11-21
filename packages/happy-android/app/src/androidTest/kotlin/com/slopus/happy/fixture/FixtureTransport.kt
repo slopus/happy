@@ -30,6 +30,10 @@ class FixtureTransport {
     /** The pending question `GET .../question` answers with, or none. */
     @Volatile var question: String? = null
 
+    /** What `GET /v0/config` answers, and the mode the chat's bootstrap says it runs with. */
+    @Volatile var config: String = CONFIG
+    @Volatile var mode: String = MODE
+
     val png: ByteArray by lazy { picture() }
     val pdf: ByteArray by lazy { document() }
     val mp4: ByteArray by lazy {
@@ -47,13 +51,13 @@ class FixtureTransport {
         // A workspace file write: its hash back, as the computer answers.
         method == "PUT" && route == "/v0/workspaces/fx-workspace/file" -> json("""{"hash":"${sha256(body)}"}""")
         // The conversation only asks for a question the agent says is pending.
-        route == "/v0/agents/$AGENT/bootstrap" -> json(bootstrap(if (question != null) "fx-q" else null))
+        route == "/v0/agents/$AGENT/bootstrap" -> json(bootstrap(if (question != null) "fx-q" else null, mode))
         route == "/v0/agents/$AGENT/messages" -> json(PAGE)
         route == "/v0/agents/$AGENT/question" -> json("""{"question":${question ?: "null"}}""")
         route == "/v0/agents/$AGENT/tool-calls/c1/media/0" -> bytes(png)
         route == "/v0/agents/$AGENT/tool-calls/c1/media/1" -> bytes(mp4)
         route == "/v0/agents/$AGENT/tool-calls/c1/media/2" -> bytes(pdf)
-        route == "/v0/config" -> json(CONFIG)
+        route == "/v0/config" -> json(config)
         route == "/v0/secrets" && method == "GET" -> json("""{"secrets":[]}""")
         route == "/v0/artifacts/fx-notes" -> json(artifact("fx-notes", "markdown", "Fixture notes"))
         route == "/v0/artifacts/fx-notes/versions/latest" -> json(version("Fixture notes", "index.md", "text/markdown", NOTES.size))
@@ -92,8 +96,8 @@ class FixtureTransport {
 
         private const val MODE = """{"providerId":"fx","modelId":"fx/model","effort":"medium","serviceTier":null,"permissionMode":"read_only"}"""
 
-        private fun bootstrap(pendingQuestionId: String?) =
-            """{"agent":{"id":"$AGENT","workspaceId":"fx-workspace","status":"idle","title":"Fixture chat","pendingQuestionId":${pendingQuestionId?.let { "\"$it\"" } ?: "null"}},"mode":$MODE,"draft":{"value":null,"updatedAt":null},"pending":[]}"""
+        private fun bootstrap(pendingQuestionId: String?, mode: String) =
+            """{"agent":{"id":"$AGENT","workspaceId":"fx-workspace","status":"idle","title":"Fixture chat","pendingQuestionId":${pendingQuestionId?.let { "\"$it\"" } ?: "null"}},"mode":$mode,"draft":{"value":null,"updatedAt":null},"pending":[]}"""
 
         private const val CONFIG = """{"config":{
             "defaults":{"providerId":"fx","modelId":"fx/model","permissionMode":"read_only"},

@@ -157,7 +157,7 @@ private class FakeAgent {
             "defaults":{"providerId":"claude","modelId":"anthropic/opus-5","permissionMode":"auto"},
             "models":{
                 "anthropic/opus-5":{"name":"Opus 5 1M","efforts":["low","medium","high","max"],"defaultEffort":"high","serviceTiers":[]},
-                "openai/gpt-5.6-sol":{"name":"GPT-5.6 Sol","efforts":["low","medium","high","xhigh"],"defaultEffort":"medium","serviceTiers":["priority"]},
+                "openai/gpt-5.6-sol":{"name":"GPT-5.6 Sol","efforts":["low","medium","high","xhigh"],"defaultEffort":"medium","serviceTiers":["priority"],"serviceTierOptions":[{"id":null,"label":"Regular"},{"id":"priority","label":"Fast"}]},
                 "openai/gpt-5.6-luna":{"name":"GPT-5.6 Luna","efforts":["low"],"defaultEffort":"low","serviceTiers":[]},
                 "xai/grok-4.5":{"name":"Grok 4.5","efforts":["high"],"defaultEffort":"high","serviceTiers":[]}
             },
@@ -1135,6 +1135,23 @@ class ConversationTest {
         advanceUntilIdle()
         assertEquals("xai/grok-4.5", chat.state.value.catalog?.models?.last()?.modelId)
         assertEquals(4, chat.state.value.catalog?.models?.size)
+    }
+
+    @Test fun `a speed the computer takes away is dropped from the mode, which then sends Regular`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val fast = Mode("codex", "openai/gpt-5.6-sol", "high", "priority", "auto")
+        chat.setMode(fast)
+        advanceUntilIdle()
+        assertEquals(fast, chat.state.value.mode)
+        agent.config = FakeAgent.CONFIG.replace(""""serviceTiers":["priority"],"serviceTierOptions":[{"id":null,"label":"Regular"},{"id":"priority","label":"Fast"}]""", """"serviceTiers":[],"serviceTierOptions":[{"id":null,"label":"Regular"}]""")
+        signals.emit(event("config.updated", "{}"))
+        advanceUntilIdle()
+        assertEquals(fast.copy(serviceTier = null), chat.state.value.mode)
+        chat.send("Go")
+        advanceUntilIdle()
+        assertEquals(fast.copy(serviceTier = null).json(), agent.requests.last { it.second.endsWith("/send") }.third!!["mode"])
     }
 
     @Test fun `a picked mode is kept with the draft at once and sends with the next message`() = runTest {

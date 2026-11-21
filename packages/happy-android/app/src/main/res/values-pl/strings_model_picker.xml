@@ -24,4 +24,6 @@
     <string name="conversation_usage_hours_ago">%1$d godz. temu</string>
     <string name="conversation_usage_at">o %1$s</string>
     <string name="conversation_usage_signed_out">Wylogowano</string>
+    <string name="conversation_speed_chip">Szybkość: %1$s</string>
+    <string name="conversation_speed">Szybkość</string>
 </resources>

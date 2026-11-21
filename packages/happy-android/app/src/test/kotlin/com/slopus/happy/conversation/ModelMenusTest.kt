@@ -1,5 +1,6 @@
 package com.slopus.happy.conversation
 
+import com.slopus.happy.ui.conversation.PickerKeys
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
@@ -94,5 +95,77 @@ class ModelMenusTest {
         assertEquals(mode("work", "opus", "low"), catalog.pick(current, work.id, "opus", effort = current.effort))
         // The effort shown is the model's default when the selection's isn't one it runs.
         assertEquals("high", ModelMenus.of(catalog, mode("claude", "opus", "xhigh")).effort)
+    }
+
+    /** desktop's `tierConfig`: one model on two accounts, each reference with its own speed menu. */
+    private fun tiers(eligible: Boolean = true): ModeCatalog {
+        val astraMenu = if (eligible) ASTRA_MENU else REGULAR_ONLY
+        return ModeCatalog.parse(
+            Json.parseToJsonElement(
+                """{"config":{
+                "defaults":{"providerId":"codex","modelId":"astra","permissionMode":"auto"},
+                "models":{
+                    "astra":{"name":"GPT-6 Astra","efforts":["low","medium","high"],"defaultEffort":"medium","serviceTiers":["priority","ultrafast"],
+                        "serviceTierOptions":[{"id":null,"label":"Regular"},{"id":"priority","label":"Fast"},{"id":"ultrafast","label":"Ultrafast"}]},
+                    "sol":{"name":"GPT-6.1 Sol","efforts":["low","medium","high"],"defaultEffort":"medium","serviceTiers":["priority"],
+                        "serviceTierOptions":[{"id":null,"label":"Regular"},{"id":"priority","label":"Fast"}]},
+                    "old":{"name":"Older daemon","efforts":["low"],"defaultEffort":"low","serviceTiers":["priority"]}
+                },
+                "providers":{
+                    "codex":{"type":"codex","enabled":true,"models":[
+                        {"id":"astra","enabled":true,"serviceTierOptions":$astraMenu},
+                        {"id":"sol","enabled":true},
+                        {"id":"old","enabled":true}
+                    ]},
+                    "codex_other":{"type":"codex","enabled":true,"models":[{"id":"astra","enabled":true,"serviceTiers":[],"serviceTierOptions":[{"id":null,"label":"Regular"}]}]}
+                }}}""",
+            ).jsonObject,
+        )
+    }
+
+    @Test fun `the speed menu is the daemon's, in its order and words, the account's own over the definition's`() {
+        val catalog = tiers()
+        val astra = ModelMenus.of(catalog, Mode("codex", "astra", "high", null, "auto"))
+        assertTrue(astra.offersSpeed)
+        assertEquals(listOf(null, "priority", "ultrafast"), astra.speeds.map { it.id })
+        assertEquals(listOf("Regular", "Fast", "Ultrafast"), astra.speeds.map { it.label })
+        assertEquals("Regular", astra.speed?.label)
+        // Ultrafast is its own choice, never Fast.
+        assertEquals("Ultrafast", ModelMenus.of(catalog, Mode("codex", "astra", "high", "ultrafast", "auto")).speed?.label)
+        // The same model on an account whose menu is Regular alone: no choice.
+        assertFalse(ModelMenus.of(catalog, Mode("codex_other", "astra", "high", null, "auto")).offersSpeed)
+        // An older daemon sends no menu: none is made up from `serviceTiers`.
+        val old = ModelMenus.of(catalog, Mode("codex", "old", "low", "priority", "auto"))
+        assertFalse(old.offersSpeed)
+        assertTrue(old.speeds.isEmpty())
+        // A tier the menu doesn't offer reads as Regular.
+        assertEquals("Regular", ModelMenus.of(catalog, Mode("codex", "sol", "high", "ultrafast", "auto")).speed?.label)
+    }
+
+    @Test fun `a speed pick sends its id unchanged, and another model or account drops one it doesn't offer`() {
+        val catalog = tiers()
+        val regular = Mode("codex", "astra", "high", null, "auto")
+        val ultrafast = regular.copy(serviceTier = "ultrafast")
+        val menus = ModelMenus.of(catalog, regular)
+        assertEquals(ultrafast, PickerKeys.pick(PickerKeys.speed("ultrafast"), menus, catalog))
+        assertEquals(regular.copy(serviceTier = "priority"), PickerKeys.pick(PickerKeys.speed("priority"), menus, catalog))
+        assertEquals(regular, PickerKeys.pick(PickerKeys.speed(null), ModelMenus.of(catalog, ultrafast), catalog))
+        assertEquals(ultrafast, catalog.pick(ultrafast, "codex", "astra"))
+        assertNull(catalog.pick(ultrafast, "codex", "sol").serviceTier)
+        assertEquals("priority", catalog.pick(regular.copy(serviceTier = "priority"), "codex", "sol").serviceTier)
+        assertNull(catalog.pick(ultrafast, "codex_other", "astra").serviceTier)
+    }
+
+    @Test fun `a speed the account no longer offers is dropped, the rest of the mode kept`() {
+        val ultrafast = Mode("codex", "astra", "high", "ultrafast", "auto")
+        assertEquals(ultrafast, tiers().reconcileTier(ultrafast))
+        val revoked = tiers(eligible = false)
+        assertEquals(ultrafast.copy(serviceTier = null), revoked.reconcileTier(ultrafast))
+        assertFalse(ModelMenus.of(revoked, ultrafast).offersSpeed)
+    }
+
+    private companion object {
+        const val ASTRA_MENU = """[{"id":null,"label":"Regular"},{"id":"priority","label":"Fast"},{"id":"ultrafast","label":"Ultrafast"}]"""
+        const val REGULAR_ONLY = """[{"id":null,"label":"Regular"}]"""
     }
 }
