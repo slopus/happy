@@ -135,13 +135,33 @@ function main() {
     runAtomicBuild({
         packageDir,
         requiredOutputs,
-        runTypecheck: () => runCommand('pnpm', ['exec', 'tsc', '--noEmit'], packageDir),
+        runTypecheck: () => {
+            const sdkDir = dirname(require.resolve('@wangjs-jacky/paws-agent/package.json'));
+            runCommand('pnpm', ['run', 'build'], sdkDir);
+            runCommand('pnpm', ['exec', 'tsc', '--noEmit'], packageDir);
+        },
         runBundler: (stagingDist) => {
             const stagingRoot = dirname(stagingDist);
             const pkgrollPackage = require.resolve('pkgroll/package.json');
             const pkgrollCli = join(dirname(pkgrollPackage), 'dist/cli.mjs');
             const sourceRelative = relative(stagingRoot, join(packageDir, 'src')).split(sep).join('/');
-            writeFileSync(join(stagingRoot, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`);
+            // Bundle the workspace SDK with its own crypto dependencies. The
+            // public SDK version can lag the CLI's private runtime snapshot.
+            // Prebundling keeps its hashes v1 separate from CLI hashes v2.
+            const sdkEntry = join(dirname(require.resolve('@wangjs-jacky/paws-agent/package.json')), 'dist/index.mjs');
+            require('esbuild').buildSync({
+                entryPoints: [sdkEntry],
+                outfile: join(stagingRoot, 'paws-agent-runtime.mjs'),
+                bundle: true,
+                platform: 'node',
+                format: 'esm',
+                external: Object.keys(packageJson.dependencies).filter(name => name !== '@noble/hashes'),
+            });
+            const bundlerPackage = {
+                ...packageJson,
+                imports: { ...packageJson.imports, '@wangjs-jacky/paws-agent': './paws-agent-runtime.mjs' },
+            };
+            writeFileSync(join(stagingRoot, 'package.json'), `${JSON.stringify(bundlerPackage, null, 2)}\n`);
             runCommand(process.execPath, [
                 pkgrollCli,
                 '--srcdist', `${sourceRelative}:dist`,

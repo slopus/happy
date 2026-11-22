@@ -923,6 +923,9 @@ importers:
 
   packages/happy-cli:
     dependencies:
+      '@noble/hashes':
+        specifier: ^2.0.1
+        version: 2.4.0
       '@agentclientprotocol/sdk':
         specifier: ^0.14.1
         version: 0.14.1(zod@4.6.7)
@@ -941,9 +944,6 @@ importers:
       '@noble/ed25519':
         specifier: ^3.0.0
         version: 3.0.0
-      '@noble/hashes':
-        specifier: ^2.0.1
-        version: 2.4.0
       '@paralleldrive/cuid2':
         specifier: ^2.2.2
         version: 2.3.1
@@ -968,9 +968,6 @@ importers:
       '@types/tmp':
         specifier: ^0.2.6
         version: 0.2.6
-      '@wangjs-jacky/paws-agent':
-        specifier: workspace:*
-        version: link:../paws-agent
       ai:
         specifier: ^5.0.107
         version: 5.0.123(zod@4.6.7)
@@ -1038,6 +1035,12 @@ importers:
         specifier: ^4.0.0
         version: 4.6.7
     devDependencies:
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+      '@wangjs-jacky/paws-agent':
+        specifier: workspace:*
+        version: link:../paws-agent
       '@eslint/compat':
         specifier: ^1
         version: 1.4.1(eslint@9.39.2(jiti@2.7.0))
