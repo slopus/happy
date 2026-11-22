@@ -347,7 +347,13 @@ class HomeListTest {
         id,
         metadata = metadata(path = "/Users/dev/$id") {
             put("machineId", machineId)
-            putJsonObject("bot") { put("id", "b-$id"); put("username", id); put("orderKey", "1") }
+            putJsonObject("bot") {
+                put("id", "b-$id")
+                put("name", id)
+                put("username", id)
+                put("workspaceId", "w1")
+                put("orderKey", "1")
+            }
         },
         active = active,
         lastMessageSentAt = at,
@@ -357,7 +363,7 @@ class HomeListTest {
         id,
         metadata = metadata(path = "/Users/dev/$id") {
             put("machineId", machineId)
-            putJsonObject("task") { put("id", "t-$id"); put("title", id); put("orderKey", "1") }
+            putJsonObject("task") { put("id", "t-$id"); put("name", id); put("orderKey", "1") }
         },
         active = active,
         lastMessageSentAt = at,
@@ -416,8 +422,8 @@ class HomeListTest {
         assertEquals(HomeFilter.Bots, state.filter)
         assertTrue(state.rows.isEmpty())
         assertTrue(state.cards.isEmpty())
-        // Account has sessions, so emptyState is None (handled by inline filter notice, not full-screen NoSessions)
-        assertEquals(HomeEmptyState.None, state.emptyState)
+        // Account has sessions, so emptyState is List (handled by inline filter notice, not full-screen NoSessions)
+        assertEquals(HomeEmptyState.List, state.emptyState)
     }
 
     @Test fun filterChipsRespectArchiveHiddenPerFilter() {
@@ -458,5 +464,36 @@ class HomeListTest {
         assertTrue(place.first)
         assertTrue(place.last)
         assertFalse(place.separated)
+    }
+
+    @Test fun archivedProjectWithFlavorMatchesProjectsNotBots() {
+        val archivedProj = session(
+            "proj-arch",
+            metadata = metadata(path = "/Users/dev/proj-arch") {
+                put("machineId", "m1")
+                put("flavor", "claude")
+            },
+            active = false,
+            lastMessageSentAt = noon - day,
+        )
+        val sessions = listOf(archivedProj)
+
+        val botsHidden = derive(inputs(sessions, archiveHidden = false, filter = HomeFilter.Bots))
+        assertTrue(botsHidden.rows.isEmpty())
+
+        val projShown = derive(inputs(sessions, archiveHidden = false, filter = HomeFilter.Projects))
+        assertEquals(listOf("toggle:hide", "header:Yesterday", "chat:proj-arch:archived:last"), shape(projShown))
+    }
+
+    @Test fun unreadCountRespectsArchiveVisibility() {
+        val live = cli("live", noon)
+        val archived = cli("arch", noon - day, active = false)
+        val sessions = listOf(live, archived)
+
+        val hidden = derive(inputs(sessions, archiveHidden = true, unread = setOf("live", "arch"), filter = HomeFilter.All))
+        assertEquals(1, hidden.unreadCount)
+
+        val shown = derive(inputs(sessions, archiveHidden = false, unread = setOf("live", "arch"), filter = HomeFilter.All))
+        assertEquals(2, shown.unreadCount)
     }
 }

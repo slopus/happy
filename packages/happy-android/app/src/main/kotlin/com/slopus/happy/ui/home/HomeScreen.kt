@@ -316,7 +316,7 @@ fun HomeList(
         }
         if (carded) {
             val hasCardRows = state.cards.any { it.row.isCardRow }
-            if (!hasCardRows) {
+            if (!hasCardRows && !state.hasArchivedSessions && state.filter != HomeFilter.All) {
                 item(key = "filter-empty", contentType = "filter-empty") {
                     HomeFilterEmptyNotice(state.filter)
                 }
@@ -325,8 +325,8 @@ fun HomeList(
                 HomeCardItem(entry, callbacks, selectedSessionId)
             }
         } else {
-            val hasContentRows = state.rows.any { it is HomeRow.Chat || (it is HomeRow.Project && (it.row is ProjectHomeRow.Bot || it.row is ProjectHomeRow.Task || it.row is ProjectHomeRow.ProjectCard || it.row is ProjectHomeRow.Worktree)) }
-            if (!hasContentRows) {
+            val hasContentRows = state.rows.any { it.isCardRow }
+            if (!hasContentRows && !state.hasArchivedSessions && state.filter != HomeFilter.All) {
                 item(key = "filter-empty", contentType = "filter-empty") {
                     HomeFilterEmptyNotice(state.filter)
                 }

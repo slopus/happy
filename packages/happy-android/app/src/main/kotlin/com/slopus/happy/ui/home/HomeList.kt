@@ -77,7 +77,7 @@ data class HomeCardEntry(val row: HomeRow, val place: HomeCardPlace?) {
 }
 
 /** A row of a card, as opposed to a heading, a gap or the archive toggle. */
-private val HomeRow.isCardRow: Boolean
+internal val HomeRow.isCardRow: Boolean
     get() = when (this) {
         is HomeRow.Chat -> true
         is HomeRow.Project -> when (row) {
@@ -201,9 +201,9 @@ fun filterSessionListItems(items: List<SessionListItem>, filter: HomeFilter): Li
             is SessionListItem.SessionItem -> {
                 val matches = when (filter) {
                     HomeFilter.All -> true
-                    HomeFilter.Bots -> item.session.botId != null || item.session.flavor != null
-                    HomeFilter.Tasks -> item.session.task
-                    HomeFilter.Projects -> !item.session.task && item.session.botId == null && item.session.flavor == null
+                    HomeFilter.Bots -> item.session.botId != null
+                    HomeFilter.Tasks -> item.session.task && item.session.botId == null
+                    HomeFilter.Projects -> !item.session.task && item.session.botId == null
                     HomeFilter.Unread -> item.session.hasUnread
                 }
                 if (matches) {
@@ -235,7 +235,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
             is SessionListItem.Bots -> item.sessions.count { it.hasUnread }
             is SessionListItem.Tasks -> item.sessions.count { it.hasUnread }
             is SessionListItem.ProjectItem -> item.project.workspaces.sumOf { w -> w.sessions.count { s -> s.hasUnread } }
-            is SessionListItem.SessionItem -> if (item.session.hasUnread) 1 else 0
+            is SessionListItem.SessionItem -> if (!inputs.archiveHidden && item.session.hasUnread) 1 else 0
             else -> 0
         }
     }
@@ -251,7 +251,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
     }
     val accountHasSessions = all.isNotEmpty()
     val emptyState = if (accountHasSessions && inputs.filter != HomeFilter.All) {
-        HomeEmptyState.None
+        HomeEmptyState.List
     } else {
         resolveHomeEmptyState(visible.size, hasArchived, choices.size, online)
     }

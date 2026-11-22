@@ -67,6 +67,7 @@ import com.slopus.happy.ui.home.HomeListInputs
 import com.slopus.happy.ui.home.HomeScreen
 import com.slopus.happy.ui.home.HomeScreenActions
 import com.slopus.happy.ui.home.HomeSnapshot
+import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.home.deriveHomeList
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.onboarding.OnboardingContentTags
@@ -183,6 +184,20 @@ class FontScaleLayoutTest {
             LocalDate.of(2026, 10, 16),
         )
         showLarge { HomeScreen(state, ConnectionStatus.CONNECTED, SessionListGrouping.Project, homeCallbacks, homeActions) }
+        assertNothingClipped()
+    }
+
+    @Test
+    fun homeFilterChipsAndBadgeFitLargeText() {
+        val studio = machine("m1", machineMetadata { put("displayName", "Studio") })
+        val sessions = listOf(session("a", metadata = metadata(path = "/Users/dev/a") { put("machineId", "m1") }, active = true, lastMessageSentAt = noon))
+        val state = deriveHomeList(
+            HomeListInputs(HomeSnapshot(sessions, listOf(studio)), SessionListGrouping.Flat, true, emptySet(), setOf("a"), emptySet()),
+            ZoneOffset.UTC,
+            LocalDate.of(2026, 10, 16),
+        ).copy(unreadCount = 120)
+        showLarge { HomeScreen(state, ConnectionStatus.CONNECTED, SessionListGrouping.Flat, homeCallbacks, homeActions) }
+        rule.node(HomeTags.FILTER_UNREAD_BADGE).assertExists()
         assertNothingClipped()
     }
 

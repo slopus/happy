@@ -18,9 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.model.HomeFilter
+import com.slopus.happy.text.pluralResource
 import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -48,11 +49,12 @@ fun homeFilterLabel(filter: HomeFilter): String = when (filter) {
 
 /**
  * Horizontal scrollable row of filter chips at the top of the home screen:
- * - All
- * - Bots
- * - Tasks
- * - Projects
- * - Unread (with optional badge for unread count)
+ * - All, Bots, Tasks, Projects, Unread (with optional badge for unread count)
+ *
+ * Layout spec: `HomeCardSpec.inset` (16dp) horizontal padding (bounded by
+ * `contentMaxWidth` when [carded]), 2dp top / 10dp bottom padding, 8dp spacing
+ * between 16dp-rounded Material 3 [FilterChip]s (48dp touch height), 13sp label,
+ * and 11sp bold pill badge (6dp horizontal / 1dp vertical padding, `99+` over 99).
  */
 @Composable
 fun HomeFilterChips(
@@ -82,11 +84,17 @@ fun HomeFilterChips(
             val picked = filter == selected
             val label = homeFilterLabel(filter)
             val showBadge = filter == HomeFilter.Unread && unreadCount > 0
+            val chipDescription = if (showBadge) {
+                pluralResource(R.plurals.home_filter_unread_desc_with_count, unreadCount, label, unreadCount)
+            } else {
+                label
+            }
             FilterChip(
                 selected = picked,
                 onClick = { onSelect(filter) },
                 label = {
                     Row(
+                        modifier = Modifier.clearAndSetSemantics {},
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
@@ -133,14 +141,7 @@ fun HomeFilterChips(
                     .minimumInteractiveComponentSize()
                     .testTag(HomeTags.filterChip(filter))
                     .semantics {
-                        contentDescription = when (filter) {
-                            HomeFilter.Unread -> if (unreadCount > 0) {
-                                pluralStringResource(R.plurals.home_filter_unread_desc_with_count, unreadCount, label, unreadCount)
-                            } else {
-                                label
-                            }
-                            else -> label
-                        }
+                        contentDescription = chipDescription
                     },
             )
         }
