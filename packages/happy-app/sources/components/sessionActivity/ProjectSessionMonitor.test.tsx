@@ -36,6 +36,54 @@ describe('project session monitor',()=>{
         act(()=>handle.props.onPointerUp());press('session-activity-close');expect(rail().props.badge).toBeUndefined();
         press('rail');expect(panels()[0].props.style[1].left).toBe(284);press('rail');expect(panels()).toHaveLength(0);
     });
+    it('shows an OFF-state reminder and opens unviewed results ahead of running sessions',()=>{
+        const tree=()=> <ProjectSessionMonitor><GlobalSessionRailEntry render={props=><Button {...props} testID="rail" />} /></ProjectSessionMonitor>;
+        act(()=>renderer.update(tree()));
+        const rail=()=>renderer.root.findAllByType('Button').find((n:any)=>n.props.testID==='rail');
+        expect(rail().props.selected).toBe(false);
+        expect(rail().props.notificationCount).toBe(1);
+        expect(rail().props.label).toContain('OFF');
+        expect(rail().props.label).toContain('需处理 0 · 待查看 1');
+        expect(rail().props.runningCount).toBe(2);
+        expect(rail().props.label).toContain('执行中 2');
+        press('rail');expect(items().map((n:any)=>n.props.testID)).toEqual(['session-activity-row-done']);
+        expect(rail().props.notificationCount).toBe(1);
+        press('rail');expect(rail().props.notificationCount).toBe(1);
+        mocks.state={...mocks.state,unreadSessionIds:new Set()};act(()=>renderer.update(tree()));
+        expect(rail().props.notificationCount).toBe(0);
+        expect(rail().props.label).not.toContain('待查看');
+        press('rail');expect(items()).toHaveLength(2);
+    });
+    it('prioritizes sessions needing action and excludes archived or deleted unread results',()=>{
+        mocks.state={...mocks.state,sessions:{...mocks.state.sessions,failed:{id:'failed',presence:'online',updatedAt:4,agentState:{turnStatus:{status:'failed',updatedAt:4}},metadata:{machineId:'m1',path:'/p'}}}};
+        const tree=()=> <ProjectSessionMonitor><GlobalSessionRailEntry render={props=><Button {...props} testID="rail" />} /></ProjectSessionMonitor>;
+        act(()=>renderer.update(tree()));
+        const rail=()=>renderer.root.findAllByType('Button').find((n:any)=>n.props.testID==='rail');
+        expect(rail().props.notificationCount).toBe(2);
+        expect(rail().props.runningCount).toBe(2);
+        press('rail');
+        expect(items().map((n:any)=>n.props.testID)).toEqual(['session-activity-row-failed']);
+        press('rail');mocks.deleted.add('done');
+        mocks.state={...mocks.state,sessions:{...mocks.state.sessions,failed:{...mocks.state.sessions.failed,metadata:{lifecycleState:'archived'}}}};
+        act(()=>renderer.update(tree()));
+        expect(rail().props.notificationCount).toBe(0);
+        expect(rail().props.runningCount).toBe(2);
+    });
+    it('keeps exact counts above 99 and removes running counts after disconnect',()=>{
+        const sessions=Object.fromEntries(Array.from({length:120},(_,index)=>[`running-${index}`,{id:`running-${index}`,updatedAt:1,presence:'online',thinking:true,metadata:{machineId:'m1',path:'/p'},agentState:{}}]));
+        for(let index=0;index<123;index++)sessions[`done-${index}`]={id:`done-${index}`,updatedAt:1,presence:'online',thinking:false,metadata:{machineId:'m1',path:'/p'},agentState:{turnStatus:{status:'completed',updatedAt:1}}} as any;
+        mocks.state={...mocks.state,sessions,unreadSessionIds:new Set(Array.from({length:123},(_,index)=>`done-${index}`))};
+        const tree=()=> <ProjectSessionMonitor><GlobalSessionRailEntry render={props=><Button {...props} testID="rail" />} /></ProjectSessionMonitor>;
+        act(()=>renderer.update(tree()));
+        const rail=()=>renderer.root.findAllByType('Button').find((n:any)=>n.props.testID==='rail');
+        expect(rail().props.notificationCount).toBe(123);
+        expect(rail().props.runningCount).toBe(120);
+        expect(rail().props.label).toContain('执行中 120');
+        expect(rail().props.label).toContain('待查看 123');
+        mocks.state={...mocks.state,socketStatus:'disconnected'};act(()=>renderer.update(tree()));
+        expect(rail().props.runningCount).toBe(0);
+        expect(rail().props.notificationCount).toBe(123);
+    });
     it('keeps the global panel open across project unmount and session navigation',()=>{
         const render=(props:any)=><Button {...props} testID="rail" />;
         const tree=(project:boolean)=><ProjectSessionMonitor><GlobalSessionRailEntry render={render} />{project && <ProjectSessionMonitor scope={{machineId:'m1',path:'/p',title:'P'}}><ProjectSessionSummary /></ProjectSessionMonitor>}</ProjectSessionMonitor>;

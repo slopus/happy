@@ -10,6 +10,9 @@ import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
     theme: { colors: { groupped: { background: '#fff' }, divider: '#ddd', desktopSkin: {} } } as any,
+    railNotificationCount: 0,
+    railRunningCount: 0,
+    railOpen: false,
     desktopSkin: 'default',
     desktopProjectLocation: null as string | null,
     accountFirstActionFocus: vi.fn(),
@@ -188,6 +191,9 @@ vi.mock('./CommandPalette/CommandPaletteProvider', () => ({
 vi.mock('./plugins/PluginLeftSidebarSlot', () => ({
     PluginLeftSidebarSlot: 'PluginLeftSidebarSlot',
 }));
+vi.mock('./sessionActivity/GlobalSessionMonitor', () => ({
+    GlobalSessionRailEntry: ({ render }: any) => render({ label: `全局会话 · ${mocks.railOpen ? 'ON' : 'OFF'} · 执行中 ${mocks.railRunningCount} · 待查看 ${mocks.railNotificationCount}`, selected: mocks.railOpen, onPress: () => {}, badge: mocks.railOpen ? 'ON' : undefined, notificationCount: mocks.railNotificationCount, runningCount: mocks.railRunningCount }),
+}));
 vi.mock('./plugins/usePluginSurfaceViews', () => ({
     usePluginSurfaceViews: () => mocks.pluginSurfaceViews,
 }));
@@ -207,6 +213,9 @@ describe('SidebarView Agent space exit', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.railNotificationCount = 0;
+        mocks.railRunningCount = 0;
+        mocks.railOpen = false;
         mocks.pathname = '/';
         mocks.rootState = undefined;
         mocks.leftVisible = false;
@@ -240,6 +249,69 @@ describe('SidebarView Agent space exit', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it.each(['ginghamDark', 'terminalLight'] as const)('shows separate pending and running counts with semantic colors while OFF (%s)', (themeName) => {
+        mocks.railNotificationCount = 2;
+        mocks.railRunningCount = 1;
+        const theme = appThemes[themeName];
+        mocks.theme = theme;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        const id = 'sidebar-global-sessions-button';
+        const pending = renderer.root.findByProps({ testID: `${id}-notification-count` });
+        const running = renderer.root.findByProps({ testID: `${id}-running-count` });
+        expect(pending.findByType('Text').children.join('')).toBe('2');
+        expect(running.findByType('Text').children.join('')).toBe('1');
+        expect(pending.props.style[1]).toMatchObject({ right: -7, borderBottomLeftRadius: 3, backgroundColor: theme.colors.activityBadge.notificationBackground });
+        expect(running.props.style[1]).toMatchObject({ left: -7, borderBottomRightRadius: 3, backgroundColor: theme.colors.activityBadge.runningBackground });
+        expect(pending.findByType('Text').props.style[1].color).toBe('#FFFFFF');
+        expect(running.findByType('Text').props.style[1].color).toBe('#FFFFFF');
+        expect(pending.props.pointerEvents).toBe('none');
+        expect(running.props.pointerEvents).toBe('none');
+        expect(renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === id).props.accessibilityState.selected).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: `${id}-badge` })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('hides each zero count independently and keeps both counts when the window is ON', () => {
+        mocks.railNotificationCount = 2;
+        mocks.railRunningCount = 1;
+        mocks.railOpen = true;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        const id = 'sidebar-global-sessions-button';
+        expect(renderer.root.findByProps({ testID: `${id}-badge` }).props.children).toBe('ON');
+        expect(renderer.root.findAllByProps({ testID: `${id}-notification-count` })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: `${id}-running-count` })).toHaveLength(1);
+        mocks.railNotificationCount = 0;
+        act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible={false} />); });
+        expect(renderer.root.findAllByProps({ testID: `${id}-notification-count` })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: `${id}-running-count` })).toHaveLength(1);
+        mocks.railNotificationCount = 3;
+        mocks.railRunningCount = 0;
+        act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible />); });
+        expect(renderer.root.findAllByProps({ testID: `${id}-notification-count` })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: `${id}-running-count` })).toHaveLength(0);
+        mocks.railNotificationCount = 0;
+        act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible={false} />); });
+        expect(renderer.root.findAllByProps({ testID: `${id}-notification-count` })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: `${id}-running-count` })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('caps large badges at 99+ while retaining exact counts in the accessible label', () => {
+        mocks.railNotificationCount = 123;
+        mocks.railRunningCount = 120;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        const id = 'sidebar-global-sessions-button';
+        expect(renderer.root.findByProps({ testID: `${id}-notification-count` }).findByType('Text').props.children).toBe('99+');
+        expect(renderer.root.findByProps({ testID: `${id}-running-count` }).findByType('Text').props.children).toBe('99+');
+        const button = renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === id);
+        expect(button.props.accessibilityLabel).toContain('执行中 120');
+        expect(button.props.accessibilityLabel).toContain('待查看 123');
+        act(() => renderer.unmount());
+    });
 
     it('places Bots immediately below Home and opens its independent workspace', () => {
         let renderer: any;

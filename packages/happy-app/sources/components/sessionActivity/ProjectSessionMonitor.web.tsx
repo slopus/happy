@@ -115,10 +115,20 @@ function SessionMonitorRoot({ scope: initialScope, knownScopes: initialScopes = 
         </View>
     , document.body)}</Context.Provider>;
 }
-export function GlobalSessionRailEntry({ render }: { render: (props: { label: string; selected: boolean; onPress: () => void; badge?: string }) => React.ReactNode }) {
+export function GlobalSessionRailEntry({ render }: { render: (props: { label: string; selected: boolean; onPress: () => void; badge?: string; notificationCount?: number; runningCount?: number }) => React.ReactNode }) {
     const monitor = React.useContext(Context);
     if (!monitor) return null;
-    return <>{render({ label: `${copy().title} · ${monitor.isOpen ? 'ON' : 'OFF'}`, selected: monitor.isOpen, onPress: () => monitor.isOpen ? monitor.close() : monitor.open(), badge: monitor.isOpen ? 'ON' : undefined })}</>;
+    const counts = countSessionActivity(monitor.rows), words = copy();
+    const notificationCount = counts.attention + counts.unread;
+    const notificationLabel = notificationCount > 0 ? ` · ${words.labels.attention} ${counts.attention} · ${words.labels.unread} ${counts.unread}` : '';
+    return <>{render({
+        label: `${words.title} · ${monitor.isOpen ? 'ON' : 'OFF'} · ${words.labels.running} ${counts.running}${notificationLabel}`,
+        selected: monitor.isOpen,
+        onPress: () => monitor.isOpen ? monitor.close() : monitor.open(undefined, counts.attention > 0 ? 'attention' : counts.unread > 0 ? 'unread' : undefined),
+        badge: monitor.isOpen ? 'ON' : undefined,
+        notificationCount,
+        runningCount: counts.running,
+    })}</>;
 }
 export function GlobalSessionEntry() {
     const monitor = React.useContext(Context), { theme } = useUnistyles(), { width } = useWindowDimensions();

@@ -1,3 +1,4 @@
+import Color from 'color';
 import { lightTheme, darkTheme } from './theme';
 import { ACCENTS, THEME_PACK_IDS, type AccentMode, type ThemePackId } from './themePacksData';
 import { PHOTO_DESKTOP_SKINS, isPhotoSkinActive, type DesktopSkinId } from './desktopSkin';
@@ -25,6 +26,16 @@ function sliderTrack(surface: string, text: string, dark: boolean): string {
     ).toString(16).padStart(2, '0')).join('')}`;
 }
 
+// Preserve each status hue while keeping the requested white badge numerals legible.
+function countBadgeBackground(color: string, foreground: string): string {
+    let background = Color(color);
+    const text = Color(foreground);
+    for (let step = 0; step < 16 && background.contrast(text) < 4.5; step++) {
+        background = background.darken(0.08);
+    }
+    return background.hex();
+}
+
 /** 把一个 accent 覆盖到基础主题上，生成完整主题对象 */
 function applyAccent(base: typeof lightTheme, a: AccentMode): typeof lightTheme {
     return {
@@ -34,6 +45,13 @@ function applyAccent(base: typeof lightTheme, a: AccentMode): typeof lightTheme 
             text: a.text,
             textSecondary: a.textSecondary,
             textLink: a.link,
+            // Badge numerals stay white in both appearances; derive readable
+            // blue and amber fills from the current palette and warning role.
+            activityBadge: {
+                ...base.colors.activityBadge,
+                runningBackground: countBadgeBackground(a.link, base.colors.activityBadge.runningText),
+                notificationBackground: countBadgeBackground(base.colors.box.warning.text, base.colors.activityBadge.notificationText),
+            },
             surface: a.surface,
             surfacePressed: a.surfaceHigh,
             surfaceSelected: a.surfaceHighest,

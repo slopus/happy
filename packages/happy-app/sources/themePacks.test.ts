@@ -113,6 +113,20 @@ describe('theme pack interactive surfaces', () => {
         },
     );
 
+    it('keeps small activity counts readable across light, dark and photo themes', () => {
+        for (const theme of Object.values(appThemes)) {
+            const badge = theme.colors.activityBadge;
+            expect(contrastRatio(badge.runningBackground, badge.runningText)).toBeGreaterThanOrEqual(4.5);
+            expect(contrastRatio(badge.notificationBackground, badge.notificationText)).toBeGreaterThanOrEqual(4.5);
+            expect(badge.runningText).toBe('#FFFFFF');
+            expect(badge.notificationText).toBe('#FFFFFF');
+        }
+        expect(appThemes.ginghamDark.colors.activityBadge.runningBackground.toLowerCase())
+            .not.toBe(appThemes.ginghamDark.colors.textLink.toLowerCase());
+        expect(appThemes.terminalLight.colors.activityBadge.runningBackground)
+            .not.toBe(appThemes.terminalLight.colors.textLink);
+    });
+
     it('keeps composer actions monochrome with readable contrast across themes', () => {
         for (const theme of [appThemes.ginghamDark, appThemes.ginghamLight]) {
             const { background, tint } = theme.colors.button.composer;

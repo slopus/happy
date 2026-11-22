@@ -42,6 +42,10 @@ export const lightTheme = {
         textDestructive: Platform.select({ ios: '#FF3B30', default: '#F44336' }),
         textSecondary: Platform.select({ ios: '#9A8B7C', default: '#9A8B7C' }),
         textLink: '#3E84B0',
+        activityBadge: {
+            runningBackground: '#317497', runningText: '#FFFFFF',
+            notificationBackground: '#986900', notificationText: '#FFFFFF',
+        },
         deleteAction: '#FF6B6B', // Delete/remove button color
         warningCritical: '#FF3B30',
         warning: '#8E8E93',
@@ -287,6 +291,10 @@ export const darkTheme = {
         textDestructive: Platform.select({ ios: '#FF453A', default: '#F48FB1' }),
         textSecondary: Platform.select({ ios: '#A89684', default: '#A89684' }),
         textLink: '#7FB6D9',
+        activityBadge: {
+            runningBackground: '#317497', runningText: '#FFFFFF',
+            notificationBackground: '#986900', notificationText: '#FFFFFF',
+        },
         deleteAction: '#FF6B6B', // Delete/remove button color (same in both themes)
         warningCritical: '#FF453A',
         warning: '#8E8E93',

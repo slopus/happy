@@ -255,6 +255,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
         minWidth: 0,
     },
+    railCountBadge: {
+        position: 'absolute', top: -3, minWidth: 22, height: 17, paddingHorizontal: 3,
+        borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+    },
+    railCountText: { ...Typography.default('semiBold'), fontSize: 10, lineHeight: 13, fontVariant: ['tabular-nums'] },
     railBadge: { backgroundColor: theme.colors.textLink, color: theme.colors.surface },
     primaryNavigation: {
         paddingTop: 2,
@@ -304,6 +309,8 @@ function DesktopRailItem({
     testID,
     showLabel = false,
     badge,
+    notificationCount = 0,
+    runningCount = 0,
 }: {
     icon: React.ComponentProps<typeof Ionicons>['name'];
     iconColor?: string;
@@ -313,8 +320,11 @@ function DesktopRailItem({
     testID: string;
     showLabel?: boolean;
     badge?: string;
+    notificationCount?: number;
+    runningCount?: number;
 }) {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const [active, setActive] = React.useState(false);
     const [tooltipAnchor, setTooltipAnchor] = React.useState<{ left: number; top: number } | null>(null);
     React.useEffect(() => {
@@ -372,6 +382,12 @@ function DesktopRailItem({
                         size={21}
                     />
                 )}
+                {runningCount > 0 && <View pointerEvents="none" testID={`${testID}-running-count`} style={[styles.railCountBadge, { left: -7, borderBottomRightRadius: 3, backgroundColor: theme.colors.activityBadge.runningBackground, borderColor: theme.colors.surface }]}>
+                    <Text style={[styles.railCountText, { color: theme.colors.activityBadge.runningText }]}>{runningCount > 99 ? '99+' : runningCount}</Text>
+                </View>}
+                {notificationCount > 0 && <View pointerEvents="none" testID={`${testID}-notification-count`} style={[styles.railCountBadge, { right: -7, borderBottomLeftRadius: 3, backgroundColor: theme.colors.activityBadge.notificationBackground, borderColor: theme.colors.surface }]}>
+                    <Text style={[styles.railCountText, { color: theme.colors.activityBadge.notificationText }]}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                </View>}
                 {badge && <Text testID={`${testID}-badge`} style={{ position: 'absolute', right: -2, bottom: 0, fontSize: 9, lineHeight: 13, paddingHorizontal: 3, borderRadius: 4, backgroundColor: stylesheet.railBadge.backgroundColor, color: stylesheet.railBadge.color }}>{badge}</Text>}
                 {showLabel ? <Text numberOfLines={2} style={styles.mobileRailLabel}>{label}</Text> : null}
             </Pressable>
