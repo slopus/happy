@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     cliAvailability: { codex: true } as Record<string, boolean>,
     draftStore: null as any,
     configuredAgents: { mac: ['codex', 'claude'], 'other-mac': ['codex'] } as Record<string, string[]>,
+    agentDefaultOverrides: {} as Record<string, { modelMode?: string; effortLevel?: string }>,
 }));
 
 vi.mock('./DesktopSettingsModal', () => ({ useDesktopSettingsModal: () => ({ openRoute: mocks.openSettingsRoute }) }));
@@ -128,21 +129,54 @@ vi.mock('@/sync/storage', () => {
         useAllMachines: () => machines,
         useLocalSetting: () => null,
         useSessions: () => mocks.sessionsOverride ?? sessions,
-        useSetting: (name: string) => name === 'codingAgentMachines' ? mocks.configuredAgents : settings,
+        useSetting: (name: string) => name === 'codingAgentMachines' ? mocks.configuredAgents
+            : name === 'agentDefaultOverrides' ? mocks.agentDefaultOverrides : settings,
     };
 });
 vi.mock('@/hooks/useNewSessionDraft', async () => {
     const { create } = await import('zustand');
-    const store = create<any>((set) => ({
+    const { resolveAgentDefaultConfig } = await import('@/sync/agentDefaults');
+    const store = create<any>((set, get) => ({
         input: '', selectedMachineId: 'mac', selectedPath: '~/happy', agentType: 'codex',
         permissionMode: 'yolo', modelMode: 'gpt-5.6-sol', effortLevel: 'high', fastMode: false,
+        modelSelection: { agent: 'codex', defaultValue: 'gpt-6.1-sol' },
+        effortSelection: { agent: 'codex', defaultValue: 'medium' },
         sessionType: 'simple', worktreeKey: null,
         setMachineId: (selectedMachineId: string) => set({ selectedMachineId }),
         setPath: mocks.setPath,
-        setAgentType: (agentType: string) => set({ agentType }),
+        setAgentType: (agentType: string) => {
+            if (agentType !== get().agentType) set({ agentType, modelSelection: undefined, effortSelection: undefined });
+        },
         setPermissionMode: (permissionMode: string) => { mocks.setPermissionMode(permissionMode); set({ permissionMode }); },
-        setModelMode: (modelMode: string) => { mocks.setModelMode(modelMode); set({ modelMode }); },
-        setEffortLevel: (effortLevel: string | null) => { mocks.setEffortLevel(effortLevel); set({ effortLevel }); },
+        setModelMode: (modelMode: string) => {
+            mocks.setModelMode(modelMode);
+            const agent = get().agentType;
+            const defaults = resolveAgentDefaultConfig(mocks.agentDefaultOverrides, agent);
+            set({ modelMode, modelSelection: { agent, defaultValue: defaults.modelMode } });
+        },
+        setEffortLevel: (effortLevel: string | null) => {
+            mocks.setEffortLevel(effortLevel);
+            const agent = get().agentType;
+            const defaults = resolveAgentDefaultConfig(mocks.agentDefaultOverrides, agent);
+            set({ effortLevel, effortSelection: { agent, defaultValue: defaults.effortLevel } });
+        },
+        reconcileCodexDefaults: () => {
+            const state = get();
+            if (state.agentType !== 'codex') return;
+            const defaults = resolveAgentDefaultConfig(mocks.agentDefaultOverrides, 'codex');
+            const patch: Record<string, unknown> = {};
+            if (state.modelSelection && (state.modelSelection.agent !== 'codex'
+                || state.modelSelection.defaultValue !== defaults.modelMode)) {
+                patch.modelSelection = undefined;
+                patch.modelMode = 'default';
+            }
+            if (state.effortSelection && (state.effortSelection.agent !== 'codex'
+                || state.effortSelection.defaultValue !== defaults.effortLevel)) {
+                patch.effortSelection = undefined;
+                patch.effortLevel = null;
+            }
+            if (Object.keys(patch).length > 0) set(patch);
+        },
         setFastMode: (fastMode: boolean) => { mocks.setFastMode(fastMode); set({ fastMode }); },
         setSessionType: mocks.setSessionType, setWorktreeKey: mocks.setWorktreeKey,
     }));
@@ -218,7 +252,9 @@ describe('SessionConfigPanel composer layout', () => {
         for (const key of Object.keys(mocks.cliAvailability)) delete mocks.cliAvailability[key];
         mocks.cliAvailability.codex = true;
         mocks.configuredAgents = { mac: ['codex', 'claude'], 'other-mac': ['codex'] };
-        mocks.draftStore.setState({ input: '', selectedMachineId: 'mac', selectedPath: '~/happy', agentType: 'codex', permissionMode: 'yolo', modelMode: 'gpt-5.6-sol', effortLevel: 'high', fastMode: false, sessionType: 'simple', worktreeKey: null });
+        mocks.agentDefaultOverrides = {};
+        mocks.draftStore.setState({ modelSelection: { agent: 'codex', defaultValue: 'gpt-6.1-sol' },
+            effortSelection: { agent: 'codex', defaultValue: 'medium' }, input: '', selectedMachineId: 'mac', selectedPath: '~/happy', agentType: 'codex', permissionMode: 'yolo', modelMode: 'gpt-5.6-sol', effortLevel: 'high', fastMode: false, sessionType: 'simple', worktreeKey: null });
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     });
@@ -389,8 +425,8 @@ describe('SessionConfigPanel composer layout', () => {
             machineId: 'mac', flavor: 'codex', models: [...models].reverse(),
         } }];
         act(() => renderer.update(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />));
-        // The mocked draft setters do not rerender; the local selection must
-        // still track the model code rather than its previous array position.
+        // Persisted user intent and the visible selection must keep the model code
+        // rather than following its old array position.
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-terra');
     });
 
@@ -410,6 +446,98 @@ describe('SessionConfigPanel composer layout', () => {
         } }];
         await act(async () => renderer.update(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />));
         expect(ref.current.getSelection().effortKey).toBe(effort);
+    });
+
+    it('ignores legacy Codex model and effort values without user-selection snapshots', async () => {
+        mocks.agentDefaultOverrides = { codex: { modelMode: 'gpt-6-astra', effortLevel: 'ultra' } };
+        mocks.draftStore.setState({ modelMode: 'gpt-5.6-sol', effortLevel: 'high',
+            modelSelection: undefined, effortSelection: undefined });
+        mocks.sessionsOverride = [{ id: 'catalog', activeAt: 20, metadata: {
+            machineId: 'mac', flavor: 'codex', currentModelCode: 'gpt-6-astra',
+            models: [{ code: 'gpt-5.6-sol', value: 'Sol' }, { code: 'gpt-6-astra', value: 'Astra' }],
+            thoughtLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map(code => ({ code, value: code })),
+        } }];
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />); });
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'gpt-6-astra', effortKey: 'ultra' });
+        expect(mocks.draftStore.getState()).toMatchObject({ modelMode: 'gpt-5.6-sol', effortLevel: 'high' });
+        expect(mocks.draftStore.getState().modelSelection).toBeUndefined();
+        expect(mocks.draftStore.getState().effortSelection).toBeUndefined();
+        expect(mocks.setModelMode).not.toHaveBeenCalled();
+        expect(mocks.setEffortLevel).not.toHaveBeenCalled();
+    });
+
+    it('follows changed defaults at send time and preserves fresh user picks across remounts', async () => {
+        mocks.sessionsOverride = [{ id: 'catalog', activeAt: 20, metadata: {
+            machineId: 'mac', flavor: 'codex', currentModelCode: 'gpt-6-astra',
+            models: [{ code: 'gpt-5.6-sol', value: 'Sol' }, { code: 'gpt-6-astra', value: 'Astra' }],
+            thoughtLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map(code => ({ code, value: code })),
+        } }];
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />); });
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'gpt-5.6-sol', effortKey: 'high' });
+
+        mocks.agentDefaultOverrides = { codex: { modelMode: 'gpt-6-astra', effortLevel: 'ultra' } };
+        await act(async () => renderer.update(<SessionConfigPanel ref={ref} layout="composer" />));
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'gpt-6-astra', effortKey: 'ultra' });
+        expect(mocks.setModelMode).not.toHaveBeenCalled();
+        expect(mocks.setEffortLevel).not.toHaveBeenCalled();
+
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-codex::gpt-5.6-sol' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-effort-low' }).props.onPress());
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'gpt-5.6-sol', effortKey: 'low' });
+        expect(mocks.draftStore.getState()).toMatchObject({
+            modelSelection: { agent: 'codex', defaultValue: 'gpt-6-astra' },
+            effortSelection: { agent: 'codex', defaultValue: 'ultra' },
+        });
+        expect(mocks.setModelMode).toHaveBeenCalledTimes(1);
+        expect(mocks.setEffortLevel).toHaveBeenCalledTimes(1);
+        await act(async () => renderer.unmount());
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />); });
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'gpt-5.6-sol', effortKey: 'low' });
+
+        // A change to only the effort default must not erase the independent model pick.
+        mocks.agentDefaultOverrides = { codex: { modelMode: 'gpt-6-astra', effortLevel: 'medium' } };
+        await act(async () => renderer.update(<SessionConfigPanel ref={ref} layout="composer" />));
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'gpt-5.6-sol', effortKey: 'medium' });
+        expect(mocks.setModelMode).toHaveBeenCalledTimes(1);
+        expect(mocks.setEffortLevel).toHaveBeenCalledTimes(1);
+    });
+
+    it('retains the explicit CLI model reset label and send sentinel after catalog hydration', async () => {
+        mocks.draftStore.setState({ modelMode: 'default', effortLevel: 'default' });
+        mocks.sessionsOverride = [];
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />); });
+        expect(ref.current.getSelection().modelKey).toBeUndefined();
+        mocks.sessionsOverride = [{ id: 'catalog', activeAt: 20, metadata: {
+            machineId: 'mac', flavor: 'codex', currentModelCode: 'gpt-6-astra',
+            models: [{ code: 'gpt-5.6-sol', value: 'Sol' }, { code: 'gpt-6-astra', value: 'Astra' }],
+            thoughtLevels: ['medium', 'high', 'ultra'].map(code => ({ code, value: code })),
+        } }];
+        await act(async () => renderer.update(<SessionConfigPanel ref={ref} layout="composer" />));
+        expect(ref.current.getSelection().modelKey).toBeUndefined();
+        expect(ref.current.getSelection().effortKey).toBe('default');
+        expect(renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.accessibilityLabel)
+            .toContain('agentInput.model.cliAutomatic');
+        expect(mocks.setModelMode).not.toHaveBeenCalled();
+        expect(mocks.setEffortLevel).not.toHaveBeenCalled();
+    });
+
+    it('keeps an explicit native effort reset with a concrete selected model', async () => {
+        mocks.draftStore.setState({ effortLevel: 'default' });
+        mocks.sessionsOverride = [{ id: 'catalog', activeAt: 20, metadata: {
+            machineId: 'mac', flavor: 'codex', currentModelCode: 'gpt-5.6-sol',
+            models: [{ code: 'gpt-5.6-sol', value: 'Sol' }],
+            thoughtLevels: ['low', 'medium', 'high', 'ultra'].map(code => ({ code, value: code })),
+        } }];
+        const ref = React.createRef<any>();
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" />); });
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: 'gpt-5.6-sol', effortKey: 'default' });
+        expect(mocks.setModelMode).not.toHaveBeenCalled();
+        expect(mocks.setEffortLevel).not.toHaveBeenCalled();
     });
 
     it('retains an explicit agent launch entry when no model catalog exists', async () => {

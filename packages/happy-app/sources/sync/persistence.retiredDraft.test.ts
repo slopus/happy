@@ -17,9 +17,19 @@ describe('retired new-session drafts', () => {
         expect(stored.get('new-session-draft-v1')).toBe(original);
     });
 
+    it('ignores malformed selection intent without losing draft content', () => {
+        stored.set('new-session-draft-v1', JSON.stringify({ input: 'keep this', agentType: 'codex',
+            modelSelection: { agent: 'unknown', defaultValue: 'old' }, effortSelection: { agent: 'codex', defaultValue: 42 } }));
+        expect(loadNewSessionDraft()).toMatchObject({ input: 'keep this', agentType: 'codex' });
+        expect(loadNewSessionDraft()?.modelSelection).toBeUndefined();
+        expect(loadNewSessionDraft()?.effortSelection).toBeUndefined();
+    });
+
     it.each(['codex', 'antigravity'] as const)('round-trips %s drafts with their provider unchanged', (agentType) => {
         const draft = { input: 'coding draft', selectedMachineId: 'machine', selectedPath: '/saved', agentType,
             permissionMode: 'yolo', modelMode: 'gpt-6.1-sol', effortLevel: 'high', fastMode: false,
+            modelSelection: { agent: agentType, defaultValue: 'gpt-6-astra' },
+            effortSelection: { agent: agentType, defaultValue: 'ultra' },
             sessionType: 'simple' as const, worktreeKey: null, updatedAt: 1 };
         saveNewSessionDraft(draft);
         expect(loadNewSessionDraft()).toEqual(draft);

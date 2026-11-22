@@ -84,7 +84,9 @@ export function resolveRunningSessionTurnModes(args: {
         ])
         : null;
 
-    const normalizedEffortKey = normalizeModelEffortKey(flavor, modelMode?.key ?? 'default', preferredEffort?.key, metadata);
+    const normalizedEffortKey = flavor === 'codex' && preferredEffort?.key === 'default'
+        ? 'default'
+        : normalizeModelEffortKey(flavor, modelMode?.key ?? 'default', preferredEffort?.key, metadata);
     const effortLevel = normalizedEffortKey === preferredEffort?.key
         ? preferredEffort
         : availableEffortLevels.find((level) => level.key === normalizedEffortKey) ?? null;

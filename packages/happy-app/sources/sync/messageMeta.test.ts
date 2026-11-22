@@ -212,7 +212,24 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'codex' },
         } as any);
 
-        expect(meta).toEqual({ permissionMode: 'yolo', model: 'gpt-6.1-sol', effort: 'medium' });
+        expect(meta).toEqual({ permissionMode: 'yolo', model: 'gpt-6.1-sol', effort: null });
+    });
+
+    it('resets explicit Codex effort without resetting its concrete model or inheriting the running effort', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: 'gpt-6.1-sol',
+            effortLevel: 'default',
+            metadata: {
+                flavor: 'codex',
+                currentModelCode: 'gpt-6.1-sol',
+                currentThoughtLevelCode: 'ultra',
+                thoughtLevels: [{ code: 'medium', value: 'medium' }, { code: 'ultra', value: 'ultra' }],
+            },
+        } as any, { agentDefaultOverrides: { codex: { effortLevel: 'high' } } } as any);
+
+        expect(meta).toEqual({ permissionMode: 'yolo', model: 'gpt-6.1-sol', effort: null });
+        expect(Object.hasOwn(meta, 'effort')).toBe(true);
     });
 
     it('records CLI-reported current values before falling back to settings defaults', () => {

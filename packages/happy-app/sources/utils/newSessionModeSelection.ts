@@ -10,7 +10,7 @@ import {
     resolveAgentDefaultConfig,
     type AgentDefaultOverrides,
 } from '@/sync/agentDefaults';
-import type { NewSessionAgentType } from '@/sync/persistence';
+import type { DraftModeSelection, NewSessionAgentType } from '@/sync/persistence';
 import type { Metadata } from '@/sync/storageTypes';
 
 type ResolveSelectionKeyArgs = {
@@ -102,12 +102,22 @@ export function resolveNewSessionModeSelection(args: {
     modelMode: string | null | undefined;
     effortLevel: string | null | undefined;
     agentDefaultOverrides: AgentDefaultOverrides | null | undefined;
+    modelSelection?: DraftModeSelection;
+    effortSelection?: DraftModeSelection;
     modelOptions?: ModeOption[];
     effortMetadata?: Metadata | null;
 }): NewSessionModeSelection {
     const { agent, permissionMode, modelMode, effortLevel, agentDefaultOverrides, effortMetadata } = args;
     const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent);
     const codeDefaults = getCodeAgentDefaults(agent);
+    // A stored value alone cannot distinguish old hydration from a user choice.
+    // Explicit picks survive refresh until that field's configured default changes.
+    const explicitModel = agent !== 'codex' || (args.modelSelection?.agent === agent
+        && args.modelSelection.defaultValue === effectiveDefaults.modelMode);
+    const explicitEffort = agent !== 'codex' || (args.effortSelection?.agent === agent
+        && args.effortSelection.defaultValue === effectiveDefaults.effortLevel);
+    const draftModel = explicitModel ? modelMode : null;
+    const draftEffort = explicitEffort ? effortLevel : null;
     const permissionOptions = getHardcodedPermissionModes(agent, identityTranslate);
     const modelOptions = args.modelOptions ?? getHardcodedModelModes(agent, identityTranslate);
 
@@ -120,19 +130,21 @@ export function resolveNewSessionModeSelection(args: {
         options: permissionOptions,
     });
 
-    const resolvedModelMode = resolveSelectionKey({
-        draftKey: modelMode,
+    const resolvedModelMode = agent === 'codex' && explicitModel && draftModel === 'default' ? 'default' : resolveSelectionKey({
+        draftKey: draftModel,
         fallbackKey: effectiveDefaults.modelMode,
         codeDefaultKey: codeDefaults.modelMode,
-        followDraftKeys: agent === 'claude' ? [] : ['default'],
+        followDraftKeys: agent === 'claude' || (agent === 'codex' && explicitModel) ? [] : ['default'],
         options: modelOptions,
     });
 
     const effortOptions = getEffortLevelsForModel(agent, resolvedModelMode, effortMetadata);
-    const resolvedEffortLevel = agent === 'antigravity'
+    const explicitEffortReset = agent === 'codex' && explicitEffort && draftEffort === 'default'
+        && effortOptions.some(option => option.key === 'default');
+    const resolvedEffortLevel = explicitEffortReset ? 'default' : agent === 'antigravity'
         ? (!effortLevel || effortLevel === 'default' ? null : normalizeModelEffortKey(agent, resolvedModelMode, effortLevel, effortMetadata) ?? null)
         : resolveEffortKey({
-        draftKey: effortLevel,
+        draftKey: draftEffort,
         fallbackKey: effectiveDefaults.effortLevel,
         codeDefaultKey: codeDefaults.effortLevel,
         options: effortOptions,

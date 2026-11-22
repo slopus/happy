@@ -6,6 +6,7 @@ import {
     getAvailablePermissionModes,
     getEffortLevelsForModel,
     getCodexModelModes,
+    getCodexEffortLevels,
     getClaudePermissionModes,
     getGeminiPermissionModes,
     getDefaultEffortKey,
@@ -119,10 +120,28 @@ describe('modelModeOptions', () => {
         expect(getSuggestedModelModes('codex', null, translate)).toEqual(getCodexModelModes());
     });
 
-    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('does not inherit Astra-only efforts for %s', (model) => {
-        const metadata = { thoughtLevels: [{ code: 'ultra', value: 'ultra' }] } as any;
+    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('offers Ultra without borrowing another model effort catalog for %s', (model) => {
+        const metadata = { currentModelCode: 'gpt-6-astra', thoughtLevels: [{ code: 'minimal', value: 'minimal' }] } as any;
         expect(getEffortLevelsForModel('codex', model, metadata).map((level) => level.key))
-            .toEqual(['default', 'low', 'medium', 'high', 'xhigh', 'max']);
+            .toEqual(['default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+        expect(normalizeModelEffortKey('codex', model, 'ultra', metadata)).toBe('ultra');
+    });
+
+    it('offers Ultra in the Codex fallback used by default settings', () => {
+        expect(getCodexEffortLevels().map(level => level.key))
+            .toEqual(['default', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+        expect(getEffortLevelsForModel('codex', 'gpt-6-astra').at(-1)?.key).toBe('ultra');
+    });
+
+    it('preserves Ultra from the active model native catalog in picker and outbound normalization', () => {
+        const metadata = {
+            currentModelCode: 'gpt-6.1-sol',
+            thoughtLevels: [{ code: 'medium', value: 'Medium' }, { code: 'ultra', value: 'Ultra' }],
+        } as any;
+        expect(getEffortLevelsForModel('codex', 'gpt-6.1-sol', metadata).map(level => level.key))
+            .toEqual(['default', 'medium', 'ultra']);
+        expect(normalizeModelEffortKey('codex', 'gpt-6.1-sol', 'ultra', metadata)).toBe('ultra');
+        expect(normalizeModelEffortKey('codex', 'gpt-6.1-sol', 'max', metadata)).toBe('medium');
     });
 
     it('respects the live effort catalog when it belongs to the selected new model', () => {

@@ -19,6 +19,26 @@ describe('settings', () => {
         const saved = settingsParse({ codingAgentMachines: { m1: ['claude', 'opencode'] } });
         expect(applySettings(saved, pending).codingAgentMachines).toEqual(saved.codingAgentMachines);
     });
+    it.each([{}, { viewInline: true }])('does not turn a pending delta into an agent-default reset (%j)', (delta) => {
+        const pending = SettingsSchema.partial().parse(delta);
+        expect(pending).not.toHaveProperty('agentDefaultOverrides');
+        const saved = settingsParse({ agentDefaultOverrides: {
+            codex: { modelMode: 'gpt-6-astra', effortLevel: 'ultra' },
+            claude: { modelMode: 'sonnet', effortLevel: 'high' },
+        } });
+        const merged = applySettings(saved, pending);
+        expect(merged.agentDefaultOverrides).toEqual(saved.agentDefaultOverrides);
+        expect(settingsToSyncPayload(merged).agentDefaultOverrides).toEqual(saved.agentDefaultOverrides);
+    });
+
+    it('keeps an explicit empty agent-default override as a deliberate clear', () => {
+        const saved = settingsParse({ agentDefaultOverrides: { codex: { modelMode: 'gpt-6-astra', effortLevel: 'ultra' } } });
+        const pending = SettingsSchema.partial().parse({ agentDefaultOverrides: {} });
+        expect(pending).toHaveProperty('agentDefaultOverrides', {});
+        expect(applySettings(saved, pending).agentDefaultOverrides).toEqual({});
+        expect(settingsParse({}).agentDefaultOverrides).toEqual({});
+    });
+
     it('preserves future agent preferences without resetting unrelated settings', () => {
         const parsed = settingsParse({ viewInline: true, codingAgentMachines: { m1: ['future-agent'] } });
         expect(parsed.viewInline).toBe(true);

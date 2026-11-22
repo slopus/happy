@@ -805,16 +805,22 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             permissionMode: s.permissionMode,
             setPermissionMode: s.setPermissionMode,
             modelMode: s.modelMode,
+            modelSelection: s.modelSelection,
+            effortSelection: s.effortSelection,
             setModelMode: s.setModelMode,
             effortLevel: s.effortLevel,
             setEffortLevel: s.setEffortLevel,
             fastMode: s.fastMode,
             setFastMode: s.setFastMode,
+            reconcileCodexDefaults: s.reconcileCodexDefaults,
             sessionType: s.sessionType,
             setSessionType: s.setSessionType,
             worktreeKey: s.worktreeKey,
             setWorktreeKey: s.setWorktreeKey,
         })));
+        React.useEffect(() => {
+            draft.reconcileCodexDefaults();
+        }, [agentDefaultOverrides, draft.reconcileCodexDefaults]);
         const hasText = useNewSessionDraft((s) => s.input.trim().length > 0);
         const selectedAgent = draft.agentType;
         const setSelectedAgent = draft.setAgentType;
@@ -1099,14 +1105,18 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 permissionMode: 'default',
                 modelMode: draft.modelMode,
                 effortLevel: draft.effortLevel,
+                modelSelection: draft.modelSelection,
+                effortSelection: draft.effortSelection,
                 agentDefaultOverrides,
                 modelOptions: getNewSessionModels(nextAgent, metadata),
                 effortMetadata: metadata,
             });
             draft.setAgentType(nextAgent);
             draft.setPermissionMode(selection.permissionMode);
-            draft.setModelMode(selection.modelMode);
-            draft.setEffortLevel(selection.effortLevel);
+            if (nextAgent !== 'codex') {
+                draft.setModelMode(selection.modelMode);
+                draft.setEffortLevel(selection.effortLevel);
+            }
             setSelectedModelKey(selection.modelMode);
             setFastMode(false);
         };
@@ -1121,13 +1131,18 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 permissionMode: draft.permissionMode,
                 modelMode: draft.modelMode,
                 effortLevel: draft.effortLevel,
+                modelSelection: draft.modelSelection,
+                effortSelection: draft.effortSelection,
                 agentDefaultOverrides,
                 modelOptions: modelModes,
                 effortMetadata: effectiveModelMetadata,
             })
-        ), [agentDefaultOverrides, draft.effortLevel, draft.modelMode, draft.permissionMode, effectiveModelMetadata, modelModes, selectedAgent]);
+        ), [agentDefaultOverrides, draft.effortLevel, draft.modelMode, draft.modelSelection, draft.effortSelection, draft.permissionMode, effectiveModelMetadata, modelModes, selectedAgent]);
 
-        const currentModel = modelModes.find(model => model.key === (selectedModelKey ?? resolvedModeSelection.modelMode))
+        // CLI automatic is an explicit reset even after a concrete catalog arrives.
+        const currentModel = selectedAgent === 'codex' && resolvedModeSelection.modelMode === 'default'
+            ? { key: 'default', name: t('agentInput.model.cliAutomatic') }
+            : modelModes.find(model => model.key === (selectedAgent === 'codex' ? resolvedModeSelection.modelMode : selectedModelKey ?? resolvedModeSelection.modelMode))
             ?? modelModes.find(model => model.key === resolvedModeSelection.modelMode)
             ?? modelModes[0];
         const currentModelKey = currentModel?.key ?? 'default';
@@ -1178,10 +1193,10 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             if (defaultEffort && effortLevels.length > 0) {
                 const idx = effortLevels.findIndex(e => e.key === defaultEffort);
                 setEffortIndex(idx >= 0 ? idx : effortLevels.length - 1);
-                draft.setEffortLevel(idx >= 0 ? defaultEffort : effortLevels[effortLevels.length - 1]?.key ?? null);
+                if (selectedAgent !== 'codex') draft.setEffortLevel(idx >= 0 ? defaultEffort : effortLevels[effortLevels.length - 1]?.key ?? null);
             } else {
                 setEffortIndex(0);
-                draft.setEffortLevel(selectedAgent === 'antigravity' ? null : effortLevels[0]?.key ?? null);
+                if (selectedAgent !== 'codex') draft.setEffortLevel(selectedAgent === 'antigravity' ? null : effortLevels[0]?.key ?? null);
             }
         }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, resolvedModeSelection.modelMode, currentModelKey, effortLevels, selectedAgent, modelMetadata]);
 
@@ -1451,7 +1466,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 permissionKey: currentPermission?.key === 'default' ? undefined : currentPermission?.key,
                 modelKey: currentModelKey === 'default' ? undefined : currentModelKey,
                 effortKey: selectedAgent === 'codex' && !modelMetadata?.models?.length ? null
-                    : normalizeModelEffortKey(selectedAgent, currentModelKey, draft.effortLevel ?? resolvedModeSelection.effortLevel ?? null, effectiveModelMetadata) ?? null,
+                    : selectedAgent === 'codex' && resolvedModeSelection.effortLevel === 'default' ? 'default'
+                    : normalizeModelEffortKey(selectedAgent, currentModelKey, resolvedModeSelection.effortLevel ?? null, effectiveModelMetadata) ?? null,
                 worktreeKey,
                 fastMode: supportsFast && fastMode,
                 ...(selectedAgent === 'codex' && codexAccountProfileId !== undefined

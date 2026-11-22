@@ -30,7 +30,7 @@ describe('resolveRunningSessionTurnModes', () => {
             });
             expect(selected.modelMode?.key).toBe(modelMode);
             expect(selected.effortLevel?.key).toBe('medium');
-            expect(selected.availableEffortLevels.some((level) => level.key === 'ultra')).toBe(false);
+            expect(selected.availableEffortLevels.at(-1)?.key).toBe('ultra');
         }
     });
 
@@ -46,15 +46,15 @@ describe('resolveRunningSessionTurnModes', () => {
         expect(resolveMessageModeMeta(session).model).toBeNull();
     });
 
-    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('resets stale ultra for %s in both picker and outgoing message', async (modelMode) => {
+    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('keeps supported Ultra for %s in both picker and outgoing message', async (modelMode) => {
         const { resolveMessageModeMeta } = await import('@/sync/messageMeta');
         for (const effortLevel of ['ultra', null]) {
             const session = { modelMode, effortLevel, metadata: {
                 flavor: 'codex', currentModelCode: 'gpt-6-astra', currentThoughtLevelCode: 'ultra',
             } } as any;
             const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate });
-            expect(result.effortLevel?.key).toBe('medium');
-            expect(resolveMessageModeMeta(session).effort).toBe('medium');
+            expect(result.effortLevel?.key).toBe('ultra');
+            expect(resolveMessageModeMeta(session).effort).toBe('ultra');
         }
     });
 
@@ -95,15 +95,15 @@ describe('resolveRunningSessionTurnModes', () => {
         expect(result.effortLevel?.key).toBe('high');
     });
 
-    it('uses a supported effort when a model has no medium level', async () => {
+    it('keeps an explicit effort reset visible and otherwise uses a supported effort when medium is unavailable', async () => {
         const { resolveMessageModeMeta } = await import('@/sync/messageMeta');
         const session = { modelMode: 'gpt-custom', effortLevel: 'default', metadata: {
             flavor: 'codex', currentModelCode: 'gpt-custom', thoughtLevels: [
                 { code: 'high', value: 'high' }, { code: 'max', value: 'max' },
             ],
         } } as any;
-        expect(resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate }).effortLevel?.key).toBe('high');
-        expect(resolveMessageModeMeta(session).effort).toBe('high');
+        expect(resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate }).effortLevel?.key).toBe('default');
+        expect(resolveMessageModeMeta(session).effort).toBeNull();
         const withoutExplicitEffort = { ...session, effortLevel: null };
         expect(resolveRunningSessionTurnModes({ session: withoutExplicitEffort, agentDefaultOverrides: {}, translate }).effortLevel?.key).toBe('high');
         expect(resolveMessageModeMeta(withoutExplicitEffort).effort).toBe('high');

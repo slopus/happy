@@ -11,6 +11,7 @@ import {
     getHardcodedPermissionModes,
     type ModeOption,
 } from '@/components/modelModeOptions';
+import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useSettingMutable } from '@/sync/storage';
 import {
     agentKeys,
@@ -62,6 +63,7 @@ export default function AgentDefaultsSettingsScreen() {
         value: string | null,
     ) => {
         setAgentDefaultOverrides(setAgentDefaultOverride(agentDefaultOverrides, agent, field, value));
+        useNewSessionDraft.getState().reconcileCodexDefaults();
     }, [agentDefaultOverrides, setAgentDefaultOverrides]);
 
     const renderOption = (
@@ -142,7 +144,10 @@ export default function AgentDefaultsSettingsScreen() {
                     title={t('agentDefaults.clearOverrides')}
                     subtitle={t('agentDefaults.clearOverridesSubtitle')}
                     icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
-                    onPress={() => setAgentDefaultOverrides({})}
+                    onPress={() => {
+                        setAgentDefaultOverrides({});
+                        useNewSessionDraft.getState().reconcileCodexDefaults();
+                    }}
                     disabled={Object.keys(agentDefaultOverrides).length === 0}
                     showChevron={false}
                 />

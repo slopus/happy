@@ -89,6 +89,8 @@ describe('resolveNewSessionModeSelection', () => {
     it('preserves explicitly selected Codex defaults over different user defaults', () => {
         expect(resolveNewSessionModeSelection({ agent: 'codex', permissionMode: 'default',
             modelMode: 'gpt-6.1-sol', effortLevel: 'medium',
+            modelSelection: { agent: 'codex', defaultValue: 'gpt-6-astra' },
+            effortSelection: { agent: 'codex', defaultValue: 'high' },
             agentDefaultOverrides: { codex: { modelMode: 'gpt-6-astra', effortLevel: 'high' } },
         })).toMatchObject({ modelMode: 'gpt-6.1-sol', effortLevel: 'medium' });
     });
@@ -99,6 +101,8 @@ describe('resolveNewSessionModeSelection', () => {
             permissionMode: 'read-only',
             modelMode: 'gpt-5.5',
             effortLevel: 'high',
+            modelSelection: { agent: 'codex', defaultValue: 'gpt-5.4' },
+            effortSelection: { agent: 'codex', defaultValue: 'xhigh' },
             agentDefaultOverrides: {
                 codex: {
                     permissionMode: 'yolo',
@@ -111,6 +115,49 @@ describe('resolveNewSessionModeSelection', () => {
             modelMode: 'gpt-5.5',
             effortLevel: 'high',
         });
+    });
+
+    it('migrates unmarked old Codex values to the current defaults', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'codex', permissionMode: 'default',
+            modelMode: 'gpt-6.1-sol', effortLevel: 'medium',
+            agentDefaultOverrides: { codex: { modelMode: 'gpt-6-astra', effortLevel: 'ultra' } },
+        })).toMatchObject({ modelMode: 'gpt-6-astra', effortLevel: 'ultra' });
+    });
+
+    it('invalidates old explicit choices when their respective defaults change', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'codex', permissionMode: 'default',
+            modelMode: 'gpt-5.5', effortLevel: 'low',
+            modelSelection: { agent: 'codex', defaultValue: 'gpt-6.1-sol' },
+            effortSelection: { agent: 'codex', defaultValue: 'medium' },
+            agentDefaultOverrides: { codex: { modelMode: 'gpt-6-astra', effortLevel: 'ultra' } },
+        })).toMatchObject({ modelMode: 'gpt-6-astra', effortLevel: 'ultra' });
+    });
+
+    it('only invalidates the field whose default changed', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'codex', permissionMode: 'default',
+            modelMode: 'gpt-5.5', effortLevel: 'low',
+            modelSelection: { agent: 'codex', defaultValue: 'gpt-6.1-sol' },
+            effortSelection: { agent: 'codex', defaultValue: 'medium' },
+            agentDefaultOverrides: { codex: { effortLevel: 'ultra' } },
+        })).toMatchObject({ modelMode: 'gpt-5.5', effortLevel: 'ultra' });
+    });
+
+    it('preserves explicit native CLI reset instead of resolving App defaults', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'codex', permissionMode: 'default',
+            modelMode: 'default', effortLevel: 'default',
+            modelSelection: { agent: 'codex', defaultValue: 'gpt-6.1-sol' },
+            effortSelection: { agent: 'codex', defaultValue: 'medium' },
+            agentDefaultOverrides: {},
+        })).toMatchObject({ modelMode: 'default', effortLevel: 'default' });
+    });
+
+    it('rejects a different engine choice as a Codex override', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'codex', permissionMode: 'default',
+            modelMode: 'gpt-5.5', effortLevel: 'low',
+            modelSelection: { agent: 'claude', defaultValue: 'gpt-6.1-sol' },
+            effortSelection: { agent: 'claude', defaultValue: 'medium' },
+            agentDefaultOverrides: {},
+        })).toMatchObject({ modelMode: 'gpt-6.1-sol', effortLevel: 'medium' });
     });
 
     it('chooses a supported effort when medium is unavailable', () => {

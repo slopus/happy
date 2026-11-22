@@ -267,6 +267,8 @@ export function getCodexEffortLevels(): EffortLevel[] {
         { key: 'medium', name: 'medium' },
         { key: 'high', name: 'high' },
         { key: 'xhigh', name: 'xhigh' },
+        { key: 'max', name: 'max' },
+        { key: 'ultra', name: 'ultra' },
     ];
 }
 
@@ -292,13 +294,13 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string, m
         return getClaudeEffortLevels();
     }
     if (flavor === 'codex') {
-        // A borrowed Astra catalog may contain ultra/minimal, which the new
-        // Sol/Luna models do not support. Offer the documented reasoning range.
+        // Another model's current effort catalog does not describe this model.
+        // Keep the current Sol/Luna fallback through Ultra until its own catalog arrives.
         if ((modelKey === 'gpt-6.1-sol' || modelKey === 'gpt-6-sol' || modelKey === 'gpt-6-luna')
             && (metadata?.currentModelCode !== modelKey || !metadata.thoughtLevels?.length)) {
             return [
                 { key: 'default', name: DEFAULT_EFFORT_LABEL, description: null },
-                ...['low', 'medium', 'high', 'xhigh', 'max'].map((key) => ({ key, name: key })),
+                ...['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map((key) => ({ key, name: key })),
             ];
         }
         const metadataEfforts = mapMetadataOptions(metadata?.thoughtLevels);

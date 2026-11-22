@@ -50,7 +50,9 @@ export function resolveMessageModeMeta(
         ?? session.metadata?.currentThoughtLevelCode
         ?? agentOverrides.effortLevel
         ?? codeDefaults.effortLevel;
-    const effort = flavor === 'codex' && modelMode === 'default' && session.effortLevel === 'default'
+    // Effort resets independently of model selection. Keep the explicit null on
+    // the wire so the executor can distinguish reset from an absent override.
+    const effort = flavor === 'codex' && requestedEffort === 'default'
         ? 'default'
         : normalizeModelEffortKey(flavor, modelMode ?? 'default', requestedEffort, session.metadata);
     const supportsEffort = !flavor

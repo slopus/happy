@@ -12,7 +12,8 @@ import { useClaudeModelCatalog } from './useClaudeModelCatalog';
 import { useCodexAccounts } from './useCodexAccounts';
 import { useSpawnSession } from './useSpawnSession';
 import { t } from '@/text';
-import type { NewSessionAgentType } from '@/sync/persistence';
+import type { DraftModeSelection, NewSessionAgentType } from '@/sync/persistence';
+import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import type { Metadata } from '@/sync/storageTypes';
 import type { SessionAgentComposerArgs, SessionAgentComposer } from './useSessionAgentComposer.types';
 
@@ -21,7 +22,8 @@ const agents: { key: NewSessionAgentType; label: string }[] = [
     { key: 'opencode', label: 'OpenCode' }, { key: 'antigravity', label: 'Antigravity' },
     { key: 'openclaw', label: 'OpenClaw' },
 ];
-type Choice = { permissionMode?: string | null; modelMode?: string | null; effortLevel?: string | null; fastMode?: boolean };
+type Choice = { permissionMode?: string | null; modelMode?: string | null; effortLevel?: string | null;
+    modelSelection?: DraftModeSelection; effortSelection?: DraftModeSelection; fastMode?: boolean };
 export function useSessionAgentComposer(args: SessionAgentComposerArgs): SessionAgentComposer | undefined {
     const { session, base } = args;
     const machineId = session.metadata?.machineId ?? null;
@@ -37,6 +39,20 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
     const current = (['gpt', 'openai'].includes(flavor) ? 'codex' : flavor) as NewSessionAgentType;
     const scope = JSON.stringify([session.id, machineId, directory]);
     const [draft, setDraft] = React.useState<{ scope: string; agent: NewSessionAgentType; choices: Partial<Record<NewSessionAgentType, Choice>> }>({ scope, agent: current, choices: {} });
+    React.useEffect(() => {
+        const currentDefaults = resolveAgentDefaultConfig(defaults, 'codex');
+        setDraft(previous => {
+            const codex = previous.choices.codex;
+            const resetModel = codex?.modelSelection && codex.modelSelection.defaultValue !== currentDefaults.modelMode;
+            const resetEffort = codex?.effortSelection && codex.effortSelection.defaultValue !== currentDefaults.effortLevel;
+            if (!codex || (!resetModel && !resetEffort)) return previous;
+            return { ...previous, choices: { ...previous.choices, codex: {
+                ...codex,
+                ...(resetModel ? { modelMode: undefined, modelSelection: undefined } : {}),
+                ...(resetEffort ? { effortLevel: undefined, effortSelection: undefined } : {}),
+            } } };
+        });
+    }, [defaults]);
     const available = getCodingAgentCycle(enabledCodingAgents(agents, machineId, configured, machine?.metadata?.cliAvailability));
     // The running Agent is always a valid destination for cancelling a staged switch.
     const cycle = getCodingAgentCycle(agents.filter(a => a.key === current || available.some(b => b.key === a.key)));
@@ -55,7 +71,8 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         ? [{ key: 'default', name: t('agentInput.model.cliAutomatic'), description: null }]
         : getSuggestedModelModes(selected, modelMetadata, t);
     const selection = resolveNewSessionModeSelection({ agent: selected, permissionMode: choice?.permissionMode,
-        modelMode: choice?.modelMode, effortLevel: choice?.effortLevel, agentDefaultOverrides: defaults,
+        modelMode: choice?.modelMode, effortLevel: choice?.effortLevel,
+        modelSelection: choice?.modelSelection, effortSelection: choice?.effortSelection, agentDefaultOverrides: defaults,
         modelOptions: models, effortMetadata: modelMetadata });
     if (choice?.permissionMode) selection.permissionMode = choice.permissionMode;
     const effortLevels = getEffortLevelsForModel(selected, selection.modelMode, modelMetadata);
@@ -110,10 +127,14 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         modeSelector: {
             ...(pending ? {
                 online, unifiedCodex: selected === 'codex', refreshScope: `${scope}:${selected}`,
-                model: models.find(m => m.key === selection.modelMode) ?? null, modelOptions: models,
+                model: selected === 'codex' && selection.modelMode === 'default'
+                    ? { key: 'default', name: t('agentInput.model.cliAutomatic') }
+                    : models.find(m => m.key === selection.modelMode) ?? null, modelOptions: models,
                 effort: effortLevels.find(e => e.key === selection.effortLevel) ?? null, effortOptions: effortLevels,
-                onModelChange: key => update({ modelMode: key, fastMode: false }),
-                onEffortChange: key => update({ effortLevel: key }),
+                onModelChange: key => update({ modelMode: key, fastMode: false,
+                    modelSelection: { agent: selected, defaultValue: resolveAgentDefaultConfig(defaults, selected).modelMode } }),
+                onEffortChange: key => update({ effortLevel: key,
+                    effortSelection: { agent: selected, defaultValue: resolveAgentDefaultConfig(defaults, selected).effortLevel } }),
                 onRefreshModels: selected === 'claude' ? claude.refresh : undefined,
                 supportsFast: supportsCodexFast(modelMetadata, selection.modelMode), fastMode: choice?.fastMode === true,
                 onFastModeChange: enabled => update({ fastMode: enabled }),

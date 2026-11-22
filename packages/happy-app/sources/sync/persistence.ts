@@ -26,6 +26,11 @@ const STAGING_DREAMSKIN_SEEDED_KEY = 'staging-dreamskin-seeded-v1';
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'opencode' | 'antigravity' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
 
+export type DraftModeSelection = {
+    agent: NewSessionAgentType;
+    defaultValue: string | null;
+};
+
 export interface NewSessionDraft {
     input: string;
     selectedMachineId: string | null;
@@ -34,6 +39,9 @@ export interface NewSessionDraft {
     permissionMode: PermissionModeKey;
     modelMode: string;
     effortLevel: string | null;
+    /** Only explicit choices carry a default snapshot; legacy values follow current defaults. */
+    modelSelection?: DraftModeSelection;
+    effortSelection?: DraftModeSelection;
     fastMode?: boolean;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
@@ -299,6 +307,14 @@ export function saveSessionDrafts(drafts: Record<string, string>) {
     mmkv.set('session-drafts', JSON.stringify(drafts));
 }
 
+function readDraftModeSelection(value: unknown): DraftModeSelection | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const selection = value as Partial<DraftModeSelection>;
+    if (!['claude', 'codex', 'gemini', 'opencode', 'antigravity', 'openclaw'].includes(selection.agent ?? '')) return undefined;
+    if (selection.defaultValue !== null && typeof selection.defaultValue !== 'string') return undefined;
+    return { agent: selection.agent!, defaultValue: selection.defaultValue };
+}
+
 export function loadNewSessionDraft(): NewSessionDraft | null {
     const raw = mmkv.getString(NEW_SESSION_DRAFT_KEY);
     if (!raw) {
@@ -336,6 +352,8 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             permissionMode,
             modelMode,
             effortLevel,
+            ...(readDraftModeSelection(parsed.modelSelection) ? { modelSelection: readDraftModeSelection(parsed.modelSelection)! } : {}),
+            ...(readDraftModeSelection(parsed.effortSelection) ? { effortSelection: readDraftModeSelection(parsed.effortSelection)! } : {}),
             fastMode: parsed.fastMode === true,
             sessionType,
             worktreeKey,

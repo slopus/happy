@@ -12,6 +12,8 @@ export const AgentDefaultOverrideSchema = z.object({
     effortLevel: z.string().optional(),
 }).passthrough();
 
+// Full settings get their empty fallback from settingsDefaults. A schema default
+// would also materialize in partial pending deltas and erase saved overrides.
 export const AgentDefaultOverridesSchema = z.object({
     claude: AgentDefaultOverrideSchema.optional(),
     codex: AgentDefaultOverrideSchema.optional(),
@@ -19,7 +21,7 @@ export const AgentDefaultOverridesSchema = z.object({
     opencode: AgentDefaultOverrideSchema.optional(),
     antigravity: AgentDefaultOverrideSchema.optional(),
     openclaw: AgentDefaultOverrideSchema.optional(),
-}).passthrough().default({});
+}).passthrough();
 
 export type AgentDefaultOverride = z.infer<typeof AgentDefaultOverrideSchema>;
 export type AgentDefaultOverrides = z.infer<typeof AgentDefaultOverridesSchema>;

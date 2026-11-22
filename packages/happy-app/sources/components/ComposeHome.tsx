@@ -663,6 +663,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             permissionMode: draft.permissionMode,
             modelMode: draft.modelMode,
             effortLevel: draft.effortLevel,
+            modelSelection: draft.modelSelection,
+            effortSelection: draft.effortSelection,
             agentDefaultOverrides,
         });
         const spawnSettings = resolveNewSessionSpawnSettings({
