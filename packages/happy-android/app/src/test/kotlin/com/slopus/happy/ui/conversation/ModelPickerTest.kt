@@ -185,6 +185,11 @@ class ModelPickerTest {
     @Test fun `the effort chip names the speed while it isn't the default`() {
         show(current = Mode("codex", "sol", "high", "ultrafast", "auto"))
         rule.onNodeWithText("High · Ultrafast").assertExists()
+        // As far from send as the effort's words are from the model's: 16 (each chip pads 8 a side).
+        val model = screenBounds(ConversationModeTags.MODEL)
+        val effort = screenBounds(ConversationModeTags.EFFORT)
+        val send = screenBounds(ConversationComposerTags.PRIMARY)
+        assertEquals(effort.left - model.right + 16 * rule.density.density, send.left - effort.right + 8 * rule.density.density, 1f)
     }
 
     @Test fun `the model chip wears the ring of the selected account and the heading its warning`() {

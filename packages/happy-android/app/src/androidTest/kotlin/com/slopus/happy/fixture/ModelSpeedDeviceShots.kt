@@ -85,6 +85,8 @@ class ModelSpeedDeviceShots {
         node(ConversationComposerTags.INPUT).performClick()
         shown(ConversationModeTags.EFFORT)
 
+        capture("0-gpt-chip-regular")
+
         // GPT has a speed menu: the effort list ends with it, Regular checked.
         node(ConversationModeTags.EFFORT).performClick()
         shown(ModelPickerTags.PANEL)
@@ -116,6 +118,7 @@ class ModelSpeedDeviceShots {
         capture("5-opus-effort-list-no-speed")
         device.pressBack()
         gone(ModelPickerTags.PANEL)
+        capture("7-opus-chip-no-speed")
 
         // Back on GPT at Fast, a message goes out with "priority".
         node(ConversationModeTags.MODEL).performClick()

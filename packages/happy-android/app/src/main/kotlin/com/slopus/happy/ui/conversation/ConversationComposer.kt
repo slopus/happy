@@ -143,6 +143,12 @@ object ConversationComposerSpec {
     /** Above and below the field's words. */
     val fieldVertical = 12.dp
     val primary = 36.dp
+    /**
+     * Between the label and send. Each chip pads its words 8 a side, so the
+     * model's words stand 16 from the effort's; with this, the effort's words
+     * stand the same 16 from send's circle.
+     */
+    val labelGap = 8.dp
     val expandGlyph = 18.dp
     const val MAX_LINES = 8
     /** The one row shows this many lines, then scrolls (iOS `compactTextCap`). */
@@ -575,11 +581,12 @@ private fun ComposerLayout(
         val primary = slot(Slot.PRIMARY)!!.measure(loose)
         val rowHeight = maxOf(minimumRowHeight.roundToPx(), more.height, primary.height).coerceAtMost(constraints.maxHeight)
         val expand = slot(Slot.EXPAND)?.measure(loose)
+        val gap = ConversationComposerSpec.labelGap.roundToPx()
         // Read by the composer to tell whether the words scroll; written only when it changes.
         fun full(fieldWidth: Int) { if (fullWidth.intValue != fieldWidth) fullWidth.intValue = fieldWidth }
         if (!open || compact) {
-            val label = if (open) slot(Slot.LABEL)?.measure(Constraints(maxWidth = ((width - more.width - primary.width) / 2).coerceAtLeast(0), maxHeight = rowHeight)) else null
-            val wide = (width - more.width - primary.width - (label?.width ?: 0)).coerceAtLeast(0)
+            val label = if (open) slot(Slot.LABEL)?.measure(Constraints(maxWidth = ((width - more.width - primary.width) / 2 - gap).coerceAtLeast(0), maxHeight = rowHeight)) else null
+            val wide = (width - more.width - primary.width - (label?.let { it.width + gap } ?: 0)).coerceAtLeast(0)
             full(wide)
             // The expand button stands at the field's end, the words clear of it.
             val fieldWidth = (wide - (expand?.width ?: 0)).coerceAtLeast(0)
@@ -599,7 +606,7 @@ private fun ComposerLayout(
                 field.place(more.width, if (field.height > rowHeight) 0 else row(field.height))
                 expand?.place(more.width + fieldWidth, (if (field.height > rowHeight) 0 else foot) + (rowHeight - expand.height) / 2)
                 primary.place(width - primary.width, row(primary.height))
-                label?.place(width - primary.width - label.width, row(label.height))
+                label?.place(width - primary.width - gap - label.width, row(label.height))
             }
         } else {
             val inset = ConversationComposerSpec.fieldPadding.roundToPx()
@@ -608,7 +615,7 @@ private fun ComposerLayout(
             // the words wrap clear of it.
             val fieldWidth = (if (expand != null) width - inset - expand.width else width - 2 * inset).coerceAtLeast(0)
             val field = slot(Slot.FIELD)!!.measure(Constraints(minWidth = fieldWidth, maxWidth = fieldWidth, maxHeight = (constraints.maxHeight - rowHeight).coerceAtLeast(0)))
-            val label = slot(Slot.LABEL)?.measure(Constraints(maxWidth = (width - more.width - primary.width).coerceAtLeast(0), maxHeight = rowHeight))
+            val label = slot(Slot.LABEL)?.measure(Constraints(maxWidth = (width - more.width - primary.width - gap).coerceAtLeast(0), maxHeight = rowHeight))
             val row = field.height
             val height = row + rowHeight
             layout(width, height) {
@@ -616,7 +623,7 @@ private fun ComposerLayout(
                 expand?.place(width - expand.width, (rowHeight - expand.height) / 2)
                 more.place(0, row + (rowHeight - more.height) / 2)
                 primary.place(width - primary.width, row + (rowHeight - primary.height) / 2)
-                label?.place(width - primary.width - label.width, row + (rowHeight - label.height) / 2)
+                label?.place(width - primary.width - gap - label.width, row + (rowHeight - label.height) / 2)
             }
         }
     }

@@ -83,12 +83,13 @@ class ConversationComposerGlassTest {
         rule.waitForIdle()
         val open = pillHeight()
         assertTrue("open card ~92, was $open", open.value in 88f..100f)
-        // The model chip, then the effort chip just before send.
+        // The model chip, then the effort chip before send. Each chip pads its words 8 a side, so the
+        // effort's words stand as far from send's circle as from the model's words: 16.
         val model = rule.node(ConversationModeTags.MODEL).bounds
         val effort = rule.node(ConversationModeTags.EFFORT).bounds
         val primary = rule.node(ConversationComposerTags.PRIMARY).bounds
-        assertTrue("effort just before send: $effort $primary", effort.right in (primary.left - 16.dp)..(primary.left + 8.dp))
-        assertTrue("model before effort: $model $effort", model.right <= effort.left + 0.5.dp)
+        assertEquals("model's words to effort's: $model $effort", 16f, (effort.left + 8.dp - (model.right - 8.dp)).value, 0.5f)
+        assertEquals("effort's words to send: $effort $primary", 16f, (primary.left - (effort.right - 8.dp)).value, 0.5f)
 
         // A long draft grows the card, up to its line cap.
         rule.node(ConversationComposerTags.INPUT).performTextInput((1..20).joinToString("\n") { "line $it" })
