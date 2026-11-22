@@ -73,7 +73,7 @@ test('same-SHA retries use distinct backups and failed remote prechecks expose n
 if(args.at(-1)==='cat /etc/caddy/Caddyfile') process.stdout.write(fs.readFileSync(process.env.FIXTURE));
 else if(args.at(-1).startsWith('caddy adapt ')) process.stdout.write(fs.readFileSync(process.env.ADAPTED));
 else { fs.writeFileSync(process.env.TRACE,JSON.stringify(args)); process.stdin.resume(); process.stdin.on('end',()=>process.exit(Number(process.env.FAIL_APPLY))); }`);
-  await tool('scp', 'process.exit(0)'); await tool('curl', 'process.exit(0)');
+  await tool('scp', 'process.exit(0)'); await tool('curl', 'process.stdout.write("200")');
   await tool('sha256sum', `const fs=require('node:fs'),crypto=require('node:crypto'); console.log(crypto.createHash('sha256').update(fs.readFileSync(process.argv[2])).digest('hex')+'  '+process.argv[2]);`);
   const script = fileURLToPath(new URL('./deploy-bots-ingress.sh', import.meta.url));
   const run = attempt => spawnSync('bash', [script], { encoding: 'utf8', cwd: fileURLToPath(new URL('../', import.meta.url)), env: {

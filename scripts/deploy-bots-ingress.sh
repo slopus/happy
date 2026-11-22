@@ -63,5 +63,24 @@ elif [ "$change" = 'unchanged' ]; then
 else
   exit 1
 fi
-curl --fail --silent --show-error --max-time 20 https://47.115.228.20:8445/ > /dev/null
-echo 'Bots dedicated HTTPS ingress verified; computers remain disabled.'
+if ! public_status="$(curl --silent --show-error --max-time 20 --output "$work/bots-health.json" --write-out '%{http_code}' https://47.115.228.20:8445/)"; then
+  echo '::error::The Bots public health request failed before receiving a valid HTTP response.' >&2
+  exit 1
+fi
+if [ "$public_status" = '200' ]; then
+  echo 'Bots dedicated HTTPS ingress verified; computers remain disabled.'
+elif [ "$change" = 'unchanged' ] && [ "$public_status" = '502' ] && node --input-type=commonjs - "$work/bots-health.json" <<'NODE'
+const fs = require('node:fs');
+try {
+  const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  process.exit(body && Object.keys(body).length === 1 && body.error === 'Rakazo runtime is unavailable' ? 0 : 1);
+} catch { process.exit(1); }
+NODE
+then
+  # Keep transport, TLS and unknown responses strict. Only this known native
+  # runtime outage may be independent of an unchanged, validated Web ingress.
+  echo '::warning::Existing Bots runtime is unavailable; ingress configuration is unchanged. Continuing the Web release without claiming Bots health.'
+else
+  echo "::error::The Bots ingress failed its public health check (HTTP $public_status)." >&2
+  exit 1
+fi
