@@ -138,7 +138,10 @@ export class WebStateDatabase {
                         return JSON.stringify(previous) === JSON.stringify(next);
                     } catch { return false; }
                 };
-                if ((request.result?.revision ?? 0) !== expected && (equivalent() || isRebuildableWebKey(key))) {
+                // Re-saving an unchanged snapshot is not a mutation, including
+                // when this runtime already owns the current revision. Keep the
+                // existing tombstone/revision so other tabs see only real edits.
+                if (equivalent() || ((request.result?.revision ?? 0) !== expected && isRebuildableWebKey(key))) {
                     if (request.result) changed.set(key, request.result);
                     return;
                 }

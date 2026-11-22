@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { WebStorageStatus } from '@/persistence/WebStorageStatus';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import * as Application from 'expo-application';
@@ -284,7 +283,6 @@ export default function AuthenticatedRootLayout() {
                             <ThemeProvider value={navigationTheme}>
                                 <StatusBarProvider />
                                 <ModalProvider>
-                                    <WebStorageStatus />
                                     <UnifiedAuthQrCodeProvider>
                                         <DesktopSettingsModalProvider>
                                             <BrowserNavigationShortcuts />

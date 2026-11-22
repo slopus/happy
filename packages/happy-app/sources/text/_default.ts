@@ -15,7 +15,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
-    webStorage: { diagnostics: 'Browser storage', cacheOnly: 'Clear rebuildable caches only. Keep drafts, queued messages, and original attachments.', reload: 'Reload', externalUpdates: 'Another page updated local data. Reload to see the latest content.', saving: 'Saving locally…', failed: 'Local save failed. Keep this page open and retry or export your data.', conflict: 'Another tab changed this data. Export unsaved content before reloading.', recovery: 'Older data or conflict copies need review. Export them to recover content.', retry: 'Retry save', export: 'Export recovery data', privateExport: 'This file contains private drafts and local data. Export it?', publicationUnknown: 'Publication result is unknown. Check the existing link before retrying.' },
+    webStorage: { diagnostics: 'Browser storage', cacheOnly: 'Clear rebuildable caches only. Keep drafts, queued messages, and original attachments.', failed: 'Local storage operation failed. Please try again.', publicationUnknown: 'Publication result is unknown. Check the existing link before retrying.' },
     discussionMode: { label: 'Discuss only', active: 'Discussing', toggle: 'Toggle discussion mode', hint: 'Explore purpose through conversation; no implementation. Applies to your next message.', activeHint: 'Discussion only. Turn off to implement. Does not stop an already running turn.' },
     composerContext: {
         referenceLimit: "You can add up to 8 references.",

@@ -140,6 +140,66 @@ describe('revoked writes never repopulate recovery bodies', () => {
 });
 
 describe('real multi-tab boot convergence', () => {
+    it('does not notify another tab when saving an unchanged business snapshot', async () => {
+        const idb = new IDBFactory(), source = legacy();
+        const a = new WebStateDatabase(idb, source), b = new WebStateDatabase(idb, source);
+        const key = 'mmkv.default\\settings', value = '{"settings":{},"version":2}';
+        await a.initialize(); await a.write(key, value); await b.initialize();
+        const before = (await a.exportRecovery()).records.find(row => row.key === key);
+
+        await a.write(key, value);
+
+        expect(await b.hasExternalChanges()).toBe(false);
+        expect((await a.exportRecovery()).records.find(row => row.key === key)).toEqual(before);
+    });
+    it.each([
+        ['profile', 'timestamp'],
+        ['new-session-draft-v1', 'updatedAt'],
+    ])('ignores only the observation timestamp when resaving %s', async (suffix, timestamp) => {
+        const idb = new IDBFactory(), source = legacy();
+        const a = new WebStateDatabase(idb, source), b = new WebStateDatabase(idb, source);
+        const key = `mmkv.default\\${suffix}`;
+        const value = (text: string, time: number) => JSON.stringify({ text, [timestamp]: time });
+        await a.initialize(); await a.write(key, value('unchanged', 1)); await b.initialize();
+
+        await a.write(key, value('unchanged', 2));
+
+        expect(await b.hasExternalChanges()).toBe(false);
+        expect(a.get(key)).toBe(value('unchanged', 1));
+
+        await a.write(key, value('actual edit', 3));
+
+        expect(await b.hasExternalChanges()).toBe(true);
+        expect(a.get(key)).toBe(value('actual edit', 3));
+        await expect(b.write(key, value('stale edit', 4))).rejects.toMatchObject({ name: 'StorageConflictError' });
+    });
+    it('keeps a deletion tombstone when deleting an already absent record', async () => {
+        const idb = new IDBFactory(), source = legacy();
+        const a = new WebStateDatabase(idb, source), stale = new WebStateDatabase(idb, source);
+        const key = 'mmkv.default\\session-drafts';
+        await a.initialize(); await stale.initialize();
+        await a.write(key, null);
+        const tombstone = (await a.exportRecovery()).records.find(row => row.key === key);
+        expect(tombstone).toMatchObject({ value: null, revision: 1 });
+
+        await a.write(key, null);
+
+        expect((await a.exportRecovery()).records.find(row => row.key === key)).toEqual(tombstone);
+        await expect(stale.write(key, 'resurrected draft')).rejects.toMatchObject({ name: 'StorageConflictError' });
+        expect(a.get(key)).toBeUndefined();
+    });
+    it.each(['record', 'namespace', 'account'] as const)('checks %s revocation before accepting an equivalent deletion', async scope => {
+        const idb = new IDBFactory(), source = legacy();
+        const a = new WebStateDatabase(idb, source), stale = new WebStateDatabase(idb, source);
+        const key = 'default-account-owner\\session-drafts';
+        await a.initialize(); await a.write(key, 'private draft'); await stale.initialize();
+        if (scope === 'record') await a.purgeExact(key);
+        else if (scope === 'namespace') await a.purgePrefix('default-account-owner\\');
+        else await a.purgeAccount('owner');
+
+        await expect(stale.write(key, null)).rejects.toMatchObject({ name: 'StorageConflictError' });
+        expect((await a.exportRecovery()).conflicts).toHaveLength(0);
+    });
     it('atomically unions queue namespaces created from the same initial revision', async () => {
         const idb = new IDBFactory(), source = legacy();
         const a = new WebStateDatabase(idb, source), b = new WebStateDatabase(idb, source);

@@ -52,18 +52,35 @@ it('flushes a scheduled editor draft before switching accounts and reports it as
     expect(module.getWebStorageStatus().pending).toBe(0);
 });
 
-it('exports the latest scheduled editor text even when persistence fails', async () => {
+it('keeps the latest scheduled editor text available when persistence fails', async () => {
     const store = new module.MMKV(), owner = {};
     module.markDeviceStorageDraftPending(owner, true, () => {
-        store.set('draft', 'latest export text');
+        store.set('draft', 'latest unsaved text');
         module.markDeviceStorageDraftPending(owner, false);
     });
     vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => { throw new Error('quota'); });
-    let artifact: Blob | undefined;
-    vi.stubGlobal('document', { createElement: () => ({ click: vi.fn() }) });
-    vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => { artifact = blob as Blob; return 'blob:recovery'; });
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-    await module.downloadWebStorageRecovery();
-    expect(JSON.parse(await artifact!.text()).unsaved).toContainEqual(['mmkv.default\\draft', 'latest export text']);
+    await expect(module.flushDeviceStorageWrites()).rejects.toBeDefined();
+    expect(store.getString('draft')).toBe('latest unsaved text');
     expect(module.getWebStorageStatus()).toMatchObject({ pending: 0, failed: 1 });
+});
+
+it('protects uncommitted editor text on page exit and stops guarding after it is saved', async () => {
+    const page = new EventTarget();
+    vi.stubGlobal('window', page);
+    vi.resetModules();
+    const storage = await import('./deviceStorage.web');
+    await storage.initializeWebStorage();
+    const store = new storage.MMKV(), owner = {};
+    storage.markDeviceStorageDraftPending(owner, true, () => {
+        store.set('draft', 'keep this text');
+        storage.markDeviceStorageDraftPending(owner, false);
+    });
+    const unsavedExit = new Event('beforeunload', { cancelable: true });
+    page.dispatchEvent(unsavedExit);
+    expect(unsavedExit.defaultPrevented).toBe(true);
+    await storage.flushDeviceStorageWrites();
+    const savedExit = new Event('beforeunload', { cancelable: true });
+    page.dispatchEvent(savedExit);
+    expect(savedExit.defaultPrevented).toBe(false);
+    expect(store.getString('draft')).toBe('keep this text');
 });

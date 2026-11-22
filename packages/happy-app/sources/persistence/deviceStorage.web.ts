@@ -5,35 +5,22 @@ const pending = new Map<string, Promise<void>>();
 const failed = new Map<string, { value: string | null; error: unknown }>();
 const optimistic = new Map<string, string | null>();
 const scheduledDrafts = new Map<object, () => void>();
-const listeners = new Set<() => void>();
-let recovery = 0;
-let externalUpdates = false;
-let status = { pending: 0, failed: 0, conflict: false, recovery: 0, externalUpdates: false };
-const publish = () => { status = { pending: pending.size + scheduledDrafts.size, failed: failed.size, recovery, externalUpdates, conflict: [...failed.values()].some(e => e.error instanceof StorageConflictError) }; listeners.forEach(listener => listener()); };
-export const subscribeWebStorage = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-export const getWebStorageStatus = () => status;
-let channel: BroadcastChannel | undefined;
+// Persistence state is diagnostic data, not a global page notification. Routine
+// autosaves must not change the application layout or ask users to export data.
+export const getWebStorageStatus = () => ({
+    pending: pending.size + scheduledDrafts.size,
+    failed: failed.size,
+    conflict: [...failed.values()].some(e => e.error instanceof StorageConflictError),
+});
 export async function initializeWebStorage() {
     initializing ??= (async () => {
         const db = new WebStateDatabase(indexedDB, localStorage);
         try { await db.initialize(); } catch (error) { db.close(); throw error; }
         database = db;
-        const report = await db.exportRecovery();
-        recovery = report.legacyChanges.length + report.conflicts.length;
-        publish();
-        // Notifications never carry user content. Readers keep revisions for CAS;
-        // they must not silently refresh underneath uncommitted application state.
-        if (typeof BroadcastChannel !== 'undefined') {
-            channel = new BroadcastChannel('paws-web-state-v1');
-            channel.onmessage = () => { void db.hasExternalChanges().then(changed => { if (changed) { externalUpdates = true; publish(); } }).catch(() => {}); };
-        }
         if (typeof window !== 'undefined') window.addEventListener('beforeunload', event => {
             if (scheduledDrafts.size || [...pending.keys()].some(key => !isRebuildableWebKey(key)) || failed.size) {
                 event.preventDefault(); event.returnValue = '';
             }
-        });
-        if (typeof window !== 'undefined') window.addEventListener('focus', () => {
-            void db.hasExternalChanges().then(changed => { if (changed) { externalUpdates = true; publish(); } }).catch(() => {});
         });
     })().catch(error => { initializing = undefined; throw error; });
     return initializing;
@@ -44,20 +31,18 @@ function persist(key: string, value: string | null) {
     const clearing = key.endsWith('\\@clear');
     const prefix = clearing ? key.slice(0, -'@clear'.length) : undefined;
     const operation = clearing ? currentDatabase().purgePrefix(prefix!) : currentDatabase().write(key, value);
-    pending.set(key, operation); publish();
+    pending.set(key, operation);
     void operation.then(() => {
         if (pending.get(key) === operation) {
             pending.delete(key); optimistic.delete(key); failed.delete(key);
             if (prefix) for (const k of optimistic.keys()) if (k.startsWith(prefix) && !pending.has(k)) { optimistic.delete(k); failed.delete(k); }
         }
-        if (!isRebuildableWebKey(key)) channel?.postMessage({ changed: true }); publish();
     }, error => {
         if (pending.get(key) === operation) {
             pending.delete(key);
             if (isRebuildableWebKey(key)) optimistic.delete(key);
             else failed.set(key, { value, error });
         }
-        publish();
     });
     return operation;
 }
@@ -93,16 +78,6 @@ export async function retryWebStorageWrites() {
     const writes = [...failed].filter(([, record]) => !(record.error instanceof StorageConflictError));
     await Promise.all(writes.map(([key, record]) => persist(key, record.value)));
 }
-export async function downloadWebStorageRecovery() {
-    // Capture debounced editor state before taking the recovery snapshot. A failed
-    // durable write must still be exportable from the optimistic buffer.
-    await flushDeviceStorageWrites().catch(() => {});
-    const recovery = await currentDatabase().exportRecovery();
-    const file = new Blob([JSON.stringify({ ...recovery, unsaved: [...optimistic] })], { type: 'application/json' });
-    const link = document.createElement('a'), url = URL.createObjectURL(file);
-    link.href = url; link.download = 'paws-private-storage-recovery.json'; link.click(); URL.revokeObjectURL(url);
-}
-
 export async function listDeviceStorageIds(prefix: string, suffix: string): Promise<string[]> {
     const keys = await currentDatabase().authoritativeKeys();
     return [...new Set(keys.map(key => key.split('\\')[0]).filter(id => id.startsWith(prefix) && (suffix ? id.endsWith(suffix) : !id.includes('-account-'))))];
@@ -110,7 +85,6 @@ export async function listDeviceStorageIds(prefix: string, suffix: string): Prom
 export async function purgeAccountDeviceStorage(scope: string): Promise<void> {
     await flushDeviceStorageWrites(); await currentDatabase().purgeAccount(scope);
     for (const key of optimistic.keys()) if ((key.split('\\')[0].match(/-account-(.+)$/)?.[1] ?? 'legacy') === scope) { optimistic.delete(key); failed.delete(key); }
-    publish();
 }
 
 export async function eraseDeviceStorageRecord(store: MMKV, key: string): Promise<void> {
@@ -128,7 +102,7 @@ export async function webStorageDiagnostics() {
         migrationRecords: report.migrations.length, recoveryRecords: report.conflicts.length + report.legacyChanges.length,
         ...getWebStorageStatus() };
 }
-export async function clearWebStorageCaches() { await currentDatabase().clearOptionalCaches(); publish(); }
+export async function clearWebStorageCaches() { await currentDatabase().clearOptionalCaches(); }
 
 export async function addDeviceStorageString(store: MMKV, key: string, value: string): Promise<void> {
     await currentDatabase().write(`${store.id}\\${key}`, '[]', { addString: value });
@@ -137,5 +111,4 @@ export async function addDeviceStorageString(store: MMKV, key: string, value: st
 export function markDeviceStorageDraftPending(owner: object, pending: boolean, flush?: () => void): void {
     if (pending && flush) scheduledDrafts.set(owner, flush);
     else scheduledDrafts.delete(owner);
-    publish();
 }
