@@ -70,9 +70,18 @@ export const GoalProjectConversationCatalogPageSchema = z.object({
 export type GoalProjectConversationCatalogPage = z.infer<typeof GoalProjectConversationCatalogPageSchema>;
 /** Complete version manifest for skipping unchanged detached metadata decrypts.
  * This is a separate projection: raw ciphertext pages keep their old contract. */
+const compactIdentity = { id: label.min(1), metadataVersion: z.number().int().nonnegative() };
+const classificationMatches = (value: { id: string; metadataVersion: number; candidate?: GoalProjectConversationCandidate | null }) =>
+    value.candidate == null || value.candidate.sessionId === value.id && value.candidate.metadataVersion === value.metadataVersion;
+/** Only explicit, version-bound proof may classify a session as excluded. */
+export const GoalProjectConversationIndexEntrySchema = z.object({ ...compactIdentity, candidate: GoalProjectConversationCandidateSchema.nullable() })
+    .refine(classificationMatches, 'Conversation classification identity does not match');
+export type GoalProjectConversationIndexEntry = z.infer<typeof GoalProjectConversationIndexEntrySchema>;
+export const GoalProjectConversationCatalogManifestEntrySchema = z.object({ ...compactIdentity, candidate: GoalProjectConversationCandidateSchema.nullable().optional() })
+    .refine(classificationMatches, 'Conversation classification identity does not match');
 export const GoalProjectConversationCatalogManifestPageSchema = GoalProjectConversationCatalogPageSchema.extend({
-    format: z.literal('manifest'),
-    sessions: z.array(GoalProjectConversationCatalogHeaderSchema.pick({ id: true, metadataVersion: true })).max(20000),
+    format: z.literal('manifest'), indexSupported: z.literal(true).optional(),
+    sessions: z.array(GoalProjectConversationCatalogManifestEntrySchema).max(20000),
 });
 export type GoalProjectConversationCatalogManifestPage = z.infer<typeof GoalProjectConversationCatalogManifestPageSchema>;
 

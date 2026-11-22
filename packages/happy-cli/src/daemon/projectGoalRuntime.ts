@@ -2,6 +2,7 @@ import { digest } from '@/modules/goalBoard/parser';
 import { isStableTaskId } from '@/modules/goalBoard/taskIdentity';
 import axios from 'axios';
 import { createHash } from 'node:crypto';
+import { GoalProjectConversationCandidateSchema, type GoalProjectConversationCandidate } from '@slopus/happy-wire';
 import { realpath } from 'node:fs/promises';
 import type { Metadata } from '@/api/types';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
@@ -9,6 +10,7 @@ import type { ProjectGoalDependencies, ProjectSession } from '@/modules/goalBoar
 import type { TrackedSession } from './types';
 import { independentTaskMessage } from './independentSessions';
 import { createProjectConversationCatalog, type ProjectConversationRawHeader } from './projectConversationCatalog';
+import { createProjectConversationIndex, type ProjectConversationIndexEncryption } from './projectConversationIndex';
 
 type HistorySession = ProjectConversationRawHeader;
 
@@ -16,8 +18,8 @@ type HistorySession = ProjectConversationRawHeader;
 export function createProjectGoalRuntime(options: {
     serverUrl: string; token: string; machineId: string; legacyKey?: Uint8Array;
     findSession: (id: string) => TrackedSession | undefined;
-    now?: () => number;
-}): Pick<ProjectGoalDependencies, 'history' | 'send' | 'conversationCatalog' | 'releaseConversationCatalog' | 'disposeConversationCatalog'> {
+    now?: () => number; indexEncryption?: ProjectConversationIndexEncryption; indexPath?: string;
+}): Pick<ProjectGoalDependencies, 'history' | 'send' | 'conversationCatalog' | 'conversationIndex' | 'releaseConversationCatalog' | 'disposeConversationCatalog'> {
     const headers = { Authorization: `Bearer ${options.token}` };
     const encryptionFor = (id: string) => options.findSession(id)?.encryption ?? (options.legacyKey ? { encryptionKey: options.legacyKey, encryptionVariant: 'legacy' as const } : null);
     const readCatalog = async (maxBytes?: number) => {
@@ -46,10 +48,38 @@ export function createProjectGoalRuntime(options: {
         } while (cursor);
         return sessions;
     };
-    const catalog = createProjectConversationCatalog(() => readCatalog(64 * 1024 * 1024), options.now);
+    const index = createProjectConversationIndex({ serverUrl: options.serverUrl, machineId: options.machineId, path: options.indexPath, encryption: options.indexEncryption });
+    const classify = (raw: Readonly<ProjectConversationRawHeader>): GoalProjectConversationCandidate | null | undefined => {
+        const key = encryptionFor(raw.id);
+        if (!key) return undefined;
+        let value: any;
+        try { value = decrypt(key.encryptionKey, key.encryptionVariant, decodeBase64(raw.metadata)); } catch { return undefined; }
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+        if (value.machineId === undefined || value.machineId === null || value.machineId === '') return null;
+        if (typeof value.machineId !== 'string') return undefined;
+        if (value.machineId !== options.machineId) return null;
+        if (typeof value.path !== 'string' || !value.path) return undefined;
+        const title = typeof value.name === 'string' ? value.name : typeof value.summary?.text === 'string' ? value.summary.text : '';
+        const candidate = GoalProjectConversationCandidateSchema.safeParse({ sessionId: raw.id, metadataVersion: raw.metadataVersion,
+            directory: value.path, title: title.slice(0, 2048),
+            ...(value.goalBoard?.featurePath !== undefined ? { featurePath: value.goalBoard.featurePath } : {}),
+            ...(value.goalBoard?.taskId !== undefined ? { taskId: value.goalBoard.taskId } : {}),
+            ...(value.lifecycleState !== undefined ? { lifecycleState: value.lifecycleState } : {}),
+        });
+        return candidate.success ? candidate.data : undefined;
+    };
+    const catalog = createProjectConversationCatalog(() => readCatalog(64 * 1024 * 1024), options.now, async (rows, generation) => ({
+        entries: await index.classify(rows, classify, generation), ...(index.supported ? { indexSupported: true as const } : {}),
+    }));
     return {
-        disposeConversationCatalog: () => catalog.dispose(),
+        disposeConversationCatalog: () => { catalog.dispose(); index.dispose(); },
         conversationCatalog: (projectPath, input) => catalog.page(projectPath, input),
+        conversationIndex: async (projectPath, input) => {
+            const rows = catalog.read(projectPath, input.snapshotId, input.catalogFingerprint);
+            const generation = catalog.generation(projectPath, input.snapshotId, input.catalogFingerprint);
+            const applied = await index.record(rows, input.entries, generation);
+            return { success: true, applied };
+        },
         releaseConversationCatalog: (projectPath, snapshotId) => catalog.release(projectPath, snapshotId),
         send: async (sessionId, prompt, localId) => {
             const child = options.findSession(sessionId);

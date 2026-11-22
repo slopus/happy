@@ -47,7 +47,7 @@ vi.mock('@/sync/projectSessionLinks', () => ({
         mock.deletionListeners.add(listener); return () => { mock.deletionListeners.delete(listener); };
     },
 }));
-vi.mock('@/sync/projectConversationCandidates.web',()=>({loadProjectConversationCandidates:vi.fn().mockResolvedValue({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'})}));
+vi.mock('@/sync/projectConversationCandidates.web',()=>({loadProjectConversationCandidates:vi.fn().mockResolvedValue({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'}),releaseProjectConversationCandidates:vi.fn()}));
 vi.mock('@/sync/ops', () => ({ machineStartGoalAuthor: vi.fn() }));
 vi.mock('@/sync/projectGoals', () => ({
     projectGoalRequest: vi.fn(), canCreateProjectConversation: () => mock.canCreate,
@@ -60,7 +60,7 @@ vi.mock('@/components/fileWorkspace/context',()=>({useFileWorkspace:()=>({setMax
 vi.mock('@/components/PanelTabs', () => ({ PanelTabs: 'PanelTabs' }));
 
 import { projectGoalRequest } from '@/sync/projectGoals';
-import { loadProjectConversationCandidates } from '@/sync/projectConversationCandidates.web';
+import { loadProjectConversationCandidates, releaseProjectConversationCandidates } from '@/sync/projectConversationCandidates.web';
 import { machineStartGoalAuthor } from '@/sync/ops';
 import { ProjectConversationNavigationProvider } from './ProjectConversationNavigation.web';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel.web';
@@ -149,6 +149,31 @@ afterEach(() => { if (renderer) act(() => { renderer.unmount(); }); renderer = u
 
 
 describe('on-demand complete conversation history', () => {
+    it.each(['success', 'failure', 'cancel'] as const)('holds its catalog lease through grouping and releases exactly once after %s', async outcome => {
+        const catalog = { candidates: [], catalogFingerprint: 'a'.repeat(64), catalogSnapshotId: 'leased' };
+        const pending = deferred<any>();
+        vi.mocked(loadProjectConversationCandidates).mockResolvedValueOnce(catalog);
+        vi.mocked(projectGoalRequest).mockReturnValueOnce(pending.promise);
+        await loadHistory();
+        expect(releaseProjectConversationCandidates).not.toHaveBeenCalled();
+        expect(vi.mocked(projectGoalRequest).mock.calls[0][2]).toEqual({ projectPath: project.projectPath, ...catalog });
+        if (outcome === 'cancel') {
+            await press('project-conversations-cancel-history');
+            expect(releaseProjectConversationCandidates).not.toHaveBeenCalled();
+        }
+        await act(async () => { pending.resolve(outcome === 'failure' ? { success: false } : response()); });
+        expect(releaseProjectConversationCandidates).toHaveBeenCalledExactlyOnceWith(catalog);
+    });
+    it('releases a catalog arriving after cancellation without dispatching grouping', async () => {
+        const pending = deferred<any>();
+        vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(pending.promise);
+        await loadHistory();
+        await press('project-conversations-cancel-history');
+        const catalog = { candidates: [], catalogFingerprint: 'a'.repeat(64), catalogSnapshotId: 'late' };
+        await act(async () => { pending.resolve(catalog); });
+        expect(projectGoalRequest).not.toHaveBeenCalled();
+        expect(releaseProjectConversationCandidates).toHaveBeenCalledExactlyOnceWith(catalog);
+    });
     it('opens remembered folders immediately without scanning account history or showing a spinner', async () => {
         mock.sessions = { synced: live('synced', { metadata: { machineId: 'machine', path: webPath } }) };
         await setup();

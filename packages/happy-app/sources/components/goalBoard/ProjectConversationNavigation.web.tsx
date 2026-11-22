@@ -8,7 +8,7 @@ import { storage, useLocalSettingMutable, useLocalSettingUpdater } from '@/sync/
 import { isSidebarGroupExpanded, setSidebarGroupExpanded } from '@/utils/sidebarGroupExpansion';
 import { WorkspaceTreeRow } from '@/components/fileWorkspace/WorkspaceTreeRow';
 import { WorkspaceButton } from '@/components/fileWorkspace/WorkspaceButton';
-import { loadProjectConversationCandidates, type ProjectConversationHistoryProgress } from '@/sync/projectConversationCandidates.web';
+import { loadProjectConversationCandidates, releaseProjectConversationCandidates, type ProjectConversationHistoryProgress } from '@/sync/projectConversationCandidates.web';
 import { getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { machineStartGoalAuthor } from '@/sync/ops';
 import { projectGoalRequest, canCreateProjectConversation, isReadOnlyProjectPreview } from '@/sync/projectGoals';
@@ -281,60 +281,64 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                         refresh: fresh, signal: controller.signal,
                         onProgress: value => { if (current()) setProgress(value); },
                     });
-                    if (!current()) return;
-                    setProgress({ phase: 'grouping', processed: 0, total: 0 });
-                    // A cursor belongs to the snapshot that produced the current
-                    // groups. A renewed/evicted catalog needs a complete replacement.
-                    const pageScope = scopePath && catalog.catalogSnapshotId === catalogSnapshot.current?.id ? scopePath : undefined;
-                    const input = { projectPath: path, ...catalog, ...(pageScope ? { scopePath: pageScope, cursor } : {}) };
-                    if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 512 * 1024)
-                        throw new Error('Complete project history exceeds the request size limit');
-                    const result = GoalProjectConversationsSchema.parse(await projectGoalRequest(machineId, 'goalProjectConversations', input, `${props.scopeKey}:${request}`));
-                    if (!current()) return;
-                    if (result.projectPath !== path) throw new Error('Project conversation scope changed');
-                    const definitions = projectScopes(latest.current.project);
-                    const defined = new Map(definitions.map(scope => [scope.scopePath, scope]));
-                    const pages = result.groups.filter(group => defined.has(group.scopePath))
-                        .map(group => ({ ...group, title: defined.get(group.scopePath)!.title }));
-                    const catalogIds = new Set(catalog.candidates.map(candidate => candidate.sessionId));
-                    catalogSnapshot.current = { id: catalog.catalogSnapshotId, ids: catalogIds };
-                    complete.current = true;
-                    setCountsComplete(true);
-                    setGroups((previous) => {
-                        const next: ConversationGroup[] = pageScope
-                            ? previous.map((g) => {
-                                  const page = pages.find((p) => p.scopePath === g.scopePath);
-                                  return page
-                                      ? {
-                                            ...page,
-                                            sessions: [...new Map([...g.sessions, ...page.sessions].map((s) => [s.sessionId, s])).values()],
-                                        }
-                                      : g;
-                              })
-                            : definitions.map(scope => pages.find(page => page.scopePath === scope.scopePath) ?? scope);
-                        const merged = next.map(group => {
-                            const rows = new Map(group.sessions.map(row => [row.sessionId, row]));
-                            const authoritativePage = pages.find(page => page.scopePath === group.scopePath);
-                            const suppliedIds = new Set(authoritativePage?.sessions.map(row => row.sessionId));
-                            const replacedTotal = !pageScope || group.scopePath === pageScope && !!authoritativePage;
-                            let additional = 0;
-                            for (const [id, created] of locallyCreated.current) {
-                                if (created.scopePath !== group.scopePath) continue;
-                                if (suppliedIds.has(id)) {
-                                    locallyCreated.current.delete(id);
-                                    continue;
+                    try {
+                        if (!current()) return;
+                        setProgress({ phase: 'grouping', processed: 0, total: 0 });
+                        // A cursor belongs to the snapshot that produced the current
+                        // groups. A renewed/evicted catalog needs a complete replacement.
+                        const pageScope = scopePath && catalog.catalogSnapshotId === catalogSnapshot.current?.id ? scopePath : undefined;
+                        const input = { projectPath: path, ...catalog, ...(pageScope ? { scopePath: pageScope, cursor } : {}) };
+                        if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 512 * 1024)
+                            throw new Error('Complete project history exceeds the request size limit');
+                        const result = GoalProjectConversationsSchema.parse(await projectGoalRequest(machineId, 'goalProjectConversations', input, `${props.scopeKey}:${request}`));
+                        if (!current()) return;
+                        if (result.projectPath !== path) throw new Error('Project conversation scope changed');
+                        const definitions = projectScopes(latest.current.project);
+                        const defined = new Map(definitions.map(scope => [scope.scopePath, scope]));
+                        const pages = result.groups.filter(group => defined.has(group.scopePath))
+                            .map(group => ({ ...group, title: defined.get(group.scopePath)!.title }));
+                        const catalogIds = new Set(catalog.candidates.map(candidate => candidate.sessionId));
+                        catalogSnapshot.current = { id: catalog.catalogSnapshotId, ids: catalogIds };
+                        complete.current = true;
+                        setCountsComplete(true);
+                        setGroups((previous) => {
+                            const next: ConversationGroup[] = pageScope
+                                ? previous.map((g) => {
+                                      const page = pages.find((p) => p.scopePath === g.scopePath);
+                                      return page
+                                          ? {
+                                                ...page,
+                                                sessions: [...new Map([...g.sessions, ...page.sessions].map((s) => [s.sessionId, s])).values()],
+                                            }
+                                          : g;
+                                  })
+                                : definitions.map(scope => pages.find(page => page.scopePath === scope.scopePath) ?? scope);
+                            const merged = next.map(group => {
+                                const rows = new Map(group.sessions.map(row => [row.sessionId, row]));
+                                const authoritativePage = pages.find(page => page.scopePath === group.scopePath);
+                                const suppliedIds = new Set(authoritativePage?.sessions.map(row => row.sessionId));
+                                const replacedTotal = !pageScope || group.scopePath === pageScope && !!authoritativePage;
+                                let additional = 0;
+                                for (const [id, created] of locallyCreated.current) {
+                                    if (created.scopePath !== group.scopePath) continue;
+                                    if (suppliedIds.has(id)) {
+                                        locallyCreated.current.delete(id);
+                                        continue;
+                                    }
+                                    if (!rows.has(id)) rows.set(id, created.row);
+                                    // The complete catalog may already count an ID not
+                                    // present on this group's currently loaded page.
+                                    if (replacedTotal && !catalogIds.has(id)) additional++;
                                 }
-                                if (!rows.has(id)) rows.set(id, created.row);
-                                // The complete catalog may already count an ID not
-                                // present on this group's currently loaded page.
-                                if (replacedTotal && !catalogIds.has(id)) additional++;
-                            }
-                            return { ...group, total: group.total + additional, sessions: [...rows.values()] };
+                                return { ...group, total: group.total + additional, sessions: [...rows.values()] };
+                            });
+                            cache.set(props.scopeKey, merged);
+                            if (cache.size > 30) cache.delete(cache.keys().next().value!);
+                            return merged;
                         });
-                        cache.set(props.scopeKey, merged);
-                        if (cache.size > 30) cache.delete(cache.keys().next().value!);
-                        return merged;
-                    });
+                    } finally {
+                        releaseProjectConversationCandidates(catalog);
+                    }
                 })(), interrupted]);
             } catch (e) {
                 if (alive.current && epoch.current === request && !(controller.signal.aborted && controller.signal.reason?.name === 'AbortError')) setError(e instanceof Error ? e.message : String(e));

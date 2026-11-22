@@ -633,6 +633,24 @@ it('authorizes and forwards catalog manifest and bounded deduplicated ciphertext
     } finally { service.dispose(); }
 });
 
+it('authorizes and bounds explicit snapshot index evidence before forwarding it', async () => {
+    const f = await fixture(), projectPath = join(f.root, 'p'), conversationIndex = vi.fn(async () => ({ success: true as const }));
+    const service = createProjectGoalService({ ...f.deps, conversationIndex });
+    const input = { projectPath, snapshotId: 'snapshot', catalogFingerprint: 'a'.repeat(64), entries: [{ id: 'one', metadataVersion: 1, candidate: null }] };
+    try {
+        await expect(service.conversationIndex({ ...input, projectPath: f.feature })).rejects.toThrow('authorized');
+        expect(conversationIndex).not.toHaveBeenCalled();
+        await expect(service.conversationIndex(input)).resolves.toEqual({ success: true });
+        expect(conversationIndex).toHaveBeenCalledExactlyOnceWith(projectPath, { snapshotId: input.snapshotId, catalogFingerprint: input.catalogFingerprint, entries: input.entries });
+        for (const entries of [
+            Array.from({ length: 201 }, (_, i) => ({ id: String(i), metadataVersion: 1, candidate: null })),
+            [{ id: 'one', metadataVersion: 1, candidate: null }, { id: 'one', metadataVersion: 1, candidate: null }],
+            [{ id: 'one', metadataVersion: 1 }],
+            Array.from({ length: 30 }, (_, i) => ({ id: String(i), metadataVersion: 1, candidate: { sessionId: String(i), metadataVersion: 1, directory: '/' + 'a'.repeat(8000), title: 'Large' } })),
+        ]) await expect(service.conversationIndex({ ...input, entries })).rejects.toThrow();
+        expect(conversationIndex).toHaveBeenCalledTimes(1);
+    } finally { service.dispose(); }
+});
 
 describe('catalog snapshot release', () => {
     it('authorizes and canonicalizes the project before delegating release', async () => {

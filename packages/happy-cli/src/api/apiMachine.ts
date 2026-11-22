@@ -123,7 +123,7 @@ type MachineRpcHandlers = {
     requestShutdown: () => void;
     refreshCodexUsage?: () => Promise<void>;
     refreshCodexAccountQuota?: (grant: string) => Promise<{ type: 'success'; accepted: boolean } | { type: 'error'; errorMessage: string }>;
-    projectGoals?: Pick<ProjectGoalDependencies, 'history' | 'send' | 'conversationCatalog' | 'releaseConversationCatalog' | 'disposeConversationCatalog'>;
+    projectGoals?: Pick<ProjectGoalDependencies, 'history' | 'send' | 'conversationCatalog' | 'conversationIndex' | 'releaseConversationCatalog' | 'disposeConversationCatalog'>;
 }
 
 function requireNonEmptyString(value: unknown, name: string): string {

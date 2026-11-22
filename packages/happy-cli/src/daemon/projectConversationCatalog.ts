@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { GoalProjectConversationCatalogHeaderSchema, type GoalProjectConversationCatalogPage, type GoalProjectConversationCatalogManifestPage } from '@slopus/happy-wire';
+import { GoalProjectConversationCatalogHeaderSchema, type GoalProjectConversationCatalogPage, type GoalProjectConversationCatalogManifestPage, GoalProjectConversationCatalogManifestEntrySchema, type GoalProjectConversationCandidate } from '@slopus/happy-wire';
 
 export type ProjectConversationRawHeader = {
     id: string; metadata: string; metadataVersion?: number; dataEncryptionKey?: string | null;
@@ -9,7 +9,8 @@ const MAX_RECORDS = 20000, MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024, MAX_TOTAL_BYTE
 const MAX_SNAPSHOTS = 32;
 const PAGE_BYTES = 256 * 1024, TTL = 5 * 60 * 1000;
 type Snapshot = {
-    id: string; projectPath: string; fingerprint: string; expiresAt: number; bytes: number;
+    id: string; projectPath: string; fingerprint: string; expiresAt: number; bytes: number; generation: number;
+    classifications: Map<string, GoalProjectConversationCandidate | null>; indexSupported?: true;
     sessions: ReadonlyArray<Readonly<ProjectConversationRawHeader>>;
     byId: ReadonlyMap<string, Readonly<ProjectConversationRawHeader>>;
 };
@@ -17,8 +18,9 @@ type Snapshot = {
 /** This store belongs to one daemon account/machine runtime. Tokens never cross
  * that closure or persist. Expiration is checked only on user reads; a new
  * creation never evicts a token before its advertised expiry. */
-export function createProjectConversationCatalog(load: () => Promise<ProjectConversationRawHeader[]>, now: () => number = Date.now) {
-    let disposed = false;
+export function createProjectConversationCatalog(load: () => Promise<ProjectConversationRawHeader[]>, now: () => number = Date.now,
+    classify?: (rows: ReadonlyArray<Readonly<ProjectConversationRawHeader>>, generation: number) => Promise<{ entries: ReadonlyMap<string, GoalProjectConversationCandidate | null>; indexSupported?: true }>) {
+    let disposed = false, nextGeneration = 0;
     const assertActive = () => { if (disposed) throw new Error('Conversation catalog runtime is disposed'); };
     const snapshots = new Map<string, Snapshot>();
     const pendingLoads = new Map<string, Promise<ProjectConversationRawHeader[]>>();
@@ -51,6 +53,7 @@ export function createProjectConversationCatalog(load: () => Promise<ProjectConv
         // payload before I/O even when another reader shares the source load.
         if (snapshots.size + pendingReaders.size >= MAX_SNAPSHOTS
             || residentBytes() + (pendingReaders.size + 1) * MAX_SNAPSHOT_BYTES > MAX_TOTAL_BYTES) throw busy();
+        const generation = ++nextGeneration;
         const reader = Symbol();
         pendingReaders.add(reader);
         try {
@@ -75,9 +78,16 @@ export function createProjectConversationCatalog(load: () => Promise<ProjectConv
                 sessions.push(session);
             }
             const pairs = sessions.map(row => [row.id, row.metadataVersion] as const).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+            const classification = await classify?.(sessions, generation);
+            assertActive();
+            const classifications = new Map<string, GoalProjectConversationCandidate | null>();
+            for (const row of sessions) if (classification?.entries.has(row.id)) {
+                const parsed = GoalProjectConversationCatalogManifestEntrySchema.safeParse({ id: row.id, metadataVersion: row.metadataVersion, candidate: classification.entries.get(row.id) });
+                if (parsed.success && parsed.data.candidate !== undefined) classifications.set(row.id, parsed.data.candidate === null ? null : Object.freeze({ ...parsed.data.candidate }));
+            }
             const snapshot: Snapshot = { id: randomBytes(24).toString('base64url'), projectPath,
                 fingerprint: createHash('sha256').update(JSON.stringify(pairs)).digest('hex'),
-                expiresAt: now() + TTL, bytes, sessions: Object.freeze(sessions), byId: new Map(sessions.map(row => [row.id, row])) };
+                expiresAt: now() + TTL, bytes, generation, classifications, ...(classification?.indexSupported ? { indexSupported: true } : {}), sessions: Object.freeze(sessions), byId: new Map(sessions.map(row => [row.id, row])) };
             prune();
             if (snapshots.size + pendingReaders.size > MAX_SNAPSHOTS
                 || residentBytes() + bytes + (pendingReaders.size - 1) * MAX_SNAPSHOT_BYTES > MAX_TOTAL_BYTES) throw busy();
@@ -119,12 +129,13 @@ export function createProjectConversationCatalog(load: () => Promise<ProjectConv
         const manifestRows: GoalProjectConversationCatalogManifestPage['sessions'] = [];
         const rawRows: GoalProjectConversationCatalogPage['sessions'] = [];
         const manifest = input.format === 'manifest';
-        const result = manifest ? { ...envelope, format: 'manifest' as const, sessions: manifestRows } : { ...envelope, sessions: rawRows };
+        const result = manifest ? { ...envelope, format: 'manifest' as const, ...(snapshot.indexSupported ? { indexSupported: true as const } : {}), sessions: manifestRows } : { ...envelope, sessions: rawRows };
         let bytes = Buffer.byteLength(JSON.stringify(result));
         for (let i = offset; i < sessions.length; i++) {
             const row = sessions[i];
             const identity = { id: row.id, metadataVersion: row.metadataVersion! };
-            const header = manifest ? identity : { ...identity, metadata: row.metadata, dataEncryptionKey: row.dataEncryptionKey! };
+            const header = manifest ? { ...identity, ...(snapshot.classifications.has(row.id) ? { candidate: snapshot.classifications.get(row.id) } : {}) }
+                : { ...identity, metadata: row.metadata, dataEncryptionKey: row.dataEncryptionKey! };
             const size = Buffer.byteLength(JSON.stringify(header)) + 1;
             if (bytes + size + 128 >= PAGE_BYTES) break;
             if ('metadata' in header) rawRows.push(header);
@@ -141,6 +152,11 @@ export function createProjectConversationCatalog(load: () => Promise<ProjectConv
     return {
         dispose() { disposed = true; snapshots.clear(); pendingLoads.clear(); pendingReaders.clear(); },
         page,
+        generation(projectPath: string, snapshotId: string, fingerprint: string) {
+            const snapshot = get(projectPath, snapshotId);
+            if (fingerprint !== snapshot.fingerprint) throw new Error('Conversation catalog snapshot fingerprint does not match');
+            return snapshot.generation;
+        },
         release(projectPath: string, snapshotId: string): boolean {
             assertActive(); prune();
             const snapshot = snapshots.get(snapshotId);

@@ -29,6 +29,7 @@ import type { PersistedSession } from '@/persistence';
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { createIndependentSessionLauncher, independentTaskMessage } from './independentSessions';
 import { createProjectGoalRuntime } from './projectGoalRuntime';
+import { projectConversationIndexScope } from './projectConversationIndex';
 import { startDaemonControlServer } from './controlServer';
 import { statSync } from 'fs';
 import { join } from 'path';
@@ -1394,6 +1395,9 @@ export async function startDaemon(): Promise<void> {
         serverUrl: configuration.serverUrl, token: credentials.token, machineId,
         legacyKey: credentials.encryption.type === 'legacy' ? credentials.encryption.secret : undefined,
         findSession: findTrackedSessionById,
+        indexEncryption: { encryptionKey: machine.encryptionKey, encryptionVariant: machine.encryptionVariant },
+        indexPath: join(configuration.happyHomeDir, 'goal-conversation-index',
+          projectConversationIndexScope(configuration.serverUrl, machineId, { encryptionKey: machine.encryptionKey, encryptionVariant: machine.encryptionVariant }) + '.enc'),
       }),
     });
 

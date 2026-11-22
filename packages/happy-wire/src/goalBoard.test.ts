@@ -41,3 +41,25 @@ it('validates a separate metadata-free manifest projection without loosening the
     const projected = wire.GoalProjectConversationCatalogManifestPageSchema.parse({ ...manifest, sessions: raw.sessions });
     expect(Object.keys(projected.sessions[0]).sort()).toEqual(['id', 'metadataVersion']);
 });
+
+it('preserves explicit compact classification while keeping missing manifest classifications opaque', async () => {
+    const wire = await import('./goalBoard');
+    const page = { projectPath: '/project', snapshotId: 'snapshot', catalogFingerprint: 'a'.repeat(64), total: 3, nextCursor: null, hasNext: false, expiresAt: 1000,
+        format: 'manifest', indexSupported: true, sessions: [
+            { id: 'own', metadataVersion: 2, candidate: { sessionId: 'own', metadataVersion: 2, directory: '/project', title: 'Owned' } },
+            { id: 'foreign', metadataVersion: 1, candidate: null },
+            { id: 'opaque', metadataVersion: 1 },
+        ] };
+    expect(wire.GoalProjectConversationCatalogManifestPageSchema.parse(page)).toEqual(page);
+    for (const candidate of [
+        { sessionId: 'wrong-id', metadataVersion: 2, directory: '/project', title: 'Wrong' },
+        { sessionId: 'own', metadataVersion: 3, directory: '/project', title: 'Wrong' },
+    ]) expect(wire.GoalProjectConversationCatalogManifestPageSchema.safeParse({ ...page, sessions: [{ id: 'own', metadataVersion: 2, candidate }] }).success).toBe(false);
+});
+
+it('requires explicit identity-bound evidence for a compact index update', async () => {
+    const wire = await import('./goalBoard');
+    expect(wire.GoalProjectConversationIndexEntrySchema.parse({ id: 'foreign', metadataVersion: 3, candidate: null })).toEqual({ id: 'foreign', metadataVersion: 3, candidate: null });
+    expect(wire.GoalProjectConversationIndexEntrySchema.safeParse({ id: 'opaque', metadataVersion: 3 }).success).toBe(false);
+    expect(wire.GoalProjectConversationIndexEntrySchema.safeParse({ id: 'own', metadataVersion: 3, candidate: { sessionId: 'own', metadataVersion: 2, directory: '/project', title: 'Wrong version' } }).success).toBe(false);
+});

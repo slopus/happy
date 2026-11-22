@@ -4,8 +4,8 @@ import { mkdir, open, readdir, rename, realpath, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { goalOutputRecognition, GoalProjectConversationCandidateSchema } from '@slopus/happy-wire';
-import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate, GoalProjectConversationCatalogPage, GoalProjectConversationCatalogManifestPage } from '@slopus/happy-wire';
+import { goalOutputRecognition, GoalProjectConversationCandidateSchema, GoalProjectConversationIndexEntrySchema } from '@slopus/happy-wire';
+import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate, GoalProjectConversationCatalogPage, GoalProjectConversationCatalogManifestPage, GoalProjectConversationIndexEntry } from '@slopus/happy-wire';
 import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSummary, MAX_CATALOG, type CatalogRecord } from './catalog';
 import { digest, goalFileRevision, goalOf, titleOf, parseBoard, readBoundedFile } from './parser';
 import { goalBoardTaskPrompt } from './taskPrompt';
@@ -26,6 +26,7 @@ export type ProjectGoalDependencies = {
     history: (featurePath: string, tasks: Array<{ id: string; directory: string; title?: string; directories?: string[]; sessionIds?: string[]; featurePath?: string }>, options?: { headersOnly: true; headerCandidates?: GoalProjectConversationCandidate[]; catalogFingerprint?: string; snapshotId?: string }) => Promise<ProjectSession[]>;
     disposeConversationCatalog?: () => void;
     conversationCatalog?: (projectPath: string, input: { snapshotId?: string; cursor?: string; format?: 'manifest'; sessionIds?: string[] }) => Promise<GoalProjectConversationCatalogPage | GoalProjectConversationCatalogManifestPage>;
+    conversationIndex?: (projectPath: string, input: { snapshotId: string; catalogFingerprint: string; entries: GoalProjectConversationIndexEntry[] }) => Promise<{ success: true }>;
     releaseConversationCatalog?: (projectPath: string, snapshotId: string) => boolean | Promise<boolean>;
     changed: () => void | Promise<void>;
     getArtifactStore?: () => Promise<import('../artifacts/store').ArtifactStore>;
@@ -322,6 +323,19 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         if (!deps.conversationCatalog) throw new Error('Conversation catalog snapshots are unavailable; update this machine CLI');
         return deps.conversationCatalog(projectPath, { snapshotId: data.snapshotId, cursor: data.cursor, format: data.format, sessionIds: data.sessionIds });
     };
+    const conversationIndex = async (input: unknown) => {
+        if (disposed) throw new Error('Project workspace is closed');
+        if (Buffer.byteLength(JSON.stringify(input)) > 192 * 1024) throw new Error('Conversation index evidence exceeds its byte limit');
+        const data = z.object({ projectPath: pathInput, snapshotId: z.string().min(1).max(128),
+            catalogFingerprint: z.string().regex(/^[a-f0-9]{64}$/), entries: z.array(GoalProjectConversationIndexEntrySchema).max(200),
+        }).parse(input);
+        if (new Set(data.entries.map(entry => entry.id)).size !== data.entries.length) throw new Error('Conversation index evidence identities are duplicated');
+        const projectPath = await realpath(data.projectPath);
+        const projects = await readProjects(await discoverRoots(deps.workingDirectory, deps.homeDirectory));
+        if (!projects.some(project => project.projectPath === projectPath)) throw new Error('Project is outside the authorized Goal catalog');
+        if (!deps.conversationIndex) throw new Error('Persistent conversation index is unavailable; update this machine CLI');
+        return deps.conversationIndex(projectPath, { snapshotId: data.snapshotId, catalogFingerprint: data.catalogFingerprint, entries: data.entries });
+    };
     const conversationCatalogRelease = async (input: unknown) => {
         if (disposed) throw new Error('Project workspace is closed');
         const data = z.object({ projectPath: pathInput, snapshotId: z.string().min(1).max(128) }).parse(input);
@@ -574,7 +588,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             }
             return { success: true, projects: await readProjects(roots) };
         },
-        board, launch, files, approve, historyPage, overview, scopeHistory, conversations, conversationCatalog, conversationCatalogRelease, resolveWorkspace,
+        board, launch, files, approve, historyPage, overview, scopeHistory, conversations, conversationCatalog, conversationIndex, conversationCatalogRelease, resolveWorkspace,
         author: async (input: unknown): Promise<SpawnSessionResult> => {
             const data = z.object({ scopePath: pathInput.optional(), requestId: z.string().min(1).max(128), agent: z.enum(['codex', 'claude']), codexSessionGrant: z.string().max(4096).optional() }).parse(input);
             const roots = await discoverRoots(deps.workingDirectory, deps.homeDirectory);
@@ -604,6 +618,7 @@ export function registerProjectGoalHandlers(manager: { registerHandler(method: s
     manager.registerHandler('goalScopeHistory', wrap(service.scopeHistory));
     manager.registerHandler('goalProjectConversations', wrap(service.conversations));
     manager.registerHandler('goalProjectConversationCatalog', wrap(service.conversationCatalog));
+    manager.registerHandler('goalProjectConversationIndex', wrap(service.conversationIndex));
     manager.registerHandler('goalProjectConversationCatalogRelease', wrap(service.conversationCatalogRelease));
     manager.registerHandler('goalScopeListDirectory', wrap(input => service.files(input, 'list', true)));
     manager.registerHandler('goalScopeReadFile', wrap(input => service.files(input, 'read', true)));
