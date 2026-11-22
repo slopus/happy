@@ -596,3 +596,19 @@ it('preserves available lifecycle in newer aggregate history after a restore',as
  f.history.push({sessionId:'restored',directory:projectPath,title:'Restored',updatedAt:20,executed:true,metadata:{path:projectPath,machineId:'m',lifecycleState:'available'}} as ProjectSession);
  const result=await f.service.conversations({projectPath});expect(result.groups[0].sessions[0]).toMatchObject({sessionId:'restored',lifecycleState:'available'});
 });
+
+it('authorizes catalog snapshot projects before delegating and forwards the same snapshot to final history reads', async () => {
+    const f = await fixture(); const projectPath = join(f.root, 'p');
+    const conversationCatalog = vi.fn(async (path: string) => ({ projectPath: path, snapshotId: 'snapshot', catalogFingerprint: 'a'.repeat(64), total: 0, sessions: [], nextCursor: null, hasNext: false, expiresAt: 999999 }));
+    const disposeConversationCatalog = vi.fn();
+    const service = createProjectGoalService({ ...f.deps, conversationCatalog, disposeConversationCatalog });
+    try {
+        await expect(service.conversationCatalog({ projectPath: f.feature })).rejects.toThrow('authorized');
+        expect(conversationCatalog).not.toHaveBeenCalled();
+        expect((await service.conversationCatalog({ projectPath })).snapshotId).toBe('snapshot');
+        await service.conversations({ projectPath, candidates: [], catalogFingerprint: 'a'.repeat(64), catalogSnapshotId: 'snapshot' });
+        expect(f.deps.history).toHaveBeenLastCalledWith(projectPath, expect.any(Array), { headersOnly: true, headerCandidates: [], catalogFingerprint: 'a'.repeat(64), snapshotId: 'snapshot' });
+        await expect(service.conversations({ projectPath, catalogSnapshotId: 'snapshot', catalogFingerprint: 'a'.repeat(64) })).rejects.toThrow('complete owner candidates');
+    } finally { service.dispose(); }
+    expect(disposeConversationCatalog).toHaveBeenCalledTimes(1);
+});

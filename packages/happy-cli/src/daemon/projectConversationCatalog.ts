@@ -1,0 +1,104 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { GoalProjectConversationCatalogHeaderSchema, type GoalProjectConversationCatalogPage } from '@slopus/happy-wire';
+
+export type ProjectConversationRawHeader = {
+    id: string; metadata: string; metadataVersion?: number; dataEncryptionKey?: string | null;
+    seq: number; updatedAt: number; active: boolean;
+};
+const MAX_RECORDS = 20000, MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024, MAX_TOTAL_BYTES = 128 * 1024 * 1024;
+const PAGE_BYTES = 256 * 1024, TTL = 5 * 60 * 1000;
+type Snapshot = {
+    id: string; projectPath: string; fingerprint: string; expiresAt: number; bytes: number;
+    sessions: ReadonlyArray<Readonly<ProjectConversationRawHeader>>;
+};
+
+/** This store belongs to one daemon account/machine runtime. Tokens never cross
+ * that closure or persist. Expiration and eviction happen only on user reads. */
+export function createProjectConversationCatalog(load: () => Promise<ProjectConversationRawHeader[]>, now: () => number = Date.now) {
+    let disposed = false;
+    const assertActive = () => { if (disposed) throw new Error('Conversation catalog runtime is disposed'); };
+    const snapshots = new Map<string, Snapshot>();
+    const pending = new Map<string, Promise<Snapshot>>();
+    const prune = () => { for (const [id, snapshot] of snapshots) if (snapshot.expiresAt <= now()) snapshots.delete(id); };
+    const get = (projectPath: string, id: string) => {
+        assertActive(); prune();
+        const value = snapshots.get(id);
+        if (!value || value.projectPath !== projectPath) throw new Error('Conversation catalog snapshot is expired, unavailable, or belongs to another project; refresh conversations');
+        return value;
+    };
+    const create = async (projectPath: string) => {
+        assertActive();
+        const existing = pending.get(projectPath);
+        if (existing) return existing;
+        prune();
+        // Reserve maximum-sized slots before I/O, including pending reads.
+        while (snapshots.size + pending.size >= 2) {
+            if (!snapshots.size) throw new Error('Conversation catalog creation is busy; retry after the current read');
+            snapshots.delete(snapshots.keys().next().value!);
+        }
+        const request = (async () => {
+            const source = await load();
+            assertActive();
+            if (source.length > MAX_RECORDS) throw new Error('Conversation catalog record limit exceeded');
+            const ids = new Set<string>(), sessions: Array<Readonly<ProjectConversationRawHeader>> = [];
+            let bytes = 2;
+            for (const raw of source) {
+                const header = GoalProjectConversationCatalogHeaderSchema.parse(raw);
+                if (ids.has(header.id)) throw new Error('Conversation catalog contains duplicate session IDs');
+                ids.add(header.id);
+                if (!Number.isSafeInteger(raw.seq) || raw.seq < 0 || !Number.isFinite(raw.updatedAt) || raw.updatedAt < 0 || typeof raw.active !== 'boolean')
+                    throw new Error('Conversation catalog contains invalid session state');
+                // Reserve enough envelope space for the canonical project path and
+                // cursor. A single oversized header must never silently disappear.
+                if (Buffer.byteLength(JSON.stringify(header)) + Buffer.byteLength(projectPath) + 1024 >= PAGE_BYTES)
+                    throw new Error('Conversation catalog header exceeds the page byte limit');
+                const session = Object.freeze({ ...header, seq: raw.seq, updatedAt: raw.updatedAt, active: raw.active });
+                bytes += Buffer.byteLength(JSON.stringify(session)) + 1;
+                if (bytes > MAX_SNAPSHOT_BYTES) throw new Error('Conversation catalog snapshot byte limit exceeded');
+                sessions.push(session);
+            }
+            const pairs = sessions.map(row => [row.id, row.metadataVersion] as const).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+            const snapshot: Snapshot = { id: randomBytes(24).toString('base64url'), projectPath,
+                fingerprint: createHash('sha256').update(JSON.stringify(pairs)).digest('hex'),
+                expiresAt: now() + TTL, bytes, sessions: Object.freeze(sessions) };
+            prune();
+            while (snapshots.size && (snapshots.size >= 2 || [...snapshots.values()].reduce((total, item) => total + item.bytes, 0) + bytes > MAX_TOTAL_BYTES))
+                snapshots.delete(snapshots.keys().next().value!);
+            snapshots.set(snapshot.id, snapshot);
+            return snapshot;
+        })();
+        pending.set(projectPath, request);
+        try { return await request; } finally { if (pending.get(projectPath) === request) pending.delete(projectPath); }
+    };
+    return {
+        dispose() { disposed = true; snapshots.clear(); pending.clear(); },
+        async page(projectPath: string, input: { snapshotId?: string; cursor?: string }): Promise<GoalProjectConversationCatalogPage> {
+            if (input.cursor !== undefined && !input.snapshotId) throw new Error('A conversation catalog cursor requires its snapshot');
+            const snapshot = input.snapshotId ? get(projectPath, input.snapshotId) : await create(projectPath);
+            if (input.cursor !== undefined && !/^(0|[1-9]\d*)$/.test(input.cursor)) throw new Error('Invalid conversation catalog cursor');
+            const offset = input.cursor === undefined ? 0 : Number(input.cursor);
+            if (!Number.isSafeInteger(offset) || offset < 0 || (offset >= snapshot.sessions.length && offset !== 0)) throw new Error('Invalid conversation catalog cursor');
+            const result: GoalProjectConversationCatalogPage = { projectPath, snapshotId: snapshot.id, catalogFingerprint: snapshot.fingerprint,
+                total: snapshot.sessions.length, sessions: [], nextCursor: null, hasNext: false, expiresAt: snapshot.expiresAt };
+            let bytes = Buffer.byteLength(JSON.stringify(result));
+            for (let i = offset; i < snapshot.sessions.length; i++) {
+                const row = snapshot.sessions[i];
+                const header = { id: row.id, metadataVersion: row.metadataVersion!, metadata: row.metadata, dataEncryptionKey: row.dataEncryptionKey! };
+                const size = Buffer.byteLength(JSON.stringify(header)) + 1;
+                if (bytes + size + 128 >= PAGE_BYTES) break;
+                result.sessions.push(header); bytes += size;
+            }
+            const next = offset + result.sessions.length;
+            result.hasNext = next < snapshot.sessions.length;
+            result.nextCursor = result.hasNext ? String(next) : null;
+            if (result.hasNext && !result.sessions.length) throw new Error('Conversation catalog page did not advance');
+            if (Buffer.byteLength(JSON.stringify(result)) >= PAGE_BYTES) throw new Error('Conversation catalog page byte limit exceeded');
+            return result;
+        },
+        read(projectPath: string, snapshotId: string, fingerprint?: string) {
+            const snapshot = get(projectPath, snapshotId);
+            if (fingerprint !== snapshot.fingerprint) throw new Error('Conversation catalog snapshot fingerprint does not match');
+            return snapshot.sessions;
+        },
+    };
+}

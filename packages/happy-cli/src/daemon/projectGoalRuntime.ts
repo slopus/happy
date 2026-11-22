@@ -8,17 +8,48 @@ import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
 import type { ProjectGoalDependencies, ProjectSession } from '@/modules/goalBoard/projectService';
 import type { TrackedSession } from './types';
 import { independentTaskMessage } from './independentSessions';
+import { createProjectConversationCatalog, type ProjectConversationRawHeader } from './projectConversationCatalog';
 
-type HistorySession = { id: string; metadata: string; seq: number; updatedAt: number; active: boolean; metadataVersion?: number };
+type HistorySession = ProjectConversationRawHeader;
 
 /** Production relay adapter. Account keys remain in the daemon, never in Task receipts. */
 export function createProjectGoalRuntime(options: {
     serverUrl: string; token: string; machineId: string; legacyKey?: Uint8Array;
     findSession: (id: string) => TrackedSession | undefined;
-}): Pick<ProjectGoalDependencies, 'history' | 'send'> {
+    now?: () => number;
+}): Pick<ProjectGoalDependencies, 'history' | 'send' | 'conversationCatalog' | 'disposeConversationCatalog'> {
     const headers = { Authorization: `Bearer ${options.token}` };
     const encryptionFor = (id: string) => options.findSession(id)?.encryption ?? (options.legacyKey ? { encryptionKey: options.legacyKey, encryptionVariant: 'legacy' as const } : null);
+    const readCatalog = async (maxBytes?: number) => {
+        const sessions: HistorySession[] = [];
+        let bytes = 2;
+        let cursor: string | undefined;
+        const seenCursors = new Set<string>();
+        // Exhaust a finite catalog. V1's 150 recent sessions cannot prove
+        // that an older Task has never been executed. There are no timers.
+        do {
+            const response = await axios.get(`${options.serverUrl}/v2/sessions`, {
+                params: { limit: 200, ...(cursor ? { cursor } : {}) }, headers, timeout: 15000,
+            });
+            if (!Array.isArray(response.data.sessions)) throw new Error('Invalid session catalog');
+            for (const row of response.data.sessions) {
+                const header = { id: row.id, metadata: row.metadata, metadataVersion: row.metadataVersion,
+                    dataEncryptionKey: row.dataEncryptionKey ?? null, seq: row.seq, updatedAt: row.updatedAt, active: row.active };
+                bytes += Buffer.byteLength(JSON.stringify(header)) + 1;
+                if (maxBytes !== undefined && bytes > maxBytes) throw new Error('Conversation catalog snapshot byte limit exceeded');
+                sessions.push(header);
+            }
+            if (!response.data.hasNext) break;
+            const next = response.data.nextCursor;
+            if (typeof next !== 'string' || seenCursors.has(next) || sessions.length >= 20000) throw new Error('Full task history could not be verified');
+            seenCursors.add(next); cursor = next;
+        } while (cursor);
+        return sessions;
+    };
+    const catalog = createProjectConversationCatalog(() => readCatalog(64 * 1024 * 1024), options.now);
     return {
+        disposeConversationCatalog: () => catalog.dispose(),
+        conversationCatalog: (projectPath, input) => catalog.page(projectPath, input),
         send: async (sessionId, prompt, localId) => {
             const child = options.findSession(sessionId);
             if (!child?.encryption) throw new Error('Task session encryption is unavailable');
@@ -31,22 +62,9 @@ export function createProjectGoalRuntime(options: {
             if (!Array.isArray(response.data?.messages) || !response.data.messages.some((message: { localId?: unknown }) => message.localId === localId)) throw new Error('Task submission acknowledgement is missing');
         },
         history: async (featurePath, tasks, historyOptions) => {
-            const sessions: HistorySession[] = [];
-            let cursor: string | undefined;
-            const seenCursors = new Set<string>();
-            // Exhaust a finite catalog. V1's 150 recent sessions cannot prove
-            // that an older Task has never been executed. There are no timers.
-            do {
-                const response = await axios.get(`${options.serverUrl}/v2/sessions`, {
-                    params: { limit: 200, ...(cursor ? { cursor } : {}) }, headers, timeout: 15000,
-                });
-                if (!Array.isArray(response.data.sessions)) throw new Error('Invalid session catalog');
-                sessions.push(...response.data.sessions);
-                if (!response.data.hasNext) break;
-                const next = response.data.nextCursor;
-                if (typeof next !== 'string' || seenCursors.has(next) || sessions.length >= 20000) throw new Error('Full task history could not be verified');
-                seenCursors.add(next); cursor = next;
-            } while (cursor);
+            const sessions = historyOptions?.snapshotId
+                ? catalog.read(featurePath, historyOptions.snapshotId, historyOptions.catalogFingerprint)
+                : await readCatalog();
             const candidates = historyOptions?.headerCandidates;
             const candidateById = candidates ? new Map(candidates.map(candidate => [candidate.sessionId, candidate])) : undefined;
             if (candidates) {

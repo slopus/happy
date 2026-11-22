@@ -8,6 +8,7 @@ vi.mock('react-native-mmkv', () => ({ MMKV: class {
     getBoolean(key: string) { const value = this.store.get(key); return typeof value === 'boolean' ? value : undefined; }
     set(key: string, value: string | boolean) { this.store.set(key, value); }
     delete(key: string) { this.store.delete(key); }
+    clearAll() { this.store.clear(); }
 } }));
 beforeEach(() => { vi.resetModules(); state.account = 'A'; state.stores.clear(); });
 it('restores A draft after A → B → A and clears only the active draft', async () => {
@@ -17,6 +18,7 @@ it('restores A draft after A → B → A and clears only the active draft', asyn
     expect(draft.useComposeDraft.getState().text).toBe('');
     draft.useComposeDraft.getState().setText('B draft');
     draft.clearComposeDraft();
+    expect(draft.useComposeDraft.getState().text).toBe('');
     state.account = 'A'; vi.resetModules(); draft = await import('./composeDraft');
     expect(draft.useComposeDraft.getState().text).toBe('private A draft');
 });

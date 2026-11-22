@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { goalOutputRecognition, GoalProjectConversationCandidateSchema } from '@slopus/happy-wire';
-import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate } from '@slopus/happy-wire';
+import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate, GoalProjectConversationCatalogPage } from '@slopus/happy-wire';
 import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSummary, MAX_CATALOG, type CatalogRecord } from './catalog';
 import { digest, goalFileRevision, goalOf, titleOf, parseBoard, readBoundedFile } from './parser';
 import { goalBoardTaskPrompt } from './taskPrompt';
@@ -23,7 +23,9 @@ export type ProjectGoalDependencies = {
     observe?: boolean;
     spawn: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     send: (sessionId: string, prompt: string, localId: string) => Promise<void>;
-    history: (featurePath: string, tasks: Array<{ id: string; directory: string; title?: string; directories?: string[]; sessionIds?: string[]; featurePath?: string }>, options?: { headersOnly: true; headerCandidates?: GoalProjectConversationCandidate[]; catalogFingerprint?: string }) => Promise<ProjectSession[]>;
+    history: (featurePath: string, tasks: Array<{ id: string; directory: string; title?: string; directories?: string[]; sessionIds?: string[]; featurePath?: string }>, options?: { headersOnly: true; headerCandidates?: GoalProjectConversationCandidate[]; catalogFingerprint?: string; snapshotId?: string }) => Promise<ProjectSession[]>;
+    disposeConversationCatalog?: () => void;
+    conversationCatalog?: (projectPath: string, input: { snapshotId?: string; cursor?: string }) => Promise<GoalProjectConversationCatalogPage>;
     changed: () => void | Promise<void>;
     getArtifactStore?: () => Promise<import('../artifacts/store').ArtifactStore>;
 };
@@ -305,13 +307,24 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         const last = sessions.at(-1);
         return { success: true, sessions, ...(last && sessions.length < remaining.length ? { nextCursor: { sessionId: last.sessionId, updatedAt: last.updatedAt } } : {}) };
     };
+    const conversationCatalog = async (input: unknown) => {
+        if (disposed) throw new Error('Project workspace is closed');
+        const data = z.object({ projectPath: pathInput, snapshotId: z.string().min(1).max(128).optional(), cursor: z.string().max(32).optional() }).parse(input);
+        const projectPath = await realpath(data.projectPath);
+        const projects = await readProjects(await discoverRoots(deps.workingDirectory, deps.homeDirectory));
+        if (!projects.some(project => project.projectPath === projectPath)) throw new Error('Project is outside the authorized Goal catalog');
+        if (!deps.conversationCatalog) throw new Error('Conversation catalog snapshots are unavailable; update this machine CLI');
+        return deps.conversationCatalog(projectPath, { snapshotId: data.snapshotId, cursor: data.cursor });
+    };
     const conversations = async (input: unknown) => {
+        if (disposed) throw new Error('Project workspace is closed');
         const cursorSchema = z.object({ updatedAt: z.number(), sessionId: z.string().min(1).max(2048) });
         if (Buffer.byteLength(JSON.stringify(input)) > 512 * 1024) throw new Error('Conversation candidate request exceeds the byte limit');
         const data = z.object({ projectPath: pathInput, scopePath: pathInput.optional(), cursor: cursorSchema.optional(),
             candidates: z.array(GoalProjectConversationCandidateSchema).max(20000).optional(),
-            catalogFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-        }).refine(value => value.candidates === undefined || !!value.catalogFingerprint, 'A complete candidate catalog fingerprint is required').parse(input);
+            catalogFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(), catalogSnapshotId: z.string().min(1).max(128).optional(),
+        }).refine(value => value.candidates === undefined || !!value.catalogFingerprint, 'A complete candidate catalog fingerprint is required')
+            .refine(value => !value.catalogSnapshotId || value.candidates !== undefined, 'A conversation snapshot requires complete owner candidates').parse(input);
         if (data.cursor && !data.scopePath) throw new Error('Choose a conversation group for pagination');
         const projectPath = await realpath(data.projectPath);
         const projects = await readProjects(await discoverRoots(deps.workingDirectory, deps.homeDirectory));
@@ -331,7 +344,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             tasks.push({ ...item, descriptor: { ...await historyTask(item.task), featurePath: item.entry.featurePath } });
         }
         const descriptors = [...scopes.map(scope => ({ id: '', directory: scope.scopePath, title: scope.title, featurePath: scope.scopePath })), ...tasks.map(item => item.descriptor)];
-        const source = await deps.history(projectPath, descriptors, { headersOnly: true, ...(data.candidates ? { headerCandidates: data.candidates, catalogFingerprint: data.catalogFingerprint } : {}) });
+        const source = await deps.history(projectPath, descriptors, { headersOnly: true, ...(data.candidates ? { headerCandidates: data.candidates, catalogFingerprint: data.catalogFingerprint, ...(data.catalogSnapshotId ? { snapshotId: data.catalogSnapshotId } : {}) } : {}) });
         const grouped = new Map(scopes.map(scope => [scope.scopePath, new Map<string, GoalProjectConversation>()]));
         for (const session of source) {
             if (archived(session.metadata.lifecycleState)) continue;
@@ -543,7 +556,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             }
             return { success: true, projects: await readProjects(roots) };
         },
-        board, launch, files, approve, historyPage, overview, scopeHistory, conversations, resolveWorkspace,
+        board, launch, files, approve, historyPage, overview, scopeHistory, conversations, conversationCatalog, resolveWorkspace,
         author: async (input: unknown): Promise<SpawnSessionResult> => {
             const data = z.object({ scopePath: pathInput.optional(), requestId: z.string().min(1).max(128), agent: z.enum(['codex', 'claude']), codexSessionGrant: z.string().max(4096).optional() }).parse(input);
             const roots = await discoverRoots(deps.workingDirectory, deps.homeDirectory);
@@ -560,7 +573,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             if (result.type === 'success') await saveJSON(file, { requestId: data.requestId, sessionId: result.sessionId });
             return result;
         },
-        dispose() { disposed = true; for (const { watcher } of watchers.values()) watcher.close(); watchers.clear(); transfers.clear(); },
+        dispose() { disposed = true; deps.disposeConversationCatalog?.(); for (const { watcher } of watchers.values()) watcher.close(); watchers.clear(); transfers.clear(); },
     };
 }
 
@@ -572,6 +585,7 @@ export function registerProjectGoalHandlers(manager: { registerHandler(method: s
     manager.registerHandler('goalScopeRead', wrap(service.overview));
     manager.registerHandler('goalScopeHistory', wrap(service.scopeHistory));
     manager.registerHandler('goalProjectConversations', wrap(service.conversations));
+    manager.registerHandler('goalProjectConversationCatalog', wrap(service.conversationCatalog));
     manager.registerHandler('goalScopeListDirectory', wrap(input => service.files(input, 'list', true)));
     manager.registerHandler('goalScopeReadFile', wrap(input => service.files(input, 'read', true)));
     manager.registerHandler('goalScopeWriteFile', wrap(input => service.files(input, 'write', true)));

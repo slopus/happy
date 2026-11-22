@@ -41,7 +41,7 @@ vi.mock('@/sync/projectSessionLinks', () => ({
         mock.deletionListeners.add(listener); return () => { mock.deletionListeners.delete(listener); };
     },
 }));
-vi.mock('@/sync/projectConversationCandidates.web',()=>({loadProjectConversationCandidates:vi.fn().mockResolvedValue({candidates:[],catalogFingerprint:'a'.repeat(64)})}));
+vi.mock('@/sync/projectConversationCandidates.web',()=>({loadProjectConversationCandidates:vi.fn().mockResolvedValue({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'})}));
 vi.mock('@/sync/ops', () => ({ machineStartGoalAuthor: vi.fn() }));
 vi.mock('@/sync/projectGoals', () => ({
     projectGoalRequest: vi.fn(), canCreateProjectConversation: () => mock.canCreate,
@@ -52,6 +52,7 @@ vi.mock('@/components/fileWorkspace/context',()=>({useFileWorkspace:()=>({setMax
 vi.mock('@/components/PanelTabs', () => ({ PanelTabs: 'PanelTabs' }));
 
 import { projectGoalRequest } from '@/sync/projectGoals';
+import { loadProjectConversationCandidates } from '@/sync/projectConversationCandidates.web';
 import { machineStartGoalAuthor } from '@/sync/ops';
 import { ProjectConversationNavigationProvider } from './ProjectConversationNavigation.web';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel.web';
@@ -123,6 +124,7 @@ beforeEach(() => {
     mock.canCreate = true; mock.readOnly = false; mock.maximized = false; mock.width=1600;
     currentProps = { project, machineId: 'machine', agent: 'codex', offline: false, selectedId: 'global', onSelect: select };
     vi.mocked(projectGoalRequest).mockResolvedValue(response());
+    vi.mocked(loadProjectConversationCandidates).mockResolvedValue({ candidates: [], catalogFingerprint: 'a'.repeat(64), catalogSnapshotId: 'snapshot' });
     vi.mocked(machineStartGoalAuthor).mockResolvedValue({ type: 'success', sessionId: 'new-chat' });
 });
 afterEach(() => { if (renderer) act(() => { renderer.unmount(); }); renderer = undefined; });
@@ -130,7 +132,8 @@ afterEach(() => { if (renderer) act(() => { renderer.unmount(); }); renderer = u
 describe('project conversation navigation integration', () => {
     it('uses complete server totals and preserves task identity when navigating loaded history', async () => {
         await setup();
-        expect(projectGoalRequest).toHaveBeenCalledExactlyOnceWith('machine', 'goalProjectConversations', { projectPath: project.projectPath, candidates: [], catalogFingerprint: 'a'.repeat(64) });
+        expect(loadProjectConversationCandidates).toHaveBeenCalledExactlyOnceWith('machine', project.projectPath, { refresh: true });
+        expect(projectGoalRequest).toHaveBeenCalledExactlyOnceWith('machine', 'goalProjectConversations', { projectPath: project.projectPath, candidates: [], catalogFingerprint: 'a'.repeat(64), catalogSnapshotId: 'snapshot' });
         expect(button('project-conversations-filter-all').props.label).toBe('全部 33');
         expect(allText()).toContain('33 个会话 · 2 个子项目');
         await press('project-conversations-session-task-chat');
@@ -200,14 +203,27 @@ describe('project conversation navigation integration', () => {
         }]));
         await act(async () => { byLabel('加载更多历史').props.onPress(); });
         expect(projectGoalRequest).toHaveBeenLastCalledWith('machine', 'goalProjectConversations', {
-            projectPath: project.projectPath, scopePath: webPath, candidates: [], catalogFingerprint: 'a'.repeat(64), cursor: { updatedAt: 10, sessionId: 'task-chat' },
+            projectPath: project.projectPath, scopePath: webPath, candidates: [], catalogFingerprint: 'a'.repeat(64), catalogSnapshotId: 'snapshot', cursor: { updatedAt: 10, sessionId: 'task-chat' },
         });
+        expect(loadProjectConversationCandidates).toHaveBeenLastCalledWith('machine', project.projectPath, { refresh: false });
         expect(button('project-conversations-session-global')).toBeDefined();
         expect(button('project-conversations-session-older')).toBeDefined();
         expect(renderer.root.findAllByType('Button').filter((node: any) => node.props.testID === 'project-conversations-session-task-chat')).toHaveLength(1);
         expect(button('project-conversations-session-task-chat').props.label).toContain('Updated task title');
         expect(button('project-conversations-filter-all').props.label).toBe('全部 33');
         expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === '加载更多历史')).toBe(false);
+    });
+
+    it('replaces old groups instead of applying an old history cursor to a renewed snapshot', async () => {
+        await setup();
+        vi.mocked(loadProjectConversationCandidates).mockResolvedValue({ candidates: [], catalogFingerprint: 'b'.repeat(64), catalogSnapshotId: 'renewed' });
+        vi.mocked(projectGoalRequest).mockResolvedValue(response(groups().map(group => ({ ...group, total: 0, sessions: [], nextCursor: undefined }))));
+        await act(async () => { byLabel('加载更多历史').props.onPress(); });
+        expect(projectGoalRequest).toHaveBeenLastCalledWith('machine', 'goalProjectConversations', {
+            projectPath: project.projectPath, candidates: [], catalogFingerprint: 'b'.repeat(64), catalogSnapshotId: 'renewed',
+        });
+        expect(button('project-conversations-filter-all').props.label).toBe('全部 0');
+        expect(renderer.root.findAllByType('Button').some((node: any) => node.props.testID === 'project-conversations-session-task-chat')).toBe(false);
     });
 
     it('uses canonical live outcomes and never treats cold executed history as completed', async () => {

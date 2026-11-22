@@ -57,7 +57,7 @@ async function sendProjectGoalRequest<T>(machineId: string, method: string, inpu
 // Identical concurrent reads share one encrypted request; no timer or polling.
 const projectReads = new Map<string, Promise<unknown>>();
 export function projectGoalRequest<T>(machineId: string, method: string, input: unknown, readVersion?: string): Promise<T> {
-    if (!['goalProjects', 'goalProjectRead', 'goalTaskHistory', 'goalScopeRead', 'goalScopeHistory', 'goalProjectConversations', 'goalResolveWorkspace'].includes(method)) return sendProjectGoalRequest<T>(machineId, method, input);
+    if (!['goalProjects', 'goalProjectRead', 'goalTaskHistory', 'goalScopeRead', 'goalScopeHistory', 'goalProjectConversations', 'goalProjectConversationCatalog', 'goalResolveWorkspace'].includes(method)) return sendProjectGoalRequest<T>(machineId, method, input);
     const key = JSON.stringify([owner(), isReadOnlyProjectPreview(), machineId, method, input, readVersion]);
     const existing = projectReads.get(key);
     if (existing) return existing as Promise<T>;

@@ -141,6 +141,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
         focus = React.useRef(0);
     const refreshRequested = React.useRef(false),
         reread = React.useRef<(() => void) | undefined>(undefined);
+    const catalogSnapshot = React.useRef<string | undefined>(undefined);
     const selection = React.useRef(props.selectedId);
     const location = React.useRef(props.locationKey);
     location.current = props.locationKey;
@@ -176,16 +177,20 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             setLoading(true);
             setError(undefined);
             try {
-                const catalog = await loadProjectConversationCandidates(machineId);
+                const catalog = await loadProjectConversationCandidates(machineId, path, { refresh: !scopePath });
                 if (!alive.current || epoch.current !== request || getRuntimeAccountSelection() !== account) return;
-                const input = { projectPath: path, ...catalog, ...(scopePath ? { scopePath, cursor } : {}) };
+                // A cursor belongs to the snapshot that produced the current
+                // groups. A renewed/evicted catalog needs a complete replacement.
+                const pageScope = scopePath && catalog.catalogSnapshotId === catalogSnapshot.current ? scopePath : undefined;
+                const input = { projectPath: path, ...catalog, ...(pageScope ? { scopePath: pageScope, cursor } : {}) };
                 if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 512 * 1024)
                     throw new Error('Complete project history exceeds the request size limit');
                 const result = GoalProjectConversationsSchema.parse(await projectGoalRequest(machineId, 'goalProjectConversations', input));
                 if (!alive.current || epoch.current !== request || getRuntimeAccountSelection() !== account) return;
                 if (result.projectPath !== path) throw new Error('Project conversation scope changed');
+                catalogSnapshot.current = catalog.catalogSnapshotId;
                 setGroups((previous) => {
-                    const next: ConversationGroup[] = scopePath
+                    const next: ConversationGroup[] = pageScope
                         ? previous.map((g) => {
                               const page = result.groups.find((p) => p.scopePath === g.scopePath);
                               return page

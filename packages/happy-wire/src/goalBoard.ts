@@ -57,6 +57,17 @@ export const GoalProjectConversationCandidateSchema = z.object({
     featurePath: path.optional(), taskId: label.optional(), lifecycleState: z.string().max(64).optional(),
 }).refine(value => !value.taskId || !!value.featurePath, 'A task candidate needs its feature path');
 export type GoalProjectConversationCandidate = z.infer<typeof GoalProjectConversationCandidateSchema>;
+/** Ciphertext-only projection of a finite, immutable daemon catalog. */
+export const GoalProjectConversationCatalogHeaderSchema = z.object({
+    id: label.min(1), metadataVersion: z.number().int().nonnegative(), metadata: z.string().min(1).base64(),
+    dataEncryptionKey: z.string().min(1).base64().nullable(),
+});
+export const GoalProjectConversationCatalogPageSchema = z.object({
+    projectPath: path, snapshotId: z.string().min(1).max(128), catalogFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    total: z.number().int().nonnegative().max(20000), sessions: z.array(GoalProjectConversationCatalogHeaderSchema).max(20000),
+    nextCursor: z.string().max(32).nullable(), hasNext: z.boolean(), expiresAt: z.number().int().nonnegative(),
+});
+export type GoalProjectConversationCatalogPage = z.infer<typeof GoalProjectConversationCatalogPageSchema>;
 /** Complete group totals accompany bounded, independently paginated session headers. */
 export const GoalProjectConversationSchema = GoalTaskSessionSchema.extend({ taskId: label.optional() });
 export type GoalProjectConversation = z.infer<typeof GoalProjectConversationSchema>;

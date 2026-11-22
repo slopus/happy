@@ -118,3 +118,18 @@ it.each(['created', 'deleted', 'metadata-rebound'])('rejects a cross-snapshot %s
     await expect(createProjectGoalRuntime({ serverUrl: 'http://relay.test', token: 'owner-token', machineId: 'machine', findSession: () => undefined })
         .history('/archive', [], { headersOnly: true, headerCandidates: [], catalogFingerprint: catalogFingerprint(before) })).rejects.toThrow('Session catalog changed');
 });
+
+it('uses one immutable catalog for page and final conversation reads without a second relay read', async () => {
+    const raw = { ...row('owned-snapshot', 2), metadataVersion: 4, dataEncryptionKey: null };
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [raw], hasNext: false } });
+    const adapter = createProjectGoalRuntime({ serverUrl: 'http://relay.test', token: 'owner-token', machineId: 'machine', findSession: () => undefined });
+    const page = await adapter.conversationCatalog!('/archive/feature', {});
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [{ ...raw, metadataVersion: 99, updatedAt: 999 }, { ...raw, id: 'new-session' }], hasNext: false } });
+    const result = await adapter.history('/archive/feature', [{ id: 'task', directory: metadata.path }], { headersOnly: true, snapshotId: page.snapshotId,
+        catalogFingerprint: page.catalogFingerprint, headerCandidates: [{ sessionId: raw.id, metadataVersion: 4, directory: metadata.path, title: 'Frozen title' }] });
+    expect(result.map(item => [item.sessionId, item.updatedAt])).toEqual([['owned-snapshot', 1]]);
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    await expect(adapter.history('/other', [], { headersOnly: true, snapshotId: page.snapshotId, catalogFingerprint: page.catalogFingerprint, headerCandidates: [] })).rejects.toThrow('another project');
+    adapter.disposeConversationCatalog!();
+    await expect(adapter.conversationCatalog!('/archive/feature', { snapshotId: page.snapshotId })).rejects.toThrow('disposed');
+});
