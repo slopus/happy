@@ -19,6 +19,7 @@ import type {
     ThreadGoal,
 } from './codexAppServerTypes';
 import { setCodexServiceTier } from './codexServiceTier';
+import { isReasoningEffort } from './reasoningEffort';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
@@ -611,10 +612,6 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
 
-    const VALID_REMOTE_EFFORTS: readonly ReasoningEffort[] = [
-        'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
-    ];
-
     // Handle file events — each download promise resolves to its own decoded
     // attachment (or null). drainAttachmentsForUserMessage on the next text
     // claims the in-flight set atomically; mirrors the Claude path so images
@@ -701,7 +698,7 @@ export async function runCodex(opts: {
                     messageEffort = undefined;
                     currentEffort = undefined;
                     logger.debug(`[Codex] Effort reset to default`);
-                } else if (typeof incoming === 'string' && (VALID_REMOTE_EFFORTS as readonly string[]).includes(incoming)) {
+                } else if (isReasoningEffort(incoming)) {
                     messageEffort = incoming as ReasoningEffort;
                     currentEffort = messageEffort;
                     logger.debug(`[Codex] Effort updated from user message: ${messageEffort}`);

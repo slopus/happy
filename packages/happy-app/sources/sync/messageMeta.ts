@@ -61,7 +61,11 @@ export function resolveMessageModeMeta(
         meta.effort = effort === 'default' ? null : effort;
     }
 
-    if (supportsCodexFast(session.metadata, modelMode) && session.fastMode !== undefined && session.fastMode !== null) {
+    // A new session can be hydrated before its model catalog arrives. Keep the
+    // explicit selection made against the machine catalog instead of silently
+    // sending the first turn at Standard speed. A loaded catalog remains authoritative.
+    const fastCatalogPending = flavor === 'codex' && !session.metadata?.models?.length;
+    if ((fastCatalogPending || supportsCodexFast(session.metadata, modelMode)) && session.fastMode !== undefined && session.fastMode !== null) {
         meta.fast = session.fastMode;
     }
 

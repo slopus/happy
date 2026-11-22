@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { readFileSync, renameSync } from 'node:fs';
 import { setCodexServiceTier } from './codexServiceTier';
+import { isReasoningEffort } from './reasoningEffort';
 import { CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_HTTP_PROVIDER, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_OVERRIDES } from './codexAccountConfig';
 import { createServer, type Server } from 'node:http';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -1150,7 +1151,8 @@ describe('CodexAppServerClient sandbox integration', () => {
                 await client.startThread(threadOptions);
                 metadata = { ...metadata, codexThreadId: client.threadId! };
             }
-            await client.sendTurn('first message', { images: [{ type: 'localImage', path: '/test/image.png' }] });
+            const incomingEffort: unknown = 'max';
+            await client.sendTurn('first message', { effort: isReasoningEffort(incomingEffort) ? incomingEffort : undefined, images: [{ type: 'localImage', path: '/test/image.png' }] });
         };
         try {
             await client.connect();
@@ -1160,6 +1162,7 @@ describe('CodexAppServerClient sandbox integration', () => {
                 expect(metadata).toEqual({ codexThreadId: undefined, unrelated: 'preserved' });
             }
             await sendFirstMessage();
+            expect(requests.find(request => request.method === 'turn/start')?.params.effort).toBe('max');
             expect(acceptedInputs).toEqual([[{ type: 'localImage', path: '/test/image.png' }, { type: 'text', text: 'first message' }]]);
             expect(requests.some(request => request.method === 'thread/resume')).toBe(false);
             expect(requests.filter(request => request.method === 'turn/start').map(request => request.params.threadId))

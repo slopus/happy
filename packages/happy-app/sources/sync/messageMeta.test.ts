@@ -74,6 +74,18 @@ describe('resolveMessageModeMeta', () => {
         } as any)).toMatchObject({ fast: false });
     });
 
+    it.each([undefined, []])('preserves an explicit Fast selection while the new-session model catalog is loading (%j)', (models) => {
+        expect(resolveMessageModeMeta({
+            modelMode: 'gpt-6.1-sol', effortLevel: 'max', fastMode: true,
+            metadata: { flavor: 'codex', models },
+        } as any)).toMatchObject({ model: 'gpt-6.1-sol', effort: 'max', fast: true });
+    });
+
+    it('does not invent Fast while the model catalog is loading', () => {
+        expect(resolveMessageModeMeta({ metadata: { flavor: 'codex' } } as any)).not.toHaveProperty('fast');
+        expect(resolveMessageModeMeta({ metadata: { flavor: 'claude' }, fastMode: true } as any)).not.toHaveProperty('fast');
+    });
+
     it('does not send a stale Fast override for a model without the priority tier', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,
