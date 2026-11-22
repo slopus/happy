@@ -25,22 +25,188 @@ describe('immutable project conversation catalogs', () => {
         now = first.expiresAt; await expect(store.page('/project', { snapshotId: first.snapshotId })).rejects.toThrow('expired');
         expect(() => store.read('/project', first.snapshotId, first.catalogFingerprint)).toThrow('expired');
     });
-    it('retains at most two snapshots and explicitly rejects an evicted token', async () => {
-        const store = createProjectConversationCatalog(async () => [row('a')]);
-        const a = await store.page('/a', {}), b = await store.page('/b', {}), c = await store.page('/c', {});
-        expect(new Set([a.snapshotId, b.snapshotId, c.snapshotId]).size).toBe(3);
-        await expect(store.page('/a', { snapshotId: a.snapshotId })).rejects.toThrow('unavailable');
-        expect((await store.page('/b', { snapshotId: b.snapshotId })).total).toBe(1);
+    it.each(['ciphertext', 'manifest'] as const)('keeps issued %s tokens readable when a third small catalog is created', async format => {
+        let now = 1000;
+        const rows = [row('a', Buffer.alloc(110 * 1024, 1).toString('base64')), row('b', Buffer.alloc(110 * 1024, 2).toString('base64'))];
+        const store = createProjectConversationCatalog(async () => rows, () => now);
+        const first = await store.page('/a', format === 'manifest' ? { format } : {});
+        const second = await store.page('/b', {});
+        now += 20_000;
+        const third = await store.page('/c', {});
+        expect(new Set([first.snapshotId, second.snapshotId, third.snapshotId]).size).toBe(3);
+        // A manifest still needs its token for selected ciphertext and grouping.
+        const selected = await store.page('/a', { snapshotId: first.snapshotId, sessionIds: ['b'] });
+        expect(selected.sessions.map(item => item.id)).toEqual(['b']);
+        expect(selected.expiresAt).toBe(301000);
+        for (const [project, snapshot] of [['/a', first], ['/b', second], ['/c', third]] as const)
+            expect(store.read(project, snapshot.snapshotId, snapshot.catalogFingerprint).map(item => item.id)).toEqual(['a', 'b']);
     });
-    it('shares a pending same-project load and bounds concurrent catalog reservations', async () => {
+    it('reserves worst-case pending bytes without evicting a published token, then converts the reservation to actual bytes', async () => {
+        let resolve!: (rows: ProjectConversationRawHeader[]) => void;
+        let loads = 0;
+        const store = createProjectConversationCatalog(() => {
+            loads++;
+            return loads === 2 ? new Promise<ProjectConversationRawHeader[]>(done => { resolve = done; }) : Promise.resolve([row('a')]);
+        });
+        const first = await store.page('/a', {});
+        const pending = store.page('/b', {});
+        const excess = store.page('/c', {}).then(value => value, error => error);
+        const firstAgain = store.page('/a', { snapshotId: first.snapshotId }).then(value => value, error => error);
+        resolve([row('b')]);
+        const second = await pending;
+        expect(await firstAgain).toMatchObject({ sessions: [{ id: 'a' }] });
+        expect(await excess).toBeInstanceOf(Error);
+        expect((await excess).message).toMatch(/busy/);
+        expect(loads).toBe(2);
+        const third = await store.page('/c', {});
+        expect(store.read('/b', second.snapshotId, second.catalogFingerprint).map(item => item.id)).toEqual(['b']);
+        expect(store.read('/c', third.snapshotId, third.catalogFingerprint).map(item => item.id)).toEqual(['a']);
+    });
+    it('bounds small resident snapshots by count without revoking any of the issued tokens', async () => {
+        const load = vi.fn(async () => [row('a')]), store = createProjectConversationCatalog(load);
+        const pages = [];
+        for (let index = 0; index < 32; index++) pages.push(await store.page('/project', {}));
+        const excess = await store.page('/project', {}).then(value => value, error => error);
+        for (const page of pages) expect(store.read('/project', page.snapshotId, page.catalogFingerprint)).toHaveLength(1);
+        expect(excess).toBeInstanceOf(Error); expect(excess.message).toMatch(/busy/);
+        expect(load).toHaveBeenCalledTimes(32);
+        expect(store.release('/project', pages[0].snapshotId)).toBe(true);
+        const next = await store.page('/project', {});
+        expect(store.read('/project', next.snapshotId, next.catalogFingerprint)).toHaveLength(1);
+    });
+    it('reclaims expired capacity without renewing an unexpired same-project token', async () => {
+        let now = 1000;
+        const store = createProjectConversationCatalog(async () => [row('a')], () => now);
+        const first = await store.page('/project', {});
+        now += 20_000;
+        const second = await store.page('/project', {});
+        expect(second.snapshotId).not.toBe(first.snapshotId);
+        now = first.expiresAt;
+        const third = await store.page('/project', {});
+        expect(third.snapshotId).not.toBe(second.snapshotId);
+        await expect(store.page('/project', { snapshotId: first.snapshotId })).rejects.toThrow('expired');
+        expect((await store.page('/project', { snapshotId: second.snapshotId })).expiresAt).toBe(321000);
+        expect(store.read('/project', third.snapshotId, third.catalogFingerprint)).toHaveLength(1);
+    });
+    it('releases a failed creation reservation while preserving an existing token', async () => {
+        let loads = 0;
+        const store = createProjectConversationCatalog(async () => {
+            loads++;
+            return loads === 2 ? [{ ...row('bad'), metadata: '' }] : [row('a')];
+        });
+        const first = await store.page('/a', {});
+        await expect(store.page('/b', {})).rejects.toThrow();
+        const second = await store.page('/c', {});
+        expect(store.read('/a', first.snapshotId, first.catalogFingerprint).map(item => item.id)).toEqual(['a']);
+        expect(store.read('/c', second.snapshotId, second.catalogFingerprint).map(item => item.id)).toEqual(['a']);
+    });
+    it('releases only the requested snapshot and makes repeated or unknown releases harmless', async () => {
+        const store = createProjectConversationCatalog(async () => [row('a')]);
+        const first = await store.page('/project', {}), second = await store.page('/project', {});
+        expect(store.release('/project', first.snapshotId)).toBe(true);
+        expect(store.release('/project', first.snapshotId)).toBe(false);
+        expect(store.release('/project', 'unknown')).toBe(false);
+        await expect(store.page('/project', { snapshotId: first.snapshotId })).rejects.toThrow('unavailable');
+        expect(store.read('/project', second.snapshotId, second.catalogFingerprint)).toHaveLength(1);
+    });
+    it('refuses cross-project release without altering the valid owner token and isolates runtimes', async () => {
+        const store = createProjectConversationCatalog(async () => [row('a')]);
+        const first = await store.page('/project', {});
+        expect(store.release('/other', first.snapshotId)).toBe(false);
+        const other = createProjectConversationCatalog(async () => [row('b')]);
+        expect(other.release('/project', first.snapshotId)).toBe(false);
+        expect(store.read('/project', first.snapshotId, first.catalogFingerprint)).toHaveLength(1);
+    });
+    it('returns false for an expired release and rejects release after disposal', async () => {
+        let now = 1000;
+        const store = createProjectConversationCatalog(async () => [row('a')], () => now);
+        const first = await store.page('/project', {});
+        now = first.expiresAt;
+        expect(store.release('/project', first.snapshotId)).toBe(false);
+        store.dispose();
+        expect(() => store.release('/project', first.snapshotId)).toThrow('disposed');
+    });
+    it('makes released bytes immediately available to another worst-case pending load', async () => {
+        const resolvers: Array<(rows: ProjectConversationRawHeader[]) => void> = [];
+        let loads = 0;
+        const store = createProjectConversationCatalog(() => ++loads === 1 ? Promise.resolve([row('a')])
+            : new Promise<ProjectConversationRawHeader[]>(resolve => { resolvers.push(resolve); }));
+        const first = await store.page('/a', {}), pending = store.page('/b', {});
+        const excess = await store.page('/c', {}).then(value => value, error => error);
+        expect(excess).toBeInstanceOf(Error); expect(excess.message).toMatch(/busy/);
+        expect(store.release('/a', first.snapshotId)).toBe(true);
+        const retry = store.page('/c', {});
+        expect(resolvers).toHaveLength(2);
+        resolvers.forEach(resolve => resolve([row('next')]));
+        const [second, third] = await Promise.all([pending, retry]);
+        expect(store.read('/b', second.snapshotId, second.catalogFingerprint)).toHaveLength(1);
+        expect(store.read('/c', third.snapshotId, third.catalogFingerprint)).toHaveLength(1);
+    });
+    it('does not cancel a pending same-project fresh load when releasing its earlier token', async () => {
+        let resolve!: (rows: ProjectConversationRawHeader[]) => void;
+        let loads = 0;
+        const store = createProjectConversationCatalog(() => ++loads === 1 ? Promise.resolve([row('first')])
+            : new Promise<ProjectConversationRawHeader[]>(done => { resolve = done; }));
+        const first = await store.page('/project', {}), pending = store.page('/project', {});
+        expect(store.release('/project', first.snapshotId)).toBe(true);
+        resolve([row('fresh')]);
+        const fresh = await pending;
+        expect(store.read('/project', fresh.snapshotId, fresh.catalogFingerprint).map(item => item.id)).toEqual(['fresh']);
+    });
+    it('shares pending same-project I/O while issuing independent reader tokens and bounding reservations', async () => {
         let resolve!: (value: ProjectConversationRawHeader[]) => void;
         const load = vi.fn(() => new Promise<ProjectConversationRawHeader[]>(r => { resolve = r; }));
         const store = createProjectConversationCatalog(load), first = store.page('/a', {}), same = store.page('/a', {});
-        expect(load).toHaveBeenCalledTimes(1); resolve([row('a')]); expect((await first).snapshotId).toBe((await same).snapshotId);
+        expect(load).toHaveBeenCalledTimes(1); resolve([row('a')]); expect((await first).snapshotId).not.toBe((await same).snapshotId);
         const resolvers: Array<(value: ProjectConversationRawHeader[]) => void> = [];
         const busy = createProjectConversationCatalog(() => new Promise(r => resolvers.push(r)));
         const one = busy.page('/a', {}), two = busy.page('/b', {}); await expect(busy.page('/c', {})).rejects.toThrow('busy');
         resolvers.forEach(r => r([row('a')])); await Promise.all([one, two]);
+    });
+    it('releasing one concurrent same-project reader cannot revoke another reader token', async () => {
+        let resolve!: (rows: ProjectConversationRawHeader[]) => void;
+        const load = vi.fn(() => new Promise<ProjectConversationRawHeader[]>(done => { resolve = done; }));
+        const store = createProjectConversationCatalog(load);
+        const firstRead = store.page('/project', { format: 'manifest' });
+        const secondRead = store.page('/project', {});
+        resolve([row('a'), row('b')]);
+        const [first, second] = await Promise.all([firstRead, secondRead]);
+        expect(load).toHaveBeenCalledTimes(1);
+        expect(store.release('/project', first.snapshotId)).toBe(true);
+        expect(store.release('/project', first.snapshotId)).toBe(false);
+        const selected = await store.page('/project', { snapshotId: second.snapshotId, sessionIds: ['b'] });
+        expect(selected.sessions.map(item => item.id)).toEqual(['b']);
+        const manifest = await store.page('/project', { snapshotId: second.snapshotId, format: 'manifest' });
+        expect(manifest.sessions.map(item => item.id)).toEqual(['a', 'b']);
+        expect(store.read('/project', second.snapshotId, second.catalogFingerprint).map(item => item.id)).toEqual(['a', 'b']);
+    });
+    it('reserves a worst-case slot for each same-project reader even when their source I/O is shared', async () => {
+        let resolve!: (rows: ProjectConversationRawHeader[]) => void;
+        const load = vi.fn(() => new Promise<ProjectConversationRawHeader[]>(done => { resolve = done; }));
+        const store = createProjectConversationCatalog(load);
+        const one = store.page('/project', {}), two = store.page('/project', {});
+        const excess = store.page('/project', {}).then(value => value, error => error);
+        resolve([row('a')]);
+        const [first, second] = await Promise.all([one, two]);
+        expect(load).toHaveBeenCalledTimes(1);
+        expect(await excess).toBeInstanceOf(Error); expect((await excess).message).toMatch(/busy/);
+        expect(first.snapshotId).not.toBe(second.snapshotId);
+        expect(store.read('/project', first.snapshotId, first.catalogFingerprint)).toHaveLength(1);
+        expect(store.read('/project', second.snapshotId, second.catalogFingerprint)).toHaveLength(1);
+    });
+    it('clears every failed shared reader reservation before the same project retries', async () => {
+        let reject!: (reason: Error) => void;
+        const load = vi.fn<() => Promise<ProjectConversationRawHeader[]>>()
+            .mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }))
+            .mockResolvedValue([row('retry')]);
+        const store = createProjectConversationCatalog(load);
+        const first = store.page('/project', {}), second = store.page('/project', {});
+        const results = Promise.allSettled([first, second]);
+        reject(new Error('Source request failed'));
+        expect((await results).map(result => result.status)).toEqual(['rejected', 'rejected']);
+        const retry = await store.page('/project', {});
+        expect(store.read('/project', retry.snapshotId, retry.catalogFingerprint).map(item => item.id)).toEqual(['retry']);
+        expect(load).toHaveBeenCalledTimes(2);
     });
     it('rejects duplicate identities, malformed metadata/version and oversized headers', async () => {
         for (const rows of [[row('a'), row('a')], [{ ...row('a'), metadata: '' }], [{ ...row('a'), metadataVersion: -1 }], [row('large', Buffer.alloc(200 * 1024).toString('base64'))]])

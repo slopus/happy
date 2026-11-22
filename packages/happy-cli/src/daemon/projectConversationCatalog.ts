@@ -6,6 +6,7 @@ export type ProjectConversationRawHeader = {
     seq: number; updatedAt: number; active: boolean;
 };
 const MAX_RECORDS = 20000, MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024, MAX_TOTAL_BYTES = 128 * 1024 * 1024;
+const MAX_SNAPSHOTS = 32;
 const PAGE_BYTES = 256 * 1024, TTL = 5 * 60 * 1000;
 type Snapshot = {
     id: string; projectPath: string; fingerprint: string; expiresAt: number; bytes: number;
@@ -14,31 +15,46 @@ type Snapshot = {
 };
 
 /** This store belongs to one daemon account/machine runtime. Tokens never cross
- * that closure or persist. Expiration and eviction happen only on user reads. */
+ * that closure or persist. Expiration is checked only on user reads; a new
+ * creation never evicts a token before its advertised expiry. */
 export function createProjectConversationCatalog(load: () => Promise<ProjectConversationRawHeader[]>, now: () => number = Date.now) {
     let disposed = false;
     const assertActive = () => { if (disposed) throw new Error('Conversation catalog runtime is disposed'); };
     const snapshots = new Map<string, Snapshot>();
-    const pending = new Map<string, Promise<Snapshot>>();
+    const pendingLoads = new Map<string, Promise<ProjectConversationRawHeader[]>>();
+    const pendingReaders = new Set<symbol>();
     const prune = () => { for (const [id, snapshot] of snapshots) if (snapshot.expiresAt <= now()) snapshots.delete(id); };
+    const residentBytes = () => [...snapshots.values()].reduce((total, snapshot) => total + snapshot.bytes, 0);
+    const busy = () => new Error('Conversation catalog creation is busy; retry after the current read');
     const get = (projectPath: string, id: string) => {
         assertActive(); prune();
         const value = snapshots.get(id);
         if (!value || value.projectPath !== projectPath) throw new Error('Conversation catalog snapshot is expired, unavailable, or belongs to another project; refresh conversations');
         return value;
     };
+    const loadHeaders = (projectPath: string) => {
+        const existing = pendingLoads.get(projectPath);
+        if (existing) return existing;
+        let resolveSource!: (source: ProjectConversationRawHeader[]) => void, rejectSource!: (reason: unknown) => void;
+        const request = new Promise<ProjectConversationRawHeader[]>((resolve, reject) => { resolveSource = resolve; rejectSource = reject; });
+        // Register before invoking the source so simultaneous readers share only
+        // its I/O, never ownership of the token that a reader may release.
+        pendingLoads.set(projectPath, request);
+        const clear = () => { if (pendingLoads.get(projectPath) === request) pendingLoads.delete(projectPath); };
+        void (async () => load())().then(source => { clear(); resolveSource(source); }, error => { clear(); rejectSource(error); });
+        return request;
+    };
     const create = async (projectPath: string) => {
         assertActive();
-        const existing = pending.get(projectPath);
-        if (existing) return existing;
         prune();
-        // Reserve maximum-sized slots before I/O, including pending reads.
-        while (snapshots.size + pending.size >= 2) {
-            if (!snapshots.size) throw new Error('Conversation catalog creation is busy; retry after the current read');
-            snapshots.delete(snapshots.keys().next().value!);
-        }
-        const request = (async () => {
-            const source = await load();
+        // Every reader receives its own immutable snapshot. Reserve its maximum
+        // payload before I/O even when another reader shares the source load.
+        if (snapshots.size + pendingReaders.size >= MAX_SNAPSHOTS
+            || residentBytes() + (pendingReaders.size + 1) * MAX_SNAPSHOT_BYTES > MAX_TOTAL_BYTES) throw busy();
+        const reader = Symbol();
+        pendingReaders.add(reader);
+        try {
+            const source = await loadHeaders(projectPath);
             assertActive();
             if (source.length > MAX_RECORDS) throw new Error('Conversation catalog record limit exceeded');
             const ids = new Set<string>(), sessions: Array<Readonly<ProjectConversationRawHeader>> = [];
@@ -63,13 +79,13 @@ export function createProjectConversationCatalog(load: () => Promise<ProjectConv
                 fingerprint: createHash('sha256').update(JSON.stringify(pairs)).digest('hex'),
                 expiresAt: now() + TTL, bytes, sessions: Object.freeze(sessions), byId: new Map(sessions.map(row => [row.id, row])) };
             prune();
-            while (snapshots.size && (snapshots.size >= 2 || [...snapshots.values()].reduce((total, item) => total + item.bytes, 0) + bytes > MAX_TOTAL_BYTES))
-                snapshots.delete(snapshots.keys().next().value!);
+            if (snapshots.size + pendingReaders.size > MAX_SNAPSHOTS
+                || residentBytes() + bytes + (pendingReaders.size - 1) * MAX_SNAPSHOT_BYTES > MAX_TOTAL_BYTES) throw busy();
+            // Convert this reservation into its actual resident size atomically.
+            pendingReaders.delete(reader);
             snapshots.set(snapshot.id, snapshot);
             return snapshot;
-        })();
-        pending.set(projectPath, request);
-        try { return await request; } finally { if (pending.get(projectPath) === request) pending.delete(projectPath); }
+        } finally { pendingReaders.delete(reader); }
     };
     type PageInput = { snapshotId?: string; cursor?: string; format?: 'manifest'; sessionIds?: string[] };
     function page(projectPath: string, input: PageInput & { format: 'manifest' }): Promise<GoalProjectConversationCatalogManifestPage>;
@@ -123,8 +139,15 @@ export function createProjectConversationCatalog(load: () => Promise<ProjectConv
         return result;
     }
     return {
-        dispose() { disposed = true; snapshots.clear(); pending.clear(); },
+        dispose() { disposed = true; snapshots.clear(); pendingLoads.clear(); pendingReaders.clear(); },
         page,
+        release(projectPath: string, snapshotId: string): boolean {
+            assertActive(); prune();
+            const snapshot = snapshots.get(snapshotId);
+            if (!snapshot || snapshot.projectPath !== projectPath) return false;
+            snapshots.delete(snapshotId);
+            return true;
+        },
         read(projectPath: string, snapshotId: string, fingerprint?: string) {
             const snapshot = get(projectPath, snapshotId);
             if (fingerprint !== snapshot.fingerprint) throw new Error('Conversation catalog snapshot fingerprint does not match');

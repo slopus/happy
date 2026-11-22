@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { watch } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createProjectGoalService, type ProjectGoalDependencies, type ProjectSession } from './projectService';
+import { createProjectGoalService, registerProjectGoalHandlers, type ProjectGoalDependencies, type ProjectSession } from './projectService';
 import { ArtifactStore } from '../artifacts/store';
 import * as parser from './parser';
 import { writeGoalDeliveryAgreement } from '@slopus/happy-wire';
@@ -631,4 +631,60 @@ it('authorizes and forwards catalog manifest and bounded deduplicated ciphertext
         ]) await expect(service.conversationCatalog({ projectPath, ...extra })).rejects.toThrow();
         expect(conversationCatalog).toHaveBeenCalledTimes(2);
     } finally { service.dispose(); }
+});
+
+
+describe('catalog snapshot release', () => {
+    it('authorizes and canonicalizes the project before delegating release', async () => {
+        const released: Array<[string, string]> = [];
+        const f = await fixture({ releaseConversationCatalog: async (projectPath, snapshotId) => { released.push([projectPath, snapshotId]); return true; } });
+        const projectPath = join(f.root, 'p'), alias = join(f.home, 'project-alias');
+        await symlink(projectPath, alias);
+        await expect(f.service.conversationCatalogRelease({ projectPath: f.feature, snapshotId: 'owned' })).rejects.toThrow('authorized');
+        expect(released).toEqual([]);
+        expect(await f.service.conversationCatalogRelease({ projectPath: alias, snapshotId: 'owned' })).toEqual({ success: true, released: true });
+        expect(released).toEqual([[projectPath, 'owned']]);
+    });
+    it('returns an idempotent false result without disclosing unavailable tokens', async () => {
+        const f = await fixture({ releaseConversationCatalog: async () => false });
+        expect(await f.service.conversationCatalogRelease({ projectPath: join(f.root, 'p'), snapshotId: 'unknown-or-foreign' })).toEqual({ success: true, released: false });
+    });
+    it.each([undefined, '', 'x'.repeat(129)])('rejects a missing or malformed snapshot token (%s)', async snapshotId => {
+        const releaseConversationCatalog = vi.fn(async () => true);
+        const f = await fixture({ releaseConversationCatalog });
+        await expect(f.service.conversationCatalogRelease({ projectPath: join(f.root, 'p'), snapshotId })).rejects.toThrow();
+        expect(releaseConversationCatalog).not.toHaveBeenCalled();
+    });
+    it('reports unsupported release for an older runtime', async () => {
+        const f = await fixture();
+        await expect(f.service.conversationCatalogRelease({ projectPath: join(f.root, 'p'), snapshotId: 'owned' })).rejects.toThrow(/unsupported.*update/i);
+    });
+    it('does not dispatch release after the workspace closes during authorization', async () => {
+        const releaseConversationCatalog = vi.fn(async () => true);
+        const f = await fixture({ releaseConversationCatalog });
+        const pending = f.service.conversationCatalogRelease({ projectPath: join(f.root, 'p'), snapshotId: 'owned' });
+        f.service.dispose();
+        await expect(pending).rejects.toThrow('closed');
+        expect(releaseConversationCatalog).not.toHaveBeenCalled();
+        await expect(f.service.conversationCatalogRelease({ projectPath: join(f.root, 'p'), snapshotId: 'owned' })).rejects.toThrow('closed');
+    });
+    it('rejects a result from an async release after the workspace closes', async () => {
+        let begin!: () => void, finish!: (released: boolean) => void;
+        const entered = new Promise<void>(resolve => { begin = resolve; });
+        const result = new Promise<boolean>(resolve => { finish = resolve; });
+        const f = await fixture({ releaseConversationCatalog: () => { begin(); return result; } });
+        const pending = f.service.conversationCatalogRelease({ projectPath: join(f.root, 'p'), snapshotId: 'owned' });
+        await entered; f.service.dispose(); finish(true);
+        await expect(pending).rejects.toThrow('closed');
+    });
+    it('registers the release RPC with the same project authorization and error envelope', async () => {
+        const f = await fixture({ releaseConversationCatalog: async () => true });
+        const handlers = new Map<string, (input: unknown) => Promise<unknown>>();
+        const service = registerProjectGoalHandlers({ registerHandler: (method, handler) => { handlers.set(method, handler); } }, f.deps);
+        cleanups.push(() => service.dispose());
+        const release = handlers.get('goalProjectConversationCatalogRelease');
+        expect(release).toBeTypeOf('function');
+        expect(await release!({ projectPath: join(f.root, 'p'), snapshotId: 'owned' })).toEqual({ success: true, released: true });
+        expect(await release!({ projectPath: f.feature, snapshotId: 'owned' })).toMatchObject({ success: false, error: expect.stringContaining('authorized') });
+    });
 });

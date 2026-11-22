@@ -1,6 +1,7 @@
 import { GoalProjectConversationCatalogManifestPageSchema, GoalProjectConversationCatalogPageSchema, type GoalProjectConversationCandidate } from '@slopus/happy-wire';
-import { assertAccountRuntime, getRuntimeAccountSelection } from '@/auth/accountRuntime';
+import { accountRuntimeCurrent, assertAccountRuntime, getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { projectGoalRequest } from './projectGoals';
+import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { readProjectConversationManifestHeaders } from './projectConversationManifest.web';
 
@@ -56,7 +57,28 @@ export function loadProjectConversationCandidates(
     const entry: CatalogCache = { account, encryption, machineId, projectPath, expiresAt: Infinity, total: 0, complete: false, pending: undefined! };
     catalogs.push(entry);
     if (catalogs.length > 2) catalogs.shift();
-    const evict = () => { catalogs = catalogs.filter(candidate => candidate !== entry); };
+    let pinnedSnapshotId: string | undefined, abandoned = false, released = false;
+    const ownerCurrent = () => accountRuntimeCurrent() && getRuntimeAccountSelection() === account && sync.encryption === encryption;
+    const release = () => {
+        abandoned = true;
+        if (!pinnedSnapshotId || released || !ownerCurrent()) return;
+        released = true;
+        // Cleanup is optional on older daemons. Keep it independent of the
+        // cancelled read while fencing the encrypted dispatch to its owner.
+        void apiSocket.machineRPC(machineId, 'goalProjectConversationCatalogRelease',
+            { projectPath, snapshotId: pinnedSnapshotId }, { isCurrent: ownerCurrent, overallTimeoutMs: 5_000 }).catch(() => undefined);
+    };
+    const rememberSnapshot = (response: unknown) => {
+        if (!pinnedSnapshotId && response && typeof response === 'object') {
+            const value = response as { projectPath?: unknown; snapshotId?: unknown };
+            if (value.projectPath === projectPath && typeof value.snapshotId === 'string' && value.snapshotId.length > 0 && value.snapshotId.length <= 128)
+                pinnedSnapshotId = value.snapshotId;
+        }
+        // A first response can arrive after cancellation. Release its token
+        // without accepting metadata, publishing progress or dispatching pages.
+        if (abandoned) release();
+    };
+    const evict = () => { catalogs = catalogs.filter(candidate => candidate !== entry); release(); };
     let detach = () => {};
     const cancelled = signal ? new Promise<never>((_resolve, reject) => {
         const abort = () => { evict(); detach(); reject(cancellation()); };
@@ -80,6 +102,7 @@ export function loadProjectConversationCandidates(
             let response: unknown = await (version
                 ? projectGoalRequest(machineId, 'goalProjectConversationCatalog', input, version)
                 : projectGoalRequest(machineId, 'goalProjectConversationCatalog', input));
+            rememberSnapshot(response);
             current();
             if (encoder.encode(JSON.stringify(response)).byteLength > 256 * 1024) throw new Error('Project history catalog page exceeds the size limit');
             const format = response && typeof response === 'object' && 'format' in response ? response.format : undefined;

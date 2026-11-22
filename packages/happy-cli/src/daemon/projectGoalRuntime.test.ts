@@ -133,3 +133,20 @@ it('uses one immutable catalog for page and final conversation reads without a s
     adapter.disposeConversationCatalog!();
     await expect(adapter.conversationCatalog!('/archive/feature', { snapshotId: page.snapshotId })).rejects.toThrow('disposed');
 });
+
+
+it('releases only the matching catalog snapshot without another account traversal', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [{ ...row('release-owned', 2), metadataVersion: 4, dataEncryptionKey: null }], hasNext: false } });
+    const adapter = runtime();
+    const owned = await adapter.conversationCatalog!('/archive/feature', {});
+    const peer = await adapter.conversationCatalog!('/archive/peer', {});
+    expect(await adapter.releaseConversationCatalog!('/archive/peer', owned.snapshotId)).toBe(false);
+    expect((await adapter.conversationCatalog!('/archive/feature', { snapshotId: owned.snapshotId })).snapshotId).toBe(owned.snapshotId);
+    expect(await adapter.releaseConversationCatalog!('/archive/feature', owned.snapshotId)).toBe(true);
+    expect(await adapter.releaseConversationCatalog!('/archive/feature', owned.snapshotId)).toBe(false);
+    await expect(adapter.conversationCatalog!('/archive/feature', { snapshotId: owned.snapshotId })).rejects.toThrow(/expired|unavailable/);
+    expect((await adapter.conversationCatalog!('/archive/peer', { snapshotId: peer.snapshotId })).snapshotId).toBe(peer.snapshotId);
+    expect(axios.get).toHaveBeenCalledTimes(2);
+    adapter.disposeConversationCatalog!();
+    await expect(Promise.resolve().then(() => adapter.releaseConversationCatalog!('/archive/peer', peer.snapshotId))).rejects.toThrow('disposed');
+});

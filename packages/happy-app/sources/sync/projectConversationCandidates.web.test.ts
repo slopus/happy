@@ -2,17 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({
     owner: { key: 'a', generation: '1', serverUrl: 'https://example.test', scope: 'test' },
-    metadata: new Map<string, any>(), encryption: {} as any,
+    metadata: new Map<string, any>(), encryption: {} as any, runtimeCurrent: true,
 }));
-vi.mock('@/auth/accountRuntime', () => ({ getRuntimeAccountSelection: () => mock.owner, assertAccountRuntime: () => {} }));
+vi.mock('@/auth/accountRuntime', () => ({ getRuntimeAccountSelection: () => mock.owner, assertAccountRuntime: () => {}, accountRuntimeCurrent: () => mock.runtimeCurrent }));
 vi.mock('@/auth/tokenStorage', () => ({ TokenStorage: { getCredentials: vi.fn().mockResolvedValue({ token: 'private-token', secret: 'private-secret' }) } }));
 vi.mock('./sync', () => ({ sync: { get encryption() { return mock.encryption; } } }));
 vi.mock('./apiSessions', () => ({ fetchSessionSnapshotPage: vi.fn() }));
 vi.mock('./projectGoals', () => ({ projectGoalRequest: vi.fn() }));
+vi.mock('./apiSocket', () => ({ apiSocket: { machineRPC: vi.fn().mockResolvedValue({ success: true, released: true }) } }));
 
 import { TokenStorage } from '@/auth/tokenStorage';
 import { fetchSessionSnapshotPage } from './apiSessions';
 import { projectGoalRequest } from './projectGoals';
+import { apiSocket } from './apiSocket';
 import { loadProjectConversationCandidates, type ProjectConversationHistoryProgress } from './projectConversationCandidates.web';
 
 const machineId = 'selected-machine', projectPath = '/projects/paws';
@@ -53,6 +55,8 @@ function deferred<T>() {
 }
 beforeEach(() => {
     vi.resetAllMocks();
+    mock.runtimeCurrent = true;
+    vi.mocked(apiSocket.machineRPC).mockResolvedValue({ success: true, released: true });
     catalogExpiry = Date.now() + 60_000;
     vi.mocked(TokenStorage.getCredentials).mockResolvedValue({ token: 'private-token', secret: 'private-secret' });
     mock.owner = { key: 'a', generation: '1', serverUrl: 'https://example.test', scope: 'test' };
@@ -500,5 +504,74 @@ describe('cancellable catalog reads', () => {
         expect(second).toEqual(first);
         expect(projectGoalRequest).toHaveBeenCalledTimes(1);
         expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    });
+});
+
+
+describe('abandoned project conversation snapshot cleanup', () => {
+    async function pendingSecondPage() {
+        const pages = await twoPages(), pending = deferred<any>(), controller = new AbortController();
+        vi.mocked(projectGoalRequest).mockResolvedValueOnce(pages[0]).mockReturnValueOnce(pending.promise);
+        const request = loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal });
+        const result = request.then(() => undefined, error => error);
+        await vi.waitFor(() => expect(projectGoalRequest).toHaveBeenCalledTimes(2));
+        return { pending, controller, result, pages };
+    }
+    it('releases an abandoned pinned snapshot once and retains an account fence for dispatch', async () => {
+        const read = await pendingSecondPage();
+        read.controller.abort();
+        expect((await read.result).name).toBe('AbortError');
+        expect(apiSocket.machineRPC).toHaveBeenCalledExactlyOnceWith(machineId, 'goalProjectConversationCatalogRelease',
+            { projectPath, snapshotId: snapshotA }, expect.objectContaining({ isCurrent: expect.any(Function) }));
+        const options = vi.mocked(apiSocket.machineRPC).mock.calls[0][3]!;
+        expect(options.isCurrent!()).toBe(true);
+        mock.owner = { ...mock.owner, generation: 'new-owner' };
+        expect(options.isCurrent!()).toBe(false);
+        read.pending.resolve(read.pages[1]);
+        await Promise.resolve();
+        expect(apiSocket.machineRPC).toHaveBeenCalledTimes(1);
+    });
+    it('rejects a runtime invalidation even when account and encryption objects have not changed', async () => {
+        const read = await pendingSecondPage();
+        read.controller.abort();
+        await read.result;
+        const fence = vi.mocked(apiSocket.machineRPC).mock.calls[0][3]!.isCurrent!;
+        mock.runtimeCurrent = false;
+        expect(fence()).toBe(false);
+        read.pending.resolve(read.pages[1]);
+    });
+    it('releases a first snapshot that arrives after its caller has already cancelled', async () => {
+        const pending = deferred<any>(), controller = new AbortController();
+        vi.mocked(projectGoalRequest).mockReturnValueOnce(pending.promise);
+        const result = loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal }).catch(error => error);
+        controller.abort();
+        expect((await result).name).toBe('AbortError');
+        expect(apiSocket.machineRPC).not.toHaveBeenCalled();
+        pending.resolve(await catalog());
+        await vi.waitFor(() => expect(apiSocket.machineRPC).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(apiSocket.machineRPC).mock.calls[0].slice(0, 3)).toEqual([machineId, 'goalProjectConversationCatalogRelease', { projectPath, snapshotId: snapshotA }]);
+    });
+    it.each(['account', 'encryption'] as const)('does not send abandoned cleanup through a replaced %s', async replacement => {
+        const read = await pendingSecondPage();
+        if (replacement === 'account') mock.owner = { ...mock.owner, generation: 'new-owner' };
+        else mock.encryption = makeEncryption();
+        read.controller.abort();
+        await read.result;
+        read.pending.resolve(read.pages[1]);
+        await Promise.resolve();
+        expect(apiSocket.machineRPC).not.toHaveBeenCalled();
+    });
+    it('releases failed catalog verification without replacing the original error on older runtimes', async () => {
+        vi.mocked(apiSocket.machineRPC).mockRejectedValue(new Error('method not registered'));
+        vi.mocked(projectGoalRequest).mockResolvedValueOnce(await catalog([encryptedRow('one')], { catalogFingerprint: '0'.repeat(64) }));
+        await expect(loadProjectConversationCandidates(machineId, projectPath)).rejects.toThrow(/fingerprint/);
+        expect(apiSocket.machineRPC).toHaveBeenCalledTimes(1);
+    });
+    it('keeps a verified complete snapshot for cached grouping and pagination', async () => {
+        vi.mocked(projectGoalRequest).mockResolvedValue(await catalog());
+        await loadProjectConversationCandidates(machineId, projectPath);
+        await loadProjectConversationCandidates(machineId, projectPath);
+        expect(projectGoalRequest).toHaveBeenCalledTimes(1);
+        expect(apiSocket.machineRPC).not.toHaveBeenCalled();
     });
 });
