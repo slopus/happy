@@ -306,3 +306,95 @@ it('reveals chat from a maximized file on the Sessions tab and on the already-se
 it('does not read complete history for the desktop-only navigator on compact Web',async()=>{
  mock.width=800;await setup();expect(projectGoalRequest).not.toHaveBeenCalled();expect(allText()).toContain('Original details');expect(renderer.root.findAllByType('Button').filter((b:any)=>b.props.testID==='project-conversations-filter-all')).toHaveLength(0);
 });
+
+it('renders project scopes immediately with unknown counts and enabled new actions while the cold catalog loads', async () => {
+ const pending=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(pending.promise);
+ await setup();
+ expect(button('project-conversations-filter-all').props.label).toBe('全部 —');
+ expect(allText()).not.toContain('还没有会话');
+ expect(allText()).toContain('加载历史');
+ for(const scope of [project.projectPath,webPath,mobilePath])expect(button(`project-conversations-new-${scope}`).props.disabled).toBe(false);
+ expect(machineStartGoalAuthor).not.toHaveBeenCalled();
+});
+
+it.each(['creation-first','history-first'] as const)('retains an immediately created scope session when cold read and create finish %s',async order=>{
+ const catalog=deferred<any>(),created=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(catalog.promise);
+ vi.mocked(machineStartGoalAuthor).mockReturnValueOnce(created.promise);
+ await setup();await press(`project-conversations-new-${mobilePath}`);
+ expect(machineStartGoalAuthor).toHaveBeenCalledTimes(1);
+ const readCompletes=async()=>{await act(async()=>{catalog.resolve({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'});});};
+ const createCompletes=async()=>{await act(async()=>{created.resolve({type:'success',sessionId:'created-during-load'});});};
+ if(order==='creation-first'){await createCompletes();expect(button('project-conversations-filter-all').props.label).toBe('全部 —');await readCompletes();}
+ else{await readCompletes();expect(button('project-conversations-filter-all').props.label).toBe('全部 33');await createCompletes();}
+ expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
+ expect(renderer.root.findAllByType('Button').filter((n:any)=>n.props.testID==='project-conversations-session-created-during-load')).toHaveLength(1);
+ expect(select).toHaveBeenCalledExactlyOnceWith({scopePath:mobilePath,sessionId:'created-during-load'});
+});
+
+it('deduplicates a local creation already contained in the cold read snapshot',async()=>{
+ const catalog=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(catalog.promise);
+ await setup();await press(`project-conversations-new-${mobilePath}`);
+ expect(machineStartGoalAuthor).toHaveBeenCalledTimes(1);
+ vi.mocked(projectGoalRequest).mockResolvedValue(response(groups().map(g=>g.scopePath===mobilePath?{...g,total:1,sessions:[history('new-chat',mobilePath)]}:g)));
+ await act(async()=>{catalog.resolve({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'});});
+ expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
+ expect(renderer.root.findAllByType('Button').filter((n:any)=>n.props.testID==='project-conversations-session-new-chat')).toHaveLength(1);
+});
+
+it('coalesces startup revisions into one cached-catalog reaggregation instead of a second fresh scan',async()=>{
+ const catalog=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(catalog.promise);
+ await setup({revision:'first'});await setup({revision:'second'});await setup({revision:'third'});
+ expect(loadProjectConversationCandidates).toHaveBeenCalledTimes(1);
+ await act(async()=>{catalog.resolve({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'});});
+ expect(loadProjectConversationCandidates).toHaveBeenCalledTimes(2);
+ expect(vi.mocked(loadProjectConversationCandidates).mock.calls.map(call=>call[2])).toEqual([{refresh:true},{refresh:false}]);
+ expect(projectGoalRequest).toHaveBeenCalledTimes(2);
+});
+
+it('still obtains a fresh catalog for an idle revision and an explicit refresh',async()=>{
+ await setup({revision:'initial'});await setup({revision:'idle-change'});await press('project-conversations-refresh');
+ expect(vi.mocked(loadProjectConversationCandidates).mock.calls.map(call=>call[2])).toEqual([{refresh:true},{refresh:true},{refresh:true}]);
+});
+
+it('finds an empty feature by its path and retains its new conversation action',async()=>{
+ await setup();await act(async()=>renderer.root.findByType('TextInput').props.onChangeText('features/mobile'));
+ expect(button(`project-conversations-new-${mobilePath}`).props.disabled).toBe(false);
+ expect(renderer.root.findAllByProps({testID:`project-conversations-group-${mobilePath}`})).not.toHaveLength(0);
+ expect(allText()).not.toContain('没有匹配结果');
+});
+
+it('keeps a new scope row through a paginated read followed by a queued cached reaggregation',async()=>{
+ await setup();const page=deferred<any>();
+ vi.mocked(projectGoalRequest).mockReturnValueOnce(page.promise).mockResolvedValue(response());
+ await act(async()=>byLabel('加载更多历史').props.onPress());
+ await press(`project-conversations-new-${mobilePath}`);
+ expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
+ await setup({revision:'during-page'});
+ await act(async()=>page.resolve(response([groups()[1]])));
+ expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
+ expect(button('project-conversations-session-new-chat')).toBeDefined();
+ expect(loadProjectConversationCandidates).toHaveBeenLastCalledWith('machine',project.projectPath,{refresh:false});
+});
+
+it('does not add a created ID twice when the complete snapshot counts it outside the loaded history page',async()=>{
+ const catalog=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(catalog.promise);
+ await setup();await press(`project-conversations-new-${mobilePath}`);
+ vi.mocked(projectGoalRequest).mockResolvedValue(response(groups().map(g=>g.scopePath===mobilePath?{...g,total:1,sessions:[]}:g)));
+ await act(async()=>catalog.resolve({candidates:[{sessionId:'new-chat',directory:mobilePath,title:'New',metadataVersion:1}],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'}));
+ expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
+ expect(button('project-conversations-session-new-chat')).toBeDefined();
+});
+
+it('does not increment a snapshot-counted ID when its creation callback arrives after history outside the loaded page',async()=>{
+ const catalog=deferred<any>(),created=deferred<any>();
+ vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(catalog.promise);
+ vi.mocked(machineStartGoalAuthor).mockReturnValueOnce(created.promise);
+ await setup();await press(`project-conversations-new-${mobilePath}`);
+ vi.mocked(projectGoalRequest).mockResolvedValue(response(groups().map(g=>g.scopePath===mobilePath?{...g,total:1,sessions:[]}:g)));
+ await act(async()=>catalog.resolve({candidates:[{sessionId:'counted-not-loaded',directory:mobilePath,title:'Created',metadataVersion:1}],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'}));
+ expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
+ await act(async()=>created.resolve({type:'success',sessionId:'counted-not-loaded'}));
+ expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
+ expect(button('project-conversations-session-counted-not-loaded')).toBeDefined();
+ expect(select).toHaveBeenCalledExactlyOnceWith({scopePath:mobilePath,sessionId:'counted-not-loaded'});
+});

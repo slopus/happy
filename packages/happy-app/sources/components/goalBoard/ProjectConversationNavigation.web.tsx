@@ -63,7 +63,8 @@ const words = () =>
               offline: '离线：可查看已加载历史，暂不能新建',
               counts: '状态与搜索覆盖已加载会话，可加载更多历史',
               retry: '重试',
-              load: '加载会话…',
+              load: '加载历史…',
+              unloaded: '历史尚未加载',
               closed: '收起',
               open: '展开',
           }
@@ -91,11 +92,21 @@ const words = () =>
               offline: 'Offline: loaded history remains available; creation is disabled',
               counts: 'Search and activity cover loaded sessions; load more history to continue',
               retry: 'Retry',
-              load: 'Loading sessions…',
+              load: 'Loading history…',
+              unloaded: 'History has not loaded',
               closed: 'Collapse',
               open: 'Expand',
           };
+// Only complete history results enter this cache. Project scopes can render
+// before the account's detached metadata catalog finishes decrypting.
 const cache = new Map<string, ConversationGroup[]>();
+function projectScopes(project: ProjectConversationNavigationProps['project']): ConversationGroup[] {
+    if (!project) return [];
+    return [...new Map([
+        { scopePath: project.projectPath, title: project.title, total: 0, sessions: [] },
+        ...project.features.map(feature => ({ scopePath: feature.featurePath, title: feature.title, total: 0, sessions: [] })),
+    ].map(group => [group.scopePath, group])).values()];
+}
 function statusLabel(status: ConversationStatus, w: ReturnType<typeof words>) {
     return status === 'attention'
         ? w.awaiting
@@ -119,7 +130,12 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
         w = words();
     const path = props.project?.projectPath,
         machineId = props.machineId;
-    const [groups, setGroups] = React.useState<ConversationGroup[]>(() => cache.get(props.scopeKey) ?? []);
+    const [groups, setGroups] = React.useState<ConversationGroup[]>(() => cache.get(props.scopeKey) ?? projectScopes(props.project));
+    const [countsComplete, setCountsComplete] = React.useState(() => cache.has(props.scopeKey));
+    const complete = React.useRef(countsComplete);
+    // Keep creations newer than a read's immutable snapshot until that snapshot
+    // explicitly accounts for their IDs. Reading and creation are independent.
+    const locallyCreated = React.useRef(new Map<string, { scopePath: string; row: ConversationGroup['sessions'][number] }>());
     const [loading, setLoading] = React.useState(false),
         [error, setError] = React.useState<string>(),
         [creating, setCreating] = React.useState<string>();
@@ -139,9 +155,9 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
         reading = React.useRef(false),
         opening = React.useRef(false),
         focus = React.useRef(0);
-    const refreshRequested = React.useRef(false),
-        reread = React.useRef<(() => void) | undefined>(undefined);
-    const catalogSnapshot = React.useRef<string | undefined>(undefined);
+    const refreshRequested = React.useRef<boolean | undefined>(undefined),
+        reread = React.useRef<((fresh: boolean) => void) | undefined>(undefined);
+    const catalogSnapshot = React.useRef<{ id: string; ids: ReadonlySet<string> } | undefined>(undefined);
     const selection = React.useRef(props.selectedId);
     const location = React.useRef(props.locationKey);
     location.current = props.locationKey;
@@ -165,10 +181,10 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
         };
     }, []);
     const read = React.useCallback(
-        async (scopePath?: string, cursor?: ConversationGroup['nextCursor']) => {
+        async (scopePath?: string, cursor?: ConversationGroup['nextCursor'], fresh = !scopePath) => {
             if (!path || !props.desktop || props.offline || isReadOnlyProjectPreview()) return;
             if (reading.current || opening.current) {
-                if (!scopePath) refreshRequested.current = true;
+                if (!scopePath) refreshRequested.current = refreshRequested.current === true || fresh;
                 return;
             }
             reading.current = true;
@@ -177,18 +193,21 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             setLoading(true);
             setError(undefined);
             try {
-                const catalog = await loadProjectConversationCandidates(machineId, path, { refresh: !scopePath });
+                const catalog = await loadProjectConversationCandidates(machineId, path, { refresh: fresh });
                 if (!alive.current || epoch.current !== request || getRuntimeAccountSelection() !== account) return;
                 // A cursor belongs to the snapshot that produced the current
                 // groups. A renewed/evicted catalog needs a complete replacement.
-                const pageScope = scopePath && catalog.catalogSnapshotId === catalogSnapshot.current ? scopePath : undefined;
+                const pageScope = scopePath && catalog.catalogSnapshotId === catalogSnapshot.current?.id ? scopePath : undefined;
                 const input = { projectPath: path, ...catalog, ...(pageScope ? { scopePath: pageScope, cursor } : {}) };
                 if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 512 * 1024)
                     throw new Error('Complete project history exceeds the request size limit');
                 const result = GoalProjectConversationsSchema.parse(await projectGoalRequest(machineId, 'goalProjectConversations', input));
                 if (!alive.current || epoch.current !== request || getRuntimeAccountSelection() !== account) return;
                 if (result.projectPath !== path) throw new Error('Project conversation scope changed');
-                catalogSnapshot.current = catalog.catalogSnapshotId;
+                const catalogIds = new Set(catalog.candidates.map(candidate => candidate.sessionId));
+                catalogSnapshot.current = { id: catalog.catalogSnapshotId, ids: catalogIds };
+                complete.current = true;
+                setCountsComplete(true);
                 setGroups((previous) => {
                     const next: ConversationGroup[] = pageScope
                         ? previous.map((g) => {
@@ -201,31 +220,53 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                   : g;
                           })
                         : result.groups;
-                    cache.set(props.scopeKey, next);
+                    const merged = next.map(group => {
+                        const rows = new Map(group.sessions.map(row => [row.sessionId, row]));
+                        const authoritativePage = result.groups.find(page => page.scopePath === group.scopePath);
+                        const suppliedIds = new Set(authoritativePage?.sessions.map(row => row.sessionId));
+                        const replacedTotal = !pageScope || group.scopePath === pageScope && !!authoritativePage;
+                        let additional = 0;
+                        for (const [id, created] of locallyCreated.current) {
+                            if (created.scopePath !== group.scopePath) continue;
+                            if (suppliedIds.has(id)) {
+                                locallyCreated.current.delete(id);
+                                continue;
+                            }
+                            if (!rows.has(id)) rows.set(id, created.row);
+                            // The complete catalog may already count an ID not
+                            // present on this group's currently loaded page.
+                            if (replacedTotal && !catalogIds.has(id)) additional++;
+                        }
+                        return { ...group, total: group.total + additional, sessions: [...rows.values()] };
+                    });
+                    cache.set(props.scopeKey, merged);
                     if (cache.size > 30) cache.delete(cache.keys().next().value!);
-                    return next;
+                    return merged;
                 });
             } catch (e) {
                 if (alive.current && epoch.current === request) setError(e instanceof Error ? e.message : String(e));
             } finally {
                 reading.current = false;
                 if (alive.current && epoch.current === request) setLoading(false);
-                if (alive.current && refreshRequested.current) {
-                    refreshRequested.current = false;
-                    reread.current?.();
+                if (alive.current && !opening.current && refreshRequested.current !== undefined) {
+                    const fresh = refreshRequested.current;
+                    refreshRequested.current = undefined;
+                    reread.current?.(fresh);
                 }
             }
         },
         [path, machineId, props.offline, props.scopeKey, props.desktop],
     );
-    reread.current = () => {
-        void read();
+    reread.current = fresh => {
+        void read(undefined, undefined, fresh);
     };
     React.useEffect(() => {
-        void read();
+        // Initial revisions often arrive while a cold catalog is decrypting.
+        // Reaggregate that completed snapshot instead of scanning it twice.
+        void read(undefined, undefined, !reading.current);
     }, [read, props.revision]);
     const create = async (scopePath: string) => {
-        if (!props.desktop || opening.current || reading.current || props.offline || !canCreateProjectConversation()) return;
+        if (!props.desktop || opening.current || props.offline || !canCreateProjectConversation()) return;
         opening.current = true;
         setCreating(scopePath);
         setError(undefined);
@@ -247,26 +288,24 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                 throw new Error(result.type === 'error' ? result.errorMessage : t('projectGoals.sessionUnavailable'));
             if (!current()) return;
             attempt.current = undefined;
+            const row: ConversationGroup['sessions'][number] = {
+                sessionId: result.sessionId, title: w.create, directory: scopePath, updatedAt: Date.now(), executed: false,
+            };
+            locallyCreated.current.set(result.sessionId, { scopePath, row });
             setGroups((previous) => {
                 const next = previous.map((g) =>
                     g.scopePath === scopePath
                         ? {
                               ...g,
-                              total: g.total + (g.sessions.some((s) => s.sessionId === result.sessionId) ? 0 : 1),
+                              total: g.total + (g.sessions.some((s) => s.sessionId === result.sessionId) || catalogSnapshot.current?.ids.has(result.sessionId) ? 0 : 1),
                               sessions: [
-                                  {
-                                      sessionId: result.sessionId,
-                                      title: w.create,
-                                      directory: scopePath,
-                                      updatedAt: Date.now(),
-                                      executed: false,
-                                  },
+                                  g.sessions.find(session => session.sessionId === result.sessionId) ?? row,
                                   ...g.sessions.filter((s) => s.sessionId !== result.sessionId),
                               ],
                           }
                         : g,
                 );
-                cache.set(props.scopeKey, next);
+                if (complete.current) cache.set(props.scopeKey, next);
                 return next;
             });
             setFilter('all');
@@ -283,9 +322,10 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             opening.current = false;
             if (alive.current) {
                 setCreating(undefined);
-                if (refreshRequested.current) {
-                    refreshRequested.current = false;
-                    reread.current?.();
+                if (!reading.current && refreshRequested.current !== undefined) {
+                    const fresh = refreshRequested.current;
+                    refreshRequested.current = undefined;
+                    reread.current?.(fresh);
                 }
             }
         }
@@ -310,6 +350,8 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                 (!query || `${g.title} ${g.scopePath} ${r.title}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())),
         ),
     }));
+    const matchingGroup = (group: ConversationGroup) => !!query && `${group.title} ${group.scopePath}`.toLocaleLowerCase().includes(query.toLocaleLowerCase());
+    const filterCount = (value: typeof filter) => !countsComplete ? '—' : value === 'all' ? total : value === 'attention' ? attention : running;
     const color = (status: ConversationStatus) =>
         status === 'attention'
             ? theme.colors.permission.bypass
@@ -346,7 +388,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                     </Text>
                     <Text style={styles.meta}>
                         {groups.length
-                            ? `${total} ${w.conversations} · ${Math.max(0, groups.length - 1)} ${w.features}`
+                            ? `${countsComplete ? total : '—'} ${w.conversations} · ${Math.max(0, groups.length - 1)} ${w.features}`
                             : loading
                               ? w.load
                               : '—'}
@@ -356,7 +398,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                             <ConversationButton
                                 key={f}
                                 variant="toolbar"
-                                label={`${w[f]} ${f === 'all' ? total : f === 'attention' ? attention : running}`}
+                                label={`${w[f]} ${filterCount(f)}`}
                                 selected={filter === f}
                                 testID={`project-conversations-filter-${f}`}
                                 onPress={() => setFilter(f)}
@@ -374,7 +416,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                         },
                                     ]}
                                 >
-                                    {w[f]} {f === 'all' ? total : f === 'attention' ? attention : running}
+                                    {w[f]} {filterCount(f)}
                                 </Text>
                             </ConversationButton>
                         ))}
@@ -417,7 +459,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                 (filter === 'all' && !query) ||
                                 (!!query && !!g.nextCursor) ||
                                 g.visible.length > 0 ||
-                                (query && g.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())),
+                                matchingGroup(g),
                         )
                         .map((g) => (
                             <View key={g.scopePath} style={styles.group} testID={`project-conversations-group-${g.scopePath}`}>
@@ -448,7 +490,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                             <Text numberOfLines={1} style={styles.groupTitle}>
                                                 {g.scopePath === path ? w.global : g.title}
                                             </Text>
-                                            <Text style={styles.small}>{g.total}</Text>
+                                            <Text style={styles.small}>{countsComplete ? g.total : '—'}</Text>
                                         </ConversationButton>
                                     </View>
                                     <ConversationButton
@@ -456,7 +498,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                         label={`${g.scopePath === path ? w.global : g.title} · ${w.create}`}
                                         reveal
                                         testID={`project-conversations-new-${g.scopePath}`}
-                                        disabled={loading || !!creating || props.offline || !canCreateProjectConversation()}
+                                        disabled={!!creating || props.offline || !canCreateProjectConversation()}
                                         onPress={() => {
                                             void create(g.scopePath);
                                         }}
@@ -503,14 +545,15 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                                 </View>
                                             </ConversationButton>
                                         ))}
-                                        {!g.visible.length && filter === 'all' && !query && (
+                                        {!countsComplete && !g.visible.length && <Text style={styles.empty}>{error || props.offline ? w.unloaded : w.load}</Text>}
+                                        {countsComplete && !g.visible.length && filter === 'all' && !query && (
                                             <View style={styles.empty}>
                                                 <Text style={styles.meta}>{w.empty}</Text>
                                                 <ConversationButton
                                                     variant="toolbar"
                                                     label={w.first}
                                                     reveal
-                                                    disabled={loading || !!creating || props.offline || !canCreateProjectConversation()}
+                                                    disabled={!!creating || props.offline || !canCreateProjectConversation()}
                                                     onPress={() => {
                                                         void create(g.scopePath);
                                                     }}
@@ -536,7 +579,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                 )}
                             </View>
                         ))}
-                    {!filtered.some((g) => g.visible.length) && !!(query || filter !== 'all') && (
+                    {!filtered.some((g) => g.visible.length || matchingGroup(g)) && !!(query || filter !== 'all') && (
                         <Text style={styles.empty}>{w.noResults}</Text>
                     )}
                 </ScrollView>
