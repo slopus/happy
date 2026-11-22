@@ -4,9 +4,9 @@ import { mkdir, open, readdir, rename, realpath, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { goalOutputRecognition } from '@slopus/happy-wire';
-import type { GoalTask, GoalTaskSession } from '@slopus/happy-wire';
-import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSummary, type CatalogRecord } from './catalog';
+import { goalOutputRecognition, GoalProjectConversationCandidateSchema } from '@slopus/happy-wire';
+import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate } from '@slopus/happy-wire';
+import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSummary, MAX_CATALOG, type CatalogRecord } from './catalog';
 import { digest, goalFileRevision, goalOf, titleOf, parseBoard, readBoundedFile } from './parser';
 import { goalBoardTaskPrompt } from './taskPrompt';
 import { openAuthorizedFile } from './authorizedFiles';
@@ -23,7 +23,7 @@ export type ProjectGoalDependencies = {
     observe?: boolean;
     spawn: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     send: (sessionId: string, prompt: string, localId: string) => Promise<void>;
-    history: (featurePath: string, tasks: Array<{ id: string; directory: string; title?: string; directories?: string[]; sessionIds?: string[] }>) => Promise<ProjectSession[]>;
+    history: (featurePath: string, tasks: Array<{ id: string; directory: string; title?: string; directories?: string[]; sessionIds?: string[]; featurePath?: string }>, options?: { headersOnly: true; headerCandidates?: GoalProjectConversationCandidate[]; catalogFingerprint?: string }) => Promise<ProjectSession[]>;
     changed: () => void | Promise<void>;
     getArtifactStore?: () => Promise<import('../artifacts/store').ArtifactStore>;
 };
@@ -97,11 +97,25 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             .slice(0, 25).map(({ metadata, ...session }) => ({ ...session, lifecycleState: metadata.lifecycleState }));
         return { success: true, sessions };
     };
-    const identityCatalog = async () => {
+    const identityCatalog = async (strictProjectPath?: string) => {
         const result: Array<{ entry: CatalogRecord; task: GoalTask }> = [];
         const duplicateIds = new Set<string>();
-        for (const entry of await catalog()) {
-            const { snapshot } = await parseBoard(entry, { featureOnly: true, finalOnly: true });
+        const entries = await catalog();
+        if (strictProjectPath) {
+            if (entries.length >= MAX_CATALOG) throw new Error('Project catalog limit reached; complete conversation totals are unavailable');
+            for (const root of await discoverRoots(deps.workingDirectory, deps.homeDirectory)) {
+                if ((await readdir(root)).length > MAX_CATALOG) throw new Error('Project directory limit reached; complete conversation totals are unavailable');
+            }
+            for (const projectPath of new Set(entries.map(entry => entry.projectPath!))) {
+                const features = await readdir(join(projectPath, 'features')).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return []; throw error; });
+                if (features.length > MAX_CATALOG) throw new Error('Feature directory limit reached; complete conversation totals are unavailable');
+            }
+        }
+        for (const entry of entries) {
+            const { snapshot } = await parseBoard(entry, { featureOnly: true, finalOnly: true, ...(strictProjectPath ? { strictCompleteness: true } : {}) });
+            if (strictProjectPath && snapshot.warnings.some(warning => /truncat|limit reached|budget exceeded/i.test(warning)
+                || (entry.projectPath === strictProjectPath && /Unavailable (task entry|navigation)/i.test(warning))))
+                throw new Error('Task catalog is incomplete; complete conversation totals are unavailable');
             for (const id of snapshot.ambiguousTaskIds ?? []) duplicateIds.add(id);
             for (const task of snapshot.tasks) result.push({ entry, task });
         }
@@ -291,6 +305,85 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         const last = sessions.at(-1);
         return { success: true, sessions, ...(last && sessions.length < remaining.length ? { nextCursor: { sessionId: last.sessionId, updatedAt: last.updatedAt } } : {}) };
     };
+    const conversations = async (input: unknown) => {
+        const cursorSchema = z.object({ updatedAt: z.number(), sessionId: z.string().min(1).max(2048) });
+        if (Buffer.byteLength(JSON.stringify(input)) > 512 * 1024) throw new Error('Conversation candidate request exceeds the byte limit');
+        const data = z.object({ projectPath: pathInput, scopePath: pathInput.optional(), cursor: cursorSchema.optional(),
+            candidates: z.array(GoalProjectConversationCandidateSchema).max(20000).optional(),
+            catalogFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+        }).refine(value => value.candidates === undefined || !!value.catalogFingerprint, 'A complete candidate catalog fingerprint is required').parse(input);
+        if (data.cursor && !data.scopePath) throw new Error('Choose a conversation group for pagination');
+        const projectPath = await realpath(data.projectPath);
+        const projects = await readProjects(await discoverRoots(deps.workingDirectory, deps.homeDirectory));
+        const project = projects.find(project => project.projectPath === projectPath);
+        if (!project) throw new Error('Project is outside the authorized Goal catalog');
+        const scopes = [{ scopePath: projectPath, title: project.title }, ...project.features.map(feature => ({ scopePath: feature.featurePath, title: feature.title }))];
+        const requestedScope = data.scopePath ? await realpath(data.scopePath) : undefined;
+        if (requestedScope && !scopes.some(scope => scope.scopePath === requestedScope)) throw new Error('Conversation group is outside this project');
+        // One identity catalog and one finite account-header traversal per read,
+        // never one complete account scan for every feature or Task.
+        const allTasks = await identityCatalog(projectPath);
+        const tasks = [];
+        for (const item of allTasks.filter(item => item.entry.projectPath === projectPath)) {
+            const directory = dirname(item.task.indexPath);
+            if (!isStableTaskId(item.task.id) && await identities.hasPathHistory(directory)) continue;
+            await identities.remember(item.task);
+            tasks.push({ ...item, descriptor: { ...await historyTask(item.task), featurePath: item.entry.featurePath } });
+        }
+        const descriptors = [...scopes.map(scope => ({ id: '', directory: scope.scopePath, title: scope.title, featurePath: scope.scopePath })), ...tasks.map(item => item.descriptor)];
+        const source = await deps.history(projectPath, descriptors, { headersOnly: true, ...(data.candidates ? { headerCandidates: data.candidates, catalogFingerprint: data.catalogFingerprint } : {}) });
+        const grouped = new Map(scopes.map(scope => [scope.scopePath, new Map<string, GoalProjectConversation>()]));
+        for (const session of source) {
+            if (archived(session.metadata.lifecycleState)) continue;
+            const binding = session.metadata.goalBoard;
+            const bound = await identities.session(session.sessionId);
+            const explicit = binding?.taskId;
+            let task: typeof tasks[number] | undefined;
+            if (bound || (explicit && isStableTaskId(explicit))) {
+                if (bound && explicit && isStableTaskId(explicit) && bound !== explicit) continue;
+                task = tasks.find(item => item.task.id === (bound ?? explicit));
+                if (!task) continue; // Missing or ambiguous identity never falls back to cwd.
+            } else if (explicit) {
+                const matches = tasks.filter(item => (item.entry.featurePath === binding?.featurePath && item.task.id === explicit)
+                    || item.descriptor.directories.some(directory => digest(join(directory, 'index.md')) === explicit));
+                if (matches.length !== 1) continue;
+                task = matches[0];
+            } else if (!binding) {
+                const matches = tasks.filter(item => item.descriptor.sessionIds.includes(session.sessionId)
+                    || item.descriptor.directories.some(directory => directory === session.directory || directory === session.metadata.path));
+                if (matches.length > 1) continue;
+                task = matches[0];
+            }
+            const scopePath = task?.entry.featurePath ?? (binding ? binding.featurePath : session.directory);
+            if (!task && session.directory !== scopePath) continue;
+            const group = grouped.get(scopePath);
+            if (!group) continue;
+            const { metadata: _, ...header } = session;
+            group.set(session.sessionId, { ...header, lifecycleState: session.metadata.lifecycleState, title: header.title.slice(0, 2048), directory: task ? dirname(task.task.indexPath) : scopePath, ...(task ? { taskId: task.task.id } : {}) });
+        }
+        const groups: GoalProjectConversationGroup[] = [];
+        // Reserve catalog headers before filling rows: encrypted RPC frames stay
+        // bounded even when a project has many feature groups or long paths.
+        const selectedScopes = scopes.filter(scope => !requestedScope || scope.scopePath === requestedScope);
+        let bytes = Buffer.byteLength(JSON.stringify(selectedScopes.map(scope => ({ ...scope, total: 0, sessions: [] }))));
+        if (bytes > 192 * 1024) throw new Error('Conversation group catalog is too large');
+        for (const scope of selectedScopes) {
+            const ordered = [...grouped.get(scope.scopePath)!.values()].sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
+            const remaining = data.cursor ? ordered.filter(session => session.updatedAt < data.cursor!.updatedAt
+                || (session.updatedAt === data.cursor!.updatedAt && session.sessionId.localeCompare(data.cursor!.sessionId) < 0)) : ordered;
+            const sessions: GoalProjectConversation[] = [];
+            let pageBytes = 0;
+            for (const session of remaining) {
+                const size = Buffer.byteLength(JSON.stringify(session));
+                if (sessions.length >= 25 || pageBytes + size > 64 * 1024 || bytes + size > 256 * 1024) break;
+                sessions.push(session); pageBytes += size; bytes += size;
+            }
+            const last = sessions.at(-1);
+            groups.push({ ...scope, total: ordered.length, sessions, ...(sessions.length < remaining.length
+                ? { nextCursor: last ? { updatedAt: last.updatedAt, sessionId: last.sessionId } : { updatedAt: Number.MAX_VALUE, sessionId: 'start' } } : {}) });
+        }
+        return { success: true as const, projectPath, groups };
+    };
     const launch = async (input: unknown): Promise<SpawnSessionResult> => {
         const data = launchInput.parse(input);
         let { entry, task, directory } = await taskFor(data);
@@ -450,7 +543,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             }
             return { success: true, projects: await readProjects(roots) };
         },
-        board, launch, files, approve, historyPage, overview, scopeHistory, resolveWorkspace,
+        board, launch, files, approve, historyPage, overview, scopeHistory, conversations, resolveWorkspace,
         author: async (input: unknown): Promise<SpawnSessionResult> => {
             const data = z.object({ scopePath: pathInput.optional(), requestId: z.string().min(1).max(128), agent: z.enum(['codex', 'claude']), codexSessionGrant: z.string().max(4096).optional() }).parse(input);
             const roots = await discoverRoots(deps.workingDirectory, deps.homeDirectory);
@@ -478,6 +571,7 @@ export function registerProjectGoalHandlers(manager: { registerHandler(method: s
     };
     manager.registerHandler('goalScopeRead', wrap(service.overview));
     manager.registerHandler('goalScopeHistory', wrap(service.scopeHistory));
+    manager.registerHandler('goalProjectConversations', wrap(service.conversations));
     manager.registerHandler('goalScopeListDirectory', wrap(input => service.files(input, 'list', true)));
     manager.registerHandler('goalScopeReadFile', wrap(input => service.files(input, 'read', true)));
     manager.registerHandler('goalScopeWriteFile', wrap(input => service.files(input, 'write', true)));

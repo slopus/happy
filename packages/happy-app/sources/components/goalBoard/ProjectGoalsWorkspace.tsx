@@ -34,6 +34,7 @@ import { getProjectCatalogWidth, projectPanelGap } from './projectWorkspaceLayou
 import { ProjectWorkspaceWidthProvider, useProjectWorkspaceWidth } from './ProjectWorkspaceWidth';
 import { ProjectCatalogResizeHandle } from './ProjectCatalogResizeHandle';
 import { ProjectOverviewWorkspace } from './ProjectOverviewWorkspace';
+import { ProjectConversationNavigationProvider } from './ProjectConversationNavigation';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel';
 import { ProjectConversationHeader } from './ProjectConversationHeader';
 import { useProjectConversation } from './useProjectConversation';
@@ -361,7 +362,10 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         onOpened: (task, conversation) => go({ task, conversation, view: 'chat' }) });
     const tasks = feature?.tasks ?? [];
     const selectedMachine = machines.find(machine => machine.id === machineId);
-    return <ProjectSessionMonitor knownScopes={data.projects.flatMap(entry => [{ machineId, path: entry.projectPath, title: entry.title }, ...entry.features.map(feature => ({ machineId, path: feature.featurePath, title: feature.title }))])} scope={feature ? { machineId, path: feature.featurePath, title: feature.title } : project ? { machineId, path: project.projectPath, title: project.title } : undefined}><ProjectWorkspaceWidthProvider><ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
+    return <ProjectConversationNavigationProvider project={project} machineId={machineId} agent={agent} offline={data.offline} selectedId={params.conversation ?? params.author} locationKey={location}
+        revision={JSON.stringify([(selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])}
+        onSelect={({ scopePath, taskId, sessionId }) => go({ project: project?.projectPath, feature: !taskId && scopePath === project?.projectPath ? undefined : scopePath, task: taskId, conversation: sessionId })}>
+        <ProjectSessionMonitor knownScopes={data.projects.flatMap(entry => [{ machineId, path: entry.projectPath, title: entry.title }, ...entry.features.map(feature => ({ machineId, path: feature.featurePath, title: feature.title }))])} scope={feature ? { machineId, path: feature.featurePath, title: feature.title } : project ? { machineId, path: project.projectPath, title: project.title } : undefined}><ProjectWorkspaceWidthProvider><ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
         {mobile && <View style={[styles.mobileHeader, { backgroundColor: surface }]}>
             <Button variant="icon" label={t('common.back')} onPress={() => { if (taskBackView) { Keyboard.dismiss(); navigate({ view: taskBackView, file: undefined }); } else navigation.back(project); }} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
             <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={styles.mobileTitle}>{task?.title || feature?.title || project?.title || t('projectGoals.allProjects')}</Text>
@@ -438,7 +442,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         {savedFile && <ProjectSavedFile key={savedFile.projectPath} machineId={machineId} item={savedFile} onClose={() => setSavedFile(null)} />}
         {reviewOpen && <ProjectRetrospective key={scope} machineId={machineId} featurePaths={feature ? [feature.featurePath] : [...new Set([...(project?.features.map(item => item.featurePath) ?? []), ...(project?.direct ? [project.direct.featurePath] : [])])]} disabled={readOnly || data.offline || busy} onClose={() => setReviewOpen(false)} onStart={startRetrospective} onSaved={data.refresh} onOpenTask={item => { setReviewOpen(false); go({ feature: item.featurePath, task: item.task.id }); }} />}
         {feature && !!deliveryTasks?.length && <ProjectDeliveryEditor key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} tasks={deliveryTasks} onClose={() => setDeliveryTasks(null)} onSaved={data.refresh} onDiscuss={target => { setDeliveryTasks(null); if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} />}
-    </View></ProjectSurfaces.Provider></ProjectWorkspaceWidthProvider></ProjectSessionMonitor>;
+    </View></ProjectSurfaces.Provider></ProjectWorkspaceWidthProvider></ProjectSessionMonitor></ProjectConversationNavigationProvider>;
 }
 
 function ScopeCatalog({ scopePath, children, enabled, ...props }: Omit<React.ComponentProps<typeof ProjectOverviewWorkspace>, 'scopePath'> & { scopePath?: string; enabled: boolean }) {

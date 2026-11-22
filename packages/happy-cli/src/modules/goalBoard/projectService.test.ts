@@ -452,3 +452,147 @@ it('rejects a stale hash when a former stable task directory is reused by an unl
     await expect(f.service.launch({ ...f.input, action: 'execute', agent: 'codex', requestId: 'stale' })).rejects.toThrow();
     expect(f.deps.spawn).not.toHaveBeenCalled();
 });
+
+describe('project conversation navigation', () => {
+    it('returns exact totals beyond 25 with scope-global and task conversations in the same feature group', async () => {
+        const f = await fixture(); const projectPath = join(f.root, 'p');
+        for (let i = 0; i < 31; i++) f.history.push({ sessionId: `task-${i}`, title: `Task ${i}`, directory: f.taskDirectory, updatedAt: i,
+            executed: true, metadata: { path: f.taskDirectory, goalBoard: { featurePath: f.feature, taskId: f.task.id } } as any });
+        f.history.push({ sessionId: 'project-global', title: 'Project global', directory: projectPath, updatedAt: 50, executed: false, metadata: { path: projectPath } as any });
+        f.history.push({ sessionId: 'feature-global', title: 'Feature global', directory: f.feature, updatedAt: 99, executed: false, metadata: { path: f.feature, goalBoard: { featurePath: f.feature } } as any });
+        f.history.push({ sessionId: 'archived', title: 'Archived', directory: f.feature, updatedAt: 200, executed: false, metadata: { path: f.feature, lifecycleState: 'archived' } as any });
+        f.history.push({ sessionId: 'outside', title: 'Outside', directory: f.home, updatedAt: 200, executed: false, metadata: { path: f.home } as any });
+        vi.mocked(f.deps.history).mockClear();
+        const result = await f.service.conversations({ projectPath });
+        expect(result.groups.map(group => [group.scopePath, group.total])).toEqual([[projectPath, 1], [f.feature, 32]]);
+        const group = result.groups[1]; expect(group.sessions).toHaveLength(25);
+        expect(group.sessions[0]).toMatchObject({ sessionId: 'feature-global' });
+        expect(group.sessions[1]).toMatchObject({ taskId: f.task.id, sessionId: 'task-30' });
+        expect(group.sessions[1]).not.toHaveProperty('metadata');
+        expect(f.deps.history).toHaveBeenCalledTimes(1);
+        expect(f.deps.history).toHaveBeenCalledWith(projectPath, expect.any(Array), { headersOnly: true });
+        const next = await f.service.conversations({ projectPath, scopePath: f.feature, cursor: group.nextCursor });
+        expect(next.groups).toHaveLength(1); expect(next.groups[0].total).toBe(32); expect(next.groups[0].sessions).toHaveLength(7); expect(next.groups[0].nextCursor).toBeUndefined();
+        expect(new Set([...group.sessions, ...next.groups[0].sessions].map(session => session.sessionId)).size).toBe(32);
+    });
+    it('includes empty groups and rejects a feature or sibling group masquerading as the requested project', async () => {
+        const f = await fixture(); await f.put(join(f.root, 'p/features/empty/index.md'), '# Empty feature');
+        const result = await f.service.conversations({ projectPath: join(f.root, 'p') });
+        expect(result.groups).toHaveLength(3); expect(result.groups.every(group => group.total === 0 && group.sessions.length === 0)).toBe(true);
+        await expect(f.service.conversations({ projectPath: f.feature })).rejects.toThrow('authorized');
+        await expect(f.service.conversations({ projectPath: join(f.root, 'p'), scopePath: join(f.root, 'empty') })).rejects.toThrow('outside this project');
+        await expect(f.service.conversations({ projectPath: join(f.root, 'p'), cursor: { updatedAt: 1, sessionId: 'x' } })).rejects.toThrow('pagination');
+    });
+    it('keeps exact totals while byte-bounding large titles and independently pages the remainder', async () => {
+        const f = await fixture();
+        for (let i = 0; i < 50; i++) f.history.push({ sessionId: `large-${i}`, title: '标题'.repeat(1024), directory: f.feature, updatedAt: i, executed: true, metadata: { path: f.feature } as any });
+        const group = (await f.service.conversations({ projectPath: join(f.root, 'p') })).groups.find(group => group.scopePath === f.feature)!;
+        expect(group.total).toBe(50); expect(group.sessions.length).toBeGreaterThan(0); expect(group.sessions.length).toBeLessThan(25);
+        expect(Buffer.byteLength(JSON.stringify(group.sessions))).toBeLessThan(64 * 1024); expect(group.nextCursor).toBeDefined();
+    });
+    it('does not misreport a failed complete history read as zero conversations', async () => {
+        const f = await fixture(); vi.mocked(f.deps.history).mockRejectedValue(new Error('Complete session history unavailable'));
+        await expect(f.service.conversations({ projectPath: join(f.root, 'p') })).rejects.toThrow('Complete session history');
+    });
+    it('keeps a moved stable task with its current feature and rejects stale explicit identities', async () => {
+        const f = await fixture(); await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-abcdefgh\n---\n# Stable');
+        await f.service.resolveWorkspace({ sessionId: 'bound', path: f.taskDirectory });
+        const next = join(f.root, 'p/features/moved'); await f.put(join(next, 'index.md'), '# Moved feature'); await mkdir(join(next, 'tasks'), { recursive: true }); await rename(f.taskDirectory, join(next, 'tasks/task'));
+        f.history.push({ sessionId: 'bound', title: 'Stable', directory: f.taskDirectory, updatedAt: 1, executed: true, metadata: { path: f.taskDirectory, goalBoard: { featurePath: f.feature, taskId: 'GFT-abcdefgh' } } as any });
+        f.history.push({ sessionId: 'stale', title: 'Stale', directory: join(next, 'tasks/task'), updatedAt: 1, executed: true, metadata: { path: join(next, 'tasks/task'), goalBoard: { featurePath: next, taskId: 'GFT-missing1' } } as any });
+        const groups = (await f.service.conversations({ projectPath: join(f.root, 'p') })).groups;
+        expect(groups.find(group => group.scopePath === f.feature)?.total).toBe(0);
+        expect(groups.find(group => group.scopePath === next)?.sessions).toMatchObject([{ sessionId: 'bound', taskId: 'GFT-abcdefgh', directory: join(next, 'tasks/task') }]);
+    });
+    it('excludes ambiguous duplicate task identities rather than using a matching directory', async () => {
+        const f = await fixture(); for (const dir of ['tasks/a', 'tasks/copy']) await f.put(join(f.feature, dir, 'index.md'), '---\ntask_id: GFT-abcdefgh\n---\n# Duplicate');
+        f.history.push({ sessionId: 'ambiguous', title: 'Duplicate', directory: f.taskDirectory, updatedAt: 1, executed: true, metadata: { path: f.taskDirectory, goalBoard: { featurePath: f.feature, taskId: 'GFT-abcdefgh' } } as any });
+        expect((await f.service.conversations({ projectPath: join(f.root, 'p') })).groups.every(group => group.total === 0)).toBe(true);
+    });
+});
+
+it('never transfers unbound reused-path history or conflicting explicit bindings into replacement tasks', async () => {
+    const f = await fixture();
+    await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-aaaaaaaa\n---\n# Original');
+    await f.service.resolveWorkspace({ sessionId: 'original-bound', path: f.taskDirectory });
+    await f.service.resolveWorkspace({ sessionId: 'conflict', path: f.taskDirectory });
+    const moved = join(f.feature, 'tasks/moved');
+    await rename(f.taskDirectory, moved);
+    await f.put(join(f.taskDirectory, 'index.md'), '---\ntask_id: GFT-bbbbbbbb\n---\n# Replacement');
+    for (const sessionId of ['original-bound', 'unbound-old', 'conflict']) f.history.push({ sessionId, title: sessionId, directory: f.taskDirectory, updatedAt: 1, executed: true,
+        metadata: { path: f.taskDirectory, ...(sessionId === 'conflict' ? { goalBoard: { featurePath: f.feature, taskId: 'GFT-bbbbbbbb' } } : {}) } as any });
+    const group = (await f.service.conversations({ projectPath: join(f.root, 'p') })).groups.find(group => group.scopePath === f.feature)!;
+    expect(group.total).toBe(1);
+    expect(group.sessions).toMatchObject([{ sessionId: 'original-bound', taskId: 'GFT-aaaaaaaa', directory: moved }]);
+});
+
+it('refuses aggregate totals when a board explicitly reports truncated tasks, while legacy board reads remain available', async () => {
+    const f = await fixture(); const original = parser.parseBoard;
+    const spy = vi.spyOn(parser, 'parseBoard').mockImplementation(async (...args) => {
+        const parsed = await original(...args); parsed.snapshot.warnings.push('Snapshot size limit reached; board is truncated'); return parsed;
+    });
+    try {
+        await expect(f.service.conversations({ projectPath: join(f.root, 'p') })).rejects.toThrow('Task catalog is incomplete');
+        expect((await f.service.board(f.feature)).snapshot.tasks).toHaveLength(1);
+    } finally { spy.mockRestore(); }
+});
+it('refuses silent task-directory truncation in aggregate reads', async () => {
+    const f = await fixture(); await Promise.all(Array.from({ length: 200 }, (_, i) => mkdir(join(f.feature, 'tasks', `extra-${i}`), { recursive: true })));
+    await expect(f.service.conversations({ projectPath: join(f.root, 'p') })).rejects.toThrow('Task directory limit reached');
+});
+it('refuses aggregate totals when feature directory discovery would silently truncate', async () => {
+    const f = await fixture(); await Promise.all(Array.from({ length: 100 }, (_, i) => mkdir(join(f.root, 'p/features', `extra-${i}`), { recursive: true })));
+    await expect(f.service.conversations({ projectPath: join(f.root, 'p') })).rejects.toThrow('Feature directory limit reached');
+});
+
+it('does not let stale task links in another project block complete selected-project totals', async () => {
+    const f = await fixture();
+    await f.put(join(f.root, 'other/index.md'), '# Other project');
+    await f.put(join(f.root, 'other/features/broken/index.md'), '# Unrelated feature\n[Missing task](tasks/missing/index.md)');
+    f.history.push({ sessionId: 'selected', title: 'Selected', directory: f.feature, updatedAt: 1, executed: false, metadata: { path: f.feature } as any });
+    const result = await f.service.conversations({ projectPath: join(f.root, 'p') });
+    expect(result.groups.find(group => group.scopePath === f.feature)?.total).toBe(1);
+    await expect(f.service.conversations({ projectPath: join(f.root, 'other') })).rejects.toThrow('Task catalog is incomplete');
+});
+it('still refuses actual catalog truncation in another project because duplicate identity checks would be incomplete', async () => {
+    const f = await fixture();
+    await f.put(join(f.root, 'other/index.md'), '# Other project');
+    await f.put(join(f.root, 'other/features/large/index.md'), '# Other feature');
+    const original = parser.parseBoard;
+    const spy = vi.spyOn(parser, 'parseBoard').mockImplementation(async (...args) => {
+        const parsed = await original(...args);
+        if (args[0].projectPath === join(f.root, 'other')) parsed.snapshot.warnings.push('Task limit reached; board is truncated');
+        return parsed;
+    });
+    try { await expect(f.service.conversations({ projectPath: join(f.root, 'p') })).rejects.toThrow('Task catalog is incomplete'); }
+    finally { spy.mockRestore(); }
+});
+
+it('passes compact owner header candidates only into this read without persisting them', async () => {
+    const f = await fixture(); const projectPath = join(f.root, 'p');
+    const candidates = [{ sessionId: 'owned', metadataVersion: 2, directory: f.feature, title: 'Owned', featurePath: f.feature }];
+    vi.mocked(f.deps.history).mockClear();
+    await f.service.conversations({ projectPath, candidates, catalogFingerprint: 'a'.repeat(64) });
+    expect(f.deps.history).toHaveBeenLastCalledWith(projectPath, expect.any(Array), { headersOnly: true, headerCandidates: candidates, catalogFingerprint: 'a'.repeat(64) });
+    await f.service.conversations({ projectPath });
+    expect(f.deps.history).toHaveBeenLastCalledWith(projectPath, expect.any(Array), { headersOnly: true });
+});
+it('bounds candidate count and serialized request bytes before reading account history', async () => {
+    const f = await fixture(); const projectPath = join(f.root, 'p');
+    vi.mocked(f.deps.history).mockClear();
+    const candidate = { sessionId: 's', metadataVersion: 1, directory: '/x', title: 'x' };
+    await expect(f.service.conversations({ projectPath, candidates: Array.from({ length: 20001 }, (_, i) => ({ ...candidate, sessionId: `${i}` })) })).rejects.toThrow();
+    await expect(f.service.conversations({ projectPath, candidates: Array.from({ length: 1100 }, (_, i) => ({ ...candidate, sessionId: `${i}`, title: 'x'.repeat(2048) })) })).rejects.toThrow('byte limit');
+    expect(f.deps.history).not.toHaveBeenCalled();
+});
+
+it('requires the complete account catalog fingerprint when owner candidates are supplied', async () => {
+    const f = await fixture();
+    await expect(f.service.conversations({ projectPath: join(f.root, 'p'), candidates: [] })).rejects.toThrow('fingerprint is required');
+    await expect(f.service.conversations({ projectPath: join(f.root, 'p'), candidates: [], catalogFingerprint: 'invalid' })).rejects.toThrow();
+});
+it('preserves available lifecycle in newer aggregate history after a restore',async()=>{
+ const f=await fixture();const projectPath=join(f.root,'p');
+ f.history.push({sessionId:'restored',directory:projectPath,title:'Restored',updatedAt:20,executed:true,metadata:{path:projectPath,machineId:'m',lifecycleState:'available'}} as ProjectSession);
+ const result=await f.service.conversations({projectPath});expect(result.groups[0].sessions[0]).toMatchObject({sessionId:'restored',lifecycleState:'available'});
+});

@@ -168,7 +168,7 @@ async function artifactsOf(root: string, taskPath: string, source: string, direc
 }
 
 export type ParsedBoard = { snapshot: GoalBoardSnapshot; watchDirectories: string[] };
-export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: boolean; finalOnly?: boolean } = {}): Promise<ParsedBoard> {
+export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: boolean; finalOnly?: boolean; strictCompleteness?: boolean } = {}): Promise<ParsedBoard> {
     const { root, featurePath } = entry;
     const warnings: string[] = [];
     const warn = (message: string) => { if (warnings.length < 50 && !warnings.includes(message)) warnings.push(clipped(message)); };
@@ -211,7 +211,11 @@ export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: 
             if (!isNavigation) continue;
             // Ancestor project indices would import unrelated features; only current/sibling feature docs qualify.
             if (!path.includes('/features/') || /历史|旧版|历史上下文/.test(link.name + basename(path))) continue;
-            if (docs.some(doc => doc.path === path) || docs.length >= MAX_NAVIGATION) continue;
+            if (docs.some(doc => doc.path === path)) continue;
+            if (docs.length >= MAX_NAVIGATION) {
+                if (options.strictCompleteness) throw new Error('Navigation limit reached; complete task catalog is unavailable');
+                continue;
+            }
             try { docs.push({ path, text: await load(path) }); } catch { warn(`Unavailable navigation: ${basename(path)}`); }
         }
     }
@@ -219,8 +223,13 @@ export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: 
     try {
         const folder = await safePath(root, join(featurePath, 'tasks'));
         directories.add(folder);
-        for (const name of (await readdir(folder)).sort().slice(0, MAX_TASKS)) if (name !== 'templates') await addTask(join(folder, name, 'index.md'));
-    } catch { /* Feature may have no tasks. */ }
+        const names = (await readdir(folder)).sort();
+        if (options.strictCompleteness && names.length > MAX_TASKS) throw new Error('Task directory limit reached; complete task catalog is unavailable');
+        for (const name of names.slice(0, MAX_TASKS)) if (name !== 'templates') await addTask(join(folder, name, 'index.md'));
+    } catch (error) {
+        if (options.strictCompleteness && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        /* Feature may have no tasks. */
+    }
     const parsed: GoalTask[] = [];
     const allTasks = [...tasks.values()];
     // Explicit G navigation is the current catalog; unlisted legacy task folders are not extra work.

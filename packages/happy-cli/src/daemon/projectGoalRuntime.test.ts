@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import axios from 'axios';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
 import { createProjectGoalRuntime } from './projectGoalRuntime';
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 const key = new Uint8Array(32).fill(7);
+const catalogFingerprint = (pairs: Array<[string, number]>) => createHash('sha256').update(JSON.stringify([...pairs].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))).digest('hex');
 const encode = (value: unknown) => encodeBase64(encrypt(key, 'legacy', value));
 const ready = { role: 'agent', content: { type: 'event', data: { type: 'ready' } } };
 const metadata = { host: 'fixture', path: '/archive/feature/tasks/task', machineId: 'machine' };
@@ -62,4 +64,57 @@ it('retains task history across a feature move and observed directory changes', 
     ], hasNext: false } });
     const history = await runtime().history('/new/feature', [{ id: 'GFT-abcdefgh', directory: '/new/task', directories: ['/new/task', '/old/task'] }]);
     expect(history.map(session => [session.sessionId, session.directory])).toEqual([['stable', '/new/task'], ['legacy', '/new/task']]);
+});
+
+it('reads aggregate header groups from one catalog without fetching message transcripts', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [
+        row('feature-global', 1, { ...metadata, path: '/archive/feature', goalBoard: { featurePath: '/archive/feature' } } as any),
+        row('feature-task', 1, { ...metadata, goalBoard: { featurePath: '/archive/feature', taskId: 'task' } } as any),
+    ], hasNext: false } });
+    const history = await runtime().history('/archive', [
+        { id: '', directory: '/archive', featurePath: '/archive' },
+        { id: '', directory: '/archive/feature', featurePath: '/archive/feature' },
+        { id: 'task', directory: metadata.path, featurePath: '/archive/feature' },
+    ], { headersOnly: true });
+    expect(history.map(session => session.sessionId)).toEqual(['feature-global', 'feature-task']); expect(axios.get).toHaveBeenCalledTimes(1);
+});
+it('refuses an exact header total when a session cannot be decrypted', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [{ ...row('inaccessible', 0), metadata: encodeBase64(new Uint8Array(64)) }], hasNext: false } });
+    await expect(runtime().history('/archive', [], { headersOnly: true })).rejects.toThrow();
+});
+
+it('uses authenticated owner metadata candidates for untracked dataKey sessions without a root or session key', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [
+        { id: 'owned-data-key', metadata: 'opaque-data-key-ciphertext', metadataVersion: 7, dataEncryptionKey: 'opaque-wrapped-key', seq: 12, updatedAt: 200, active: true },
+        { id: 'other-machine', metadata: 'also-opaque', metadataVersion: 1, seq: 0, updatedAt: 1, active: false },
+    ], hasNext: false } });
+    const history = await createProjectGoalRuntime({ serverUrl: 'http://relay.test', token: 'owner-token', machineId: 'machine', findSession: () => undefined })
+        .history('/archive/feature', [{ id: '', directory: '/archive/feature', featurePath: '/archive/feature' }], { headersOnly: true,
+            catalogFingerprint: catalogFingerprint([['owned-data-key', 7], ['other-machine', 1]]),
+            headerCandidates: [{ sessionId: 'owned-data-key', metadataVersion: 7, directory: '/archive/feature', title: 'Owned discussion', featurePath: '/archive/feature' }] });
+    expect(history).toMatchObject([{ sessionId: 'owned-data-key', title: 'Owned discussion', updatedAt: 200, active: true, metadata: { machineId: 'machine', path: '/archive/feature' } }]);
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(axios.post).not.toHaveBeenCalled();
+});
+it('rejects unknown candidate IDs and stale metadata rather than trusting client snapshots', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [{ id: 'owned', metadata: 'opaque', metadataVersion: 4, seq: 0, updatedAt: 99, active: false }], hasNext: false } });
+    const adapter = createProjectGoalRuntime({ serverUrl: 'http://relay.test', token: 'owner-token', machineId: 'machine', findSession: () => undefined });
+    const candidate = { sessionId: 'foreign', metadataVersion: 4, directory: '/archive/feature', title: 'Unknown' };
+    await expect(adapter.history('/archive/feature', [], { headersOnly: true, catalogFingerprint: catalogFingerprint([['owned', 4]]), headerCandidates: [candidate] })).rejects.toThrow('outside the authenticated session catalog');
+    await expect(adapter.history('/archive/feature', [], { headersOnly: true, catalogFingerprint: catalogFingerprint([['owned', 4]]), headerCandidates: [{ ...candidate, sessionId: 'owned', metadataVersion: 3 }] })).rejects.toThrow('metadata changed');
+    await expect(adapter.history('/archive/feature', [], { headersOnly: true, catalogFingerprint: catalogFingerprint([['owned', 4]]), headerCandidates: [{ ...candidate, sessionId: 'owned' }, { ...candidate, sessionId: 'owned' }] })).rejects.toThrow('identities are duplicated');
+});
+it('accepts an explicitly empty complete candidate set without decrypting other machines', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [{ id: 'other-machine', metadata: 'opaque', metadataVersion: 1, seq: 0, updatedAt: 1, active: false }], hasNext: false } });
+    expect(await createProjectGoalRuntime({ serverUrl: 'http://relay.test', token: 'owner-token', machineId: 'machine', findSession: () => undefined })
+        .history('/archive', [], { headersOnly: true, catalogFingerprint: catalogFingerprint([['other-machine', 1]]), headerCandidates: [] })).toEqual([]);
+});
+
+it.each(['created', 'deleted', 'metadata-rebound'])('rejects a cross-snapshot %s catalog rather than silently omitting selected-machine work', async change => {
+    const before: Array<[string, number]> = [['owned', 3], ['other', 1]];
+    const after = change === 'created' ? [...before, ['new-selected-machine', 1] as [string, number]]
+        : change === 'deleted' ? before.slice(0, 1) : [['owned', 4], ['other', 1]] as Array<[string, number]>;
+    vi.mocked(axios.get).mockResolvedValue({ data: { sessions: after.map(([id, metadataVersion]) => ({ id, metadataVersion, metadata: 'opaque', seq: 0, updatedAt: 100, active: true })), hasNext: false } });
+    await expect(createProjectGoalRuntime({ serverUrl: 'http://relay.test', token: 'owner-token', machineId: 'machine', findSession: () => undefined })
+        .history('/archive', [], { headersOnly: true, headerCandidates: [], catalogFingerprint: catalogFingerprint(before) })).rejects.toThrow('Session catalog changed');
 });
