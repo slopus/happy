@@ -24,7 +24,6 @@ public struct MobileComposerMetrics: Equatable, Sendable {
     public var actionSize: CGFloat
     public var addIconSize: CGFloat
     public var secondaryActionHeight: CGFloat
-    public var effortWidth: CGFloat
     public var primaryActionSize: CGFloat
     public var primaryActionMarginLeft: CGFloat
     public var attachmentExtraHeight: CGFloat
@@ -44,7 +43,6 @@ public struct MobileComposerMetrics: Equatable, Sendable {
         actionSize: CGFloat,
         addIconSize: CGFloat,
         secondaryActionHeight: CGFloat,
-        effortWidth: CGFloat,
         primaryActionSize: CGFloat,
         primaryActionMarginLeft: CGFloat,
         attachmentExtraHeight: CGFloat
@@ -63,7 +61,6 @@ public struct MobileComposerMetrics: Equatable, Sendable {
         self.actionSize = actionSize
         self.addIconSize = addIconSize
         self.secondaryActionHeight = secondaryActionHeight
-        self.effortWidth = effortWidth
         self.primaryActionSize = primaryActionSize
         self.primaryActionMarginLeft = primaryActionMarginLeft
         self.attachmentExtraHeight = attachmentExtraHeight
@@ -84,7 +81,6 @@ public struct MobileComposerMetrics: Equatable, Sendable {
         actionSize: 42,
         addIconSize: 26,
         secondaryActionHeight: 40,
-        effortWidth: 64,
         primaryActionSize: 42,
         primaryActionMarginLeft: 8,
         // The photos 18 down instead of the 8 the text starts at, 64, 8 below.
@@ -270,13 +266,16 @@ extension MobileComposerMetrics {
                 )
             )
         case .effort:
-            // Reserves the widest level's width so switching never reflows the
-            // row; sits close to send.
+            // Exactly as wide as its label, so its last word is as far from
+            // send (the row's 2 and send's 8) as it is from the model's
+            // across the separator (2, ·, 2), and as the model alone is.
+            // A reserved width and padding left their slack beside send:
+            // 41 after "High", 20 after a long label.
             return ComposerMenuGeometry(
-                frame: ComposerGeometryStyle(height: .points(secondaryActionHeight), minWidth: effortWidth, flexShrink: 0),
+                frame: ComposerGeometryStyle(height: .points(secondaryActionHeight), flexShrink: 0),
                 content: ComposerGeometryStyle(
                     height: .points(secondaryActionHeight), minWidth: 0, flexDirectionRow: true, alignItems: .center,
-                    justifyContent: .flexStart, borderRadius: secondaryActionHeight / 2, paddingLeft: 4, paddingRight: 6,
+                    justifyContent: .flexStart, borderRadius: secondaryActionHeight / 2, paddingLeft: 0, paddingRight: 0,
                     gap: 4
                 )
             )

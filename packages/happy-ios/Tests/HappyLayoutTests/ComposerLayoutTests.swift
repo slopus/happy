@@ -34,7 +34,6 @@ final class MobileComposerGeometryTests: XCTestCase {
             actionSize: 42,
             addIconSize: 26,
             secondaryActionHeight: 40,
-            effortWidth: 64,
             primaryActionSize: 42,
             primaryActionMarginLeft: 8,
             attachmentExtraHeight: 82
@@ -71,8 +70,7 @@ final class MobileComposerGeometryTests: XCTestCase {
     }
 
     /// The pair is right-aligned, so each chip keeps its slack outside the
-    /// separator. Only the model shrinks; the effort reserves the widest
-    /// label's width.
+    /// separator. Only the model shrinks; the effort is as wide as its label.
     func testModelMenuGeometry() {
         let geometry = metrics.menuGeometry(.model)
         XCTAssertEqual(geometry.frame, ComposerGeometryStyle(height: .points(40), minWidth: 0, flexShrink: 1))
@@ -84,10 +82,10 @@ final class MobileComposerGeometryTests: XCTestCase {
 
     func testEffortMenuGeometry() {
         let geometry = metrics.menuGeometry(.effort)
-        XCTAssertEqual(geometry.frame, ComposerGeometryStyle(height: .points(40), minWidth: 64, flexShrink: 0))
+        XCTAssertEqual(geometry.frame, ComposerGeometryStyle(height: .points(40), flexShrink: 0))
         XCTAssertEqual(geometry.content, ComposerGeometryStyle(
             height: .points(40), minWidth: 0, flexDirectionRow: true, alignItems: .center,
-            justifyContent: .flexStart, borderRadius: 20, paddingLeft: 4, paddingRight: 6, gap: 4
+            justifyContent: .flexStart, borderRadius: 20, paddingLeft: 0, paddingRight: 0, gap: 4
         ))
     }
 
@@ -404,14 +402,20 @@ final class AgentInputCardLayoutTests: XCTestCase {
         // 4 + 30 + 8, label centred.
         assertFrame(content.permission?.frame, rect(0, 1, 42, 40))
         assertFrame(content.permission?.label, rect(6, 11.5, 30, 17))
-        // The spacer takes the 46 left over; 12 + 80 + 4, label flush right.
-        assertFrame(content.model?.frame, rect(92, 1, 96, 40))
+        // The spacer takes the 70 left over; 12 + 80 + 4, label flush right.
+        assertFrame(content.model?.frame, rect(116, 1, 96, 40))
         assertFrame(content.model?.label, rect(16, 11.5, 80, 17))
-        assertFrame(content.separator, rect(190, 12.5, 5, 17))
-        // 4 + 40 + 6 is under the 64 minimum; label flush left.
-        assertFrame(content.effort?.frame, rect(197, 1, 64, 40))
+        assertFrame(content.separator, rect(214, 12.5, 5, 17))
+        // As wide as its label.
+        assertFrame(content.effort?.frame, rect(221, 1, 40, 40))
         assertFrame(content.effort?.label, rect(0, 11.5, 40, 17))
         XCTAssertEqual(content.effort?.frame.maxX, layout.middle.width)
+        // Its last word is 10 from send, as the model's is from it across
+        // the separator less the dot's own 5 (2 + 2), and as a lone model is.
+        XCTAssertEqual(layout.primary.minX - (layout.middle.minX + 221 + 40), 10)
+        XCTAssertEqual(221 - (116 + 96) - 5, 4)
+        let alone = card(model: CGSize(width: 80, height: 17))
+        XCTAssertEqual(alone.primary.minX - (alone.middle.minX + (alone.middleContent.model?.frame.maxX ?? 0)), 10)
     }
 
     /// AgentInput.tsx in zen mode: `!zenMode &&` drops add, permission,
@@ -445,9 +449,9 @@ final class AgentInputCardLayoutTests: XCTestCase {
         )
         let content = layout.middleContent
         assertFrame(content.permission?.frame, rect(0, 1, 42, 40))
-        assertFrame(content.model?.frame, rect(46, 1, 142, 40))
-        assertFrame(content.model?.label, rect(0, 11.5, 142, 17))
-        assertFrame(content.effort?.frame, rect(197, 1, 64, 40))
+        assertFrame(content.model?.frame, rect(46, 1, 166, 40))
+        assertFrame(content.model?.label, rect(0, 11.5, 166, 17))
+        assertFrame(content.effort?.frame, rect(221, 1, 40, 40))
     }
 
     func testModelWithoutAMenuUsesThePlainChipPadding() {

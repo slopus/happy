@@ -136,8 +136,8 @@ final class ContextMeterLayoutTests: XCTestCase {
         XCTAssertEqual(split.label.minX, split.ring.maxX + 6)
         XCTAssertEqual(split.label.maxX, model.label.maxX)
         XCTAssertEqual(split.label.width, model.label.width - 18)
-        // The effort keeps its room beside it.
-        XCTAssertEqual(card.middleContent.effort?.frame.width, 64)
+        // The effort keeps its whole label beside it.
+        XCTAssertEqual(card.middleContent.effort?.frame.width, 34)
     }
 
     /// Squeezed past the ring itself, nothing goes negative.

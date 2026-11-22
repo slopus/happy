@@ -234,6 +234,67 @@ final class HostedNewSessionStartTests: XCTestCase {
         try await keep("speed-picker-opus")
     }
 
+    /// The chips' last word is as far from the round button as the model's
+    /// is from the effort's across the separator, with a speed or without,
+    /// beside the microphone, send and stop alike.
+    func testTheChipsSitEvenlyBesideTheButton() async throws {
+        try await pair()
+        let (chat, card) = try await newWork()
+        func type(_ text: String) {
+            card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0))
+        }
+        func check(_ name: String, _ action: AgentInputPrimaryAction, _ chips: String) async throws {
+            try await wait { card.configuration.primaryAction == action && card.configuration.effort?.accessibilityLabel.hasSuffix(chips) == true }
+            try await Task.sleep(for: .milliseconds(400))
+            card.layoutIfNeeded()
+            let gaps = try self.gaps(card)
+            XCTAssertEqual(gaps.button, 10, accuracy: 0.5, name)
+            XCTAssertEqual(gaps.button, gaps.separator, accuracy: 2, name)
+            print("chip gaps \(name): button \(gaps.button), across the separator \(gaps.separator)")
+            try await keep("chips-\(name)")
+        }
+        try await check("speed-mic", .record, "Extra High · Fast")
+        type("Tidy the release notes")
+        try await check("speed-send", .send, "Extra High · Fast")
+        chat.agentInputCard(card, didSelect: "speed\tultrafast", in: .effort)
+        try await check("ultrafast-send", .send, "Extra High · Ultrafast")
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await check("ultrafast-stop", .stop, "Extra High · Ultrafast")
+        chat.agentInputCard(card, didSelect: "model\tclaude\nanthropic/opus-5", in: .model)
+        try await check("no-speed-stop", .stop, "Effort: High")
+
+        window?.isHidden = true
+        let (next, nextCard) = try await newWork()
+        next.agentInputCard(nextCard, didSelect: "model\tclaude\nanthropic/opus-5", in: .model)
+        try await wait { nextCard.configuration.effort?.accessibilityLabel == "Effort: High" }
+        func checkNext(_ name: String, _ action: AgentInputPrimaryAction) async throws {
+            try await wait { nextCard.configuration.primaryAction == action }
+            try await Task.sleep(for: .milliseconds(400))
+            nextCard.layoutIfNeeded()
+            let gaps = try self.gaps(nextCard)
+            XCTAssertEqual(gaps.button, 10, accuracy: 0.5, name)
+            XCTAssertEqual(gaps.button, gaps.separator, accuracy: 2, name)
+            print("chip gaps \(name): button \(gaps.button), across the separator \(gaps.separator)")
+            try await keep("chips-\(name)")
+        }
+        try await checkNext("no-speed-mic", .record)
+        nextCard.setText("Tidy", selection: NSRange(location: 4, length: 0))
+        try await checkNext("no-speed-send", .send)
+    }
+
+    /// From the model's label to the effort's, and from the effort's to
+    /// the round button, in the window.
+    private func gaps(_ card: AgentInputCardView) throws -> (separator: CGFloat, button: CGFloat) {
+        func label(_ chip: AgentInputChip) throws -> CGRect {
+            let button = try XCTUnwrap(Self.views(card).compactMap { $0 as? ComposerChipButton }.first { $0.chip == chip })
+            let label = try XCTUnwrap(button.subviews.compactMap { $0 as? UILabel }.first)
+            return label.convert(label.bounds, to: nil)
+        }
+        let model = try label(.model), effort = try label(.effort)
+        let button = card.primaryControl.convert(card.primaryControl.bounds, to: nil)
+        return (effort.minX - model.maxX, button.minX - effort.maxX)
+    }
+
     private func line(_ id: String) -> PickerLineView? {
         window.flatMap { Self.views($0).compactMap { $0 as? PickerLineView }.first { $0.accessibilityIdentifier == id } }
     }

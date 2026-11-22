@@ -416,7 +416,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             modelStyle.resolvedPaddingLeft + $0.labelSize.width + modelStyle.resolvedPaddingRight
         } ?? 0
         let effortWidth = input.effort.map {
-            max(effort.frame.minWidth ?? 0, effort.content.resolvedPaddingLeft + $0.labelSize.width + effort.content.resolvedPaddingRight)
+            effort.content.resolvedPaddingLeft + $0.labelSize.width + effort.content.resolvedPaddingRight
         }
 
         // The spacer is always there; so is the model's slot.
