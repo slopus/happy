@@ -4,12 +4,14 @@ import { projectGoalRequest } from './projectGoals';
 import { sync } from './sync';
 
 type Candidates = { candidates: GoalProjectConversationCandidate[]; catalogFingerprint: string; catalogSnapshotId: string };
+export type ProjectConversationHistoryProgress = { phase: 'catalog' | 'grouping'; processed: number; total: number };
 type CatalogCache = {
     account: ReturnType<typeof getRuntimeAccountSelection>;
     encryption: typeof sync.encryption;
     machineId: string;
     projectPath: string;
     expiresAt: number;
+    total: number;
     complete: boolean;
     pending: Promise<Candidates>;
 };
@@ -23,7 +25,7 @@ const encoder = new TextEncoder();
 export function loadProjectConversationCandidates(
     machineId: string,
     projectPath: string,
-    options: { refresh?: boolean; signal?: AbortSignal } = {},
+    options: { refresh?: boolean; signal?: AbortSignal; onProgress?: (progress: ProjectConversationHistoryProgress) => void } = {},
 ): Promise<Candidates> {
     assertAccountRuntime();
     const signal = options.signal;
@@ -36,13 +38,21 @@ export function loadProjectConversationCandidates(
         assertAccountRuntime();
         if (getRuntimeAccountSelection() !== account || sync.encryption !== encryption) throw new Error('Project history account changed');
     };
+    const progress = (processed: number, total: number) => {
+        current();
+        options.onProgress?.({ phase: 'catalog', processed, total });
+        current();
+    };
     catalogs = catalogs.filter(entry => entry.account === account && entry.encryption === encryption && entry.expiresAt > Date.now() + 5_000);
     const existing = catalogs.find(entry => entry.machineId === machineId && entry.projectPath === projectPath);
     if (existing && !options.refresh && (!signal || existing.complete)) {
-        return signal ? existing.pending.then(result => { current(); return result; }) : existing.pending;
+        return existing.pending.then(result => {
+            progress(existing.total, existing.total);
+            return result;
+        });
     }
     catalogs = catalogs.filter(entry => entry !== existing);
-    const entry: CatalogCache = { account, encryption, machineId, projectPath, expiresAt: Infinity, complete: false, pending: undefined! };
+    const entry: CatalogCache = { account, encryption, machineId, projectPath, expiresAt: Infinity, total: 0, complete: false, pending: undefined! };
     catalogs.push(entry);
     if (catalogs.length > 2) catalogs.shift();
     const evict = () => { catalogs = catalogs.filter(candidate => candidate !== entry); };
@@ -57,6 +67,7 @@ export function loadProjectConversationCandidates(
     const version = signal ? `project-conversation-catalog-${++readVersion}` : undefined;
     const read = (async () => {
         if (!encryption) throw new Error('Project history encryption is unavailable');
+        progress(0, 0);
         const candidates: GoalProjectConversationCandidate[] = [], versions = new Map<string, number>(), cursors = new Set<string>();
         let snapshot: { snapshotId: string; catalogFingerprint: string; total: number; expiresAt: number } | undefined;
         let cursor: string | undefined, catalogBytes = 0, candidateBytes = 2;
@@ -111,12 +122,14 @@ export function loadProjectConversationCandidates(
             current();
             if (!page.hasNext) {
                 if (page.nextCursor || versions.size !== page.total) throw new Error('Project history catalog is incomplete');
+                progress(versions.size, page.total);
                 break;
             }
             if (!page.sessions.length || !page.nextCursor || page.nextCursor === cursor || cursors.has(page.nextCursor))
                 throw new Error('Project history catalog cursor did not advance');
             cursors.add(page.nextCursor);
             cursor = page.nextCursor;
+            progress(versions.size, page.total);
         } while (cursor);
         const input = JSON.stringify([...versions].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
         const hash = await crypto.subtle.digest('SHA-256', encoder.encode(input));
@@ -124,6 +137,7 @@ export function loadProjectConversationCandidates(
         const fingerprint = [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('');
         if (!snapshot || fingerprint !== snapshot.catalogFingerprint) throw new Error('Project history catalog fingerprint is invalid');
         entry.expiresAt = snapshot.expiresAt;
+        entry.total = snapshot.total;
         return { candidates, catalogFingerprint: fingerprint, catalogSnapshotId: snapshot.snapshotId };
     })();
     entry.pending = (cancelled ? Promise.race([read, cancelled]) : read).then(result => {

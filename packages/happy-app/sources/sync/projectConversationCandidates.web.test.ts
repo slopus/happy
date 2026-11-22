@@ -13,7 +13,7 @@ vi.mock('./projectGoals', () => ({ projectGoalRequest: vi.fn() }));
 import { TokenStorage } from '@/auth/tokenStorage';
 import { fetchSessionSnapshotPage } from './apiSessions';
 import { projectGoalRequest } from './projectGoals';
-import { loadProjectConversationCandidates } from './projectConversationCandidates.web';
+import { loadProjectConversationCandidates, type ProjectConversationHistoryProgress } from './projectConversationCandidates.web';
 
 const machineId = 'selected-machine', projectPath = '/projects/paws';
 const snapshotA = '00000000-0000-4000-8000-000000000001';
@@ -193,6 +193,128 @@ describe('daemon-owned immutable project conversation catalogs', () => {
             await expect(loadProjectConversationCandidates(machineId, projectPath)).rejects.toThrow(/account|changed/i);
             expect(projectGoalRequest).toHaveBeenCalledTimes(1);
         } finally { timer.mockRestore(); }
+    });
+});
+
+describe('project history progress', () => {
+    it('publishes the first page progress while the next page is still pending', async () => {
+        const pages = await twoPages(), nextStarted = deferred<void>(), nextPage = deferred<any>();
+        vi.mocked(projectGoalRequest).mockResolvedValueOnce(pages[0]).mockImplementationOnce(async () => {
+            nextStarted.resolve();
+            return nextPage.promise;
+        });
+        const progress: ProjectConversationHistoryProgress[] = [];
+        const request = loadProjectConversationCandidates(machineId, projectPath, { onProgress: value => progress.push(value) });
+        await nextStarted.promise;
+        expect(progress).toEqual([
+            { phase: 'catalog', processed: 0, total: 0 },
+            { phase: 'catalog', processed: 1, total: 2 },
+        ]);
+        nextPage.resolve(pages[1]);
+        await request;
+        expect(progress.at(-1)).toEqual({ phase: 'catalog', processed: 2, total: 2 });
+    });
+
+    it('reports fully decoded page counts across all machines without claiming grouping or completion', async () => {
+        const pages = await twoPages();
+        vi.mocked(projectGoalRequest).mockResolvedValueOnce(pages[0]).mockResolvedValueOnce(pages[1]);
+        const progress: ProjectConversationHistoryProgress[] = [];
+        const result = await loadProjectConversationCandidates(machineId, projectPath, { onProgress: value => progress.push(value) });
+        expect(result.candidates).toHaveLength(1);
+        expect(progress).toEqual([
+            { phase: 'catalog', processed: 0, total: 0 },
+            { phase: 'catalog', processed: 1, total: 2 },
+            { phase: 'catalog', processed: 2, total: 2 },
+        ]);
+    });
+
+    it('does not advance progress for a page with unreadable metadata', async () => {
+        const rows = [encryptedRow('one'), encryptedRow('other')];
+        mock.metadata.set('other', null);
+        vi.mocked(projectGoalRequest).mockResolvedValue(await catalog(rows));
+        const progress: ProjectConversationHistoryProgress[] = [];
+        await expect(loadProjectConversationCandidates(machineId, projectPath, { onProgress: value => progress.push(value) })).rejects.toThrow(/metadata/i);
+        expect(progress).toEqual([{ phase: 'catalog', processed: 0, total: 0 }]);
+    });
+
+    it('does not advance progress for a page whose cursor did not advance', async () => {
+        const pages = await twoPages({}, { hasNext: true, nextCursor: 'catalog-next-1' });
+        vi.mocked(projectGoalRequest).mockResolvedValueOnce(pages[0]).mockResolvedValueOnce(pages[1]);
+        const progress: ProjectConversationHistoryProgress[] = [];
+        await expect(loadProjectConversationCandidates(machineId, projectPath, { onProgress: value => progress.push(value) })).rejects.toThrow(/cursor/i);
+        expect(progress).toEqual([
+            { phase: 'catalog', processed: 0, total: 0 },
+            { phase: 'catalog', processed: 1, total: 2 },
+        ]);
+    });
+
+    it('does not report grouping or completed results for a catalog that fails its final fingerprint', async () => {
+        vi.mocked(projectGoalRequest).mockResolvedValue(await catalog(undefined, { catalogFingerprint: 'f'.repeat(64) }));
+        const progress: ProjectConversationHistoryProgress[] = [];
+        await expect(loadProjectConversationCandidates(machineId, projectPath, { onProgress: value => progress.push(value) })).rejects.toThrow(/fingerprint/i);
+        expect(progress).toEqual([
+            { phase: 'catalog', processed: 0, total: 0 },
+            { phase: 'catalog', processed: 1, total: 1 },
+        ]);
+    });
+
+    it('reports the full account total on a complete cache hit instead of only selected-machine candidates', async () => {
+        const pages = await twoPages();
+        vi.mocked(projectGoalRequest).mockResolvedValueOnce(pages[0]).mockResolvedValueOnce(pages[1]);
+        await loadProjectConversationCandidates(machineId, projectPath);
+        const progress: ProjectConversationHistoryProgress[] = [];
+        const result = await loadProjectConversationCandidates(machineId, projectPath, { onProgress: value => progress.push(value) });
+        expect(result.candidates).toHaveLength(1);
+        expect(progress).toEqual([{ phase: 'catalog', processed: 2, total: 2 }]);
+        expect(projectGoalRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['account', 'encryption', 'cancel'] as const)('fences cached progress when %s ownership changes before delivery', async replacement => {
+        vi.mocked(projectGoalRequest).mockResolvedValue(await catalog());
+        await loadProjectConversationCandidates(machineId, projectPath);
+        const controller = new AbortController();
+        const progress: ProjectConversationHistoryProgress[] = [];
+        const request = loadProjectConversationCandidates(machineId, projectPath, {
+            ...(replacement === 'cancel' ? { signal: controller.signal } : {}),
+            onProgress: value => progress.push(value),
+        });
+        if (replacement === 'account') mock.owner = { ...mock.owner };
+        else if (replacement === 'encryption') mock.encryption = makeEncryption();
+        else controller.abort();
+        await expect(request).rejects.toThrow();
+        expect(progress).toEqual([]);
+        expect(projectGoalRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['account', 'cancel'] as const)('stops after the first progress callback changes %s ownership', async replacement => {
+        const controller = new AbortController();
+        const progress: ProjectConversationHistoryProgress[] = [];
+        await expect(loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal, onProgress: value => {
+            progress.push(value);
+            if (replacement === 'account') mock.owner = { ...mock.owner };
+            else controller.abort();
+        } })).rejects.toThrow();
+        expect(progress).toEqual([{ phase: 'catalog', processed: 0, total: 0 }]);
+        expect(projectGoalRequest).not.toHaveBeenCalled();
+    });
+
+    it.each(['account', 'cancel'] as const)('never reports late page progress after %s changes during decryption', async replacement => {
+        const started = deferred<void>(), metadata = deferred<any>();
+        const controller = new AbortController();
+        mock.encryption.prepareSessionEncryption.mockResolvedValue({ sessionEncryption: { decryptMetadata: async () => {
+            started.resolve(); return metadata.promise;
+        } }, commit: vi.fn() });
+        vi.mocked(projectGoalRequest).mockResolvedValue(await catalog());
+        const progress: ProjectConversationHistoryProgress[] = [];
+        const request = loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal, onProgress: value => progress.push(value) });
+        const rejected = expect(request).rejects.toThrow();
+        await started.promise;
+        if (replacement === 'account') mock.owner = { ...mock.owner };
+        else controller.abort();
+        metadata.resolve(mock.metadata.get('one'));
+        await rejected;
+        await Promise.resolve();
+        expect(progress).toEqual([{ phase: 'catalog', processed: 0, total: 0 }]);
     });
 });
 

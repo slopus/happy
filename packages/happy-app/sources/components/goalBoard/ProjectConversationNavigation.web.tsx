@@ -8,7 +8,7 @@ import { storage, useLocalSettingMutable, useLocalSettingUpdater } from '@/sync/
 import { isSidebarGroupExpanded, setSidebarGroupExpanded } from '@/utils/sidebarGroupExpansion';
 import { WorkspaceTreeRow } from '@/components/fileWorkspace/WorkspaceTreeRow';
 import { WorkspaceButton } from '@/components/fileWorkspace/WorkspaceButton';
-import { loadProjectConversationCandidates } from '@/sync/projectConversationCandidates.web';
+import { loadProjectConversationCandidates, type ProjectConversationHistoryProgress } from '@/sync/projectConversationCandidates.web';
 import { getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { machineStartGoalAuthor } from '@/sync/ops';
 import { projectGoalRequest, canCreateProjectConversation, isReadOnlyProjectPreview } from '@/sync/projectGoals';
@@ -73,7 +73,11 @@ const words = () =>
               counts: t('projectGoals.conversationCounts'),
               retry: '重试',
               load: '加载历史…',
-              unloaded: '历史尚未加载',
+              loadHistory: '加载完整历史',
+              synced: '当前显示已同步会话',
+              unloaded: '暂无已同步会话',
+              grouping: '正在整理会话…',
+              cancel: '取消',
               closed: '收起',
               open: '展开',
           }
@@ -100,7 +104,11 @@ const words = () =>
               counts: t('projectGoals.conversationCounts'),
               retry: 'Retry',
               load: 'Loading history…',
-              unloaded: 'History has not loaded',
+              loadHistory: 'Load complete history',
+              synced: 'Showing synced conversations',
+              unloaded: 'No synced conversations yet',
+              grouping: 'Organizing conversations…',
+              cancel: 'Cancel',
               closed: 'Collapse',
               open: 'Expand',
           };
@@ -147,6 +155,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
     // explicitly accounts for their IDs. Reading and creation are independent.
     const locallyCreated = React.useRef(new Map<string, { scopePath: string; row: ConversationGroup['sessions'][number] }>());
     const [loading, setLoading] = React.useState(false),
+        [progress, setProgress] = React.useState<ProjectConversationHistoryProgress>(),
         [error, setError] = React.useState<string>(),
         [creating, setCreating] = React.useState<string>();
     const [filter, setFilter] = React.useState<'all' | 'attention' | 'running'>('all');
@@ -173,15 +182,13 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
         refreshExplicit = React.useRef(false),
         reread = React.useRef<((fresh: boolean, explicit: boolean) => void) | undefined>(undefined);
     const historyVisibility = React.useRef(false);
-    const historyDirty = React.useRef(false);
     const flushQueuedRead = () => {
         const fresh = refreshRequested.current;
         if (fresh === undefined) return;
         const explicit = refreshExplicit.current;
         refreshRequested.current = undefined;
         refreshExplicit.current = false;
-        if (explicit || historyVisibility.current) reread.current?.(fresh, explicit);
-        else historyDirty.current = true;
+        if (explicit) reread.current?.(fresh, explicit);
     };
     const catalogSnapshot = React.useRef<{ id: string; ids: ReadonlySet<string> } | undefined>(undefined);
     const activeRead = React.useRef<AbortController | undefined>(undefined);
@@ -222,7 +229,6 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             setLoading(false);
             refreshRequested.current = undefined;
             refreshExplicit.current = false;
-            historyDirty.current = true;
             old.abort();
         }
         const pathsChanged = groups.length !== knownScopes.length || knownScopes.some(scope => !groups.some(group => group.scopePath === scope.scopePath));
@@ -230,7 +236,6 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             complete.current = false;
             setCountsComplete(false);
             cache.delete(props.scopeKey);
-            historyDirty.current = true;
         }
         setGroups(previous => {
             const next = knownScopes.map(scope => {
@@ -245,7 +250,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
     const read = React.useCallback(
         async (scopePath?: string, cursor?: ConversationGroup['nextCursor'], fresh = !scopePath, explicit = false) => {
             if (!path || !props.desktop || props.offline || isReadOnlyProjectPreview()) return;
-            if (!explicit && !historyVisibility.current) { historyDirty.current = true; return; }
+            if (!explicit) return;
             if (reading.current || opening.current) {
                 if (!scopePath) {
                     refreshRequested.current = refreshRequested.current === true || fresh;
@@ -268,11 +273,16 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             // resolution, including healthy large catalogs. Retry is user-driven.
             const timer = setTimeout(() => controller.abort(new Error(t('errors.connectionTimeout'))), READ_TIMEOUT_MS);
             setLoading(true);
+            setProgress(undefined);
             setError(undefined);
             try {
                 await Promise.race([(async () => {
-                    const catalog = await loadProjectConversationCandidates(machineId, path, { refresh: fresh, signal: controller.signal });
+                    const catalog = await loadProjectConversationCandidates(machineId, path, {
+                        refresh: fresh, signal: controller.signal,
+                        onProgress: value => { if (current()) setProgress(value); },
+                    });
                     if (!current()) return;
+                    setProgress({ phase: 'grouping', processed: 0, total: 0 });
                     // A cursor belongs to the snapshot that produced the current
                     // groups. A renewed/evicted catalog needs a complete replacement.
                     const pageScope = scopePath && catalog.catalogSnapshotId === catalogSnapshot.current?.id ? scopePath : undefined;
@@ -345,31 +355,31 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
     reread.current = (fresh, explicit) => {
         void read(undefined, undefined, fresh, explicit);
     };
-    const historyRevision = React.useRef(props.revision);
-    const historyReader = React.useRef(read);
-    const historyScopes = React.useRef(scopeIdentity);
     React.useEffect(() => {
         const wasVisible = historyVisibility.current;
-        const changed = historyRevision.current !== props.revision || historyReader.current !== read || historyScopes.current !== scopeIdentity;
         historyVisibility.current = hasExpandedScope;
-        historyRevision.current = props.revision;
-        historyReader.current = read;
-        historyScopes.current = scopeIdentity;
-        if (!hasExpandedScope) {
+        if (wasVisible && !hasExpandedScope) {
             if (!refreshExplicit.current) refreshRequested.current = undefined;
-            historyDirty.current ||= changed;
-            if (wasVisible && activeRead.current) {
-                historyDirty.current = true;
-                activeRead.current.abort();
-            }
-            return;
+            activeRead.current?.abort();
         }
-        if (!complete.current || changed || historyDirty.current) {
-            historyDirty.current = false;
-            // A revision during a cold read queues one cached reaggregation.
-            void read(undefined, undefined, !reading.current);
-        }
-    }, [read, props.revision, hasExpandedScope, scopeIdentity]);
+        // Expansion and ordinary project file changes never start an account
+        // traversal. Only an explicit history/refresh action may do that work.
+    }, [hasExpandedScope]);
+    const cancelHistory = () => {
+        const controller = activeRead.current;
+        activeRead.current = undefined;
+        epoch.current++;
+        reading.current = false;
+        refreshRequested.current = undefined;
+        refreshExplicit.current = false;
+        setLoading(false);
+        setProgress(undefined);
+        controller?.abort();
+    };
+    const loadingLabel = progress?.phase === 'grouping' ? w.grouping
+        : progress && progress.total > 0
+            ? `${w.load} ${Math.min(99, Math.floor(progress.processed / progress.total * 100))}%`
+            : w.load;
     const create = async (scopePath: string) => {
         if (!props.desktop || opening.current || props.offline || !canCreateProjectConversation()) return;
         opening.current = true;
@@ -514,6 +524,12 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                             </ConversationButton>
                         ))}
                     </View>
+                    {!countsComplete && !loading && <View style={styles.line}>
+                        <Text style={[styles.meta, { flex: 1 }]}>{w.synced}</Text>
+                        <ConversationAction label={w.loadHistory} icon="download-outline"
+                            testID="project-conversations-load-history" disabled={props.offline}
+                            onPress={() => { void read(undefined, undefined, false, true); }} />
+                    </View>}
                 </View>
                 {props.offline && <Text style={styles.notice}>{w.offline}</Text>}
                 {error && (
@@ -533,8 +549,9 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                     </View>
                 )}
                 {loading && <View style={styles.loading}>
-                    <ActivityIndicator size="small" color={theme.colors.textLink} accessibilityLabel={w.load} />
-                    <Text style={styles.meta}>{w.load}</Text>
+                    <ActivityIndicator size="small" color={theme.colors.textLink} accessibilityLabel={loadingLabel} />
+                    <Text style={[styles.meta, { flex: 1 }]}>{loadingLabel}</Text>
+                    <ConversationAction label={w.cancel} testID="project-conversations-cancel-history" onPress={cancelHistory} />
                 </View>}
                 <ScrollView style={styles.list} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
                     {filtered
@@ -568,7 +585,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                         onPress={() => props.onSelect({ scopePath: g.scopePath, taskId: row.taskId, sessionId: row.sessionId })}
                                     />)}
                                     {!g.visible.length && <Text style={styles.empty}>
-                                        {countsComplete ? (filter === 'all' ? w.empty : w.noResults) : loading ? w.load : w.unloaded}
+                                        {countsComplete ? (filter === 'all' ? w.empty : w.noResults) : w.unloaded}
                                     </Text>}
                                     {g.nextCursor && <View style={styles.historyAction}>
                                         <ConversationAction label={w.more} icon="chevron-down-outline" disabled={loading || props.offline}
