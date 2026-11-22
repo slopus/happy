@@ -4,7 +4,10 @@ import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { GoalProjectConversationsSchema } from '@slopus/happy-wire';
-import { storage } from '@/sync/storage';
+import { storage, useLocalSettingMutable, useLocalSettingUpdater } from '@/sync/storage';
+import { isSidebarGroupExpanded, setSidebarGroupExpanded } from '@/utils/sidebarGroupExpansion';
+import { WorkspaceTreeRow } from '@/components/fileWorkspace/WorkspaceTreeRow';
+import { WorkspaceButton } from '@/components/fileWorkspace/WorkspaceButton';
 import { loadProjectConversationCandidates } from '@/sync/projectConversationCandidates.web';
 import { getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { machineStartGoalAuthor } from '@/sync/ops';
@@ -33,6 +36,14 @@ function ConversationButton({ reveal, ...props }: React.ComponentProps<typeof Bu
         />
     );
 }
+function ConversationTreeRow({ reveal, ...props }: React.ComponentProps<typeof WorkspaceTreeRow> & { reveal?: boolean }) {
+    const onReveal = React.useContext(RevealContext);
+    return <WorkspaceTreeRow {...props} onPress={() => { if (reveal) onReveal?.(); props.onPress(); }} />;
+}
+function ConversationAction({ reveal, ...props }: React.ComponentProps<typeof WorkspaceButton> & { reveal?: boolean }) {
+    const onReveal = React.useContext(RevealContext);
+    return <WorkspaceButton {...props} onPress={() => { if (reveal) onReveal?.(); props.onPress(); }} />;
+}
 const Context = React.createContext<React.ReactNode>(null);
 export function useProjectConversationNavigation() {
     return React.useContext(Context);
@@ -48,7 +59,6 @@ const words = () =>
               empty: '还没有会话',
               noResults: t('projectGoals.noFilteredConversations'),
               create: '新建会话',
-              first: '开启第一个会话',
               features: '个子项目',
               conversations: '个会话',
               current: '当前',
@@ -76,7 +86,6 @@ const words = () =>
               empty: 'No conversations yet',
               noResults: t('projectGoals.noFilteredConversations'),
               create: 'New conversation',
-              first: 'Start the first conversation',
               features: 'features',
               conversations: 'conversations',
               current: 'Current',
@@ -129,6 +138,8 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
         w = words();
     const path = props.project?.projectPath,
         machineId = props.machineId;
+    const knownScopes = React.useMemo(() => projectScopes(props.project), [props.project]);
+    const scopeIdentity = JSON.stringify(knownScopes.map(group => [group.scopePath, group.title]));
     const [groups, setGroups] = React.useState<ConversationGroup[]>(() => cache.get(props.scopeKey) ?? projectScopes(props.project));
     const [countsComplete, setCountsComplete] = React.useState(() => cache.has(props.scopeKey));
     const complete = React.useRef(countsComplete);
@@ -138,8 +149,13 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
     const [loading, setLoading] = React.useState(false),
         [error, setError] = React.useState<string>(),
         [creating, setCreating] = React.useState<string>();
-    const [filter, setFilter] = React.useState<'all' | 'attention' | 'running'>('all'),
-        [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
+    const [filter, setFilter] = React.useState<'all' | 'attention' | 'running'>('all');
+    const [expansion] = useLocalSettingMutable('sidebarGroupExpansion');
+    const updateExpansion = useLocalSettingUpdater('sidebarGroupExpansion');
+    const expansionId = (scopePath: string) => `conversation-navigation:${JSON.stringify([machineId, path, scopePath])}`;
+    const expanded = (scopePath: string) => isSidebarGroupExpanded(expansion, 'projects', expansionId(scopePath), false);
+    const setExpanded = (scopePath: string, open: boolean) => updateExpansion(value => setSidebarGroupExpanded(value, 'projects', expansionId(scopePath), open, false));
+    const hasExpandedScope = knownScopes.some(group => expanded(group.scopePath));
     const headers = storage((s) => s.sessions),
         unread = storage((s) => s.unreadSessionIds),
         connected = storage((s) => s.socketStatus === 'connected');
@@ -154,7 +170,19 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
         opening = React.useRef(false),
         focus = React.useRef(0);
     const refreshRequested = React.useRef<boolean | undefined>(undefined),
-        reread = React.useRef<((fresh: boolean) => void) | undefined>(undefined);
+        refreshExplicit = React.useRef(false),
+        reread = React.useRef<((fresh: boolean, explicit: boolean) => void) | undefined>(undefined);
+    const historyVisibility = React.useRef(false);
+    const historyDirty = React.useRef(false);
+    const flushQueuedRead = () => {
+        const fresh = refreshRequested.current;
+        if (fresh === undefined) return;
+        const explicit = refreshExplicit.current;
+        refreshRequested.current = undefined;
+        refreshExplicit.current = false;
+        if (explicit || historyVisibility.current) reread.current?.(fresh, explicit);
+        else historyDirty.current = true;
+    };
     const catalogSnapshot = React.useRef<{ id: string; ids: ReadonlySet<string> } | undefined>(undefined);
     const activeRead = React.useRef<AbortController | undefined>(undefined);
     const selection = React.useRef(props.selectedId);
@@ -179,14 +207,50 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             epoch.current++;
             reading.current = false;
             refreshRequested.current = undefined;
+            refreshExplicit.current = false;
             activeRead.current?.abort();
         };
     }, []);
+    React.useEffect(() => {
+        // Known folder definitions are already available from the project. Keep
+        // them current even when lazy history is folded and does no network I/O.
+        if (activeRead.current) {
+            const old = activeRead.current;
+            activeRead.current = undefined;
+            epoch.current++;
+            reading.current = false;
+            setLoading(false);
+            refreshRequested.current = undefined;
+            refreshExplicit.current = false;
+            historyDirty.current = true;
+            old.abort();
+        }
+        const pathsChanged = groups.length !== knownScopes.length || knownScopes.some(scope => !groups.some(group => group.scopePath === scope.scopePath));
+        if (pathsChanged) {
+            complete.current = false;
+            setCountsComplete(false);
+            cache.delete(props.scopeKey);
+            historyDirty.current = true;
+        }
+        setGroups(previous => {
+            const next = knownScopes.map(scope => {
+                const old = previous.find(group => group.scopePath === scope.scopePath);
+                return !old ? scope : old.title === scope.title ? old : { ...old, title: scope.title };
+            });
+            if (next.length === previous.length && next.every((group, index) => group === previous[index])) return previous;
+            if (complete.current) cache.set(props.scopeKey, next);
+            return next;
+        });
+    }, [scopeIdentity, props.scopeKey]);
     const read = React.useCallback(
-        async (scopePath?: string, cursor?: ConversationGroup['nextCursor'], fresh = !scopePath) => {
+        async (scopePath?: string, cursor?: ConversationGroup['nextCursor'], fresh = !scopePath, explicit = false) => {
             if (!path || !props.desktop || props.offline || isReadOnlyProjectPreview()) return;
+            if (!explicit && !historyVisibility.current) { historyDirty.current = true; return; }
             if (reading.current || opening.current) {
-                if (!scopePath) refreshRequested.current = refreshRequested.current === true || fresh;
+                if (!scopePath) {
+                    refreshRequested.current = refreshRequested.current === true || fresh;
+                    refreshExplicit.current ||= explicit;
+                }
                 return;
             }
             reading.current = true;
@@ -218,6 +282,10 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                     const result = GoalProjectConversationsSchema.parse(await projectGoalRequest(machineId, 'goalProjectConversations', input, `${props.scopeKey}:${request}`));
                     if (!current()) return;
                     if (result.projectPath !== path) throw new Error('Project conversation scope changed');
+                    const definitions = projectScopes(latest.current.project);
+                    const defined = new Map(definitions.map(scope => [scope.scopePath, scope]));
+                    const pages = result.groups.filter(group => defined.has(group.scopePath))
+                        .map(group => ({ ...group, title: defined.get(group.scopePath)!.title }));
                     const catalogIds = new Set(catalog.candidates.map(candidate => candidate.sessionId));
                     catalogSnapshot.current = { id: catalog.catalogSnapshotId, ids: catalogIds };
                     complete.current = true;
@@ -225,7 +293,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                     setGroups((previous) => {
                         const next: ConversationGroup[] = pageScope
                             ? previous.map((g) => {
-                                  const page = result.groups.find((p) => p.scopePath === g.scopePath);
+                                  const page = pages.find((p) => p.scopePath === g.scopePath);
                                   return page
                                       ? {
                                             ...page,
@@ -233,10 +301,10 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                         }
                                       : g;
                               })
-                            : result.groups;
+                            : definitions.map(scope => pages.find(page => page.scopePath === scope.scopePath) ?? scope);
                         const merged = next.map(group => {
                             const rows = new Map(group.sessions.map(row => [row.sessionId, row]));
-                            const authoritativePage = result.groups.find(page => page.scopePath === group.scopePath);
+                            const authoritativePage = pages.find(page => page.scopePath === group.scopePath);
                             const suppliedIds = new Set(authoritativePage?.sessions.map(row => row.sessionId));
                             const replacedTotal = !pageScope || group.scopePath === pageScope && !!authoritativePage;
                             let additional = 0;
@@ -259,7 +327,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                     });
                 })(), interrupted]);
             } catch (e) {
-                if (alive.current && epoch.current === request) setError(e instanceof Error ? e.message : String(e));
+                if (alive.current && epoch.current === request && !(controller.signal.aborted && controller.signal.reason?.name === 'AbortError')) setError(e instanceof Error ? e.message : String(e));
             } finally {
                 clearTimeout(timer);
                 controller.signal.removeEventListener('abort', rejectRead);
@@ -267,25 +335,41 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                 if (epoch.current === request) {
                     reading.current = false;
                     if (alive.current) setLoading(false);
-                    if (controller.signal.aborted) refreshRequested.current = undefined;
-                    else if (alive.current && !opening.current && refreshRequested.current !== undefined) {
-                        const fresh = refreshRequested.current;
-                        refreshRequested.current = undefined;
-                        reread.current?.(fresh);
-                    }
+                    if (controller.signal.aborted && !refreshExplicit.current) refreshRequested.current = undefined;
+                    else if (alive.current && !opening.current) flushQueuedRead();
                 }
             }
         },
         [path, machineId, props.offline, props.scopeKey, props.desktop],
     );
-    reread.current = fresh => {
-        void read(undefined, undefined, fresh);
+    reread.current = (fresh, explicit) => {
+        void read(undefined, undefined, fresh, explicit);
     };
+    const historyRevision = React.useRef(props.revision);
+    const historyReader = React.useRef(read);
+    const historyScopes = React.useRef(scopeIdentity);
     React.useEffect(() => {
-        // Initial revisions often arrive while a cold catalog is decrypting.
-        // Reaggregate that completed snapshot instead of scanning it twice.
-        void read(undefined, undefined, !reading.current);
-    }, [read, props.revision]);
+        const wasVisible = historyVisibility.current;
+        const changed = historyRevision.current !== props.revision || historyReader.current !== read || historyScopes.current !== scopeIdentity;
+        historyVisibility.current = hasExpandedScope;
+        historyRevision.current = props.revision;
+        historyReader.current = read;
+        historyScopes.current = scopeIdentity;
+        if (!hasExpandedScope) {
+            if (!refreshExplicit.current) refreshRequested.current = undefined;
+            historyDirty.current ||= changed;
+            if (wasVisible && activeRead.current) {
+                historyDirty.current = true;
+                activeRead.current.abort();
+            }
+            return;
+        }
+        if (!complete.current || changed || historyDirty.current) {
+            historyDirty.current = false;
+            // A revision during a cold read queues one cached reaggregation.
+            void read(undefined, undefined, !reading.current);
+        }
+    }, [read, props.revision, hasExpandedScope, scopeIdentity]);
     const create = async (scopePath: string) => {
         if (!props.desktop || opening.current || props.offline || !canCreateProjectConversation()) return;
         opening.current = true;
@@ -330,11 +414,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                 return next;
             });
             setFilter('all');
-            setCollapsed((old) => {
-                const next = new Set(old);
-                next.delete(scopePath);
-                return next;
-            });
+            setExpanded(scopePath, true);
             latest.current.onSelect({ scopePath, sessionId: result.sessionId });
         } catch (e) {
             if (current()) setError(e instanceof Error ? e.message : String(e));
@@ -342,11 +422,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             opening.current = false;
             if (alive.current) {
                 setCreating(undefined);
-                if (!reading.current && refreshRequested.current !== undefined) {
-                    const fresh = refreshRequested.current;
-                    refreshRequested.current = undefined;
-                    reread.current?.(fresh);
-                }
+                if (!reading.current) flushQueuedRead();
             }
         }
     };
@@ -380,7 +456,6 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                 : status === 'running' || status === 'unread'
                   ? theme.colors.textLink
                   : theme.colors.textSecondary;
-    const relative = (p: string) => (path && p.startsWith(path + '/') ? p.slice(path.length + 1) : p === path ? '.' : p);
     const sidebar =
         props.desktop && path && !isReadOnlyProjectPreview() ? (
             <View style={styles.area} testID="project-conversation-navigation">
@@ -395,7 +470,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                             testID="project-conversations-refresh"
                             disabled={loading || props.offline}
                             onPress={() => {
-                                void read();
+                                void read(undefined, undefined, true, true);
                             }}
                         >
                             <Ionicons name="refresh-outline" size={15} color={theme.colors.textSecondary} />
@@ -450,7 +525,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                             label={w.retry}
                             disabled={loading || props.offline}
                             onPress={() => {
-                                void read();
+                                void read(undefined, undefined, true, true);
                             }}
                         >
                             <Text style={styles.link}>{w.retry}</Text>
@@ -463,126 +538,43 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                 </View>}
                 <ScrollView style={styles.list} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
                     {filtered
-                        .filter(
-                            (g) =>
-                                filter === 'all' || g.visible.length > 0 || !!g.nextCursor,
-                        )
-                        .map((g) => (
+                        .filter(g => filter === 'all' || g.visible.length > 0 || !!g.nextCursor)
+                        .map(g => (
                             <View key={g.scopePath} style={styles.group} testID={`project-conversations-group-${g.scopePath}`}>
-                                <View style={styles.line}>
-                                    <View style={{ flex: 1, minWidth: 0 }}>
-                                        <ConversationButton
-                                            variant="toolbar"
-                                            label={`${collapsed.has(g.scopePath) ? w.open : w.closed} ${g.scopePath === path ? w.global : g.title}`}
-                                            expanded={!collapsed.has(g.scopePath)}
-                                            onPress={() =>
-                                                setCollapsed((old) => {
-                                                    const next = new Set(old);
-                                                    next.has(g.scopePath) ? next.delete(g.scopePath) : next.add(g.scopePath);
-                                                    return next;
-                                                })
-                                            }
-                                        >
-                                            <Ionicons
-                                                name={collapsed.has(g.scopePath) ? 'chevron-forward' : 'chevron-down'}
-                                                size={12}
-                                                color={theme.colors.textSecondary}
-                                            />
-                                            <Ionicons
-                                                name={g.scopePath === path ? 'compass-outline' : 'folder-outline'}
-                                                size={15}
-                                                color={theme.colors.textLink}
-                                            />
-                                            <Text numberOfLines={1} style={styles.groupTitle}>
-                                                {g.scopePath === path ? w.global : g.title}
-                                            </Text>
-                                            <Text style={styles.small}>{countsComplete ? g.total : '—'}</Text>
-                                        </ConversationButton>
-                                    </View>
-                                    <ConversationButton
-                                        variant="toolbar"
+                                <ConversationTreeRow
+                                    title={g.scopePath === path ? w.global : g.title}
+                                    label={`${expanded(g.scopePath) ? w.closed : w.open} ${g.scopePath === path ? w.global : g.title} · ${g.scopePath}`}
+                                    expanded={expanded(g.scopePath)}
+                                    icon={g.scopePath === path ? 'compass-outline' : 'folder-outline'}
+                                    badge={countsComplete ? <Text style={styles.small}>{g.total}</Text> : undefined}
+                                    testID={`project-conversations-toggle-${g.scopePath}`}
+                                    onPress={() => setExpanded(g.scopePath, !expanded(g.scopePath))}
+                                    trailing={creating === g.scopePath ? <View style={styles.creating}><ActivityIndicator size="small" color={theme.colors.textLink} accessibilityLabel={w.create} /></View> : <ConversationAction
                                         label={`${g.scopePath === path ? w.global : g.title} · ${w.create}`}
-                                        reveal
+                                        icon="add-outline" compact reveal
                                         testID={`project-conversations-new-${g.scopePath}`}
                                         disabled={!!creating || props.offline || !canCreateProjectConversation()}
-                                        onPress={() => {
-                                            void create(g.scopePath);
-                                        }}
-                                    >
-                                        {creating === g.scopePath ? (
-                                            <ActivityIndicator size="small" color={theme.colors.textLink} />
-                                        ) : (
-                                            <Ionicons name="add-outline" size={17} color={theme.colors.textLink} />
-                                        )}
-                                    </ConversationButton>
-                                </View>
-                                <Text selectable style={styles.relative}>
-                                    {relative(g.scopePath)}
-                                </Text>
-                                {!collapsed.has(g.scopePath) && (
-                                    <View style={styles.rows}>
-                                        {g.visible.map((row) => (
-                                            <ConversationButton
-                                                key={row.sessionId}
-                                                reveal
-                                                variant="row"
-                                                label={`${row.title || w.sessions} · ${statusLabel(row.status, w)}`}
-                                                selected={props.selectedId === row.sessionId}
-                                                testID={`project-conversations-session-${row.sessionId}`}
-                                                onPress={() =>
-                                                    props.onSelect({ scopePath: g.scopePath, taskId: row.taskId, sessionId: row.sessionId })
-                                                }
-                                            >
-                                                <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
-                                                    <View style={styles.line}>
-                                                        <Text numberOfLines={2} style={[styles.rowTitle, { flex: 1 }]}>
-                                                            {row.title || w.sessions}
-                                                        </Text>
-                                                        {props.selectedId === row.sessionId && (
-                                                            <Text style={styles.current}>{w.current}</Text>
-                                                        )}
-                                                    </View>
-                                                    <View style={styles.between}>
-                                                        <Text style={[styles.small, { color: color(row.status) }]}>
-                                                            ● {statusLabel(row.status, w)}
-                                                        </Text>
-                                                        <Text style={styles.time}>{formatLastSeen(row.updatedAt)}</Text>
-                                                    </View>
-                                                </View>
-                                            </ConversationButton>
-                                        ))}
-                                        {!countsComplete && !g.visible.length && <Text style={styles.empty}>{error || props.offline ? w.unloaded : w.load}</Text>}
-                                        {countsComplete && !g.visible.length && filter === 'all' && (
-                                            <View style={styles.empty}>
-                                                <Text style={styles.meta}>{w.empty}</Text>
-                                                <ConversationButton
-                                                    variant="toolbar"
-                                                    label={w.first}
-                                                    reveal
-                                                    disabled={!!creating || props.offline || !canCreateProjectConversation()}
-                                                    onPress={() => {
-                                                        void create(g.scopePath);
-                                                    }}
-                                                >
-                                                    <Ionicons name="add-outline" size={15} color={theme.colors.textLink} />
-                                                    <Text style={styles.link}>{w.first}</Text>
-                                                </ConversationButton>
-                                            </View>
-                                        )}
-                                        {g.nextCursor && (
-                                            <ConversationButton
-                                                variant="toolbar"
-                                                label={w.more}
-                                                disabled={loading || props.offline}
-                                                onPress={() => {
-                                                    void read(g.scopePath, g.nextCursor);
-                                                }}
-                                            >
-                                                <Text style={styles.link}>{w.more}</Text>
-                                            </ConversationButton>
-                                        )}
-                                    </View>
-                                )}
+                                        onPress={() => { void create(g.scopePath); }}
+                                    />}
+                                />
+                                {expanded(g.scopePath) && <View>
+                                    {g.visible.map(row => <ConversationTreeRow
+                                        key={row.sessionId} title={row.title || w.sessions}
+                                        label={`${row.title || w.sessions} · ${statusLabel(row.status, w)}`}
+                                        icon="chatbubble-outline" depth={1} reserveDisclosure reveal
+                                        selected={props.selectedId === row.sessionId}
+                                        testID={`project-conversations-session-${row.sessionId}`}
+                                        badge={<View style={styles.line}><Text style={{ color: color(row.status), fontSize: 10 }}>●</Text><Text style={styles.time}>{formatLastSeen(row.updatedAt)}</Text></View>}
+                                        onPress={() => props.onSelect({ scopePath: g.scopePath, taskId: row.taskId, sessionId: row.sessionId })}
+                                    />)}
+                                    {!g.visible.length && <Text style={styles.empty}>
+                                        {countsComplete ? (filter === 'all' ? w.empty : w.noResults) : loading ? w.load : w.unloaded}
+                                    </Text>}
+                                    {g.nextCursor && <View style={styles.historyAction}>
+                                        <ConversationAction label={w.more} icon="chevron-down-outline" disabled={loading || props.offline}
+                                            onPress={() => { void read(g.scopePath, g.nextCursor, false, true); }} />
+                                    </View>}
+                                </View>}
                             </View>
                         ))}
                     {countsComplete && !loading && !error && !filtered.some((g) => g.visible.length) && filter !== 'all' && (
@@ -605,22 +597,18 @@ const styles = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
     },
     line: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
-    between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
     title: { fontSize: 15, color: theme.colors.text, ...Typography.default('semiBold') },
     path: { fontSize: 10, lineHeight: 16, color: theme.colors.textSecondary, ...Typography.mono() },
-    relative: { fontSize: 10, lineHeight: 16, color: theme.colors.textSecondary, marginLeft: 27, marginBottom: 5, ...Typography.mono() },
     meta: { fontSize: 11, lineHeight: 18, color: theme.colors.textSecondary, ...Typography.default() },
     small: { fontSize: 11, lineHeight: 17, color: theme.colors.textSecondary, ...Typography.default() },
     time: { fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() },
     filters: { flexDirection: 'row', gap: 2, flexWrap: 'wrap' },
     loading: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
     list: { flex: 1, minHeight: 0 },
-    content: { paddingHorizontal: 8, paddingBottom: 16 },
-    group: { gap: 3, marginBottom: 14 },
-    groupTitle: { fontSize: 12, flexShrink: 1, color: theme.colors.text, ...Typography.default('semiBold') },
-    rows: { marginLeft: 13, gap: 3 },
-    rowTitle: { fontSize: 12, lineHeight: 18, color: theme.colors.text, ...Typography.default() },
-    current: { fontSize: 10, color: theme.colors.textLink },
+    content: { paddingVertical: 6, paddingBottom: 12 },
+    group: { minWidth: 0 },
+    historyAction: { paddingLeft: 42, alignItems: 'flex-start' },
+    creating: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
     link: { fontSize: 12, color: theme.colors.textLink, ...Typography.default() },
     notice: {
         paddingHorizontal: 14,
@@ -630,7 +618,7 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         ...Typography.default(),
     },
-    empty: { padding: 12, gap: 6, color: theme.colors.textSecondary, fontSize: 12 },
+    empty: { paddingVertical: 6, paddingLeft: 70, paddingRight: 12, color: theme.colors.textSecondary, fontSize: 12, ...Typography.default() },
     errorBox: { padding: 12, gap: 6 },
     error: { fontSize: 12, color: theme.colors.textDestructive },
 }));

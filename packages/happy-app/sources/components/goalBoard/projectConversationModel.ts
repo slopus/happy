@@ -4,6 +4,7 @@ import { buildSessionActivity } from '../sessionActivity/sessionActivity';
 import { resolveSessionState } from '@/utils/sessionUtils';
 import { isProjectConversationArchived } from '@/sync/projectConversationLifecycle';
 import { isRetiredSession } from '@/sync/retiredSessions';
+import { isArchivedLifecycleState } from '@/utils/sessionLifecycle';
 export type Conversation = GoalTaskSession & { taskId?: string };
 export type ConversationGroup = {
     scopePath: string;
@@ -32,7 +33,8 @@ export function buildProjectConversationGroups(
     deleted: ReadonlySet<string>,
 ) {
     const authoritative = new Set(groups.flatMap((group) => group.sessions.map((row) => row.sessionId)));
-    const activity = new Map(buildSessionActivity(Object.values(headers), unread, connected).map((row) => [row.session.id, row]));
+    const knownHeaders = Object.values(headers);
+    const activity = new Map(buildSessionActivity(knownHeaders, unread, connected).map((row) => [row.session.id, row]));
     return groups.map((group) => {
         let removed = 0;
         const rows = new Map<string, Conversation>();
@@ -50,10 +52,10 @@ export function buildProjectConversationGroups(
         }
         // Unbound scope work has an exact directory owner. Task membership must
         // come from RPC: stale or duplicate task metadata is not authorization.
-        for (const [id, item] of activity)
-            if (!item.session.metadata?.goalBoard?.taskId &&
-                !authoritative.has(id) && !rows.has(id) && !deleted.has(id) && ownerMatches(item.session, machineId, group.scopePath)) {
-                const s = item.session;
+        for (const s of knownHeaders) {
+            const id = s.id;
+            if (!s.metadata?.goalBoard?.taskId && !isRetiredSession(s) && !isArchivedLifecycleState(s.metadata?.lifecycleState) &&
+                !authoritative.has(id) && !rows.has(id) && !deleted.has(id) && ownerMatches(s, machineId, group.scopePath)) {
                 rows.set(id, {
                     sessionId: id,
                     taskId: s.metadata?.goalBoard?.taskId,
@@ -63,6 +65,7 @@ export function buildProjectConversationGroups(
                     executed: (s.seq ?? 0) > 1,
                 });
             }
+        }
         return {
             ...group,
             total: Math.max(rows.size, group.total - removed),

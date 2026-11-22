@@ -1,6 +1,5 @@
 import * as React from 'react';
-import { View, ScrollView, TextInput, ActivityIndicator, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { sessionWorkspaceListDirectory, type DirectoryEntry } from '@/sync/ops';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
@@ -9,6 +8,7 @@ import { t } from '@/text';
 import { useFileWorkspace } from './context';
 import { WorkspaceButton as Button } from './WorkspaceButton';
 import { DirectoryCache, getDirectoryCache } from './directoryCache';
+import { WorkspaceTreeRow } from './WorkspaceTreeRow';
 
 export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDirectory = sessionWorkspaceListDirectory, cacheKey, revision, includeFile, renderFileActions }: {
     sessionId: string;
@@ -65,11 +65,11 @@ export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDi
             // Filtering is intentionally restricted to loaded folders; never scan the whole machine.
             if (!isDirectory && query && !full.toLowerCase().includes(query.toLowerCase())) return null;
             return <React.Fragment key={full}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1, minWidth: 0 }}><DirectoryRow name={entry.name} full={full} depth={depth} directory={isDirectory} open={open} selected={workspace?.snapshot.active === full} onPress={() => {
+                <WorkspaceTreeRow title={entry.name} label={full} depth={depth} expanded={isDirectory ? open : undefined} icon={isDirectory ? undefined : 'document-text-outline'} selected={workspace?.snapshot.active === full} trailing={!isDirectory ? renderFileActions?.(full) : undefined} onPress={() => {
                     if (isDirectory) { setExpanded(value => { const next = new Set(value); if (open) next.delete(full); else next.add(full); return next; }); if (!open) void load(full); }
                     else if (onOpenFile) onOpenFile(full);
                     else void workspace?.openReference(full);
-                }} /></View>{!isDirectory && renderFileActions?.(full)}</View>
+                }} />
                 {isDirectory && open && rows(full, depth + 1)}
             </React.Fragment>;
         });
@@ -87,14 +87,4 @@ export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDi
         {directories[root]?.entries && directories[root]?.error && <Text accessibilityRole="alert" style={{ padding: 10, color: theme.colors.textSecondary }}>{t('projectGoals.cachedReadError')}</Text>}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 8 }}>{rows(root, 0)}</ScrollView>
     </View>;
-}
-function DirectoryRow({ name, full, depth, directory, open, selected, onPress }: { name: string; full: string; depth: number; directory: boolean; open: boolean; selected: boolean; onPress: () => void }) {
-    const { theme } = useUnistyles();
-    const [hover, setHover] = React.useState(false);
-    return <Pressable accessibilityRole="button" accessibilityLabel={full} accessibilityState={{ selected, expanded: directory ? open : undefined }} onPress={onPress}
-        {...({ onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false) } as any)}
-        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', padding: 8, paddingLeft: 12 + depth * 14, gap: 7, backgroundColor: selected ? theme.colors.surfaceSelected : hover || pressed ? theme.colors.surfacePressed : 'transparent' })}>
-        <Ionicons name={directory ? open ? 'chevron-down-outline' : 'chevron-forward-outline' : 'document-text-outline'} size={15} color={theme.colors.textSecondary} />
-        <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: theme.colors.text }}>{name}</Text>
-    </Pressable>;
 }

@@ -11,6 +11,7 @@ const mock = vi.hoisted(() => ({
     sessions: {} as Record<string, any>, unread: new Set<string>(), connected: true,
     deleted: new Set<string>(), deletionRevision: 0,
     deletionListeners: new Set<() => void>(),
+    expansion: {} as Record<string, boolean>, expansionListeners: new Set<() => void>(),
     blur: undefined as (() => void) | undefined, canCreate: true, readOnly: false, maximized: false, width: 1600,
 }));
 vi.mock('expo-router', async () => {
@@ -31,9 +32,14 @@ vi.mock('react-native-unistyles', () => {
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}), mono: () => ({}) } }));
 vi.mock('@/text', () => ({ getCurrentLanguage: () => 'zh', t: (key: string) => key }));
 vi.mock('@/auth/accountRuntime', () => ({ getRuntimeAccountSelection: () => mock.owner }));
-vi.mock('@/sync/storage', () => ({ storage: (select: any) => select({
-    sessions: mock.sessions, unreadSessionIds: mock.unread, socketStatus: mock.connected ? 'connected' : 'disconnected',
-}) }));
+vi.mock('@/sync/storage', async () => {
+    const React = await import('react');
+    const update = (updater: any) => { mock.expansion = updater(mock.expansion); for (const listener of mock.expansionListeners) listener(); };
+    return { storage: (select: any) => select({ sessions: mock.sessions, unreadSessionIds: mock.unread, socketStatus: mock.connected ? 'connected' : 'disconnected' }),
+        useLocalSettingMutable: () => [React.useSyncExternalStore(listener => { mock.expansionListeners.add(listener); return () => { mock.expansionListeners.delete(listener); }; }, () => mock.expansion), (value: any) => update(() => value)],
+        useLocalSettingUpdater: () => update,
+    };
+});
 vi.mock('@/sync/projectSessionLinks', () => ({
     isProjectSessionDeleted: (id: string) => mock.deleted.has(id),
     getProjectSessionDeletionRevision: () => mock.deletionRevision,
@@ -48,6 +54,8 @@ vi.mock('@/sync/projectGoals', () => ({
     isReadOnlyProjectPreview: () => mock.readOnly,
 }));
 vi.mock('./GoalBoardButton', () => ({ GoalBoardButton: 'Button' }));
+vi.mock('@/components/fileWorkspace/WorkspaceButton', () => ({ WorkspaceButton: (props: any) => React.createElement('Button', props, props.compact ? null : props.label) }));
+vi.mock('@/components/fileWorkspace/WorkspaceTreeRow', () => ({ WorkspaceTreeRow: (props: any) => React.createElement('tree-row', props, props.title, props.badge, props.trailing) }));
 vi.mock('@/components/fileWorkspace/context',()=>({useFileWorkspace:()=>({setMaximized:(value:boolean)=>{mock.maximized=value;}})}));
 vi.mock('@/components/PanelTabs', () => ({ PanelTabs: 'PanelTabs' }));
 
@@ -61,6 +69,7 @@ const project: GoalProject = { projectPath: '/projects/paws', title: 'Paws', fea
     { featurePath: '/projects/paws/features/web', title: 'Web' },
     { featurePath: '/projects/paws/features/mobile', title: 'Mobile' },
 ] };
+function rememberedScopes() { return Object.fromEntries([project.projectPath,...project.features.map(feature=>feature.featurePath)].map(scope=>[`projects:conversation-navigation:${JSON.stringify(['machine',project.projectPath,scope])}`,true])); }
 const webPath = project.features[0].featurePath;
 const mobilePath = project.features[1].featurePath;
 function history(id: string, directory = webPath, extra: Record<string, unknown> = {}) {
@@ -92,12 +101,13 @@ async function setup(patch: Partial<Omit<ProjectConversationNavigationProps, 'ch
         else renderer = TestRenderer.create(tree());
     });
 }
+function controls() { return renderer.root.findAll((node: any) => node.type === 'Button' || node.type === 'tree-row'); }
 function button(id: string) {
-    const match = renderer.root.findAllByType('Button').find((node: any) => node.props.testID === id);
+    const match = controls().find((node: any) => node.props.testID === id);
     expect(match, id).toBeDefined(); return match;
 }
 function byLabel(label: string) {
-    const matches = renderer.root.findAllByType('Button').filter((node: any) => node.props.label === label);
+    const matches = controls().filter((node: any) => node.props.label === label);
     expect(matches, label).toHaveLength(1); return matches[0];
 }
 async function press(id: string) { await act(async () => { button(id).props.onPress(); }); }
@@ -108,8 +118,9 @@ function allText() {
 }
 function deferred<T>() {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>(done => { resolve = done; });
-    return { promise, resolve };
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
 }
 function live(id: string, extra: any = {}) {
     return { id, updatedAt: 20, thinking: false, presence: 'online', active: true, agentState: {},
@@ -122,12 +133,113 @@ beforeEach(() => {
     mock.sessions = {}; mock.unread = new Set(); mock.connected = true; mock.deleted.clear();
     mock.deletionRevision = 0; mock.deletionListeners.clear(); mock.blur = undefined;
     mock.canCreate = true; mock.readOnly = false; mock.maximized = false; mock.width=1600;
+    mock.expansion = rememberedScopes(); mock.expansionListeners.clear();
     currentProps = { project, machineId: 'machine', agent: 'codex', offline: false, selectedId: 'global', onSelect: select };
     vi.mocked(projectGoalRequest).mockResolvedValue(response());
     vi.mocked(loadProjectConversationCandidates).mockResolvedValue({ candidates: [], catalogFingerprint: 'a'.repeat(64), catalogSnapshotId: 'snapshot' });
     vi.mocked(machineStartGoalAuthor).mockResolvedValue({ type: 'success', sessionId: 'new-chat' });
 });
 afterEach(() => { if (renderer) act(() => { renderer.unmount(); }); renderer = undefined; vi.useRealTimers(); });
+
+describe('compact conversation folders', () => {
+    it('clears loading when the only expanded scope is removed during a pending read', async () => {
+        mock.expansion={};const old=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(old.promise);
+        await setup();await press(`project-conversations-toggle-${webPath}`);
+        await setup({project:{...project,features:[project.features[1]]}});
+        expect(renderer.root.findAllByType('Spinner')).toHaveLength(0);
+        expect(button('project-conversations-refresh').props.disabled).toBe(false);
+        expect(loadProjectConversationCandidates).toHaveBeenCalledTimes(1);
+    });
+    it('restarts an open pending read when known scopes change and ignores the old catalog', async () => {
+        const old=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(old.promise);
+        await setup();const signal=vi.mocked(loadProjectConversationCandidates).mock.calls[0][2]!.signal!;
+        const added=project.projectPath+'/features/docs';
+        await setup({project:{...project,features:[project.features[0],{featurePath:added,title:'Docs'}]}});
+        expect(signal.aborted).toBe(true);expect(loadProjectConversationCandidates).toHaveBeenCalledTimes(2);
+        expect(button(`project-conversations-toggle-${added}`).props.title).toBe('Docs');
+        await act(async()=>{old.resolve({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'superseded'});});
+        expect(projectGoalRequest).toHaveBeenCalledTimes(1);
+        expect(renderer.root.findAllByType('Spinner')).toHaveLength(0);
+        expect(controls().some((node:any)=>node.props.testID===`project-conversations-toggle-${mobilePath}`)).toBe(false);
+    });
+
+    it('keeps current folder names when old and refreshed group replies contain an older name', async () => {
+        const old=deferred<any>();vi.mocked(projectGoalRequest).mockReturnValueOnce(old.promise);
+        await setup();
+        await setup({project:{...project,features:[{...project.features[0],title:'Renamed web'},project.features[1]]}});
+        expect(button(`project-conversations-toggle-${webPath}`).props.title).toBe('Renamed web');
+        await act(async()=>{old.resolve(response());});
+        expect(button(`project-conversations-toggle-${webPath}`).props.title).toBe('Renamed web');
+        expect(renderer.root.findAllByType('Spinner')).toHaveLength(0);
+    });
+    it('updates known folders while all are folded without scanning history', async () => {
+        mock.expansion={};await setup();
+        const added=project.projectPath+'/features/docs';
+        await setup({project:{...project,features:[{...project.features[0],title:'Renamed web'},{featurePath:added,title:'Docs'}]},revision:'new-scopes'});
+        expect(button(`project-conversations-toggle-${webPath}`).props.title).toBe('Renamed web');
+        expect(button(`project-conversations-toggle-${added}`).props.expanded).toBe(false);
+        expect(controls().some((node:any)=>node.props.testID===`project-conversations-toggle-${mobilePath}`)).toBe(false);
+        expect(loadProjectConversationCandidates).not.toHaveBeenCalled();
+    });
+
+    it('drops an automatic queued read after collapsing while creation later fails', async () => {
+        await setup();const created=deferred<any>();vi.mocked(machineStartGoalAuthor).mockReturnValueOnce(created.promise);
+        await press(`project-conversations-new-${mobilePath}`);await setup({revision:'queued-during-create'});
+        for(const scope of [project.projectPath,webPath,mobilePath]) await press(`project-conversations-toggle-${scope}`);
+        await act(async()=>{created.reject(new Error('Creation failed'));});
+        expect(loadProjectConversationCandidates).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves an explicit refresh queued during creation with all folders folded', async () => {
+        mock.expansion={};await setup();const created=deferred<any>();vi.mocked(machineStartGoalAuthor).mockReturnValueOnce(created.promise);
+        await press(`project-conversations-new-${mobilePath}`);await press('project-conversations-refresh');
+        await act(async()=>{created.reject(new Error('Creation failed'));});
+        expect(loadProjectConversationCandidates).toHaveBeenCalledTimes(1);
+    });
+    it('defaults to collapsed known folders without reading the complete account catalog', async () => {
+        mock.expansion = {};
+        await setup();
+        expect(loadProjectConversationCandidates).not.toHaveBeenCalled();
+        expect(projectGoalRequest).not.toHaveBeenCalled();
+        for(const scope of [project.projectPath,webPath,mobilePath]) {
+            expect(button(`project-conversations-toggle-${scope}`).props.expanded).toBe(false);
+            expect(button(`project-conversations-new-${scope}`).props.disabled).toBe(false);
+        }
+        expect(allText()).not.toContain('开启第一个会话');
+        expect(allText()).not.toContain('还没有会话');
+        expect(allText()).not.toContain('features/mobile');
+        await setup({revision:'changed-while-folded'});
+        expect(loadProjectConversationCandidates).not.toHaveBeenCalled();
+    });
+
+    it('shows existing scope sessions immediately on expansion and remembers the folder after remount', async () => {
+        mock.expansion = {};
+        mock.sessions = {'already-loaded':live('already-loaded')};
+        const pending=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(pending.promise);
+        await setup();await press(`project-conversations-toggle-${webPath}`);
+        expect(button(`project-conversations-toggle-${webPath}`).props.expanded).toBe(true);
+        expect(button('project-conversations-session-already-loaded')).toBeDefined();
+        expect(loadProjectConversationCandidates).toHaveBeenCalledTimes(1);
+        await act(async()=>{renderer.unmount();});renderer=undefined;
+        mock.owner={...mock.owner,generation:'after-page-reload'};
+        await setup();
+        expect(button(`project-conversations-toggle-${webPath}`).props.expanded).toBe(true);
+        expect(button(`project-conversations-toggle-${mobilePath}`).props.expanded).toBe(false);
+        await setup({machineId:'another-machine'});
+        expect(button(`project-conversations-toggle-${webPath}`).props.expanded).toBe(false);
+    });
+
+    it('cancels a pending traversal when all folders are collapsed without accepting late results', async () => {
+        mock.expansion={};const pending=deferred<any>();vi.mocked(loadProjectConversationCandidates).mockReturnValueOnce(pending.promise);
+        await setup();await press(`project-conversations-toggle-${webPath}`);
+        const signal=vi.mocked(loadProjectConversationCandidates).mock.calls[0][2]!.signal!;
+        await press(`project-conversations-toggle-${webPath}`);
+        expect(signal.aborted).toBe(true);expect(renderer.root.findAllByType('Spinner')).toHaveLength(0);
+        await act(async()=>{pending.resolve({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'late'});});
+        expect(projectGoalRequest).not.toHaveBeenCalled();
+        expect(allText()).not.toContain('AbortError');
+    });
+});
 
 describe('project conversation navigation integration', () => {
     it('uses complete server totals and preserves task identity when navigating loaded history', async () => {
@@ -167,7 +279,7 @@ describe('project conversation navigation integration', () => {
         expect(button('project-conversations-filter-all').props.label).toBe('全部 33');
         await act(async () => { pending.resolve({ type: 'success', sessionId: 'new-mobile' }); });
         expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
-        expect(renderer.root.findAllByType('Button').filter((node: any) => node.props.testID === 'project-conversations-session-new-mobile')).toHaveLength(1);
+        expect(controls().filter((node: any) => node.props.testID === 'project-conversations-session-new-mobile')).toHaveLength(1);
     });
 
     it.each(['selection', 'blur', 'unmount', 'account'] as const)('does not navigate from a late creation after %s changes', async reason => {
@@ -208,10 +320,10 @@ describe('project conversation navigation integration', () => {
         expect(loadProjectConversationCandidates).toHaveBeenLastCalledWith('machine', project.projectPath, { refresh: false, signal: expect.any(AbortSignal) });
         expect(button('project-conversations-session-global')).toBeDefined();
         expect(button('project-conversations-session-older')).toBeDefined();
-        expect(renderer.root.findAllByType('Button').filter((node: any) => node.props.testID === 'project-conversations-session-task-chat')).toHaveLength(1);
+        expect(controls().filter((node: any) => node.props.testID === 'project-conversations-session-task-chat')).toHaveLength(1);
         expect(button('project-conversations-session-task-chat').props.label).toContain('Updated task title');
         expect(button('project-conversations-filter-all').props.label).toBe('全部 33');
-        expect(renderer.root.findAllByType('Button').some((node: any) => node.props.label === '加载更多历史')).toBe(false);
+        expect(controls().some((node: any) => node.props.label === '加载更多历史')).toBe(false);
     });
 
     it('replaces old groups instead of applying an old history cursor to a renewed snapshot', async () => {
@@ -223,7 +335,7 @@ describe('project conversation navigation integration', () => {
             projectPath: project.projectPath, candidates: [], catalogFingerprint: 'b'.repeat(64), catalogSnapshotId: 'renewed',
         }, expect.any(String));
         expect(button('project-conversations-filter-all').props.label).toBe('全部 0');
-        expect(renderer.root.findAllByType('Button').some((node: any) => node.props.testID === 'project-conversations-session-task-chat')).toBe(false);
+        expect(controls().some((node: any) => node.props.testID === 'project-conversations-session-task-chat')).toBe(false);
     });
 
     it('uses canonical live outcomes and never treats cold executed history as completed', async () => {
@@ -257,7 +369,7 @@ describe('project conversation navigation integration', () => {
     it('removes deleted histories through the deletion subscription without a network refresh', async () => {
         await setup();
         act(() => { mock.deleted.add('task-chat'); mock.deletionRevision++; for (const listener of mock.deletionListeners) listener(); });
-        expect(renderer.root.findAllByType('Button').some((node: any) => node.props.testID === 'project-conversations-session-task-chat')).toBe(false);
+        expect(controls().some((node: any) => node.props.testID === 'project-conversations-session-task-chat')).toBe(false);
         expect(button('project-conversations-filter-all').props.label).toBe('全部 32');
         expect(projectGoalRequest).toHaveBeenCalledTimes(1);
     });
@@ -283,7 +395,7 @@ it('keeps compact Web task details and footer reachable when desktop tabs are hi
  await act(async()=>{renderer.update(<ProjectConversationNavigationProvider {...currentProps}><ProjectDetailsPanel header={null} tab="details" onTab={onTab} testID="project-task-panel" showTabs={false} footer={<span>Mobile task actions</span>}><span>Mobile task details</span></ProjectDetailsPanel></ProjectConversationNavigationProvider>);});
  expect(allText()).toContain('Mobile task details');expect(allText()).toContain('Mobile task actions');
  expect(renderer.root.findAllByType('PanelTabs')).toHaveLength(0);
- expect(renderer.root.findAllByType('Button').filter((b:any)=>b.props.testID==='project-conversations-filter-all')).toHaveLength(0);
+ expect(controls().filter((b:any)=>b.props.testID==='project-conversations-filter-all')).toHaveLength(0);
 });
 it('removes search while keeping filters and older history reachable',async()=>{
  await setup();expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
@@ -396,7 +508,7 @@ it('reveals chat from a maximized file on the Sessions tab and on the already-se
 });
 
 it('does not read complete history for the desktop-only navigator on compact Web',async()=>{
- mock.width=800;await setup();expect(projectGoalRequest).not.toHaveBeenCalled();expect(allText()).toContain('Original details');expect(renderer.root.findAllByType('Button').filter((b:any)=>b.props.testID==='project-conversations-filter-all')).toHaveLength(0);
+ mock.width=800;await setup();expect(projectGoalRequest).not.toHaveBeenCalled();expect(allText()).toContain('Original details');expect(controls().filter((b:any)=>b.props.testID==='project-conversations-filter-all')).toHaveLength(0);
 });
 
 it('renders project scopes immediately with unknown counts and enabled new actions while the cold catalog loads', async () => {
@@ -419,7 +531,7 @@ it.each(['creation-first','history-first'] as const)('retains an immediately cre
  if(order==='creation-first'){await createCompletes();expect(button('project-conversations-filter-all').props.label).toBe('全部 —');await readCompletes();}
  else{await readCompletes();expect(button('project-conversations-filter-all').props.label).toBe('全部 33');await createCompletes();}
  expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
- expect(renderer.root.findAllByType('Button').filter((n:any)=>n.props.testID==='project-conversations-session-created-during-load')).toHaveLength(1);
+ expect(controls().filter((n:any)=>n.props.testID==='project-conversations-session-created-during-load')).toHaveLength(1);
  expect(select).toHaveBeenCalledExactlyOnceWith({scopePath:mobilePath,sessionId:'created-during-load'});
 });
 
@@ -430,7 +542,7 @@ it('deduplicates a local creation already contained in the cold read snapshot',a
  vi.mocked(projectGoalRequest).mockResolvedValue(response(groups().map(g=>g.scopePath===mobilePath?{...g,total:1,sessions:[history('new-chat',mobilePath)]}:g)));
  await act(async()=>{catalog.resolve({candidates:[],catalogFingerprint:'a'.repeat(64),catalogSnapshotId:'snapshot'});});
  expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
- expect(renderer.root.findAllByType('Button').filter((n:any)=>n.props.testID==='project-conversations-session-new-chat')).toHaveLength(1);
+ expect(controls().filter((n:any)=>n.props.testID==='project-conversations-session-new-chat')).toHaveLength(1);
 });
 
 it('coalesces startup revisions into one cached-catalog reaggregation instead of a second fresh scan',async()=>{
