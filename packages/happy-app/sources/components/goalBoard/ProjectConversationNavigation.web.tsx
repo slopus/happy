@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -45,9 +45,8 @@ const words = () =>
               attention: '待处理',
               running: '执行中',
               global: '全局对话',
-              search: '搜索已加载会话或子项目',
               empty: '还没有会话',
-              noResults: '已加载的会话中没有匹配结果',
+              noResults: t('projectGoals.noFilteredConversations'),
               create: '新建会话',
               first: '开启第一个会话',
               features: '个子项目',
@@ -61,7 +60,7 @@ const words = () =>
               awaiting: '待回复 / 授权',
               failed: '执行失败',
               offline: '离线：可查看已加载历史，暂不能新建',
-              counts: '状态与搜索覆盖已加载会话，可加载更多历史',
+              counts: t('projectGoals.conversationCounts'),
               retry: '重试',
               load: '加载历史…',
               unloaded: '历史尚未加载',
@@ -74,9 +73,8 @@ const words = () =>
               attention: 'Needs action',
               running: 'Running',
               global: 'Global conversations',
-              search: 'Search loaded sessions or features',
               empty: 'No conversations yet',
-              noResults: 'No matches in loaded conversations',
+              noResults: t('projectGoals.noFilteredConversations'),
               create: 'New conversation',
               first: 'Start the first conversation',
               features: 'features',
@@ -90,7 +88,7 @@ const words = () =>
               awaiting: 'Reply / approval needed',
               failed: 'Execution failed',
               offline: 'Offline: loaded history remains available; creation is disabled',
-              counts: 'Search and activity cover loaded sessions; load more history to continue',
+              counts: t('projectGoals.conversationCounts'),
               retry: 'Retry',
               load: 'Loading history…',
               unloaded: 'History has not loaded',
@@ -100,6 +98,7 @@ const words = () =>
 // Only complete history results enter this cache. Project scopes can render
 // before the account's detached metadata catalog finishes decrypting.
 const cache = new Map<string, ConversationGroup[]>();
+const READ_TIMEOUT_MS = 180_000;
 function projectScopes(project: ProjectConversationNavigationProps['project']): ConversationGroup[] {
     if (!project) return [];
     return [...new Map([
@@ -139,8 +138,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
     const [loading, setLoading] = React.useState(false),
         [error, setError] = React.useState<string>(),
         [creating, setCreating] = React.useState<string>();
-    const [query, setQuery] = React.useState(''),
-        [filter, setFilter] = React.useState<'all' | 'attention' | 'running'>('all'),
+    const [filter, setFilter] = React.useState<'all' | 'attention' | 'running'>('all'),
         [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
     const headers = storage((s) => s.sessions),
         unread = storage((s) => s.unreadSessionIds),
@@ -158,6 +156,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
     const refreshRequested = React.useRef<boolean | undefined>(undefined),
         reread = React.useRef<((fresh: boolean) => void) | undefined>(undefined);
     const catalogSnapshot = React.useRef<{ id: string; ids: ReadonlySet<string> } | undefined>(undefined);
+    const activeRead = React.useRef<AbortController | undefined>(undefined);
     const selection = React.useRef(props.selectedId);
     const location = React.useRef(props.locationKey);
     location.current = props.locationKey;
@@ -178,6 +177,9 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
         return () => {
             alive.current = false;
             epoch.current++;
+            reading.current = false;
+            refreshRequested.current = undefined;
+            activeRead.current?.abort();
         };
     }, []);
     const read = React.useCallback(
@@ -190,68 +192,87 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             reading.current = true;
             const request = ++epoch.current,
                 account = getRuntimeAccountSelection();
+            const controller = new AbortController();
+            activeRead.current = controller;
+            const current = () => alive.current && epoch.current === request && !controller.signal.aborted && getRuntimeAccountSelection() === account;
+            let rejectRead!: () => void;
+            const interrupted = new Promise<never>((_resolve, reject) => {
+                rejectRead = () => reject(controller.signal.reason);
+                controller.signal.addEventListener('abort', rejectRead, { once: true });
+            });
+            // One deadline covers catalog retrieval, local decryption and group
+            // resolution, including healthy large catalogs. Retry is user-driven.
+            const timer = setTimeout(() => controller.abort(new Error(t('errors.connectionTimeout'))), READ_TIMEOUT_MS);
             setLoading(true);
             setError(undefined);
             try {
-                const catalog = await loadProjectConversationCandidates(machineId, path, { refresh: fresh });
-                if (!alive.current || epoch.current !== request || getRuntimeAccountSelection() !== account) return;
-                // A cursor belongs to the snapshot that produced the current
-                // groups. A renewed/evicted catalog needs a complete replacement.
-                const pageScope = scopePath && catalog.catalogSnapshotId === catalogSnapshot.current?.id ? scopePath : undefined;
-                const input = { projectPath: path, ...catalog, ...(pageScope ? { scopePath: pageScope, cursor } : {}) };
-                if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 512 * 1024)
-                    throw new Error('Complete project history exceeds the request size limit');
-                const result = GoalProjectConversationsSchema.parse(await projectGoalRequest(machineId, 'goalProjectConversations', input));
-                if (!alive.current || epoch.current !== request || getRuntimeAccountSelection() !== account) return;
-                if (result.projectPath !== path) throw new Error('Project conversation scope changed');
-                const catalogIds = new Set(catalog.candidates.map(candidate => candidate.sessionId));
-                catalogSnapshot.current = { id: catalog.catalogSnapshotId, ids: catalogIds };
-                complete.current = true;
-                setCountsComplete(true);
-                setGroups((previous) => {
-                    const next: ConversationGroup[] = pageScope
-                        ? previous.map((g) => {
-                              const page = result.groups.find((p) => p.scopePath === g.scopePath);
-                              return page
-                                  ? {
-                                        ...page,
-                                        sessions: [...new Map([...g.sessions, ...page.sessions].map((s) => [s.sessionId, s])).values()],
-                                    }
-                                  : g;
-                          })
-                        : result.groups;
-                    const merged = next.map(group => {
-                        const rows = new Map(group.sessions.map(row => [row.sessionId, row]));
-                        const authoritativePage = result.groups.find(page => page.scopePath === group.scopePath);
-                        const suppliedIds = new Set(authoritativePage?.sessions.map(row => row.sessionId));
-                        const replacedTotal = !pageScope || group.scopePath === pageScope && !!authoritativePage;
-                        let additional = 0;
-                        for (const [id, created] of locallyCreated.current) {
-                            if (created.scopePath !== group.scopePath) continue;
-                            if (suppliedIds.has(id)) {
-                                locallyCreated.current.delete(id);
-                                continue;
+                await Promise.race([(async () => {
+                    const catalog = await loadProjectConversationCandidates(machineId, path, { refresh: fresh, signal: controller.signal });
+                    if (!current()) return;
+                    // A cursor belongs to the snapshot that produced the current
+                    // groups. A renewed/evicted catalog needs a complete replacement.
+                    const pageScope = scopePath && catalog.catalogSnapshotId === catalogSnapshot.current?.id ? scopePath : undefined;
+                    const input = { projectPath: path, ...catalog, ...(pageScope ? { scopePath: pageScope, cursor } : {}) };
+                    if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 512 * 1024)
+                        throw new Error('Complete project history exceeds the request size limit');
+                    const result = GoalProjectConversationsSchema.parse(await projectGoalRequest(machineId, 'goalProjectConversations', input, `${props.scopeKey}:${request}`));
+                    if (!current()) return;
+                    if (result.projectPath !== path) throw new Error('Project conversation scope changed');
+                    const catalogIds = new Set(catalog.candidates.map(candidate => candidate.sessionId));
+                    catalogSnapshot.current = { id: catalog.catalogSnapshotId, ids: catalogIds };
+                    complete.current = true;
+                    setCountsComplete(true);
+                    setGroups((previous) => {
+                        const next: ConversationGroup[] = pageScope
+                            ? previous.map((g) => {
+                                  const page = result.groups.find((p) => p.scopePath === g.scopePath);
+                                  return page
+                                      ? {
+                                            ...page,
+                                            sessions: [...new Map([...g.sessions, ...page.sessions].map((s) => [s.sessionId, s])).values()],
+                                        }
+                                      : g;
+                              })
+                            : result.groups;
+                        const merged = next.map(group => {
+                            const rows = new Map(group.sessions.map(row => [row.sessionId, row]));
+                            const authoritativePage = result.groups.find(page => page.scopePath === group.scopePath);
+                            const suppliedIds = new Set(authoritativePage?.sessions.map(row => row.sessionId));
+                            const replacedTotal = !pageScope || group.scopePath === pageScope && !!authoritativePage;
+                            let additional = 0;
+                            for (const [id, created] of locallyCreated.current) {
+                                if (created.scopePath !== group.scopePath) continue;
+                                if (suppliedIds.has(id)) {
+                                    locallyCreated.current.delete(id);
+                                    continue;
+                                }
+                                if (!rows.has(id)) rows.set(id, created.row);
+                                // The complete catalog may already count an ID not
+                                // present on this group's currently loaded page.
+                                if (replacedTotal && !catalogIds.has(id)) additional++;
                             }
-                            if (!rows.has(id)) rows.set(id, created.row);
-                            // The complete catalog may already count an ID not
-                            // present on this group's currently loaded page.
-                            if (replacedTotal && !catalogIds.has(id)) additional++;
-                        }
-                        return { ...group, total: group.total + additional, sessions: [...rows.values()] };
+                            return { ...group, total: group.total + additional, sessions: [...rows.values()] };
+                        });
+                        cache.set(props.scopeKey, merged);
+                        if (cache.size > 30) cache.delete(cache.keys().next().value!);
+                        return merged;
                     });
-                    cache.set(props.scopeKey, merged);
-                    if (cache.size > 30) cache.delete(cache.keys().next().value!);
-                    return merged;
-                });
+                })(), interrupted]);
             } catch (e) {
                 if (alive.current && epoch.current === request) setError(e instanceof Error ? e.message : String(e));
             } finally {
-                reading.current = false;
-                if (alive.current && epoch.current === request) setLoading(false);
-                if (alive.current && !opening.current && refreshRequested.current !== undefined) {
-                    const fresh = refreshRequested.current;
-                    refreshRequested.current = undefined;
-                    reread.current?.(fresh);
+                clearTimeout(timer);
+                controller.signal.removeEventListener('abort', rejectRead);
+                if (activeRead.current === controller) activeRead.current = undefined;
+                if (epoch.current === request) {
+                    reading.current = false;
+                    if (alive.current) setLoading(false);
+                    if (controller.signal.aborted) refreshRequested.current = undefined;
+                    else if (alive.current && !opening.current && refreshRequested.current !== undefined) {
+                        const fresh = refreshRequested.current;
+                        refreshRequested.current = undefined;
+                        reread.current?.(fresh);
+                    }
                 }
             }
         },
@@ -309,7 +330,6 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                 return next;
             });
             setFilter('all');
-            setQuery('');
             setCollapsed((old) => {
                 const next = new Set(old);
                 next.delete(scopePath);
@@ -346,11 +366,9 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
             (r) =>
                 (filter === 'all' ||
                     (filter === 'running' && r.status === 'running') ||
-                    (filter === 'attention' && ['attention', 'failed', 'unread'].includes(r.status))) &&
-                (!query || `${g.title} ${g.scopePath} ${r.title}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())),
+                    (filter === 'attention' && ['attention', 'failed', 'unread'].includes(r.status))),
         ),
     }));
-    const matchingGroup = (group: ConversationGroup) => !!query && `${group.title} ${group.scopePath}`.toLocaleLowerCase().includes(query.toLocaleLowerCase());
     const filterCount = (value: typeof filter) => !countsComplete ? '—' : value === 'all' ? total : value === 'attention' ? attention : running;
     const color = (status: ConversationStatus) =>
         status === 'attention'
@@ -422,18 +440,6 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                         ))}
                     </View>
                 </View>
-                <View style={styles.search}>
-                    <Ionicons name="search-outline" size={15} color={theme.colors.textSecondary} />
-                    <TextInput
-                        accessibilityLabel={w.search}
-                        placeholder={w.search}
-                        placeholderTextColor={theme.colors.textSecondary}
-                        value={query}
-                        onChangeText={setQuery}
-                        style={styles.input}
-                        testID="project-conversations-search"
-                    />
-                </View>
                 {props.offline && <Text style={styles.notice}>{w.offline}</Text>}
                 {error && (
                     <View style={styles.errorBox}>
@@ -451,15 +457,15 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                         </ConversationButton>
                     </View>
                 )}
-                {loading && <ActivityIndicator size="small" color={theme.colors.textLink} accessibilityLabel={w.load} />}
+                {loading && <View style={styles.loading}>
+                    <ActivityIndicator size="small" color={theme.colors.textLink} accessibilityLabel={w.load} />
+                    <Text style={styles.meta}>{w.load}</Text>
+                </View>}
                 <ScrollView style={styles.list} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
                     {filtered
                         .filter(
                             (g) =>
-                                (filter === 'all' && !query) ||
-                                (!!query && !!g.nextCursor) ||
-                                g.visible.length > 0 ||
-                                matchingGroup(g),
+                                filter === 'all' || g.visible.length > 0 || !!g.nextCursor,
                         )
                         .map((g) => (
                             <View key={g.scopePath} style={styles.group} testID={`project-conversations-group-${g.scopePath}`}>
@@ -546,7 +552,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                             </ConversationButton>
                                         ))}
                                         {!countsComplete && !g.visible.length && <Text style={styles.empty}>{error || props.offline ? w.unloaded : w.load}</Text>}
-                                        {countsComplete && !g.visible.length && filter === 'all' && !query && (
+                                        {countsComplete && !g.visible.length && filter === 'all' && (
                                             <View style={styles.empty}>
                                                 <Text style={styles.meta}>{w.empty}</Text>
                                                 <ConversationButton
@@ -579,7 +585,7 @@ function NavigationOwner(props: ProjectConversationNavigationProps & { scopeKey:
                                 )}
                             </View>
                         ))}
-                    {!filtered.some((g) => g.visible.length || matchingGroup(g)) && !!(query || filter !== 'all') && (
+                    {countsComplete && !loading && !error && !filtered.some((g) => g.visible.length) && filter !== 'all' && (
                         <Text style={styles.empty}>{w.noResults}</Text>
                     )}
                 </ScrollView>
@@ -607,17 +613,7 @@ const styles = StyleSheet.create((theme) => ({
     small: { fontSize: 11, lineHeight: 17, color: theme.colors.textSecondary, ...Typography.default() },
     time: { fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() },
     filters: { flexDirection: 'row', gap: 2, flexWrap: 'wrap' },
-    search: {
-        margin: 12,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        backgroundColor: theme.colors.surface,
-        borderRadius: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 7,
-    },
-    input: { flex: 1, minWidth: 0, fontSize: 12, color: theme.colors.text, ...Typography.default() },
+    loading: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
     list: { flex: 1, minHeight: 0 },
     content: { paddingHorizontal: 8, paddingBottom: 16 },
     group: { gap: 3, marginBottom: 14 },

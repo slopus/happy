@@ -51,6 +51,8 @@ export const ca: TranslationStructure = {
     bots: projectGoalsBase.bots,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        conversationCounts: "Els estats corresponen a les converses carregades; carrega més historial per continuar",
+        noFilteredConversations: "No hi ha converses en aquesta categoria",
         openWorkspace: "Obre l’espai de treball",
         openOrdinaryChat: "Obre al xat normal",
         favoriteItem: ({ title }: { title: string }) => `Afegeix «${title}» als preferits`,

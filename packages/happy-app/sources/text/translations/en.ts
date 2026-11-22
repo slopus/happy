@@ -72,6 +72,8 @@ export const en: TranslationStructure = {
     },
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        conversationCounts: "Activity covers loaded conversations; load more history to continue",
+        noFilteredConversations: "No conversations in this category",
         openWorkspace: "Open workspace",
         openOrdinaryChat: "Open in regular chat",
         favoriteItem: ({ title }: { title: string }) => `Favorite ${title}`,

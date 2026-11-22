@@ -51,6 +51,8 @@ export const es: TranslationStructure = {
     bots: projectGoalsBase.bots,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        conversationCounts: "Los estados corresponden a las conversaciones cargadas; carga más historial para continuar",
+        noFilteredConversations: "No hay conversaciones en esta categoría",
         openWorkspace: "Abrir espacio de trabajo",
         openOrdinaryChat: "Abrir en el chat normal",
         favoriteItem: ({ title }: { title: string }) => `Añadir «${title}» a favoritos`,

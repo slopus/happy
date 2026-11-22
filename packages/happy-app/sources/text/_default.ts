@@ -55,6 +55,8 @@ export const en = {
         unavailable: 'Bots is unavailable. Check the Bots service and try again.',
     },
     projectGoals: {
+        conversationCounts: "Activity covers loaded conversations; load more history to continue",
+        noFilteredConversations: "No conversations in this category",
         retrospective: "Retrospective",
         retrospectiveHint: "AI organizes existing conversations, progress and outputs. Missing business work is listed, never executed by a retrospective.",
         needsJudgment: "Your decisions",

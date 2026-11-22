@@ -58,6 +58,8 @@ export const zhHans: TranslationStructure = {
         unavailable: '暂时无法连接 Bots，请检查 Bots 服务后重试。',
     },
     projectGoals: {
+        conversationCounts: "状态覆盖已加载会话，可加载更多历史",
+        noFilteredConversations: "此分类下暂无会话",
         retrospective: "复盘整理",
         retrospectiveHint: "AI 根据已有会话、过程和产物整理记录；复盘只列出工作缺口，不自动补做。",
         needsJudgment: "需要你判断",

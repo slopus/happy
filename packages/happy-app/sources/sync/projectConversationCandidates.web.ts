@@ -10,9 +10,11 @@ type CatalogCache = {
     machineId: string;
     projectPath: string;
     expiresAt: number;
+    complete: boolean;
     pending: Promise<Candidates>;
 };
 let catalogs: CatalogCache[] = [];
+let readVersion = 0;
 const encoder = new TextEncoder();
 
 /** The daemon pins a complete encrypted directory. The Web decrypts detached
@@ -21,31 +23,51 @@ const encoder = new TextEncoder();
 export function loadProjectConversationCandidates(
     machineId: string,
     projectPath: string,
-    options: { refresh?: boolean } = {},
+    options: { refresh?: boolean; signal?: AbortSignal } = {},
 ): Promise<Candidates> {
     assertAccountRuntime();
+    const signal = options.signal;
+    const cancellation = () => signal?.reason === undefined
+        ? new DOMException('Project history read cancelled', 'AbortError') : signal.reason;
+    if (signal?.aborted) return Promise.reject(cancellation());
     const account = getRuntimeAccountSelection(), encryption = sync.encryption;
     const current = () => {
+        if (signal?.aborted) throw cancellation();
         assertAccountRuntime();
         if (getRuntimeAccountSelection() !== account || sync.encryption !== encryption) throw new Error('Project history account changed');
     };
     catalogs = catalogs.filter(entry => entry.account === account && entry.encryption === encryption && entry.expiresAt > Date.now() + 5_000);
     const existing = catalogs.find(entry => entry.machineId === machineId && entry.projectPath === projectPath);
-    if (existing && !options.refresh) return existing.pending;
+    if (existing && !options.refresh && (!signal || existing.complete)) {
+        return signal ? existing.pending.then(result => { current(); return result; }) : existing.pending;
+    }
     catalogs = catalogs.filter(entry => entry !== existing);
-    const entry: CatalogCache = { account, encryption, machineId, projectPath, expiresAt: Infinity, pending: undefined! };
+    const entry: CatalogCache = { account, encryption, machineId, projectPath, expiresAt: Infinity, complete: false, pending: undefined! };
     catalogs.push(entry);
     if (catalogs.length > 2) catalogs.shift();
-    entry.pending = (async () => {
+    const evict = () => { catalogs = catalogs.filter(candidate => candidate !== entry); };
+    let detach = () => {};
+    const cancelled = signal ? new Promise<never>((_resolve, reject) => {
+        const abort = () => { evict(); detach(); reject(cancellation()); };
+        detach = () => signal.removeEventListener('abort', abort);
+        signal.addEventListener('abort', abort, { once: true });
+    }) : undefined;
+    // A cancelled RPC may remain pending in the transport's shared-read map.
+    // Each cancellable traversal owns a distinct request identity for its pages.
+    const version = signal ? `project-conversation-catalog-${++readVersion}` : undefined;
+    const read = (async () => {
         if (!encryption) throw new Error('Project history encryption is unavailable');
         const candidates: GoalProjectConversationCandidate[] = [], versions = new Map<string, number>(), cursors = new Set<string>();
         let snapshot: { snapshotId: string; catalogFingerprint: string; total: number; expiresAt: number } | undefined;
         let cursor: string | undefined, catalogBytes = 0, candidateBytes = 2;
         do {
             current();
-            const response = await projectGoalRequest(machineId, 'goalProjectConversationCatalog', {
+            const input = {
                 projectPath, ...(snapshot ? { snapshotId: snapshot.snapshotId, cursor } : {}),
-            });
+            };
+            const response = await (version
+                ? projectGoalRequest(machineId, 'goalProjectConversationCatalog', input, version)
+                : projectGoalRequest(machineId, 'goalProjectConversationCatalog', input));
             current();
             if (encoder.encode(JSON.stringify(response)).byteLength > 256 * 1024) throw new Error('Project history catalog page exceeds the size limit');
             const page = GoalProjectConversationCatalogPageSchema.parse(response);
@@ -55,6 +77,7 @@ export function loadProjectConversationCandidates(
                 || page.total !== snapshot.total || page.expiresAt !== snapshot.expiresAt) throw new Error('Project history catalog changed between pages');
             if (page.expiresAt <= Date.now()) throw new Error('Project history catalog expired; refresh conversations');
             for (let index = 0; index < page.sessions.length; index++) {
+                current();
                 const row = page.sessions[index];
                 if (versions.has(row.id)) throw new Error('Project history catalog contains duplicate identities');
                 versions.set(row.id, row.metadataVersion);
@@ -65,6 +88,7 @@ export function loadProjectConversationCandidates(
                 current();
                 if (row.dataEncryptionKey && !key) throw new Error('Project history record key could not be decrypted');
                 const prepared = await encryption.prepareSessionEncryption(row.id, key);
+                current();
                 const metadata = await prepared.sessionEncryption.decryptMetadata(row.metadataVersion, row.metadata);
                 current();
                 if (!metadata) throw new Error('Project history metadata could not be decrypted');
@@ -101,9 +125,14 @@ export function loadProjectConversationCandidates(
         if (!snapshot || fingerprint !== snapshot.catalogFingerprint) throw new Error('Project history catalog fingerprint is invalid');
         entry.expiresAt = snapshot.expiresAt;
         return { candidates, catalogFingerprint: fingerprint, catalogSnapshotId: snapshot.snapshotId };
-    })().catch(error => {
-        catalogs = catalogs.filter(candidate => candidate !== entry);
+    })();
+    entry.pending = (cancelled ? Promise.race([read, cancelled]) : read).then(result => {
+        current();
+        entry.complete = true;
+        return result;
+    }).catch(error => {
+        evict();
         throw error;
-    });
+    }).finally(() => { detach(); });
     return entry.pending;
 }

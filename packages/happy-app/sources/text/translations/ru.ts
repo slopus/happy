@@ -62,6 +62,8 @@ export const ru: TranslationStructure = {
     bots: projectGoalsBase.bots,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        conversationCounts: "Статусы показаны для загруженных диалогов; загрузите больше истории, чтобы продолжить",
+        noFilteredConversations: "В этой категории нет диалогов",
         openWorkspace: "Открыть рабочее пространство",
         openOrdinaryChat: "Открыть в обычном чате",
         favoriteItem: ({ title }: { title: string }) => `Добавить «${title}» в избранное`,

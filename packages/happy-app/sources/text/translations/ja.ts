@@ -54,6 +54,8 @@ export const ja: TranslationStructure = {
     bots: projectGoalsBase.bots,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        conversationCounts: "状態は読み込み済みの会話が対象です。続けるには履歴をさらに読み込んでください",
+        noFilteredConversations: "このカテゴリに会話はありません",
         openWorkspace: "ワークスペースを開く",
         openOrdinaryChat: "通常のチャットで開く",
         favoriteItem: ({ title }: { title: string }) => `「${title}」をお気に入りに追加`,

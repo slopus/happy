@@ -59,6 +59,8 @@ export const zhHant: TranslationStructure = {
     },
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        conversationCounts: "狀態涵蓋已載入的對話，可載入更多歷史",
+        noFilteredConversations: "此分類下暫無對話",
         openWorkspace: "開啟所屬工作區",
         openOrdinaryChat: "在一般對話中開啟",
         favoriteItem: ({ title }: { title: string }) => `收藏${title}`,

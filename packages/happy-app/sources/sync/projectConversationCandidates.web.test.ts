@@ -254,3 +254,82 @@ describe('bounded catalog token reuse', () => {
         expect(projectGoalRequest).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('cancellable catalog reads', () => {
+    it('rejects an already cancelled read without issuing an RPC', async () => {
+        const controller = new AbortController();
+        const reason = new Error('History read timed out');
+        controller.abort(reason);
+        await expect(loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal })).rejects.toBe(reason);
+        expect(projectGoalRequest).not.toHaveBeenCalled();
+    });
+
+    it('cancels a pending RPC immediately and gives a retry an independent request identity', async () => {
+        const pages = await twoPages(), stale = deferred<any>();
+        vi.mocked(projectGoalRequest).mockReturnValueOnce(stale.promise).mockResolvedValueOnce(await catalog());
+        const controller = new AbortController(), reason = new Error('History read timed out');
+        const remove = vi.spyOn(controller.signal, 'removeEventListener');
+        const request = loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal });
+        const rejected = expect(request).rejects.toBe(reason);
+        controller.abort(reason);
+        await rejected;
+        expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+        const retry = await loadProjectConversationCandidates(machineId, projectPath, { signal: new AbortController().signal });
+        expect(retry.candidates).toHaveLength(1);
+        const calls = vi.mocked(projectGoalRequest).mock.calls;
+        expect(calls[0][3]).toEqual(expect.any(String));
+        expect(calls[1][3]).toEqual(expect.any(String));
+        expect(calls[0][3]).not.toBe(calls[1][3]);
+        const decryptions = mock.encryption.prepareSessionEncryption.mock.calls.length;
+        stale.resolve(pages[0]);
+        await Promise.resolve(); await Promise.resolve();
+        expect(mock.encryption.prepareSessionEncryption).toHaveBeenCalledTimes(decryptions);
+        expect(projectGoalRequest).toHaveBeenCalledTimes(2);
+        expect(await loadProjectConversationCandidates(machineId, projectPath)).toEqual(retry);
+        expect(projectGoalRequest).toHaveBeenCalledTimes(2);
+    }, 1_000);
+
+    it.each(['key', 'preparation', 'metadata'] as const)('stops a cancelled read during %s decryption without processing the next record or page', async phase => {
+        const rows = [encryptedRow('one'), encryptedRow('other')], page = await catalog(rows, {
+            total: 3, hasNext: true, nextCursor: 'must-not-read',
+        });
+        const pending = deferred<any>(), started = deferred<void>();
+        const decryptMetadata = vi.fn(async () => {
+            if (phase === 'metadata') { started.resolve(); return pending.promise; }
+            return mock.metadata.get('one');
+        });
+        mock.encryption.decryptEncryptionKey.mockImplementation(async () => {
+            if (phase === 'key') { started.resolve(); return pending.promise; }
+            return new Uint8Array(32);
+        });
+        mock.encryption.prepareSessionEncryption.mockImplementation(async () => {
+            if (phase === 'preparation') { started.resolve(); return pending.promise; }
+            return { sessionEncryption: { decryptMetadata }, commit: vi.fn() };
+        });
+        vi.mocked(projectGoalRequest).mockResolvedValue(page);
+        const controller = new AbortController(), reason = new Error('History read timed out');
+        const request = loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal });
+        const rejected = expect(request).rejects.toBe(reason);
+        await started.promise;
+        controller.abort(reason);
+        await rejected;
+        pending.resolve(phase === 'key' ? new Uint8Array(32) : phase === 'preparation'
+            ? { sessionEncryption: { decryptMetadata }, commit: vi.fn() } : mock.metadata.get('one'));
+        await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+        expect(projectGoalRequest).toHaveBeenCalledTimes(1);
+        expect(mock.encryption.decryptEncryptionKey).toHaveBeenCalledTimes(1);
+        expect(mock.encryption.prepareSessionEncryption).toHaveBeenCalledTimes(phase === 'key' ? 0 : 1);
+        expect(decryptMetadata).toHaveBeenCalledTimes(phase === 'metadata' ? 1 : 0);
+    }, 1_000);
+
+    it('reuses a completed snapshot for cancellable pagination and removes its abort listener on success', async () => {
+        vi.mocked(projectGoalRequest).mockResolvedValue(await catalog());
+        const controller = new AbortController(), remove = vi.spyOn(controller.signal, 'removeEventListener');
+        const first = await loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal });
+        const nextController = new AbortController();
+        const second = await loadProjectConversationCandidates(machineId, projectPath, { signal: nextController.signal });
+        expect(second).toEqual(first);
+        expect(projectGoalRequest).toHaveBeenCalledTimes(1);
+        expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    });
+});

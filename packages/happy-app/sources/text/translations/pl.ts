@@ -62,6 +62,8 @@ export const pl: TranslationStructure = {
     bots: projectGoalsBase.bots,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        conversationCounts: "Statusy dotyczą wczytanych rozmów; wczytaj więcej historii, aby kontynuować",
+        noFilteredConversations: "Brak rozmów w tej kategorii",
         openWorkspace: "Otwórz obszar roboczy",
         openOrdinaryChat: "Otwórz w zwykłym czacie",
         favoriteItem: ({ title }: { title: string }) => `Dodaj „${title}” do ulubionych`,
