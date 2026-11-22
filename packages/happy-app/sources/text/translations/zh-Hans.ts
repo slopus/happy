@@ -18,6 +18,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    webStorage: { diagnostics: '浏览器本地存储', cacheOnly: '仅清理可重建缓存，保留草稿、待发送内容和附件原件。', reload: '重新加载', externalUpdates: '其他页面已更新本地数据，重新加载可查看最新内容。', saving: '正在保存到本地…', failed: '本地保存失败。关闭页面前请重试或导出。', conflict: '另一标签页已修改数据，请先导出未保存内容再重新加载。', recovery: '有旧数据或冲突副本待恢复，建议导出核对。', retry: '重试保存', export: '导出恢复数据', privateExport: '恢复文件含私人草稿及本地业务数据，请妥善保存。是否导出？', publicationUnknown: '发布结果不确定，请先核对已有链接，再手动重试。' },
     discussionMode: { label: '仅讨论', active: '讨论中', toggle: '切换讨论模式', hint: '围绕目的持续讨论，不进入实施；从下一条消息生效', activeHint: '只讨论；实施前请关闭。不会中断已经运行的任务。' },
     composerContext: {
         referenceLimit: "最多添加 8 项引用",

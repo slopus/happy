@@ -1,4 +1,4 @@
-import { MMKV } from 'react-native-mmkv';
+import { MMKV } from '@/persistence/deviceStorage';
 
 const mmkv = new MMKV();
 

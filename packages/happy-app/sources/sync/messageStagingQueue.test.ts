@@ -256,9 +256,10 @@ describe('message staging queue', () => {
         t.send.mockImplementationOnce(() => new Promise<void>(r => { accepted = r; }));
         t.add('a'); t.add('b');
         t.update({ state: 'completed' });
+        await tick(); // The remote turn can only begin after durable sending admission.
         t.update({ state: 'running', turnId: 'a-turn' });
         t.update({ state: 'completed' });
-        accepted(); await tick();
+        await tick(); accepted(); await tick();
         expect(t.send).toHaveBeenCalledTimes(2);
     });
 });

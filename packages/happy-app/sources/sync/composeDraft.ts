@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { AttachmentPreview } from './attachmentTypes';
-import { MMKV } from 'react-native-mmkv';
+import { MMKV } from '@/persistence/deviceStorage';
 import { accountStorageId } from '@/auth/accountRuntime';
 
 const draftStorage = new MMKV({ id: accountStorageId('compose-draft') });
@@ -36,8 +36,9 @@ export const useComposeDraft = create<{
 }));
 
 export function clearComposeDraft() {
-    draftStorage.delete('text');
-    draftStorage.delete('discussing');
+    // Logout owns the whole account-scoped compose namespace. A per-key CAS
+    // delete would reject a draft written by another tab after hydration.
+    draftStorage.clearAll();
     composeDraftAttachmentSelectionGeneration.invalidate();
     useComposeDraft.setState(state => ({ text: '', images: [], discussing: false, revision: state.revision + 1 }));
 }

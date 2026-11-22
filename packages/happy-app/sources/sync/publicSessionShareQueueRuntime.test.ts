@@ -56,7 +56,7 @@ describe('public session share queue runtime', () => {
     it('runs a persisted publication outside the dialog and exposes its ready result', async () => {
         mocks.publish.mockResolvedValueOnce({ publicId: 'public-id', publishedAt: 300 });
 
-        const queued = enqueuePublicSessionShareJob({
+        const queued = await enqueuePublicSessionShareJob({
             sessionId: 'session-1', title: 'Release notes', requestedAt: 200, cutoffSeq: 42, groupToolCalls: true,
         });
         expect(queued.status).toBe('queued');

@@ -2134,7 +2134,7 @@ function SessionViewLoaded({
                         supportsSteer: session.metadata?.capabilities?.codexSteer === true,
                         turnId: session.agentState?.turnStatus?.turnId }}
                     onSteer={id => { void messageStagingQueue.steer(id); }}
-                    onRemove={messageStagingQueue.remove}
+                    onRemove={id => { void Promise.resolve().then(() => messageStagingQueue.remove(id)).catch(() => Modal.alert(t('common.error'), t('common.retry'))); }}
                     onEdit={message => { void (async () => {
                         if (composerHandleRef.current?.getMessage().trim() || selectedImages.length) {
                             Modal.alert(t('messageQueue.title'), t('messageQueue.occupied'));
@@ -2155,7 +2155,9 @@ function SessionViewLoaded({
                         }
                         try { if (message.annotations) restoreAnnotatedMessage(sessionId, message.annotations); }
                         catch { Modal.alert(t('common.error'), t('messageAnnotations.saveError')); return; }
-                        const recovered = messageStagingQueue.take(message.id);
+                        let recovered;
+                        try { recovered = await messageStagingQueue.take(message.id); }
+                        catch { Modal.alert(t('common.error'), t('common.retry')); return; }
                         if (!recovered) return;
                         composer.setMessage(recovered.draftText ?? recovered.text);
                         if (recovered.fileReference) fileWorkspace?.setReference(recovered.fileReference);

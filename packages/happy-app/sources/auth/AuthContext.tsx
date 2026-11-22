@@ -1,3 +1,4 @@
+import { flushDeviceStorageWrites, purgeAccountDeviceStorage } from '@/persistence/deviceStorage';
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import * as Updates from 'expo-updates';
@@ -19,7 +20,7 @@ import { clearPublicSessionShareJobs } from '@/sync/publicSessionShareQueueRunti
 import { clearMessageStagingQueue } from '@/sync/messageStagingQueueRuntime';
 import { clearSessionWarmCache } from '@/sync/sessionWarmCache';
 import { clearLocalHistoryCaches } from '@/sync/localHistoryStore';
-import { clearFirstSubmissionScope } from '@/sync/firstSubmissionScope';
+import { clearFirstSubmissionScope, getFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 import { sessionTextStream } from '@/sync/sessionTextStream';
 import { serviceAuthorizationReturnPath, type ServiceAuthorizationLogin } from './serviceAuthorizationLogin';
 
@@ -139,6 +140,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     const logout = async () => {
         if (busy.current || transitionRef.current) return;
         const oldGeneration = getRuntimeAccountSelection()?.generation;
+        const oldSubmissionScope = getFirstSubmissionScope()?.key;
         let committed = false;
         transitionRef.current = async () => {
             if (!committed) {
@@ -146,12 +148,15 @@ export function AuthProvider({ children, initialCredentials }: { children: React
                 await logoutSavedAccount(oldGeneration, async () => {
                     sessionTextStream.activate(null);
                     clearFirstSubmissionScope();
+                    if (oldSubmissionScope) await (await import('@/sync/firstSubmissionRuntime')).clearFirstSubmissionRecovery(oldSubmissionScope);
                     const clearingHistory = clearLocalHistoryCaches();
                     trackLogout();
                     clearPublicSessionShareJobs();
                     await clearMessageStagingQueue();
                     clearPersistence();
                     clearSessionWarmCache();
+                    await flushDeviceStorageWrites();
+                    await purgeAccountDeviceStorage(getRuntimeAccountSelection()?.scope ?? 'legacy');
                     await clearingHistory;
                     await TokenStorage.removeCredentials();
                 });

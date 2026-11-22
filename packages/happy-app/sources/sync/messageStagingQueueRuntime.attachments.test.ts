@@ -19,7 +19,7 @@ vi.mock('react-native-mmkv', () => ({ MMKV: class {
     }
     clearAll() { this.data.clear(); }
 } }));
-vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => mocks.active, accountStorageId: (id: string) => `account-a-${id}` }));
+vi.mock('@/auth/accountRuntime', () => ({ getRuntimeAccountSelection: () => null, accountRuntimeCurrent: () => mocks.active, accountStorageId: (id: string) => `account-a-${id}` }));
 vi.mock('@/utils/sessionUtils', () => ({ resolveSessionState: (session: any) => ({ state: session.state, isConnected: true }) }));
 vi.mock('./storage', () => ({ storage: { getState: () => mocks.state } }));
 vi.mock('./sync', () => ({ sync: { getCredentials: () => 'credentials', sendMessage: (...args: any[]) => mocks.send(...args) } }));
@@ -134,7 +134,7 @@ describe('real Web queue attachment persistence wiring', () => {
         await runtime.stageSessionMessage('s', 'keep attachment for retry', [attachment()]);
         await vi.waitFor(() => expect(runtime.messageStagingQueue.getSnapshot().messages[0]?.status).toBe('failed'));
         expect(await storedFileCount()).toBe(1);
-        runtime.messageStagingQueue.remove(runtime.messageStagingQueue.getSnapshot().messages[0].id);
+        await runtime.messageStagingQueue.remove(runtime.messageStagingQueue.getSnapshot().messages[0].id);
         expect(await storedFileCount()).toBe(0);
     });
 

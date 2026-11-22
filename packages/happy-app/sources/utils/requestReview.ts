@@ -1,5 +1,5 @@
 import * as StoreReview from 'expo-store-review';
-import { MMKV } from 'react-native-mmkv';
+import { MMKV } from '@/persistence/deviceStorage';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { AsyncLock } from './lock';

@@ -68,6 +68,7 @@ export type PublicSessionShareJob = {
 export type PublicSessionShareQueueStorage = {
     load: () => PublicSessionShareJob[];
     save: (jobs: PublicSessionShareJob[]) => void;
+    flush?: () => Promise<void>;
 };
 
 type PublicSessionShareJobInput = Pick<
@@ -103,10 +104,12 @@ export function createPublicSessionShareQueue(deps: PublicSessionShareQueueDepen
     const listeners = new Set<() => void>();
     const jobs = new Map<string, PublicSessionShareJob>();
     let processing: Promise<void> | null = null;
+    const pendingAdmissions = new Set<string>();
+    const admissions = new Map<string, Promise<void>>();
 
     for (const loaded of deps.storage.load()) {
         jobs.set(loaded.sessionId, loaded.status === 'running'
-            ? { ...loaded, status: 'queued', updatedAt: now() }
+            ? { ...loaded, status: 'failed', error: 'publication-result-unknown', notificationPending: false, updatedAt: now() }
             : loaded);
     }
     if (Array.from(jobs.values()).some((job) => job.status === 'queued')) {
@@ -135,6 +138,7 @@ export function createPublicSessionShareQueue(deps: PublicSessionShareQueueDepen
             ));
             if (pendingNotification) {
                 try {
+                    await deps.storage.flush?.();
                     await deps.notify(pendingNotification);
                     const current = jobs.get(pendingNotification.sessionId);
                     if (current?.id === pendingNotification.id && current.notificationPending) {
@@ -146,13 +150,14 @@ export function createPublicSessionShareQueue(deps: PublicSessionShareQueueDepen
                 continue;
             }
 
-            const queued = Array.from(jobs.values()).find((job) => job.status === 'queued' && canExecute(job));
+            const queued = Array.from(jobs.values()).find((job) => job.status === 'queued' && !pendingAdmissions.has(job.id) && canExecute(job));
             if (!queued) return;
             const running = replace({ ...queued, status: 'running', updatedAt: now(), error: undefined });
             const wasRemoved = () => jobs.get(running.sessionId)?.id !== running.id;
             const ownerChanged = () => !canExecute(running);
             const isCancelled = () => wasRemoved() || ownerChanged();
             try {
+                await deps.storage.flush?.();
                 const result = await deps.execute(running, {
                     isCancelled,
                     onProgress: (completed, total) => {
@@ -177,6 +182,7 @@ export function createPublicSessionShareQueue(deps: PublicSessionShareQueueDepen
                     notificationPending: true,
                     updatedAt: now(),
                 });
+                await deps.storage.flush?.();
             } catch (error) {
                 if (wasRemoved()) continue;
                 if (ownerChanged()) {
@@ -201,7 +207,26 @@ export function createPublicSessionShareQueue(deps: PublicSessionShareQueueDepen
         return processing;
     };
 
+    const admit = (job: PublicSessionShareJob) => {
+        if (!deps.storage.flush) { void Promise.resolve().then(() => resume()).catch(() => {}); return; }
+        pendingAdmissions.add(job.id);
+        const admission = deps.storage.flush(); admissions.set(job.id, admission);
+        void admission.then(() => {
+            pendingAdmissions.delete(job.id);
+            void resume().catch(() => {});
+        }, () => {
+            pendingAdmissions.delete(job.id);
+            const current = jobs.get(job.sessionId);
+            if (current?.id === job.id) {
+                jobs.set(job.sessionId, { ...current, status: 'failed', notificationPending: false, error: 'storage-save-failed' });
+                deps.storage.save(Array.from(jobs.values()));
+                for (const listener of listeners) listener();
+            }
+        });
+    };
+
     return {
+        waitForAdmission: (id: string) => admissions.get(id) ?? Promise.resolve(),
         enqueue(input: PublicSessionShareJobInput): PublicSessionShareJob {
             const existing = jobs.get(input.sessionId);
             if (existing?.status === 'queued' || existing?.status === 'running') return existing;
@@ -215,7 +240,7 @@ export function createPublicSessionShareQueue(deps: PublicSessionShareQueueDepen
                 notificationPending: false,
                 updatedAt: now(),
             });
-            void Promise.resolve().then(() => resume());
+            admit(job);
             return job;
         },
         cancel(sessionId: string): void {
@@ -230,8 +255,8 @@ export function createPublicSessionShareQueue(deps: PublicSessionShareQueueDepen
         retry(sessionId: string): boolean {
             const failed = jobs.get(sessionId);
             if (failed?.status !== 'failed') return false;
-            replace({ ...failed, status: 'queued', error: undefined, notificationPending: false, updatedAt: now() });
-            void Promise.resolve().then(() => resume());
+            const job = replace({ ...failed, status: 'queued', error: undefined, notificationPending: false, updatedAt: now() });
+            admit(job);
             return true;
         },
         getJob(sessionId: string): PublicSessionShareJob | null {

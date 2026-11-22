@@ -1,5 +1,5 @@
 import { ArtifactRequests } from '@slopus/happy-wire';
-import { MMKV } from 'react-native-mmkv';
+import { MMKV } from '@/persistence/deviceStorage';
 import { accountStorageId } from '@/auth/accountRuntime';
 import { clearComposeDraft } from './composeDraft';
 import { Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SettingsSchema } from './settings';

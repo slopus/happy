@@ -107,8 +107,8 @@ describe('usePublicSessionShare', () => {
         await vi.waitFor(() => expect(current().checking).toBe(false));
 
         let accepted = false;
-        act(() => {
-            accepted = latest!.publish({
+        await act(async () => {
+            accepted = await latest!.publish({
                 themePack: 'sakura',
                 coverSelection: { kind: 'pexels', photoId: 731889 },
             });
@@ -185,7 +185,7 @@ describe('usePublicSessionShare', () => {
         await vi.waitFor(() => expect(current().checking).toBe(false));
 
         let accepted = true;
-        act(() => { accepted = current().publish({ themePack: 'caramel', coverSelection: undefined }); });
+        await act(async () => { accepted = await current().publish({ themePack: 'caramel', coverSelection: undefined }); });
 
         expect(accepted).toBe(false);
         expect(mocks.enqueue).not.toHaveBeenCalled();

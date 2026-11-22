@@ -102,9 +102,9 @@ export const PublicSessionShareDialog = React.memo(function PublicSessionShareDi
         setConfirmingRevoke(true);
     }, [busy, replacementBusy]);
 
-    const startPublish = React.useCallback(() => {
+    const startPublish = React.useCallback(async () => {
         if (replacementBusy) return;
-        const accepted = publish(appearance);
+        const accepted = await publish(appearance);
         if (accepted && Platform.OS !== 'web') onClose?.();
     }, [appearance, onClose, publish, replacementBusy]);
 

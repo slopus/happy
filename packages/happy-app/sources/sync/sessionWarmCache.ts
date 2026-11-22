@@ -1,4 +1,4 @@
-import { MMKV } from 'react-native-mmkv';
+import { MMKV } from '@/persistence/deviceStorage';
 import { accountStorageId } from '@/auth/accountRuntime';
 import { z } from 'zod';
 import { ApiMessageSchema, ApiSessionSnapshotSchema, type ApiMessage, type ApiSessionSnapshot } from './apiTypes';

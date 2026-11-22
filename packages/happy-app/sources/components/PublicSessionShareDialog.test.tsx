@@ -140,17 +140,17 @@ describe('PublicSessionShareDialog', () => {
         vi.unstubAllGlobals();
     });
 
-    it('explains the public immutable snapshot before the first share', () => {
+    it('explains the public immutable snapshot before the first share', async () => {
         const renderer = renderDialog();
 
         expect(renderer.root.findAllByProps({ testID: 'public-session-share-privacy-message' })).toHaveLength(1);
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-create' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-create' }).props.onPress(); });
         expect(mocks.publish).toHaveBeenCalledWith({ themePack: 'grape', coverSelection: undefined });
 
         act(() => renderer.unmount());
     });
 
-    it('disables create and refuses publication while a random replacement is unresolved', () => {
+    it('disables create and refuses publication while a random replacement is unresolved', async () => {
         const renderer = renderDialog();
         const controls = renderer.root.findByType('PublicSessionShareAppearanceControls');
 
@@ -158,7 +158,7 @@ describe('PublicSessionShareDialog', () => {
 
         const create = renderer.root.findByProps({ testID: 'public-session-share-create' });
         expect(create.props.disabled).toBe(true);
-        act(() => create.props.onPress());
+        await act(async () => { await create.props.onPress(); });
         expect(mocks.publish).not.toHaveBeenCalled();
 
         act(() => controls.props.onReplacementBusyChange(false));
@@ -166,7 +166,7 @@ describe('PublicSessionShareDialog', () => {
         act(() => renderer.unmount());
     });
 
-    it('disables update and refuses publication while upload normalization is unresolved', () => {
+    it('disables update and refuses publication while upload normalization is unresolved', async () => {
         mocks.share.shareState = { active: true, publicId: 'public-id', publishedAt: 1_788_000_000_000 };
         mocks.share.shareUrl = 'https://paws.example/share/public-id';
         const renderer = renderDialog();
@@ -176,7 +176,7 @@ describe('PublicSessionShareDialog', () => {
 
         const update = renderer.root.findByProps({ testID: 'public-session-share-update' });
         expect(update.props.disabled).toBe(true);
-        act(() => update.props.onPress());
+        await act(async () => { await update.props.onPress(); });
         expect(mocks.publish).not.toHaveBeenCalled();
 
         act(() => controls.props.onReplacementBusyChange(false));
@@ -184,7 +184,7 @@ describe('PublicSessionShareDialog', () => {
         act(() => renderer.unmount());
     });
 
-    it('blocks revoke entry during replacement and restores update after the replacement settles', () => {
+    it('blocks revoke entry during replacement and restores update after the replacement settles', async () => {
         mocks.share.shareState = { active: true, publicId: 'public-id', publishedAt: 1_788_000_000_000 };
         mocks.share.shareUrl = 'https://paws.example/share/public-id';
         const renderer = renderDialog();
@@ -193,22 +193,22 @@ describe('PublicSessionShareDialog', () => {
         act(() => controls.props.onReplacementBusyChange(true));
         const revoke = renderer.root.findByProps({ testID: 'public-session-share-revoke' });
         expect(revoke.props.disabled).toBe(true);
-        act(() => revoke.props.onPress());
+        await act(async () => { await revoke.props.onPress(); });
         expect(renderer.root.findAllByProps({ testID: 'public-session-share-revoke-confirmation' })).toHaveLength(0);
 
         act(() => controls.props.onReplacementBusyChange(false));
         expect(renderer.root.findByProps({ testID: 'public-session-share-update' }).props.disabled).toBe(false);
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-revoke' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-revoke' }).props.onPress(); });
         expect(renderer.root.findAllByProps({ testID: 'public-session-share-revoke-confirmation' })).toHaveLength(1);
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-revoke-cancel' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-revoke-cancel' }).props.onPress(); });
         expect(renderer.root.findByProps({ testID: 'public-session-share-update' }).props.disabled).toBe(false);
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-update' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-update' }).props.onPress(); });
         expect(mocks.publish).toHaveBeenCalledOnce();
 
         act(() => renderer.unmount());
     });
 
-    it('initializes an active update from its immutable snapshot instead of the last-used default', () => {
+    it('initializes an active update from its immutable snapshot instead of the last-used default', async () => {
         mocks.share.shareState = {
             active: true,
             publicId: 'public-id',
@@ -242,7 +242,7 @@ describe('PublicSessionShareDialog', () => {
                 uri: 'https://paws.example/share/public-id/11111111-1111-4111-8111-111111111111',
             },
         });
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-update' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-update' }).props.onPress(); });
         expect(mocks.publish).toHaveBeenCalledWith({
             themePack: 'sage',
             coverSelection: { kind: 'existing', assetId: '11111111-1111-4111-8111-111111111111' },
@@ -251,7 +251,7 @@ describe('PublicSessionShareDialog', () => {
         act(() => renderer.unmount());
     });
 
-    it('resets a revoked share to the remembered theme and a coverless new-share state', () => {
+    it('resets a revoked share to the remembered theme and a coverless new-share state', async () => {
         mocks.share.shareState = {
             active: true,
             publicId: 'public-id',
@@ -279,7 +279,7 @@ describe('PublicSessionShareDialog', () => {
 
         const controls = renderer.root.findByType('PublicSessionShareAppearanceControls');
         expect(controls.props).toMatchObject({ themePack: 'grape', coverSelection: undefined });
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-create' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-create' }).props.onPress(); });
         expect(mocks.publish).toHaveBeenLastCalledWith({ themePack: 'grape', coverSelection: undefined });
         act(() => renderer.unmount());
     });
@@ -295,19 +295,19 @@ describe('PublicSessionShareDialog', () => {
         await vi.waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('https://paws.example/share/public-id'));
         expect(renderer.root.findByProps({ testID: 'public-session-share-copy-feedback' }).props)
             .toMatchObject({ accessibilityLiveRegion: 'polite', children: 'sessionShare.linkCopied' });
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-open' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-open' }).props.onPress(); });
         expect(mocks.openUrl).toHaveBeenCalledWith('https://paws.example/share/public-id');
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-update' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-update' }).props.onPress(); });
         expect(mocks.publish).toHaveBeenCalledTimes(1);
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-revoke' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-revoke' }).props.onPress(); });
         expect(renderer.root.findAllByProps({ testID: 'public-session-share-revoke-confirmation' })).toHaveLength(1);
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-revoke-confirm' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-revoke-confirm' }).props.onPress(); });
         expect(mocks.revoke).toHaveBeenCalledTimes(1);
 
         act(() => renderer.unmount());
     });
 
-    it('keeps the Android checking state full-width and explains the wait', () => {
+    it('keeps the Android checking state full-width and explains the wait', async () => {
         mocks.platformOS = 'android';
         mocks.windowWidth = 360;
         mocks.share.checking = true;
@@ -323,7 +323,7 @@ describe('PublicSessionShareDialog', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps header controls and footer actions from overlapping on narrow Android screens', () => {
+    it('keeps header controls and footer actions from overlapping on narrow Android screens', async () => {
         mocks.platformOS = 'android';
         mocks.windowWidth = 320;
         const renderer = renderDialog();
@@ -343,7 +343,7 @@ describe('PublicSessionShareDialog', () => {
         act(() => renderer.unmount());
     });
 
-    it('queues a mobile share and closes the dialog without waiting for completion', () => {
+    it('queues a mobile share and closes the dialog without waiting for completion', async () => {
         mocks.platformOS = 'android';
         mocks.publish.mockReturnValue(true);
         const onClose = vi.fn();
@@ -354,14 +354,14 @@ describe('PublicSessionShareDialog', () => {
             );
         });
 
-        act(() => renderer.root.findByProps({ testID: 'public-session-share-create' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'public-session-share-create' }).props.onPress(); });
 
         expect(mocks.publish).toHaveBeenCalledOnce();
         expect(onClose).toHaveBeenCalledOnce();
         act(() => renderer.unmount());
     });
 
-    it('returns Web focus to the persistent session details trigger when it unmounts', () => {
+    it('returns Web focus to the persistent session details trigger when it unmounts', async () => {
         const focus = vi.fn();
         const querySelector = vi.fn(() => ({ focus }));
         vi.stubGlobal('document', { querySelector });

@@ -90,7 +90,7 @@ export function initializeMessageStagingQueue() {
 export async function clearMessageStagingQueue() {
     stagingGeneration++;
     await initializeMessageStagingQueue();
-    messageStagingQueue.clear();
+    await messageStagingQueue.clear();
     await clearMessageStagingStorage();
 }
 
@@ -127,7 +127,7 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
         const id = uuid();
         try {
             if (generation !== stagingGeneration || !accountRuntimeCurrent() || !storage.getState().sessions[sessionId]) throw new Error('Session unavailable');
-            messageStagingQueue.enqueue({
+            await messageStagingQueue.enqueue({
                 id, sessionId, text, draftText: context?.draftText, displayText: context?.displayText, annotations: context?.annotations, fileReference: context?.fileReference,
                 attachments: persisted,
                 modeMeta,

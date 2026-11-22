@@ -1,4 +1,4 @@
-import { MMKV } from 'react-native-mmkv';
+import { MMKV, flushDeviceStorageWrites } from '@/persistence/deviceStorage';
 import { accountStorageId } from '@/auth/accountRuntime';
 import { z } from 'zod';
 import type { PublicSessionThemePack } from '@slopus/happy-wire';
@@ -52,6 +52,7 @@ export function parsePublicSessionShareJobs(raw: string | null | undefined): Pub
 export const publicSessionShareQueueStorage: PublicSessionShareQueueStorage = {
     load: () => parsePublicSessionShareJobs(queueStorage.getString(STORAGE_KEY)),
     save: (jobs) => queueStorage.set(STORAGE_KEY, JSON.stringify(jobs)),
+    flush: () => flushDeviceStorageWrites(queueStorage),
 };
 
 export function clearPublicSessionShareQueueStorage(): void {

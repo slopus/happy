@@ -78,7 +78,7 @@ export function availableStagedAttachments(message: StagedMessage): AttachmentPr
 
 export function createMessageStagingQueue(deps: {
     load: () => StagingSnapshot;
-    save: (snapshot: StagingSnapshot) => void;
+    save: (snapshot: StagingSnapshot) => void | Promise<void>;
     session: (id: string) => StagingSession | undefined;
     prepare?: (message: StagedMessage) => Promise<{ text: string; displayText?: string } | undefined>;
     send: (message: StagedMessage) => Promise<unknown>;
@@ -95,10 +95,31 @@ export function createMessageStagingQueue(deps: {
     const locks = new Set<string>();
     let generation = 0;
 
-    function commit(next: StagingSnapshot) {
-        deps.save(next);
-        snapshot = next;
-        for (const listener of listeners) listener();
+    let commitTail: Promise<void> | undefined;
+    const isPromise = (value: unknown): value is Promise<void> => !!value && typeof (value as Promise<void>).then === 'function';
+    function commit(update: (current: StagingSnapshot) => StagingSnapshot): void | Promise<void> {
+        const owner = generation;
+        const run = () => {
+            if (owner !== generation) throw new Error('Queue owner changed');
+            const next = update(snapshot);
+            const publish = () => {
+                if (owner !== generation) throw new Error('Queue owner changed');
+                snapshot = next;
+                for (const listener of listeners) listener();
+            };
+            const saved = deps.save(next);
+            if (isPromise(saved)) return saved.then(publish);
+            publish();
+        };
+        const result = commitTail ? commitTail.then(run) : run();
+        if (!isPromise(result)) return;
+        const tail = result.catch(() => {});
+        commitTail = tail;
+        void tail.then(() => { if (commitTail === tail) commitTail = undefined; });
+        return result;
+    }
+    function afterCommit<T>(result: void | Promise<void>, next: () => T): T | Promise<T> {
+        return isPromise(result) ? result.then(next) : next();
     }
 
     async function dispatch(message: StagedMessage, guide: boolean) {
@@ -111,14 +132,19 @@ export function createMessageStagingQueue(deps: {
         let barrierCreated = false;
         const previousBarrier = snapshot.barriers[sid];
         try {
-            commit({ ...snapshot, messages: snapshot.messages.map(m => m.id === message.id ? { ...m, status: 'sending' } : m) });
+            await commit(state => {
+                const current = state.messages.find(m => m.id === message.id);
+                if (!current || current.status === 'sending') throw new Error('Message is no longer available');
+                message = current;
+                return { ...state, messages: state.messages.map(m => m.id === message.id ? { ...m, status: 'sending' } : m) };
+            });
             if (owner !== generation) return;
             if (message.preparedText === undefined && deps.prepare) {
                 const prepared = await deps.prepare(message);
                 if (owner !== generation) return;
                 if (prepared) {
                     message = { ...message, preparedText: prepared.text, displayText: prepared.displayText ?? message.displayText };
-                    commit({ ...snapshot, messages: snapshot.messages.map(m => m.id === message.id ? { ...m, preparedText: message.preparedText, displayText: message.displayText } : m) });
+                    await commit(state => ({ ...state, messages: state.messages.map(m => m.id === message.id ? { ...m, preparedText: message.preparedText, displayText: message.displayText } : m) }));
                 }
             }
             const delivery = message.preparedText === undefined ? message : { ...message, text: message.preparedText };
@@ -126,13 +152,13 @@ export function createMessageStagingQueue(deps: {
             if (guide && (message.text.startsWith(DISCUSSION_INSTRUCTIONS) || !active?.supportsSteer || !active.turnId)) throw new Error('Native steering unavailable');
             // Native steering joins the existing turn. Its completion releases
             // the barrier; it does not produce another turn/started event.
-            commit({ ...snapshot, barriers: { ...snapshot.barriers, [sid]: { turnId: active?.turnId, sawRunning: guide } } });
+            await commit(state => ({ ...state, barriers: { ...state.barriers, [sid]: { turnId: active?.turnId, sawRunning: guide } } }));
             barrierCreated = true;
             if (guide) await deps.steer(delivery, active!.turnId!);
             else await deps.send(delivery);
             submitted = true;
             if (owner !== generation) return;
-            commit({ ...snapshot, messages: snapshot.messages.filter(m => m.id !== message.id) });
+            await commit(state => ({ ...state, messages: state.messages.filter(m => m.id !== message.id) }));
         } catch {
             if (owner === generation) {
                 const barriers = { ...snapshot.barriers };
@@ -140,7 +166,12 @@ export function createMessageStagingQueue(deps: {
                     if (previousBarrier) barriers[sid] = previousBarrier;
                     else delete barriers[sid];
                 }
-                commit({ ...snapshot, barriers, messages: snapshot.messages.map(m => m.id === message.id ? { ...m, status: 'failed' } : m) });
+                try {
+                    await commit(state => ({ ...state, barriers, messages: state.messages.map(m => m.id === message.id ? { ...m, status: 'failed', ...(submitted ? { deliveryUncertain: true } : {}) } : m) }));
+                } catch {
+                    snapshot = { ...snapshot, messages: snapshot.messages.map(m => m.id === message.id ? { ...m, status: 'failed', deliveryUncertain: true } : m) };
+                    for (const listener of listeners) listener();
+                }
             }
         } finally {
             locks.delete(sid);
@@ -163,14 +194,16 @@ export function createMessageStagingQueue(deps: {
                         ? session.turnId !== barrier.turnId
                         : !session.supportsSteer;
                     if (!barrier.sawRunning && started) {
-                        commit({ ...snapshot, barriers: { ...snapshot.barriers, [sid]: { ...barrier, sawRunning: true } } });
+                        const saved = commit(state => ({ ...state, barriers: { ...state.barriers, [sid]: { ...barrier, sawRunning: true } } }));
+                        if (isPromise(saved)) void saved.catch(() => {});
                     }
                     continue;
                 }
                 if (!barrier.sawRunning && !((session.terminal || session.state === 'completed') && session.turnId && session.turnId !== barrier.turnId)) continue;
                 const barriers = { ...snapshot.barriers };
                 delete barriers[sid];
-                commit({ ...snapshot, barriers });
+                const saved = commit(state => { const next = { ...state.barriers }; delete next[sid]; return { ...state, barriers: next }; });
+                if (isPromise(saved)) { void saved.then(refresh, () => {}); continue; }
             }
             if (session.state !== 'idle' && session.state !== 'completed') continue;
             if (locks.has(sid)) continue;
@@ -189,24 +222,25 @@ export function createMessageStagingQueue(deps: {
             for (const listener of listeners) listener();
         },
         enqueue(message: Omit<StagedMessage, 'status'>) {
-            const retryFailedTurn = deps.session(message.sessionId)?.state === 'failed'
-                && !snapshot.messages.some(m => m.sessionId === message.sessionId)
-                && !snapshot.barriers[message.sessionId];
-            commit({ ...snapshot, messages: [...snapshot.messages, { ...message, status: 'queued' }] });
-            if (retryFailedTurn) { void dispatch({ ...message, status: 'queued' }, false); return; }
-            refresh();
+            let retryFailedTurn = false;
+            return afterCommit(commit(state => {
+                retryFailedTurn = deps.session(message.sessionId)?.state === 'failed'
+                    && !state.messages.some(m => m.sessionId === message.sessionId) && !state.barriers[message.sessionId];
+                return { ...state, messages: [...state.messages, { ...message, status: 'queued' }] };
+            }), () => {
+                if (retryFailedTurn) { void dispatch({ ...message, status: 'queued' }, false); return; }
+                refresh();
+            });
         },
         remove(id: string) {
-            if (snapshot.messages.find(m => m.id === id)?.status === 'sending') return;
-            commit({ ...snapshot, messages: snapshot.messages.filter(m => m.id !== id) });
-            refresh();
+            return afterCommit(commit(state => ({ ...state, messages: state.messages.filter(m => m.id !== id || m.status === 'sending') })), refresh);
         },
         take(id: string) {
-            const message = snapshot.messages.find(m => m.id === id);
-            if (!message || message.status === 'sending') return undefined;
-            commit({ ...snapshot, messages: snapshot.messages.filter(m => m.id !== id) });
-            refresh();
-            return message;
+            let taken: StagedMessage | undefined;
+            return afterCommit(commit(state => {
+                taken = state.messages.find(m => m.id === id && m.status !== 'sending');
+                return taken ? { ...state, messages: state.messages.filter(m => m.id !== id) } : state;
+            }), () => { refresh(); return taken; });
         },
         steer(id: string) {
             const message = snapshot.messages.find(m => m.id === id);
@@ -220,7 +254,7 @@ export function createMessageStagingQueue(deps: {
         },
         clear() {
             generation++;
-            commit({ messages: [], barriers: {} });
+            return commit(() => ({ messages: [], barriers: {} }));
         },
     };
 }

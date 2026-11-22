@@ -131,39 +131,15 @@ describe('public session share queue', () => {
         expect(read()[0].coverSelection).toEqual(job.coverSelection);
     });
 
-    it('resumes an interrupted running job and records the ready link', async () => {
-        const interrupted: PublicSessionShareJob = {
-            id: 'job-1',
-            ...input,
-            status: 'running',
-            progress: { completed: 1, total: 3 },
-            notificationPending: false,
-            updatedAt: input.requestedAt,
-        };
-        const { storage, read } = createStorage([interrupted]);
-        const notify = vi.fn(async () => undefined);
-        const queue = createPublicSessionShareQueue({
-            storage,
-            createId: () => 'unused',
-            execute: async (_job, context) => {
-                context.onProgress(3, 3);
-                return { publicId: 'public-id', publishedAt: 1_788_000_001_000 };
-            },
-            notify,
-        });
-
-        expect(queue.getJob('session-1')?.status).toBe('queued');
+    it('does not repeat an interrupted publication whose remote result is unknown', async () => {
+        const interrupted: PublicSessionShareJob = { id: 'job-1', ...input, status: 'running',
+            progress: { completed: 1, total: 3 }, notificationPending: false, updatedAt: input.requestedAt };
+        const { storage } = createStorage([interrupted]);
+        const execute = vi.fn(), notify = vi.fn();
+        const queue = createPublicSessionShareQueue({ storage, createId: () => 'unused', execute, notify });
+        expect(queue.getJob('session-1')).toMatchObject({ status: 'failed' });
         await queue.resume();
-
-        expect(read()).toEqual([expect.objectContaining({
-            id: 'job-1',
-            status: 'ready',
-            publicId: 'public-id',
-            publishedAt: 1_788_000_001_000,
-            progress: { completed: 3, total: 3 },
-            notificationPending: false,
-        })]);
-        expect(notify).toHaveBeenCalledWith(expect.objectContaining({ status: 'ready', publicId: 'public-id' }));
+        expect(execute).not.toHaveBeenCalled(); expect(notify).not.toHaveBeenCalled();
     });
 
     it('does not restore a cancelled share when an older publish finishes later', async () => {
@@ -301,5 +277,20 @@ describe('public session share queue', () => {
         expect(execute).toHaveBeenCalledTimes(2);
         expect(queue.getJob('session-1')).toMatchObject({ status: 'ready', notificationPending: true });
         expect(queue.getJob('session-2')).toMatchObject({ status: 'ready', notificationPending: true });
+    });
+});
+
+describe('durable publication admission', () => {
+    it('never starts a job whose queued admission failed even if a later write could succeed', async () => {
+        const execute = vi.fn();
+        const queue = createPublicSessionShareQueue({
+            storage: { load: () => [], save: () => {}, flush: vi.fn().mockRejectedValueOnce(new Error('quota')).mockResolvedValue(undefined) },
+            createId: () => 'id', execute, notify: vi.fn(),
+        });
+        queue.enqueue(input);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        await queue.resume();
+        expect(execute).not.toHaveBeenCalled();
+        expect(queue.getJob(input.sessionId)?.status).toBe('failed');
     });
 });

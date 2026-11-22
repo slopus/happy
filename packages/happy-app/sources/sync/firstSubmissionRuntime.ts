@@ -1,7 +1,7 @@
 import { storage } from './storage';
 import { discussionMessage, discussionModeMeta } from './discussionMode';
 import { resolveMessageModeMeta } from './messageMeta';
-import { MMKV } from 'react-native-mmkv';
+import { MMKV, writeDeviceStorage, eraseDeviceStorageRecord } from '@/persistence/deviceStorage';
 import { Platform } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
@@ -20,19 +20,8 @@ import { sessionStartupTraceRuntime, type WebStartupTraceHandle } from './sessio
 const disk = new MMKV({ id: 'first-submission-v1' });
 let trace: { id: string; start: number; previous: number; handle: WebStartupTraceHandle } | undefined;
 export const firstSubmission = new FirstSubmissionOwner({
-    read: scope => Platform.OS === 'web' ? globalThis.localStorage.getItem(`first-submission-v1:${scope}`) ?? undefined : disk.getString(scope),
-    save: async (scope, value) => {
-        // MMKV's Web implementation may silently fall back to memory. A
-        // recoverable submission must fail closed when durable storage fails.
-        if (Platform.OS === 'web') {
-            const key = `first-submission-v1:${scope}`;
-            globalThis.localStorage.setItem(key, value);
-            if (globalThis.localStorage.getItem(key) !== value) throw new Error('submission-save-unconfirmed');
-            return;
-        }
-        disk.set(scope, value);
-        if (disk.getString(scope) !== value) throw new Error('submission-save-unconfirmed');
-    },
+    read: scope => disk.getString(scope),
+    save: async (scope, value) => { await writeDeviceStorage(disk, scope, value); },
     spawn: async (input, live, current) => {
         let approved = false;
         for (;;) {
@@ -119,3 +108,5 @@ export function traceFirstSubmissionNavigation(sessionId: string) {
     try { traceStartup({ traceId: trace.id, stage: 'web.session.navigated', timestamp: Date.now(),
         duration: Date.now() - trace.start, outcome: 'success', sessionId }); } catch { /* optional metrics */ }
 }
+
+export async function clearFirstSubmissionRecovery(scope: string) { await eraseDeviceStorageRecord(disk, scope); }

@@ -16,13 +16,16 @@ vi.mock('@/text', async () => { const { en } = await import('@/text/_default'); 
 vi.mock('./sessionStartupTrace', () => ({ traceStartup: vi.fn() }));
 vi.mock('./sessionStartupTraceRuntime', () => ({ sessionStartupTraceRuntime: { begin: vi.fn(), bindSession: vi.fn() } }));
 
+import { MMKV } from '@/persistence/deviceStorage';
 import { firstSubmission } from './firstSubmissionRuntime';
 import { clearFirstSubmissionScope, setFirstSubmissionScope } from './firstSubmissionScope';
 
 const input = { text: 'hello', prompt: 'hello', machineId: 'machine-1', path: '/repo',
     agent: 'codex' as const, worktreeKey: null, attachments: [] };
 let saved: Map<string, string>;
+let writeSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+    writeSpy = vi.spyOn(MMKV.prototype, 'set');
     saved = new Map();
     vi.stubGlobal('localStorage', {
         getItem: (key: string) => saved.get(key) ?? null,
@@ -32,7 +35,7 @@ beforeEach(() => {
     confirm.mockResolvedValue(true);
     setFirstSubmissionScope('account/server', 'https://test');
 });
-afterEach(() => { clearFirstSubmissionScope(); vi.unstubAllGlobals(); });
+afterEach(() => { clearFirstSubmissionScope(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('first submission launch errors', () => {
     it('carries the selected native connection through durable submission and rejects a new account binding', async () => {
@@ -42,7 +45,7 @@ describe('first submission launch errors', () => {
         expect(await firstSubmission.submit({ ...input, expectedCodexAccountProfileId: null }, { images: [] })).toBe(false);
         expect(firstSubmission.getSnapshot()).toMatchObject({ expectedCodexAccountProfileId: null, failure: 'spawn' });
         expect(machineRPC).not.toHaveBeenCalled();
-        expect([...saved.values()].join('')).toContain('"expectedCodexAccountProfileId":null');
+        expect(writeSpy.mock.calls.some(([, value]) => String(value).includes('"expectedCodexAccountProfileId":null'))).toBe(true);
     });
     it('surfaces an unavailable bound account through the actual owner/runtime/ops flow without persisting it', async () => {
         const error = 'codex-account-unavailable';

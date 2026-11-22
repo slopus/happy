@@ -1,7 +1,7 @@
 export type ContinuationRecord = { phase: 'starting' } | { phase: 'created' | 'ready'; sessionId: string };
 export interface ContinuationDependencies {
     read(source: string): ContinuationRecord | undefined;
-    write(source: string, value: ContinuationRecord): void;
+    write(source: string, value: ContinuationRecord): void | Promise<void>;
     spawn(source: string): Promise<string>;
     link(source: string, target: string): Promise<void>;
     assertCurrent(): void;
@@ -18,17 +18,17 @@ export function createContinuationCoordinator(deps: ContinuationDependencies) {
             let record = deps.read(source);
             if (record?.phase === 'starting') throw new Error('continuation-outcome-unknown');
             if (!record) {
-                deps.write(source, { phase: 'starting' });
+                await deps.write(source, { phase: 'starting' });
                 const sessionId = await deps.spawn(source);
                 // Save the receipt even if the account changed while spawn ran.
-                deps.write(source, { phase: 'created', sessionId });
+                await deps.write(source, { phase: 'created', sessionId });
                 record = { phase: 'created', sessionId };
             }
             deps.assertCurrent();
             if (record.phase !== 'ready') {
                 await deps.link(source, record.sessionId);
                 deps.assertCurrent();
-                deps.write(source, { phase: 'ready', sessionId: record.sessionId });
+                await deps.write(source, { phase: 'ready', sessionId: record.sessionId });
             }
             return record.sessionId;
         };

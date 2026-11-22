@@ -1,3 +1,5 @@
+import { claimQueue, ownsQueue } from '@/persistence/queueOwnership';
+import { accountStorageId } from '@/auth/accountRuntime';
 import { v4 as uuid } from 'uuid';
 import { decryptBlob } from '@/encryption/blob';
 import { t } from '@/text';
@@ -42,12 +44,13 @@ async function loadAttachmentBytes(
     return new Uint8Array(await response.arrayBuffer());
 }
 
+const ownershipKey = accountStorageId('public-session-share-queue')!;
 const queue = createPublicSessionShareQueue({
     storage: publicSessionShareQueueStorage,
     createId: uuid,
     notify: notifyPublicSessionShareJob,
     canExecute: (job) => (
-        !!sync.getCredentials()
+        ownsQueue(ownershipKey) && !!sync.getCredentials()
         && sync.serverID === job.ownerId
         && getServerUrl() === job.serverUrl
     ),
@@ -124,7 +127,7 @@ const queue = createPublicSessionShareQueue({
     },
 });
 
-export function enqueuePublicSessionShareJob(input: {
+export async function enqueuePublicSessionShareJob(input: {
     sessionId: string;
     title: string;
     requestedAt: number;
@@ -132,13 +135,16 @@ export function enqueuePublicSessionShareJob(input: {
     groupToolCalls: boolean;
     themePack?: PublicSessionShareJob['themePack'];
     coverSelection?: PublicSessionShareJob['coverSelection'];
-}): PublicSessionShareJob {
-    return queue.enqueue({
+}): Promise<PublicSessionShareJob> {
+    if (!await claimQueue(ownershipKey)) throw new Error('另一标签页正在管理发布队列，或当前浏览器不支持安全接管。请关闭其他标签页后重试。');
+    const job = queue.enqueue({
         ...input,
         themePack: input.themePack ?? 'caramel',
         ownerId: sync.serverID,
         serverUrl: getServerUrl(),
     });
+    await queue.waitForAdmission(job.id);
+    return job;
 }
 
 export function cancelPublicSessionShareJob(sessionId: string): void {

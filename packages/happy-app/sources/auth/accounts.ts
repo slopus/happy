@@ -5,6 +5,7 @@ import { parseToken } from '@/utils/parseToken';
 import { encodeBase64, decodeBase64 } from '@/encryption/base64';
 import { normalizeSecretKey } from './secretKeyBackup';
 import { authChallenge } from './authChallenge';
+import { flushDeviceStorageWrites } from '@/persistence/deviceStorage';
 import { AsyncLock } from '@/utils/lock';
 
 export type SavedAccount = { key: string; accountId: string; serverUrl: string; label: string; scope: string };
@@ -66,6 +67,7 @@ export async function addSavedAccount(input: { secret: string; serverUrl: string
     return saveAccountCredentials({ token, secret }, serverUrl, input.label || profile.github?.login || profile.firstName);
 }
 export async function selectSavedAccount(key: string): Promise<void> {
+    await flushDeviceStorageWrites();
     return inRegistryLock(async () => {
         const account = rows().find(a => a.key === key);
         const credentials = account && await AccountVault.read(key);

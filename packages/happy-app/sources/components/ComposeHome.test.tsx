@@ -1,3 +1,15 @@
+vi.mock('@/persistence/deviceStorage', async importOriginal => {
+    const original = await importOriginal<typeof import('@/persistence/deviceStorage')>();
+    class FixtureStore extends original.MMKV {
+        private first: boolean;
+        constructor(config?: { id: string }) { super(config); this.first = config?.id === 'first-submission-v1'; }
+        getString(key: string) { return this.first ? globalThis.localStorage.getItem('first-submission-v1:' + key) ?? undefined : super.getString(key); }
+        set(key: string, value: string | number | boolean | ArrayBuffer) { if (this.first) globalThis.localStorage.setItem('first-submission-v1:' + key, String(value)); else super.set(key, value); }
+    }
+    return { ...original, MMKV: FixtureStore, writeDeviceStorage: async (store: FixtureStore, key: string, value: string) => {
+        store.set(key, value); if (store.getString(key) !== value) throw new Error('save-unconfirmed');
+    } };
+});
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

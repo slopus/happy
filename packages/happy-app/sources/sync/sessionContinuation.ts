@@ -1,7 +1,7 @@
 import { sync } from './sync';
 import { isRetiredSession } from './retiredSessions';
 import { buildContinuationContext } from './continuationContext';
-import { MMKV } from 'react-native-mmkv';
+import { MMKV, writeDeviceStorage } from '@/persistence/deviceStorage';
 import { accountStorageId, assertAccountRuntime } from '@/auth/accountRuntime';
 import { storage } from './storage';
 import { machineSpawnNewSession, sessionUpdateMetadata, type SpawnSessionOptions } from './ops';
@@ -55,7 +55,7 @@ const continueSession = createContinuationCoordinator({
         const value = receipts.getString(source);
         return value ? JSON.parse(value) as ContinuationRecord : undefined;
     },
-    write: (source, record) => receipts.set(source, JSON.stringify(record)),
+    write: (source, record) => writeDeviceStorage(receipts, source, JSON.stringify(record)),
     spawn: async id => {
         const source = storage.getState().sessions[id];
         if (!source) { receipts.delete(id); throw new Error('continuation-source-unavailable'); }

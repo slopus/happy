@@ -16,6 +16,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    webStorage: en.webStorage,
     discussionMode: { label: 'Discuss only', active: 'Discussing', toggle: 'Toggle discussion mode', hint: 'Explore purpose through conversation; no implementation. Applies to your next message.', activeHint: 'Discussion only. Turn off to implement. Does not stop an already running turn.' },
     composerContext: {
         referenceLimit: "Puoi aggiungere fino a 8 riferimenti.",

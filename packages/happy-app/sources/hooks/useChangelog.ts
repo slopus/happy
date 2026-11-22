@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MMKV } from 'react-native-mmkv';
+import { MMKV } from '@/persistence/deviceStorage';
 import {
     getLastViewedTitle,
     setLastViewedTitle,

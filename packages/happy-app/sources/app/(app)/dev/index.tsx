@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { WebStorageDiagnosticsItem } from '@/persistence/WebStorageDiagnosticsItem';
 import { ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
@@ -156,6 +157,7 @@ export default function DevScreen() {
 
     return (
         <ItemList>
+            <WebStorageDiagnosticsItem />
             <ItemGroup title={t('devTools.appInformation')}>
                 <Item
                     title={t('common.version')}

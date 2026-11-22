@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    firstScope: 'account-scope' as string | null,
+    clearFirstSubmissionRecovery: vi.fn(async () => undefined),
     clearPersistence: vi.fn(),
     clearSessionWarmCache: vi.fn(),
     clearLocalHistoryCaches: vi.fn(async () => undefined),
@@ -50,7 +52,8 @@ vi.mock('@/sync/composeDraft', () => ({ useComposeDraft: { getState: () => mocks
 vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/components/accounts/AccountTransitionScreen', () => ({ AccountTransitionScreen: () => null }));
-vi.mock('@/sync/firstSubmissionScope', () => ({ clearFirstSubmissionScope: vi.fn() }));
+vi.mock('@/sync/firstSubmissionScope', () => ({ clearFirstSubmissionScope: () => { mocks.firstScope = null; }, getFirstSubmissionScope: () => mocks.firstScope ? { key: mocks.firstScope } : null }));
+vi.mock('@/sync/firstSubmissionRuntime', () => ({ clearFirstSubmissionRecovery: mocks.clearFirstSubmissionRecovery }));
 vi.mock('@/sync/sessionTextStream', () => ({ sessionTextStream: { activate: vi.fn() } }));
 vi.mock('expo-updates', () => ({ reloadAsync: mocks.reload }));
 vi.mock('@/auth/tokenStorage', () => ({
@@ -78,6 +81,7 @@ import { createServiceAuthorizationLogin, serviceAuthorizationReturnPath } from 
 
 describe('AuthProvider logout', () => {
     beforeEach(() => {
+    mocks.firstScope = 'account-scope';
         vi.clearAllMocks();
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         mocks.composeDraft.images = [];
@@ -99,6 +103,7 @@ describe('AuthProvider logout', () => {
             await getCurrentAuth()?.logout();
         });
 
+        expect(mocks.clearFirstSubmissionRecovery).toHaveBeenCalledWith('account-scope');
         expect(mocks.clearPersistence).toHaveBeenCalledOnce();
         expect(mocks.clearSessionWarmCache).toHaveBeenCalledOnce();
         expect(mocks.clearLocalHistoryCaches).toHaveBeenCalledOnce();

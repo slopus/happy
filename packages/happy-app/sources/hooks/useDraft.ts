@@ -1,3 +1,4 @@
+import { markDeviceStorageDraftPending } from '@/persistence/deviceStorage';
 import { useEffect, useMemo, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { storage } from '@/sync/storage';
@@ -33,9 +34,10 @@ export function useDraft(
             },
             flush() {
                 state.cancel();
-                if (!sessionId || state.value === state.saved) return;
+                if (!sessionId || state.value === state.saved) { markDeviceStorageDraftPending(state, false); return; }
                 storage.getState().updateSessionDraft(sessionId, state.value);
                 state.saved = state.value;
+                markDeviceStorageDraftPending(state, false);
             },
         };
         return state;
@@ -77,13 +79,14 @@ export function useDraft(
     const scheduleSave = useCallback(() => {
         draft.cancel();
         if (draft.value !== draft.saved) {
+            if (sessionId) markDeviceStorageDraftPending(draft, true, () => draft.flush());
             if (!isFocused || !draft.value.trim() !== !draft.saved.trim()) {
                 draft.flush();
             } else {
                 draft.timer = setTimeout(() => draft.flush(), autoSaveInterval);
             }
-        }
-    }, [draft, isFocused, autoSaveInterval]);
+        } else markDeviceStorageDraftPending(draft, false);
+    }, [draft, isFocused, autoSaveInterval, sessionId]);
 
     useEffect(() => {
         // A delayed mirror must neither replace newer input nor restart its
@@ -103,6 +106,7 @@ export function useDraft(
         draft.cancel();
         // The composer may unmount before its cleared value renders. Suppress
         // the sent value until the next actual edit instead of resurrecting it.
+        markDeviceStorageDraftPending(draft, false);
         draft.clearedValue = draft.value;
         draft.value = '';
         draft.saved = '';

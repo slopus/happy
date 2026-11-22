@@ -74,10 +74,10 @@ export function usePublicSessionShare(sessionId: string, title: string) {
         if (Platform.OS !== 'web' || queuedJob?.status !== 'failed' || !queuedJob.notificationPending) return;
         if (reportedWebFailureAt.current === queuedJob.updatedAt) return;
         reportedWebFailureAt.current = queuedJob.updatedAt;
-        Modal.alert(t('common.error'), queuedJob.error || t('sessionShare.shareFailed'));
+        Modal.alert(t('common.error'), queuedJob.error === 'publication-result-unknown' ? t('webStorage.publicationUnknown') : queuedJob.error || t('sessionShare.shareFailed'));
     }, [queuedJob?.error, queuedJob?.notificationPending, queuedJob?.status, queuedJob?.updatedAt]);
 
-    const performPublish = React.useCallback((appearance: PublicSessionSharePublishInput): boolean => {
+    const performPublish = React.useCallback(async (appearance: PublicSessionSharePublishInput): Promise<boolean> => {
         if (!credentials) {
             Modal.alert(t('common.error'), t('sessionShare.authenticationUnavailable'));
             return false;
@@ -91,7 +91,7 @@ export function usePublicSessionShare(sessionId: string, title: string) {
             Modal.alert(t('common.error'), t('sessionShare.shareFailed'));
             return false;
         }
-        enqueuePublicSessionShareJob({
+        try { await enqueuePublicSessionShareJob({
             sessionId,
             title,
             requestedAt: Date.now(),
@@ -99,7 +99,7 @@ export function usePublicSessionShare(sessionId: string, title: string) {
             groupToolCalls,
             themePack: appearance.themePack,
             coverSelection: appearance.coverSelection,
-        });
+        }); } catch { Modal.alert(t('common.error'), t('sessionShare.shareFailed')); return false; }
         return true;
     }, [credentials, groupToolCalls, sessionId, title]);
 

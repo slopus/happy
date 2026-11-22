@@ -1,7 +1,7 @@
 import { isAnnotation } from '@/components/annotations/annotationDraft';
-import { MMKV } from 'react-native-mmkv';
+import { MMKV, flushDeviceStorageWrites, listDeviceStorageIds, addDeviceStorageString } from '@/persistence/deviceStorage';
 import { v4 as uuid } from 'uuid';
-import { accountStorageId } from '@/auth/accountRuntime';
+import { accountStorageId, getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import type { StagingSnapshot } from './messageStagingQueue';
 import { clearStagedAttachments, deleteStagedAttachments } from './stagedAttachmentStorage';
 
@@ -17,12 +17,16 @@ function namespaces(): string[] {
 }
 
 export async function clearMessageStagingStorage() {
-    const names = namespaces().map(name => accountStorageId(name)!);
+    const scope = getRuntimeAccountSelection()?.scope;
+    const suffix = scope && scope !== 'legacy' ? `-account-${scope}` : '';
+    const authoritative = await listDeviceStorageIds('message-staging-', suffix);
+    const names = [...new Set([...namespaces().map(name => accountStorageId(name)!), ...authoritative.filter(name => !name.startsWith('message-staging-index'))])];
     // Keep the namespace index until byte cleanup succeeds, so a failed logout
     // can retry rather than leaving inaccessible local originals behind.
     await clearStagedAttachments(names);
     for (const name of names) new MMKV({ id: name }).clearAll();
     index.clearAll();
+    await flushDeviceStorageWrites();
 }
 
 export function getMessageStagingNamespace(): string {
@@ -56,9 +60,10 @@ export function initializeMessageStagingPersistence(): Promise<void> {
             window.sessionStorage.setItem(key, suffix);
         }
         const name = `message-staging-${suffix}`;
-        index.set('namespaces', JSON.stringify([...new Set([...namespaces(), name])]));
+        await addDeviceStorageString(index, 'namespaces', name);
         namespace = accountStorageId(name)!;
         mmkv = new MMKV({ id: namespace });
+        await flushDeviceStorageWrites(index);
     })();
     return initialization;
 }
@@ -81,10 +86,11 @@ export const messageStagingPersistence = {
         } catch { /* Start empty if the local cache is invalid. */ }
         return { messages: [], barriers: {} };
     },
-    save(snapshot: StagingSnapshot) {
+    async save(snapshot: StagingSnapshot) {
         if (!mmkv) throw new Error('Queue storage not ready');
         const previous = messageStagingPersistence.load();
         mmkv.set('queue-v1', JSON.stringify(snapshot));
+        await flushDeviceStorageWrites(mmkv);
         const retained = new Set(snapshot.messages.flatMap(message => message.attachments?.map(attachment => attachment.stagingKey) ?? []));
         const removed = previous.messages.flatMap(message => message.attachments?.filter(attachment => attachment.stagingKey && !retained.has(attachment.stagingKey)) ?? []);
         // The queue is committed before releasing its copies. A taken-back

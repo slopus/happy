@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import { MMKV } from 'react-native-mmkv';
+import { MMKV } from '@/persistence/deviceStorage';
 import { v4 as uuid } from 'uuid';
 import { accountStorageId, accountRuntimeCurrent } from '@/auth/accountRuntime';
 import { createAnnotationDraftStore, EMPTY_ANNOTATIONS } from './annotationDraft';

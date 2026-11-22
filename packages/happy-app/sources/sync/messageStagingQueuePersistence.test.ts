@@ -11,7 +11,7 @@ vi.mock('react-native-mmkv', () => ({ MMKV: class {
     set(key: string, value: string) { this.data.set(key, value); }
     clearAll() { this.data.clear(); }
 } }));
-vi.mock('@/auth/accountRuntime', () => ({ accountStorageId: (id: string) => `account-a-${id}` }));
+vi.mock('@/auth/accountRuntime', () => ({ getRuntimeAccountSelection: () => null, accountStorageId: (id: string) => `account-a-${id}` }));
 vi.mock('uuid', () => ({ v4: () => `new-${++state.nextId}` }));
 
 afterEach(() => { vi.unstubAllGlobals(); state.stores.clear(); state.held.clear(); });

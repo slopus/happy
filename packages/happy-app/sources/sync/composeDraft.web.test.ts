@@ -1,0 +1,20 @@
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, expect, it, vi } from 'vitest';
+import { WebStateDatabase } from '@/persistence/webStateDatabase';
+vi.mock('@/persistence/deviceStorage', async () => import('@/persistence/deviceStorage.web'));
+vi.mock('@/auth/accountRuntime', () => ({ accountStorageId: (id?: string) => id }));
+afterEach(() => { vi.unstubAllGlobals(); });
+it('retires a compose namespace authoritatively when another tab wrote it after hydration', async () => {
+    const idb = new IDBFactory();
+    const source = { length: 0, key: () => null, getItem: () => null, removeItem: () => {} };
+    vi.stubGlobal('indexedDB', idb); vi.stubGlobal('localStorage', source); vi.stubGlobal('BroadcastChannel', undefined);
+    const disk = await import('@/persistence/deviceStorage.web'); await disk.initializeWebStorage();
+    const draft = await import('./composeDraft');
+    const other = new WebStateDatabase(idb, source); await other.initialize();
+    await other.write('compose-draft\\text', 'private draft from another tab');
+    draft.clearComposeDraft();
+    await expect(disk.flushDeviceStorageWrites()).resolves.toBeUndefined();
+    const reopened = new WebStateDatabase(idb, source); await reopened.initialize();
+    expect(reopened.get('compose-draft\\text')).toBeUndefined();
+    expect(JSON.stringify(await reopened.exportRecovery())).not.toContain('private draft from another tab');
+});

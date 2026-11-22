@@ -82,7 +82,7 @@ describe('durable staged Web attachment bytes', () => {
         const restored = await storage.restoreStagedAttachments('owner', snapshotOf(saved));
         const queue = queueFor();
         queue.restore(restored.snapshot, restored.availableBlobUris);
-        const recovered = queue.take('m')!;
+        const recovered = (await queue.take('m'))!;
         expect(recovered).toMatchObject({ text: 'Keep my images', status: 'failed', attachmentsExpired: true });
         expect(expiredStagedAttachments(recovered).map(a => a.id)).toEqual(['two']);
         expect(availableStagedAttachments(recovered).map(a => a.id)).toEqual(['one']);
