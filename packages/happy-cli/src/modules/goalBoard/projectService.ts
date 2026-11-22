@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { goalOutputRecognition, GoalProjectConversationCandidateSchema } from '@slopus/happy-wire';
-import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate, GoalProjectConversationCatalogPage } from '@slopus/happy-wire';
+import type { GoalTask, GoalTaskSession, GoalProjectConversation, GoalProjectConversationGroup, GoalProjectConversationCandidate, GoalProjectConversationCatalogPage, GoalProjectConversationCatalogManifestPage } from '@slopus/happy-wire';
 import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSummary, MAX_CATALOG, type CatalogRecord } from './catalog';
 import { digest, goalFileRevision, goalOf, titleOf, parseBoard, readBoundedFile } from './parser';
 import { goalBoardTaskPrompt } from './taskPrompt';
@@ -25,7 +25,7 @@ export type ProjectGoalDependencies = {
     send: (sessionId: string, prompt: string, localId: string) => Promise<void>;
     history: (featurePath: string, tasks: Array<{ id: string; directory: string; title?: string; directories?: string[]; sessionIds?: string[]; featurePath?: string }>, options?: { headersOnly: true; headerCandidates?: GoalProjectConversationCandidate[]; catalogFingerprint?: string; snapshotId?: string }) => Promise<ProjectSession[]>;
     disposeConversationCatalog?: () => void;
-    conversationCatalog?: (projectPath: string, input: { snapshotId?: string; cursor?: string }) => Promise<GoalProjectConversationCatalogPage>;
+    conversationCatalog?: (projectPath: string, input: { snapshotId?: string; cursor?: string; format?: 'manifest'; sessionIds?: string[] }) => Promise<GoalProjectConversationCatalogPage | GoalProjectConversationCatalogManifestPage>;
     changed: () => void | Promise<void>;
     getArtifactStore?: () => Promise<import('../artifacts/store').ArtifactStore>;
 };
@@ -309,12 +309,17 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
     };
     const conversationCatalog = async (input: unknown) => {
         if (disposed) throw new Error('Project workspace is closed');
-        const data = z.object({ projectPath: pathInput, snapshotId: z.string().min(1).max(128).optional(), cursor: z.string().max(32).optional() }).parse(input);
+        const data = z.object({ projectPath: pathInput, snapshotId: z.string().min(1).max(128).optional(), cursor: z.string().max(32).optional(),
+            format: z.literal('manifest').optional(),
+            sessionIds: z.array(z.string().min(1).max(2048)).max(200).optional().transform(ids => ids === undefined ? undefined : [...new Set(ids)]),
+        }).parse(input);
+        if (data.sessionIds !== undefined && (!data.snapshotId || data.format === 'manifest'))
+            throw new Error('Ciphertext session selection requires its snapshot and cannot use manifest format');
         const projectPath = await realpath(data.projectPath);
         const projects = await readProjects(await discoverRoots(deps.workingDirectory, deps.homeDirectory));
         if (!projects.some(project => project.projectPath === projectPath)) throw new Error('Project is outside the authorized Goal catalog');
         if (!deps.conversationCatalog) throw new Error('Conversation catalog snapshots are unavailable; update this machine CLI');
-        return deps.conversationCatalog(projectPath, { snapshotId: data.snapshotId, cursor: data.cursor });
+        return deps.conversationCatalog(projectPath, { snapshotId: data.snapshotId, cursor: data.cursor, format: data.format, sessionIds: data.sessionIds });
     };
     const conversations = async (input: unknown) => {
         if (disposed) throw new Error('Project workspace is closed');

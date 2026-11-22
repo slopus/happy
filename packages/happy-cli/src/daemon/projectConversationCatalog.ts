@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { GoalProjectConversationCatalogHeaderSchema, type GoalProjectConversationCatalogPage } from '@slopus/happy-wire';
+import { GoalProjectConversationCatalogHeaderSchema, type GoalProjectConversationCatalogPage, type GoalProjectConversationCatalogManifestPage } from '@slopus/happy-wire';
 
 export type ProjectConversationRawHeader = {
     id: string; metadata: string; metadataVersion?: number; dataEncryptionKey?: string | null;
@@ -10,6 +10,7 @@ const PAGE_BYTES = 256 * 1024, TTL = 5 * 60 * 1000;
 type Snapshot = {
     id: string; projectPath: string; fingerprint: string; expiresAt: number; bytes: number;
     sessions: ReadonlyArray<Readonly<ProjectConversationRawHeader>>;
+    byId: ReadonlyMap<string, Readonly<ProjectConversationRawHeader>>;
 };
 
 /** This store belongs to one daemon account/machine runtime. Tokens never cross
@@ -60,7 +61,7 @@ export function createProjectConversationCatalog(load: () => Promise<ProjectConv
             const pairs = sessions.map(row => [row.id, row.metadataVersion] as const).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
             const snapshot: Snapshot = { id: randomBytes(24).toString('base64url'), projectPath,
                 fingerprint: createHash('sha256').update(JSON.stringify(pairs)).digest('hex'),
-                expiresAt: now() + TTL, bytes, sessions: Object.freeze(sessions) };
+                expiresAt: now() + TTL, bytes, sessions: Object.freeze(sessions), byId: new Map(sessions.map(row => [row.id, row])) };
             prune();
             while (snapshots.size && (snapshots.size >= 2 || [...snapshots.values()].reduce((total, item) => total + item.bytes, 0) + bytes > MAX_TOTAL_BYTES))
                 snapshots.delete(snapshots.keys().next().value!);
@@ -70,31 +71,60 @@ export function createProjectConversationCatalog(load: () => Promise<ProjectConv
         pending.set(projectPath, request);
         try { return await request; } finally { if (pending.get(projectPath) === request) pending.delete(projectPath); }
     };
+    type PageInput = { snapshotId?: string; cursor?: string; format?: 'manifest'; sessionIds?: string[] };
+    function page(projectPath: string, input: PageInput & { format: 'manifest' }): Promise<GoalProjectConversationCatalogManifestPage>;
+    function page(projectPath: string, input: PageInput & { format?: undefined }): Promise<GoalProjectConversationCatalogPage>;
+    function page(projectPath: string, input: PageInput): Promise<GoalProjectConversationCatalogPage | GoalProjectConversationCatalogManifestPage>;
+    async function page(projectPath: string, input: PageInput): Promise<GoalProjectConversationCatalogPage | GoalProjectConversationCatalogManifestPage> {
+        if (input.format !== undefined && input.format !== 'manifest') throw new Error('Invalid conversation catalog format');
+        if (input.cursor !== undefined && !input.snapshotId) throw new Error('A conversation catalog cursor requires its snapshot');
+        let selectedIds: string[] | undefined;
+        if (input.sessionIds !== undefined) {
+            if (!input.snapshotId) throw new Error('A conversation catalog session selection requires its snapshot');
+            if (input.format === 'manifest') throw new Error('A conversation catalog manifest cannot select ciphertext session IDs');
+            if (!Array.isArray(input.sessionIds) || input.sessionIds.length > 200 ||
+                input.sessionIds.some(id => typeof id !== 'string' || !id || id.length > 2048))
+                throw new Error('Invalid conversation catalog session selection');
+            selectedIds = [...new Set(input.sessionIds)];
+        }
+        const snapshot = input.snapshotId ? get(projectPath, input.snapshotId) : await create(projectPath);
+        // Selection uses only this immutable snapshot. A missing ID rejects the
+        // complete request rather than returning a plausible partial selection.
+        const sessions = selectedIds === undefined ? snapshot.sessions : selectedIds.map(id => {
+            const row = snapshot.byId.get(id);
+            if (!row) throw new Error('Conversation catalog session selection contains an unknown session ID');
+            return row;
+        });
+        if (input.cursor !== undefined && !/^(0|[1-9]\d*)$/.test(input.cursor)) throw new Error('Invalid conversation catalog cursor');
+        const offset = input.cursor === undefined ? 0 : Number(input.cursor);
+        if (!Number.isSafeInteger(offset) || offset < 0 || (offset >= sessions.length && offset !== 0)) throw new Error('Invalid conversation catalog cursor');
+        const envelope = { projectPath, snapshotId: snapshot.id, catalogFingerprint: snapshot.fingerprint,
+            total: sessions.length, nextCursor: null as string | null, hasNext: false, expiresAt: snapshot.expiresAt };
+        const manifestRows: GoalProjectConversationCatalogManifestPage['sessions'] = [];
+        const rawRows: GoalProjectConversationCatalogPage['sessions'] = [];
+        const manifest = input.format === 'manifest';
+        const result = manifest ? { ...envelope, format: 'manifest' as const, sessions: manifestRows } : { ...envelope, sessions: rawRows };
+        let bytes = Buffer.byteLength(JSON.stringify(result));
+        for (let i = offset; i < sessions.length; i++) {
+            const row = sessions[i];
+            const identity = { id: row.id, metadataVersion: row.metadataVersion! };
+            const header = manifest ? identity : { ...identity, metadata: row.metadata, dataEncryptionKey: row.dataEncryptionKey! };
+            const size = Buffer.byteLength(JSON.stringify(header)) + 1;
+            if (bytes + size + 128 >= PAGE_BYTES) break;
+            if ('metadata' in header) rawRows.push(header);
+            else manifestRows.push(header);
+            bytes += size;
+        }
+        const next = offset + result.sessions.length;
+        result.hasNext = next < sessions.length;
+        result.nextCursor = result.hasNext ? String(next) : null;
+        if (result.hasNext && !result.sessions.length) throw new Error('Conversation catalog page did not advance');
+        if (Buffer.byteLength(JSON.stringify(result)) >= PAGE_BYTES) throw new Error('Conversation catalog page byte limit exceeded');
+        return result;
+    }
     return {
         dispose() { disposed = true; snapshots.clear(); pending.clear(); },
-        async page(projectPath: string, input: { snapshotId?: string; cursor?: string }): Promise<GoalProjectConversationCatalogPage> {
-            if (input.cursor !== undefined && !input.snapshotId) throw new Error('A conversation catalog cursor requires its snapshot');
-            const snapshot = input.snapshotId ? get(projectPath, input.snapshotId) : await create(projectPath);
-            if (input.cursor !== undefined && !/^(0|[1-9]\d*)$/.test(input.cursor)) throw new Error('Invalid conversation catalog cursor');
-            const offset = input.cursor === undefined ? 0 : Number(input.cursor);
-            if (!Number.isSafeInteger(offset) || offset < 0 || (offset >= snapshot.sessions.length && offset !== 0)) throw new Error('Invalid conversation catalog cursor');
-            const result: GoalProjectConversationCatalogPage = { projectPath, snapshotId: snapshot.id, catalogFingerprint: snapshot.fingerprint,
-                total: snapshot.sessions.length, sessions: [], nextCursor: null, hasNext: false, expiresAt: snapshot.expiresAt };
-            let bytes = Buffer.byteLength(JSON.stringify(result));
-            for (let i = offset; i < snapshot.sessions.length; i++) {
-                const row = snapshot.sessions[i];
-                const header = { id: row.id, metadataVersion: row.metadataVersion!, metadata: row.metadata, dataEncryptionKey: row.dataEncryptionKey! };
-                const size = Buffer.byteLength(JSON.stringify(header)) + 1;
-                if (bytes + size + 128 >= PAGE_BYTES) break;
-                result.sessions.push(header); bytes += size;
-            }
-            const next = offset + result.sessions.length;
-            result.hasNext = next < snapshot.sessions.length;
-            result.nextCursor = result.hasNext ? String(next) : null;
-            if (result.hasNext && !result.sessions.length) throw new Error('Conversation catalog page did not advance');
-            if (Buffer.byteLength(JSON.stringify(result)) >= PAGE_BYTES) throw new Error('Conversation catalog page byte limit exceeded');
-            return result;
-        },
+        page,
         read(projectPath: string, snapshotId: string, fingerprint?: string) {
             const snapshot = get(projectPath, snapshotId);
             if (fingerprint !== snapshot.fingerprint) throw new Error('Conversation catalog snapshot fingerprint does not match');

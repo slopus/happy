@@ -612,3 +612,23 @@ it('authorizes catalog snapshot projects before delegating and forwards the same
     } finally { service.dispose(); }
     expect(disposeConversationCatalog).toHaveBeenCalledTimes(1);
 });
+
+it('authorizes and forwards catalog manifest and bounded deduplicated ciphertext selections', async () => {
+    const f = await fixture(), projectPath = join(f.root, 'p');
+    const conversationCatalog = vi.fn(async (path: string) => ({ projectPath: path, snapshotId: 'snapshot', catalogFingerprint: 'a'.repeat(64), total: 0, sessions: [], nextCursor: null, hasNext: false, expiresAt: 999999 }));
+    const service = createProjectGoalService({ ...f.deps, conversationCatalog });
+    try {
+        await expect(service.conversationCatalog({ projectPath: f.feature, format: 'manifest' })).rejects.toThrow('authorized');
+        expect(conversationCatalog).not.toHaveBeenCalled();
+        await service.conversationCatalog({ projectPath, format: 'manifest' });
+        expect(conversationCatalog).toHaveBeenLastCalledWith(projectPath, { snapshotId: undefined, cursor: undefined, format: 'manifest', sessionIds: undefined });
+        await service.conversationCatalog({ projectPath, snapshotId: 'snapshot', cursor: '1', sessionIds: ['a', 'b', 'a'] });
+        expect(conversationCatalog).toHaveBeenLastCalledWith(projectPath, { snapshotId: 'snapshot', cursor: '1', format: undefined, sessionIds: ['a', 'b'] });
+        for (const extra of [
+            { sessionIds: ['a'] },
+            { snapshotId: 'snapshot', sessionIds: ['a'], format: 'manifest' },
+            { snapshotId: 'snapshot', sessionIds: Array.from({ length: 201 }, () => 'a') },
+        ]) await expect(service.conversationCatalog({ projectPath, ...extra })).rejects.toThrow();
+        expect(conversationCatalog).toHaveBeenCalledTimes(2);
+    } finally { service.dispose(); }
+});

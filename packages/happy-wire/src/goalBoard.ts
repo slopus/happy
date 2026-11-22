@@ -68,6 +68,14 @@ export const GoalProjectConversationCatalogPageSchema = z.object({
     nextCursor: z.string().max(32).nullable(), hasNext: z.boolean(), expiresAt: z.number().int().nonnegative(),
 });
 export type GoalProjectConversationCatalogPage = z.infer<typeof GoalProjectConversationCatalogPageSchema>;
+/** Complete version manifest for skipping unchanged detached metadata decrypts.
+ * This is a separate projection: raw ciphertext pages keep their old contract. */
+export const GoalProjectConversationCatalogManifestPageSchema = GoalProjectConversationCatalogPageSchema.extend({
+    format: z.literal('manifest'),
+    sessions: z.array(GoalProjectConversationCatalogHeaderSchema.pick({ id: true, metadataVersion: true })).max(20000),
+});
+export type GoalProjectConversationCatalogManifestPage = z.infer<typeof GoalProjectConversationCatalogManifestPageSchema>;
+
 /** Complete group totals accompany bounded, independently paginated session headers. */
 export const GoalProjectConversationSchema = GoalTaskSessionSchema.extend({ taskId: label.optional() });
 export type GoalProjectConversation = z.infer<typeof GoalProjectConversationSchema>;

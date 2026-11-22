@@ -21,3 +21,23 @@ describe('Goal Board wire contract', () => {
     });
 
 });
+
+it('validates a separate metadata-free manifest projection without loosening the raw ciphertext contract', async () => {
+    const wire = await import('./goalBoard');
+    const envelope = { projectPath: '/project', snapshotId: 'snapshot', catalogFingerprint: 'a'.repeat(64), total: 1, nextCursor: null, hasNext: false, expiresAt: 1000 };
+    const manifest = { ...envelope, format: 'manifest', sessions: [{ id: 'one', metadataVersion: 3 }] };
+    expect(wire.GoalProjectConversationCatalogManifestPageSchema.parse(manifest)).toEqual(manifest);
+    expect(wire.GoalProjectConversationCatalogPageSchema.safeParse(manifest).success).toBe(false);
+    const raw = { ...envelope, sessions: [{ id: 'one', metadataVersion: 3, metadata: Buffer.from('encrypted').toString('base64'), dataEncryptionKey: null }] };
+    expect(wire.GoalProjectConversationCatalogPageSchema.safeParse(raw).success).toBe(true);
+    expect(wire.GoalProjectConversationCatalogManifestPageSchema.safeParse(raw).success).toBe(false);
+    for (const bad of [
+        { ...manifest, format: 'raw' },
+        { ...manifest, sessions: [{ id: '', metadataVersion: 1 }] },
+        { ...manifest, sessions: [{ id: 'one', metadataVersion: -1 }] },
+        { ...manifest, total: 20001 },
+        { ...manifest, sessions: Array(20001).fill({ id: 'one', metadataVersion: 1 }) },
+    ]) expect(wire.GoalProjectConversationCatalogManifestPageSchema.safeParse(bad).success).toBe(false);
+    const projected = wire.GoalProjectConversationCatalogManifestPageSchema.parse({ ...manifest, sessions: raw.sessions });
+    expect(Object.keys(projected.sessions[0]).sort()).toEqual(['id', 'metadataVersion']);
+});

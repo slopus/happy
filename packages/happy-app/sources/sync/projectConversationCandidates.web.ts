@@ -1,7 +1,8 @@
-import { GoalProjectConversationCatalogPageSchema, type GoalProjectConversationCandidate } from '@slopus/happy-wire';
+import { GoalProjectConversationCatalogManifestPageSchema, GoalProjectConversationCatalogPageSchema, type GoalProjectConversationCandidate } from '@slopus/happy-wire';
 import { assertAccountRuntime, getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { projectGoalRequest } from './projectGoals';
 import { sync } from './sync';
+import { readProjectConversationManifestHeaders } from './projectConversationManifest.web';
 
 type Candidates = { candidates: GoalProjectConversationCandidate[]; catalogFingerprint: string; catalogSnapshotId: string };
 export type ProjectConversationHistoryProgress = { phase: 'catalog' | 'grouping'; processed: number; total: number };
@@ -74,13 +75,55 @@ export function loadProjectConversationCandidates(
         do {
             current();
             const input = {
-                projectPath, ...(snapshot ? { snapshotId: snapshot.snapshotId, cursor } : {}),
+                projectPath, ...(snapshot ? { snapshotId: snapshot.snapshotId, cursor } : { format: 'manifest' }),
             };
-            const response = await (version
+            let response: unknown = await (version
                 ? projectGoalRequest(machineId, 'goalProjectConversationCatalog', input, version)
                 : projectGoalRequest(machineId, 'goalProjectConversationCatalog', input));
             current();
             if (encoder.encode(JSON.stringify(response)).byteLength > 256 * 1024) throw new Error('Project history catalog page exceeds the size limit');
+            const format = response && typeof response === 'object' && 'format' in response ? response.format : undefined;
+            const manifestResponse = format === 'manifest';
+            if (format !== undefined && !manifestResponse) throw new Error('Project history catalog format is invalid');
+            if (manifestResponse) {
+                if (snapshot) throw new Error('Project history catalog format changed between pages');
+                const first = GoalProjectConversationCatalogManifestPageSchema.parse(response);
+                if (first.projectPath !== projectPath || first.expiresAt <= Date.now()) throw new Error('Project history manifest scope changed or expired');
+                const manifest = { ...first, sessions: [...first.sessions] };
+                const seen = new Set(first.sessions.map(row => row.id)), manifestCursors = new Set<string>();
+                let part = first;
+                while (part.hasNext) {
+                    if (!part.sessions.length || !part.nextCursor || manifestCursors.has(part.nextCursor)) throw new Error('Project history manifest cursor did not advance');
+                    manifestCursors.add(part.nextCursor);
+                    current();
+                    const nextInput = { projectPath, snapshotId: first.snapshotId, cursor: part.nextCursor, format: 'manifest' };
+                    const next = await (version ? projectGoalRequest(machineId, 'goalProjectConversationCatalog', nextInput, version)
+                        : projectGoalRequest(machineId, 'goalProjectConversationCatalog', nextInput));
+                    current();
+                    if (encoder.encode(JSON.stringify(next)).byteLength > 256 * 1024) throw new Error('Project history manifest page exceeds the size limit');
+                    part = GoalProjectConversationCatalogManifestPageSchema.parse(next);
+                    if (part.projectPath !== first.projectPath || part.snapshotId !== first.snapshotId || part.catalogFingerprint !== first.catalogFingerprint
+                        || part.total !== first.total || part.expiresAt !== first.expiresAt) throw new Error('Project history manifest changed between pages');
+                    for (const row of part.sessions) {
+                        if (seen.has(row.id)) throw new Error('Project history manifest contains duplicate identities');
+                        seen.add(row.id); manifest.sessions.push(row);
+                    }
+                    if (manifest.sessions.length > first.total) throw new Error('Project history manifest total is invalid');
+                }
+                if (manifest.projectPath !== projectPath || manifest.expiresAt <= Date.now() || part.nextCursor
+                    || seen.size !== manifest.sessions.length || manifest.sessions.length !== manifest.total) throw new Error('Project history manifest is incomplete or expired');
+                const pairs = manifest.sessions.map(row => [row.id, row.metadataVersion] as const).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+                const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify(pairs)));
+                current();
+                if ([...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('') !== manifest.catalogFingerprint)
+                    throw new Error('Project history manifest fingerprint is invalid');
+                progress(0, manifest.total);
+                const headers = await readProjectConversationManifestHeaders(machineId, projectPath, manifest, { current, version });
+                current();
+                // A local reconstruction, not one oversized transport frame.
+                // Each actual manifest/repair RPC was bounded independently.
+                response = { ...first, sessions: headers, hasNext: false, nextCursor: null };
+            }
             const page = GoalProjectConversationCatalogPageSchema.parse(response);
             if (page.projectPath !== projectPath) throw new Error('Project history catalog scope changed');
             if (!snapshot) snapshot = page;
@@ -117,7 +160,10 @@ export function loadProjectConversationCandidates(
                     candidates.push(candidate);
                 }
                 // Finite local decryption yields input time, without querying status.
-                if (index % 32 === 31) await new Promise<void>(resolve => setTimeout(resolve, 0));
+                if (index % 32 === 31) {
+                    if (manifestResponse) progress(versions.size, page.total);
+                    await new Promise<void>(resolve => setTimeout(resolve, 0));
+                }
             }
             current();
             if (!page.hasNext) {

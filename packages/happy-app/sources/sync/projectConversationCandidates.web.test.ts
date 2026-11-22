@@ -66,11 +66,58 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('daemon-owned immutable project conversation catalogs', () => {
+    it('uses the pinned manifest with direct HTTP ciphertext while preserving the complete account digest', async () => {
+        const rows = [encryptedRow('one'), encryptedRow('other')];
+        const pinned = await catalog(rows);
+        vi.mocked(projectGoalRequest).mockResolvedValue({ ...pinned, format: 'manifest', sessions: rows.map(({ id, metadataVersion }) => ({ id, metadataVersion })) });
+        vi.mocked(fetchSessionSnapshotPage).mockResolvedValue({ sessions: rows as any, nextCursor: null, hasNext: false });
+        const result = await loadProjectConversationCandidates(machineId, projectPath);
+        expect(result.catalogFingerprint).toBe(await digest(rows));
+        expect(result.catalogSnapshotId).toBe(snapshotA);
+        expect(result.candidates.map(candidate => candidate.sessionId)).toEqual(['one']);
+        expect(projectGoalRequest).toHaveBeenCalledTimes(1);
+        expect(fetchSessionSnapshotPage).toHaveBeenCalledExactlyOnceWith(expect.any(Object), { limit: 200 });
+    });
+
+    it('does not decrypt or cache HTTP results after cancellation', async () => {
+        const pinned = await catalog();
+        vi.mocked(projectGoalRequest).mockResolvedValue({ ...pinned, format: 'manifest', sessions: pinned.sessions.map(({ id, metadataVersion }) => ({ id, metadataVersion })) });
+        const http = deferred<any>(), controller = new AbortController();
+        vi.mocked(fetchSessionSnapshotPage).mockImplementation(() => { controller.abort(); return http.promise; });
+        const request = loadProjectConversationCandidates(machineId, projectPath, { signal: controller.signal });
+        await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+        expect(fetchSessionSnapshotPage).toHaveBeenCalledTimes(1);
+        http.resolve({ sessions: pinned.sessions, nextCursor: null, hasNext: false });
+        await Promise.resolve();
+        expect(mock.encryption.prepareSessionEncryption).not.toHaveBeenCalled();
+    });
+
+    it('verifies every byte-paginated manifest page before using HTTP metadata', async () => {
+        const rows = [encryptedRow('one'), encryptedRow('other')], pinned = await catalog(rows);
+        vi.mocked(projectGoalRequest)
+            .mockResolvedValueOnce({ ...pinned, format: 'manifest', sessions: [{ id: 'one', metadataVersion: 3 }], hasNext: true, nextCursor: '1' })
+            .mockResolvedValueOnce({ ...pinned, format: 'manifest', sessions: [{ id: 'other', metadataVersion: 3 }] });
+        vi.mocked(fetchSessionSnapshotPage).mockResolvedValue({ sessions: rows as any, nextCursor: null, hasNext: false });
+        expect((await loadProjectConversationCandidates(machineId, projectPath)).candidates.map(row => row.sessionId)).toEqual(['one']);
+        expect(projectGoalRequest).toHaveBeenLastCalledWith(machineId, 'goalProjectConversationCatalog', { projectPath, snapshotId: snapshotA, cursor: '1', format: 'manifest' });
+    });
+
+    it.each([
+        { catalogFingerprint: 'f'.repeat(64) }, { total: 2 },
+        { sessions: [{ id: 'one', metadataVersion: 3 }, { id: 'one', metadataVersion: 3 }], total: 2 },
+    ])('rejects an invalid manifest before requesting HTTP or decrypting anything (%j)', async change => {
+        const pinned = await catalog();
+        vi.mocked(projectGoalRequest).mockResolvedValue({ ...pinned, format: 'manifest', sessions: [{ id: 'one', metadataVersion: 3 }], ...change });
+        await expect(loadProjectConversationCandidates(machineId, projectPath)).rejects.toThrow(/manifest/i);
+        expect(fetchSessionSnapshotPage).not.toHaveBeenCalled();
+        expect(mock.encryption.prepareSessionEncryption).not.toHaveBeenCalled();
+    });
+
     it('exhausts one immutable snapshot, verifies its complete digest, and exports only selected-machine compact metadata', async () => {
         const pages = await twoPages();
         vi.mocked(projectGoalRequest).mockResolvedValueOnce(pages[0]).mockResolvedValueOnce(pages[1]);
         const result = await loadProjectConversationCandidates(machineId, projectPath);
-        expect(projectGoalRequest).toHaveBeenNthCalledWith(1, machineId, 'goalProjectConversationCatalog', { projectPath });
+        expect(projectGoalRequest).toHaveBeenNthCalledWith(1, machineId, 'goalProjectConversationCatalog', { projectPath, format: 'manifest' });
         expect(projectGoalRequest).toHaveBeenNthCalledWith(2, machineId, 'goalProjectConversationCatalog', { projectPath, snapshotId: snapshotA, cursor: 'catalog-next-1' });
         expect(projectGoalRequest).toHaveBeenCalledTimes(2);
         expect(fetchSessionSnapshotPage).not.toHaveBeenCalled();
@@ -333,7 +380,7 @@ describe('bounded catalog token reuse', () => {
         const old = await loadProjectConversationCandidates(machineId, projectPath);
         const fresh = await loadProjectConversationCandidates(machineId, projectPath, { refresh: true });
         expect(old.catalogSnapshotId).toBe(snapshotA); expect(fresh.catalogSnapshotId).toBe(snapshotB);
-        expect(projectGoalRequest).toHaveBeenNthCalledWith(2, machineId, 'goalProjectConversationCatalog', { projectPath });
+        expect(projectGoalRequest).toHaveBeenNthCalledWith(2, machineId, 'goalProjectConversationCatalog', { projectPath, format: 'manifest' });
     });
 
     it('rebuilds only on the next call when the server expiry enters its five-second margin', async () => {
