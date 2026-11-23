@@ -1659,6 +1659,12 @@ failedContinueTask: "Continue unfinished task",
         skillLabel: 'Skill',
         skillBatchLabel: 'Skill batch',
         skillDocumentLabel: 'Load skill instructions',
+        skillCommandStatus: {
+            running: 'Command running',
+            completed: 'Command completed',
+            failed: 'Command failed',
+            cancelled: 'Command cancelled',
+        },
         skillDocumentStatus: {
             running: 'Loading',
             completed: 'Loaded',

@@ -1869,6 +1869,12 @@ failedContinueTask: "继续未完成的任务",
         skillLabel: '技能（Skill）',
         skillBatchLabel: '批量读取技能',
         skillDocumentLabel: '加载技能说明',
+        skillCommandStatus: {
+            running: '命令执行中',
+            completed: '命令已完成',
+            failed: '命令失败',
+            cancelled: '命令已取消',
+        },
         skillDocumentStatus: {
             running: '加载中',
             completed: '已加载',

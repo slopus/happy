@@ -1714,6 +1714,12 @@ failedContinueTask: "繼續未完成的工作",
         skillLabel: '技能（Skill）',
         skillBatchLabel: '批次讀取技能',
         skillDocumentLabel: '載入技能說明',
+        skillCommandStatus: {
+            running: '命令執行中',
+            completed: '命令已完成',
+            failed: '命令失敗',
+            cancelled: '命令已取消',
+        },
         skillDocumentStatus: {
             running: '載入中',
             completed: '已載入',

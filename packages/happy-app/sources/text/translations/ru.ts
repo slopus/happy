@@ -1656,6 +1656,12 @@ failedContinueTask: "Продолжить незавершённую задач�
         skillLabel: 'Навык (Skill)',
         skillBatchLabel: 'Пакет навыков',
         skillDocumentLabel: 'Загрузка инструкций навыка',
+        skillCommandStatus: {
+            running: 'Команда выполняется',
+            completed: 'Команда завершена',
+            failed: 'Ошибка команды',
+            cancelled: 'Команда отменена',
+        },
         skillDocumentStatus: {
             running: 'Загрузка',
             completed: 'Загружено',

@@ -22,6 +22,7 @@ import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCo
 import { ConversationActivityStrip } from './ConversationActivityStrip';
 import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 import { getSkillDocumentName } from '@/utils/toolIdentity';
+import { getSkillCommandNames } from '@/utils/skillCommandReads';
 import { getMessageExecutionModeLabel } from '@/utils/messageExecutionMode';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { getUserMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
@@ -685,14 +686,15 @@ function ToolCallBlock(props: {
   if (!props.message.tool) {
     return null;
   }
-  const showSkillActivity = getSkillNamesFromTool(props.message.tool).length > 0 && props.message.tool.permission?.status !== 'pending';
-  const isDocumentRead = getSkillDocumentName(props.message.tool) !== null;
-  if (showSkillActivity && !isDocumentRead) {
+  const isSupplementalRead = getSkillDocumentName(props.message.tool) !== null || getSkillCommandNames(props.message.tool).length > 0;
+  const showSkillActivity = (isSupplementalRead || getSkillNamesFromTool(props.message.tool).length > 0)
+    && props.message.tool.permission?.status !== 'pending';
+  if (showSkillActivity && !isSupplementalRead) {
     return <ConversationActivityStrip messages={[props.message]} />;
   }
   return (
     <>
-      {showSkillActivity && isDocumentRead && <ConversationActivityStrip messages={[props.message]} />}
+      {showSkillActivity && isSupplementalRead && <ConversationActivityStrip messages={[props.message]} />}
       <View style={styles.toolContainer}>
         <ToolView
           tool={props.message.tool}

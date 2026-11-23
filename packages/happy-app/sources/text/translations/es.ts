@@ -1640,6 +1640,12 @@ failedContinueTask: "Continuar tarea pendiente",
         skillLabel: 'Habilidad (Skill)',
         skillBatchLabel: 'Lote de habilidades',
         skillDocumentLabel: 'Cargar instrucciones de habilidad',
+        skillCommandStatus: {
+            running: 'Comando en curso',
+            completed: 'Comando completado',
+            failed: 'Comando fallido',
+            cancelled: 'Comando cancelado',
+        },
         skillDocumentStatus: {
             running: 'Cargando',
             completed: 'Cargadas',

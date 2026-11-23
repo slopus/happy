@@ -1638,6 +1638,12 @@ failedContinueTask: "Continua il lavoro in sospeso",
         skillLabel: 'Skill',
         skillBatchLabel: 'Gruppo di skill',
         skillDocumentLabel: 'Carica istruzioni abilità',
+        skillCommandStatus: {
+            running: 'Comando in esecuzione',
+            completed: 'Comando completato',
+            failed: 'Comando fallito',
+            cancelled: 'Comando annullato',
+        },
         skillDocumentStatus: {
             running: 'Caricamento',
             completed: 'Caricate',

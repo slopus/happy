@@ -46,7 +46,11 @@ describe('conversation activity model', () => {
             skillNames: ['release-ops'], command: 'cat /skills/release-ops/SKILL.md; ls /missing',
         }, 'error');
         expect(getSkillNamesFromTool(mixed.tool)).toEqual([]);
-        expect(collectConversationActivities([mixed]).skills).toEqual([]);
+        expect(collectConversationActivities([mixed]).skills).toEqual([
+            expect.objectContaining({
+                name: 'release-ops', source: 'command-read', status: 'failed', failure: null,
+            }),
+        ]);
     });
 
     it('extracts native and normalized Skill names', () => {

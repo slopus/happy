@@ -1641,6 +1641,12 @@ failedContinueTask: "未完了の作業を続ける",
         skillLabel: 'Skill',
         skillBatchLabel: 'スキルの一括読み込み',
         skillDocumentLabel: 'スキルの説明を読み込み',
+        skillCommandStatus: {
+            running: 'コマンド実行中',
+            completed: 'コマンド完了',
+            failed: 'コマンド失敗',
+            cancelled: 'コマンドキャンセル済み',
+        },
         skillDocumentStatus: {
             running: '読み込み中',
             completed: '読み込み済み',

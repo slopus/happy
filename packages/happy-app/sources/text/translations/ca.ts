@@ -1640,6 +1640,12 @@ failedContinueTask: "Continua la tasca pendent",
         skillLabel: 'Habilitat (Skill)',
         skillBatchLabel: 'Lot d’habilitats',
         skillDocumentLabel: 'Carrega les instruccions de l’habilitat',
+        skillCommandStatus: {
+            running: 'Ordre en curs',
+            completed: 'Ordre completada',
+            failed: 'Ordre fallida',
+            cancelled: 'Ordre cancel·lada',
+        },
         skillDocumentStatus: {
             running: 'Carregant',
             completed: 'Carregades',

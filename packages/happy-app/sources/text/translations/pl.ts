@@ -1656,6 +1656,12 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
         skillLabel: 'Umiejętność (Skill)',
         skillBatchLabel: 'Pakiet umiejętności',
         skillDocumentLabel: 'Ładowanie instrukcji umiejętności',
+        skillCommandStatus: {
+            running: 'Polecenie w toku',
+            completed: 'Polecenie zakończone',
+            failed: 'Błąd polecenia',
+            cancelled: 'Polecenie anulowane',
+        },
         skillDocumentStatus: {
             running: 'Ładowanie',
             completed: 'Załadowano',

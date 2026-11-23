@@ -103,7 +103,8 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
     const [expanded, setExpanded] = React.useState(false);
     const { activity } = props;
     const isDocumentRead = activity.source === 'document-read';
-    const isFailed = activity.status === 'failed';
+    const isCommandRead = activity.source === 'command-read';
+    const isFailed = activity.status === 'failed' && !isCommandRead;
     const summary = activity.failure?.summary ?? (isFailed ? t('toolGroup.skillFailureNoDetails') : null);
     const detail = activity.failure?.detail;
     const hasAdditionalDetail = Boolean(detail && detail !== summary);
@@ -121,7 +122,8 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
                 <Text style={styles.title} numberOfLines={1}>{activity.name}</Text>
                 <View style={styles.statusPill}>
                     <ActivityStatusIcon status={activity.status} />
-                    <Text style={styles.statusText}>{isDocumentRead ? t(`toolGroup.skillDocumentStatus.${activity.status}`) : getStatusLabel(activity.status)}</Text>
+                    <Text style={styles.statusText}>{isCommandRead ? t(`toolGroup.skillCommandStatus.${activity.status}`)
+                        : isDocumentRead ? t(`toolGroup.skillDocumentStatus.${activity.status}`) : getStatusLabel(activity.status)}</Text>
                 </View>
                 {canExpand && (
                     <Ionicons
