@@ -3,10 +3,12 @@ import { SessionComposerPermissionSelector } from './SessionComposerPermissionSe
 import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode } from '@/utils/taskPermissionModes';
 import { ComposerTooltip } from './DesktopShortcutTooltip';
 import { SessionComposerModeSelector } from './SessionComposerModeSelector';
+import { useMagpieModelCatalog } from '@/hooks/useMagpieModelCatalog';
+import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import React from 'react';
 import { useRouter } from 'expo-router';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
-import { enabledCodingAgents, getCodingAgentCycle } from '@/utils/codingAgentSelection';
+import { enabledCodingAgents } from '@/utils/codingAgentSelection';
 import {
     View,
     Text,
@@ -744,6 +746,7 @@ export interface SessionConfigSelection {
     worktreeKey: string;
     fastMode: boolean;
     expectedCodexAccountProfileId?: string | null;
+    magpieModel?: string;
 }
 
 export interface SessionConfigPanelHandle {
@@ -805,6 +808,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             permissionMode: s.permissionMode,
             setPermissionMode: s.setPermissionMode,
             modelMode: s.modelMode,
+            useMagpie: s.useMagpie,
             modelSelection: s.modelSelection,
             effortSelection: s.effortSelection,
             setModelMode: s.setModelMode,
@@ -1019,6 +1023,18 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             agent === 'codex' && (codexAccountProfileId === undefined || !metadata?.models?.length)
                 ? [{ key: 'default', name: t('agentInput.model.cliAutomatic'), description: null }]
                 : getSuggestedModelModes(agent, metadata, t), [codexAccountProfileId]);
+        const catalogDirectory = worktreeKey && !['__none__', '__new__'].includes(worktreeKey) ? worktreeKey : resolvedSelectedPath ?? selectedHomeDir ?? null;
+        const canDiscoverMagpie = !!selectedMachine && isMachineOnline(selectedMachine) && !!selectedMachine.metadata?.magpieModelCatalog
+            && availableAgents.some(agent => agent.key === 'codex');
+        const magpie = useMagpieModelCatalog(selectedMachineId, catalogDirectory, canDiscoverMagpie);
+        const useMagpie = selectedAgent === 'codex' && draft.useMagpie === true;
+        React.useEffect(() => {
+            if (useMagpie && !magpie.catalog) void magpie.refresh().catch(() => {});
+        }, [useMagpie, magpie.catalog, magpie.refresh]);
+        const magpieMetadata = React.useMemo((): Session['metadata'] => magpie.catalog ? {
+            path: catalogDirectory ?? '', host: selectedMachine?.metadata?.host ?? '', flavor: 'codex', ...magpie.catalog,
+        } : null, [magpie.catalog, catalogDirectory, selectedMachine?.metadata?.host]);
+        const magpieModels = React.useMemo(() => magpieMetadata ? getSuggestedModelModes('codex', magpieMetadata, t) : [], [magpieMetadata]);
         const permissionModes = React.useMemo<PermissionMode[]>(
             () => getHardcodedPermissionModes(selectedAgent, t),
             [selectedAgent],
@@ -1041,12 +1057,12 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             directory: claudeCatalogDirectory,
             enabled: selectedAgent === 'claude' && !!selectedMachine && isMachineOnline(selectedMachine),
         });
-        const effectiveModelMetadata = React.useMemo(() => selectedAgent === 'claude' && claudeModels.catalog ? ({
+        const effectiveModelMetadata = React.useMemo(() => useMagpie ? magpieMetadata : selectedAgent === 'claude' && claudeModels.catalog ? ({
             ...modelMetadata,
             path: claudeCatalogDirectory ?? '', host: modelMetadata?.host ?? '', flavor: 'claude',
             machineId: selectedMachineId ?? undefined,
             models: claudeModels.catalog.models, modelsUpdatedAt: claudeModels.catalog.observedAt,
-        }) : modelMetadata, [selectedAgent, claudeModels.catalog, modelMetadata, selectedMachineId, claudeCatalogDirectory]);
+        }) : modelMetadata, [useMagpie, magpieMetadata, selectedAgent, claudeModels.catalog, modelMetadata, selectedMachineId, claudeCatalogDirectory]);
         React.useEffect(() => {
             const pending = pendingClaudeSelection.current;
             if (selectedAgent !== 'claude' || !claudeModels.catalog || !pending) return;
@@ -1061,7 +1077,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         if (verifiedChoice) verifiedClaudeSelection.current = { scope: claudeSelectionScope, model: { key: verifiedChoice.code, name: verifiedChoice.value } };
         const modelModes = React.useMemo<ModelMode[]>(
             () => {
-                const models = getNewSessionModels(selectedAgent, effectiveModelMetadata);
+                const models = useMagpie ? magpieModels : getNewSessionModels(selectedAgent, effectiveModelMetadata);
                 // A saved explicit identifier remains the user's choice if discovery fails or a catalog removes it.
                 const verified = verifiedClaudeSelection.current;
                 if (selectedAgent === 'claude' && verified?.scope === claudeSelectionScope && verified.model.key === draft.modelMode
@@ -1070,23 +1086,24 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 }
                 return models;
             },
-            [effectiveModelMetadata, selectedAgent, getNewSessionModels, draft.modelMode, claudeSelectionScope],
+            [effectiveModelMetadata, selectedAgent, getNewSessionModels, draft.modelMode, claudeSelectionScope, useMagpie, magpieModels],
         );
-        // Models belong to the selected execution agent, even when Magpie exposes
-        // the same model through several agents. Agent changes are explicit.
         const composerModels = React.useMemo(() => {
-            const concrete = selectedAgent === 'claude' ? modelModes : modelModes.filter(model => model.key !== 'default');
-            return (concrete.length ? concrete : modelModes).map(model => ({
-                ...model, key: `${selectedAgent}::${model.key}`,
-            }));
-        }, [modelModes, selectedAgent]);
-        const cycleAgents = getCodingAgentCycle(availableAgents);
-        const nextCycleAgent = cycleAgents.length > 1
-            ? cycleAgents[(cycleAgents.findIndex(agent => agent.key === selectedAgent) + 1) % cycleAgents.length]
-            : null;
-        const switchComposerAgent = () => {
-            if (!nextCycleAgent) return;
-            const nextAgent = nextCycleAgent.key as NewSessionAgentType;
+            const currentModels = useMagpie ? getNewSessionModels('codex', modelMetadata) : modelModes;
+            const concrete = selectedAgent === 'claude' ? currentModels : currentModels.filter(model => model.key !== 'default');
+            const labels = magpieModels.length > 0 && selectedAgent === 'codex' && codexAccountProfileId
+                ? { connectionLabel: 'ChatGPT' } : {};
+            const normal = selectedAgent === 'codex' && magpieModels.length > 0 && codexAccountProfileId === null
+                ? [] : (concrete.length ? concrete : currentModels).map(model => ({
+                    ...model, ...labels, key: `${selectedAgent}::${model.key}`,
+                }));
+            return [...normal, ...magpieModels.map(model => ({
+                ...model, key: `magpie::${model.key}`, connectionLabel: 'Magpie',
+            }))];
+        }, [modelModes, magpieModels, selectedAgent, codexAccountProfileId, useMagpie, getNewSessionModels, modelMetadata]);
+        const switchComposerAgent = (key: string) => {
+            const nextAgent = availableAgents.find(agent => agent.key === key)?.key as NewSessionAgentType | undefined;
+            if (!nextAgent || nextAgent === selectedAgent) return;
             if (nextAgent === 'claude') {
                 pendingClaudeSelection.current = { model: draft.modelMode, effort: draft.effortLevel, machineId: selectedMachineId };
                 draft.setAgentType(nextAgent);
@@ -1131,24 +1148,33 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 permissionMode: draft.permissionMode,
                 modelMode: draft.modelMode,
                 effortLevel: draft.effortLevel,
-                modelSelection: draft.modelSelection,
+                modelSelection: useMagpie ? { agent: 'codex', defaultValue: resolveAgentDefaultConfig(agentDefaultOverrides, 'codex').modelMode } : draft.modelSelection,
                 effortSelection: draft.effortSelection,
                 agentDefaultOverrides,
                 modelOptions: modelModes,
                 effortMetadata: effectiveModelMetadata,
             })
-        ), [agentDefaultOverrides, draft.effortLevel, draft.modelMode, draft.modelSelection, draft.effortSelection, draft.permissionMode, effectiveModelMetadata, modelModes, selectedAgent]);
+        ), [agentDefaultOverrides, draft.effortLevel, draft.modelMode, draft.modelSelection, draft.effortSelection, draft.permissionMode, effectiveModelMetadata, modelModes, selectedAgent, useMagpie]);
 
         // CLI automatic is an explicit reset even after a concrete catalog arrives.
-        const currentModel = selectedAgent === 'codex' && resolvedModeSelection.modelMode === 'default'
+        const currentModel = useMagpie
+            ? magpieModels.find(model => model.key === draft.modelMode) ?? { key: draft.modelMode, name: draft.modelMode }
+            : selectedAgent === 'codex' && resolvedModeSelection.modelMode === 'default'
             ? { key: 'default', name: t('agentInput.model.cliAutomatic') }
             : modelModes.find(model => model.key === (selectedAgent === 'codex' ? resolvedModeSelection.modelMode : selectedModelKey ?? resolvedModeSelection.modelMode))
             ?? modelModes.find(model => model.key === resolvedModeSelection.modelMode)
             ?? modelModes[0];
         const currentModelKey = currentModel?.key ?? 'default';
+        const explicitCodexMissing = selectedAgent === 'codex' && draft.modelMode !== 'default' && (
+            useMagpie ? !magpieModels.some(model => model.key === draft.modelMode)
+                : draft.modelSelection?.agent === 'codex'
+                  && draft.modelSelection.defaultValue === resolveAgentDefaultConfig(agentDefaultOverrides, 'codex').modelMode
+                  && !modelModes.some(model => model.key === draft.modelMode)
+        );
+        const displayedModel = explicitCodexMissing && !useMagpie ? { key: draft.modelMode, name: draft.modelMode } : currentModel;
 
         const effortLevels = React.useMemo<EffortLevel[]>(
-            () => selectedAgent === 'codex' && !modelMetadata?.models?.length ? []
+            () => selectedAgent === 'codex' && !effectiveModelMetadata?.models?.length ? []
                 : getEffortLevelsForModel(selectedAgent, currentModelKey, effectiveModelMetadata),
             [selectedAgent, currentModelKey, effectiveModelMetadata, codexAccountProfileId],
         );
@@ -1156,7 +1182,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const supportsWorktree = configExperience.showWorktree && getSupportsWorktree(selectedAgent);
         const showModel = configExperience.showModeDetails && modelModes.length > 1;
         const showEffort = configExperience.showModeDetails && effortLevels.length > 0;
-        const supportsFast = selectedAgent === 'codex' && supportsCodexFast(modelMetadata, currentModelKey);
+        const supportsFast = selectedAgent === 'codex' && supportsCodexFast(effectiveModelMetadata, currentModelKey);
         const showPermission = configExperience.showPermission && permissionModes.length > 1;
 
 
@@ -1187,7 +1213,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             // An absent Codex catalog means the connection is still hydrating,
             // not that the chosen model has no effort controls. Do not erase
             // the persisted choice before its capabilities can be validated.
-            if (selectedAgent === 'codex' && !modelMetadata?.models?.length) return;
+            if (selectedAgent === 'codex' && !effectiveModelMetadata?.models?.length) return;
             if (currentModelKey !== resolvedModeSelection.modelMode) return;
             const defaultEffort = resolvedModeSelection.effortLevel;
             if (defaultEffort && effortLevels.length > 0) {
@@ -1198,7 +1224,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 setEffortIndex(0);
                 if (selectedAgent !== 'codex') draft.setEffortLevel(selectedAgent === 'antigravity' ? null : effortLevels[0]?.key ?? null);
             }
-        }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, resolvedModeSelection.modelMode, currentModelKey, effortLevels, selectedAgent, modelMetadata]);
+        }, [draft.setEffortLevel, resolvedModeSelection.effortLevel, resolvedModeSelection.modelMode, currentModelKey, effortLevels, selectedAgent, effectiveModelMetadata]);
 
         // Auto collapse config once when user starts typing (mobile only, collapsible).
         // On desktop (web / Mac Catalyst) the panel stays expanded. Also skip on
@@ -1461,20 +1487,21 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         // Expose the live selection + a way to dismiss pickers to the host.
         React.useImperativeHandle(ref, () => ({
             getSelection: () => ({
-                ...(selectedAgent === 'claude' && draft.modelMode && !modelModes.some(model => model.key === draft.modelMode)
+                ...(explicitCodexMissing || (selectedAgent === 'claude' && draft.modelMode && !modelModes.some(model => model.key === draft.modelMode))
                     ? { modelUnavailable: true } : {}),
                 permissionKey: currentPermission?.key === 'default' ? undefined : currentPermission?.key,
                 modelKey: currentModelKey === 'default' ? undefined : currentModelKey,
-                effortKey: selectedAgent === 'codex' && !modelMetadata?.models?.length ? null
+                effortKey: selectedAgent === 'codex' && !effectiveModelMetadata?.models?.length ? null
                     : selectedAgent === 'codex' && resolvedModeSelection.effortLevel === 'default' ? 'default'
                     : normalizeModelEffortKey(selectedAgent, currentModelKey, resolvedModeSelection.effortLevel ?? null, effectiveModelMetadata) ?? null,
                 worktreeKey,
                 fastMode: supportsFast && fastMode,
-                ...(selectedAgent === 'codex' && codexAccountProfileId !== undefined
-                    ? { expectedCodexAccountProfileId: codexAccountProfileId } : {}),
+                ...(useMagpie ? { magpieModel: draft.modelMode, expectedCodexAccountProfileId: null }
+                    : selectedAgent === 'codex' && codexAccountProfileId !== undefined
+                      ? { expectedCodexAccountProfileId: codexAccountProfileId } : {}),
             }),
             closePickers: dismissPicker,
-        }), [currentPermission?.key, currentModelKey, draft.modelMode, modelModes, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, supportsFast, dismissPicker, selectedAgent, codexAccountProfileId, effectiveModelMetadata]);
+        }), [currentPermission?.key, currentModelKey, draft.modelMode, modelModes, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, supportsFast, dismissPicker, selectedAgent, codexAccountProfileId, effectiveModelMetadata, explicitCodexMissing, useMagpie]);
 
         // Android uses a bottom sheet so options do not expand inside the
         // composer. iOS and desktop sidebars retain their existing inline layout.
@@ -1706,10 +1733,16 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 <SessionComposerModeSelector
                                     unifiedCodex={selectedAgent === 'codex'}
                                     online={!isOffline}
-                                    model={currentModel ? { ...currentModel, key: `${selectedAgent}::${currentModel.key}` } : null}
+                                    preferModelList={canDiscoverMagpie}
+                                    ownerScope={JSON.stringify([selectedMachineId, catalogDirectory, codexAccountProfileId])}
+                                    model={displayedModel ? { ...displayedModel, key: `${useMagpie || (selectedAgent === 'codex' && codexAccountProfileId === null && magpieModels.some(model => model.key === displayedModel.key)) ? 'magpie' : selectedAgent}::${displayedModel.key}` } : null}
                                     modelOptions={composerModels}
                                     refreshScope={JSON.stringify([selectedMachineId, selectedAgent, claudeCatalogDirectory])}
-                                    onRefreshModels={selectedAgent === 'claude' ? claudeModels.refresh : undefined}
+                                    onRefreshModels={canDiscoverMagpie || selectedAgent === 'claude'
+                                        ? async () => { await Promise.all([
+                                            canDiscoverMagpie ? magpie.refresh() : undefined,
+                                            selectedAgent === 'claude' ? claudeModels.refresh() : undefined,
+                                        ]); } : undefined}
                                     effort={showEffort ? currentEffort : null}
                                     effortOptions={showEffort ? effortLevels : []}
                                     fastMode={fastMode}
@@ -1717,16 +1750,29 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     onFastModeChange={setFastMode}
                                     agentSwitcher={{
                                         id: selectedAgent,
-                                        current: ALL_AGENTS.find(agent => agent.key === selectedAgent)?.label ?? selectedAgent,
-                                        next: nextCycleAgent?.label ?? null,
-                                        onSwitch: switchComposerAgent,
+                                        current: useMagpie ? 'Magpie' : ALL_AGENTS.find(agent => agent.key === selectedAgent)?.label ?? selectedAgent,
+                                        options: availableAgents,
+                                        onSelect: switchComposerAgent,
                                     }}
                                     onModelChange={(key) => {
                                         pendingClaudeSelection.current = null;
+                                        if (key.startsWith('magpie::')) {
+                                            const modelId = key.slice('magpie::'.length);
+                                            if (!canDiscoverMagpie || !magpieModels.some(model => model.key === modelId)) return;
+                                            if (selectedAgent !== 'codex') {
+                                                draft.setAgentType('codex');
+                                                draft.setPermissionMode('default');
+                                                draft.setEffortLevel(null);
+                                            }
+                                            setSelectedModelKey(modelId);
+                                            draft.setModelMode(modelId, true);
+                                            setFastMode(false);
+                                            return;
+                                        }
                                         const prefix = `${selectedAgent}::`;
                                         if (!key.startsWith(prefix)) return;
                                         const nextModel = key.slice(prefix.length);
-                                        if (!modelModes.some(mode => mode.key === nextModel)) return;
+                                        if (!(useMagpie ? getNewSessionModels('codex', modelMetadata) : modelModes).some(mode => mode.key === nextModel)) return;
                                         if (selectedAgent === 'claude') {
                                             verifiedClaudeSelection.current = { scope: claudeSelectionScope, model: modelModes.find(mode => mode.key === nextModel)! };
                                         }

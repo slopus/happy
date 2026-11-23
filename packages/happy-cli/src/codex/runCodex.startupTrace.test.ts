@@ -12,19 +12,29 @@ describe('Codex processor startup trace', () => {
             sendSessionEvent: vi.fn(() => { order.push('ready-event'); }),
         };
 
+        const reportReady = vi.fn(async () => { order.push('daemon-report'); });
         const completion = completeCodexProcessorStartup(session as any, async () => {
             order.push('thread-starting');
             await threadAvailable;
             order.push('thread-ready');
-        });
+        }, reportReady);
         await Promise.resolve();
         expect(order).toEqual(['thread-starting']);
 
         releaseThread();
         await completion;
 
-        expect(order).toEqual(['thread-starting', 'thread-ready', 'ready-span', 'ready-event']);
+        expect(order).toEqual(['thread-starting', 'thread-ready', 'ready-span', 'ready-event', 'daemon-report']);
         expect(session.sendSessionEvent).toHaveBeenCalledWith({ type: 'ready' });
+    });
+
+    it('does not report a Magpie launch when preparing the thread fails', async () => {
+        const session = { processorReady: vi.fn(), sendSessionEvent: vi.fn() };
+        const reportReady = vi.fn();
+        const failure = new Error('thread startup failed');
+        await expect(completeCodexProcessorStartup(session, async () => { throw failure; }, reportReady)).rejects.toBe(failure);
+        expect(session.processorReady).not.toHaveBeenCalled();
+        expect(reportReady).not.toHaveBeenCalled();
     });
 
     it('archives a worker that exits before ready so callers have durable stop proof', async () => {

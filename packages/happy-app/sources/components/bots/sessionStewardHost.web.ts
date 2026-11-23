@@ -154,6 +154,7 @@ export function createSessionStewardHost() {
         machineId: latest.metadata!.machineId!,
         sessionId: latest.id,
         agent: latest.metadata?.flavor ?? "claude",
+        codexMagpieConnection: latest.metadata?.codexMagpieConnection,
         model: mode.model ?? undefined,
         permissionMode: mode.permissionMode,
         effort: mode.effort,

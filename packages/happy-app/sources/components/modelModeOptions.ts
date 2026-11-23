@@ -7,6 +7,8 @@ export type ModeOption = {
     key: string;
     name: string;
     description?: string | null;
+    connectionLabel?: string;
+    actionLabel?: string;
 };
 
 export type PermissionMode = ModeOption;
@@ -294,6 +296,11 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string, m
         return getClaudeEffortLevels();
     }
     if (flavor === 'codex') {
+        const supported = metadata?.models?.find(model => model.code === modelKey)?.supportedEffortLevels;
+        if (supported) return supported.length ? [
+            { key: 'default', name: DEFAULT_EFFORT_LABEL, description: null },
+            ...supported.map(key => ({ key, name: key })),
+        ] : [];
         // Another model's current effort catalog does not describe this model.
         // Keep the current Sol/Luna fallback through Ultra until its own catalog arrives.
         if ((modelKey === 'gpt-6.1-sol' || modelKey === 'gpt-6-sol' || modelKey === 'gpt-6-luna')
@@ -303,7 +310,7 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string, m
                 ...['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map((key) => ({ key, name: key })),
             ];
         }
-        const metadataEfforts = mapMetadataOptions(metadata?.thoughtLevels);
+        const metadataEfforts = mapMetadataOptions((!metadata?.currentModelCode || metadata.currentModelCode === modelKey) ? metadata?.thoughtLevels : undefined);
         if (metadataEfforts.length > 0) {
             return [
                 { key: 'default', name: DEFAULT_EFFORT_LABEL, description: null },
@@ -339,7 +346,8 @@ export function normalizeModelEffortKey(
     const levels = getEffortLevelsForModel(flavor, modelKey, metadata).filter((level) => level.key !== 'default');
     const fallback = levels.find((level) => level.key === 'medium')?.key ?? levels[0]?.key ?? null;
     if (effortKey === 'default' || !effortKey) return fallback;
-    const hasRelevantCatalog = metadata?.currentModelCode === modelKey && !!metadata.thoughtLevels?.length;
+    const hasRelevantCatalog = !!metadata?.models?.find(model => model.code === modelKey)?.supportedEffortLevels
+        || (metadata?.currentModelCode === modelKey && !!metadata.thoughtLevels?.length);
     if (!hasRelevantCatalog && !['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'].includes(modelKey)) return effortKey;
     return levels.some((level) => level.key === effortKey) ? effortKey : fallback;
 }

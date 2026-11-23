@@ -146,6 +146,8 @@ export interface SpawnSessionOptions {
     agent?: 'claude' | 'codex' | 'gemini' | 'opencode' | 'antigravity' | 'openclaw';
     /** Codex-only model selection forwarded to the Codex worker. */
     model?: string;
+    /** Validate this model against the native Magpie connection before launch. */
+    magpieModel?: string;
     /** Codex-only reasoning level forwarded to the Codex worker. */
     effort?: CodexEffort;
     environmentVariables?: Record<string, string>;

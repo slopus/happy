@@ -1764,6 +1764,7 @@ function SessionViewLoaded({
     }, [sessionId]);
     const handleRefreshModels = React.useCallback(() => sessionRefreshModels(sessionId), [sessionId]);
     const modeSelector = React.useMemo(() => ({
+        preferModelList: nextTurnModes.availableModels.length > 1,
         unifiedCodex: session.metadata?.flavor === 'codex',
         refreshScope: sessionId,
         online: !isDisconnected && !agyConfig.busy,
@@ -1925,7 +1926,6 @@ function SessionViewLoaded({
     }, [sessionId, discussing, failedContinueQueued, failedHistoryLoading, failedHistoryBehind, failedTurnKey, newerError]);
 
     const handleAbort = React.useCallback(() => {
-        storage.getState().resetSessionAgentOverrides(sessionId);
         return sessionAbort(sessionId);
     }, [sessionId]);
 

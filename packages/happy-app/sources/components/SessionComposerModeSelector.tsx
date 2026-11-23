@@ -21,16 +21,21 @@ import type { ModeOption } from '@/components/modelModeOptions';
 import { hapticsLight } from '@/components/haptics';
 import { CodingAgentIcon } from './codingAgents/CodingAgentIcon';
 import { ComposerTooltip } from './DesktopShortcutTooltip';
+import { createPortal } from 'react-dom';
+import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
+import { groupComposerModels } from './composerModelGroups';
 
 export type SessionComposerModeSelectorConfig = {
     online: boolean;
     unifiedCodex?: boolean;
+    preferModelList?: boolean;
+    ownerScope?: string;
     model: ModeOption | null;
     modelOptions: ModeOption[];
     effort: ModeOption | null;
     effortOptions: ModeOption[];
     onReset?: () => void;
-    agentSwitcher?: { id?: string; current: string; next: string | null; onSwitch: () => void };
+    agentSwitcher?: { id: string; current: string; options: readonly { key: string; label: string }[]; onSelect: (key: string) => void };
     onModelChange: (key: string) => void;
     onRefreshModels?: () => Promise<void>;
     refreshScope?: string;
@@ -67,8 +72,8 @@ export function formatComposerModelName(name: string): string {
 type ModePanelAnchor = { x: number; y: number; width: number; height: number };
 type NativeEffortDrag = { pageX: number; trackPageX: number | null; released: boolean };
 
-export function getModePanelPlacement(width: number, height: number, anchor: ModePanelAnchor | null) {
-    const panelWidth = Math.min(292, Math.max(0, width - 24));
+export function getModePanelPlacement(width: number, height: number, anchor: ModePanelAnchor | null, maxWidth = 292) {
+    const panelWidth = Math.min(maxWidth, Math.max(0, width - 24));
     const left = anchor
         ? Math.max(8, Math.min(width - panelWidth - 8, anchor.x + anchor.width - panelWidth))
         : 12;
@@ -86,7 +91,14 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
 ) {
     const { theme } = useUnistyles();
     const { width, height } = useWindowDimensions();
+    const compactModelList = Platform.OS === 'web' && width >= 768;
     const triggerRef = React.useRef<View>(null);
+    const triggerButton = React.useRef<View>(null);
+    const panelRef = React.useRef<View>(null);
+    const panelButton = React.useRef<View>(null);
+    const openRequest = React.useRef(0);
+    const webPortal = Platform.OS === 'web' && typeof document !== 'undefined' ? document.body : null;
+    const focusTrigger = () => (triggerButton.current as unknown as HTMLElement | null)?.focus?.();
     const [open, setOpen] = React.useState(false);
     const shimmer = React.useRef(new Animated.Value(0)).current;
     React.useEffect(() => {
@@ -104,6 +116,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const [fastHovered, setFastHovered] = React.useState(false);
     const [knobHovered, setKnobHovered] = React.useState(false);
     const [modelsOpen, setModelsOpen] = React.useState(false);
+    const [agentsOpen, setAgentsOpen] = React.useState(false);
     const [search, setSearch] = React.useState('');
     const [modelsRefreshing, setModelsRefreshing] = React.useState(false);
     const [modelRefreshError, setModelRefreshError] = React.useState(false);
@@ -143,12 +156,15 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const [previewFraction, setPreviewFraction] = React.useState<number | null>(null);
     const [pendingEffort, setPendingEffort] = React.useState<string | null>(null);
     const [anchor, setAnchor] = React.useState<ModePanelAnchor | null>(null);
+    const canPickModel = !!props.onRefreshModels || props.modelOptions.length > 1
+        || (!!props.model && props.modelOptions.some(option => option.key !== props.model?.key));
     const enabled =
         props.online &&
-        (!!props.agentSwitcher?.next || !!props.onRefreshModels || props.modelOptions.length > 1 ||
+        ((props.agentSwitcher?.options.length ?? 0) > 1 || canPickModel ||
             props.effortOptions.length > 1 ||
             (props.supportsFast && !!props.onFastModeChange));
     const close = React.useCallback(() => {
+        openRequest.current += 1;
         nativeDrag.current = null;
         dragIndex.current = null;
         setPreviewFraction(null);
@@ -159,8 +175,21 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
         setKnobHovered(false);
         setOpen(false);
         setModelsOpen(false);
+        setAgentsOpen(false);
         setSearch('');
     }, []);
+    React.useEffect(() => { close(); }, [props.ownerScope, close]);
+    useWebPopoverDismiss({
+        enabled: open && !!webPortal,
+        onDismiss: close,
+        isInside: target => !!(panelRef.current as unknown as HTMLElement | null)?.contains(target)
+            || !!(triggerRef.current as unknown as HTMLElement | null)?.contains(target),
+    });
+    React.useEffect(() => {
+        if (!open || !webPortal) return;
+        (panelButton.current as unknown as HTMLElement | null)?.focus?.();
+    }, [open, modelsOpen, agentsOpen, webPortal]);
+    const dismiss = () => { close(); focusTrigger(); };
     React.useEffect(() => {
         if (!enabled) close();
     }, [enabled, close]);
@@ -180,12 +209,13 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     React.useEffect(() => {
         if (Platform.OS !== 'web' || typeof window === 'undefined') return;
         const onKeyDown = (event: KeyboardEvent) => {
-            if ((!open && !escapePending.current) || event.key !== 'Escape') return;
+            if ((!open && !escapePending.current) || event.key !== 'Escape' || event.isComposing) return;
             event.preventDefault();
             event.stopImmediatePropagation();
             if (event.repeat) return;
             escapePending.current = true;
             close();
+            focusTrigger();
         };
         const onKeyUp = (event: KeyboardEvent) => {
             if (event.key !== 'Escape' || !escapePending.current) return;
@@ -210,18 +240,21 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             return;
         }
         hapticsLight();
+        const request = ++openRequest.current;
+        const show = (nextAnchor: ModePanelAnchor | null) => {
+            if (openRequest.current !== request || !mounted.current) return;
+            setAnchor(nextAnchor);
+            setOpen(true);
+            if (props.preferModelList && (props.modelOptions.length > 0 || props.onRefreshModels)) openModels();
+        };
         const node = triggerRef.current;
         if (node && typeof node.measureInWindow === 'function') {
-            node.measureInWindow((x, y, measuredWidth, measuredHeight) => {
-                setAnchor({ x, y, width: measuredWidth, height: measuredHeight });
-                setOpen(true);
-            });
+            node.measureInWindow((x, y, measuredWidth, measuredHeight) => show({ x, y, width: measuredWidth, height: measuredHeight }));
         } else {
-            setAnchor(null);
-            setOpen(true);
+            show(null);
         }
     };
-    const placement = getModePanelPlacement(width, height, anchor);
+    const placement = getModePanelPlacement(width, height, anchor, modelsOpen ? 416 : 292);
     const levels = props.effortOptions.filter((option) => option.key !== 'default').map((option) => ({
         ...option, name: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(option.key.toLowerCase()) ? `${option.key[0].toUpperCase()}${option.key.slice(1).toLowerCase()}` : option.name,
     }));
@@ -234,16 +267,17 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
         if (defaultOption) { setPendingEffort(defaultOption.key); props.onEffortChange(defaultOption.key); }
         if (props.fastMode) props.onFastModeChange?.(false);
     };
-    const agentSwitchHint = props.agentSwitcher ? `${props.agentSwitcher.current}${props.agentSwitcher.next ? ` → ${props.agentSwitcher.next}` : ''}` : '';
-    const canSwitchAgent = Boolean(props.agentSwitcher?.next);
-    const switchAgent = () => {
-        if (!canSwitchAgent) return;
-        finishDrag(false);
-        setPendingEffort(null);
-        setResetHovered(false);
-        hapticsLight();
-        props.agentSwitcher?.onSwitch();
+    const canSwitchAgent = (props.agentSwitcher?.options.length ?? 0) > 1;
+    const selectModel = (key: string) => {
+        props.onModelChange(key);
+        setModelHovered(false);
+        setModelsOpen(false);
+        setSearch('');
     };
+    const modelGroups = React.useMemo(
+        () => groupComposerModels(props.modelOptions, search, formatComposerModelName),
+        [props.modelOptions, search],
+    );
     const canReset = Boolean(props.onReset || (defaultModel && defaultOption));
     const effectiveEffort = pendingEffort ? levels.find((level) => level.key === pendingEffort) ?? props.effort : props.effort?.key === 'default' ? defaultOption : levels.find((level) => level.key === props.effort?.key) ?? props.effort;
     const selectedIndex = levels.findIndex((option) => option.key === effectiveEffort?.key);
@@ -312,9 +346,10 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             style={styles.container}
         >
             <Pressable
+                ref={triggerButton}
                 testID="session-composer-mode-trigger"
                 accessibilityRole="button"
-                accessibilityLabel={`${t('agentInput.model.title')}: ${props.model?.name ?? ''}${effectiveEffort ? `, ${t('agentInput.effort.title')}: ${effectiveEffort.name}` : ''}${props.supportsFast && props.fastMode ? ', Fast' : ''}`}
+                accessibilityLabel={`${t('agentInput.model.title')}: ${props.model?.name ?? ''}${props.agentSwitcher ? `, ${props.agentSwitcher.current}` : ''}${effectiveEffort ? `, ${t('agentInput.effort.title')}: ${effectiveEffort.name}` : ''}${props.supportsFast && props.fastMode ? ', Fast' : ''}`}
                 accessibilityHint={
                     enabled
                         ? undefined
@@ -324,6 +359,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                 }
                 accessibilityState={{ disabled: !enabled, expanded: open }}
                 aria-expanded={open}
+                aria-haspopup={webPortal ? 'dialog' : undefined}
                 disabled={!enabled}
                 onPress={toggle}
                 onHoverIn={() => setTriggerHovered(true)}
@@ -344,9 +380,9 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                     />
                 ) : null}
                 <Text style={styles.triggerText} numberOfLines={1}>
-                    {!open && props.agentSwitcher ? `${props.agentSwitcher.current} · ` : ''}
-                    {open ? t('agentInput.effort.select') : formatComposerModelName(props.model?.name ?? t('agentInput.model.title'))}
-                    {!open && effectiveEffort ? <Text style={isUltra ? styles.ultraTitle : styles.triggerEffort}> {effectiveEffort.name}</Text> : null}
+                    {props.agentSwitcher ? `${props.agentSwitcher.current} · ` : ''}
+                    {formatComposerModelName(props.model?.name ?? t('agentInput.model.title'))}
+                    {effectiveEffort ? <Text style={isUltra ? styles.ultraTitle : styles.triggerEffort}> {effectiveEffort.name}</Text> : null}
                 </Text>
                 {enabled ? (
                     <Ionicons
@@ -356,34 +392,33 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                     />
                 ) : null}
             </Pressable>
-            <ComposerTooltip testID="session-composer-mode-tooltip" label={t('agentInput.effort.select')} visible={Platform.OS === 'web' && triggerHovered && !open && Boolean(enabled)} />
-            <Modal
-                visible={open}
-                transparent
-                animationType="fade"
-                statusBarTranslucent
-                onRequestClose={close}
-            >
-                <View style={styles.modalRoot}>
-                    <Pressable
+            <ComposerTooltip testID="session-composer-mode-tooltip" label={t(props.preferModelList ? 'agentInput.model.title' : 'agentInput.effort.select')} visible={Platform.OS === 'web' && triggerHovered && !open && Boolean(enabled)} />
+            <ModePanelHost open={open} webPortal={webPortal} onClose={close}>
+                <View pointerEvents={webPortal ? 'box-none' : undefined} style={styles.modalRoot}>
+                    {!webPortal ? <Pressable
                         testID="session-composer-mode-picker-scrim"
                         style={styles.backdrop}
                         onPress={close}
                         accessibilityLabel={t('devTools.close')}
-                    />
+                    /> : null}
                     {open ? (
                         <View
+                            ref={panelRef}
+                            collapsable={false}
                             role="dialog"
-                            accessibilityViewIsModal
+                            aria-label={t('agentInput.model.title')}
+                            accessibilityViewIsModal={!webPortal}
                             testID="session-composer-mode-panel"
                             style={[styles.panel, { position: 'absolute', ...placement }]}
                         >
                             {modelsOpen ? (
                                 <View style={styles.models}>
-                                    <View style={styles.modelsHead}>
+                                    <View style={[styles.modelsHead, compactModelList && styles.compactModelsHead]}>
                                         <Pressable
                                             accessibilityRole="button"
-                                            accessibilityLabel={t('common.back')}
+                                            ref={panelButton}
+                                            testID="session-composer-mode-settings"
+                                            accessibilityLabel={t('agentInput.effort.select')}
                                             onPress={() => {
                                                 setModelsOpen(false);
                                                 setSearch('');
@@ -396,7 +431,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                 color={theme.colors.textSecondary}
                                             />
                                         </Pressable>
-                                        <Text style={styles.modelsTitle}>{t('agentInput.model.title')}</Text>
+                                        <Text style={[styles.modelsTitle, compactModelList && styles.compactModelsTitle]}>{t('agentInput.model.title')}</Text>
                                         {props.onRefreshModels ? <Pressable
                                             testID="session-composer-refresh-models"
                                             accessibilityRole="button"
@@ -411,7 +446,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                         <Pressable
                                             accessibilityRole="button"
                                             accessibilityLabel={t('devTools.close')}
-                                            onPress={close}
+                                            onPress={dismiss}
                                             style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.iconButton, hoverTransition, (pressed || hovered) && styles.pressed]}
                                         >
                                             <Ionicons
@@ -430,7 +465,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                         accessibilityLabel={t('tools.names.search')}
                                         placeholder={t('tools.names.search')}
                                         placeholderTextColor={theme.colors.textSecondary}
-                                        style={styles.search}
+                                        style={[styles.search, compactModelList && styles.compactSearch]}
                                     />
                                     <ScrollView
                                         style={[
@@ -438,62 +473,74 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             {
                                                 maxHeight: Math.max(
                                                     40,
-                                                    Math.min(300, placement.maxHeight - 110),
+                                                    compactModelList
+                                                        ? Math.min(388, placement.maxHeight - 104)
+                                                        : placement.maxHeight - 125,
                                                 ),
                                             },
                                         ]}
                                         nestedScrollEnabled
                                         keyboardShouldPersistTaps="handled"
                                     >
-                                        {props.modelOptions
-                                            .filter((option) =>
-                                                `${option.name} ${formatComposerModelName(option.name)} ${option.description ?? ''}`
-                                                    .toLocaleLowerCase()
-                                                    .includes(search.trim().toLocaleLowerCase()),
-                                            )
-                                            .map((option) => (
-                                                <Pressable
-                                                    key={option.key}
-                                                    testID={`session-composer-model-${option.key}`}
-                                                    {...spaceActivation(() => {
-                                                        props.onModelChange(option.key);
-                                                        setModelHovered(false);
-                                                        setModelsOpen(false);
-                                                        setSearch('');
-                                                    })}
-                                                    accessibilityRole="radio"
-                                                    accessibilityLabel={
-                                                        option.description
-                                                            ? `${formatComposerModelName(option.name)}, ${option.description}`
-                                                            : formatComposerModelName(option.name)
-                                                    }
-                                                    accessibilityState={{
-                                                        checked: props.model?.key === option.key,
-                                                    }}
-                                                    aria-checked={props.model?.key === option.key}
-                                                    onPress={() => {
-                                                        props.onModelChange(option.key);
-                                                        setModelHovered(false);
-                                                        setModelsOpen(false);
-                                                        setSearch('');
-                                                    }}
-                                                    style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                                                        styles.option, hoverTransition,
-                                                        (pressed || hovered) && styles.pressed,
-                                                    ]}
-                                                >
-                                                    <View style={styles.grow}>
-                                                        <Text style={styles.optionText}>{formatComposerModelName(option.name)}</Text>
-                                                    </View>
-                                                    {props.model?.key === option.key ? (
-                                                        <Ionicons
-                                                            name="checkmark"
-                                                            size={16}
-                                                            color={theme.colors.accent}
-                                                        />
-                                                    ) : null}
-                                                </Pressable>
-                                            ))}
+                                        {modelGroups.map(([group, options]) => (
+                                            <View key={group}>
+                                                <Text accessibilityRole="header" style={[styles.groupHeading, compactModelList && styles.compactGroupHeading]} testID={`session-composer-model-group-${group}`}>
+                                                    {group === 'automatic' ? t('settingsLanguage.automatic') : group === 'other' ? t('tools.askUserQuestion.other') : group}
+                                                </Text>
+                                                {options.map(option => (
+                                                    <Pressable
+                                                        key={option.key}
+                                                        testID={`session-composer-model-${option.key}`}
+                                                        {...spaceActivation(() => selectModel(option.key))}
+                                                        accessibilityRole="radio"
+                                                        accessibilityLabel={[formatComposerModelName(option.name), option.connectionLabel, option.actionLabel, option.description].filter(Boolean).join(', ')}
+                                                        accessibilityState={{ checked: props.model?.key === option.key }}
+                                                        aria-checked={props.model?.key === option.key}
+                                                        onPress={() => selectModel(option.key)}
+                                                        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                                                            styles.option, compactModelList && styles.compactModelOption, hoverTransition,
+                                                            props.model?.key === option.key && styles.selected,
+                                                            (pressed || hovered) && styles.pressed,
+                                                        ]}
+                                                    >
+                                                        <Text style={[styles.optionText, compactModelList && styles.compactOptionText]} numberOfLines={2}>{formatComposerModelName(option.name)}</Text>
+                                                        {option.connectionLabel ? compactModelList ? (
+                                                            <Text style={[styles.description, styles.compactOptionDetail]} numberOfLines={1}>
+                                                                {option.actionLabel ? `${option.connectionLabel} · ${option.actionLabel}` : option.connectionLabel}
+                                                            </Text>
+                                                        ) : <View style={styles.optionDetail}>
+                                                            <Text style={styles.description} numberOfLines={1}>{option.connectionLabel}</Text>
+                                                            {option.actionLabel ? <Text style={styles.description} numberOfLines={1}>{option.actionLabel}</Text> : null}
+                                                        </View> : null}
+                                                        {props.model?.key === option.key ? <Ionicons name="checkmark" size={16} color={theme.colors.accent} /> : null}
+                                                    </Pressable>
+                                                ))}
+                                            </View>
+                                        ))}
+                                        {!modelGroups.length && !modelsRefreshing && !modelRefreshError ? <Text style={styles.catalogStatus}>{t('composerContext.empty')}</Text> : null}
+                                    </ScrollView>
+                                </View>
+                            ) : agentsOpen && props.agentSwitcher ? (
+                                <View style={styles.models}>
+                                    <View style={styles.modelsHead}>
+                                        <Pressable ref={panelButton} accessibilityRole="button" accessibilityLabel={t('common.back')}
+                                            onPress={() => setAgentsOpen(false)} style={styles.iconButton}>
+                                            <Ionicons name="chevron-back" size={19} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                        <Text style={styles.modelsTitle}>{t('settings.codingAgents')}</Text>
+                                    </View>
+                                    <ScrollView style={[styles.modelList, { maxHeight: Math.max(40, placement.maxHeight - 58) }]} keyboardShouldPersistTaps="handled">
+                                        {props.agentSwitcher.options.map(agent => (
+                                            <Pressable key={agent.key} testID={`session-composer-agent-${agent.key}`}
+                                                accessibilityRole="button" accessibilityState={{ selected: props.agentSwitcher?.id === agent.key }}
+                                                onPress={() => { props.agentSwitcher?.onSelect(agent.key); setAgentsOpen(false); }}
+                                                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                                                    styles.option, props.agentSwitcher?.id === agent.key && styles.selected, (pressed || hovered) && styles.pressed,
+                                                ]}>
+                                                <CodingAgentIcon agent={agent.key} size={18} />
+                                                <Text style={styles.optionText}>{agent.label}</Text>
+                                            </Pressable>
+                                        ))}
                                     </ScrollView>
                                 </View>
                             ) : (
@@ -535,11 +582,12 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                         )}
                                         <View style={styles.centerSlot}>
                                         <Pressable
+                                            ref={panelButton}
                                             testID="session-composer-open-models"
                                             accessibilityLabel={t('agentInput.model.title')}
                                             accessibilityRole="button"
-                                            accessibilityState={{ disabled: props.modelOptions.length < 2 && !props.onRefreshModels }}
-                                            disabled={props.modelOptions.length < 2 && !props.onRefreshModels}
+                                            accessibilityState={{ disabled: !canPickModel }}
+                                            disabled={!canPickModel}
                                             onPress={() => { finishDrag(false); setModelHovered(false); openModels(); }}
                                             onHoverIn={() => setModelHovered(true)}
                                             onHoverOut={() => setModelHovered(false)}
@@ -553,25 +601,25 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             <Text style={styles.modelLink} numberOfLines={1}>
                                                 {props.agentSwitcher ? `${props.agentSwitcher.current} · ` : ''}
                                                 {formatComposerModelName(props.model?.name ?? t('agentInput.model.title'))}
-                                                {props.modelOptions.length > 1 ? '  ›' : ''}
+                                                {canPickModel ? '  ›' : ''}
                                             </Text>
                                             <ComposerTooltip testID="composer-model-list-tooltip" label={t('agentInput.model.title')} visible={Platform.OS === 'web' && modelHovered && props.modelOptions.length > 1} />
                                         </Pressable>
                                         </View>
                                         <Pressable
-                                            testID={props.agentSwitcher ? "session-composer-agent-cycle" : "session-composer-effort-reset"}
+                                            testID={props.agentSwitcher ? "session-composer-agent-menu" : "session-composer-effort-reset"}
                                             accessibilityRole="button"
                                             accessibilityLabel={props.agentSwitcher ? t('agentInput.switchCodingAgent') : t('common.reset')}
                                             accessibilityState={{ disabled: props.agentSwitcher ? !canSwitchAgent : !canReset }}
                                             disabled={props.agentSwitcher ? !canSwitchAgent : !canReset}
-                                            accessibilityHint={props.agentSwitcher ? agentSwitchHint : canReset ? defaultOption?.name : t('settingsAccount.notAvailable')}
-                                            onPress={props.agentSwitcher ? switchAgent : reset}
+                                            accessibilityHint={props.agentSwitcher ? props.agentSwitcher.current : canReset ? defaultOption?.name : t('settingsAccount.notAvailable')}
+                                            onPress={props.agentSwitcher ? () => { finishDrag(false); setAgentsOpen(true); } : reset}
                                             onHoverIn={() => setResetHovered(true)}
                                             onHoverOut={() => setResetHovered(false)}
                                             style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.iconButton, hoverTransition, !(props.agentSwitcher ? canSwitchAgent : canReset) && styles.disabled, (props.agentSwitcher ? canSwitchAgent : canReset) && (pressed || hovered) && styles.pressed]}
                                         >
                                             {props.agentSwitcher?.id ? <CodingAgentIcon agent={props.agentSwitcher.id} size={22} /> : <Ionicons name="refresh-outline" size={20} color={theme.colors.textSecondary} />}
-                                            <ComposerTooltip testID="composer-reset-tooltip" label={props.agentSwitcher ? `${t('agentInput.switchCodingAgent')}: ${agentSwitchHint}` : t('common.reset')} visible={Platform.OS === 'web' && resetHovered && (props.agentSwitcher ? canSwitchAgent : canReset)} />
+                                            <ComposerTooltip testID="composer-reset-tooltip" label={props.agentSwitcher ? `${t('agentInput.switchCodingAgent')}: ${props.agentSwitcher.current}` : t('common.reset')} visible={Platform.OS === 'web' && resetHovered && (props.agentSwitcher ? canSwitchAgent : canReset)} />
                                         </Pressable>
                                     </View>
                                     {levels.length > 0 ? (
@@ -703,10 +751,19 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                         </View>
                     ) : null}
                 </View>
-            </Modal>
+            </ModePanelHost>
         </View>
     );
 });
+
+function ModePanelHost({ open, webPortal, onClose, children }: React.PropsWithChildren<{
+    open: boolean;
+    webPortal?: HTMLElement | null;
+    onClose: () => void;
+}>) {
+    if (webPortal) return open ? createPortal(<View pointerEvents="box-none" style={styles.webRoot}>{children}</View>, webPortal) : null;
+    return <Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>{children}</Modal>;
+}
 
 const styles = StyleSheet.create((theme) => ({
     container: { minWidth: 0, maxWidth: 280, flexShrink: 1, alignItems: 'flex-end' },
@@ -731,8 +788,9 @@ const styles = StyleSheet.create((theme) => ({
     compactTrigger: { paddingHorizontal: 6, gap: 4 },
     triggerEffort: { color: theme.colors.textSecondary, ...Typography.default() },
     disabled: { opacity: 0.58 },
-    pressed: { backgroundColor: theme.colors.surfaceSelected },
+    pressed: { backgroundColor: theme.colors.surfacePressed },
     modalRoot: { flex: 1 },
+    webRoot: { position: 'fixed' as any, top: 0, right: 0, bottom: 0, left: 0, zIndex: 1000 },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     panel: {
         borderRadius: 18,
@@ -813,9 +871,13 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
     },
     modelsTitle: { flex: 1, color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') },
-    grow: { flex: 1 },
+    compactModelsHead: { paddingHorizontal: 7, paddingTop: 4, paddingBottom: 4 },
+    compactModelsTitle: { fontSize: 12 },
+    groupHeading: { paddingHorizontal: 10, paddingTop: 7, paddingBottom: 4, color: theme.colors.textSecondary, fontSize: 12, ...Typography.default('semiBold') },
+    compactGroupHeading: { paddingHorizontal: 8, paddingTop: 4, paddingBottom: 2, fontSize: 11, lineHeight: 16 },
     selected: { backgroundColor: theme.colors.surfaceSelected },
-    optionText: { color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') },
+    optionText: { flex: 1, minWidth: 0, color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') },
+    compactOptionText: { fontSize: 12, lineHeight: 16, ...Typography.default() },
     search: {
         color: theme.colors.text,
         backgroundColor: theme.colors.surface,
@@ -826,16 +888,21 @@ const styles = StyleSheet.create((theme) => ({
         marginBottom: 4,
         fontSize: 13,
     },
+    compactSearch: { marginHorizontal: 8, paddingHorizontal: 8, paddingVertical: 5, fontSize: 12, lineHeight: 16 },
+    optionDetail: { flexShrink: 1, maxWidth: '40%', alignItems: 'flex-end' },
+    compactOptionDetail: { flexShrink: 1, maxWidth: '44%', lineHeight: 16 },
     description: { color: theme.colors.textSecondary, fontSize: 11, ...Typography.default() },
     catalogStatus: { color: theme.colors.textSecondary, fontSize: 12, paddingHorizontal: 14, paddingBottom: 6, ...Typography.default() },
-    modelList: { maxHeight: 300, paddingHorizontal: 7, marginBottom: 8 },
+    modelList: { flexShrink: 1, paddingHorizontal: 7, marginBottom: 8 },
     option: {
         paddingHorizontal: 10,
         paddingVertical: 8,
-        minHeight: 38,
+        minHeight: Platform.OS === 'web' ? 36 : 44,
+        gap: 8,
         borderRadius: 8,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
     },
+    compactModelOption: { minHeight: 32, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7 },
 }));

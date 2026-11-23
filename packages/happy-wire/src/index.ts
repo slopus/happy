@@ -24,3 +24,5 @@ export * from './codingAgents';
 export * from './claudeModelCatalog';
 
 export * from "./goalReview";
+
+export * from './codexMagpieCatalog';

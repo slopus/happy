@@ -38,6 +38,7 @@ export interface NewSessionDraft {
     agentType: NewSessionAgentType;
     permissionMode: PermissionModeKey;
     modelMode: string;
+    useMagpie?: boolean;
     effortLevel: string | null;
     /** Only explicit choices carry a default snapshot; legacy values follow current defaults. */
     modelSelection?: DraftModeSelection;
@@ -332,7 +333,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const input = typeof parsed.input === 'string' ? parsed.input : '';
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
-        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'opencode' || parsed.agentType === 'antigravity' || parsed.agentType === 'openclaw'
+        const agentType: NewSessionAgentType = parsed.agentType === 'claude' || parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'opencode' || parsed.agentType === 'antigravity' || parsed.agentType === 'openclaw'
             ? parsed.agentType
             : 'opencode';
         const permissionMode: PermissionModeKey = typeof parsed.permissionMode === 'string'
@@ -351,6 +352,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             agentType,
             permissionMode,
             modelMode,
+            ...(agentType === 'codex' && parsed.useMagpie === true ? { useMagpie: true } : {}),
             effortLevel,
             ...(readDraftModeSelection(parsed.modelSelection) ? { modelSelection: readDraftModeSelection(parsed.modelSelection)! } : {}),
             ...(readDraftModeSelection(parsed.effortSelection) ? { effortSelection: readDraftModeSelection(parsed.effortSelection)! } : {}),

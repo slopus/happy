@@ -114,6 +114,13 @@ describe('real daemon Codex spawn paths', () => {
     await expect(spawning).resolves.toEqual({ type: 'success', sessionId: 'model-session' });
   });
 
+  it('rejects the pending launch when the worker exits before the startup webhook', async () => {
+    const spawning = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex' });
+    await vi.waitFor(() => expect(state.children).toHaveLength(1));
+    state.children[0].emit('exit', 1, null);
+    await expect(spawning).resolves.toEqual({ type: 'error', errorMessage: 'Session process exited before startup completed' });
+  });
+
   it('keeps worker rotation observation and final cleanup after bundle replacement while the session stays alive', async () => {
     state.tmux = false;
     const spawning = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'g'.repeat(43) });

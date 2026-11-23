@@ -416,6 +416,22 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(refreshCodexAccountQuota).toHaveBeenCalledWith('a'.repeat(43));
     });
 
+    it('uses the ordinary startup RPC for a fresh explicit Magpie launch', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'magpie-session' });
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({ spawnSession, stopSession: vi.fn(), requestShutdown: vi.fn() });
+        const handler = rpcHandlers.get('spawn-happy-session')!;
+        const params = { directory: '/repo', agent: 'codex', model: { connection: 'magpie', id: 'openrouter/google/gemini' } };
+
+        await expect(handler({ ...params, codexSessionGrant: 'bound-grant' })).rejects.toThrow(/fresh native Codex/);
+        await expect(handler({ ...params, model: { connection: 'magpie' } })).rejects.toThrow(/fresh native Codex/);
+        expect(spawnSession).not.toHaveBeenCalled();
+        await expect(handler(params)).resolves.toEqual({ type: 'success', sessionId: 'magpie-session' });
+        expect(spawnSession).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            magpieModel: 'openrouter/google/gemini', model: undefined, codexSessionGrant: undefined,
+        }));
+    });
+
     it('does not log an absolute directory when approval is required', async () => {
         const spawnSession = vi.fn().mockResolvedValue({
             type: 'requestToApproveDirectoryCreation',

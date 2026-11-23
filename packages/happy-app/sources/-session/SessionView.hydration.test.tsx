@@ -172,7 +172,7 @@ vi.mock('@/utils/sessionUtils', () => ({
     }),
 }));
 vi.mock('@/utils/versionUtils', () => ({ isVersionSupported: () => true, MINIMUM_CLI_VERSION: '0.0.0' }));
-vi.mock('@/utils/runningSessionTurnModes', () => ({ resolveRunningSessionTurnModes: () => ({}) }));
+vi.mock('@/utils/runningSessionTurnModes', () => ({ resolveRunningSessionTurnModes: () => ({ availableModels: [] }) }));
 vi.mock('@/utils/codexFast', () => ({ supportsCodexFast: () => false }));
 vi.mock('@/utils/sessionTitleTags', () => ({ findSessionTitleTagQuery: () => null, removeSessionTitleTagQuery: (v: string) => v }));
 vi.mock('@/-session/sessionOverlayNav', () => ({ useOverlayNav: { getState: () => ({ publish: vi.fn(), reset: vi.fn() }) } }));

@@ -229,6 +229,7 @@ export function useSessionQuickActions(
             machineId: currentMachineId,
             sessionId: currentSession.id,
             agent: currentSession.metadata?.flavor ?? 'claude',
+            codexMagpieConnection: currentSession.metadata?.codexMagpieConnection,
             model: modeMeta.model ?? undefined,
             permissionMode: modeMeta.permissionMode,
             effort: modeMeta.effort,

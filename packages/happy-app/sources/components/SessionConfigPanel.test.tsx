@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
     openSettingsRoute: vi.fn(),
     browseDirectory: vi.fn(),
     readClaudeModels: vi.fn(),
+    magpieCatalog: null as any,
+    discoverMagpie: false,
     listWorktrees: vi.fn().mockResolvedValue([]),
     modelTriggerFocus: vi.fn(),
     pickerCloseFocus: vi.fn(),
@@ -33,6 +35,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('./DesktopSettingsModal', () => ({ useDesktopSettingsModal: () => ({ openRoute: mocks.openSettingsRoute }) }));
+
+vi.mock('@/hooks/useMagpieModelCatalog', () => ({ useMagpieModelCatalog: () => ({ catalog: mocks.magpieCatalog, refresh: async () => {} }) }));
 
 vi.mock('@/hooks/useCodexAccounts', () => ({ useCodexAccounts: () => mocks.codexAccounts }));
 
@@ -100,6 +104,7 @@ vi.mock('@/sync/storage', () => {
             displayName: 'Mac mini',
             homeDir: '/Users/test',
             cliAvailability: mocks.cliAvailability,
+            get magpieModelCatalog() { return mocks.discoverMagpie ? 1 : undefined; },
         },
     }, {
         id: 'other-mac',
@@ -148,11 +153,11 @@ vi.mock('@/hooks/useNewSessionDraft', async () => {
             if (agentType !== get().agentType) set({ agentType, modelSelection: undefined, effortSelection: undefined });
         },
         setPermissionMode: (permissionMode: string) => { mocks.setPermissionMode(permissionMode); set({ permissionMode }); },
-        setModelMode: (modelMode: string) => {
+        setModelMode: (modelMode: string, useMagpie?: boolean) => {
             mocks.setModelMode(modelMode);
             const agent = get().agentType;
             const defaults = resolveAgentDefaultConfig(mocks.agentDefaultOverrides, agent);
-            set({ modelMode, modelSelection: { agent, defaultValue: defaults.modelMode } });
+            set({ modelMode, useMagpie, modelSelection: { agent, defaultValue: defaults.modelMode } });
         },
         setEffortLevel: (effortLevel: string | null) => {
             mocks.setEffortLevel(effortLevel);
@@ -249,11 +254,13 @@ describe('SessionConfigPanel composer layout', () => {
         mocks.readClaudeModels.mockReset().mockRejectedValue(new Error('Old runtime'));
         mocks.codexAccounts = { loading: false, error: null, bindings: [] };
         mocks.sessionsOverride = null;
+        mocks.magpieCatalog = null;
+        mocks.discoverMagpie = false;
         for (const key of Object.keys(mocks.cliAvailability)) delete mocks.cliAvailability[key];
         mocks.cliAvailability.codex = true;
         mocks.configuredAgents = { mac: ['codex', 'claude'], 'other-mac': ['codex'] };
         mocks.agentDefaultOverrides = {};
-        mocks.draftStore.setState({ modelSelection: { agent: 'codex', defaultValue: 'gpt-6.1-sol' },
+        mocks.draftStore.setState({ useMagpie: undefined, modelSelection: { agent: 'codex', defaultValue: 'gpt-6.1-sol' },
             effortSelection: { agent: 'codex', defaultValue: 'medium' }, input: '', selectedMachineId: 'mac', selectedPath: '~/happy', agentType: 'codex', permissionMode: 'yolo', modelMode: 'gpt-5.6-sol', effortLevel: 'high', fastMode: false, sessionType: 'simple', worktreeKey: null });
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -296,11 +303,11 @@ describe('SessionConfigPanel composer layout', () => {
         }
     });
 
-    it('keeps agent settings out of the model popup while retaining the brand switch', async () => {
+    it('keeps agent settings out of the model popup while retaining direct agent selection', async () => {
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
         expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-manage' })).toHaveLength(0);
-        expect(renderer.root.findByProps({ testID: 'session-composer-agent-cycle' })).toBeDefined();
+        expect(renderer.root.findByProps({ testID: 'session-composer-agent-menu' })).toBeDefined();
         expect(mocks.openSettingsRoute).not.toHaveBeenCalled();
     });
 
@@ -360,28 +367,31 @@ describe('SessionConfigPanel composer layout', () => {
         expect(renderer.root.findByProps({ testID: 'session-composer-model-claude::opus' }).props.accessibilityLabel).toBe('New Opus');
     });
 
-    it('cycles only available coding agents, scopes models, and updates the live send settings', async () => {
+    it('selects available coding agents directly, scopes models, and updates live send settings', async () => {
         mocks.cliAvailability.claude = true;
         mocks.cliAvailability.gemini = false;
         const ref = React.createRef<any>();
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
-        const cycle = () => renderer.root.findByProps({ testID: 'session-composer-agent-cycle' });
-        expect(cycle().props.accessibilityHint).toBe('Codex → Claude Code');
+        const cycle = () => renderer.root.findByProps({ testID: 'session-composer-agent-menu' });
+        expect(cycle().props.accessibilityHint).toBe('Codex');
         expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-reset' })).toHaveLength(0);
         act(() => cycle().props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-gemini' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-agent-claude' }).props.onPress());
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection()).toMatchObject({ modelKey: 'opus', effortKey: 'high', fastMode: false });
-        expect(cycle().props.accessibilityHint).toBe('Claude Code → Codex');
+        expect(cycle().props.accessibilityHint).toBe('Claude Code');
         act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::gpt-5.6-sol' })).toHaveLength(0);
         act(() => renderer.root.findByProps({ testID: 'session-composer-model-claude::sonnet' }).props.onPress());
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection().modelKey).toBe('sonnet');
         act(() => cycle().props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-agent-codex' }).props.onPress());
         expect(mocks.draftStore.getState().agentType).toBe('codex');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-sol');
-        expect(cycle().props.accessibilityHint).toBe('Codex → Claude Code');
+        expect(cycle().props.accessibilityHint).toBe('Codex');
     });
 
     it('preserves a Magpie model shared by two agents without changing agent from model selection', async () => {
@@ -395,13 +405,36 @@ describe('SessionConfigPanel composer layout', () => {
         const ref = React.createRef<any>();
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
-        await act(async () => { renderer.root.findByProps({ testID: 'session-composer-agent-cycle' }).props.onPress(); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-agent-menu' }).props.onPress());
+        await act(async () => { renderer.root.findByProps({ testID: 'session-composer-agent-claude' }).props.onPress(); });
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-sol');
         act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'session-composer-model-claude::gpt-5.6-sol' }).props.onPress());
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-sol');
+    });
+
+    it('opens one grouped list and retains the Magpie route and model during a directory change', async () => {
+        mocks.discoverMagpie = true;
+        mocks.codexAccounts.bindings = [{ machineId: 'mac', profileId: 'managed' }];
+        mocks.sessionsOverride = [{ id: 'managed', activeAt: 10, metadata: { machineId: 'mac', flavor: 'codex',
+            codexAccountProfileId: 'managed', models: [{ code: 'gpt-5.6-sol', value: 'GPT-5.6 Sol' }] } }];
+        const gateway = { code: 'openrouter/google/gemini-4-argon', value: 'Gemini 4 Argon', supportedEffortLevels: ['high'], serviceTiers: [] };
+        mocks.magpieCatalog = { models: [gateway], modelsUpdatedAt: 1 };
+        const ref = React.createRef<any>();
+        const tree = () => <SessionConfigPanel ref={ref} layout="composer" />;
+        await act(async () => { renderer = TestRenderer.create(tree()); });
+        await act(async () => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-group-GPT' })).toBeDefined();
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-group-Gemini' })).toBeDefined();
+        act(() => renderer.root.findByProps({ testID: `session-composer-model-magpie::${gateway.code}` }).props.onPress());
+        expect(ref.current.getSelection()).toMatchObject({ modelKey: gateway.code, magpieModel: gateway.code, effortKey: 'high', expectedCodexAccountProfileId: null });
+        mocks.magpieCatalog = null;
+        await act(async () => { renderer.update(tree()); });
+        expect(ref.current.getSelection()).toMatchObject({ modelUnavailable: true, modelKey: gateway.code });
+        expect(renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.accessibilityLabel).toContain(gateway.code);
+        expect(mocks.draftStore.getState().modelMode).toBe(gateway.code);
     });
 
     it('keeps the selected model identity when the connection catalog is reordered', async () => {
@@ -616,6 +649,9 @@ describe('SessionConfigPanel composer layout', () => {
 
         mocks.codexAccounts.bindings = [];
         await act(async () => { renderer.update(<SessionConfigPanel ref={ref} layout="composer" />); });
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::deepseek/DeepSeek-V4.1-Flash' }).length).toBeGreaterThan(0);
         expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::gpt-5.6-sol' })).toHaveLength(0);
         expect(ref.current.getSelection().expectedCodexAccountProfileId).toBeNull();

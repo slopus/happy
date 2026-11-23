@@ -1974,6 +1974,7 @@ class Sync {
             }
             const modes = resolveMessageModeMeta(failedSession!, storage.getState().settings);
             return machineResumeSession({ machineId: failedSession!.metadata!.machineId!, sessionId, agent: 'codex',
+                codexMagpieConnection: failedSession!.metadata!.codexMagpieConnection,
                 model: modes.model ?? undefined, permissionMode: modes.permissionMode, effort: modes.effort,
                 ...(failedSession!.agentState!.turnStatus!.status === 'failed'
                     ? { expectedFailedTurn: failedSession!.agentState!.turnStatus! }

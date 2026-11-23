@@ -11,6 +11,7 @@ type LiveNewSessionSelection = {
     worktreeKey: string;
     fastMode: boolean;
     expectedCodexAccountProfileId?: string | null;
+    magpieModel?: string;
 };
 
 export function resolveNewSessionSpawnSettings(args: {
@@ -28,6 +29,7 @@ export function resolveNewSessionSpawnSettings(args: {
         effortLevel: liveSelection ? liveSelection.effortKey ?? 'default' : resolvedModes.effortLevel,
         worktreeKey: liveSelection?.worktreeKey ?? draftWorktreeKey,
         fastMode: liveSelection?.fastMode ?? false,
+        ...(liveSelection?.magpieModel ? { magpieModel: liveSelection.magpieModel } : {}),
         ...(liveSelection?.expectedCodexAccountProfileId !== undefined
             ? { expectedCodexAccountProfileId: liveSelection.expectedCodexAccountProfileId } : {}),
     };

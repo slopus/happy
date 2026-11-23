@@ -23,6 +23,7 @@ interface NewSessionDraftState {
     agentType: NewSessionAgentType;
     permissionMode: PermissionModeKey;
     modelMode: string;
+    useMagpie?: boolean;
     effortLevel: string | null;
     modelSelection?: DraftModeSelection;
     effortSelection?: DraftModeSelection;
@@ -35,7 +36,7 @@ interface NewSessionDraftState {
     setPath: (path: string | null) => void;
     setAgentType: (agent: NewSessionAgentType) => void;
     setPermissionMode: (mode: PermissionModeKey) => void;
-    setModelMode: (mode: string) => void;
+    setModelMode: (mode: string, useMagpie?: boolean) => void;
     setEffortLevel: (level: string | null) => void;
     reconcileCodexDefaults: () => void;
     setFastMode: (enabled: boolean) => void;
@@ -51,6 +52,7 @@ function persist(state: NewSessionDraftState) {
         agentType: state.agentType,
         permissionMode: state.permissionMode,
         modelMode: state.modelMode,
+        useMagpie: state.useMagpie,
         effortLevel: state.effortLevel,
         modelSelection: state.modelSelection,
         effortSelection: state.effortSelection,
@@ -70,6 +72,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     agentType: initial?.agentType ?? 'codex',
     permissionMode: initial?.permissionMode ?? 'default',
     modelMode: initial?.modelMode ?? 'default',
+    useMagpie: initial?.useMagpie,
     effortLevel: initial?.effortLevel ?? null,
     modelSelection: initial?.modelSelection,
     effortSelection: initial?.effortSelection,
@@ -78,17 +81,18 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     worktreeKey: initial?.worktreeKey ?? null,
 
     setInput: (input) => { set({ input }); persist(get()); },
-    setMachineId: (id) => { set({ selectedMachineId: id, selectedPath: null, worktreeKey: null }); persist(get()); },
+    setMachineId: (id) => { set({ selectedMachineId: id, selectedPath: null, worktreeKey: null,
+        ...(id !== get().selectedMachineId && get().useMagpie ? { useMagpie: undefined, modelMode: 'default', modelSelection: undefined, fastMode: false } : {}) }); persist(get()); },
     setPath: (path) => { set({ selectedPath: path, worktreeKey: null }); persist(get()); },
     setAgentType: (agent) => {
-        if (agent !== get().agentType) set({ agentType: agent, modelSelection: undefined, effortSelection: undefined });
+        if (agent !== get().agentType) set({ agentType: agent, modelSelection: undefined, effortSelection: undefined, useMagpie: undefined });
         persist(get());
     },
     setPermissionMode: (mode) => { set({ permissionMode: mode }); persist(get()); },
-    setModelMode: (mode) => {
+    setModelMode: (mode, useMagpie) => {
         const agent = get().agentType;
         const defaults = resolveAgentDefaultConfig(storage.getState().settings.agentDefaultOverrides, agent);
-        set({ modelMode: mode, modelSelection: { agent, defaultValue: defaults.modelMode } });
+        set({ modelMode: mode, useMagpie, modelSelection: { agent, defaultValue: defaults.modelMode } });
         persist(get());
     },
     setEffortLevel: (level) => {
@@ -100,7 +104,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     reconcileCodexDefaults: () => {
         const state = get();
         const defaults = resolveAgentDefaultConfig(storage.getState().settings.agentDefaultOverrides, 'codex');
-        const resetModel = state.modelSelection?.agent === 'codex' && state.modelSelection.defaultValue !== defaults.modelMode;
+        const resetModel = !state.useMagpie && state.modelSelection?.agent === 'codex' && state.modelSelection.defaultValue !== defaults.modelMode;
         const resetEffort = state.effortSelection?.agent === 'codex' && state.effortSelection.defaultValue !== defaults.effortLevel;
         if (!resetModel && !resetEffort) return;
         set({

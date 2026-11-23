@@ -26,6 +26,7 @@ export const MetadataSchema = z.object({
     })).optional(),
     currentModelCode: z.string().optional(),
     modelsUpdatedAt: z.number().finite().positive().optional(),
+    codexMagpieConnection: z.boolean().optional(),
     operatingModes: z.array(z.object({
         code: z.string(),
         value: z.string(),
@@ -220,6 +221,7 @@ export const MachineMetadataSchema = z.object({
     shutdownRequestedAt: z.number().optional(),
     shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional(),
     crossAgentContinuation: z.literal(1).optional(),
+    magpieModelCatalog: z.literal(1).optional(),
     cliAvailability: z.object({
         ask: z.boolean().optional(),
         claude: z.boolean(),

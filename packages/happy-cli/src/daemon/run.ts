@@ -44,6 +44,7 @@ import { stopDetachedCodexWorker } from './stopDetachedCodexWorker';
 import { encodeBase64, decodeBase64, decrypt, encrypt } from '@/api/encryption';
 import { CODEX_ACCOUNT_UNSET_ENV, withCodexAccountLaunch, type CodexAccountLaunch } from './codexAccountLaunch';
 import { refreshCodexAccountQuota } from './codexQuotaProbe';
+import { EXPECT_MAGPIE_CONNECTION_ENV, readMagpieModelCatalog } from '@/codex/magpieModelCatalog';
 import { collectCodexUsageSnapshot, codexUsageSignature, mergeRecentCodexUsageSnapshot } from '@/codex/codexUsage';
 import { collectRetainedCodexAccountUsage } from '@/codex/codexAccountHistory';
 import { retryPendingCodexProbeCredentials } from './codexQuotaProbeRecovery';
@@ -300,7 +301,7 @@ export async function startDaemon(): Promise<void> {
     }
 
     // Session spawning awaiter system
-    const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
+    const pidToAwaiter = new Map<number, (session?: TrackedSession) => void>();
     const startupIntegration = new DaemonSessionStartupIntegration();
 
     // Helper functions
@@ -418,6 +419,14 @@ export async function startDaemon(): Promise<void> {
         }
       }
 
+      if (options.magpieModel) {
+        const catalog = await readMagpieModelCatalog(directory).catch(() => null);
+        if (!catalog?.models.some(model => model.code === options.magpieModel)) {
+          return { type: 'error', errorMessage: 'The selected Magpie model is no longer available. Refresh the model list and choose again.' };
+        }
+        options = { ...options, model: options.magpieModel };
+      }
+
       let continuationWorkerDispatched = false;
       const launchResult = await withCodexAccountLaunch(options, api, machineId, async (codexLaunch) => {
       try {
@@ -448,6 +457,8 @@ export async function startDaemon(): Promise<void> {
         };
         delete extraEnv.HAPPY_SESSION_STARTUP_TRACE_ID;
         delete extraEnv[NATIVE_POLICY_ENV];
+        delete extraEnv[EXPECT_MAGPIE_CONNECTION_ENV];
+        if (options.magpieModel) extraEnv[EXPECT_MAGPIE_CONNECTION_ENV] = '1';
         if (options.crossAgentRequestId) extraEnv.HAPPY_CROSS_AGENT_REQUEST_ID = options.crossAgentRequestId;
         const inheritedSourceAgent = options.parentSessionId ? findTrackedSessionById(options.parentSessionId)?.happySessionMetadataFromLocalWebhook?.crossAgentSourceAgent : undefined;
         if (options.crossAgentHistory || inheritedSourceAgent) extraEnv.HAPPY_CROSS_AGENT_SOURCE_AGENT = options.crossAgentHistory
@@ -620,6 +631,10 @@ export async function startDaemon(): Promise<void> {
               // Register awaiter for tmux session (exact same as regular flow)
               pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
                 clearTimeout(timeout);
+                if (!completedSession) {
+                  resolve({ type: 'error', errorMessage: 'Session process exited before startup completed' });
+                  return;
+                }
                 logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`);
                 resolve({
                   type: 'success',
@@ -823,6 +838,10 @@ export async function startDaemon(): Promise<void> {
 
         pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
           clearTimeout(timeout);
+          if (!completedSession) {
+            resolve({ type: 'error', errorMessage: 'Session process exited before startup completed' });
+            return;
+          }
           logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
           resolve({
             type: 'success',
@@ -1007,8 +1026,16 @@ export async function startDaemon(): Promise<void> {
         await fs.access(launch.cwd);
 
         const agent = metadata?.flavor === 'codex' || metadata?.codexThreadId ? 'codex' : 'claude';
+        const isMagpie = agent === 'codex' && !metadata.codexAccountProfileId && metadata.codexMagpieConnection === true;
+        if (isMagpie) {
+          const catalog = await readMagpieModelCatalog(launch.cwd).catch(() => null);
+          const selectedModel = options?.model ?? metadata.currentModelCode;
+          if (!catalog || (selectedModel && !catalog.models.some(model => model.code === selectedModel))) {
+            return { type: 'error', errorMessage: 'The original Magpie connection or model is unavailable.' };
+          }
+        }
         let recoverySuperseded = false;
-        const resumed = await withCodexAccountLaunch({ agent, codexSessionGrant: options?.codexSessionGrant }, api, machineId, async (codexLaunch) => {
+        const resumed = await withCodexAccountLaunch({ agent, codexSessionGrant: isMagpie ? undefined : options?.codexSessionGrant }, api, machineId, async (codexLaunch) => {
         if (options?.expectedFailedTurn || options?.expectedWorkerPid) {
           const latest = await fetchServerSessionSnapshot(happySessionId, tracked.encryption!.encryptionKey, tracked.encryption!.encryptionVariant);
           if (!latest) return { type: 'error', errorMessage: 'Cannot verify the failed turn before stopping its worker.' };
@@ -1048,6 +1075,7 @@ export async function startDaemon(): Promise<void> {
         const env = {
             ...process.env,
             ...(applicationPolicy ? { [NATIVE_POLICY_ENV]: JSON.stringify(applicationPolicy) } : {}),
+            ...(isMagpie ? { [EXPECT_MAGPIE_CONNECTION_ENV]: '1' } : {}),
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption!.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption!.encryptionVariant,
@@ -1154,6 +1182,9 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
       }
       pidToTrackedSession.delete(pid);
+      const awaiter = pidToAwaiter.get(pid);
+      pidToAwaiter.delete(pid);
+      awaiter?.();
       startupIntegration.childExited(pid);
     };
 

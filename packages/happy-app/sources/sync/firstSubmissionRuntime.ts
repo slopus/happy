@@ -30,6 +30,7 @@ export const firstSubmission = new FirstSubmissionOwner({
                 directory: live.directory ?? input.path ?? '~', agent: input.agent,
                 environmentVariables: live.environmentVariables, approvedNewDirectoryCreation: approved,
                 expectedCodexAccountProfileId: input.expectedCodexAccountProfileId,
+                ...(input.magpieModel ? { magpieModel: input.magpieModel } : {}),
                 ...(trace ? { traceId: trace.id } : {}) });
             if (!current()) return { type: 'cancelled' };
             if (result.type === 'success') {

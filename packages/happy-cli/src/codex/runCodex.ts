@@ -42,7 +42,7 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
-import type { Session as ApiSession } from '@/api/types';
+import type { Metadata, Session as ApiSession } from '@/api/types';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -71,6 +71,7 @@ import {
     type CodexEnhancedMode,
 } from './codexPrompt';
 import { mergeCodexSessionConfigIntoMetadata } from './sessionConfigMetadata';
+import { EXPECT_MAGPIE_CONNECTION_ENV, isMagpieModelConnection } from './magpieModelCatalog';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import type { GoalCommand, UsageCommand } from '@/parsers/specialCommands';
 import { discoverCodexSkillNames } from './codexSkillDiscovery';
@@ -104,10 +105,12 @@ const DEFAULT_CODEX_PERMISSION_MODE: PermissionMode = 'yolo';
 export async function completeCodexProcessorStartup(
     session: Pick<ApiSessionClient, 'processorReady' | 'sendSessionEvent'>,
     ensureThreadAvailable: () => Promise<unknown>,
+    reportReady?: () => Promise<void>,
 ): Promise<void> {
     await ensureThreadAvailable();
     session.processorReady();
     session.sendSessionEvent({ type: 'ready' });
+    await reportReady?.();
 }
 
 export async function archiveFailedCodexProcessorStartup(
@@ -338,6 +341,8 @@ export async function runCodex(opts: {
     effort?: ReasoningEffort;
     startupLifecycle?: WorkerSessionStartupLifecycle;
 }): Promise<void> {
+    const expectMagpieConnection = process.env[EXPECT_MAGPIE_CONNECTION_ENV] === '1';
+    delete process.env[EXPECT_MAGPIE_CONNECTION_ENV];
     // Early check: ensure Codex CLI is installed before proceeding
     try {
         if (!isAppServerAvailable(resolveCodexExecutablePath())) {
@@ -556,7 +561,7 @@ export async function runCodex(opts: {
             }
         }
     };
-    if (!deferForkReport) await reportSessionStarted();
+    if (!deferForkReport && !expectMagpieConnection) await reportSessionStarted();
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
@@ -568,6 +573,7 @@ export async function runCodex(opts: {
     let currentFastMode = boundMode?.fast ?? false;
     let currentAppendSystemPrompt: string | undefined = undefined;
     let codexModelCatalog: Model[] | null = null;
+    let modelsUpdatedAt: number | undefined;
 
     const syncCodexSessionConfigMetadata = (model: string | undefined, effort: ReasoningEffort | undefined) => {
         if (!model) {
@@ -575,6 +581,7 @@ export async function runCodex(opts: {
         }
         session.updateMetadata((currentMetadata) => mergeCodexSessionConfigIntoMetadata(currentMetadata, {
             models: codexModelCatalog,
+            modelsUpdatedAt,
             currentModel: model,
             currentEffort: effort ?? null,
         }));
@@ -972,8 +979,10 @@ export async function runCodex(opts: {
     refreshModelsHandler = async () => {
         const models = await client.refreshModelCatalog();
         codexModelCatalog = models;
+        const observedAt = modelsUpdatedAt = Date.now();
         await session.updateMetadataAndAwait(meta => mergeCodexSessionConfigIntoMetadata(meta, {
             models,
+            modelsUpdatedAt: observedAt,
             currentModel: meta.currentModelCode ?? currentModel ?? models.find(model => model.isDefault)?.model ?? models[0].model,
             currentEffort: (meta.currentThoughtLevelCode as ReasoningEffort | undefined) ?? currentEffort,
         }));
@@ -1330,17 +1339,28 @@ export async function runCodex(opts: {
                 cursor = page.nextCursor ?? null;
             } while (cursor);
             codexModelCatalog = models;
+            modelsUpdatedAt = Date.now();
             logger.debug(`[Codex] Loaded ${models.length} models from app-server catalog`);
         } catch (error) {
             logger.debug('[Codex] Failed to load model catalog from app-server; using fallback metadata', error);
         }
 
+        let codexMagpieConnection = false;
         try {
-            await client.prepareModelCatalogRefresh();
+            const config = await client.prepareModelCatalogRefresh();
+            codexMagpieConnection = !!config && !process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && isMagpieModelConnection(config);
         } catch (error) {
             logger.debug('[Codex] Model catalog refresh unavailable', error);
         }
-        session.updateMetadata(meta => ({ ...meta, capabilities: { ...meta.capabilities, codexModelCatalogRefresh: client.supportsModelCatalogRefresh } }));
+        if (expectMagpieConnection && (!codexMagpieConnection
+            || (opts.model && !codexModelCatalog?.some(model => model.model === opts.model && !model.hidden)))) {
+            throw new Error('The selected Magpie connection or model is no longer available.');
+        }
+        const publishModelConnection = (meta: Metadata): Metadata => ({
+            ...meta, codexMagpieConnection,
+            capabilities: { ...meta.capabilities, codexModelCatalogRefresh: client.supportsModelCatalogRefresh },
+        });
+        if (!expectMagpieConnection) session.updateMetadata(publishModelConnection);
 
         if (opts.resumeThreadId) {
             const resumedThread = await resumeExistingThread({
@@ -1433,7 +1453,7 @@ export async function runCodex(opts: {
             }
         }
 
-        if (deferForkReport) await reportSessionStarted();
+        if (deferForkReport && !expectMagpieConnection) await reportSessionStarted();
 
         const resolveExecutionPolicyForMode = (mode: EnhancedMode) => {
             const sandboxManagedByHappy = client.sandboxEnabled;
@@ -1779,13 +1799,16 @@ export async function runCodex(opts: {
             }
         };
 
-        await completeCodexProcessorStartup(session, () => ensureCodexThread({
-            permissionMode: currentPermissionMode ?? 'default',
-            model: currentModel,
-            appendSystemPrompt: currentAppendSystemPrompt,
-            effort: currentEffort,
-            fast: currentFastMode,
-        }));
+        await completeCodexProcessorStartup(session, async () => {
+            await ensureCodexThread({
+                permissionMode: currentPermissionMode ?? 'default',
+                model: currentModel,
+                appendSystemPrompt: currentAppendSystemPrompt,
+                effort: currentEffort,
+                fast: currentFastMode,
+            });
+            if (expectMagpieConnection) await session.updateMetadataAndAwait(publishModelConnection);
+        }, expectMagpieConnection ? reportSessionStarted : undefined);
         processorStartupComplete = true;
 
         while (!shouldExit) {

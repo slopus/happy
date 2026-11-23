@@ -6,11 +6,13 @@ type MetadataOption = {
     code: string;
     value: string;
     description?: string | null;
+    supportedEffortLevels?: string[];
     serviceTiers?: Array<{ id: string; name: string; description?: string | null }>;
 };
 
 export type CodexSessionConfigSnapshot = {
     models?: Model[] | null;
+    modelsUpdatedAt?: number;
     currentModel: string;
     currentEffort?: ReasoningEffort | null;
 };
@@ -18,8 +20,9 @@ export type CodexSessionConfigSnapshot = {
 function toModelOption(model: Model): MetadataOption {
     return {
         code: model.model,
-        value: model.model,
+        value: model.displayName || model.model,
         description: model.description || null,
+        supportedEffortLevels: model.supportedReasoningEfforts.map(effort => effort.reasoningEffort),
         serviceTiers: model.serviceTiers ?? model.service_tiers ?? [],
     };
 }
@@ -55,8 +58,10 @@ export function mergeCodexSessionConfigIntoMetadata(
 
         if (modelOptions.length > 0) {
             next.models = modelOptions;
+            if (snapshot.modelsUpdatedAt) next.modelsUpdatedAt = snapshot.modelsUpdatedAt;
         } else {
             delete next.models;
+            delete next.modelsUpdatedAt;
         }
     }
 

@@ -2,13 +2,14 @@ import { Modal } from '@/modal';
 import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode, resolveTaskPermissionAgent } from '@/utils/taskPermissionModes';
 import * as React from 'react';
 import { useAllSessions, useMachine, useSetting } from '@/sync/storage';
-import { enabledCodingAgents, getCodingAgentCycle } from '@/utils/codingAgentSelection';
+import { enabledCodingAgents } from '@/utils/codingAgentSelection';
 import { getLatestSessionModelMetadata } from '@/utils/newSessionModelMetadata';
 import { resolveNewSessionModeSelection } from '@/utils/newSessionModeSelection';
 import { getSuggestedModelModes, getEffortLevelsForModel } from '@/components/modelModeOptions';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { supportsCodexFast } from '@/utils/codexFast';
 import { useClaudeModelCatalog } from './useClaudeModelCatalog';
+import { useMagpieModelCatalog } from './useMagpieModelCatalog';
 import { useCodexAccounts } from './useCodexAccounts';
 import { useSpawnSession } from './useSpawnSession';
 import { t } from '@/text';
@@ -38,12 +39,12 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
     const flavor = session.metadata?.flavor ?? 'claude';
     const current = (['gpt', 'openai'].includes(flavor) ? 'codex' : flavor) as NewSessionAgentType;
     const scope = JSON.stringify([session.id, machineId, directory]);
-    const [draft, setDraft] = React.useState<{ scope: string; agent: NewSessionAgentType; choices: Partial<Record<NewSessionAgentType, Choice>> }>({ scope, agent: current, choices: {} });
+    const [draft, setDraft] = React.useState<{ scope: string; agent: NewSessionAgentType; magpie?: boolean; choices: Partial<Record<NewSessionAgentType, Choice>> }>({ scope, agent: current, choices: {} });
     React.useEffect(() => {
         const currentDefaults = resolveAgentDefaultConfig(defaults, 'codex');
         setDraft(previous => {
             const codex = previous.choices.codex;
-            const resetModel = codex?.modelSelection && codex.modelSelection.defaultValue !== currentDefaults.modelMode;
+            const resetModel = !previous.magpie && codex?.modelSelection && codex.modelSelection.defaultValue !== currentDefaults.modelMode;
             const resetEffort = codex?.effortSelection && codex.effortSelection.defaultValue !== currentDefaults.effortLevel;
             if (!codex || (!resetModel && !resetEffort)) return previous;
             return { ...previous, choices: { ...previous.choices, codex: {
@@ -53,38 +54,54 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
             } } };
         });
     }, [defaults]);
-    const available = getCodingAgentCycle(enabledCodingAgents(agents, machineId, configured, machine?.metadata?.cliAvailability));
-    // The running Agent is always a valid destination for cancelling a staged switch.
-    const cycle = getCodingAgentCycle(agents.filter(a => a.key === current || available.some(b => b.key === a.key)));
-    const selected = draft.scope === scope && cycle.some(a => a.key === draft.agent) ? draft.agent : current;
-    const pending = selected !== current;
-    const activeSelection = React.useRef({ scope, selected });
-    activeSelection.current = { scope, selected };
+    const available = enabledCodingAgents(agents, machineId, configured, machine?.metadata?.cliAvailability);
+    // The current agent remains available for cancelling a staged switch.
+    const destinations = agents.filter(agent => agent.key === current || available.some(other => other.key === agent.key));
+    const selected = draft.scope === scope && destinations.some(a => a.key === draft.agent) ? draft.agent : current;
+    const useMagpie = draft.scope === scope && selected === 'codex' && draft.magpie === true;
+    const pending = selected !== current || useMagpie;
+    const activeSelection = React.useRef({ scope, selected, useMagpie });
+    activeSelection.current = { scope, selected, useMagpie };
     const choice = draft.scope === scope ? draft.choices[selected] : undefined;
     const online = Boolean(machine && isMachineOnline(machine));
+    const runningMagpie = current === 'codex' && !session.metadata?.codexAccountProfileId && session.metadata?.codexMagpieConnection === true;
+    const discoverMagpie = online && !runningMagpie && !!machine?.metadata?.magpieModelCatalog
+        && !session.metadata?.application && available.some(agent => agent.key === 'codex');
+    const magpie = useMagpieModelCatalog(machineId, directory, discoverMagpie);
+    const magpieMetadata: Metadata | null = magpie.catalog && !runningMagpie
+        ? { path: directory ?? '', host: '', flavor: 'codex', ...magpie.catalog }
+        : null;
+    const magpieModels = magpieMetadata ? getSuggestedModelModes('codex', magpieMetadata, t) : [];
     const claude = useClaudeModelCatalog({ machineId, directory, enabled: pending && selected === 'claude' && online });
     const metadata = getLatestSessionModelMetadata({ sessions, selectedMachineId: machineId, agent: selected, codexAccountProfileId: accountProfile });
-    const modelMetadata: Metadata | null = selected === 'claude' && claude.catalog
+    const modelMetadata: Metadata | null = useMagpie ? magpieMetadata : selected === 'claude' && claude.catalog
         ? { ...metadata, host: metadata?.host ?? '', path: directory ?? '', flavor: 'claude', models: claude.catalog.models, modelsUpdatedAt: claude.catalog.observedAt }
         : metadata;
-    const models = selected === 'codex' && (accountProfile === undefined || !modelMetadata?.models?.length)
+    const models = useMagpie ? magpieModels : selected === 'codex' && (accountProfile === undefined || !modelMetadata?.models?.length)
         ? [{ key: 'default', name: t('agentInput.model.cliAutomatic'), description: null }]
         : getSuggestedModelModes(selected, modelMetadata, t);
     const selection = resolveNewSessionModeSelection({ agent: selected, permissionMode: choice?.permissionMode,
         modelMode: choice?.modelMode, effortLevel: choice?.effortLevel,
-        modelSelection: choice?.modelSelection, effortSelection: choice?.effortSelection, agentDefaultOverrides: defaults,
+        modelSelection: useMagpie ? { agent: 'codex', defaultValue: resolveAgentDefaultConfig(defaults, 'codex').modelMode } : choice?.modelSelection,
+        effortSelection: choice?.effortSelection, agentDefaultOverrides: defaults,
         modelOptions: models, effortMetadata: modelMetadata });
     if (choice?.permissionMode) selection.permissionMode = choice.permissionMode;
-    const effortLevels = getEffortLevelsForModel(selected, selection.modelMode, modelMetadata);
+    const explicitCodexModel = selected === 'codex' && choice?.modelMode && choice.modelMode !== 'default'
+        && (useMagpie || (choice.modelSelection?.agent === 'codex'
+            && choice.modelSelection.defaultValue === resolveAgentDefaultConfig(defaults, 'codex').modelMode))
+        ? choice.modelMode : null;
+    const modelUnavailable = explicitCodexModel !== null && !models.some(model => model.key === explicitCodexModel);
+    const effortLevels = modelUnavailable ? [] : getEffortLevelsForModel(selected, selection.modelMode, modelMetadata);
     const spawn = useSpawnSession();
     const busy = spawn.sending || Boolean(spawn.hydrationError);
     const update = (change: Choice) => {
         if (busy) return;
-        setDraft(previous => ({ scope, agent: selected, choices: { ...(previous.scope === scope ? previous.choices : {}),
-            [selected]: { ...choice, ...change } } }));
+        setDraft(previous => ({ scope, agent: selected, magpie: useMagpie, choices: { ...(previous.scope === scope ? previous.choices : {}),
+            [selected]: { ...(previous.scope === scope ? previous.choices[selected] : undefined), ...change } } }));
     };
     const targetAvailable = available.some(a => a.key === selected);
-    const disabled = !online || !targetAvailable || (selected === 'codex' && accountProfile === undefined);
+    const disabled = !online || !targetAvailable || modelUnavailable
+        || (selected === 'codex' && !useMagpie && accountProfile === undefined);
     const submit = async () => {
         if (!pending || disabled || spawn.sending) return false;
         if (spawn.hydrationError) return spawn.retryHydration();
@@ -101,12 +118,58 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         }
         return spawn.spawn({ machineId: machineId!, machine: machine!, path: directory, agent: selected,
             worktreeKey: null, ...selection, fastMode: choice?.fastMode === true && supportsCodexFast(modelMetadata, selection.modelMode),
-            ...(selected === 'codex' ? { expectedCodexAccountProfileId: accountProfile } : {}),
+            ...(useMagpie ? { magpieModel: selection.modelMode, expectedCodexAccountProfileId: null }
+                : selected === 'codex' ? { expectedCodexAccountProfileId: accountProfile } : {}),
             prompt: submission.prompt, images: submission.images,
         }, false, args.flushDraft);
     };
     if (!directory || !machineId || !agents.some(a => a.key === current) || session.metadata?.application) return undefined;
-    const next = cycle[(cycle.findIndex(a => a.key === selected) + 1) % cycle.length];
+    const selectAgent = (key: string) => {
+        const target = destinations.find(agent => agent.key === key);
+        if (busy || !target || (key === selected && !useMagpie)) return;
+        setDraft(previous => {
+            const choices = previous.scope === scope ? { ...previous.choices } : {};
+            if (previous.magpie) delete choices.codex;
+            return { scope, agent: target.key, choices };
+        });
+    };
+    const nativeRoutes = magpieModels.map(model => ({
+        ...model, key: `magpie::${model.key}`, connectionLabel: 'Magpie',
+        actionLabel: t('sidebar.newSession'),
+    }));
+    const sourceModels = (useMagpie ? base.modelOptions : pending ? models : base.modelOptions)
+        .map(model => ({ ...model, ...(nativeRoutes.length && current === 'codex' && (!pending || useMagpie)
+            ? { connectionLabel: runningMagpie ? 'Magpie' : session.metadata?.codexAccountProfileId ? 'ChatGPT' : 'Codex' } : {}) }));
+    const options = [...sourceModels, ...nativeRoutes];
+    const stagedModel = modelUnavailable && explicitCodexModel
+        ? { key: explicitCodexModel, name: explicitCodexModel }
+        : selected === 'codex' && selection.modelMode === 'default'
+        ? { key: 'default', name: t('agentInput.model.cliAutomatic') }
+        : models.find(model => model.key === selection.modelMode) ?? null;
+    const displayedModel = useMagpie
+        ? { key: `magpie::${choice?.modelMode}`, name: magpieModels.find(model => model.key === choice?.modelMode)?.name ?? choice?.modelMode ?? '' }
+        : pending ? stagedModel : base.model;
+    const refreshCurrent = pending ? (selected === 'claude' ? claude.refresh : undefined) : base.onRefreshModels;
+    const onModelChange = (key: string) => {
+        if (busy) return;
+        if (key.startsWith('magpie::')) {
+            const modelId = key.slice('magpie::'.length);
+            if (!magpieModels.some(model => model.key === modelId)) return;
+            setDraft(previous => ({ scope, agent: 'codex', magpie: true, choices: {
+                ...(previous.scope === scope ? previous.choices : {}),
+                codex: { ...(useMagpie ? previous.choices.codex : {}), modelMode: modelId,
+                    fastMode: useMagpie && choice?.fastMode === true && supportsCodexFast(magpieMetadata, modelId) },
+            } }));
+        } else if (useMagpie) {
+            selectAgent(current);
+            base.onModelChange(key);
+        } else if (pending) {
+            update({ modelMode: key, fastMode: false,
+                modelSelection: { agent: selected, defaultValue: resolveAgentDefaultConfig(defaults, selected).modelMode } });
+        } else {
+            base.onModelChange(key);
+        }
+    };
     return { pendingAgent: pending ? selected : null, sending: spawn.sending, disabled,
         submit,
         permissionSelector: pending ? {
@@ -119,7 +182,7 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
                 if (level === 'full-access' && getTaskPermissionLevelForAgentMode(selected, selection.permissionMode) !== 'full-access'
                     && !await Modal.confirm(t('agentInput.taskPermission.riskTitle'), t('agentInput.taskPermission.riskMessage'),
                         { cancelText: t('common.cancel'), confirmText: t('agentInput.taskPermission.riskConfirm'), destructive: true })) return false;
-                if (activeSelection.current.scope !== scope || activeSelection.current.selected !== selected) return false;
+                if (activeSelection.current.scope !== scope || activeSelection.current.selected !== selected || activeSelection.current.useMagpie !== useMagpie) return false;
                 update({ permissionMode: mode });
                 return true;
             },
@@ -127,22 +190,23 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         modeSelector: {
             ...(pending ? {
                 online, unifiedCodex: selected === 'codex', refreshScope: `${scope}:${selected}`,
-                model: selected === 'codex' && selection.modelMode === 'default'
-                    ? { key: 'default', name: t('agentInput.model.cliAutomatic') }
-                    : models.find(m => m.key === selection.modelMode) ?? null, modelOptions: models,
                 effort: effortLevels.find(e => e.key === selection.effortLevel) ?? null, effortOptions: effortLevels,
-                onModelChange: key => update({ modelMode: key, fastMode: false,
-                    modelSelection: { agent: selected, defaultValue: resolveAgentDefaultConfig(defaults, selected).modelMode } }),
                 onEffortChange: key => update({ effortLevel: key,
                     effortSelection: { agent: selected, defaultValue: resolveAgentDefaultConfig(defaults, selected).effortLevel } }),
-                onRefreshModels: selected === 'claude' ? claude.refresh : undefined,
-                supportsFast: supportsCodexFast(modelMetadata, selection.modelMode), fastMode: choice?.fastMode === true,
+                supportsFast: !modelUnavailable && supportsCodexFast(modelMetadata, selection.modelMode), fastMode: choice?.fastMode === true,
                 onFastModeChange: enabled => update({ fastMode: enabled }),
             } : base),
-            online: online && (pending || base.online),
-            agentSwitcher: { id: selected, current: agents.find(a => a.key === selected)!.label,
-                next: busy || cycle.length < 2 ? null : next.label,
-                onSwitch: () => { if (!busy && cycle.length > 1) setDraft(previous => ({ scope, agent: next.key, choices: previous.scope === scope ? previous.choices : {} })); },
+            ownerScope: scope,
+            preferModelList: discoverMagpie || base.preferModelList,
+            online: online && (pending || base.online) && !busy,
+            model: displayedModel,
+            modelOptions: options,
+            onRefreshModels: discoverMagpie || refreshCurrent ? async () => {
+                await Promise.all([discoverMagpie ? magpie.refresh() : undefined, refreshCurrent?.()]);
+            } : undefined,
+            onModelChange,
+            agentSwitcher: { id: selected, current: useMagpie || (runningMagpie && !pending) ? 'Magpie' : agents.find(a => a.key === selected)!.label,
+                options: busy ? [] : destinations, onSelect: selectAgent,
             },
         },
     };

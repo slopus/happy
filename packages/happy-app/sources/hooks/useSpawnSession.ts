@@ -32,6 +32,7 @@ export interface SpawnSessionArgs {
     fastMode?: boolean;
     discussing?: boolean;
     expectedCodexAccountProfileId?: string | null;
+    magpieModel?: string;
     /** Initial prompt to send into the freshly spawned session. */
     prompt: string;
     /** Image attachments to send with the initial message (claude-only). */
@@ -197,6 +198,7 @@ export function useSpawnSession() {
                     agent,
                     environmentVariables,
                     expectedCodexAccountProfileId: args.expectedCodexAccountProfileId,
+                    ...(args.magpieModel ? { magpieModel: args.magpieModel } : {}),
                     ...(startupTrace ? { traceId: startupTrace.traceId } : {}),
                 });
 

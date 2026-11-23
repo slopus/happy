@@ -9,6 +9,7 @@ describe('mergeCodexSessionConfigIntoMetadata', () => {
             host: 'machine',
         } as any, {
             currentModel: 'gpt-5.4',
+            modelsUpdatedAt: 11,
             currentEffort: 'xhigh',
             models: [
                 {
@@ -41,9 +42,10 @@ describe('mergeCodexSessionConfigIntoMetadata', () => {
         });
 
         expect(next.models).toEqual([
-            { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Primary', serviceTiers: [] },
-            { code: 'gpt-5.4', value: 'gpt-5.4', description: 'Pinned', serviceTiers: [] },
+            { code: 'gpt-5.5', value: 'GPT-5.5', description: 'Primary', supportedEffortLevels: ['medium', 'high'], serviceTiers: [] },
+            { code: 'gpt-5.4', value: 'GPT-5.4', description: 'Pinned', supportedEffortLevels: ['minimal', 'xhigh'], serviceTiers: [] },
         ]);
+        expect(next.modelsUpdatedAt).toBe(11);
         expect(next.currentModelCode).toBe('gpt-5.4');
         expect(next.thoughtLevels).toEqual([
             { code: 'minimal', value: 'minimal', description: 'Quickest' },

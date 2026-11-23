@@ -39,6 +39,17 @@ describe('getLatestSessionModelMetadata', () => {
         expect(getLatestSessionModelMetadata({ sessions: [session({ id: 'old', machineId: 'mac', flavor: 'claude', activeAt: 1,
             models: [{ code: 'private/other-account', value: 'Other connection' }] })], selectedMachineId: 'mac', agent: 'claude' })).toBeNull();
     });
+    it('uses catalog observation instead of conversation activity', () => {
+        const old = session({ id: 'old', machineId: 'mac', flavor: 'codex', activeAt: 1,
+            models: [{ code: 'gpt-6.1-sol', value: 'Sol 6.1' }] });
+        const fresh = session({ id: 'fresh', machineId: 'mac', flavor: 'codex', activeAt: 2,
+            models: [{ code: 'gpt-6.2-sol', value: 'Sol 6.2' }] });
+        fresh.metadata!.modelsUpdatedAt = 3;
+        expect(getLatestSessionModelMetadata({
+            sessions: [{ ...old, activeAt: 10 }, fresh], selectedMachineId: 'mac', agent: 'codex', codexAccountProfileId: null,
+        })).toBe(fresh.metadata);
+    });
+
     it('returns the newest model metadata for the selected machine and agent', () => {
         const latest = getLatestSessionModelMetadata({
             sessions: [

@@ -137,6 +137,7 @@ export const MachineMetadataSchema = z.object({
   happyHomeDir: z.string(),
   happyLibDir: z.string(),
   crossAgentContinuation: z.literal(1).optional(),
+    magpieModelCatalog: z.literal(1).optional(),
   cliAvailability: z.object({
     ask: z.boolean().optional(),
     claude: z.boolean(),
@@ -378,6 +379,7 @@ export type Metadata = {
   // `code` = protocol value ID, `value` = human label
   models?: Array<{ code: string; value: string; description?: string | null; supportedEffortLevels?: string[]; serviceTiers?: Array<{ id: string; name: string; description?: string | null }> }>,
   modelsUpdatedAt?: number,
+  codexMagpieConnection?: boolean,
   currentModelCode?: string,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,

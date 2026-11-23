@@ -19,5 +19,6 @@ export const initialMachineMetadata: MachineMetadata = {
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath(),
   cliAvailability: detectCLIAvailability(),
+  magpieModelCatalog: 1,
   resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
 };

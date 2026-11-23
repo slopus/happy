@@ -456,6 +456,7 @@ export class CodexAppServerClient {
         private readonly connection: CodexAppServerConnection = { type: 'spawn' },
         private readonly processEnv: NodeJS.ProcessEnv = process.env,
         private readonly applicationPolicy?: NativeLaunchPolicy,
+        private readonly workingDirectory?: string,
     ) {
         this.sandboxConfig = sandboxConfig;
         this.serviceTier = applicationPolicy?.binding.serviceTier === 'fast' ? 'fast' : 'standard';
@@ -1149,6 +1150,7 @@ export class CodexAppServerClient {
         // Native child_process.spawn fails with ENOENT for .cmd shims (issues #980, #1016).
         const proc = crossSpawn(command, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
+            cwd: this.workingDirectory,
             env,
             windowsHide: true,
         });
@@ -1425,12 +1427,15 @@ export class CodexAppServerClient {
         return await this.request('model/list', params) as ModelListResponse;
     }
 
-    private async readModelConnectionScope(): Promise<string> {
-        const result = await this.request('config/read', { includeLayers: false, cwd: process.cwd() }) as {
-            config?: Record<string, unknown>;
-        };
+    async readEffectiveModelConfiguration(): Promise<Record<string, unknown>> {
+        const result = await this.request('config/read', {
+            includeLayers: false, cwd: this.workingDirectory ?? process.cwd(),
+        }) as { config?: Record<string, unknown> };
         if (!result.config) throw new Error('Could not verify the model connection.');
-        const config = result.config;
+        return result.config;
+    }
+
+    private modelConnectionScope(config: Record<string, unknown>): string {
         const provider = config.model_provider ?? 'openai';
         const providers = config.model_providers as Record<string, unknown> | undefined;
         return JSON.stringify({
@@ -1443,10 +1448,12 @@ export class CodexAppServerClient {
     }
 
     /** Capture before starting/resuming a thread: config/read re-reads disk later. */
-    async prepareModelCatalogRefresh(): Promise<void> {
+    async prepareModelCatalogRefresh(): Promise<Record<string, unknown> | undefined> {
         if (this.connection.type !== 'spawn' || this.applicationPolicy) return;
-        this.modelCatalogConnectionScope = await this.readModelConnectionScope();
+        const config = await this.readEffectiveModelConfiguration();
+        this.modelCatalogConnectionScope = this.modelConnectionScope(config);
         this.modelCatalogRefreshEnabled = true;
+        return config;
     }
 
     /** Read a fresh catalog without restarting or touching the inference thread. */
@@ -1458,13 +1465,13 @@ export class CodexAppServerClient {
         const expectedEpoch = this.processEpoch;
         const expectedScope = this.modelCatalogConnectionScope;
         const refresh = async () => {
-            const probe = new CodexAppServerClient(undefined, { type: 'spawn' }, this.processEnv);
+            const probe = new CodexAppServerClient(undefined, { type: 'spawn' }, this.processEnv, undefined, this.workingDirectory);
             probe.serviceTier = this.serviceTier;
             try {
                 await probe.connect();
                 // Re-read catalog files, but never expose models from a different provider.
                 // Account probes retain the same isolated home and pinned OAuth overrides.
-                const freshScope = await probe.readModelConnectionScope();
+                const freshScope = probe.modelConnectionScope(await probe.readEffectiveModelConfiguration());
                 if (expectedScope !== freshScope) {
                     throw new Error('The model connection changed. Reconnect this session before refreshing models.');
                 }

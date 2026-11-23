@@ -35,7 +35,11 @@ export function getLatestSessionModelMetadata(args: {
             continue;
         }
 
-        if (!latest || entry.activeAt > latest.activeAt) {
+        // Chat activity cannot make an older catalog fresh. Legacy Codex catalogs
+        // fall back to the session creation time, which stays stable between turns.
+        const observedAt = metadata.modelsUpdatedAt ?? (agent === 'codex' ? entry.createdAt : entry.activeAt);
+        const latestObservedAt = latest?.metadata?.modelsUpdatedAt ?? (agent === 'codex' ? latest?.createdAt : latest?.activeAt);
+        if (!latest || observedAt > (latestObservedAt ?? 0)) {
             latest = entry;
         }
     }
