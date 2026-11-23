@@ -7,7 +7,12 @@ const mocks = vi.hoisted(() => {
 
   let fileHandler: ((message: any) => void) | null = null;
   let agentState: Record<string, any> = {};
+  const metadataListeners = new Set<(metadata: any) => void>();
+  const connectedListeners = new Set<() => void>();
   const mockSession = {
+    getMetadata: vi.fn(() => null as any),
+    on: vi.fn((name: string, callback: any) => { if (name === 'metadata-updated') metadataListeners.add(callback); if (name === 'connected') connectedListeners.add(callback); }),
+    off: vi.fn((name: string, callback: any) => { if (name === 'metadata-updated') metadataListeners.delete(callback); if (name === 'connected') connectedListeners.delete(callback); }),
     onFileEvent: vi.fn((handler: (message: any) => void) => { fileHandler = handler; }),
     downloadAndDecryptAttachment: vi.fn(async (_ref: string) => new Uint8Array([137, 80, 78, 71])),
     onUserMessage: vi.fn((handler: (message: any) => void, onFile?: (message: any) => void) => {
@@ -74,6 +79,8 @@ const mocks = vi.hoisted(() => {
       killHandler = handler;
     },
     mockSession,
+    metadataListeners,
+    connectedListeners,
     getAgentState: () => agentState,
     resetAgentState: () => { agentState = {}; },
     getFileHandler: () => fileHandler,
@@ -213,6 +220,10 @@ describe('runAcp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resetAgentState();
+    mocks.metadataListeners.clear();
+    mocks.connectedListeners.clear();
+    mocks.mockSession.updateMetadata.mockReset();
+    mocks.mockSession.getMetadata.mockReset().mockReturnValue({ flavor: 'antigravity', hostPid: process.pid });
     mocks.sessionHandlers.clear();
     mocks.mockSession.downloadAndDecryptAttachment.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
     mocks.setUserMessageHandler(null);
@@ -328,8 +339,100 @@ describe('runAcp', () => {
       expect(mocks.getAgentState().completedRequests[id].status).toBe('denied');
       const handlers = new Map<string, any>();
       const nextSession = { ...mocks.mockSession, rpcHandlerManager: { registerHandler: (name: string, handler: any) => handlers.set(name, handler) } };
+      const oldListener = [...mocks.metadataListeners][0];
       mocks.mockSetupOfflineReconnection.mock.calls[0][0].onSessionSwap(nextSession);
       expect(handlers.get('setPermissionMode')).toBeTypeOf('function');
+      expect(mocks.metadataListeners.size).toBe(1);
+      const writes = mocks.mockSession.updateMetadata.mock.calls.length;
+      oldListener({ flavor: 'antigravity' });
+      expect(mocks.mockSession.updateMetadata).toHaveBeenCalledTimes(writes);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('restores worker-owned approval state after another metadata writer drops it, without changing the policy or looping', async () => {
+    let metadata: any = { flavor: 'antigravity', hostPid: process.pid, capabilities: { regenerateTitle: true } };
+    mocks.mockSession.updateMetadata.mockImplementation(apply => { metadata = apply(metadata); });
+    mocks.mockSession.getMetadata.mockImplementation(() => metadata);
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
+    const changedElsewhere = (next: any) => {
+      metadata = next;
+      for (const listener of mocks.metadataListeners) listener(next);
+    };
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      await mocks.sessionHandlers.get('setPermissionMode')!({ mode: 'bypassPermissions' });
+      changedElsewhere({ flavor: 'antigravity', hostPid: process.pid, name: 'kept title', lastUserMessageAt: 42, capabilities: { regenerateTitle: true } });
+      expect(metadata).toMatchObject({ name: 'kept title', lastUserMessageAt: 42,
+        capabilities: { regenerateTitle: true, acpPermissionPolicy: true }, acpPermissionMode: 'bypassPermissions' });
+      await mocks.sessionHandlers.get('setPermissionMode')!({ mode: 'default' });
+      changedElsewhere({ ...metadata, acpPermissionMode: 'bypassPermissions' });
+      expect(metadata.acpPermissionMode).toBe('default');
+      const writes = mocks.mockSession.updateMetadata.mock.calls.length;
+      changedElsewhere(metadata);
+      expect(mocks.mockSession.updateMetadata).toHaveBeenCalledTimes(writes);
+      changedElsewhere({ ...metadata, acpPermissionMode: undefined, lifecycleState: 'archiveRequested' });
+      expect(mocks.mockSession.updateMetadata).toHaveBeenCalledTimes(writes);
+    } finally { await mocks.getKillHandler()!(); await run; }
+    expect(mocks.metadataListeners.size).toBe(0);
+    expect(mocks.connectedListeners.size).toBe(0);
+  });
+
+  it('rechecks the active approval policy once per reconnect even if the local metadata still looks healthy', async () => {
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      await mocks.sessionHandlers.get('setPermissionMode')!({ mode: 'default' });
+      expect(mocks.connectedListeners.size).toBe(1);
+      const writes = mocks.mockSession.updateMetadata.mock.calls.length;
+      for (const listener of mocks.connectedListeners) listener();
+      expect(mocks.mockSession.updateMetadata).toHaveBeenCalledTimes(writes + 1);
+      const healthy = { flavor: 'antigravity', acpPermissionMode: 'default', capabilities: { acpPermissionPolicy: true } };
+      const reconcile = mocks.mockSession.updateMetadata.mock.calls.at(-1)![0];
+      expect(reconcile(healthy)).not.toBe(healthy);
+      expect(reconcile({ flavor: 'antigravity', name: 'remote title', acpPermissionMode: 'bypassPermissions' }))
+        .toMatchObject({ name: 'remote title', acpPermissionMode: 'default', capabilities: { acpPermissionPolicy: true } });
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('does not treat pre-turn remote full access as consent or let a replaced worker restore its former policy', async () => {
+    let metadata: any = { flavor: 'antigravity', hostPid: process.pid };
+    mocks.mockSession.getMetadata.mockImplementation(() => metadata);
+    mocks.mockSession.updateMetadata.mockImplementation(apply => { metadata = apply(metadata); });
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      metadata = { ...metadata, acpPermissionMode: 'bypassPermissions' };
+      for (const listener of mocks.metadataListeners) listener(metadata);
+      expect(metadata.acpPermissionMode).toBeUndefined();
+      mocks.getUserMessageHandler()!({ content: { text: 'explicit first selection' }, meta: { permissionMode: 'bypassPermissions', permissionModeExplicit: true } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      expect(metadata.acpPermissionMode).toBe('bypassPermissions');
+      metadata = { ...metadata, hostPid: process.pid + 1, acpPermissionMode: 'default' };
+      const writes = mocks.mockSession.updateMetadata.mock.calls.length;
+      for (const listener of mocks.metadataListeners) listener(metadata);
+      expect(mocks.mockSession.updateMetadata).toHaveBeenCalledTimes(writes);
+      await expect(mocks.sessionHandlers.get('setPermissionMode')!({ mode: 'bypassPermissions' })).rejects.toThrow('worker changed');
+      metadata = null;
+      for (const listener of mocks.metadataListeners) listener(metadata);
+      expect(mocks.mockSession.updateMetadata).toHaveBeenCalledTimes(writes);
+      await expect(mocks.sessionHandlers.get('setPermissionMode')!({ mode: 'bypassPermissions' })).rejects.toThrow('worker changed');
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('does not turn a pre-turn metadata echo into full access without an explicit selection', async () => {
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      mocks.getUserMessageHandler()!({ content: { text: 'echoed metadata' }, meta: { permissionMode: 'bypassPermissions' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      const pending = mocks.backendState.constructorArgs.permissionHandler.handleToolCall('echo-check', 'execute', { CommandLine: 'pwd' });
+      expect(Object.keys(mocks.getAgentState().requests)).toHaveLength(1);
+      await mocks.sessionHandlers.get('setPermissionMode')!({ mode: 'bypassPermissions' });
+      await expect(pending).resolves.toMatchObject({ decision: 'approved' });
     } finally { await mocks.getKillHandler()!(); await run; }
   });
 

@@ -25,7 +25,7 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
 import { BasePermissionHandler, type PendingRequest, type PermissionResponse, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
-import type { AgentState, FileEventMessage } from '@/api/types';
+import type { AgentState, FileEventMessage, Metadata } from '@/api/types';
 import type { WorkerSessionStartupLifecycle } from '@/api/sessionStartupTrace';
 import {
   extractConfigOptionsFromPayload,
@@ -563,6 +563,7 @@ export async function runAcp(opts: {
   let permissionHandler: GenericAcpPermissionHandler;
   let bindInputHandlers: (() => void) | undefined;
   let bindPermissionModeHandler: (() => void) | undefined;
+  let unbindPermissionMetadata: (() => void) | undefined;
   const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
     api,
     sessionTag,
@@ -705,13 +706,28 @@ export async function runAcp(opts: {
     }
   };
 
+  const ownsPermissionMetadata = (current: Metadata): boolean => current.flavor === 'antigravity'
+    && (typeof current.hostPid !== 'number' || current.hostPid === metadata.hostPid);
+  const hasPermissionPolicy = (metadata: Metadata): boolean => metadata.capabilities?.acpPermissionPolicy === true
+    && (permissionModeOverride === null ? metadata.acpPermissionMode !== 'bypassPermissions' : metadata.acpPermissionMode === permissionModeOverride);
+  const publishPermissionPolicy = (force = false): void => {
+    const owner = session;
+    owner.updateMetadata(metadata => shouldExit || owner !== session || !metadata || !ownsPermissionMetadata(metadata)
+      || metadata.lifecycleState === 'archived' || metadata.lifecycleState === 'archiveRequested'
+      || (!force && hasPermissionPolicy(metadata)) ? metadata : {
+      ...metadata,
+      capabilities: { ...metadata.capabilities, acpPermissionPolicy: true },
+      acpPermissionMode: permissionModeOverride ?? (metadata.acpPermissionMode === 'bypassPermissions' ? undefined : metadata.acpPermissionMode),
+    });
+  };
+
   const switchPermissionModeIfRequested = async (requestedMode: string): Promise<void> => {
     if (opts.agentName === 'antigravity') {
       const mode = permissionModeOverride ?? requestedMode;
       if (mode !== 'default' && mode !== 'bypassPermissions') throw new Error('Unsupported Antigravity permission mode');
       permissionModeOverride = mode;
       permissionHandler.setPermissionMode(mode);
-      session.updateMetadata(metadata => metadata.acpPermissionMode === mode ? metadata : { ...metadata, acpPermissionMode: mode });
+      publishPermissionPolicy();
       return;
     }
     if (!requestedMode) {
@@ -1001,7 +1017,8 @@ export async function runAcp(opts: {
     pendingImages = [];
     if (!message.content.text && !claimedImages.length) return;
 
-    if (typeof message.meta?.permissionMode === 'string') {
+    if (typeof message.meta?.permissionMode === 'string'
+      && (opts.agentName !== 'antigravity' || message.meta.permissionMode !== 'bypassPermissions' || message.meta.permissionModeExplicit === true)) {
       currentPermissionMode = message.meta.permissionMode;
       logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
     }
@@ -1056,16 +1073,38 @@ export async function runAcp(opts: {
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
   bindPermissionModeHandler = () => {
+    unbindPermissionMetadata?.();
     if (opts.agentName !== 'antigravity') return;
-    if (permissionModeOverride !== null) session.updateMetadata(metadata => ({ ...metadata, acpPermissionMode: permissionModeOverride! }));
+    const boundSession = session;
+    const restorePolicy = (metadata: Metadata | null) => {
+      if (shouldExit || boundSession !== session || !metadata || !ownsPermissionMetadata(metadata)
+        || metadata.lifecycleState === 'archived' || metadata.lifecycleState === 'archiveRequested'
+        || hasPermissionPolicy(metadata)) return;
+      // Older clients can strip unknown fields when writing activity/title metadata.
+      // Only the live worker's RPC changes its policy; restore its published state
+      // from this event without reinterpreting the foreign snapshot as consent.
+      publishPermissionPolicy();
+    };
+    boundSession.on?.('metadata-updated', restorePolicy);
+    const reconcileAfterConnect = () => {
+      if (!shouldExit && boundSession === session) publishPermissionPolicy(true);
+    };
+    boundSession.on?.('connected', reconcileAfterConnect);
+    unbindPermissionMetadata = () => {
+      boundSession.off?.('metadata-updated', restorePolicy);
+      boundSession.off?.('connected', reconcileAfterConnect);
+    };
+    // Also cover a first connection that completed before these listeners bound.
+    publishPermissionPolicy(true);
     session.rpcHandlerManager.registerHandler('setPermissionMode', async (request: { mode?: unknown }) => {
-      if (shouldExit) throw new Error('Session has ended');
+      const current = boundSession.getMetadata?.();
+      if (shouldExit || boundSession !== session || (typeof boundSession.getMetadata === 'function' && !current) || (current && (!ownsPermissionMetadata(current)
+        || current.lifecycleState === 'archived' || current.lifecycleState === 'archiveRequested'))) throw new Error('Session worker changed or ended');
       if (request.mode !== 'default' && request.mode !== 'bypassPermissions') throw new Error('Unsupported Antigravity permission mode');
       permissionModeOverride = request.mode;
       currentPermissionMode = request.mode;
       permissionHandler.setPermissionMode(request.mode);
-      const mode = request.mode;
-      session.updateMetadata(metadata => ({ ...metadata, acpPermissionMode: mode }));
+      publishPermissionPolicy();
       return true;
     });
   };
@@ -1181,6 +1220,7 @@ export async function runAcp(opts: {
     }
   } finally {
     shouldExit = true;
+    unbindPermissionMetadata?.();
     pendingImages = [];
     clearInterval(keepAliveInterval);
     reconnectionHandle?.cancel();

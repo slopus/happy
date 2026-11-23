@@ -299,6 +299,56 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it('notifies metadata consumers only after accepting a newer decrypted session snapshot', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const observed = vi.fn((metadata) => expect(client.getMetadata()).toBe(metadata));
+        client.on('metadata-updated', observed);
+        const metadata = { ...session.metadata, name: 'renamed on another device' };
+        const update = { id: 'metadata-change', seq: 1, createdAt: Date.now(), body: {
+            t: 'update-session' as const, id: session.id,
+            metadata: { value: encryptContent(session, metadata), version: 1 },
+        } };
+        for (const callback of socketHandlers.update) callback(update);
+        expect(observed).toHaveBeenCalledOnce();
+        expect(observed).toHaveBeenCalledWith(metadata);
+        for (const callback of socketHandlers.update) callback(update);
+        expect(observed).toHaveBeenCalledOnce();
+    });
+
+    it('does not roll metadata back when an older write acknowledgement arrives after a newer live snapshot', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        let acknowledge!: (value: unknown) => void;
+        mockSocket.emitWithAck.mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }));
+        const pending = client.updateMetadataAndAwait(metadata => ({ ...metadata, name: 'earlier local write' }));
+        await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledOnce());
+        const newer = { ...session.metadata, name: 'newer remote title', lastUserMessageAt: 42 };
+        const update = { id: 'newer-metadata', seq: 1, createdAt: Date.now(), body: {
+            t: 'update-session' as const, id: session.id, metadata: { value: encryptContent(session, newer), version: 2 },
+        } };
+        for (const callback of socketHandlers.update) callback(update);
+        acknowledge({ result: 'success', version: 1, metadata: mockSocket.emitWithAck.mock.calls[0][1].metadata });
+        await pending;
+        expect(client.getMetadata()).toEqual(newer);
+    });
+
+    it('notifies consumers when newer metadata first arrives through a CAS conflict or success ACK', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const observed = vi.fn();
+        client.on('metadata-updated', observed);
+        const remote = { ...session.metadata, lastUserMessageAt: 42 };
+        mockSocket.emitWithAck.mockResolvedValueOnce({ result: 'version-mismatch', version: 2, metadata: encryptContent(session, remote) })
+            .mockImplementationOnce(async (_event: string, payload: any) => ({ result: 'success', version: 3, metadata: payload.metadata }));
+        await client.updateMetadataAndAwait(metadata => ({ ...metadata, name: 'updated title' }));
+        expect(observed).toHaveBeenCalledTimes(2);
+        expect(observed.mock.calls[0][0]).toEqual(remote);
+        expect(observed.mock.calls[1][0]).toEqual({ ...remote, name: 'updated title' });
+        const lateEvent = { id: 'late-conflict-copy', seq: 1, createdAt: Date.now(), body: {
+            t: 'update-session' as const, id: session.id, metadata: { value: encryptContent(session, remote), version: 2 },
+        } };
+        for (const callback of socketHandlers.update) callback(lateEvent);
+        expect(observed).toHaveBeenCalledTimes(2);
+    });
+
     it('encrypts volatile text previews without persisting them and drops disconnected or oversized sends', () => {
         const client = new ApiSessionClient('fake-token', session);
         const preview = { type: 'text-delta' as const, turnId: 'turn', itemId: 'item', delta: '\n ', text: 'Hello\n ' };

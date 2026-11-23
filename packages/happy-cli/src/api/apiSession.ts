@@ -252,6 +252,7 @@ export class ApiSessionClient extends EventEmitter {
             }
             this.rpcHandlerManager.onSocketConnect(this.socket);
             this.receiveSync.invalidate();
+            this.emit('connected');
         })
 
         // Set up global RPC request handler
@@ -296,9 +297,7 @@ export class ApiSessionClient extends EventEmitter {
                     this.routeIncomingMessage(body, data.body.message.localId);
                     this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
-                    if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
-                        this.metadataVersion = data.body.metadata.version;
+                    if (data.body.metadata && this.acceptMetadata(data.body.metadata.version, data.body.metadata.value)) {
                         // Check if session was archived from web/mobile
                         const meta = this.metadata as any;
                         if (meta?.lifecycleState === 'archiveRequested' || meta?.lifecycleState === 'archived') {
@@ -1044,6 +1043,14 @@ export class ApiSessionClient extends EventEmitter {
         void this.updateMetadataAndAwait(handler);
     }
 
+    private acceptMetadata(version: number, encrypted: string): boolean {
+        if (version <= this.metadataVersion) return false;
+        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(encrypted));
+        this.metadataVersion = version;
+        this.emit('metadata-updated', this.metadata);
+        return true;
+    }
+
     async updateMetadataAndAwait(handler: (metadata: Metadata) => Metadata): Promise<void> {
         await this.metadataLock.inLock(async () => {
             await backoff(async () => {
@@ -1051,13 +1058,10 @@ export class ApiSessionClient extends EventEmitter {
                 if (updated === this.metadata) return;
                 const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
                 if (answer.result === 'success') {
-                    this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
-                    this.metadataVersion = answer.version;
+                    // A newer live snapshot may have arrived while this ACK was in flight.
+                    this.acceptMetadata(answer.version, answer.metadata);
                 } else if (answer.result === 'version-mismatch') {
-                    if (answer.version > this.metadataVersion) {
-                        this.metadataVersion = answer.version;
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
-                    }
+                    this.acceptMetadata(answer.version, answer.metadata);
                     throw new Error('Metadata version mismatch');
                 } else if (answer.result === 'error') {
                     // Hard error - ignore
