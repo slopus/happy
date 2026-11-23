@@ -23,16 +23,8 @@ const CO_AUTHORED_CREDITS = (() => trimIdent(`
     Co-Authored-By: Happy <yesreply@happy.engineering>
 `))();
 
-/**
- * System prompt with conditional Co-Authored-By lines based on Claude's settings.json configuration.
- * Settings are read once on startup for performance.
- */
-export const systemPrompt = (() => {
-  const includeCoAuthored = shouldIncludeCoAuthoredBy();
-  
-  if (includeCoAuthored) {
-    return BASE_SYSTEM_PROMPT + '\n\n' + CO_AUTHORED_CREDITS;
-  } else {
-    return BASE_SYSTEM_PROMPT;
-  }
-})();
+export async function getSystemPrompt(cwd: string): Promise<string> {
+  return await shouldIncludeCoAuthoredBy(cwd)
+    ? BASE_SYSTEM_PROMPT + '\n\n' + CO_AUTHORED_CREDITS
+    : BASE_SYSTEM_PROMPT;
+}

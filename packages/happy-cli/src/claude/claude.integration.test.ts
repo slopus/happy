@@ -24,7 +24,7 @@ import { getIntegrationEnv } from '@/testing/currentIntegrationEnv';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { query, type QueryOptions, type SDKAssistantMessage, type SDKMessage, type SDKResultMessage, type SDKSystemMessage } from './sdk';
 import { startHappyServer } from './utils/startHappyServer';
-import { systemPrompt } from './utils/systemPrompt';
+import { getSystemPrompt } from './utils/systemPrompt';
 
 const MODEL_OPUS = 'claude-opus-4-1-20250805';
 const MODEL_SONNET = 'claude-sonnet-4-20250514';
@@ -181,19 +181,19 @@ class ClaudeQueryDriver {
         return [...this.titleSummaries];
     }
 
-    buildOptions(options: {
+    async buildOptions(options: {
         allowedTools: string[];
         canCallTool?: QueryOptions['canCallTool'];
         disallowedTools?: string[];
         model: string;
         resume?: string;
-    }): QueryOptions {
+    }): Promise<QueryOptions> {
         if (!this.happyServer) {
             throw new Error('ClaudeQueryDriver.start() must be called first');
         }
 
         return {
-            appendSystemPrompt: systemPrompt,
+            appendSystemPrompt: await getSystemPrompt(integrationEnv.projectPath),
             canCallTool: options.canCallTool ?? (async (_toolName, input) => {
                 return {
                     behavior: 'allow',
@@ -225,7 +225,7 @@ class ClaudeQueryDriver {
         const promptStream = new PushableAsyncIterable<SDKMessage>();
         const run = query({
             prompt: promptStream,
-            options: this.buildOptions(options),
+            options: await this.buildOptions(options),
         });
 
         promptStream.push({

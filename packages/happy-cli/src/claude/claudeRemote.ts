@@ -9,7 +9,7 @@ import { logger } from "@/lib";
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
-import { systemPrompt } from "./utils/systemPrompt";
+import { getSystemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
 import { fromRateLimitEvent, windowsFromGetUsage, type UnboundRateLimit, type UsageLimitsPatch, type RateLimitEventInfo } from "./utils/usageLimits";
@@ -123,6 +123,8 @@ export async function claudeRemote(opts: {
             opts.onCompletionEvent('Compaction started');
         }
     }
+
+    const systemPrompt = await getSystemPrompt(opts.path);
 
     // Prepare SDK options
     let mode = initial.mode;
