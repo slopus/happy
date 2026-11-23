@@ -102,6 +102,7 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
     const { theme } = useUnistyles();
     const [expanded, setExpanded] = React.useState(false);
     const { activity } = props;
+    const isDocumentRead = activity.source === 'document-read';
     const isFailed = activity.status === 'failed';
     const summary = activity.failure?.summary ?? (isFailed ? t('toolGroup.skillFailureNoDetails') : null);
     const detail = activity.failure?.detail;
@@ -116,11 +117,11 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
         <>
             <View style={styles.rowHeader}>
                 <Ionicons name="sparkles-outline" size={14} color={theme.colors.textSecondary} />
-                <Text style={styles.kind}>{t(activity.isBatch ? 'toolGroup.skillBatchLabel' : 'toolGroup.skillLabel')}</Text>
+                <Text style={styles.kind}>{t(isDocumentRead ? 'toolGroup.skillDocumentLabel' : activity.isBatch ? 'toolGroup.skillBatchLabel' : 'toolGroup.skillLabel')}</Text>
                 <Text style={styles.title} numberOfLines={1}>{activity.name}</Text>
                 <View style={styles.statusPill}>
                     <ActivityStatusIcon status={activity.status} />
-                    <Text style={styles.statusText}>{getStatusLabel(activity.status)}</Text>
+                    <Text style={styles.statusText}>{isDocumentRead ? t(`toolGroup.skillDocumentStatus.${activity.status}`) : getStatusLabel(activity.status)}</Text>
                 </View>
                 {canExpand && (
                     <Ionicons

@@ -1655,6 +1655,13 @@ failedContinueTask: "Продолжить незавершённую задач�
         usedSkills: ({ names }: { names: string }) => `Навыки (Skills): ${names}`,
         skillLabel: 'Навык (Skill)',
         skillBatchLabel: 'Пакет навыков',
+        skillDocumentLabel: 'Загрузка инструкций навыка',
+        skillDocumentStatus: {
+            running: 'Загрузка',
+            completed: 'Загружено',
+            failed: 'Ошибка загрузки',
+            cancelled: 'Отменено',
+        },
         subagentLabel: 'Субагент',
         openSubagentDetails: ({ title }: { title: string }) => `Просмотреть сведения о субагенте: ${title}`,
         subagentPanelLabel: ({ title }: { title: string }) => `сведения о субагенте «${title}»`,

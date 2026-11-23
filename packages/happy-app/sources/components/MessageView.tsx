@@ -21,6 +21,7 @@ import { useDesktopReadingWidth } from './DesktopReadingWidth';
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 import { ConversationActivityStrip } from './ConversationActivityStrip';
 import { getSkillNamesFromTool } from '@/utils/conversationActivity';
+import { getSkillDocumentName } from '@/utils/toolIdentity';
 import { getMessageExecutionModeLabel } from '@/utils/messageExecutionMode';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { getUserMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
@@ -684,19 +685,24 @@ function ToolCallBlock(props: {
   if (!props.message.tool) {
     return null;
   }
-  if (getSkillNamesFromTool(props.message.tool).length > 0 && props.message.tool.permission?.status !== 'pending') {
+  const showSkillActivity = getSkillNamesFromTool(props.message.tool).length > 0 && props.message.tool.permission?.status !== 'pending';
+  const isDocumentRead = getSkillDocumentName(props.message.tool) !== null;
+  if (showSkillActivity && !isDocumentRead) {
     return <ConversationActivityStrip messages={[props.message]} />;
   }
   return (
-    <View style={styles.toolContainer}>
-      <ToolView
-        tool={props.message.tool}
-        metadata={props.metadata}
-        messages={props.message.children}
-        sessionId={props.sessionId}
-        messageId={props.message.id}
-      />
-    </View>
+    <>
+      {showSkillActivity && isDocumentRead && <ConversationActivityStrip messages={[props.message]} />}
+      <View style={styles.toolContainer}>
+        <ToolView
+          tool={props.message.tool}
+          metadata={props.metadata}
+          messages={props.message.children}
+          sessionId={props.sessionId}
+          messageId={props.message.id}
+        />
+      </View>
+    </>
   );
 }
 

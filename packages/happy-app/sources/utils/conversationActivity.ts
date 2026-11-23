@@ -1,6 +1,6 @@
 import { isGenericToolFailure, selectToolFailure, summarizeToolFailureOutput } from '@slopus/happy-wire';
 import { Message, ToolCall, ToolCallMessage } from '@/sync/typesMessage';
-import { getEffectiveToolName } from './toolIdentity';
+import { getEffectiveToolName, getSkillDocumentName } from './toolIdentity';
 
 export type ConversationActivityStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -8,6 +8,7 @@ export type SkillConversationActivity = {
     kind: 'skill';
     id: string;
     name: string;
+    source?: 'document-read';
     isBatch?: boolean;
     status: ConversationActivityStatus;
     failure: ToolCall['failure'] | null;
@@ -97,6 +98,8 @@ function getToolFailure(message: ToolCallMessage): ToolCall['failure'] | null {
 
 export function getSkillNamesFromTool(tool: Pick<ToolCall, 'name' | 'input'>): string[] {
     if (tool.name === 'ego-browser' || tool.name === 'ego-ops') return [tool.name];
+    const documentName = getSkillDocumentName(tool);
+    if (documentName) return [documentName];
     if (getEffectiveToolName(tool) !== 'Skill') {
         return [];
     }
@@ -171,17 +174,19 @@ export function collectConversationActivities(
             }
 
             const skillNames = getSkillNamesFromTool(message.tool);
+            const isDocumentRead = getSkillDocumentName(message.tool) !== null;
             // A shell command supplies one status for the entire batch. Do not
             // invent per-file outcomes (later reads may be skipped by &&).
-            if (skillNames.length > 0) {
+            if (skillNames.length > 0 && !(isDocumentRead && message.tool.permission?.status === 'pending')) {
                 const isBatch = skillNames.length > 1;
                 const name = skillNames.join(', ');
-                const key = JSON.stringify([ownerPath, isBatch ? 'batch' : 'skill',
+                const key = JSON.stringify([ownerPath, isDocumentRead ? 'document-read' : isBatch ? 'batch' : 'skill',
                     isBatch ? message.tool.callId ?? message.id : name]);
                 const next: SkillConversationActivity = {
                     kind: 'skill',
                     id: key,
                     name,
+                    ...(isDocumentRead ? { source: 'document-read' as const } : {}),
                     ...(isBatch ? { isBatch: true } : {}),
                     status: toolStatus(message.tool),
                     failure: getToolFailure(message),
