@@ -8,7 +8,6 @@ export type ModeOption = {
     name: string;
     description?: string | null;
     connectionLabel?: string;
-    actionLabel?: string;
 };
 
 export type PermissionMode = ModeOption;

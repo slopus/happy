@@ -46,6 +46,8 @@ vi.mock('react-native-unistyles', () => ({
                           switch: { thumb: { active: '#fff' } },
                           slider: { track: '#555' },
                           surfaceSelected: '#333',
+                          surfacePressed: '#272727',
+                          surfaceRipple: 'rgba(255, 255, 255, 0.08)',
                           divider: '#444',
                           input: { background: '#111' },
                           shadow: { color: '#000', opacity: 0.2 },
@@ -162,7 +164,7 @@ describe('SessionComposerModeSelector', () => {
         act(() => renderer.unmount());
     });
 
-    it('opens a direct agent menu without changing agent until a row is chosen', () => {
+    it('keeps the strength header clear and opens direct Agent selection from the model list', () => {
         const onSelect = vi.fn(); const onReset = vi.fn(); let renderer: any;
         act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online
             model={modelOptions[0]} modelOptions={modelOptions} effort={effortOptions[0]} effortOptions={effortOptions}
@@ -170,6 +172,8 @@ describe('SessionComposerModeSelector', () => {
             agentSwitcher={{ id: 'codex', current: 'Codex', options: [{ key: 'codex', label: 'Codex' }, { key: 'claude', label: 'Claude Code' }], onSelect }} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
         expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-reset' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-menu' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         const button = renderer.root.findByProps({ testID: 'session-composer-agent-menu' });
         expect(button.props.accessibilityHint).toBe('Codex');
         expect(button.findByType('CodingAgentIcon').props.agent).toBe('codex');
@@ -182,16 +186,17 @@ describe('SessionComposerModeSelector', () => {
         act(() => renderer.unmount());
     });
 
-    it('offers direct agent selection with one model and disables the menu with one agent', () => {
+    it('offers direct Agent selection with one model and omits the menu with one Agent', () => {
         const onSelect = vi.fn(); let renderer: any;
         const props = { online: true, model: modelOptions[0], modelOptions: modelOptions.slice(0, 1), effort: null, effortOptions: [], onModelChange: vi.fn(), onEffortChange: vi.fn() };
         act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} agentSwitcher={{ id: 'opencode', current: 'OpenCode', options: [{ key: 'opencode', label: 'OpenCode' }, { key: 'codex', label: 'Codex' }], onSelect }} />); });
         const trigger = () => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' });
         expect(trigger().props.disabled).toBe(false);
         act(() => trigger().props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-composer-agent-menu' })).toBeDefined();
         act(() => renderer.update(<SessionComposerModeSelector {...props} modelOptions={modelOptions} agentSwitcher={{ id: 'codex', current: 'Codex', options: [{ key: 'codex', label: 'Codex' }], onSelect }} />));
-        const cycle = renderer.root.findByProps({ testID: 'session-composer-agent-menu' });
-        expect(cycle.props.disabled).toBe(true);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-menu' })).toHaveLength(0);
         expect(onSelect).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
@@ -326,15 +331,17 @@ describe('SessionComposerModeSelector', () => {
         let finish!: () => void;
         const onRefreshModels = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
         const onModelChange = vi.fn();
-        const props = { online: true, model: modelOptions[0], modelOptions: modelOptions.slice(0, 1), effort: null, effortOptions: [],
+        const props = { online: true, preferModelList: true, model: modelOptions[0], modelOptions: modelOptions.slice(0, 1), effort: null, effortOptions: [],
             onModelChange, onEffortChange: vi.fn(), onRefreshModels };
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
         expect(onRefreshModels).not.toHaveBeenCalled();
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-search' })).toHaveLength(0);
         act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         expect(onRefreshModels).toHaveBeenCalledTimes(1);
         expect(renderer.root.findByProps({ testID: 'session-composer-refresh-models' }).props.disabled).toBe(true);
+        expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'common.loading')).toBe(false);
         const daily = { key: 'group/daily-auto', name: 'group/daily-auto', description: '日常自动路由 · routing group via magpie' };
         await act(async () => {
             renderer.update(<SessionComposerModeSelector {...props} modelOptions={[...modelOptions, daily]} />);
@@ -344,6 +351,32 @@ describe('SessionComposerModeSelector', () => {
         act(() => renderer.root.findByProps({ testID: 'session-composer-model-search' }).props.onChangeText('daily'));
         act(() => renderer.root.findByProps({ testID: 'session-composer-model-group/daily-auto' }).props.onPress());
         expect(onModelChange).toHaveBeenCalledExactlyOnceWith('group/daily-auto');
+        act(() => renderer.unmount());
+    });
+
+    it('shows Magpie as a source and highlights hovered rows without elevating them', () => {
+        const magpie = { key: 'magpie::gpt-6.2-sol', name: 'GPT-6.2 Sol', connectionLabel: 'Magpie' };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online model={magpie}
+            modelOptions={[magpie, ...modelOptions]} effort={effortOptions[0]} effortOptions={effortOptions}
+            onModelChange={vi.fn()} onEffortChange={vi.fn()}
+            agentSwitcher={{ id: 'codex', current: 'Magpie', options: [{ key: 'codex', label: 'Codex' }], onSelect: vi.fn() }} />); });
+        const trigger = renderer.root.findByProps({ testID: 'session-composer-mode-trigger' });
+        expect(trigger.props.accessibilityLabel).not.toContain('Magpie');
+        act(() => trigger.props.onPress());
+        const models = renderer.root.findByProps({ testID: 'session-composer-open-models' });
+        act(() => models.props.onPress());
+        const selected = renderer.root.findByProps({ testID: `session-composer-model-${magpie.key}` });
+        expect(selected.props.accessibilityLabel).toBe('GPT-6.2 Sol, Magpie');
+        const style = (row: any, hovered: boolean) => Object.assign({}, ...row.props.style({ hovered, pressed: false }).filter(Boolean));
+        expect(style(selected, false).backgroundColor).toBe('#333');
+        expect(style(selected, true)).toMatchObject({ backgroundColor: 'rgba(255, 255, 255, 0.08)' });
+        expect(style(selected, true).shadowColor).toBeUndefined();
+        expect(selected.props.accessibilityState.checked).toBe(true);
+        const unselected = renderer.root.findByProps({ testID: 'session-composer-model-gpt-5.5' });
+        expect(style(unselected, true)).toMatchObject({ backgroundColor: 'rgba(255, 255, 255, 0.08)' });
+        expect(style(unselected, true).shadowColor).toBeUndefined();
+        expect(style(unselected, false).backgroundColor).toBeUndefined();
         act(() => renderer.unmount());
     });
 

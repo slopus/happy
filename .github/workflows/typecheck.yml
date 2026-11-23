@@ -40,6 +40,8 @@ jobs:
               run: pnpm install --frozen-lockfile
 
             - name: TypeScript typecheck
+              env:
+                  NODE_OPTIONS: '--max-old-space-size=4096'
               run: pnpm --filter happy-app typecheck
 
             - name: Verify Expo Camera scanner transition patch

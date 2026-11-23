@@ -304,9 +304,12 @@ describe('SessionConfigPanel composer layout', () => {
     });
 
     it('keeps agent settings out of the model popup while retaining direct agent selection', async () => {
+        mocks.cliAvailability.claude = true;
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
         expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-manage' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-menu' })).toHaveLength(0);
+        await act(async () => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         expect(renderer.root.findByProps({ testID: 'session-composer-agent-menu' })).toBeDefined();
         expect(mocks.openSettingsRoute).not.toHaveBeenCalled();
     });
@@ -373,25 +376,29 @@ describe('SessionConfigPanel composer layout', () => {
         const ref = React.createRef<any>();
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
-        const cycle = () => renderer.root.findByProps({ testID: 'session-composer-agent-menu' });
-        expect(cycle().props.accessibilityHint).toBe('Codex');
+        const modelList = () => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress();
+        const agentMenu = () => renderer.root.findByProps({ testID: 'session-composer-agent-menu' });
         expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-reset' })).toHaveLength(0);
-        act(() => cycle().props.onPress());
+        await act(async () => modelList());
+        expect(agentMenu().props.accessibilityHint).toBe('Codex');
+        act(() => agentMenu().props.onPress());
         expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-gemini' })).toHaveLength(0);
         act(() => renderer.root.findByProps({ testID: 'session-composer-agent-claude' }).props.onPress());
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection()).toMatchObject({ modelKey: 'opus', effortKey: 'high', fastMode: false });
-        expect(cycle().props.accessibilityHint).toBe('Claude Code');
-        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        await act(async () => modelList());
+        expect(agentMenu().props.accessibilityHint).toBe('Claude Code');
         expect(renderer.root.findAllByProps({ testID: 'session-composer-model-codex::gpt-5.6-sol' })).toHaveLength(0);
         act(() => renderer.root.findByProps({ testID: 'session-composer-model-claude::sonnet' }).props.onPress());
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection().modelKey).toBe('sonnet');
-        act(() => cycle().props.onPress());
+        await act(async () => modelList());
+        act(() => agentMenu().props.onPress());
         act(() => renderer.root.findByProps({ testID: 'session-composer-agent-codex' }).props.onPress());
         expect(mocks.draftStore.getState().agentType).toBe('codex');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-sol');
-        expect(cycle().props.accessibilityHint).toBe('Codex');
+        await act(async () => modelList());
+        expect(agentMenu().props.accessibilityHint).toBe('Codex');
     });
 
     it('preserves a Magpie model shared by two agents without changing agent from model selection', async () => {
@@ -405,6 +412,7 @@ describe('SessionConfigPanel composer layout', () => {
         const ref = React.createRef<any>();
         await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel ref={ref} layout="composer" collapsible={false} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'session-composer-agent-menu' }).props.onPress());
         await act(async () => { renderer.root.findByProps({ testID: 'session-composer-agent-claude' }).props.onPress(); });
         expect(mocks.draftStore.getState().agentType).toBe('claude');
@@ -426,6 +434,8 @@ describe('SessionConfigPanel composer layout', () => {
         const tree = () => <SessionConfigPanel ref={ref} layout="composer" />;
         await act(async () => { renderer = TestRenderer.create(tree()); });
         await act(async () => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-search' })).toHaveLength(0);
+        await act(async () => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         expect(renderer.root.findByProps({ testID: 'session-composer-model-group-GPT' })).toBeDefined();
         expect(renderer.root.findByProps({ testID: 'session-composer-model-group-Gemini' })).toBeDefined();
         act(() => renderer.root.findByProps({ testID: `session-composer-model-magpie::${gateway.code}` }).props.onPress());

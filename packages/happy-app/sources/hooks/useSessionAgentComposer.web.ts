@@ -135,7 +135,6 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
     };
     const nativeRoutes = magpieModels.map(model => ({
         ...model, key: `magpie::${model.key}`, connectionLabel: 'Magpie',
-        actionLabel: t('sidebar.newSession'),
     }));
     const sourceModels = (useMagpie ? base.modelOptions : pending ? models : base.modelOptions)
         .map(model => ({ ...model, ...(nativeRoutes.length && current === 'codex' && (!pending || useMagpie)
@@ -197,7 +196,6 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
                 onFastModeChange: enabled => update({ fastMode: enabled }),
             } : base),
             ownerScope: scope,
-            preferModelList: discoverMagpie || base.preferModelList,
             online: online && (pending || base.online) && !busy,
             model: displayedModel,
             modelOptions: options,
