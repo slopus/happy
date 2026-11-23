@@ -243,6 +243,7 @@ export const knownTools = {
     // Gemini uses lowercase 'read'
     'read': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.Path === 'string') return resolvePath(opts.tool.input.Path, opts.metadata);
             // Gemini uses 'locations' array with 'path' field
             if (opts.tool.input.locations && Array.isArray(opts.tool.input.locations) && opts.tool.input.locations[0]?.path) {
                 const path = resolvePath(opts.tool.input.locations[0].path, opts.metadata);
@@ -688,7 +689,7 @@ export const knownTools = {
                 return false;
             }
 
-            const command = input?.command;
+            const command = input?.command ?? input?.CommandLine;
             if (typeof command === 'string' && command.trim().length > 0) {
                 return false;
             }

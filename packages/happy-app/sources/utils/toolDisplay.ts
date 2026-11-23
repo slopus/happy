@@ -101,7 +101,7 @@ export function getToolSummaryDetail(tool: Pick<ToolCall, 'name' | 'input' | 'de
         return terminalCommand;
     }
 
-    const filePath = tool.input?.file_path;
+    const filePath = tool.input?.file_path ?? tool.input?.Path;
     if (typeof filePath === 'string' && filePath.trim().length > 0) {
         return filePath.trim();
     }
@@ -152,7 +152,7 @@ export function getTerminalToolCommand(tool: Pick<ToolCall, 'name' | 'input'>): 
         }
     }
 
-    const directCommand = stringifyToolCommand(tool.input?.command);
+    const directCommand = stringifyToolCommand(tool.input?.command ?? tool.input?.CommandLine);
     if (directCommand) {
         return directCommand;
     }

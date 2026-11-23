@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   let killHandler: (() => Promise<void>) | null = null;
 
   let fileHandler: ((message: any) => void) | null = null;
+  let agentState: Record<string, any> = {};
   const mockSession = {
     onFileEvent: vi.fn((handler: (message: any) => void) => { fileHandler = handler; }),
     downloadAndDecryptAttachment: vi.fn(async (_ref: string) => new Uint8Array([137, 80, 78, 71])),
@@ -23,7 +24,7 @@ const mocks = vi.hoisted(() => {
     flush: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
     updateAgentState: vi.fn((handler: (state: Record<string, unknown>) => Record<string, unknown>) => {
-      handler({});
+      agentState = handler(agentState);
     }),
     rpcHandlerManager: {
       registerHandler: vi.fn((name: string, handler: (params: any) => Promise<any> | any) => {
@@ -73,6 +74,8 @@ const mocks = vi.hoisted(() => {
       killHandler = handler;
     },
     mockSession,
+    getAgentState: () => agentState,
+    resetAgentState: () => { agentState = {}; },
     getFileHandler: () => fileHandler,
     backendState,
   };
@@ -128,7 +131,8 @@ vi.mock('@/ui/logger', () => ({
   },
 }));
 
-vi.mock('./AcpBackend', () => ({
+vi.mock('./AcpBackend', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./AcpBackend')>(),
   AcpBackend: class MockAcpBackend {
     constructor(args: any) {
       mocks.backendState.constructorArgs = args;
@@ -208,6 +212,7 @@ describe('runAcp', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resetAgentState();
     mocks.sessionHandlers.clear();
     mocks.mockSession.downloadAndDecryptAttachment.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
     mocks.setUserMessageHandler(null);
@@ -261,6 +266,71 @@ describe('runAcp', () => {
 
     await mocks.getKillHandler()!();
     await runPromise;
+  });
+
+  it('publishes the native ACP options and returns the exact persistent scope chosen by the client', async () => {
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      const pending = mocks.backendState.constructorArgs.permissionHandler.handleToolCall('native-call', 'execute', { CommandLine: 'pwd' }, [
+        { optionId: 'once', kind: 'allow_once', name: '本次允许' },
+        { optionId: 'remember', kind: 'allow_always', name: '记住此命令' },
+      ]);
+      const state = mocks.mockSession.updateAgentState.mock.calls.map(([update]) => update({} as any))
+        .find(state => Object.values((state.requests ?? {}) as object).some((request: any) => request.tool === 'execute')) as any;
+      const id = Object.keys(state.requests)[0];
+      expect(state.requests[id].permissionOptions).toEqual([
+        { id: 'once', kind: 'allow_once', name: '本次允许' },
+        { id: 'remember', kind: 'allow_always', name: '记住此命令' },
+      ]);
+      await mocks.sessionHandlers.get('permission')!({ id, approved: true, decision: 'approved_for_session', optionId: 'remember' });
+      await expect(pending).resolves.toEqual({ decision: 'approved_for_session', optionId: 'remember' });
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('applies an explicit agy full-access setting to pending and subsequent requests, then restores confirmation', async () => {
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      const handler = mocks.backendState.constructorArgs.permissionHandler;
+      const pending = handler.handleToolCall('before', 'execute', { CommandLine: 'pwd' });
+      const setMode = mocks.sessionHandlers.get('setPermissionMode');
+      expect(setMode).toBeTypeOf('function');
+      await expect(setMode!({ mode: 'bypassPermissions' })).resolves.toBe(true);
+      await expect(pending).resolves.toEqual({ decision: 'approved' });
+      await expect(handler.handleToolCall('after', 'execute', { CommandLine: 'pwd' })).resolves.toEqual({ decision: 'approved' });
+      await expect(setMode!({ mode: 'default' })).resolves.toBe(true);
+      mocks.getUserMessageHandler()!({ content: { text: 'stale queued mode' }, meta: { permissionMode: 'bypassPermissions' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      let resolved = false;
+      const next = handler.handleToolCall('confirm-again', 'execute', { CommandLine: 'pwd' }).then(() => { resolved = true; });
+      await Promise.resolve();
+      expect(resolved).toBe(false);
+      await expect(setMode!({ mode: 'invalid' })).rejects.toThrow();
+      await setMode!({ mode: 'bypassPermissions' });
+      await next;
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('does not mark an ambiguous ACP approval as granted and rebinds live controls after a session swap', async () => {
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      const pending = mocks.backendState.constructorArgs.permissionHandler.handleToolCall('ambiguous', 'execute', {}, [
+        { optionId: 'scope-a', kind: 'allow_once', name: 'A' }, { optionId: 'scope-b', kind: 'allow_once', name: 'B' },
+      ]);
+      const id = Object.keys(mocks.getAgentState().requests)[0];
+      await mocks.sessionHandlers.get('permission')!({ id, approved: true });
+      await expect(pending).resolves.toEqual({ decision: 'abort' });
+      expect(mocks.getAgentState().completedRequests[id].status).toBe('denied');
+      const handlers = new Map<string, any>();
+      const nextSession = { ...mocks.mockSession, rpcHandlerManager: { registerHandler: (name: string, handler: any) => handlers.set(name, handler) } };
+      mocks.mockSetupOfflineReconnection.mock.calls[0][0].onSessionSwap(nextSession);
+      expect(handlers.get('setPermissionMode')).toBeTypeOf('function');
+    } finally { await mocks.getKillHandler()!(); await run; }
   });
 
   const imageEvent = (ref: string) => ({ content: { data: { ev: {

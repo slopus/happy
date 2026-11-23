@@ -29,6 +29,30 @@ function toolMessage(
 }
 
 describe('Claude Skill document reads', () => {
+    it('recognizes agy Path arguments and historical single file locations as document loads', () => {
+        for (const input of [
+            { Path: '/skills/ego-browser/SKILL.md' },
+            { locations: [{ path: '/skills/ego-browser/SKILL.md' }] },
+        ]) {
+            const message = toolMessage(1, 'read', input);
+            expect(collectConversationActivities([message]).skills).toEqual([
+                expect.objectContaining({ name: 'ego-browser', source: 'document-read', status: 'completed' }),
+            ]);
+        }
+    });
+
+    it('does not infer an agy Skill from ambiguous locations or a non-read operation', () => {
+        expect(getSkillDocumentName(toolMessage(1, 'read', { locations: [
+            { path: '/skills/one/SKILL.md' }, { path: '/skills/two/SKILL.md' },
+        ] }).tool)).toBeNull();
+        expect(getSkillNamesFromTool(toolMessage(1, 'edit', { Path: '/skills/ego-ops/SKILL.md' }).tool)).toEqual([]);
+    });
+
+    it('recognizes an agy command only when it exclusively reads Skill documents', () => {
+        expect(collectConversationActivities([toolMessage(1, 'execute', { CommandLine: "cat '/skills/ego-ops/SKILL.md'" })]).skills)
+            .toEqual([expect.objectContaining({ name: 'ego-ops', source: 'command-read' })]);
+        expect(getSkillNamesFromTool(toolMessage(2, 'execute', { CommandLine: "cat '/skills/ego-ops/SKILL.md' && rm file" }).tool)).toEqual([]);
+    });
     it.each([
         ['/Users/example/jacky-skills/skills/photo-to-styled-motion/SKILL.md', 'photo-to-styled-motion'],
         ['/Volumes/External Drive/project/.agents/skills/grade-images/SKILL.md', 'grade-images'],
@@ -75,7 +99,7 @@ describe('Claude Skill document reads', () => {
         },
     );
 
-    it.each(['Write', 'Edit', 'Bash', 'Grep', 'read'])('does not infer a document read from %s', (name) => {
+    it.each(['Write', 'Edit', 'Bash', 'Grep'])('does not infer a document read from %s', (name) => {
         const message = toolMessage(1, name, { file_path: '/skills/local-style/SKILL.md' });
         expect(getSkillDocumentName(message.tool)).toBeNull();
         expect(getSkillNamesFromTool(message.tool)).toEqual([]);

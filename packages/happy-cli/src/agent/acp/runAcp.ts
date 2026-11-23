@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
-import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
+import { AcpBackend, normalizeAcpPermissionResult, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
@@ -23,7 +23,7 @@ import { encodeBase64 } from '@/api/encryption';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
-import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermissionHandler';
+import { BasePermissionHandler, type PendingRequest, type PermissionResponse, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import type { AgentState, FileEventMessage } from '@/api/types';
 import type { WorkerSessionStartupLifecycle } from '@/api/sessionStartupTrace';
@@ -418,6 +418,7 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
+  private permissionMode: 'default' | 'bypassPermissions' = 'default';
   private static readonly ALWAYS_AUTO_APPROVE_NAMES: ReadonlySet<string> = new Set([
     'change_title',
     'happy__change_title',
@@ -431,13 +432,25 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
     'archive_session',
   ];
 
-  constructor(session: ApiSessionClient, agentName: string) {
+  constructor(session: ApiSessionClient, agentName: string, private readonly sessionCallId: (id: string) => string) {
     super(session);
     this.logPrefix = `[${agentName}]`;
   }
 
   protected getLogPrefix(): string {
     return this.logPrefix;
+  }
+
+  setPermissionMode(mode: 'default' | 'bypassPermissions'): void {
+    this.permissionMode = mode;
+    if (mode === 'bypassPermissions') this.approveAllPending('approved');
+  }
+
+  protected resolvePermissionResponse(response: PermissionResponse, pending: PendingRequest): PermissionResult {
+    const result = super.resolvePermissionResponse(response, pending);
+    return pending.permissionOptions ? normalizeAcpPermissionResult(pending.permissionOptions.map(option => ({
+      optionId: option.id, name: option.name, kind: option.kind,
+    })), result) : result;
   }
 
   private shouldAutoApprove(toolName: string, toolCallId: string): boolean {
@@ -454,8 +467,11 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
     return false;
   }
 
-  async handleToolCall(toolCallId: string, toolName: string, input: unknown): Promise<PermissionResult> {
-    if (this.shouldAutoApprove(toolName, toolCallId)) {
+  async handleToolCall(providerCallId: string, toolName: string, input: unknown, options?: Parameters<AcpPermissionHandler['handleToolCall']>[3]): Promise<PermissionResult> {
+    const toolCallId = this.sessionCallId(providerCallId);
+    const permissionOptions = options?.map(option => ({ id: option.optionId, name: option.name, kind: option.kind }));
+    if (this.permissionMode === 'bypassPermissions' || this.shouldAutoApprove(toolName, providerCallId)) {
+      const result = options ? normalizeAcpPermissionResult(options, { decision: 'approved' }) : { decision: 'approved' as const };
       this.session.updateAgentState((currentState) => ({
         ...currentState,
         completedRequests: {
@@ -465,14 +481,15 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
             arguments: input,
             createdAt: Date.now(),
             completedAt: Date.now(),
-            status: 'approved',
-            decision: 'approved',
+            status: result.decision === 'abort' ? 'denied' : 'approved',
+            ...result,
+            ...(permissionOptions ? { permissionOptions } : {}),
           },
         },
       } satisfies AgentState));
 
-      logger.debug(`${this.logPrefix} Auto-approved Happy MCP tool: ${toolName} (${toolCallId})`);
-      return { decision: 'approved' };
+      logger.debug(`${this.logPrefix} Applied ACP approval policy: ${toolName} (${toolCallId})`);
+      return result;
     }
 
     return new Promise<PermissionResult>((resolve, reject) => {
@@ -481,8 +498,9 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
         reject,
         toolName,
         input,
+        permissionOptions,
       });
-      this.addPendingRequestToState(toolCallId, toolName, input);
+      this.addPendingRequestToState(toolCallId, toolName, input, permissionOptions);
       logger.debug(`${this.logPrefix} Permission request sent for tool: ${toolName} (${toolCallId})`);
     });
   }
@@ -535,6 +553,7 @@ export async function runAcp(opts: {
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
   });
+  if (opts.agentName === 'antigravity') metadata.capabilities = { ...metadata.capabilities, acpPermissionPolicy: true };
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
     logAcp('muted', `Happy Session ID: ${response.id}`);
@@ -543,6 +562,7 @@ export async function runAcp(opts: {
   let session: ApiSessionClient;
   let permissionHandler: GenericAcpPermissionHandler;
   let bindInputHandlers: (() => void) | undefined;
+  let bindPermissionModeHandler: (() => void) | undefined;
   const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
     api,
     sessionTag,
@@ -555,6 +575,7 @@ export async function runAcp(opts: {
       if (permissionHandler) {
         permissionHandler.updateSession(newSession);
       }
+      bindPermissionModeHandler?.();
     },
   });
   session = initialSession;
@@ -573,14 +594,15 @@ export async function runAcp(opts: {
     }
   }
 
-  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  const sessionManager = new AcpSessionManager();
+  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName, id => sessionManager.getSessionCallId(id));
   // Drop any permission requests left in agent state from a previous CLI
   // process that died while a tool prompt was open — see the matching
   // call in claudeRemoteLauncher for the full rationale.
   permissionHandler.reset('Previous CLI process exited before responding');
-  const sessionManager = new AcpSessionManager();
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
+  let permissionModeOverride: 'default' | 'bypassPermissions' | null = null;
   let currentModel: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;
   let modelSelector: AcpConfigSelector | null = null;
@@ -684,6 +706,14 @@ export async function runAcp(opts: {
   };
 
   const switchPermissionModeIfRequested = async (requestedMode: string): Promise<void> => {
+    if (opts.agentName === 'antigravity') {
+      const mode = permissionModeOverride ?? requestedMode;
+      if (mode !== 'default' && mode !== 'bypassPermissions') throw new Error('Unsupported Antigravity permission mode');
+      permissionModeOverride = mode;
+      permissionHandler.setPermissionMode(mode);
+      session.updateMetadata(metadata => metadata.acpPermissionMode === mode ? metadata : { ...metadata, acpPermissionMode: mode });
+      return;
+    }
     if (!requestedMode) {
       return;
     }
@@ -1025,6 +1055,21 @@ export async function runAcp(opts: {
   }
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
+  bindPermissionModeHandler = () => {
+    if (opts.agentName !== 'antigravity') return;
+    if (permissionModeOverride !== null) session.updateMetadata(metadata => ({ ...metadata, acpPermissionMode: permissionModeOverride! }));
+    session.rpcHandlerManager.registerHandler('setPermissionMode', async (request: { mode?: unknown }) => {
+      if (shouldExit) throw new Error('Session has ended');
+      if (request.mode !== 'default' && request.mode !== 'bypassPermissions') throw new Error('Unsupported Antigravity permission mode');
+      permissionModeOverride = request.mode;
+      currentPermissionMode = request.mode;
+      permissionHandler.setPermissionMode(request.mode);
+      const mode = request.mode;
+      session.updateMetadata(metadata => ({ ...metadata, acpPermissionMode: mode }));
+      return true;
+    });
+  };
+  bindPermissionModeHandler();
   if (opts.agentName === 'antigravity') session.rpcHandlerManager.registerHandler('setAcpConfig', async (request: { model?: string; effort?: string | null }) => serializeConfig(async () => {
     if (shouldExit || !acpSessionId || thinking || pendingTurn) throw new Error('Session must be idle to change configuration');
     if (request.model !== undefined) {
@@ -1095,8 +1140,8 @@ export async function runAcp(opts: {
       let promptStarted = false;
       try {
         await serializeConfig(async () => {
-          if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
-            await switchPermissionModeIfRequested(batch.mode.permissionMode);
+          if (opts.agentName === 'antigravity' || (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0)) {
+            await switchPermissionModeIfRequested(batch.mode.permissionMode ?? 'default');
           }
           if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
             await switchModelIfRequested(batch.mode.model);

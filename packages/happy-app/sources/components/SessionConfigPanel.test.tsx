@@ -12,6 +12,7 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     openSettingsRoute: vi.fn(),
     browseDirectory: vi.fn(),
+    confirm: vi.fn(),
     readClaudeModels: vi.fn(),
     magpieCatalog: null as any,
     discoverMagpie: false,
@@ -35,6 +36,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('./DesktopSettingsModal', () => ({ useDesktopSettingsModal: () => ({ openRoute: mocks.openSettingsRoute }) }));
+vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm } }));
 
 vi.mock('@/hooks/useMagpieModelCatalog', () => ({ useMagpieModelCatalog: () => ({ catalog: mocks.magpieCatalog, refresh: async () => {} }) }));
 
@@ -638,6 +640,39 @@ describe('SessionConfigPanel composer layout', () => {
         expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-more' })).toHaveLength(0);
 
 
+    });
+
+    it('resets a source Claude grant when the regular Agent picker creates an agy draft', async () => {
+        mocks.cliAvailability.claude = true;
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['claude', 'antigravity'];
+        mocks.draftStore.setState({ agentType: 'claude', permissionMode: 'bypassPermissions', modelMode: 'default' });
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="inline" collapsible={false} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-config-agent-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ accessibilityLabel: 'Antigravity' }).props.onPress());
+        expect(mocks.draftStore.getState().agentType).toBe('antigravity');
+        expect(mocks.draftStore.getState().permissionMode).toBe('default');
+    });
+
+    it('also resets source permissions when machine availability automatically falls back to agy', async () => {
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['antigravity'];
+        mocks.draftStore.setState({ agentType: 'claude', permissionMode: 'bypassPermissions', modelMode: 'default' });
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="inline" collapsible={false} />); });
+        expect(mocks.draftStore.getState().agentType).toBe('antigravity');
+        expect(mocks.draftStore.getState().permissionMode).toBe('default');
+    });
+
+    it('requires an explicit risk confirmation before a new agy draft can select full access', async () => {
+        mocks.cliAvailability.antigravity = true;
+        mocks.configuredAgents.mac = ['antigravity'];
+        mocks.draftStore.setState({ agentType: 'antigravity', permissionMode: 'default', modelMode: 'default' });
+        mocks.confirm.mockResolvedValue(false);
+        await act(async () => { renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
+        await act(async () => { await renderer.root.findByProps({ testID: 'session-composer-permission-option-full-access' }).props.onPress(); });
+        expect(mocks.confirm).toHaveBeenCalledTimes(1);
+        expect(mocks.draftStore.getState().permissionMode).toBe('default');
     });
 
     it('scopes both the picker and send selection to the machine account binding', async () => {

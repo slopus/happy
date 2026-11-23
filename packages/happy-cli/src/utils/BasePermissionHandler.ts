@@ -9,7 +9,7 @@
 
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
-import { AgentState } from "@/api/types";
+import { AgentState, type AcpPermissionOption } from "@/api/types";
 
 /**
  * Permission response from the mobile app.
@@ -18,6 +18,7 @@ export interface PermissionResponse {
     id: string;
     approved: boolean;
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+    optionId?: string;
 }
 
 /**
@@ -28,6 +29,7 @@ export interface PendingRequest {
     reject: (error: Error) => void;
     toolName: string;
     input: unknown;
+    permissionOptions?: AcpPermissionOption[];
 }
 
 /**
@@ -35,6 +37,7 @@ export interface PendingRequest {
  */
 export interface PermissionResult {
     decision: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+    optionId?: string;
 }
 
 /**
@@ -52,6 +55,15 @@ export abstract class BasePermissionHandler {
      * Returns the log prefix for this handler.
      */
     protected abstract getLogPrefix(): string;
+
+    protected resolvePermissionResponse(response: PermissionResponse, _pending: PendingRequest): PermissionResult {
+        return {
+            decision: response.approved
+                ? response.decision === 'approved_for_session' ? 'approved_for_session' : 'approved'
+                : response.decision === 'denied' ? 'denied' : 'abort',
+            ...(typeof response.optionId === 'string' ? { optionId: response.optionId } : {}),
+        };
+    }
 
     constructor(session: ApiSessionClient) {
         this.session = session;
@@ -86,9 +98,8 @@ export abstract class BasePermissionHandler {
                 this.pendingRequests.delete(response.id);
 
                 // Resolve the permission request
-                const result: PermissionResult = response.approved
-                    ? { decision: response.decision === 'approved_for_session' ? 'approved_for_session' : 'approved' }
-                    : { decision: response.decision === 'denied' ? 'denied' : 'abort' };
+                const result = this.resolvePermissionResponse(response, pending);
+                const approved = result.decision === 'approved' || result.decision === 'approved_for_session';
 
                 pending.resolve(result);
 
@@ -107,15 +118,16 @@ export abstract class BasePermissionHandler {
                             [response.id]: {
                                 ...request,
                                 completedAt: Date.now(),
-                                status: response.approved ? 'approved' : 'denied',
-                                decision: result.decision
+                                status: approved ? 'approved' : 'denied',
+                                decision: result.decision,
+                                ...(result.optionId !== undefined ? { optionId: result.optionId } : {})
                             }
                         }
                     } satisfies AgentState;
                     return res;
                 });
 
-                logger.debug(`${this.getLogPrefix()} Permission ${response.approved ? 'approved' : 'denied'} for ${pending.toolName}`);
+                logger.debug(`${this.getLogPrefix()} Permission ${approved ? 'approved' : 'denied'} for ${pending.toolName}`);
             }
         );
     }
@@ -123,7 +135,7 @@ export abstract class BasePermissionHandler {
     /**
      * Add a pending request to the agent state.
      */
-    protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
+    protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown, permissionOptions?: AcpPermissionOption[]): void {
         this.session.updateAgentState((currentState) => ({
             ...currentState,
             requests: {
@@ -131,7 +143,8 @@ export abstract class BasePermissionHandler {
                 [toolCallId]: {
                     tool: toolName,
                     arguments: input,
-                    createdAt: Date.now()
+                    createdAt: Date.now(),
+                    ...(permissionOptions ? { permissionOptions } : {})
                 }
             }
         }));
@@ -175,9 +188,13 @@ export abstract class BasePermissionHandler {
 
         this.pendingRequests.clear();
 
+        const results = new Map<string, PermissionResult>();
+
         for (const [id, pending] of pendingSnapshot) {
             try {
-                pending.resolve({ decision });
+                const result = this.resolvePermissionResponse({ id, approved: true, decision }, pending);
+                results.set(id, result);
+                pending.resolve(result);
             } catch (err) {
                 logger.debug(`${this.getLogPrefix()} Error resolving approved request ${id}:`, err);
             }
@@ -188,11 +205,14 @@ export abstract class BasePermissionHandler {
             const completedRequests = { ...currentState.completedRequests };
 
             for (const [id, request] of Object.entries(pendingRequests)) {
+                const result = results.get(id);
+                if (!result) continue;
                 completedRequests[id] = {
                     ...request,
                     completedAt: Date.now(),
-                    status: 'approved',
-                    decision,
+                    status: result.decision === 'approved' || result.decision === 'approved_for_session' ? 'approved' : 'denied',
+                    decision: result.decision,
+                    ...(result.optionId !== undefined ? { optionId: result.optionId } : {}),
                 };
             }
 

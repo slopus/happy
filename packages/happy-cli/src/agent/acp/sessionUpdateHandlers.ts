@@ -294,7 +294,7 @@ export function startToolCall(
   ctx.emit({ type: 'status', status: 'running' });
 
   // Parse args and emit tool-call event
-  const args = parseArgsFromContent(update.content);
+  const args = { ...parseArgsFromContent(update.rawInput ?? update.content) };
 
   // Extract locations if present
   if (update.locations && Array.isArray(update.locations)) {

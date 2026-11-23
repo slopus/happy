@@ -8,6 +8,7 @@ import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import React from 'react';
 import { useRouter } from 'expo-router';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
+import { Modal as AppModal } from '@/modal';
 import { enabledCodingAgents } from '@/utils/codingAgentSelection';
 import {
     View,
@@ -1011,7 +1012,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         // first available coding agent.
         React.useEffect(() => {
             if (availableAgents.length > 0 && !availableAgents.find(a => a.key === selectedAgent)) {
-                setSelectedAgent(availableAgents[0].key);
+                switchComposerAgent(availableAgents[0].key);
             }
         }, [availableAgents, selectedAgent, setSelectedAgent]);
 
@@ -1101,7 +1102,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 ...model, key: `magpie::${model.key}`, connectionLabel: 'Magpie',
             }))];
         }, [modelModes, magpieModels, selectedAgent, codexAccountProfileId, useMagpie, getNewSessionModels, modelMetadata]);
-        const switchComposerAgent = (key: string) => {
+        function switchComposerAgent(key: string) {
             const nextAgent = availableAgents.find(agent => agent.key === key)?.key as NewSessionAgentType | undefined;
             if (!nextAgent || nextAgent === selectedAgent) return;
             if (nextAgent === 'claude') {
@@ -1136,7 +1137,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             }
             setSelectedModelKey(selection.modelMode);
             setFastMode(false);
-        };
+        }
         const configExperience = React.useMemo(
             () => getSessionConfigExperience(selectedAgent),
             [selectedAgent],
@@ -1434,8 +1435,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                     break;
                 case 'agent':
                     if (availableAgents.some((candidate) => candidate.key === key)) {
-                        if (key !== selectedAgent) setFastMode(false);
-                        setSelectedAgent(key as NewSessionAgentType);
+                        switchComposerAgent(key);
                     }
                     break;
                 case 'model': {
@@ -1458,6 +1458,13 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 case 'permission': {
                     const next = permissionModes.findIndex((mode) => mode.key === key);
                     if (next >= 0) {
+                        if (selectedAgent === 'antigravity' && key === 'bypassPermissions' && draft.permissionMode !== key) {
+                            void AppModal.confirm(t('agentInput.taskPermission.riskTitle'), t('agentInput.taskPermission.riskMessage'),
+                                { cancelText: t('common.cancel'), confirmText: t('agentInput.taskPermission.riskConfirm'), destructive: true }).then(confirmed => {
+                                    if (confirmed) { setPermissionIndex(next); draft.setPermissionMode(key); }
+                                });
+                            break;
+                        }
                         setPermissionIndex(next);
                         draft.setPermissionMode(permissionModes[next]?.key ?? 'default');
                     }
@@ -1480,6 +1487,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             permissionModes,
             selectedMachineId,
             setSelectedAgent,
+            switchComposerAgent,
             setSelectedMachineId,
             setWorktreeKey,
         ]);
@@ -1682,9 +1690,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
             </View>;
             const permissionControl = <>{
-!isOffline && showPermission && (selectedAgent === 'codex' ? (
+!isOffline && showPermission && (selectedAgent === 'codex' || selectedAgent === 'antigravity' ? (
                                 <SessionComposerPermissionSelector
-                                    online supported supportsAutomatic
+                                    online supported supportsAutomatic={selectedAgent === 'codex'}
                                     level={getTaskPermissionLevelForAgentMode(selectedAgent, currentPermission?.key)}
                                     currentMode={currentPermission?.key}
                                     unavailableReason={null}
@@ -1692,6 +1700,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                         const mode = getAgentPermissionModeForTaskLevel(selectedAgent, level);
                                         const index = permissionModes.findIndex(option => option.key === mode);
                                         if (index < 0 || !mode) return false;
+                                        if (selectedAgent === 'antigravity' && level === 'full-access' && currentPermission?.key !== mode
+                                            && !await AppModal.confirm(t('agentInput.taskPermission.riskTitle'), t('agentInput.taskPermission.riskMessage'),
+                                                { cancelText: t('common.cancel'), confirmText: t('agentInput.taskPermission.riskConfirm'), destructive: true })) return false;
                                         setPermissionIndex(index);
                                         draft.setPermissionMode(mode);
                                         return true;

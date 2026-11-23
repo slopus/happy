@@ -95,8 +95,8 @@ function readNames(source: string, depth = 0): string[] {
 
 /** Additive history activity: the retained command's status is not a per-Skill result. */
 export function getSkillCommandNames(tool: Pick<ToolCall, 'name' | 'input'>): string[] {
-    if (!['Bash', 'CodexBash'].includes(getEffectiveToolName(tool))) return [];
-    const command = tool.input?.command;
+    if (!['Bash', 'CodexBash', 'execute'].includes(getEffectiveToolName(tool))) return [];
+    const command = tool.input?.command ?? tool.input?.CommandLine;
     if (Array.isArray(command)) {
         if (!command.length || !command.every(part => typeof part === 'string')) return [];
         if (SHELLS.test(command[0].split('/').pop() ?? '')) {

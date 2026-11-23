@@ -10,6 +10,7 @@ describe('task permission mode adapter', () => {
         { flavor: 'claude', confirm: 'default', full: 'bypassPermissions' },
         { flavor: 'codex', confirm: 'acceptEdits', full: 'yolo' },
         { flavor: 'gemini', confirm: 'default', full: 'yolo' },
+        { flavor: 'antigravity', confirm: 'default', full: 'bypassPermissions' },
     ])('maps friendly levels to real $flavor modes', ({ flavor, confirm, full }) => {
         expect(getAgentPermissionModeForTaskLevel(flavor, 'confirm')).toBe(confirm);
         expect(getAgentPermissionModeForTaskLevel(flavor, 'full-access')).toBe(full);

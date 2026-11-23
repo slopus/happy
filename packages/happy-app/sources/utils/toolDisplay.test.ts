@@ -25,6 +25,10 @@ function tool(name: string, input: unknown): ToolCall {
 }
 
 describe('terminal tool display helpers', () => {
+    it('shows native agy command and path arguments beside the permission controls', () => {
+        expect(getTerminalToolCommand(tool('execute', { CommandLine: 'printf AGY_TEST' }))).toBe('printf AGY_TEST');
+        expect(getToolSummaryDetail(tool('read', { Path: '/skills/ego-ops/SKILL.md' }))).toBe('/skills/ego-ops/SKILL.md');
+    });
     it('renders a mixed legacy Skill record as terminal while retaining the command', () => {
         const command = 'cat /skills/release-ops/SKILL.md; ls /missing';
         const legacy = tool('Skill', { skillNames: ['release-ops'], command });

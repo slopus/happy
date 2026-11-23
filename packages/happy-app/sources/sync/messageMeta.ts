@@ -29,7 +29,9 @@ export function resolveMessageModeMeta(
     const permissionDefaults = getCodeAgentDefaults(taskPermissionAgent ?? flavor);
     const meta: MessageModeMeta = {};
 
-    if (session.permissionMode !== null && session.permissionMode !== undefined) {
+    if (flavor === 'antigravity' && session.metadata?.acpPermissionMode) {
+        meta.permissionMode = session.metadata.acpPermissionMode;
+    } else if (session.permissionMode !== null && session.permissionMode !== undefined) {
         meta.permissionMode = session.permissionMode;
         meta.permissionModeExplicit = true;
     } else if (permissionOverrides.permissionMode !== undefined) {

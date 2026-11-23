@@ -103,6 +103,13 @@ describe('MessageView Skill document routing', () => {
         expect(texts()).not.toContain('toolGroup.skillDocumentLabel');
     });
 
+    it('retains an agy command and its permission details when the group already renders its Skill activity', () => {
+        const message = toolMessage('execute');
+        message.tool.input = { CommandLine: "cat '/skills/ego-ops/SKILL.md'" };
+        renderMessage(message, true);
+        expect(renderer.root.findByType('ToolView').props.tool).toBe(message.tool);
+    });
+
     it('leaves an ordinary file Read as only the original ToolView', () => {
         const message = toolMessage('Read', '/repo/minimax.py');
         renderMessage(message);

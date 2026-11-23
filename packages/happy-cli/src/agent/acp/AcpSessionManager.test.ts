@@ -8,6 +8,23 @@ function mapMany(mapper: AcpSessionManager, messages: AgentMessage[]) {
 }
 
 describe('AcpSessionManager turn lifecycle', () => {
+  it('preserves a failed Skill read instead of marking it completed', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    const [ended] = mapper.mapMessage({ type: 'tool-result', toolName: 'read', callId: 'skill-read',
+      result: { status: 'failed', error: 'Permission denied: SKILL.md' } });
+    expect(ended.ev).toMatchObject({ t: 'tool-call-end', status: 'failed', error: { summary: 'Permission denied: SKILL.md' } });
+  });
+
+  it('preserves cancellation and shares the protocol call ID with pending permission state', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    const call = mapper.getSessionCallId('native-call');
+    const [started] = mapper.mapMessage({ type: 'tool-call', toolName: 'read', callId: 'native-call', args: {} });
+    const [ended] = mapper.mapMessage({ type: 'tool-result', toolName: 'read', callId: 'native-call', result: { status: 'cancelled' } });
+    expect(started.ev).toMatchObject({ t: 'tool-call-start', call });
+    expect(ended.ev).toEqual({ t: 'tool-call-end', call, status: 'cancelled' });
+  });
   it('emits turn-start from startTurn()', () => {
     const mapper = new AcpSessionManager();
     const envelopes = mapper.startTurn();

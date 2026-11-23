@@ -27,12 +27,17 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
     const [loadingBypass, setLoadingBypass] = useState(false);
     const [loadingForSession, setLoadingForSession] = useState(false);
+    const [acpSelection, setAcpSelection] = useState<string | null>(null);
     const session = useSession(sessionId);
     const isConnected = session?.presence === 'online';
     const canRespond = permission.status === 'pending' && isConnected;
     
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+    const isAcp = ['antigravity', 'opencode', 'gemini', 'acp'].includes(metadata?.flavor);
+    const acpRequest = session?.agentState?.requests?.[permission.id]
+        ?? session?.agentState?.completedRequests?.[permission.id];
+    const acpOptions = acpRequest?.permissionOptions;
 
     const handleApprove = async () => {
         if (!canRespond || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession) return;
@@ -297,6 +302,50 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             color: theme.colors.text,
         },
     });
+
+    if (isAcp) {
+        // Older workers cannot advertise a persistent scope. Their fallback is
+        // single approval or denial, never Claude-specific bypass/allowTools.
+        const options = acpOptions ?? [
+            { id: 'allow-once', name: t('common.yes'), kind: 'allow_once' },
+            { id: 'reject-once', name: t('common.no'), kind: 'reject_once' },
+        ];
+        const selected = session?.agentState?.completedRequests?.[permission.id]?.optionId;
+        return <View style={styles.container}>
+            {isPending && !isConnected ? <View style={styles.offlineNotice} testID="permission-offline-notice">
+                <Ionicons name="cloud-offline-outline" size={15} color={theme.colors.textSecondary} />
+                <Text style={styles.offlineNoticeText}>{t('status.permissionUnavailableOffline')}</Text>
+            </View> : null}
+            <View style={styles.buttonContainer}>
+                {options.map(option => <TouchableOpacity
+                    key={option.id}
+                    testID={`permission-acp-${option.id}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={option.name}
+                    disabled={!canRespond || acpSelection !== null}
+                    activeOpacity={canRespond ? 0.7 : 1}
+                    style={[styles.button, selected === option.id && styles.buttonSelected]}
+                    onPress={async () => {
+                        if (!canRespond || acpSelection !== null) return;
+                        setAcpSelection(option.id);
+                        try {
+                            const optionId = acpOptions ? option.id : undefined;
+                            if (option.kind === 'allow_once' || option.kind === 'allow_always') {
+                                await sessionAllow(sessionId, permission.id, undefined, undefined,
+                                    option.kind === 'allow_always' ? 'approved_for_session' : 'approved', undefined, optionId);
+                            } else {
+                                await sessionDeny(sessionId, permission.id, undefined, undefined, 'denied', optionId);
+                            }
+                        } catch (error) { console.error('Failed to respond to ACP permission:', error); }
+                        finally { setAcpSelection(null); }
+                    }}
+                >
+                    {acpSelection === option.id ? <ActivityIndicator size="small" color={theme.colors.text} />
+                        : <Text style={styles.buttonText}>{option.name}</Text>}
+                </TouchableOpacity>)}
+            </View>
+        </View>;
+    }
 
     // Render Codex buttons if this is a Codex session
     if (isCodex) {

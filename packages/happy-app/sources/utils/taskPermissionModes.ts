@@ -1,6 +1,6 @@
 export type TaskPermissionLevel = 'confirm' | 'automatic' | 'full-access';
 
-export type TaskPermissionAgent = 'claude' | 'codex' | 'gemini';
+export type TaskPermissionAgent = 'claude' | 'codex' | 'gemini' | 'antigravity';
 
 type TaskPermissionMapping = Partial<Record<TaskPermissionLevel, string>>;
 
@@ -18,6 +18,7 @@ const TASK_PERMISSION_MAPPINGS: Record<TaskPermissionAgent, TaskPermissionMappin
         confirm: 'default',
         'full-access': 'yolo',
     },
+    antigravity: { confirm: 'default', 'full-access': 'bypassPermissions' },
 };
 
 /**
@@ -34,7 +35,7 @@ export function resolveTaskPermissionAgent(
     if (flavor === 'codex' || flavor === 'openai' || flavor === 'gpt') {
         return 'codex';
     }
-    if (flavor === 'gemini') {
+    if (flavor === 'gemini' || flavor === 'antigravity') {
         return flavor;
     }
     return null;

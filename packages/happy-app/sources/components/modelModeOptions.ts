@@ -128,7 +128,10 @@ export function getOpenCodePermissionModes(translate: Translate): PermissionMode
 
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (isRetiredAgentFlavor(flavor)) return [];
-    if (flavor === 'antigravity') return [{ key: 'default', name: translate('agentInput.permissionMode.default'), description: null }];
+    if (flavor === 'antigravity') return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+    ];
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
     }

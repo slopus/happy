@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { resolveMessageModeMeta } from './messageMeta';
 
 describe('resolveMessageModeMeta', () => {
+    it('uses the live agy approval policy instead of a stale client override or native operating mode', () => {
+        expect(resolveMessageModeMeta({ permissionMode: 'bypassPermissions',
+            metadata: { flavor: 'antigravity', acpPermissionMode: 'default', currentOperatingModeCode: 'auto' },
+        } as any).permissionMode).toBe('default');
+        expect(resolveMessageModeMeta({ permissionMode: 'default',
+            metadata: { flavor: 'antigravity', acpPermissionMode: 'bypassPermissions' },
+        } as any).permissionMode).toBe('bypassPermissions');
+    });
     it('sends Codex YOLO code-default permission metadata when nothing was explicitly overridden', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,

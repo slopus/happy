@@ -383,6 +383,7 @@ export type Metadata = {
   currentModelCode?: string,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,
+  acpPermissionMode?: 'default' | 'bypassPermissions',
   thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>,
   currentThoughtLevelCode?: string,
   path: string,
@@ -395,6 +396,7 @@ export type Metadata = {
     updatedAt: number
   },
   capabilities?: {
+    acpPermissionPolicy?: boolean
     regenerateTitle?: boolean
     codexCredentialRecovery?: boolean
     artifactLeases?: 1 | typeof ARTIFACT_PROTOCOL
@@ -447,6 +449,12 @@ export type Metadata = {
   forkedFromMessageId?: string
 };
 
+export type AcpPermissionOption = {
+  id: string;
+  name: string;
+  kind: 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
+};
+
 export type AgentState = {
   /** Claude execution before its first protocol output; absent on older workers. */
   claudeThinking?: boolean
@@ -461,7 +469,8 @@ export type AgentState = {
     [id: string]: {
       tool: string,
       arguments: any,
-      createdAt: number
+      createdAt: number,
+      permissionOptions?: AcpPermissionOption[]
     }
   }
   completedRequests?: {
@@ -475,6 +484,8 @@ export type AgentState = {
       mode?: PermissionMode,
       decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
       allowTools?: string[]
+      permissionOptions?: AcpPermissionOption[]
+      optionId?: string
     }
   }
 }
