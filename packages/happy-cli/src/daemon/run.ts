@@ -37,6 +37,7 @@ import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { initialMachineMetadata } from './machineMetadata';
+import { createDaemonScheduledTaskRunner } from './scheduledTasks/integration';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { retiredAgentMessage } from '@/utils/retiredAgent';
 import { isUnusedCodexSession } from './emptyCodexSession';
@@ -896,7 +897,7 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSessionUnlocked = async (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }): Promise<SpawnSessionResult> => {
+    const resumeSessionUnlocked = async (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; scheduledPermissionMode?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }): Promise<SpawnSessionResult> => {
       try {
         const tracked = findTrackedSessionById(happySessionId);
         if (!tracked) {
@@ -1054,6 +1055,14 @@ export async function startDaemon(): Promise<void> {
         // old and replacement wrappers to own one Happy session concurrently.
         const liveEntry = Array.from(pidToTrackedSession.entries())
           .find(([, candidate]) => candidate === tracked);
+        if (options?.scheduledPermissionMode) {
+          if (liveEntry) return { type: 'error', errorMessage: 'A scheduled task cannot restart an existing worker.' };
+          const previousPid = metadata.hostPid;
+          if (previousPid) {
+            try { process.kill(previousPid, 0); return { type: 'error', errorMessage: 'Task conversation worker is still present.' }; }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return { type: 'error', errorMessage: 'Cannot verify the previous task worker.' }; }
+          }
+        }
         if (liveEntry) {
           const [, liveSession] = liveEntry;
           if (!liveSession.childProcess) {
@@ -1068,12 +1077,13 @@ export async function startDaemon(): Promise<void> {
             return { type: 'error', errorMessage: 'The failed session did not stop cleanly, so Paws did not start a replacement.' };
           }
         }
-        if (!liveEntry && agent === 'codex') {
+        if (!liveEntry && agent === 'codex' && !options?.scheduledPermissionMode) {
           await stopDetachedCodexWorker({ pid: metadata.hostPid, sessionId: happySessionId, machineId,
             profileId: metadata.codexAccountProfileId, homesRoot: join(configuration.happyHomeDir, 'codex-session-homes') });
         }
         const env = {
             ...process.env,
+            ...(options?.scheduledPermissionMode ? { HAPPY_SCHEDULED_PERMISSION_MODE: options.scheduledPermissionMode } : {}),
             ...(applicationPolicy ? { [NATIVE_POLICY_ENV]: JSON.stringify(applicationPolicy) } : {}),
             ...(isMagpie ? { [EXPECT_MAGPIE_CONNECTION_ENV]: '1' } : {}),
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
@@ -1109,7 +1119,7 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSession = (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }): Promise<SpawnSessionResult> => {
+    const resumeSession = (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; scheduledPermissionMode?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }): Promise<SpawnSessionResult> => {
       const existing = resumeSessionInFlight.get(happySessionId);
       if (existing) return existing;
       const pending = resumeSessionUnlocked(happySessionId, options);
@@ -1433,6 +1443,18 @@ export async function startDaemon(): Promise<void> {
     });
 
     // Connect to server
+    apiMachine.setScheduledTaskRunner(createDaemonScheduledTaskRunner({ token: credentials.token, machine, api,
+      accountIdentity: credentials.encryption.type === 'legacy' ? credentials.encryption.secret : credentials.encryption.publicKey,
+      spawn: spawnSession, resume: resumeSession, find: findTrackedSessionById,
+      restore: binding => {
+        if (findTrackedSessionById(binding.sessionId)) return;
+        const saved = binding.saved;
+        sessionIdToFinishedSession.set(binding.sessionId, { startedBy: 'persisted', happySessionId: binding.sessionId,
+          happySessionMetadataFromLocalWebhook: saved.metadata, pid: 0,
+          encryption: { encryptionKey: decodeBase64(saved.encryptionKey), encryptionVariant: saved.encryptionVariant,
+            seq: saved.seq, metadataVersion: saved.metadataVersion, agentStateVersion: saved.agentStateVersion } });
+      },
+    }));
     apiMachine.connect();
 
     const initialCodexUsageTimer = setTimeout(() => {

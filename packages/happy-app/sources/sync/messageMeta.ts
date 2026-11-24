@@ -34,6 +34,10 @@ export function resolveMessageModeMeta(
     } else if (session.permissionMode !== null && session.permissionMode !== undefined) {
         meta.permissionMode = session.permissionMode;
         meta.permissionModeExplicit = true;
+    } else if (taskPermissionAgent === 'codex' && session.metadata?.currentOperatingModeCode) {
+        // Continue the policy displayed by the running session. Scheduled
+        // sessions can use a different policy from the app's new-chat defaults.
+        meta.permissionMode = session.metadata.currentOperatingModeCode;
     } else if (permissionOverrides.permissionMode !== undefined) {
         meta.permissionMode = permissionOverrides.permissionMode;
     } else if (taskPermissionAgent) {

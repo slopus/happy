@@ -1,6 +1,8 @@
 import * as z from 'zod';
+import { ScheduledPromptSchema } from './scheduledTasks';
 
 export const MessageMetaSchema = z.object({
+  scheduledRun: ScheduledPromptSchema.optional(),
   sentFrom: z.string().optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(),
   model: z.string().nullable().optional(),

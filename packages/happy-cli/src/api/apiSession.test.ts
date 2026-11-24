@@ -8,6 +8,7 @@ import { ApiClient } from './api';
 import { createWorkerSessionStartupLifecycleFromEnvironment, WorkerSessionStartupLifecycle } from './sessionStartupTrace';
 import { decodeBase64, decrypt, decryptBlob, encodeBase64, encrypt } from './encryption';
 import type { Update } from './types';
+import { immediateCodexCommandEnvelopes } from '@/codex/codexImmediateCommand';
 
 const {
     mockIo,
@@ -53,7 +54,8 @@ vi.mock('axios', () => ({
 
 vi.mock('@/configuration', () => ({
     configuration: {
-        serverUrl: 'https://server.test'
+        serverUrl: 'https://server.test',
+        happyHomeDir: '/tmp/paws-api-session-unit',
     }
 }));
 
@@ -1113,6 +1115,23 @@ describe('ApiSessionClient v3 messages API migration', () => {
         client.onUserMessage(message => seen.push('text:' + message.content.text),
             file => seen.push('file:' + file.content.data.ev.ref));
         expect(seen).toEqual(['file:a', 'text:a', 'file:b', 'text:b']);
+    });
+
+    it.each(['discarded input', 'local command', 'informational event'] as const)('admits a scheduled prompt after a %s has been consumed', async reason => {
+        const client = new ApiSessionClient('fake-token', session);
+        const tracker = (client as any).scheduledRunTracker;
+        vi.spyOn(tracker, 'acceptMessage').mockImplementation(() => {});
+        const reject = vi.spyOn(tracker, 'rejectMessage').mockImplementation(() => {});
+        const seen = vi.fn(); client.onUserMessage(seen);
+        const receive = (client as any).pendingMessageCallback;
+        receive({ role: 'user', content: { type: 'text', text: '/status' }, localId: 'consumed' });
+        if (reason === 'informational event') { client.sendSessionEvent({ type: 'message', message: 'Available skills' }); client.discardUserInputs(['consumed']); }
+        else if (reason === 'discarded input') client.discardUserInputs(['consumed']);
+        else for (const envelope of immediateCodexCommandEnvelopes('Status', ['consumed'])) client.sendSessionProtocolMessage(envelope);
+        reject.mockClear();
+        receive({ role: 'user', content: { type: 'text', text: 'scheduled' }, localId: 'scheduled:test', meta: { scheduledRun: {} } });
+        expect(seen).toHaveBeenCalledTimes(2);
+        expect(reject).not.toHaveBeenCalled();
     });
 
     it('fetchMessages uses after_seq=0 initially and routes user messages to callback', async () => {

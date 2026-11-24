@@ -29,6 +29,7 @@ import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
+import { scheduledLaunchPermission, assertScheduledRuntimeSupported } from '@/daemon/scheduledTasks/permissions';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -121,7 +122,9 @@ export async function runClaude(
     if (machineId && api.assertUnmanagedArtifactRunner) await api.assertUnmanagedArtifactRunner(machineId, workingDirectory);
     const sandboxConfig = options.noSandbox ? undefined : settings?.sandboxConfig;
     const sandboxEnabled = Boolean(sandboxConfig?.enabled);
-    const initialPermissionMode = applySandboxPermissionPolicy(
+    const scheduledPermission = scheduledLaunchPermission('claude');
+    if (scheduledPermission) assertScheduledRuntimeSupported(sandboxEnabled);
+    const initialPermissionMode = scheduledPermission ?? applySandboxPermissionPolicy(
         resolveInitialClaudePermissionMode(options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE, options.claudeArgs),
         sandboxEnabled,
     );
@@ -512,6 +515,7 @@ export async function runClaude(
         disallowedTools: mode.disallowedTools,
         effort: mode.effort,
     }));
+    messageQueue.setOnDiscard(localIds => session.discardUserInputs(localIds));
 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
@@ -739,7 +743,7 @@ export async function runClaude(
                     effort: messageEffort,
                 };
                 const discarded = [
-                    ...messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode),
+                    ...messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, undefined, message.localId),
                     ...attachmentsForThisMessage,
                 ].filter(isMediaAttachment);
                 await cleanupMediaAttachments(discarded);
@@ -760,7 +764,7 @@ export async function runClaude(
                     effort: messageEffort,
                 };
                 const discarded = [
-                    ...messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode),
+                    ...messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, undefined, message.localId),
                     ...attachmentsForThisMessage,
                 ].filter(isMediaAttachment);
                 await cleanupMediaAttachments(discarded);
@@ -794,19 +798,10 @@ export async function runClaude(
                         }
                     }
 
-                    session.sendClaudeSessionMessage({
-                        type: 'assistant',
-                        uuid: randomUUID(),
-                        parentUuid: null,
-                        isSidechain: false,
-                        sessionId: session.sessionId || 'unknown',
-                        timestamp: new Date().toISOString(),
-                        message: {
-                            role: 'assistant',
-                            model: 'system',
-                            content: [{ type: 'text', text: responseText }],
-                        },
-                    } as any);
+                    // Informational commands must not open an unfinished Claude
+                    // root turn or disturb an inference already in progress.
+                    session.sendSessionEvent({ type: 'message', message: responseText });
+                    if (message.localId) session.discardUserInputs([message.localId]);
                     return;
                 }
             }
@@ -822,7 +817,7 @@ export async function runClaude(
                 disallowedTools: messageDisallowedTools,
                 effort: messageEffort,
             };
-            messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localId);
+            messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localId, !!message.meta?.scheduledRun);
             logger.debugLargeJson('User message pushed to queue:', message)
         });
 

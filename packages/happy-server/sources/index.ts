@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { startScheduledTaskScheduler } from '@/app/scheduledTasks/service';
 
 import { db } from "./storage/db";
 import { initEncrypt } from "./modules/encrypt";
@@ -48,6 +49,7 @@ export async function startServer(opts: StartServerOptions): Promise<{ port: num
         injectHtmlConfig: opts.injectHtmlConfig,
     });
     startPublicSessionShareCleanup();
+    await startScheduledTaskScheduler();
     startInteractivePreviewCleanup();
     startDatabaseMetricsUpdater();
     startTimeout();

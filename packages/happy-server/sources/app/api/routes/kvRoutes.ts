@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SCHEDULED_TASK_PREFIX } from '@slopus/happy-wire';
 import { Fastify } from "../types";
 import { kvGet } from "@/app/kv/kvGet";
 import { kvList } from "@/app/kv/kvList";
@@ -119,7 +120,7 @@ export function kvRoutes(app: Fastify) {
         schema: {
             body: z.object({
                 mutations: z.array(z.object({
-                    key: z.string(),
+                    key: z.string().refine(key => !key.startsWith(SCHEDULED_TASK_PREFIX), 'Reserved namespace'),
                     value: z.string().nullable(),
                     version: z.number()  // Always required, use -1 for new keys
                 })).min(1).max(100)

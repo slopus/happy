@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     startApi: vi.fn(),
     startCleanup: vi.fn(),
     startPreviewCleanup: vi.fn(),
+    startSchedules: vi.fn(),
     startMetrics: vi.fn(),
     startTimeout: vi.fn(),
     onShutdown: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('./app/monitoring/metrics2', () => ({ startDatabaseMetricsUpdater: mocks
 vi.mock('./app/presence/timeout', () => ({ startTimeout: mocks.startTimeout }));
 vi.mock('./app/sessionSharing/publicSessionShareCleanup', () => ({ startPublicSessionShareCleanup: mocks.startCleanup }));
 vi.mock('./app/previews/previewCleanup', () => ({ startInteractivePreviewCleanup: mocks.startPreviewCleanup }));
+vi.mock('./app/scheduledTasks/service', () => ({ startScheduledTaskScheduler: mocks.startSchedules }));
 vi.mock('./utils/shutdown', () => ({ onShutdown: mocks.onShutdown }));
 
 import { startServer } from './index';
@@ -48,6 +50,7 @@ describe('startServer', () => {
 
         expect(mocks.startCleanup).toHaveBeenCalledTimes(1);
         expect(mocks.startPreviewCleanup).toHaveBeenCalledTimes(1);
+        expect(mocks.startSchedules).toHaveBeenCalledTimes(1);
         expect(mocks.loadPreviewStorage).toHaveBeenCalledTimes(1);
         expect(mocks.loadPreviewStorage).toHaveBeenCalledBefore(mocks.startApi);
         expect(mocks.startApi).toHaveBeenCalledBefore(mocks.startCleanup);

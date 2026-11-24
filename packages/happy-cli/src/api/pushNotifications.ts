@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { scheduledNotificationPolicy } from './scheduledRun';
 import { logger } from '@/ui/logger'
 import { Expo, ExpoPushMessage } from 'expo-server-sdk'
 import type { Metadata } from './types'
@@ -256,6 +257,9 @@ export class PushNotificationClient {
         metadata: Metadata | null | undefined
         data?: Record<string, any>
     }): void {
+        const scheduledSessionId = typeof params.data?.sessionId === 'string' ? params.data.sessionId : null;
+        const scheduledPolicy = scheduledSessionId ? scheduledNotificationPolicy(scheduledSessionId) : undefined;
+        if (scheduledPolicy === 'none' || (params.kind === 'done' && scheduledPolicy === 'important')) return;
         const { title, body } = getSessionNotificationCopy(params.kind, params.metadata)
         const sessionTitle = getSessionNotificationBody(params.metadata)
         const url = getSessionNotificationUrl(params.data)

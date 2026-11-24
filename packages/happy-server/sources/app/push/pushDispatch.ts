@@ -23,7 +23,7 @@ import { log } from "@/utils/log";
 
 async function fetchTokensAndSend(params: {
     userId: string;
-    sessionId: string;
+    sessionId?: string;
     title: string;
     body: string;
     data: Record<string, unknown>;
@@ -96,4 +96,11 @@ export async function dispatchSessionEventPush(params: {
     } catch (error) {
         log({ module: 'push', level: 'error' }, `Session-event push dispatch failed: ${error}`);
     }
+}
+
+/** Generic scheduling failures contain no private task title, instruction or filesystem path. */
+export async function dispatchScheduledTaskPush(params: { userId: string; taskId: string; runId: string; sessionId: string | null }): Promise<void> {
+    await fetchTokensAndSend({ userId: params.userId, sessionId: params.sessionId ?? undefined,
+        title: 'Scheduled task needs attention', body: 'Open Scheduled tasks to review the execution.', channelId: 'messages',
+        data: { url: '/scheduled-tasks', taskId: params.taskId, runId: params.runId, kind: 'permission', ...(params.sessionId ? { sessionId: params.sessionId } : {}) } });
 }

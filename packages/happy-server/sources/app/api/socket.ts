@@ -1,6 +1,7 @@
 import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
+import { wakeScheduledTasksForMachine } from '@/app/scheduledTasks/service';
 import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { Redis } from "ioredis";
@@ -164,6 +165,7 @@ export function startSocket(app: Fastify) {
 
         // Broadcast daemon online status
         if (connection.connectionType === 'machine-scoped') {
+            wakeScheduledTasksForMachine(userId, machineId!);
             // Broadcast daemon online
             const machineActivity = buildMachineActivityEphemeral(machineId!, true, Date.now());
             eventRouter.emitEphemeral({

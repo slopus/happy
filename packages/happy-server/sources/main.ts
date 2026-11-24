@@ -1,4 +1,5 @@
 import { startApi } from "@/app/api/api";
+import { startScheduledTaskScheduler } from '@/app/scheduledTasks/service';
 import { log } from "@/utils/log";
 import { awaitShutdown, onShutdown } from "@/utils/shutdown";
 import { db } from './storage/db';
@@ -42,6 +43,7 @@ async function main() {
     //
 
     await startApi();
+    await startScheduledTaskScheduler();
     startPublicSessionShareCleanup();
     startInteractivePreviewCleanup();
     await startMetricsServer();

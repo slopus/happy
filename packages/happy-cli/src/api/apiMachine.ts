@@ -135,6 +135,8 @@ function requireNonEmptyString(value: unknown, name: string): string {
 }
 
 export class ApiMachineClient {
+    private scheduledRunner: { wake(): Promise<void>; stop(): void } | null = null;
+    setScheduledTaskRunner(runner: { wake(): Promise<void>; stop(): void }): void { this.scheduledRunner = runner; }
     private crossAgentContinuationAvailable = false;
     private nativeSessionHooks?: NativeSessionHooks;
     setNativeSessionHooks(hooks: NativeSessionHooks): void { this.nativeSessionHooks = hooks; }
@@ -608,11 +610,15 @@ export class ApiMachineClient {
 
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');
+            void this.scheduledRunner?.wake().catch(() => logger.debug('[SCHEDULED TASKS] Work recovery deferred until the next connection or event'));
             this.stopAppChatWorker?.();
             this.stopAppChatWorker = startAppChatWorker(this.token, this.machine, this.nativeSessionHooks, wake => {
                 const socket=this.socket;
                 const listener=(event: {type?:string;machineId?:string}|null)=>{
                     if(event?.type==='ai-service-work-available' && event.machineId===this.machine.id)wake();
+                    if(event?.type==='scheduled-task-work-available' && event.machineId===this.machine.id) {
+                        void this.scheduledRunner?.wake().catch(() => logger.debug('[SCHEDULED TASKS] Work delivery deferred until the next connection or event'));
+                    }
                 };
                 socket.on('ephemeral',listener);
                 return ()=>{socket.off('ephemeral',listener);};
@@ -766,6 +772,7 @@ export class ApiMachineClient {
     }
 
     shutdown() {
+        this.scheduledRunner?.stop();
         logger.debug('[API MACHINE] Shutting down');
         this.artifactWatcher.dispose();
         this.projectGoals?.dispose();

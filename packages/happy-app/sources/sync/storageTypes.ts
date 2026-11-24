@@ -216,6 +216,7 @@ export interface DecryptedMessage {
 //
 
 export const MachineMetadataSchema = z.object({
+    scheduledTasks: z.literal(1).optional(),
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),

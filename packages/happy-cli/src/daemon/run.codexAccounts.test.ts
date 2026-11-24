@@ -53,7 +53,7 @@ beforeEach(async () => {
   savedHome = process.env.CODEX_HOME; process.env.CODEX_HOME = sourceHome;
   state.api = {
     getOrCreateMachine: async () => ({ id: 'machine-1', encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' }),
-    machineSyncClient: () => ({ setNativeSessionHooks: vi.fn(), setRPCHandlers: (h: any) => { state.handlers = h; }, connect: vi.fn(), shutdown: vi.fn(), updateDaemonState: async () => {}, isConnected: () => false }),
+    machineSyncClient: () => ({ setScheduledTaskRunner: vi.fn(), setNativeSessionHooks: vi.fn(), setRPCHandlers: (h: any) => { state.handlers = h; }, connect: vi.fn(), shutdown: vi.fn(), updateDaemonState: async () => {}, isConnected: () => false }),
     redeemCodexSessionGrant: vi.fn(async () => { if (state.rejectGrant) throw new Error('secret-canary'); return { auth: { tokens: { id_token: 'id', access_token: 'access', refresh_token: 'refresh', account_id: 'account' } }, launchId: 'launch-1', profile: { id: 'profile-1', displayName: 'Codex · ABCD', credentialVersion: 1 } }; }),
     attachCodexSession: vi.fn(async () => ({ success: true })), updateCodexAccountCredential: vi.fn(), reportCodexAccountQuota: vi.fn(), reportCodexAccountStatus: vi.fn(),
   };

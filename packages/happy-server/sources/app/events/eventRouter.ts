@@ -165,6 +165,12 @@ export type UpdateEvent = {
 // === EPHEMERAL EVENT TYPES (Transient) ===
 
 export type EphemeralEvent = {
+    type: 'scheduled-task-work-available';
+    machineId: string;
+} | {
+    type: 'scheduled-tasks-changed';
+    taskId: string;
+} | {
     type: 'ai-service-work-available';
     machineId: string;
 } | {

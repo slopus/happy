@@ -12,6 +12,14 @@ function createDeferred<T>() {
 }
 
 describe('enqueueCodexUserText', () => {
+    it('keeps a scheduled prompt separate from a subsequent same-mode human prompt', async () => {
+        const mode = { permissionMode: 'default' as const };
+        const queue = new MessageQueue2<typeof mode>(() => 'same-mode');
+        enqueueCodexUserText({ text: 'scheduled', mode, localId: 'scheduled:run', isolate: true, queue });
+        enqueueCodexUserText({ text: 'human', mode, localId: 'human', queue });
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({ message: 'scheduled', localIds: ['scheduled:run'] });
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({ message: 'human', localIds: ['human'] });
+    });
     it.each(['hello', '/plan explain the change'])('preserves accepted message IDs for %s', async (text) => {
         const mode = { permissionMode: 'default' as const };
         const queue = new MessageQueue2<typeof mode>(() => 'same-mode');

@@ -2,7 +2,7 @@ import { parseSpecialCommand, type SpecialCommandType } from '@/parsers/specialC
 import type { PendingAttachment } from '@/utils/MessageQueue2';
 
 type CodexUserTextQueue<T> = {
-    push: (message: string, mode: T, attachments?: PendingAttachment[], localId?: string) => void;
+    push: (message: string, mode: T, attachments?: PendingAttachment[], localId?: string, isolate?: boolean) => void;
     pushIsolateAndClear: (message: string, mode: T, attachments?: PendingAttachment[], localId?: string) => PendingAttachment[];
 };
 
@@ -25,6 +25,7 @@ export function enqueueCodexUserText<T>(opts: {
     mode: T;
     attachments?: PendingAttachment[];
     localId?: string;
+    isolate?: boolean;
     queue: CodexUserTextQueue<T>;
 }): CodexUserTextEnqueueResult {
     const isolatedCommand = getIsolatedCommand(opts.text);
@@ -33,6 +34,7 @@ export function enqueueCodexUserText<T>(opts: {
         return { status: isolatedCommand, displacedAttachments };
     }
 
-    opts.queue.push(opts.text, opts.mode, opts.attachments, opts.localId);
+    if (opts.isolate) opts.queue.push(opts.text, opts.mode, opts.attachments, opts.localId, true);
+    else opts.queue.push(opts.text, opts.mode, opts.attachments, opts.localId);
     return { status: 'queued', displacedAttachments: [] };
 }

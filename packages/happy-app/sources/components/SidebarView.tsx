@@ -435,6 +435,7 @@ export const SidebarView = React.memo(({
         setMobilePanel(pathname === '/relationship-advisor' ? 'advisor' : 'sessions');
     }, [pathname]);
     const botsActive = pathname === '/bots' || pathname.startsWith('/bots/');
+    const scheduledTasksActive = pathname === '/scheduled-tasks';
     const advisorSidebarActive = railNavigation && (mobileNavigation ? mobilePanel === 'advisor' : pathname === '/relationship-advisor');
     const navigation = useNavigation();
     const realtimeStatus = useRealtimeStatus();
@@ -609,7 +610,7 @@ export const SidebarView = React.memo(({
                 icon="home-outline"
                 label={t('common.home')}
                 onPress={openDesktopSessionLists}
-                selected={pathname !== '/projects' && !advisorSidebarActive && !botsActive && desktopSidebarMode !== 'archive'}
+                selected={pathname !== '/projects' && !advisorSidebarActive && !botsActive && !scheduledTasksActive && desktopSidebarMode !== 'archive'}
                 testID="sidebar-session-list-button"
             />}
             <DesktopRailItem
@@ -620,6 +621,8 @@ export const SidebarView = React.memo(({
                 testID="sidebar-bots-button"
                 showLabel={mobileNavigation}
             />
+            <DesktopRailItem icon="time-outline" label={t('scheduledTasks.title')} onPress={() => go('/scheduled-tasks')}
+                selected={scheduledTasksActive} testID="sidebar-scheduled-tasks-button" showLabel={mobileNavigation} />
             {!desktopPrimaryNavigation && <DesktopRailItem
                 icon="add"
                 iconColor={stylesheet.newSessionIcon.color}

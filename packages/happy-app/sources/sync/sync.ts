@@ -1,4 +1,5 @@
 import { isAgyConfigPending } from './agyConfigPending';
+import { createScheduledTasksController } from './scheduledTasks';
 import { resolveComposerReferences, parseComposerDraft, composerReferenceDisplay, buildComposerReferenceExcerpt } from './composerReferences';
 import { saveSessionWarmMessageTime } from './sessionWarmCache';
 import { getConversationMessageTime } from './sessionConversationTime';
@@ -475,6 +476,7 @@ class Sync {
     private pendingHistoryTargets = new Map<string, number>();
     anonID!: string;
     private credentials!: AuthCredentials;
+    public readonly scheduledTasks = createScheduledTasksController(() => this.credentials, () => this.encryption);
     public encryptionCache = new EncryptionCache();
     private sessionsSync: InvalidateSync;
     private sessionBootstrapSync: InvalidateSync;
@@ -1323,6 +1325,7 @@ class Sync {
     };
 
     async #init() {
+        this.scheduledTasks.beginAccount();
         this.sessionEventCursors.clear();
         this.sessionHydrations.clear();
         // Scheduler intent belongs to one authenticated account only. Late
@@ -4713,6 +4716,7 @@ class Sync {
 
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
+            void this.scheduledTasks.refresh();
             log.log('🔌 Socket reconnected');
             for (const session of Object.values(storage.getState().sessions)) this.persistSessionUserTime(session.id);
 
@@ -5381,6 +5385,10 @@ class Sync {
     }
 
     private handleEphemeralUpdate = (update: unknown) => {
+        if (update && typeof update === 'object' && 'type' in update && update.type === 'scheduled-tasks-changed') {
+            void this.scheduledTasks.refresh();
+            return;
+        }
         const validatedUpdate = ApiEphemeralUpdateSchema.safeParse(update);
         if (!validatedUpdate.success) {
             console.log('Invalid ephemeral update received:', validatedUpdate.error);

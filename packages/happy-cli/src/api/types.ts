@@ -130,6 +130,7 @@ export type Session = {
  * Machine metadata - static information (rarely changes)
  */
 export const MachineMetadataSchema = z.object({
+  scheduledTasks: z.literal(1).optional(),
   host: z.string(),
   platform: z.string(),
   happyCliVersion: z.string(),
@@ -251,6 +252,7 @@ export type Machine = {
  * Message metadata schema
  */
 export const MessageMetaSchema = z.object({
+  scheduledRun: z.object({ taskId: z.string().uuid(), runId: z.string().uuid(), claimId: z.string().uuid(), notificationPolicy: z.enum(['all', 'important', 'none']) }).strict().optional(),
   sentFrom: z.string().optional(), // Source identifier
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
   permissionModeExplicit: z.boolean().optional(), // True when the user selected a per-session mode

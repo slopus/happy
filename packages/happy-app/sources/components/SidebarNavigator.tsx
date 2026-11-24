@@ -60,7 +60,7 @@ const SidebarNavigatorContent = React.memo(() => {
     const isTablet = useIsTablet();
     const workspacePath = useDesktopWorkspacePathname();
     const projectWorkspace = workspacePath === '/projects';
-    const botsWorkspace = workspacePath === '/bots' || workspacePath.startsWith('/bots/');
+    const botsWorkspace = workspacePath === '/bots' || workspacePath.startsWith('/bots/') || workspacePath === '/scheduled-tasks';
     const { theme } = useUnistyles();
     const desktopSkinId = useLocalSetting('desktopSkinId');
     const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId !== 'default';
@@ -252,7 +252,7 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
     const router = useRouter();
     const workspacePath = useDesktopWorkspacePathname();
     const projectWorkspace = workspacePath === '/projects';
-    const botsWorkspace = workspacePath === '/bots' || workspacePath.startsWith('/bots/');
+    const botsWorkspace = workspacePath === '/bots' || workspacePath.startsWith('/bots/') || workspacePath === '/scheduled-tasks';
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const {
         leftPinned: sidebarPinned,

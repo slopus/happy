@@ -3,6 +3,27 @@ import { MessageQueue2 } from './MessageQueue2';
 import { hashObject } from './deterministicJson';
 
 describe('MessageQueue2', () => {
+    it('releases only discarded pending input IDs when a local command replaces the queue', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        const discarded: string[][] = [];
+        queue.setOnDiscard(ids => discarded.push(ids));
+        queue.push('pending', 'same', undefined, 'old');
+        queue.pushIsolateAndClear('/status', 'same', undefined, 'status');
+        expect(discarded).toEqual([['old']]);
+        expect((await queue.waitForMessagesAndGetAsString())?.localIds).toEqual(['status']);
+        queue.push('reset', 'same', undefined, 'reset');
+        queue.reset();
+        expect(discarded).toEqual([['old'], ['reset']]);
+    });
+    it('isolates a scheduled prompt from adjacent human messages without deleting either', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        queue.push('human-before', 'same', undefined, 'before');
+        queue.push('scheduled', 'same', undefined, 'scheduled', true);
+        queue.push('human-after', 'same', undefined, 'after');
+        expect((await queue.waitForMessagesAndGetAsString())?.message).toBe('human-before');
+        expect((await queue.waitForMessagesAndGetAsString())?.localIds).toEqual(['scheduled']);
+        expect((await queue.waitForMessagesAndGetAsString())?.message).toBe('human-after');
+    });
     it('should create a queue', () => {
         const queue = new MessageQueue2<string>(mode => mode);
         expect(queue.size()).toBe(0);

@@ -49,6 +49,7 @@ export default function RootLayout() {
             }}
         >
             <Stack.Screen name="projects" options={{ headerShown: false, ...(photoSceneStyle ? { contentStyle: photoSceneStyle } : {}) }} />
+            <Stack.Screen name="scheduled-tasks" options={{ headerShown: !isDesktopWeb, headerTitle: t('scheduledTasks.title') }} />
             <Stack.Screen
                 name="index"
                 options={{

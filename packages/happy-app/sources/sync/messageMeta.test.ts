@@ -56,6 +56,30 @@ describe('resolveMessageModeMeta', () => {
         });
     });
 
+    it.each(['default', 'read-only', 'acceptEdits', 'safe-yolo'])(
+        'preserves the running Codex %s policy on follow-up instead of applying Full access defaults',
+        (permissionMode) => {
+            const meta = resolveMessageModeMeta({
+                permissionMode: null,
+                metadata: { flavor: 'codex', currentOperatingModeCode: permissionMode },
+            } as any, {
+                agentDefaultOverrides: { codex: { permissionMode: 'yolo' } },
+            } as any);
+
+            expect(meta.permissionMode).toBe(permissionMode);
+            expect(meta.permissionModeExplicit).toBeUndefined();
+        },
+    );
+
+    it('lets a new per-session selection override the running Codex policy', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: 'acceptEdits',
+            metadata: { flavor: 'codex', currentOperatingModeCode: 'read-only' },
+        } as any);
+
+        expect(meta).toMatchObject({ permissionMode: 'acceptEdits', permissionModeExplicit: true });
+    });
+
     it('sends the Codex Fast override only after the user selects a speed tier', () => {
         expect(resolveMessageModeMeta({
             permissionMode: null,

@@ -4,6 +4,7 @@ import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { eventRouter, buildKVBatchUpdateUpdate } from "@/app/events/eventRouter";
 import * as privacyKit from "privacy-kit";
+import { SCHEDULED_TASK_PREFIX } from '@slopus/happy-wire';
 
 export interface KVMutation {
     key: string;
@@ -36,6 +37,7 @@ export async function kvMutate(
     ctx: { uid: string },
     mutations: KVMutation[]
 ): Promise<KVMutateResult> {
+    if (mutations.some(mutation => mutation.key.startsWith(SCHEDULED_TASK_PREFIX))) throw new Error('Reserved scheduling namespace');
     return await inTx(async (tx) => {
         const errors: KVMutateResult['errors'] = [];
 

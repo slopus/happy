@@ -164,7 +164,8 @@ describe('runClaude remote JSONL scanner', () => {
         let nativeMetadata: any = {};
         const sessionClient = {
             sessionId: 'happy-session-1',
-            suppressNextArchiveSignal: vi.fn(), skipExistingMessages: vi.fn(), updateMetadata: vi.fn(),
+            suppressNextArchiveSignal: vi.fn(), skipExistingMessages: vi.fn(),
+            discardUserInputs: vi.fn(), updateMetadata: vi.fn(),
             sendClaudeSessionMessage: vi.fn(), onFileEvent: vi.fn(), on: vi.fn(), trackAttachmentDownload: vi.fn(),
             drainAttachmentsForUserMessage: vi.fn(async () => []), downloadAndDecryptAttachment: vi.fn(),
             getMetadata: vi.fn(() => nativeMetadata), updateMetadataAndAwait: vi.fn(async (update: (metadata: any) => any) => { nativeMetadata = update(nativeMetadata); }), updateAgentState: vi.fn(async () => {}), sendSessionDeath: vi.fn(),
@@ -215,6 +216,15 @@ describe('runClaude remote JSONL scanner', () => {
         }, startupLifecycle);
         const exited = running.catch(error => error);
         await vi.waitFor(() => expect(registeredUserHandler).toBeTypeOf('function'));
+        if (initialization === 'resolved') {
+            for (const command of ['/skills', '/mcp']) {
+                const localId = 'local-' + command.slice(1);
+                registeredUserHandler!({ content: { text: command }, localId });
+                await vi.waitFor(() => expect(sessionClient.discardUserInputs).toHaveBeenCalledWith([localId]));
+            }
+            expect(sessionClient.sendClaudeSessionMessage).not.toHaveBeenCalled();
+            expect(sessionClient.sendSessionEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'message', message: expect.any(String) }));
+        }
         registeredUserHandler!({ content: { text: 'first accepted message' }, meta: initialization.startsWith('future-effort') ? { model: initialization === 'future-effort-default' ? null : 'opus', effort: 'future-effort' } : {} });
         await vi.waitFor(() => expect(mockSDKQuery).toHaveBeenCalledTimes(initialization.startsWith('future-effort') ? 2 : 1), { timeout: 10000 });
         if (initialization === 'future-effort' || initialization === 'future-effort-default') expect(mockSDKQuery.mock.calls.at(-1)?.[0].options.effort).toBe('future-effort');
@@ -314,6 +324,7 @@ describe('runClaude remote JSONL scanner', () => {
             suppressNextArchiveSignal: vi.fn(),
             closeClaudeSessionTurn: vi.fn(),
             skipExistingMessages: vi.fn(),
+            discardUserInputs: vi.fn(),
             updateMetadata: vi.fn(),
             sendClaudeSessionMessage: vi.fn((message: unknown) => {
                 sentMessages.push(message);
@@ -388,6 +399,7 @@ describe('runClaude remote JSONL scanner', () => {
             sessionId: 'happy-session-1',
             suppressNextArchiveSignal: vi.fn(),
             skipExistingMessages: vi.fn(),
+            discardUserInputs: vi.fn(),
             updateMetadata: vi.fn(),
             sendClaudeSessionMessage: vi.fn((message: unknown) => {
                 sentMessages.push(message);
@@ -495,6 +507,7 @@ describe('runClaude remote JSONL scanner', () => {
             sessionId: 'happy-session-1',
             suppressNextArchiveSignal: vi.fn(),
             skipExistingMessages: vi.fn(),
+            discardUserInputs: vi.fn(),
             updateMetadata: vi.fn(),
             sendClaudeSessionMessage: vi.fn(),
             onUserMessage: vi.fn(),

@@ -49,6 +49,7 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { isRemoteCodexPermissionMode, resolveCodexExecutionPolicy } from './executionPolicy';
+import { scheduledLaunchPermission, assertScheduledRuntimeSupported } from '@/daemon/scheduledTasks/permissions';
 import {
     isTerminalCodexTurn,
     mapCodexMcpMessageToSessionEnvelopes,
@@ -391,6 +392,8 @@ export async function runCodex(opts: {
     const settings = await readSettings();
     let machineId = settings?.machineId;
     const sandboxConfig = opts.noSandbox ? undefined : settings?.sandboxConfig;
+    const scheduledPermission = scheduledLaunchPermission('codex');
+    if (scheduledPermission) assertScheduledRuntimeSupported(Boolean(sandboxConfig?.enabled));
     if (!machineId) {
         console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
         process.exit(1);
@@ -405,7 +408,7 @@ export async function runCodex(opts: {
     // Create session
     //
 
-    const initialPermissionMode = boundMode?.permissionMode ?? opts.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
+    const initialPermissionMode = scheduledPermission ?? boundMode?.permissionMode ?? opts.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
     let discoveredSkills: string[] = [];
     try {
         discoveredSkills = applicationPolicy ? [] : await discoverCodexSkillNames({ cwd: process.cwd() });
@@ -522,6 +525,7 @@ export async function runCodex(opts: {
         }
     });
     session = initialSession;
+    messageQueue.setOnDiscard(localIds => session.discardUserInputs(localIds));
     let codexCursorSync: Promise<void> = Promise.resolve();
     void queuedMessageStatus.sync();
 
@@ -740,13 +744,14 @@ export async function runCodex(opts: {
                 fast: messageFastMode,
             };
             if (applicationPolicy) {
-                messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localId);
+                messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localId, !!message.meta?.scheduledRun);
                 void queuedMessageStatus.sync();
                 return;
             }
             const enqueueResult = enqueueCodexUserText({
                 text: message.content.text,
                 localId: message.localId,
+                isolate: !!message.meta?.scheduledRun,
                 mode: enhancedMode,
                 attachments: attachmentsForThisMessage,
                 queue: messageQueue,
@@ -1673,7 +1678,7 @@ export async function runCodex(opts: {
             // Local slash commands have their own Paws lifecycle, independent of
             // the native client's active turn. Complete it so staging can advance.
             messageBuffer.addMessage(responseText, 'assistant');
-            for (const envelope of immediateCodexCommandEnvelopes(responseText)) {
+            for (const envelope of immediateCodexCommandEnvelopes(responseText, acceptedLocalIds)) {
                 session.sendSessionProtocolMessage(envelope);
             }
             emitReadyIfIdle({
@@ -1709,6 +1714,7 @@ export async function runCodex(opts: {
             mode: EnhancedMode;
             attachments?: PendingAttachment[];
         }) => {
+            let submitted = false;
             try {
                 if (boundMode) opts.mode = boundMode;
                 const { executionPolicy } = await ensureCodexThread(opts.mode);
@@ -1742,6 +1748,7 @@ export async function runCodex(opts: {
                         if (session.trackArtifactWriter) await session.trackArtifactWriter(client.artifactWriterPid);
                         activeCredentialTurn = attempt;
                         try {
+                            submitted = true;
                             return await client.sendTurnAndWait(
                                 continuing ? markPawsTurnOrigin(prompt, codexPawsOriginToken) : prompt,
                                 {
@@ -1776,6 +1783,12 @@ export async function runCodex(opts: {
                 if (result.aborted) {
                     logger.debug('[Codex] Turn aborted');
                 }
+            } catch (error) {
+                // A failed preflight never dispatched these inputs. After the
+                // native call starts, its outcome may be unknown and the
+                // scheduled receipt must remain blocked until reconciled.
+                if (!submitted) session.discardUserInputs(acceptedLocalIds ?? []);
+                throw error;
             } finally {
                 await cleanupMediaAttachments((opts.attachments ?? []).filter(isMediaAttachment));
             }

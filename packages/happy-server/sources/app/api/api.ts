@@ -29,6 +29,7 @@ import { enableAuthentication } from "./utils/enableAuthentication";
 import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
+import { scheduledTaskRoutes } from './routes/scheduledTaskRoutes';
 import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { fileRoutes } from "./routes/fileRoutes";
@@ -169,6 +170,7 @@ export async function createApiApp(opts: StartApiOptions = {}): Promise<Fastify>
     userRoutes(typed);
     feedRoutes(typed);
     kvRoutes(typed);
+    scheduledTaskRoutes(typed);
     v3SessionRoutes(typed);
     attachmentRoutes(typed);
     relationshipAdvisorRoutes(typed);

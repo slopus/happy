@@ -56,6 +56,7 @@ export class MessageQueue2<T> {
     private waiter: ((hasMessages: boolean) => void) | null = null;
     private closed = false;
     private onMessageHandler: ((message: string, mode: T) => void) | null = null;
+    private onDiscardHandler: ((localIds: string[]) => void) | null = null;
     modeHasher: (mode: T) => string;
 
     constructor(
@@ -74,11 +75,15 @@ export class MessageQueue2<T> {
         this.onMessageHandler = handler;
     }
 
+    setOnDiscard(handler: (localIds: string[]) => void): void {
+        this.onDiscardHandler = handler;
+    }
+
     /**
      * Push a message to the queue with a mode and an optional list of
      * attachments that travel with this message.
      */
-    push(message: string, mode: T, attachments?: PendingAttachment[], localId?: string): void {
+    push(message: string, mode: T, attachments?: PendingAttachment[], localId?: string, isolate = false): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -90,7 +95,7 @@ export class MessageQueue2<T> {
             message,
             mode,
             modeHash,
-            isolate: false,
+            isolate,
             attachments,
             localId,
         });
@@ -162,6 +167,7 @@ export class MessageQueue2<T> {
         // Capture ownership before replacing the queue so callers can clean up
         // staged files without inspecting mutable queue state across an await.
         const displacedAttachments = this.queue.flatMap((item) => item.attachments ?? []);
+        this.onDiscardHandler?.(this.queue.flatMap(item => item.localId ? [item.localId] : []));
 
         // Replace, rather than clear-then-push, so the displaced snapshot and
         // isolated command become visible as one synchronous state transition.
@@ -230,6 +236,7 @@ export class MessageQueue2<T> {
      */
     reset(): void {
         logger.debug(`[MessageQueue2] reset() called. Clearing ${this.queue.length} messages`);
+        this.onDiscardHandler?.(this.queue.flatMap(item => item.localId ? [item.localId] : []));
         this.queue = [];
         this.closed = false;
 

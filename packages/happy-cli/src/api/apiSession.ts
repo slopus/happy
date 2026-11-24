@@ -2,6 +2,8 @@ import { createArtifactRuntime } from '@/modules/artifacts/runtime';
 import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
 import { runArtifactTurn } from '@/modules/artifacts/turn';
 import { logger } from '@/ui/logger'
+import { createScheduledRunTracker } from './scheduledRun';
+import { scheduleJournalDirectory } from '@/daemon/scheduledTasks/journal';
 import { EventEmitter } from 'node:events'
 import { readFile, stat, unlink } from 'node:fs/promises'
 import { createWriteStream } from 'node:fs'
@@ -117,6 +119,9 @@ type V3PostSessionMessagesResponse = {
 };
 
 export class ApiSessionClient extends EventEmitter {
+    private readonly scheduledRunTracker: ReturnType<typeof createScheduledRunTracker>;
+    private readonly pendingUserInputIds = new Set<string>();
+    private activeRootTurnId: string | undefined;
     private readonly startupLifecycle: WorkerSessionStartupLifecycle | undefined;
     private readonly token: string;
     readonly sessionId: string;
@@ -179,6 +184,12 @@ export class ApiSessionClient extends EventEmitter {
         this.agentStateVersion = session.agentStateVersion;
         this.encryptionKey = session.encryptionKey;
         this.encryptionVariant = session.encryptionVariant;
+        this.scheduledRunTracker = createScheduledRunTracker({ directory: scheduleJournalDirectory(token, artifactIdentity), sessionId: session.id,
+            send: async (taskId, runId, report) => {
+                await axios.post(`${configuration.serverUrl}/v1/scheduled-tasks/${taskId}/runs/${runId}/report`, report,
+                    { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 });
+            },
+        });
         this.sendSync = new InvalidateSync(() => this.flushOutbox());
         this.receiveSync = new InvalidateSync(() => this.fetchMessages());
 
@@ -251,6 +262,7 @@ export class ApiSessionClient extends EventEmitter {
                 this.reconnectInterval = null;
             }
             this.rpcHandlerManager.onSocketConnect(this.socket);
+            void this.scheduledRunTracker.flush();
             this.receiveSync.invalidate();
             this.emit('connected');
         })
@@ -349,7 +361,17 @@ export class ApiSessionClient extends EventEmitter {
     // Supplying both handlers installs them atomically before startup messages
     // replay, preserving file/text order and therefore attachment ownership.
     onUserMessage(callback: (data: UserMessage) => void, onFileEvent?: (data: FileEventMessage) => void) {
-        this.pendingMessageCallback = callback;
+        this.pendingMessageCallback = message => {
+            if (message.meta?.scheduledRun && message.localId) {
+                if (this.scheduledRunTracker.hasMessage(message.localId)) return;
+                this.scheduledRunTracker.acceptMessage(message);
+                if (this.activeRootTurnId || this.pendingUserInputIds.size || this.agentState?.turnStatus?.status === 'running' || Object.keys(this.agentState?.requests ?? {}).length) {
+                    this.scheduledRunTracker.rejectMessage(message.localId); return;
+                }
+            }
+            if (message.localId) this.pendingUserInputIds.add(message.localId);
+            callback(message);
+        };
         if (onFileEvent) this.pendingFileEventCallback = onFileEvent;
         this.flushPendingInputMessages();
     }
@@ -357,6 +379,14 @@ export class ApiSessionClient extends EventEmitter {
     onFileEvent(callback: (data: FileEventMessage) => void) {
         this.pendingFileEventCallback = callback;
         this.flushPendingInputMessages();
+    }
+
+    /** Release inputs deliberately removed by a local queue operation. */
+    discardUserInputs(localIds: readonly string[]) {
+        for (const localId of localIds) {
+            this.pendingUserInputIds.delete(localId);
+            this.scheduledRunTracker.rejectMessage(localId);
+        }
     }
 
     private flushPendingInputMessages() {
@@ -794,11 +824,15 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private observeSessionProtocolEnvelope(envelope: SessionEnvelope) {
+        this.scheduledRunTracker.observe(envelope);
         if (!envelope.subagent && envelope.role !== 'user') {
             if (envelope.ev.t === 'turn-start') {
+                this.activeRootTurnId = envelope.turn;
+                for (const localId of envelope.ev.localIds ?? []) this.pendingUserInputIds.delete(localId);
                 this.hasObservedRootTurnLifecycle = true;
                 this.persistTurnStatus('running', envelope.time, envelope.turn);
             } else if (envelope.ev.t === 'turn-end') {
+                if (this.activeRootTurnId === envelope.turn) this.activeRootTurnId = undefined;
                 this.hasObservedRootTurnLifecycle = true;
                 this.persistTurnStatus(envelope.ev.status, envelope.time, envelope.turn);
             }
@@ -806,6 +840,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private persistFinalSessionProtocolHistoryStatus(envelopes: readonly SessionEnvelope[]): Promise<void> {
+        for (const envelope of envelopes) this.scheduledRunTracker.observe(envelope);
         for (let index = envelopes.length - 1; index >= 0; index -= 1) {
             const envelope = envelopes[index];
             if (envelope.subagent || envelope.role === 'user') continue;
@@ -1088,6 +1123,7 @@ export class ApiSessionClient extends EventEmitter {
                     this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
                     this.agentStateVersion = answer.version;
                     logger.debug('Agent state updated', this.agentState);
+                    this.scheduledRunTracker.waitingForInput(Object.keys(this.agentState?.requests ?? {}).length > 0, this.agentState?.turnStatus?.turnId);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version > this.agentStateVersion) {
                         this.agentStateVersion = answer.version;
@@ -1106,6 +1142,7 @@ export class ApiSessionClient extends EventEmitter {
      * Wait for socket buffer to flush
      */
     async flush(): Promise<void> {
+        await this.scheduledRunTracker.flush();
         await Promise.race([
             this.sendSync.invalidateAndAwait(),
             delay(10000)
