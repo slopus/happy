@@ -120,8 +120,12 @@ No auth header is needed. The body is one message or an array of messages, with 
 **Replacing a notification.** `collapseId` is optional: 1 to 64 characters of `A-Z a-z 0-9 _ -`. A later message with the same `collapseId` replaces the earlier one on the device instead of adding a second notification. Without it nothing changes.
 
 - **APNs.** It is the `apns-collapse-id` header, which Apple caps at 64 bytes ([Sending notification requests to APNs](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns)). That is where the length limit comes from.
-- **FCM.** It is `data.tag`. The Android app posts each notification under that tag, so the same tag replaces what is on screen.
+- **FCM.** It is `data.tag`. For legacy session pushes the Android app posts the notification under that tag, so the same tag replaces what is on screen. For cloud pushes (`happy.cloud.push.v1`) the app currently overrides the tag with a key that includes `notificationId`, so nothing is replaced on Android until a later app change.
 - **No FCM `collapse_key`.** It would make an offline device receive only the newest message per key, but FCM stores at most four different collapse keys per device and, past four, keeps an arbitrary four ([Collapsible message types](https://firebase.google.com/docs/cloud-messaging/customize-messages/collapsible-message-types)). With one `collapseId` per agent, a fifth agent's notification could be dropped without a trace. Without the key every message is delivered and the tag still leaves one notification per `collapseId`.
+
+- **iOS identifier.** On iOS the delivered notification's request identifier becomes the collapse id, so an app that dedupes taps by identifier must be fixed before servers send the field (tracked as an iOS unit).
+- **Deploy order.** A server that sends `collapseId` to a Worker without this change gets 400 `VALIDATION_ERROR` for the whole request. Deploy the Worker first. Rolling the Worker back breaks every server that already sends the field.
+- **Not on data-only legacy messages.** A data-only message with `collapseId` still reaches Android with `data.tag`, and the legacy Android path posts whatever it receives under that tag. A data-only legacy message would replace a visible notification with a blank one, so senders should not put `collapseId` on data-only legacy messages.
 
 **Background pushes.** On iOS, a message with no title, subtitle, or body is sent as a background push: `apns-push-type: background` and `content-available: 1`. Apple requires priority 5 for background pushes, so they always go out at 5, even when the message asks for `high`.
 
