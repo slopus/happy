@@ -2,6 +2,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+import HappyWire
 
 /// Bytes counted where only the request and the answer are seen, as
 /// HTTP/1.1 would frame them: the request line, the headers and the body.
@@ -239,6 +240,9 @@ public struct MeteredAgentTransport: AgentTransport {
             let response = try await MetricsScope.$channel.withValue(channel) { try await call() }
             if countsBytes { metrics.received(HTTPFraming.responseHead(status: response.status, headers: response.headers) + response.body.count, on: channel) }
             metrics.request(channel, status: response.status, duration: ConnectionMetrics.uptime() - start)
+            // The computer answered but couldn't do it (a daemon draining
+            // for an update refuses every write 503): what went wrong too.
+            if response.status >= 500 { metrics.failed("\(channel.name): \(method) answered \(MeteredError.describe(response))") }
             return response
         } catch {
             if !(error is CancellationError) {
@@ -361,5 +365,13 @@ enum MeteredError {
         // An enum case is short and says it; anything long may carry data.
         guard text.count <= 60, !text.contains("://"), !text.lowercased().contains("bearer") else { return type }
         return text.hasPrefix(type) ? text : "\(type).\(text)"
+    }
+
+    /// An answer's status and the API's error code, `503 (draining)`; a
+    /// code that isn't a short identifier is left out.
+    static func describe(_ response: HTTP1Response) -> String {
+        let code = (try? JSONValue.decode(response.body))?["code"]?.stringValue
+        guard let code, (1...40).contains(code.count), code.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }) else { return "\(response.status)" }
+        return "\(response.status) (\(code))"
     }
 }

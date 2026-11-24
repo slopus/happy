@@ -234,6 +234,10 @@ private actor ScriptedComputer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
         if path == "/v0/broken" { throw PairingError.unavailable }
         if path == "/v0/missing" { return HTTP1Response(status: 404) }
+        if path == "/v0/agents/a/send" {
+            return HTTP1Response(status: 503, body: Data(#"{"error":"Happy Agent is draining and no longer accepts mutations.","code":"draining"}"#.utf8))
+        }
+        if path == "/v0/odd" { return HTTP1Response(status: 500, body: Data(#"{"code":"https://example.test/?token=secret"}"#.utf8)) }
         return HTTP1Response(status: 200, headers: ["content-type": "application/json"], body: Data(#"{"ok":true}"#.utf8))
     }
     func stream(path: String, credential: String, headers: [String: String]) throws -> HTTP1Stream {
@@ -391,6 +395,25 @@ final class MeteredTransportTests: XCTestCase {
         XCTAssertEqual(totals.count(.streamsClosed, .tailcat), 1)
         XCTAssertGreaterThanOrEqual(totals.count(.bytesReceived, .tailcat), Int64("event: hello\ndata: {}\n\n".utf8.count))
         XCTAssertEqual(snapshot.lastError, "Tailcat: PairingError.unavailable")
+    }
+
+    /// A draining daemon answers every write 503 while the tunnel is fine:
+    /// the page's last error says so, as it does for a request unanswered.
+    func testAnAnswerThatCouldntBeDoneIsTheLastError() async throws {
+        let computer = ScriptedComputer()
+        let metrics = ConnectionMetrics()
+        let transport = MeteredAgentTransport(base: computer, metrics: metrics)
+        _ = try await transport.request(method: "POST", path: "/v0/agents/a/send", credential: "t", body: Data("{}".utf8), headers: [:])
+        var snapshot = await metrics.snapshot()
+        XCTAssertEqual(snapshot.totals.count(.requests5xx, .tailcat), 1)
+        XCTAssertEqual(snapshot.totals.count(.requestsFailed, .tailcat), 0)
+        XCTAssertEqual(snapshot.lastError, "Tailcat: POST answered 503 (draining)")
+        _ = try await transport.request(method: "GET", path: "/v0/odd", credential: "t", body: nil, headers: [:])
+        snapshot = await metrics.snapshot()
+        XCTAssertEqual(snapshot.lastError, "Tailcat: GET answered 500", "a code that isn't an identifier is left out")
+        _ = try await transport.request(method: "GET", path: "/v0/missing", credential: "t", body: nil, headers: [:])
+        snapshot = await metrics.snapshot()
+        XCTAssertEqual(snapshot.lastError, "Tailcat: GET answered 500", "a refusal is the person's, not the link's")
     }
 
     func testATransportThatMetersItsOwnWireIsNotCountedTwice() async throws {
