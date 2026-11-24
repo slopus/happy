@@ -117,5 +117,73 @@ final class HostedPushTapSwitchTests: XCTestCase {
         XCTAssertEqual(navigation.viewControllers.count, 2)
         XCTAssertTrue(navigation.viewControllers.first is AgentHomeViewController)
     }
+    /// A server with one project's session on its home, and the push for it.
+    private func projectsSession() async throws -> (coordinator: AppCoordinator, navigation: UINavigationController, session: Session, home: HomeSnapshot, push: CloudPushNotification) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let account = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: directory,
+            agentTransport: { _ in Unreachable() },
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: NoNetwork(), connector: NoSockets())
+        await account.agentConnections.setForeground(false)
+        await account.restore()
+        let method = OAuthMethod(id: "jwt", name: "Happy Cloud", authorizationUrl: "https://auth.example/authorize", tokenUrl: "https://auth.example/token", clientId: "happy")
+        let server = try await account.agentConnections.addServer(
+            try AgentOrigin("https://one.example"),
+            signIn: ServerSignInRecord(method: method, grant: OAuthGrant(refreshToken: "r", clientId: "happy"), userId: "steve"),
+            access: OAuthAccess(token: "a", expiresAt: nil), name: "one.example", instanceId: "k3x9q2m7p0a4b8c1d5e6f7g2")
+        let context = AppContext(account: account, variant: .preview, version: "test")
+
+        let scene = try await hostedActiveScene()
+        let hostWindow = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let coordinator = AppCoordinator(window: window, context: context)
+        coordinator.start()
+        addTeardownBlock { @MainActor in
+            window.rootViewController?.presentedViewController?.dismiss(animated: false)
+            window.isHidden = true
+            hostWindow?.makeKey()
+        }
+        let navigation = try XCTUnwrap(stack(in: window))
+        let home = try await until { navigation.viewControllers.first is AgentHomeViewController && navigation.viewControllers.count == 1 }
+        XCTAssertTrue(home, "\(navigation.viewControllers)")
+        try await Task.sleep(for: .milliseconds(500))
+        let rows = [
+            Row(id: "project:p1", nodeId: "project:p1", kind: .space, label: "Releases", targetKind: "project"),
+            Row(id: "session:build-agent", nodeId: "session:build-agent", kind: .session, depth: 1, label: "Preview 24", agentId: "build-agent"),
+        ]
+        var snapshot = HomeSnapshot()
+        snapshot.loaded = true; snapshot.rows = rows; snapshot.allRows = rows
+        let session = try XCTUnwrap(Session.session(for: server.id, context: context))
+        return (coordinator, navigation, session, snapshot, try push("k3x9q2m7p0a4b8c1d5e6f7g2", agent: "build-agent"))
+    }
+
+    /// A computer's sidebar is its own home, not a spaces document, and a
+    /// project's session is a row inside its project there: the chat a
+    /// tapped push opens is named as that row is, not left without a name.
+    func testAPushForAProjectsSessionOpensItsChatNamed() async throws {
+        let (coordinator, navigation, session, home, push) = try await projectsSession()
+        session.receive(home: home)
+        coordinator.openAgent(fromNotification: push)
+        let opened = try await until { (navigation.topViewController as? ChatViewController)?.shownAgentId == "build-agent" }
+        XCTAssertTrue(opened, "\(navigation.viewControllers)")
+        _ = try await until(2) { navigation.topViewController?.title == "Preview 24" }
+        XCTAssertEqual(navigation.topViewController?.title, "Preview 24")
+    }
+
+    /// From a closed app the chat opens before home has been read: it is
+    /// named once its row is there.
+    func testAChatOpenedBeforeHomeIsReadIsNamedOnceItsRowIsThere() async throws {
+        let (coordinator, navigation, session, home, push) = try await projectsSession()
+        coordinator.openAgent(fromNotification: push)
+        let opened = try await until { (navigation.topViewController as? ChatViewController)?.shownAgentId == "build-agent" }
+        XCTAssertTrue(opened, "\(navigation.viewControllers)")
+        session.receive(home: home)
+        _ = try await until(2) { navigation.topViewController?.title == "Preview 24" }
+        XCTAssertEqual(navigation.topViewController?.title, "Preview 24")
+    }
 }
 #endif
