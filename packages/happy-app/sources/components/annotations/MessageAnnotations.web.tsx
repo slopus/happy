@@ -251,8 +251,14 @@ export function AnnotationComposer({ sessionId }: AnnotationComposerProps) {
     const trigger = React.useRef<HTMLButtonElement>(null);
     const listId = React.useId();
     const closeList = React.useCallback(() => { setOpen(false); trigger.current?.focus({ preventScroll: true }); }, []);
-    React.useEffect(() => { setOpen(false); setError(''); return () => { if (editRequest?.sessionId === sessionId) closeEditor(); }; }, [sessionId]);
-    const editedItem = request?.sessionId === sessionId ? items.find(a => a.id === request.id) : undefined;
+    React.useEffect(() => {
+        setOpen(false); setError('');
+        const owner = ref.current;
+        return () => { if (editRequest?.sessionId === sessionId && editRequest.focus && owner?.contains(editRequest.focus)) closeEditor(); };
+    }, [sessionId]);
+    // Background routes can retain another composer for this same session.
+    // Only the instance whose trigger opened the editor may host its portal.
+    const editedItem = request?.sessionId === sessionId && request.focus && request.focus === trigger.current ? items.find(a => a.id === request.id) : undefined;
     const close = React.useCallback(() => { closeEditor(); }, []);
     return <div ref={ref} data-testid="annotation-composer" style={{ position: 'relative', minWidth: 0, padding: allItems.length ? '12px 14px 0' : 0, color: c.text }}>
         {fileItems.length > 0 && <FileAnnotationSummary sessionId={sessionId} items={fileItems} workspace={workspace} />}
@@ -323,6 +329,7 @@ function AnnotationSource({ sessionId, messageId, file, children }: Omit<Annotat
     const [activeBox, setActiveBox] = React.useState<Box | null>(null);
     const [badges, setBadges] = React.useState<Array<{ id: string; top: number; left: number; number: number }>>([]);
     const request = React.useSyncExternalStore(subscribeEditor, getEditor, () => null);
+    const editedItem = !file && request?.focus && request.focus === root.current ? editingItem(sessionId, annotations, request) : undefined;
     const pending = request?.sessionId === sessionId && request.selection?.messageId === messageId ? request.selection : null;
     const box = (rect: DOMRect): Box => {
         const base = root.current!.getBoundingClientRect();
@@ -399,10 +406,11 @@ function AnnotationSource({ sessionId, messageId, file, children }: Omit<Annotat
         window.addEventListener('scroll', reposition, true); window.addEventListener('resize', dismiss);
         return () => { document.removeEventListener('pointerdown', pointer, true); document.removeEventListener('keydown', key); document.removeEventListener('selectionchange', collapse); window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', dismiss); };
     }, [selection, messageId]);
-    React.useEffect(() => () => {
-        if (!file || editRequest?.sessionId !== sessionId) return;
-        const current = editingItem(sessionId, annotationDraftStore.getSnapshot(sessionId), editRequest);
-        if (current?.messageId === messageId) closeEditor();
+    React.useEffect(() => {
+        const owner = root.current;
+        return () => {
+            if (editRequest?.sessionId === sessionId && owner && editRequest.focus === owner) closeEditor();
+        };
     }, [sessionId, messageId, !!file]);
     React.useEffect(() => {
         if (!file || !ui.activeId) return;
@@ -479,6 +487,7 @@ function AnnotationSource({ sessionId, messageId, file, children }: Omit<Annotat
         })}
         {selection && !request && createPortal(<button type="button" data-testid="annotation-add" onMouseDown={event => event.preventDefault()} onClick={() => open(selection)} style={{ ...button, position: 'fixed', zIndex: 9999, left: Math.max(12, Math.min(selection.rect.left, window.innerWidth - 170)), top: Math.max(12, Math.min(selection.rect.top - 44, window.innerHeight - 48)), padding: '9px 12px', background: c.surface, border: `1px solid ${c.divider}`, boxShadow: `0 4px 20px ${c.shadow.color}` }}><Icon name="comment" />{t(file ? 'messageAnnotations.addFile' : 'messageAnnotations.add')}</button>, document.body)}
         {error && <div role="alert" style={{ color: c.textDestructive, fontSize: 12 }}>{error}</div>}
+        {editedItem && request && <CommentEditor key={request.sequence} sessionId={sessionId} item={editedItem} request={request} number={items.filter(a => !a.file).indexOf(editedItem) + 1} onClose={closeEditor} />}
     </div>;
 }
 

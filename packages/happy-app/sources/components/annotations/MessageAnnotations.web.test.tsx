@@ -78,6 +78,88 @@ describe('annotation UI with a non-default dark theme', () => {
     });
 });
 
+describe('message editor ownership across mounted views of the same session', () => {
+    function renderViews(sessionId: string, first = true, second = true) {
+        return <>
+            {first && <div key="first" data-view="first"><AnnotatableMessage sessionId={sessionId} messageId="reply" enabled><p>应用版本</p></AnnotatableMessage><AnnotationComposer sessionId={sessionId} /></div>}
+            {second && <div key="second" data-view="second"><AnnotatableMessage sessionId={sessionId} messageId="reply" enabled><p>应用版本</p></AnnotatableMessage><AnnotationComposer sessionId={sessionId} /></div>}
+        </>;
+    }
+    function setup() {
+        const sessionId = `owners-${++session}`;
+        const item = annotationDraftStore.add(sessionId, { messageId: 'reply', quote: '应用版本', anchorText: '应用版本', start: 0, end: 4 }, '原评论');
+        act(() => root.render(renderViews(sessionId)));
+        return { sessionId, item };
+    }
+    function openFromList(view: Element) {
+        act(() => (view.querySelector('[data-testid=annotation-summary]') as HTMLButtonElement).click());
+        act(() => (document.querySelector('[data-testid=annotation-edit]') as HTMLButtonElement).click());
+    }
+    function updateMessageComment(value: string) {
+        const input = document.querySelector('[data-testid=annotation-comment-input]') as HTMLTextAreaElement;
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+    it('keeps a list-opened editor clickable and saves the comment once', () => {
+        const { sessionId } = setup();
+        openFromList(document.querySelector('[data-view=first]')!);
+        const input = document.querySelector('[data-testid=annotation-comment-input]')!;
+        act(() => input.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })));
+        expect(document.querySelectorAll('[data-testid=annotation-editor]')).toHaveLength(1);
+        expect(document.activeElement).toBe(input);
+        updateMessageComment('补充解释');
+        act(() => (document.querySelector('[data-testid=annotation-save]') as HTMLButtonElement).click());
+        expect(annotationDraftStore.getSnapshot(sessionId).map(item => item.comment)).toEqual(['补充解释']);
+        expect(document.querySelector('[data-testid=annotation-editor]')).toBeNull();
+    });
+    it('renders one editor for the message badge that opened it', () => {
+        setup();
+        act(() => (document.querySelector('[data-view=second] [data-testid=annotation-badge]') as HTMLButtonElement).click());
+        expect(document.querySelectorAll('[data-testid=annotation-editor]')).toHaveLength(1);
+        const input = document.querySelector('[data-testid=annotation-comment-input]')!;
+        act(() => input.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })));
+        expect(document.querySelectorAll('[data-testid=annotation-editor]')).toHaveLength(1);
+        act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(document.querySelector('[data-testid=annotation-editor]')).toBeNull();
+    });
+    it('opens a newly selected passage once and cleans up a composer whose trigger appeared after mount', () => {
+        const sessionId = `selection-owners-${++session}`;
+        act(() => root.render(renderViews(sessionId)));
+        const source = document.querySelector('[data-view=first] [data-testid=annotation-source-content]')!;
+        const range = document.createRange(); range.selectNodeContents(source.querySelector('p')!);
+        getSelection()!.addRange(range);
+        act(() => source.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })));
+        act(() => (document.querySelector('[data-testid=annotation-add]') as HTMLButtonElement).click());
+        expect(document.querySelectorAll('[data-testid=annotation-editor]')).toHaveLength(1);
+        const input = document.querySelector('[data-testid=annotation-comment-input]')!;
+        act(() => input.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })));
+        updateMessageComment('解释版本');
+        act(() => (document.querySelector('[data-testid=annotation-save]') as HTMLButtonElement).click());
+        expect(annotationDraftStore.getSnapshot(sessionId).map(item => item.comment)).toEqual(['解释版本']);
+        openFromList(document.querySelector('[data-view=first]')!);
+        act(() => root.render(renderViews(sessionId, false, true)));
+        expect(document.querySelector('[data-testid=annotation-editor]')).toBeNull();
+        openFromList(document.querySelector('[data-view=second]')!);
+        expect((document.querySelector('[data-testid=annotation-comment-input]') as HTMLTextAreaElement).value).toBe('解释版本');
+    });
+    it.each(['list', 'badge'])('retains the %s editor draft when another view unmounts and closes when its owner leaves', entry => {
+        const { sessionId } = setup();
+        const view = document.querySelector('[data-view=first]')!;
+        if (entry === 'list') openFromList(view);
+        else act(() => (view.querySelector('[data-testid=annotation-badge]') as HTMLButtonElement).click());
+        updateMessageComment('尚未保存');
+        act(() => root.render(renderViews(sessionId, true, false)));
+        expect((document.querySelector('[data-testid=annotation-comment-input]') as HTMLTextAreaElement | null)?.value).toBe('尚未保存');
+        act(() => root.render(renderViews(sessionId, false, true)));
+        expect(document.querySelector('[data-testid=annotation-editor]')).toBeNull();
+        expect(annotationDraftStore.getSnapshot(sessionId)[0].comment).toBe('原评论');
+        openFromList(document.querySelector('[data-view=second]')!);
+        expect((document.querySelector('[data-testid=annotation-comment-input]') as HTMLTextAreaElement).value).toBe('原评论');
+    });
+});
+
 function typeComment(value: string) {
     const input = document.querySelector('[data-testid=annotation-comment-input]') as HTMLInputElement;
     act(() => {
