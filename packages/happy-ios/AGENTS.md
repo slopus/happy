@@ -373,6 +373,9 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     from a deeper screen (a chat on another server) animates the stack to
     the new home, and the chat opens once that has ended
     (`AppCoordinator.openInstanceTarget`); an instance link shares this.
+    The link and the push name only the agent, so the chat opens with no
+    name and takes its home row's, a project's session too, when home has
+    it: after the chat is up, from a closed app (`ChatViewController.unnamed`).
   - **Deliberate differences from happy-app:**
     - happy-app's backoff retries the server calls forever. Here each sync
       makes one registration attempt, and the next session start or
