@@ -17,6 +17,16 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  */
 export const it: TranslationStructure = {
     scheduledTasks: {
+        executionSettings: "Impostazioni di esecuzione",
+        selectMachine: "Scegli una macchina di esecuzione",
+        accountUnavailable: "Le impostazioni dell’account non sono disponibili. Riprova dopo aver ripristinato la connessione.",
+        startupFailed: "Il processo di esecuzione non si è avviato. Controlla l’errore nella conversazione prima di riprovare.",
+        startupTimeout: "La conferma di avvio è scaduta. Controlla la conversazione prima di terminare il monitoraggio e consentire nuove esecuzioni.",
+        runFailed: "Questa esecuzione non è riuscita. Apri la conversazione per i dettagli.",
+        operationError: "L’operazione non è riuscita. Controlla la connessione e riprova.",
+        openingSession: "Preparazione della conversazione…",
+        launchQueued: "L’esecuzione è in coda. Quando la conversazione sarà pronta, potrai aprirla dalla cronologia delle esecuzioni.",
+        currentRun: "Ultima esecuzione",
         title: "Attività pianificate",
         create: "Nuova attività",
         edit: "Modifica attività",

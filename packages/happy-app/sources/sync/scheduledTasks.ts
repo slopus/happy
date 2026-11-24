@@ -7,16 +7,20 @@ import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 
 export interface DecryptedScheduledTask extends ScheduledTask { config: ScheduledTaskConfig | null }
-export interface ScheduledTasksSnapshot { tasks: DecryptedScheduledTask[]; loading: boolean; error: string | null; revision: number; histories: Record<string, ScheduledRun[]> }
+export interface ScheduledTasksSnapshot { tasks: DecryptedScheduledTask[]; loading: boolean; error: string | null; revision: number; accountGeneration: number; histories: Record<string, ScheduledRun[]> }
 export class ScheduledTasksRequestError extends Error { constructor(public readonly code: string) { super(code); } }
 
 export function createScheduledTasksController(getCredentials: () => AuthCredentials | undefined, getEncryption: () => Encryption | undefined) {
-    let state: ScheduledTasksSnapshot = { tasks: [], loading: false, error: null, revision: 0, histories: {} };
+    let state: ScheduledTasksSnapshot = { tasks: [], loading: false, error: null, revision: 0, accountGeneration: 0, histories: {} };
     let owner: AuthCredentials | undefined, visible = false, sequence = 0;
     let accountGeneration = 0;
     const listeners = new Set<() => void>();
     const historySequences = new Map<string, number>();
     const publish = (patch: Partial<ScheduledTasksSnapshot>) => { state = { ...state, ...patch }; for (const listener of listeners) listener(); };
+    function captureAccount() {
+        const captured = owner, generation = accountGeneration;
+        return () => { if (captured !== owner || captured !== getCredentials() || generation !== accountGeneration) throw new ScheduledTasksRequestError('account-changed'); };
+    }
     async function request(path: string, method = 'GET', body?: unknown) {
         const credentials = getCredentials();
         const server = getServerUrl(), generation = accountGeneration;
@@ -53,7 +57,7 @@ export function createScheduledTasksController(getCredentials: () => AuthCredent
     return {
         subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
         getSnapshot: () => state,
-        beginAccount() { owner = getCredentials(); sequence++; accountGeneration++; historySequences.clear(); publish({ tasks: [], histories: {}, loading: false, error: null, revision: 0 }); if (visible) void refresh(); },
+        beginAccount() { owner = getCredentials(); sequence++; accountGeneration++; historySequences.clear(); publish({ tasks: [], histories: {}, loading: false, error: null, revision: 0, accountGeneration }); if (visible) void refresh(); },
         setVisible(value: boolean) { visible = value; if (value) void refresh(); },
         refresh,
         async history(taskId: string) {
@@ -66,21 +70,39 @@ export function createScheduledTasksController(getCredentials: () => AuthCredent
             if (captured === owner) publish({ histories: { ...state.histories, [taskId]: runs } });
         },
         async save(input: Omit<ScheduledTaskInput, 'encryptedConfig'>, config: ScheduledTaskConfig, expectedVersion: number, resetBinding = false) {
-            const captured = owner;
+            const assertAccount = captureAccount();
             const encryption = getEncryption()?.getMachineEncryption(input.machineId);
             if (!encryption) throw new ScheduledTasksRequestError('encryption-unavailable');
             const encryptedConfig = await encryption.encryptRaw(ScheduledTaskConfigSchema.parse(config));
-            if (captured !== owner) throw new ScheduledTasksRequestError('account-changed');
+            assertAccount();
             await request(`/${input.id}`, 'PUT', { ...input, encryptedConfig, expectedVersion, resetBinding });
             await refresh(true);
+            assertAccount();
         },
         async toggle(task: ScheduledTask, enabled = !task.enabled) {
+            const assertAccount = captureAccount();
             const { id, machineId, rule, encryptedConfig, newChatEachRun, notificationPolicy } = task;
             await request(`/${id}`, 'PUT', { id, machineId, rule, encryptedConfig, enabled, newChatEachRun, notificationPolicy, expectedVersion: task.version });
             await refresh(true);
+            assertAccount();
         },
-        async remove(task: ScheduledTask) { await request(`/${task.id}`, 'DELETE', { expectedVersion: task.version }); await refresh(true); },
-        async runNow(taskId: string, requestId: string) { await request(`/${taskId}/run`, 'POST', { requestId }); await refresh(true); await this.history(taskId); },
-        async abandon(taskId: string, runId: string) { await request(`/${taskId}/runs/${runId}/abandon`, 'POST', {}); await refresh(true); await this.history(taskId); },
+        async remove(task: ScheduledTask) { const assertAccount = captureAccount(); await request(`/${task.id}`, 'DELETE', { expectedVersion: task.version }); await refresh(true); assertAccount(); },
+        async runNow(taskId: string, requestId: string): Promise<ScheduledRun> {
+            // Keep the exact response identity: a concurrent timer or another client can create a different run.
+            const value = await request(`/${taskId}/run`, 'POST', { requestId });
+            const run = ScheduledRunSchema.parse(value.run);
+            if (run.taskId !== taskId) throw new ScheduledTasksRequestError('run-task-mismatch');
+            const history = state.histories[taskId] ?? [];
+            const existing = history.find(item => item.id === run.id);
+            const newer = existing && (existing.updatedAt > run.updatedAt || existing.reportSequence > run.reportSequence);
+            historySequences.set(taskId, (historySequences.get(taskId) ?? 0) + 1);
+            if (!newer) {
+                publish({ histories: { ...state.histories, [taskId]: [run, ...history.filter(item => item.id !== run.id)] } });
+            }
+            // Subsequent progress comes from scheduled-tasks-changed events, never a query loop.
+            void refresh(true);
+            return newer ? existing : run;
+        },
+        async abandon(taskId: string, runId: string) { const assertAccount = captureAccount(); await request(`/${taskId}/runs/${runId}/abandon`, 'POST', {}); await refresh(true); assertAccount(); await this.history(taskId); },
     };
 }

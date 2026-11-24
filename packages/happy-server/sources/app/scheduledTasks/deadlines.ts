@@ -1,4 +1,18 @@
 /** One-shot deadline timers. Long waits re-arm from memory without business-state reads. */
+import type { ScheduledRun } from '@slopus/happy-wire';
+
+export const SCHEDULED_STARTUP_TIMEOUT_MS = 5 * 60 * 1000;
+export const SCHEDULED_EXECUTION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+/** Cap legacy claimed runs too, without rewriting or replaying their delivered input. */
+export function scheduledRunDeadline(run: Pick<ScheduledRun, 'status' | 'turnId' | 'updatedAt' | 'deadlineAt'>): { at: number; reason: string } | null {
+    if (run.status === 'claimed' && !run.turnId) return {
+        at: Math.min(run.deadlineAt ?? Infinity, run.updatedAt + SCHEDULED_STARTUP_TIMEOUT_MS),
+        reason: 'startup-deadline-exceeded',
+    };
+    return run.deadlineAt === null ? null : { at: run.deadlineAt, reason: 'execution-timeout' };
+}
+
 export function createDeadlineScheduler(onError: (error: unknown) => void = () => {}) {
     const entries = new Map<string, { timer?: ReturnType<typeof setTimeout>; at: number; work: () => Promise<unknown>; failed: boolean }>();
     let stopped = false;

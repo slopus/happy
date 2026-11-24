@@ -1138,6 +1138,12 @@ export class ApiSessionClient extends EventEmitter {
         });
     }
 
+    /** The processor stopped before ready; no scheduled input reached a root turn. */
+    async failScheduledProcessorStartup(): Promise<void> {
+        this.scheduledRunTracker.processorStartupFailed();
+        await this.scheduledRunTracker.flush();
+    }
+
     /**
      * Wait for socket buffer to flush
      */

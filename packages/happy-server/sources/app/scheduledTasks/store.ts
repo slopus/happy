@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { allocateUserSeqBatch } from '@/storage/seq';
+import { SCHEDULED_STARTUP_TIMEOUT_MS, SCHEDULED_EXECUTION_TIMEOUT_MS } from './deadlines';
 import { SCHEDULED_TASK_PREFIX, ScheduledTaskInputSchema, ScheduledRunReportSchema, nextScheduledAt, isScheduledRunTerminal,
     type ScheduledTask, type ScheduledTaskInput, type ScheduledRun, type ScheduledRunReport, type ScheduledRunClaim } from '@slopus/happy-wire';
 
@@ -192,7 +193,7 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                     if (active.run.machineId !== machineId || isScheduledRunTerminal(active.run.status)) continue;
                     const deliveryAuthorized = active.run.status === 'pending';
                     if (deliveryAuthorized) {
-                        active.run.status = 'claimed'; active.run.claimId = randomUUID(); active.run.updatedAt = now(); active.run.deadlineAt = now() + 86_400_000;
+                        active.run.status = 'claimed'; active.run.claimId = randomUUID(); active.run.updatedAt = now(); active.run.deadlineAt = now() + SCHEDULED_STARTUP_TIMEOUT_MS;
                         await write(tx, accountId, active.row.key, active.run, active.row);
                     }
                     result.push({ accountId, task, run: active.run, deliveryAuthorized });
@@ -202,11 +203,13 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
             for (const change of changes) if (change.deliveryAuthorized) emit(change);
             return changes.map(change => ({ ...change.run!, deliveryAuthorized: change.deliveryAuthorized }));
         },
-        async report(accountId: string, taskId: string, id: string, raw: ScheduledRunReport): Promise<ScheduledRun> {
+        async report(accountId: string, taskId: string, id: string, raw: ScheduledRunReport,
+            expectedDeadline?: Pick<ScheduledRun, 'status' | 'updatedAt' | 'deadlineAt'>): Promise<ScheduledRun> {
             const report = ScheduledRunReportSchema.parse(raw);
             const change = await transaction(async tx => {
                 const { row: taskRow, task } = await readTask(tx, accountId, taskId);
                 const { row, run } = await readRun(tx, accountId, taskId, id);
+                if (expectedDeadline && (run.status !== expectedDeadline.status || run.updatedAt !== expectedDeadline.updatedAt || run.deadlineAt !== expectedDeadline.deadlineAt)) return { accountId, task, run, changed: false };
                 if (!run.claimId || report.claimId !== run.claimId) throw new ScheduledTaskError('claim-conflict', 403);
                 if ((run.sessionId && report.sessionId && report.sessionId !== run.sessionId) || (run.turnId && report.turnId && report.turnId !== run.turnId)) throw new ScheduledTaskError('run-binding-conflict');
                 if (isScheduledRunTerminal(run.status)) return { accountId, task, run, changed: false };
@@ -225,11 +228,15 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                     if (!task.conversationSessionId) { task.conversationSessionId = report.sessionId; task.version = taskRow.version + 1; await write(tx, accountId, taskRow.key, task, taskRow); taskRow.version++; }
                 }
                 if (['running', 'waiting-for-input', 'completed'].includes(report.status) && (!report.sessionId || !report.turnId)) throw new ScheduledTaskError('turn-required', 400);
-                if (run.sessionId && ['failed', 'cancelled'].includes(report.status) && !report.turnId && report.reason !== 'input-rejected') throw new ScheduledTaskError('turn-required', 400);
+                const processorStartupFailed = report.status === 'failed' && report.reason === 'processor-startup-failed'
+                    && run.status === 'claimed' && !run.turnId && !report.turnId && !!run.sessionId && report.sessionId === run.sessionId;
+                if (report.reason === 'processor-startup-failed' && !processorStartupFailed) throw new ScheduledTaskError('turn-required', 400);
+                if (run.sessionId && ['failed', 'cancelled'].includes(report.status) && !report.turnId && report.reason !== 'input-rejected' && !processorStartupFailed) throw new ScheduledTaskError('turn-required', 400);
                 if (report.status === 'claimed' && run.status !== 'claimed') return { accountId, task, run, changed: false };
                 const next: ScheduledRun = { ...run, ...report, sessionId: report.sessionId ?? run.sessionId, turnId: report.turnId ?? run.turnId,
                     reportSequence: report.sequence ?? run.reportSequence,
                     reason: report.reason ?? null, updatedAt: now(), startedAt: run.startedAt ?? (report.status === 'running' ? now() : null),
+                    deadlineAt: isScheduledRunTerminal(report.status) ? null : report.status === 'running' && !run.turnId ? now() + SCHEDULED_EXECUTION_TIMEOUT_MS : run.deadlineAt,
                     finishedAt: isScheduledRunTerminal(report.status) ? now() : null };
                 await write(tx, accountId, row.key, next, row);
                 if (isScheduledRunTerminal(next.status) && task.activeRunId === id) { task.activeRunId = null; task.version = taskRow.version + 1; task.updatedAt = now(); await write(tx, accountId, taskRow.key, task, taskRow); }

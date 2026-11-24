@@ -81,6 +81,64 @@ describe('durable scheduled tasks', () => {
         expect((await store.history(owner, input.id))[0].status).toBe('cancelled');
         expect(task.version).toBe(0);
     });
+    it('ends a bound before-ready failure without accepting an unbound or started failure', async () => {
+        await store.save(owner, input, -1);
+        await store.runNow(owner, input.id, randomUUID());
+        const [run] = await store.claim(owner, machine);
+        const sessionId = 'startup-' + owner;
+        await context.database.session.create({ data: { id: sessionId, accountId: owner, tag: sessionId, metadata: 'encrypted' } });
+        const failure = { claimId: run.claimId!, status: 'failed' as const, reason: 'processor-startup-failed', sessionId, sequence: 1 };
+        await expect(store.report(owner, input.id, run.id, failure)).rejects.toMatchObject({ code: 'turn-required' });
+        await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'claimed', sessionId });
+        await expect(store.report(owner, input.id, run.id, { ...failure, sessionId: undefined })).rejects.toMatchObject({ code: 'turn-required' });
+        const stopped = await store.report(owner, input.id, run.id, failure);
+        expect(stopped).toMatchObject({ status: 'failed', reason: 'processor-startup-failed', turnId: null, startedAt: null, finishedAt: now, deadlineAt: null });
+        expect((await store.list(owner))[0].activeRunId).toBeNull();
+        await store.runNow(owner, input.id, randomUUID());
+        const [started] = await store.claim(owner, machine);
+        await store.report(owner, input.id, started.id, { claimId: started.claimId!, status: 'running', sessionId, turnId: 'root', sequence: 1 });
+        await expect(store.report(owner, input.id, started.id, { ...failure, claimId: started.claimId!, sequence: 2, turnId: 'root' })).rejects.toMatchObject({ code: 'turn-required' });
+        expect((await store.history(owner, input.id)).find(r => r.id === started.id)?.status).toBe('running');
+    });
+    it('bounds startup to five minutes and grants the execution window only on the first root start', async () => {
+        await store.save(owner, input, -1);
+        await store.runNow(owner, input.id, randomUUID());
+        const [run] = await store.claim(owner, machine);
+        expect(run.deadlineAt).toBe(now + 5 * 60_000);
+        const sessionId = 'deadline-' + owner;
+        await context.database.session.create({ data: { id: sessionId, accountId: owner, tag: sessionId, metadata: 'encrypted' } });
+        now += 120_000;
+        const bound = await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'claimed', sessionId });
+        expect(bound.deadlineAt).toBe(run.deadlineAt);
+        const running = await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'running', sessionId, turnId: 'root', sequence: 1 });
+        expect(running.deadlineAt).toBe(now + 24 * 60 * 60_000);
+        const racedDeadline = await store.report(owner, input.id, run.id, {
+            claimId: run.claimId!, status: 'uncertain', sessionId, reason: 'startup-deadline-exceeded',
+        }, { status: bound.status, updatedAt: bound.updatedAt, deadlineAt: bound.deadlineAt });
+        expect(racedDeadline.status).toBe('running');
+        expect(racedDeadline.deadlineAt).toBe(running.deadlineAt);
+        now += 60_000;
+        await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'waiting-for-input', sessionId, turnId: 'root', sequence: 2 });
+        const resumed = await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'running', sessionId, turnId: 'root', sequence: 3 });
+        expect(resumed.deadlineAt).toBe(running.deadlineAt);
+    });
+    it('expires a restored legacy startup once without redelivering or releasing overlap protection', async () => {
+        await store.save(owner, input, -1);
+        await store.runNow(owner, input.id, randomUUID());
+        const [run] = await store.claim(owner, machine);
+        const sessionId = 'legacy-startup-' + owner;
+        await context.database.session.create({ data: { id: sessionId, accountId: owner, tag: sessionId, metadata: 'encrypted' } });
+        const bound = await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'claimed', sessionId });
+        now += 5 * 60_000;
+        const expired = await store.report(owner, input.id, run.id, {
+            claimId: run.claimId!, status: 'uncertain', sessionId, reason: 'startup-deadline-exceeded',
+        }, { status: bound.status, updatedAt: bound.updatedAt, deadlineAt: bound.deadlineAt });
+        expect(expired).toMatchObject({ status: 'uncertain', reason: 'startup-deadline-exceeded', sessionId, turnId: null });
+        expect((await store.claim(owner, machine))[0]).toMatchObject({ id: run.id, deliveryAuthorized: false });
+        expect((await store.runNow(owner, input.id, randomUUID())).id).toBe(run.id);
+        await store.abandon(owner, input.id, run.id);
+        expect((await store.list(owner))[0].activeRunId).toBeNull();
+    });
     it('can cancel an offline once-run after its schedule was automatically disabled', async () => {
         input.rule = { type: 'once', at: now + 1000, timezone: 'UTC' };
         await store.save(owner, input, -1);

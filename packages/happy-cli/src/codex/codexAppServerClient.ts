@@ -82,7 +82,7 @@ import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 import packageJson from '../../package.json';
 import { CodexMcpAppAdapter } from './mcpApps/CodexMcpAppAdapter';
-import { assertCodexAccountConfig, assertCodexAccountModel, CODEX_ACCOUNT_OVERRIDES, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_CONFIG_ERROR, CODEX_ACCOUNT_UNSET_ENV } from './codexAccountConfig';
+import { assertCodexAccountConfig, assertCodexAccountThreadConfig, assertCodexAccountModel, CODEX_ACCOUNT_OVERRIDES, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_CONFIG_ERROR, CODEX_ACCOUNT_UNSET_ENV } from './codexAccountConfig';
 import { recoverCodexProviderIndex } from './codexProviderIndexRecovery';
 
 type PendingRequest = {
@@ -1150,7 +1150,11 @@ export class CodexAppServerClient {
         // Native child_process.spawn fails with ENOENT for .cmd shims (issues #980, #1016).
         const proc = crossSpawn(command, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
-            cwd: this.workingDirectory,
+            // The account home is a sanitized configuration snapshot. Starting
+            // in the user's home would load its .codex directory again as a
+            // project layer before the process-wide model catalog is created.
+            // Thread/turn requests below retain the actual working directory.
+            cwd: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? this.processEnv.CODEX_HOME : this.workingDirectory,
             env,
             windowsHide: true,
         });
@@ -1397,8 +1401,18 @@ export class CodexAppServerClient {
     private async assertAccountConfig(cwd?: string): Promise<void> {
         if (!this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) return;
         try {
-            const result = await this.request('config/read', { includeLayers: false, cwd: cwd ?? process.cwd() }) as { config?: unknown };
+            // Without cwd this reads the same thread-agnostic account snapshot
+            // used to initialize app-server, rather than rediscovering host
+            // project configuration that cannot replace its startup catalog.
+            const result = await this.request('config/read', { includeLayers: false }) as { config?: unknown };
             assertCodexAccountConfig(result?.config);
+            // Keep checking the actual thread's routing/authentication layers.
+            // Only its catalog field is startup-only; provider extras such as
+            // env_key or headers must still fail closed before a thread RPC.
+            if (cwd) {
+                const thread = await this.request('config/read', { includeLayers: false, cwd }) as { config?: unknown };
+                assertCodexAccountThreadConfig(thread?.config);
+            }
         } catch { throw new Error(CODEX_ACCOUNT_CONFIG_ERROR); }
     }
 
@@ -1429,7 +1443,8 @@ export class CodexAppServerClient {
 
     async readEffectiveModelConfiguration(): Promise<Record<string, unknown>> {
         const result = await this.request('config/read', {
-            includeLayers: false, cwd: this.workingDirectory ?? process.cwd(),
+            includeLayers: false,
+            ...(this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? {} : { cwd: this.workingDirectory ?? process.cwd() }),
         }) as { config?: Record<string, unknown> };
         if (!result.config) throw new Error('Could not verify the model connection.');
         return result.config;
@@ -1532,7 +1547,7 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         mcpServers?: Record<string, unknown>;
     }): Promise<{ threadId: string; model: string; reasoningEffort: ReasoningEffort | null }> {
-        if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(opts.cwd);
+        if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(opts.cwd ?? process.cwd());
         const params: NewConversationParams = {
             model: opts.model ?? null,
             modelProvider: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? CODEX_ACCOUNT_PROVIDER : null,
@@ -1577,7 +1592,7 @@ export class CodexAppServerClient {
         }
 
         const defaults = this.threadDefaults ?? {};
-        if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(opts?.cwd ?? defaults.cwd);
+        if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(opts?.cwd ?? defaults.cwd ?? process.cwd());
         const params: ResumeConversationParams = {
             threadId,
             model: opts?.model ?? defaults.model ?? null,
@@ -1604,7 +1619,7 @@ export class CodexAppServerClient {
                 || data?.type !== 'modelProviderMismatch' || data.modelProvider !== 'openai'
                 || data.currentModelProvider !== CODEX_ACCOUNT_PROVIDER
                 || !await recoverCodexProviderIndex(home, profile, threadId).catch(() => false)) throw error;
-            await this.assertAccountConfig(opts?.cwd ?? defaults.cwd);
+            await this.assertAccountConfig(opts?.cwd ?? defaults.cwd ?? process.cwd());
             logger.debug('[CodexAppServer] Recovered official provider index for restored thread:', threadId);
             // One retry of a rejected initialization, never a turn or business action.
             result = await this.request('thread/resume', params) as ResumeConversationResponse;
@@ -1634,7 +1649,7 @@ export class CodexAppServerClient {
         deferGoalContinuation?: boolean;
     }): Promise<{ threadId: string; model: string; thread: Thread }> {
         const defaults = this.threadDefaults ?? {};
-        if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(opts.cwd ?? defaults.cwd);
+        if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(opts.cwd ?? defaults.cwd ?? process.cwd());
         const params: ForkConversationParams = {
             threadId: opts.threadId,
             ...(opts.lastTurnId ? { lastTurnId: opts.lastTurnId } : {}),

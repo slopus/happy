@@ -85,6 +85,7 @@ import { CodexSessionCredentialRecovery } from './codexSessionCredentialRecovery
 import { CodexAuthTurnRecovery, runTurnWithCredentialRecovery } from './codexAuthTurnRecovery';
 import { createCodexMessageQueueStatus } from './codexMessageQueueStatus';
 import { createCodexAsyncQuestionHandler, deliverCodexAsyncQuestionAnswer, recoverAsyncQuestionResponses } from './codexAsyncQuestionRpc';
+import { CODEX_ACCOUNT_CONFIG_ERROR } from './codexAccountConfig';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -115,15 +116,25 @@ export async function completeCodexProcessorStartup(
 }
 
 export async function archiveFailedCodexProcessorStartup(
-    session: Pick<ApiSessionClient, 'updateMetadataAndAwait'>,
+    session: Pick<ApiSessionClient, 'updateMetadataAndAwait' | 'failScheduledProcessorStartup' | 'sendSessionEvent'>,
+    error?: unknown,
 ): Promise<void> {
-    await session.updateMetadataAndAwait((metadata) => metadata.lifecycleState === 'archived' ? metadata : ({
-        ...metadata,
-        lifecycleState: 'archived',
-        lifecycleStateSince: Date.now(),
-        archivedBy: 'cli',
-        archiveReason: 'Codex processor failed before ready',
-    }));
+    if (error !== undefined) session.sendSessionEvent({ type: 'message', message: error instanceof Error && error.message === CODEX_ACCOUNT_CONFIG_ERROR
+        ? 'Codex 启动失败：账号连接配置不兼容。请在“设置 → 设备环境”检查此设备绑定的 Codex 账号和连接配置后重试。任务尚未开始。'
+        : 'Codex 启动失败，任务尚未开始。请检查执行设备上的 Codex 安装、账号登录及配置后重试。' });
+    try {
+        await session.updateMetadataAndAwait((metadata) => metadata.lifecycleState === 'archived' ? metadata : ({
+            ...metadata,
+            lifecycleState: 'archived',
+            lifecycleStateSince: Date.now(),
+            archivedBy: 'cli',
+            archiveReason: 'Codex processor failed before ready',
+        }));
+    } finally {
+        // Startup has unwound and its queue is closed. Preserve its receipt even
+        // if the same network failure prevented the lifecycle write.
+        await session.failScheduledProcessorStartup();
+    }
 }
 
 function formatCodexGoal(goal: ThreadGoal): string {
@@ -1318,6 +1329,7 @@ export async function runCodex(opts: {
     const skillPathResolutionInstruction = createCodexSkillPathResolutionPromptLifecycle();
 
     let processorStartupComplete = false;
+    let processorStartupError: unknown;
     try {
         await reconnectMetadataReady;
         if (!applicationPolicy && Object.values(session.getMetadata()?.codexAsyncQuestionResponses ?? {}).some(response => response.status === 'sending')) {
@@ -2026,6 +2038,9 @@ export async function runCodex(opts: {
             }
         }
 
+    } catch (error) {
+        if (!processorStartupComplete) processorStartupError = error;
+        throw error;
     } finally {
         // Clean up resources when main loop exits
         logger.debug('[codex]: Final cleanup start');
@@ -2067,7 +2082,7 @@ export async function runCodex(opts: {
             // session with no durable stop proof for its caller to reconcile.
             if (!processorStartupComplete) {
                 try {
-                    await archiveFailedCodexProcessorStartup(session);
+                    await archiveFailedCodexProcessorStartup(session, processorStartupError);
                 } catch (error) {
                     logger.warn('[Codex] Could not persist startup failure lifecycle', error);
                 }

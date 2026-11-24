@@ -782,7 +782,8 @@ describe('CodexAppServerClient sandbox integration', () => {
             requests.push(message);
             if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config: {
                 ...CODEX_ACCOUNT_CONFIG,
-                model_providers: { [CODEX_ACCOUNT_PROVIDER]: { ...CODEX_ACCOUNT_HTTP_PROVIDER, ...(unsafe ? { env_key: 'CUSTOM_PROVIDER_KEY' } : {}) } },
+                ...(message.params?.cwd ? { model_catalog_json: '/host/project-catalog.json' } : {}),
+                model_providers: { [CODEX_ACCOUNT_PROVIDER]: { ...CODEX_ACCOUNT_HTTP_PROVIDER, ...(unsafe && message.params?.cwd ? { env_key: 'CUSTOM_PROVIDER_KEY' } : {}) } },
             } } });
             if (message.method === 'thread/fork') {
                 writeFileSync(join(accountHome, 'sessions', 'rollout-thread-fork.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'thread-fork', forked_from_id: 'thread-a' } }) + '\n');
@@ -801,8 +802,11 @@ describe('CodexAppServerClient sandbox integration', () => {
             expect(mockSpawn.mock.calls.at(-1)?.[1]).toEqual(expect.arrayContaining([`model_provider="${CODEX_ACCOUNT_PROVIDER}"`, `model_providers.${CODEX_ACCOUNT_PROVIDER}.supports_websockets=false`, 'forced_login_method="chatgpt"', 'chatgpt_base_url="https://chatgpt.com/backend-api"']));
             expect(mockSpawn.mock.calls.at(-1)?.[2].env.OPENAI_API_KEY).toBeUndefined();
             expect(mockSpawn.mock.calls.at(-1)?.[2].env.OPENAI_BASE_URL).toBeUndefined();
+            expect(mockSpawn.mock.calls.at(-1)?.[2].cwd).toBe(accountHome);
             await call();
-            expect(requests.find(r => r.method === `thread/${operation}`)?.params).toMatchObject({ modelProvider: CODEX_ACCOUNT_PROVIDER, config: expect.objectContaining(CODEX_ACCOUNT_OVERRIDES) });
+            expect(requests.filter(r => r.method === 'config/read').map(request => request.params?.cwd)).toContain('/work');
+            expect(requests.find(r => r.method === 'config/read')?.params?.cwd).toBeUndefined();
+            expect(requests.find(r => r.method === `thread/${operation}`)?.params).toMatchObject({ cwd: '/work', modelProvider: CODEX_ACCOUNT_PROVIDER, config: expect.objectContaining(CODEX_ACCOUNT_OVERRIDES) });
             unsafe = true;
             await expect(call()).rejects.toThrow('Device Environment');
             expect(requests.filter(r => r.method === `thread/${operation}`)).toHaveLength(1);

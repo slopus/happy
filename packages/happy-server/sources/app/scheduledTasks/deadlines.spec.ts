@@ -1,7 +1,14 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { createDeadlineScheduler } from './deadlines';
+import { createDeadlineScheduler, scheduledRunDeadline } from './deadlines';
 
 afterEach(() => vi.useRealTimers());
+it('caps a restored legacy claim at startup timeout while preserving an earlier stored deadline', () => {
+    const run = { status: 'claimed' as const, turnId: null, updatedAt: 1_000, deadlineAt: 86_401_000 };
+    expect(scheduledRunDeadline(run)).toEqual({ at: 301_000, reason: 'startup-deadline-exceeded' });
+    expect(scheduledRunDeadline({ ...run, deadlineAt: 200_000 })).toEqual({ at: 200_000, reason: 'startup-deadline-exceeded' });
+    expect(scheduledRunDeadline({ ...run, status: 'running', turnId: 'root' })).toEqual({ at: 86_401_000, reason: 'execution-timeout' });
+});
+
 it('fires only at the deadline and replaces stale timers without querying between deadlines', async () => {
     vi.useFakeTimers(); vi.setSystemTime(1000);
     const scheduler = createDeadlineScheduler();

@@ -16,6 +16,16 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     scheduledTasks: {
+        executionSettings: "Execution settings",
+        selectMachine: "Choose an execution machine",
+        accountUnavailable: "Account settings are unavailable. Try again after reconnecting.",
+        startupFailed: "The execution process failed to start. Check the conversation error before trying again.",
+        startupTimeout: "Startup confirmation timed out. Check the conversation before ending tracking to allow future runs.",
+        runFailed: "This run failed. Open the conversation for details.",
+        operationError: "The operation failed. Check your connection and try again.",
+        openingSession: "Preparing conversation…",
+        launchQueued: "The run is queued. Open it from the run record when the conversation is ready.",
+        currentRun: "Latest run",
         title: "Scheduled tasks",
         create: "New task",
         edit: "Edit task",

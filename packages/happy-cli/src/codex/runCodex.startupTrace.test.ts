@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { archiveFailedCodexProcessorStartup, completeCodexProcessorStartup } from './runCodex';
+import { CODEX_ACCOUNT_CONFIG_ERROR } from './codexAccountConfig';
 
 describe('Codex processor startup trace', () => {
     it('waits for thread availability before recording and emitting processor ready', async () => {
@@ -41,6 +42,10 @@ describe('Codex processor startup trace', () => {
         let metadata: any = { lifecycleState: 'running', machineId: 'machine' };
         const session = {
             updateMetadataAndAwait: vi.fn(async (update: (value: any) => any) => { metadata = update(metadata); }),
+            failScheduledProcessorStartup: vi.fn(async () => {
+                expect(metadata.lifecycleState).toBe('archived');
+            }),
+            sendSessionEvent: vi.fn(),
         };
 
         await archiveFailedCodexProcessorStartup(session as any);
@@ -52,12 +57,41 @@ describe('Codex processor startup trace', () => {
             machineId: 'machine',
         });
         expect(metadata.lifecycleStateSince).toEqual(expect.any(Number));
+        expect(session.failScheduledProcessorStartup).toHaveBeenCalledOnce();
     });
 
     it('preserves an already archived lifecycle when startup cleanup runs again', async () => {
         const archived = { lifecycleState: 'archived', archivedBy: 'cli', lifecycleStateSince: 123, archiveReason: 'User terminated' };
         let metadata = archived;
-        await archiveFailedCodexProcessorStartup({ updateMetadataAndAwait: async (update: any) => { metadata = update(metadata); } } as any);
+        await archiveFailedCodexProcessorStartup({
+            updateMetadataAndAwait: async (update: any) => { metadata = update(metadata); },
+            failScheduledProcessorStartup: async () => {},
+            sendSessionEvent: () => {},
+        });
         expect(metadata).toBe(archived);
+    });
+
+    it('still persists the stopped processor receipt when its lifecycle write fails', async () => {
+        const failure = new Error('offline');
+        let reported = false;
+        await expect(archiveFailedCodexProcessorStartup({
+            updateMetadataAndAwait: async () => { throw failure; },
+            failScheduledProcessorStartup: async () => { reported = true; },
+            sendSessionEvent: () => {},
+        })).rejects.toBe(failure);
+        expect(reported).toBe(true);
+    });
+
+    it.each([CODEX_ACCOUNT_CONFIG_ERROR, 'startup failed with synthetic-secret-token'])('persists a safe visible startup error without exposing diagnostics: %s', async message => {
+        const events: Array<{ type: string; message?: string }> = [];
+        await archiveFailedCodexProcessorStartup({
+            updateMetadataAndAwait: async () => {},
+            failScheduledProcessorStartup: async () => {},
+            sendSessionEvent: event => { events.push(event); },
+        }, new Error(message));
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ type: 'message', message: expect.stringContaining('任务尚未开始') });
+        expect(events[0].message).not.toContain('synthetic-secret-token');
+        if (message === CODEX_ACCOUNT_CONFIG_ERROR) expect(events[0].message).toContain('设置 → 设备环境');
     });
 });

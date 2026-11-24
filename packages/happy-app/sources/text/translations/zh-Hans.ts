@@ -19,6 +19,16 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     scheduledTasks: {
+        executionSettings: "执行设置",
+        selectMachine: "请选择执行机器",
+        accountUnavailable: "暂时无法读取执行账户，请连接恢复后重试。",
+        startupFailed: "执行器启动失败，本次任务未开始。请检查会话中的错误后重试。",
+        startupTimeout: "启动确认超时。请先检查会话，再结束跟踪以允许后续运行。",
+        runFailed: "本次执行失败，请打开会话查看详情。",
+        operationError: "操作失败，请检查连接后重试。",
+        openingSession: "正在准备会话…",
+        launchQueued: "任务已排队；会话准备好后可从运行记录打开。",
+        currentRun: "最近运行",
         title: "定时任务",
         create: "新建任务",
         edit: "编辑任务",

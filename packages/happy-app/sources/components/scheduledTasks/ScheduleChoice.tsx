@@ -28,8 +28,8 @@ function ChoiceOption({ option, selected, onPress, onRef, testID }: {
 }
 
 /** A form choice keeps its value visible and distinguishes hover, focus and selection. */
-export function ScheduleChoice({ title, value, options, onChange, testID }: {
-    title: string; value: string; options: Option[]; onChange: (key: string) => void; testID?: string;
+export function ScheduleChoice({ title, value, options, onChange, testID, disabled = false, placeholder }: {
+    title: string; value: string; options: Option[]; onChange: (key: string) => void; testID?: string; disabled?: boolean; placeholder?: string;
 }) {
     const { theme } = useUnistyles();
     const [expanded, setExpanded] = React.useState(false);
@@ -39,7 +39,8 @@ export function ScheduleChoice({ title, value, options, onChange, testID }: {
     const triggerRef = React.useRef<View>(null);
     const optionRefs = React.useRef(new Map<string, View>());
     const escapePressed = React.useRef(false);
-    const currentName = options.find(option => option.key === value)?.name ?? value;
+    const currentName = options.find(option => option.key === value)?.name ?? (value || placeholder || '');
+    const unavailable = disabled || options.length === 0;
 
     useWebPopoverDismiss({ enabled: expanded,
         isInside: target => (rootRef.current as unknown as HTMLElement | null)?.contains(target) ?? false,
@@ -50,11 +51,13 @@ export function ScheduleChoice({ title, value, options, onChange, testID }: {
             (optionRefs.current.get(value) ?? optionRefs.current.values().next().value)?.focus();
         }
     }, [expanded]);
+    React.useEffect(() => { if (unavailable) setExpanded(false); }, [unavailable]);
 
     const close = () => { setExpanded(false); if (Platform.OS === 'web') triggerRef.current?.focus(); };
+    const choose = (key: string) => { if (unavailable) return; if (key !== value) onChange(key); close(); };
     const webKeys = Platform.OS === 'web' ? {
         onKeyDownCapture: (event: React.KeyboardEvent<HTMLElement>) => {
-            if (event.nativeEvent.isComposing) return;
+            if (unavailable || event.nativeEvent.isComposing) return;
             if (expanded && event.key === 'Escape') {
                 escapePressed.current = true;
                 event.preventDefault(); event.stopPropagation(); close();
@@ -68,7 +71,7 @@ export function ScheduleChoice({ title, value, options, onChange, testID }: {
             } else if (expanded && (event.key === 'Enter' || event.key === ' ')) {
                 const option = options.find(option => (optionRefs.current.get(option.key) as unknown) === document.activeElement);
                 if (option) {
-                    event.preventDefault(); event.stopPropagation(); onChange(option.key); close();
+                    event.preventDefault(); event.stopPropagation(); choose(option.key);
                 }
             } else if (expanded && event.key === 'Tab') close();
         },
@@ -83,13 +86,14 @@ export function ScheduleChoice({ title, value, options, onChange, testID }: {
 
     return <View ref={rootRef} style={styles.container} {...webKeys}>
         <Pressable ref={triggerRef} testID={testID} accessibilityRole="button"
-            accessibilityLabel={[title, currentName].filter(Boolean).join(', ')} accessibilityState={{ expanded }}
+            disabled={unavailable} accessibilityLabel={[title, currentName].filter(Boolean).join(', ')} accessibilityState={{ expanded, disabled: unavailable }}
             {...(Platform.OS === 'web' ? { 'aria-haspopup': 'listbox' as const, 'aria-expanded': expanded } : {})}
             onPress={() => setExpanded(open => !open)}
             onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)}
             onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
             style={({ pressed }) => [styles.trigger, expanded && styles.selected,
-                (hovered || pressed) && styles.hovered, (focused || expanded) && styles.focused]}>
+                !unavailable && (hovered || pressed) && styles.hovered, (focused || expanded) && styles.focused,
+                unavailable && styles.disabled]}>
             <Text style={styles.title}>{title}</Text>
             <Text testID={`${testID}-value`} style={styles.value} numberOfLines={1}>{currentName}</Text>
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} color={theme.colors.textSecondary} size={16} />
@@ -101,7 +105,7 @@ export function ScheduleChoice({ title, value, options, onChange, testID }: {
             style={styles.options} contentContainerStyle={styles.optionContent} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {options.map(option => <ChoiceOption key={option.key} option={option} selected={option.key === value}
                 onRef={node => { if (node) optionRefs.current.set(option.key, node); else optionRefs.current.delete(option.key); }}
-                onPress={() => { onChange(option.key); close(); }} testID={`${testID}-${option.key}`} />)}
+                onPress={() => choose(option.key)} testID={`${testID}-${option.key}`} />)}
         </ScrollView>}
     </View>;
 }
@@ -122,4 +126,5 @@ const styles = StyleSheet.create(theme => ({
     selected: { backgroundColor: theme.colors.surfaceSelected },
     hovered: { backgroundColor: theme.colors.surfacePressed },
     focused: { borderColor: theme.colors.textLink },
+    disabled: { opacity: 0.5 },
 }));

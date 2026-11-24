@@ -214,4 +214,24 @@ describe('ScheduleChoice DOM interactions', () => {
         expect(changed).toHaveBeenCalledExactlyOnceWith('air');
         expect(document.querySelector('[role="listbox"]')).toBeNull();
     });
+
+    it('closes a repeated selection without firing a value change', () => {
+        const changed = vi.fn();
+        render(<ControlledChoice changed={changed} />);
+        click(element('machine'));
+        click(element('machine-mini'));
+        expect(changed).not.toHaveBeenCalled();
+        expect(document.querySelector('[role="listbox"]')).toBeNull();
+        expect(document.activeElement).toBe(element('machine'));
+    });
+
+    it('disables an empty selector and shows how to choose a machine', () => {
+        const changed = vi.fn();
+        render(<ScheduleChoice title="执行机器" value="" options={[]} onChange={changed} placeholder="请选择执行机器" testID="machine" />);
+        expect(element('machine-value').textContent).toBe('请选择执行机器');
+        expect(element('machine').getAttribute('aria-disabled')).toBe('true');
+        click(element('machine'));
+        expect(document.querySelector('[role="listbox"]')).toBeNull();
+        expect(changed).not.toHaveBeenCalled();
+    });
 });

@@ -7,7 +7,7 @@ import { onShutdown } from '@/utils/shutdown';
 import { log } from '@/utils/log';
 import { isScheduledRunTerminal } from '@slopus/happy-wire';
 import { createScheduledTaskStore, type ScheduledTaskChange } from './store';
-import { createDeadlineScheduler } from './deadlines';
+import { createDeadlineScheduler, scheduledRunDeadline } from './deadlines';
 
 export const scheduledTaskStore = createScheduledTaskStore(db, { onMessage: created => {
     eventRouter.emitUpdate({ userId: created.accountId, recipientFilter: { type: 'all-interested-in-session', sessionId: created.sessionId },
@@ -35,11 +35,12 @@ export async function startScheduledTaskScheduler(): Promise<void> {
             const runTimer = `${key}:${run.id}`;
             timers.cancel(runTimer);
             if (run.status === 'pending') wakeScheduledTasksForMachine(accountId, run.machineId);
-            else if (!isScheduledRunTerminal(run.status) && run.status !== 'uncertain' && run.deadlineAt !== null) {
-                timers.schedule(runTimer, run.deadlineAt, () => scheduledTaskStore.report(accountId, task.id, run.id, {
-                    claimId: run.claimId!, status: 'uncertain', reason: 'execution-timeout',
+            else if (!isScheduledRunTerminal(run.status) && run.status !== 'uncertain') {
+                const deadline = scheduledRunDeadline(run);
+                if (deadline) timers.schedule(runTimer, deadline.at, () => scheduledTaskStore.report(accountId, task.id, run.id, {
+                    claimId: run.claimId!, status: 'uncertain', reason: deadline.reason,
                     ...(run.sessionId ? { sessionId: run.sessionId } : {}), ...(run.turnId ? { turnId: run.turnId } : {}),
-                }));
+                }, { status: run.status, updatedAt: run.updatedAt, deadlineAt: run.deadlineAt }));
             }
         }
     };

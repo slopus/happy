@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertCodexAccountConfig, assertCodexAccountModel, CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_HTTP_PROVIDER, CODEX_ACCOUNT_PROVIDER } from './codexAccountConfig';
+import { assertCodexAccountConfig, assertCodexAccountThreadConfig, assertCodexAccountModel, CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_HTTP_PROVIDER, CODEX_ACCOUNT_PROVIDER } from './codexAccountConfig';
 
 const config = (overrides: Record<string, unknown> = {}) => ({
     ...CODEX_ACCOUNT_CONFIG,
@@ -17,10 +17,12 @@ describe('account HTTP transport policy', () => {
         { experimental_bearer_token: 'synthetic' }, { auth: {} }, { query_params: {} },
     ])('rejects inherited transport or credential overrides: %j', overrides => {
         expect(() => assertCodexAccountConfig(config(overrides))).toThrow('Device Environment');
+        expect(() => assertCodexAccountThreadConfig({ ...config(overrides), model_catalog_json: '/host/catalog.json' })).toThrow('Device Environment');
     });
     it('rejects an external model catalog reintroduced by another config layer', () => {
         expect(() => assertCodexAccountConfig({ ...config(), model_catalog_json: '/project/magpie-models.json' })).toThrow('Device Environment');
         expect(() => assertCodexAccountConfig({ ...config(), model_catalog_json: null })).not.toThrow();
+        expect(() => assertCodexAccountThreadConfig({ ...config(), model_catalog_json: '/project/magpie-models.json' })).not.toThrow();
     });
     it('rejects the old websocket provider and missing HTTP definitions', () => {
         expect(() => assertCodexAccountConfig({ ...config(), model_provider: 'openai' })).toThrow();

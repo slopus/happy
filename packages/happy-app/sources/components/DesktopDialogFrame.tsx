@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { Modal, Pressable, View, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
@@ -17,12 +17,19 @@ export function DesktopDialogFrame({ children, headerActions, maxWidth = 520, on
 }) {
     const { theme } = useUnistyles();
     const closeButtonRef = React.useRef<any>(null);
+    const dialogRef = React.useRef<View>(null);
     return (
         <Modal
             accessibilityLabel={title}
             animationType="fade"
             onRequestClose={onClose}
-            onShow={() => closeButtonRef.current?.focus?.()}
+            onShow={() => {
+                // The fade can finish after a user has already opened a picker.
+                // Keep that focus so Escape still reaches the active child layer.
+                if (Platform.OS === 'web' && typeof document !== 'undefined'
+                    && (dialogRef.current as unknown as HTMLElement | null)?.contains(document.activeElement)) return;
+                closeButtonRef.current?.focus?.();
+            }}
             transparent
             visible={visible}
         >
@@ -35,7 +42,7 @@ export function DesktopDialogFrame({ children, headerActions, maxWidth = 520, on
                     style={styles.modalBackdrop}
                     testID="desktop-dialog-backdrop"
                 />
-                <View accessibilityViewIsModal style={[styles.dialog, { maxWidth }]} testID={testID}>
+                <View ref={dialogRef} accessibilityViewIsModal style={[styles.dialog, { maxWidth }]} testID={testID}>
                     <View style={styles.dialogHeader}>
                         <Text style={styles.dialogTitle}>{title}</Text>
                         {headerActions}

@@ -61,6 +61,13 @@ export function createScheduledRunTracker(deps: {
             const receipt = [...receipts.values()].find(receipt => receipt.localId === localId);
             if (receipt && !receipt.report.turnId) update(receipt, { ...receipt.report, status: 'failed', reason: 'input-rejected' });
         },
+        processorStartupFailed(): void {
+            for (const receipt of receipts.values()) {
+                if (receipt.report.status !== 'claimed' || receipt.report.turnId) continue;
+                update(receipt, { ...receipt.report, status: 'failed', reason: 'processor-startup-failed' });
+                if (receipt.prompt.notificationPolicy !== 'none') deps.attention?.();
+            }
+        },
         acceptMessage(message: { localId?: string; meta?: { scheduledRun?: unknown } }): void {
             const parsed = ScheduledPromptSchema.safeParse(message.meta?.scheduledRun);
             if (!parsed.success || message.localId !== `scheduled:${parsed.data.runId}` || receipts.has(parsed.data.runId)) return;

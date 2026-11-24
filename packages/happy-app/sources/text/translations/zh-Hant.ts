@@ -19,6 +19,16 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHant: TranslationStructure = {
     scheduledTasks: {
+        executionSettings: "執行設定",
+        selectMachine: "請選擇執行電腦",
+        accountUnavailable: "暫時無法讀取執行帳戶，請在連線恢復後重試。",
+        startupFailed: "執行程式啟動失敗，本次任務尚未開始。請查看對話中的錯誤後重試。",
+        startupTimeout: "啟動確認逾時。請先查看對話，再結束追蹤以允許後續執行。",
+        runFailed: "本次執行失敗，請開啟對話查看詳情。",
+        operationError: "操作失敗，請檢查連線後重試。",
+        openingSession: "正在準備對話…",
+        launchQueued: "任務已排入佇列；對話準備完成後，可從執行記錄開啟。",
+        currentRun: "最近執行",
         title: "定時任務",
         create: "新增任務",
         edit: "編輯任務",

@@ -20,6 +20,16 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const ja: TranslationStructure = {
     scheduledTasks: {
+        executionSettings: "実行設定",
+        selectMachine: "実行マシンを選択してください",
+        accountUnavailable: "実行アカウントの設定を取得できません。再接続してからもう一度お試しください。",
+        startupFailed: "実行プロセスを起動できませんでした。会話内のエラーを確認してから再試行してください。",
+        startupTimeout: "起動の確認がタイムアウトしました。会話を確認し、追跡を終了すると次の実行が可能になります。",
+        runFailed: "今回の実行は失敗しました。会話を開いて詳細を確認してください。",
+        operationError: "操作に失敗しました。接続を確認してからもう一度お試しください。",
+        openingSession: "会話を準備中…",
+        launchQueued: "タスクは実行待ちです。会話の準備ができたら、実行履歴から開けます。",
+        currentRun: "直近の実行",
         title: "定期タスク",
         create: "タスクを作成",
         edit: "タスクを編集",

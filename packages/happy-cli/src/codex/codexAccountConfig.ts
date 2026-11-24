@@ -29,13 +29,13 @@ export const CODEX_ACCOUNT_UNSET_ENV = [
 
 export const CODEX_ACCOUNT_CONFIG_ERROR = 'Codex account configuration is incompatible. Remove custom OpenAI provider overrides and check the account in Settings → Device Environment.';
 
-export function assertCodexAccountConfig(value: unknown): void {
+/** Thread-level transport fields can still be inherited from project layers. */
+export function assertCodexAccountThreadConfig(value: unknown): void {
   if (!value || typeof value !== 'object') throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
   const config = value as Record<string, unknown>;
   for (const [key, expected] of Object.entries(CODEX_ACCOUNT_CONFIG)) {
     if (config[key] !== expected) throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
   }
-  if (config.model_catalog_json != null) throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
   const providers = config.model_providers;
   if (!providers || typeof providers !== 'object' || Array.isArray(providers)) throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
   const provider = (providers as Record<string, unknown>)[CODEX_ACCOUNT_PROVIDER];
@@ -51,6 +51,12 @@ export function assertCodexAccountConfig(value: unknown): void {
         || (key === 'supports_standalone_web_search' && field === false)) continue;
     throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
   }
+}
+
+/** The process-wide catalog is loaded at startup, before any thread exists. */
+export function assertCodexAccountConfig(value: unknown): void {
+  assertCodexAccountThreadConfig(value);
+  if ((value as Record<string, unknown>).model_catalog_json != null) throw new Error(CODEX_ACCOUNT_CONFIG_ERROR);
 }
 
 

@@ -28,6 +28,16 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  */
 export const pl: TranslationStructure = {
     scheduledTasks: {
+        executionSettings: "Ustawienia wykonania",
+        selectMachine: "Wybierz maszynę wykonawczą",
+        accountUnavailable: "Ustawienia konta są niedostępne. Spróbuj ponownie po przywróceniu połączenia.",
+        startupFailed: "Nie udało się uruchomić procesu wykonawczego. Sprawdź błąd w rozmowie przed ponowną próbą.",
+        startupTimeout: "Upłynął limit czasu potwierdzenia uruchomienia. Sprawdź rozmowę przed zakończeniem śledzenia, aby umożliwić kolejne uruchomienia.",
+        runFailed: "To uruchomienie zakończyło się niepowodzeniem. Otwórz rozmowę, aby zobaczyć szczegóły.",
+        operationError: "Operacja nie powiodła się. Sprawdź połączenie i spróbuj ponownie.",
+        openingSession: "Przygotowywanie rozmowy…",
+        launchQueued: "Uruchomienie jest w kolejce. Gdy rozmowa będzie gotowa, otworzysz ją z historii uruchomień.",
+        currentRun: "Ostatnie uruchomienie",
         title: "Zadania cykliczne",
         create: "Nowe zadanie",
         edit: "Edytuj zadanie",
