@@ -350,7 +350,10 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     server or is the one open; signed out or not here, nothing opens. A
     cloud payload this app can't read (another version, an extra or
     missing field) opens nothing and is never read for a `sessionId`. A
-    tap that launches the app waits for the stored connections.
+    tap that launches the app waits for the stored connections. A switch
+    from a deeper screen (a chat on another server) animates the stack to
+    the new home, and the chat opens once that has ended
+    (`AppCoordinator.openInstanceTarget`); an instance link shares this.
   - **Deliberate differences from happy-app:**
     - happy-app's backoff retries the server calls forever. Here each sync
       makes one registration attempt, and the next session start or
