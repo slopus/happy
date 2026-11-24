@@ -11,15 +11,35 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-/** The local binding, not caller-supplied authority for the Cloud API. */
+/** The local binding, not caller-supplied authority for the API. [server] is a sign-in's origin, and a pairing's installation id. */
 @Serializable
 data class CloudPushAccount(val connectionId: String, val server: String, val userId: String)
 
-/** The binding [connection] registers for push under; null for one that doesn't register. */
+/** Whom a standalone Happy Agent's pushes name: the installation's one person (happy-agent's push module). */
+const val STANDALONE_PUSH_MEMBER = "standalone"
+
+/**
+ * Whom a server's pushes name on this connection, the same rule as iOS's:
+ * the member it acts for, and on a pairing whose daemon names none, the
+ * installation's one person. A sign-in with no member yet is nobody, and
+ * is never taken for that person.
+ */
+val AgentConnection.pushMember: String? get() = userId ?: STANDALONE_PUSH_MEMBER.takeIf { server == null }
+
+/** No push is registered for, shown from or opened on a connection that has to be paired or signed in again. */
+internal val AgentConnection.takesPushes: Boolean get() = !revoked && !signInRequired && !profileRequired
+
+/**
+ * The binding [connection] registers for push under; null for one that
+ * doesn't register: Happy Cloud always does, any other server only while
+ * its health says it keeps phones (`capabilities.pushRegistrations`).
+ */
 internal fun cloudPushAccount(connection: AgentConnection): CloudPushAccount? {
-    if (connection.revoked || connection.signInRequired || connection.profileRequired) return null
-    val server = connection.server?.takeIf { HappyCloud.isServer(it) } ?: return null
-    return CloudPushAccount(connection.id, server, connection.userId ?: return null)
+    if (!connection.takesPushes) return null
+    if (!HappyCloud.isServer(connection.server) && !connection.pushRegistrations) return null
+    val member = connection.pushMember ?: return null
+    // A pairing has no origin: it is bound to the installation it paired with.
+    return CloudPushAccount(connection.id, connection.server ?: connection.instanceId ?: return null, member)
 }
 
 @Serializable

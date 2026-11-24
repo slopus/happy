@@ -21,6 +21,7 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.model.settings.PushPermissionStatus
 import com.slopus.happy.push.CloudPushApi
+import com.slopus.happy.push.cloudPushAccount
 import com.slopus.happy.push.CloudPushPreferences
 import com.slopus.happy.push.rememberNotificationPermission
 import com.slopus.happy.push.requestOrOpenSettings
@@ -45,18 +46,24 @@ object CloudPushTags {
     const val LIST = "cloudPush.list"
 }
 
+/** Whether this phone registers for push with [connectionId]'s server ([cloudPushAccount]): where it does, Notifications has the push settings. */
+@Composable
+internal fun servesPush(graph: AppGraph, connectionId: String): Boolean =
+    graph.agentConnections.accounts.collectAsStateWithLifecycle().value.any { it.id == connectionId && cloudPushAccount(it) != null }
+
 /** The push page's old route opens the one Notifications page ([AgentNotificationsPage]). */
 internal fun NavGraphBuilder.cloudPushSettingsRoutes(graph: AppGraph, nav: NavHostController) {
     page<CloudPushSettingsRoute> { entry -> AgentNotificationsPage(graph, nav, entry.toRoute<CloudPushSettingsRoute>().connectionId) }
 }
 
 /**
- * A Happy Cloud server's push settings on its Notifications page: read
- * whenever the page shows, with the device's permission asked from here.
+ * The push settings on the Notifications page of a server that keeps
+ * phones ([servesPush]): read whenever the page shows, with the device's
+ * permission asked from here.
  */
 @Composable
 internal fun CloudPushPanel(graph: AppGraph, connectionId: String) {
-    val client = remember(connectionId) { graph.agentSessions.session(connectionId)?.client?.takeIf { it.cloud } }
+    val client = remember(connectionId) { graph.agentSessions.session(connectionId)?.client }
     val source = remember(client) { client?.let { CloudPushPreferences(CloudPushApi(it)) } }
     val state = source?.state?.collectAsStateWithLifecycle()?.value ?: CloudPushPreferences.State.Failed
     val permission = rememberNotificationPermission()

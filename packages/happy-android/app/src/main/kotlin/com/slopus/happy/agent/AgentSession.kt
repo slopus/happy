@@ -1066,7 +1066,9 @@ class AgentSession internal constructor(
         avatarHash = info.thumbhash?.takeIf { it != known?.thumbhash || known.avatarFile == null }
         if (known != null) {
             val hasNode = bootstrap.config?.get("node") is JsonObject
-            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = if (hasNode) info.thumbhash else it.thumbhash, revoked = false, instanceId = info.instanceId ?: it.instanceId, daemonVersion = info.daemonVersion ?: it.daemonVersion, protocol = info.protocol ?: it.protocol) }
+            // A pairing acts for whoever its daemon says, a team's member or (standalone) nobody; a sign-in for who signed in.
+            val member = bootstrap.profile?.string("userId")
+            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = if (hasNode) info.thumbhash else it.thumbhash, revoked = false, instanceId = info.instanceId ?: it.instanceId, userId = if (it.server == null) member else it.userId, daemonVersion = info.daemonVersion ?: it.daemonVersion, protocol = info.protocol ?: it.protocol, pushRegistrations = info.pushRegistrations ?: it.pushRegistrations) }
         }
     }
 
@@ -1077,7 +1079,7 @@ class AgentSession internal constructor(
         try {
             val bootstrap = withContext(response) { client.decode<WireDesktopBootstrap>("GET", "/v0/bootstrap/desktop") }
             val decoded = Timing.now()
-            val owner = connections.accounts.value.firstOrNull { it.id == connectionId }?.userId
+            val owner = connections.accounts.value.firstOrNull { it.id == connectionId }?.takeIf { it.server != null }?.userId
             if (owner != null && bootstrap.profile?.string("userId") != owner) {
                 throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
             }

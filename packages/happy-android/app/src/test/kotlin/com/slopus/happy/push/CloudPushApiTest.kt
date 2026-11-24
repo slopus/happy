@@ -90,9 +90,8 @@ class CloudPushApiTest {
         assertEquals(1, server.asked.size)
     }
 
-    @Test fun localConnectionsAndInvalidIdsCannotRegister() = runTest {
+    @Test fun invalidIdsCannotRegister() = runTest {
         val server = Server()
-        assertThrows(IllegalArgumentException::class.java) { CloudPushApi(AgentClient(server, "server-bearer")) }
         assertThrows(IllegalArgumentException::class.java) {
             kotlinx.coroutines.runBlocking { api(server).register("../other", HappyPushToken.parse(token)!!, "com.slopus.happy.dev", null) }
         }

@@ -51,7 +51,7 @@ class CloudPushRuntime(
     )
 
     private fun api(account: CloudPushAccount): CloudPushApi? =
-        if (connections.accounts.value.none { cloudPushAccount(it) == account }) null else client(account.connectionId)?.takeIf { it.cloud }?.let(::CloudPushApi)
+        if (connections.accounts.value.none { cloudPushAccount(it) == account }) null else client(account.connectionId)?.let(::CloudPushApi)
 
     fun start() = sync.start(scope)
     fun refresh() = sync.refresh()

@@ -8,7 +8,6 @@ import androidx.core.app.NotificationManagerCompat
 import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.connection.AgentConnection
 import com.slopus.happy.connection.AgentConnections
-import com.slopus.happy.connection.HappyCloud
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -57,10 +56,7 @@ data class CloudPushNotification(val instanceId: String, val userId: String, val
 
 /** A push never chooses another login merely because it shares the server or is currently open. */
 fun cloudPushConnection(accounts: List<AgentConnection>, instanceId: String, userId: String, open: String? = null): AgentConnection? {
-    val matching = accounts.filter {
-        HappyCloud.isServer(it.server) && !it.revoked && !it.signInRequired && !it.profileRequired &&
-            it.instanceId == instanceId && it.userId == userId
-    }
+    val matching = accounts.filter { it.takesPushes && it.instanceId == instanceId && it.pushMember == userId }
     return matching.firstOrNull { it.id == open } ?: matching.firstOrNull()
 }
 
@@ -85,17 +81,18 @@ class CloudPushSeen(private val prefs: SharedPreferences) {
     }
 }
 
-/** Data-only FCM lets Android discard a Cloud alert whose exact account is no longer signed in. No network calls. */
+/** Data-only FCM lets Android discard an alert whose exact account is no longer signed in or paired. No network calls. */
 suspend fun presentCloudPush(context: Context, push: RemotePush, connections: AgentConnections) {
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
     val notice = CloudPushNotification.parse(push.body) ?: return
     val account = cloudPushConnection(connections.accounts.value, notice.instanceId, notice.userId) ?: return
-    val credential = try {
-        connections.credentials(account.id)?.oauth ?: return
+    val credentials = try {
+        connections.credentials(account.id) ?: return
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (_: Exception) { return }
-    if (credential.userId != notice.userId) return
+    // A sign-in's kept credential says who signed in; a pairing has its device token and nothing to compare.
+    if (account.server != null && credentials.oauth?.userId != notice.userId) return
     // Credentials can disappear while read from Keystore; check the registry again before showing anything.
     if (cloudPushConnection(connections.accounts.value, notice.instanceId, notice.userId)?.id != account.id) return
     val seen = CloudPushSeen(context.getSharedPreferences("cloud-push-notifications", Context.MODE_PRIVATE))

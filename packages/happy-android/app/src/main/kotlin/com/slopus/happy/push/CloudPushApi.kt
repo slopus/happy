@@ -21,10 +21,12 @@ data class CloudPushSettings(val enabled: Boolean)
 
 class CloudPushException(val status: Int? = null) : IOException("Cloud push request failed")
 
-/** Per-server API; authority comes only from the client's bearer, never a supplied member/tenant. */
+/**
+ * Per-server API, Happy Cloud's and the one a Happy Agent serves at the same
+ * paths; authority comes only from the client's bearer, never a supplied
+ * member/tenant. [cloudPushAccount] says which connections are asked.
+ */
 class CloudPushApi(private val client: AgentClient) {
-    init { require(client.cloud) }
-
     suspend fun register(id: String, token: HappyPushToken, appId: String, locale: String?): CloudPushRegistration {
         require(appId in APP_IDS)
         val body = buildJsonObject {

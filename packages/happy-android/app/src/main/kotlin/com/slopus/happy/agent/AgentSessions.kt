@@ -131,7 +131,7 @@ class AgentSessions(
                 if (!known.signInRequired) try {
                     val etag = known.avatarFile?.takeIf { File(it).isFile }?.let { known.avatarETag }
                     val info = AgentIdentity.refresh(client.requester, known.name, etag, oauth = credentials.oauth != null)
-                    connections.update(id, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, instanceId = info.instanceId, daemonVersion = info.daemonVersion, protocol = info.protocol) }
+                    connections.update(id, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, instanceId = info.instanceId, daemonVersion = info.daemonVersion, protocol = info.protocol, pushRegistrations = info.pushRegistrations ?: it.pushRegistrations) }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: AgentConnectionException) {

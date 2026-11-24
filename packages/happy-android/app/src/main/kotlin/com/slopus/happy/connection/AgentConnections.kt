@@ -42,6 +42,8 @@ data class AgentConnection(
      * The team server's member signed in here ([OAuthCredential.userId]). A
      * connection is one person's on one server: another person signing in
      * gets one of their own, never this one's sessions, caches or cursor.
+     * On a pairing, the member its daemon says it acts for (`profile.userId`
+     * when last read): none on a standalone daemon.
      */
     val userId: String? = null,
     /** Last health response's daemon version, shown separately from this phone's build. */
@@ -188,8 +190,10 @@ class AgentConnections(
                     avatarETag = previous?.avatarETag,
                     addedAt = previous?.addedAt ?: now(),
                     instanceId = agent?.instanceId ?: previous?.instanceId,
+                    userId = previous?.userId,
                     daemonVersion = agent?.daemonVersion ?: previous?.daemonVersion,
                     protocol = agent?.protocol ?: previous?.protocol,
+                    pushRegistrations = agent?.pushRegistrations ?: previous?.pushRegistrations ?: false,
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
@@ -270,6 +274,7 @@ class AgentConnections(
                             userId = userId,
                             daemonVersion = agent?.daemonVersion ?: existing?.daemonVersion,
                             protocol = agent?.protocol ?: existing?.protocol,
+                            pushRegistrations = agent?.pushRegistrations ?: existing?.pushRegistrations ?: false,
                         ),
                         agent?.avatar ?: NodeAvatar.Unchanged,
                     )
