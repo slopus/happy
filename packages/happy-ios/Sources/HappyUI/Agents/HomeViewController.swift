@@ -118,6 +118,7 @@ final class HomeViewController: UIViewController {
         view.addSubview(sidebar)
         view.addSubview(empty)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keepPlace), name: UIApplication.didEnterBackgroundNotification, object: nil)
         resultsView.isHidden = true
         resultsView.alpha = 0
         resultsView.list.onSelect = { [weak self] row in self?.open(row) }
@@ -162,6 +163,7 @@ final class HomeViewController: UIViewController {
         // panel shows (`shownBeside`).
         sidebar.selectedRowId = nil
         if let store = session?.store { Task { await store.attentionVisibleUpdate(false) } }
+        keepPlace()
     }
 
     /// No ground as the iPad's sidebar: the system's sidebar shows there.
@@ -201,6 +203,7 @@ final class HomeViewController: UIViewController {
         sidebar.images = session?.images
         resultsView.list.images = session?.images
         sidebar.apply([])
+        sidebar.opensAt = keptPlace()
         snapshot = Snapshot()
         agentHome = HomeSnapshot()
         if let session {
@@ -887,11 +890,33 @@ extension HomeViewController {
     }
 
     private func listDidEndDragging(decelerate: Bool) {
-        if !decelerate { warmUp() }
+        if !decelerate { warmUp(); keepPlace() }
     }
 
     private func listDidEndDecelerating() {
         warmUp()
+        keepPlace()
+    }
+
+    // MARK: Place
+
+    /// Where the list was left on this computer, kept on this phone: a new
+    /// home for it, after a switch or a relaunch, opens there within the
+    /// hour (Kirill). Nothing at the top.
+    private var placeKey: String? { session.map { "home-place.\($0.accountID)" } }
+
+    @objc private func keepPlace() {
+        // A place still to open on stays as it was kept.
+        guard let placeKey, sidebar.opensAt == nil else { return }
+        guard let place = sidebar.place else { return UserDefaults.standard.removeObject(forKey: placeKey) }
+        UserDefaults.standard.set(["row": place.rowId, "top": Double(place.top), "at": Date().timeIntervalSince1970], forKey: placeKey)
+    }
+
+    private func keptPlace() -> (rowId: String, top: CGFloat)? {
+        guard let placeKey, let kept = UserDefaults.standard.dictionary(forKey: placeKey),
+              let row = kept["row"] as? String, let top = kept["top"] as? Double, let at = kept["at"] as? Double,
+              Date().timeIntervalSince1970 - at < 60 * 60 else { return nil }
+        return (row, CGFloat(top))
     }
 
     /// The rows the sidebar shows and where it is scrolled, for reading

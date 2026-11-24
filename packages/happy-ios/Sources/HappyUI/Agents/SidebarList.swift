@@ -53,6 +53,10 @@ final class SidebarList: UIView {
     /// jump, rows changing above it or its insets.
     var onMove: (() -> Void)?
 
+    /// Where the list opens once its first rows come (`place`), if that row
+    /// is among them, rather than at the top.
+    var opensAt: (rowId: String, top: CGFloat)?
+
     /// Each new set of rows shows at once from the top (search's results,
     /// replaced as the query changes) rather than gliding in under the
     /// reader's place (home's).
@@ -303,7 +307,7 @@ final class SidebarList: UIView {
 
     private func show(_ next: Prepared) {
         let previousIDs = prepared?.identities
-        let target = startsEachChangeAtTop ? top(next, previous: previousIDs) : anchor(next)
+        let target = startsEachChangeAtTop ? top(next, previous: previousIDs) : opening(next) ?? anchor(next)
         prepared = next
         var shown: [any ListRow] = []
         if let notice = next.notice {
@@ -402,6 +406,13 @@ final class SidebarList: UIView {
         return ListScrollTarget(index: nextIndex, identity: nextIDs[nextIndex], pointOffset: nextTop - place - contentInsets.top)
     }
 
+    /// The first rows, where the list was left (`opensAt`).
+    private func opening(_ next: Prepared) -> ListScrollTarget? {
+        guard let place = opensAt, !next.entries.isEmpty, bounds.height > 0 else { return nil }
+        opensAt = nil
+        return next.identities.firstIndex(of: place.rowId).map { ListScrollTarget(index: $0, identity: place.rowId, pointOffset: Double(place.top)) }
+    }
+
     /// Other rows than before: the first at the top, where a scroll view
     /// given new content would be put back.
     private func top(_ next: Prepared, previous: [String]?) -> ListScrollTarget? {
@@ -437,6 +448,18 @@ final class SidebarList: UIView {
     }
 
     var isAtTop: Bool { contentOffsetY <= -contentInsets.top + 1 }
+
+    /// The row read at the top and how far its top is under the inset, to
+    /// open there again (`opensAt`); nil at the top.
+    var place: (rowId: String, top: CGFloat)? {
+        guard !isAtTop else { return nil }
+        for index in list.loadedIndexRange {
+            guard list.items[index] is SidebarItem, let frame = list.settledFrame(at: index), frame.maxY > contentInsets.top else { continue }
+            return (list.items[index].identity, frame.minY - contentInsets.top)
+        }
+        return nil
+    }
+
     /// The finger's pan that moves the list.
     var panGestureRecognizer: UIPanGestureRecognizer? {
         list.contentView.gestureRecognizers?.lazy.compactMap { $0 as? UIPanGestureRecognizer }.first { $0.minimumNumberOfTouches == 1 }
