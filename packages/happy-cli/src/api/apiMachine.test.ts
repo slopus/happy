@@ -238,6 +238,56 @@ describe('ApiMachineClient socket reconnection', () => {
         vi.restoreAllMocks();
     });
 
+    it('advertises scheduling on an existing machine immediately and preserves concurrent metadata edits', async () => {
+        vi.useFakeTimers();
+        const machine = makeMachine();
+        const saved = { ...machine.metadata, displayName: 'My Mac', crossAgentContinuation: 1 as const };
+        machine.metadata = saved;
+        machine.metadataVersion = 7;
+        const concurrent = { ...saved, displayName: 'Renamed in App', homeDir: '/updated/home' };
+        const sent: Array<{ expectedVersion: number; metadata: unknown }> = [];
+        mockSocket.emitWithAck.mockImplementation(async (event: string, payload: { expectedVersion: number; metadata: string }) => {
+            expect(event).toBe('machine-update-metadata');
+            sent.push({ expectedVersion: payload.expectedVersion, metadata: decrypt(machine.encryptionKey, machine.encryptionVariant, decodeBase64(payload.metadata)) });
+            return sent.length === 1
+                ? { result: 'version-mismatch', version: 8, metadata: encodeBase64(encrypt(machine.encryptionKey, machine.encryptionVariant, concurrent)) }
+                : { result: 'success', version: 9, metadata: payload.metadata };
+        });
+        const client = new ApiMachineClient('fake-token', machine);
+        const runner = { wake: vi.fn().mockResolvedValue(undefined), stop: vi.fn() };
+        vi.spyOn(client, 'updateDaemonState').mockResolvedValue(undefined);
+        client.setScheduledTaskRunner(runner);
+        client.connect();
+        try {
+            emitSocketEvent('connect');
+            expect(sent).toEqual([{ expectedVersion: 7, metadata: { ...saved, scheduledTasks: 1 } }]);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(sent).toEqual([
+                { expectedVersion: 7, metadata: { ...saved, scheduledTasks: 1 } },
+                { expectedVersion: 8, metadata: { ...concurrent, scheduledTasks: 1 } },
+            ]);
+            expect(machine.metadata).toEqual({ ...concurrent, scheduledTasks: 1 });
+            expect(machine.metadataVersion).toBe(9);
+            emitSocketEvent('connect');
+            expect(sent).toHaveLength(2);
+        } finally {
+            client.shutdown();
+        }
+    });
+
+    it('does not advertise scheduling without an installed runner', () => {
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        const update = vi.spyOn(client, 'updateMachineMetadata');
+        vi.spyOn(client, 'updateDaemonState').mockResolvedValue(undefined);
+        client.connect();
+        try {
+            emitSocketEvent('connect');
+            expect(update).not.toHaveBeenCalled();
+        } finally {
+            client.shutdown();
+        }
+    });
+
     it('removes work-wake subscriptions on reconnect, disconnect and shutdown', () => {
         const client = new ApiMachineClient('fake-token', makeMachine());
         client.connect();

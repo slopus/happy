@@ -610,6 +610,14 @@ export class ApiMachineClient {
 
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');
+            // Existing-machine registration returns its saved metadata. Publish
+            // newly installed capabilities on connection, preserving user edits.
+            if (this.scheduledRunner && this.machine.metadata?.scheduledTasks !== 1) {
+                void this.updateMachineMetadata(metadata => ({
+                    ...(metadata ?? this.machine.metadata),
+                    scheduledTasks: 1,
+                })).catch(error => logger.debug('[API MACHINE] Failed to advertise scheduled tasks:', error));
+            }
             void this.scheduledRunner?.wake().catch(() => logger.debug('[SCHEDULED TASKS] Work recovery deferred until the next connection or event'));
             this.stopAppChatWorker?.();
             this.stopAppChatWorker = startAppChatWorker(this.token, this.machine, this.nativeSessionHooks, wake => {
