@@ -90,19 +90,31 @@ public enum NotificationRouting {
     }
 }
 
-/// `handleNotificationResponse`'s gate: each request is handled once (the
-/// launch response and the listener can both deliver it), and only the
-/// default action, a plain tap, opens anything.
+/// `handleNotificationResponse`'s gate: each delivered notification is
+/// handled once (the launch response and the listener can both deliver its
+/// response), and only the default action, a plain tap, opens anything.
+///
+/// A notification is its request identifier and the time it was delivered.
+/// The identifier alone names too much: a push sent with a collapse id is
+/// delivered under that id every time, so the notification that replaces a
+/// tapped one has its identifier and a later delivery time. Both copies of
+/// one response carry the same notification, and so the same time.
 public struct NotificationResponseFilter: Sendable {
-    private var handled: Set<String> = []
+    private struct Delivery: Hashable {
+        var identifier: String
+        var delivered: Date
+    }
+
+    private var handled: Set<Delivery> = []
 
     public init() {}
 
-    /// Whether to route this response. The identifier is remembered before
-    /// the action is checked, as happy-app does, so a dismissal also counts
-    /// as handled.
-    public mutating func shouldRoute(requestIdentifier: String, isDefaultAction: Bool) -> Bool {
-        handled.insert(requestIdentifier).inserted && isDefaultAction
+    /// Whether to route this response. `delivered` is when the system
+    /// delivered its notification (`UNNotification.date`). The notification
+    /// is remembered before the action is checked, as happy-app does, so a
+    /// dismissal also counts as handled.
+    public mutating func shouldRoute(requestIdentifier: String, delivered: Date, isDefaultAction: Bool) -> Bool {
+        handled.insert(Delivery(identifier: requestIdentifier, delivered: delivered)).inserted && isDefaultAction
     }
 }
 

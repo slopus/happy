@@ -111,14 +111,15 @@ final class PushNotifications: NSObject {
     }
 
     /// A response from the delegate or from the scene's launch options;
-    /// the filter drops the second delivery of the same request.
+    /// the filter drops the second delivery of the same notification.
     func handle(_ response: UNNotificationResponse) {
         let tap = Self.tap(response)
         route(tap)
     }
 
     private func route(_ tap: Tap) {
-        guard filter.shouldRoute(requestIdentifier: tap.identifier, isDefaultAction: tap.isDefaultAction), tap.opens != .nothing else { return }
+        guard filter.shouldRoute(requestIdentifier: tap.identifier, delivered: tap.delivered, isDefaultAction: tap.isDefaultAction),
+              tap.opens != .nothing else { return }
         if let coordinator {
             open(tap.opens, on: coordinator)
         } else {
@@ -183,6 +184,8 @@ final class PushNotifications: NSObject {
     /// What routing needs from a response, read where it arrives.
     struct Tap: Sendable {
         var identifier: String
+        /// When the system delivered the notification.
+        var delivered: Date
         var isDefaultAction: Bool
         var opens: NotificationTap
     }
@@ -192,6 +195,7 @@ final class PushNotifications: NSObject {
         let data = NotificationRouting.data(userInfo: request.content.userInfo, isRemote: request.trigger is UNPushNotificationTrigger)
         return Tap(
             identifier: request.identifier,
+            delivered: response.notification.date,
             isDefaultAction: response.actionIdentifier == UNNotificationDefaultActionIdentifier,
             opens: NotificationRouting.tap(fromData: data)
         )
