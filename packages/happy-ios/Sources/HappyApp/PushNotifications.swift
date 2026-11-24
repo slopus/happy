@@ -111,7 +111,7 @@ final class PushNotifications: NSObject {
     }
 
     /// A response from the delegate or from the scene's launch options;
-    /// the filter drops the second delivery of the same request.
+    /// the filter drops the second delivery of the same notification.
     func handle(_ response: UNNotificationResponse) {
         let tap = Self.tap(response)
         route(tap)

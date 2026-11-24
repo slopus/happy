@@ -325,7 +325,9 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   - **Presentation.** In the foreground a push only sets the badge and goes
     in the list. When the app is inactive or in the background, it shows
     in full.
-  - **Opening.** A tap (default action only, once per request id) reads
+  - **Opening.** A tap (default action only, once per delivered
+    notification: request id and delivery time, since a push with a collapse
+    id arrives under the same request id every time) reads
     `sessionId`, or a `url` naming `/session/<id>`, from the payload's
     `body`, then calls `AppCoordinator.openSession(fromNotification:)`:
     - if another signed-in account's store holds the session
