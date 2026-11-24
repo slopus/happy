@@ -16,6 +16,10 @@ public enum LinkState: CaseIterable, Equatable, Sendable {
     case connecting
     /// No network path at all ("waiting for network…").
     case waitingForNetwork
+    /// The computer's daemon is draining to restart, for an update or by
+    /// hand ("agent restarting…"): it answers reads, refuses writes, and a
+    /// new process takes over. Until a hello says otherwise.
+    case restarting
 }
 
 extension LinkState {
@@ -25,6 +29,9 @@ extension LinkState {
     /// long as it is there, so it is connecting, whatever kept it away.
     public static func home(_ snapshot: HomeSnapshot, network: Bool = true) -> LinkState {
         if !network { return .waitingForNetwork }
+        // Said through the reconnect too: the stream drops as the old
+        // process goes, and the new one's hello clears it.
+        if snapshot.draining { return .restarting }
         guard snapshot.live else { return .connecting }
         return snapshot.loaded && !snapshot.syncing ? .online : .syncing
     }

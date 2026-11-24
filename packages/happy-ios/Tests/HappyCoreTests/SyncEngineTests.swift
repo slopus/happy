@@ -66,6 +66,9 @@ private actor SyncFixture: AgentTransport {
     /// The process every hello names; nil as an older daemon's.
     var daemonId: String?
     var nextHelloGap = false
+    /// What every hello says of `draining`; nil leaves it out, as an older daemon does.
+    var helloDraining: Bool?
+    func setHelloDraining(_ draining: Bool?) { helloDraining = draining }
     /// The next bootstrap read waits, deaf to cancellation, until `release`.
     var holdNextRead = false
     var held: CheckedContinuation<Void, Never>?
@@ -234,8 +237,9 @@ private actor SyncFixture: AgentTransport {
         let process = daemonId.map { ",\"daemonId\":\"\($0)\"" } ?? ""
         let gap = nextHelloGap ? "true" : "false"
         nextHelloGap = false
+        let draining = helloDraining.map { ",\"draining\":\($0)" } ?? ""
         if holdHello { holdHello = false; heldHello = continuation; return .init(status: 200, body: body) }
-        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"cursor-1\",\"resumed\":true,\"gap\":\(gap)\(process)}\n\n".utf8))
+        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"cursor-1\",\"resumed\":true,\"gap\":\(gap)\(process)\(draining)}\n\n".utf8))
         return .init(status: 200, body: body)
     }
     func close() { continuations.forEach { $0.finish() }; continuations.removeAll() }
@@ -687,6 +691,41 @@ final class SyncEngineTests: XCTestCase {
         }
         let left = try await engine.queuedMessages(for: "chat")
         XCTAssertTrue(left.isEmpty)
+        await engine.stop()
+    }
+
+    /// The daemon draining to restart says so on the stream: home's header
+    /// says "agent restarting…" through the drop as the old process goes,
+    /// and the new process's hello clears it. Another process's
+    /// `daemon.draining`, replayed from a journal kept across a restart,
+    /// doesn't bring it back.
+    func testADrainingDaemonIsRestartingUntilANewProcessSaysHello() async throws {
+        let transport = SyncFixture()
+        await transport.setDaemon("old")
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await transport.emit(.object(["type": .string("daemon.draining"), "payload": .object(["daemonId": .string("old"), "draining": .bool(true)])]))
+        let draining = try await wait(engine) { $0.draining }
+        XCTAssertEqual(LinkState.home(draining), .restarting)
+        XCTAssertEqual(LinkState.chat(home: LinkState.home(draining), historyRead: true), .restarting)
+        XCTAssertEqual(LinkState.home(draining, network: false), .waitingForNetwork)
+        // The old process goes; the stream drops and is opened again.
+        await transport.setDaemon("new")
+        await transport.setHelloDraining(true)
+        await transport.dropStreams()
+        let dropped = try await wait(engine) { !$0.live }
+        XCTAssertEqual(LinkState.home(dropped), .restarting, "said through the reconnect")
+        _ = try await wait(engine) { $0.live && $0.draining }
+        // The drain's end: a process whose hello says it isn't draining.
+        await transport.setHelloDraining(false)
+        await transport.dropStreams()
+        let back = try await wait(engine) { $0.live && !$0.draining && !$0.syncing }
+        XCTAssertEqual(LinkState.home(back), .online)
+        await transport.emit(.object(["type": .string("daemon.draining"), "payload": .object(["daemonId": .string("old"), "draining": .bool(true)])]))
+        try await Task.sleep(for: .milliseconds(200))
+        let replayed = try await wait(engine) { _ in true }
+        XCTAssertFalse(replayed.draining, "an older process's drain, replayed")
         await engine.stop()
     }
 
