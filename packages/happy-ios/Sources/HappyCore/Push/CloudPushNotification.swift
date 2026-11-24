@@ -55,11 +55,11 @@ public struct CloudPushNotification: Equatable, Sendable {
     /// The connection a tap opens on: one signed in to that installation
     /// as that member, and still signed in; `open` when it is one of them.
     /// Never another login because it shares the server or is the one
-    /// open, and nil when there is none. `userId` is who a connection is
-    /// signed in as (`AgentConnections.userId(for:)`): nil for a pairing,
+    /// open, and nil when there is none. `member` is who a connection's
+    /// pushes name (`AgentConnections.pushMember(for:)`): nil for a pairing,
     /// and for a sign-in still waiting for its profile.
-    public func connection(in connections: [AgentConnection], userId: (String) -> String?, open: String?) -> String? {
-        let matches = connections.filter { !$0.revoked && $0.instanceId == instanceId && userId($0.id) == self.userId }
+    public func connection(in connections: [AgentConnection], member: (String) -> String?, open: String?) -> String? {
+        let matches = connections.filter { !$0.revoked && $0.instanceId == instanceId && member($0.id) == userId }
         return (matches.first { $0.id == open } ?? matches.first)?.id
     }
 }

@@ -30,6 +30,10 @@ public struct AgentConnection: Codable, Equatable, Sendable, Identifiable {
     /// link (`happy://<instanceId>/…`) must name to open here. Older
     /// daemons have none.
     public var instanceId: String? = nil
+    /// The team user a pairing belongs to, as its daemon says
+    /// (`SyncEngine.Computer.owner`), once read; nil for a computer of
+    /// the person's own. A sign-in's member is in its credentials.
+    public var member: String? = nil
 
     public init(id: String, name: String, addedAt: Date = Date()) {
         self.id = id; self.name = name; self.addedAt = addedAt

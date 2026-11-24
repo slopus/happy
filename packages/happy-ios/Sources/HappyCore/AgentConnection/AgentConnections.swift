@@ -159,6 +159,11 @@ public final class AgentConnections {
     /// The team user the server `id` was signed in as; nil for a pairing.
     public func userId(for id: String) -> String? { credentials[id]?.signIn?.userId }
 
+    /// Who a push for the connection `id` names
+    /// (`CloudPushNotification.userId`): the member a server was signed in
+    /// as; nil for a pairing.
+    public func pushMember(for id: String) -> String? { userId(for: id) }
+
     /// The origin of the signed-in server `id`.
     public func server(for id: String) -> String? { credentials[id]?.signIn != nil ? credentials[id]?.publicUrl : nil }
 
@@ -199,7 +204,7 @@ public final class AgentConnections {
     /// engine hears them: no identity check of its own while it runs
     /// (`identifiedByEngine`). The picture's bytes are read only when its
     /// ThumbHash changed, on a file client over the engine's tunnels.
-    private func heard(_ news: SyncEngine.Heard, from id: String) async {
+    func heard(_ news: SyncEngine.Heard, from id: String) async {
         guard let account = accounts.first(where: { $0.id == id }), !account.revoked else { return }
         let generation = generation
         switch news {

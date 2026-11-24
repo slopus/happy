@@ -97,32 +97,32 @@ final class CloudPushTapTests: XCTestCase {
     func testTheConnectionIsTheMembersOwnNeverTheOpenOne() {
         let connections = [connection("other-login"), connection("connection-one"), connection("paired")]
         let members = ["other-login": "member-two", "connection-one": "member-one"]
-        XCTAssertEqual(notice.connection(in: connections, userId: { members[$0] }, open: "other-login"), "connection-one")
-        XCTAssertEqual(notice.connection(in: connections, userId: { members[$0] }, open: nil), "connection-one")
+        XCTAssertEqual(notice.connection(in: connections, member: { members[$0] }, open: "other-login"), "connection-one")
+        XCTAssertEqual(notice.connection(in: connections, member: { members[$0] }, open: nil), "connection-one")
         var unknown = notice
         unknown.userId = "unknown"
-        XCTAssertNil(unknown.connection(in: connections, userId: { members[$0] }, open: "other-login"))
+        XCTAssertNil(unknown.connection(in: connections, member: { members[$0] }, open: "other-login"))
         var elsewhere = notice
         elsewhere.instanceId = "iother89pp9j4f4edhsw7rpz"
-        XCTAssertNil(elsewhere.connection(in: connections, userId: { members[$0] }, open: "connection-one"))
-        XCTAssertNil(notice.connection(in: [], userId: { members[$0] }, open: nil))
+        XCTAssertNil(elsewhere.connection(in: connections, member: { members[$0] }, open: "connection-one"))
+        XCTAssertNil(notice.connection(in: [], member: { members[$0] }, open: nil))
     }
 
     func testTheOpenConnectionWinsAmongTheMembersOwn() {
         let connections = [connection("first"), connection("second")]
         let member: (String) -> String? = { _ in "member-one" }
-        XCTAssertEqual(notice.connection(in: connections, userId: member, open: "second"), "second")
-        XCTAssertEqual(notice.connection(in: connections, userId: member, open: "first"), "first")
-        XCTAssertEqual(notice.connection(in: connections, userId: member, open: "gone"), "first")
+        XCTAssertEqual(notice.connection(in: connections, member: member, open: "second"), "second")
+        XCTAssertEqual(notice.connection(in: connections, member: member, open: "first"), "first")
+        XCTAssertEqual(notice.connection(in: connections, member: member, open: "gone"), "first")
     }
 
     func testASignedOutConnectionIsNeverChosen() {
         let member: (String) -> String? = { _ in "member-one" }
-        XCTAssertNil(notice.connection(in: [connection("ended", revoked: true)], userId: member, open: "ended"))
-        XCTAssertEqual(notice.connection(in: [connection("ended", revoked: true), connection("live")], userId: member, open: "ended"), "live")
+        XCTAssertNil(notice.connection(in: [connection("ended", revoked: true)], member: member, open: "ended"))
+        XCTAssertEqual(notice.connection(in: [connection("ended", revoked: true), connection("live")], member: member, open: "ended"), "live")
         // A sign-in still waiting for its profile has no member yet; a daemon that reported no installation names none.
-        XCTAssertNil(notice.connection(in: [connection("waiting")], userId: { _ in nil }, open: "waiting"))
-        XCTAssertNil(notice.connection(in: [connection("old-daemon", instance: nil)], userId: member, open: "old-daemon"))
+        XCTAssertNil(notice.connection(in: [connection("waiting")], member: { _ in nil }, open: "waiting"))
+        XCTAssertNil(notice.connection(in: [connection("old-daemon", instance: nil)], member: member, open: "old-daemon"))
     }
 
     /// Against the real registry: two members signed in to one server on
@@ -144,7 +144,7 @@ final class CloudPushTapTests: XCTestCase {
         XCTAssertNotEqual(one.id, two.id)
         XCTAssertEqual(manager.activeID, two.id)
         func chosen(_ push: CloudPushNotification) -> String? {
-            push.connection(in: manager.accounts, userId: { manager.userId(for: $0) }, open: manager.activeID)
+            push.connection(in: manager.accounts, member: { manager.pushMember(for: $0) }, open: manager.activeID)
         }
         var forTwo = notice
         forTwo.userId = "member-two"

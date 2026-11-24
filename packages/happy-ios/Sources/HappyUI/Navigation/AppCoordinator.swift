@@ -196,7 +196,7 @@ public final class AppCoordinator {
     private func openNotificationAgent() {
         guard accountRestored, let push = notificationPush, shell.topViewController != nil else { return }
         let connections = context.account.agentConnections
-        guard let id = push.connection(in: connections.accounts, userId: { connections.userId(for: $0) }, open: connections.activeID) else {
+        guard let id = push.connection(in: connections.accounts, member: { connections.pushMember(for: $0) }, open: connections.activeID) else {
             notificationPush = nil
             return
         }

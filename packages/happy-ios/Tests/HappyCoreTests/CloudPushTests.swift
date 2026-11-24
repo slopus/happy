@@ -48,21 +48,21 @@ final class CloudPushTests: XCTestCase {
         let push = CloudPush(source: Self.source(relay: relay, permission: permission))
         let now = Date(timeIntervalSince1970: 1_000_000)
 
-        let quiet = try await push.register(connection: "c1", client: client, ask: false, now: now)
+        let quiet = try await push.register(connection: "c1", client: client, ask: false, cloud: true, now: now)
         XCTAssertEqual(quiet, .denied, "coming back never shows the system prompt")
-        let asked = try await push.register(connection: "c1", client: client, ask: true, now: now)
+        let asked = try await push.register(connection: "c1", client: client, ask: true, cloud: true, now: now)
         XCTAssertEqual(asked, .registered)
         let body = await server.rawBodies.last
         XCTAssertEqual(body, .object(["token": .string(Self.token), "platform": .string("ios"), "appId": .string("com.slopus.happy.dev")]))
 
-        let soon = try await push.register(connection: "c1", client: client, ask: false, now: now.addingTimeInterval(3600))
+        let soon = try await push.register(connection: "c1", client: client, ask: false, cloud: true, now: now.addingTimeInterval(3600))
         XCTAssertEqual(soon, .current)
-        let later = try await push.register(connection: "c1", client: client, ask: false, now: now.addingTimeInterval(CloudPush.renewal + 1))
+        let later = try await push.register(connection: "c1", client: client, ask: false, cloud: true, now: now.addingTimeInterval(CloudPush.renewal + 1))
         XCTAssertEqual(later, .registered)
         XCTAssertEqual(relay.requests.count, 1, "the same APNs token is exchanged once")
 
         await permission.set(.denied)
-        let off = try await push.register(connection: "c1", client: client, ask: true, now: now)
+        let off = try await push.register(connection: "c1", client: client, ask: true, cloud: true, now: now)
         XCTAssertEqual(off, .denied, "turned off in Settings, a tap can't ask again")
     }
 
@@ -76,7 +76,7 @@ final class CloudPushTests: XCTestCase {
         await server.answer("PUT /v0/cloud/push/registrations/\(first)", 200, Self.registration)
         await server.answer("DELETE /v0/cloud/push/registrations/\(first)", 204, "")
         let client = AgentClient(transport: server, token: "t")
-        _ = try await push.register(connection: "c1", client: client, ask: true)
+        _ = try await push.register(connection: "c1", client: client, ask: true, cloud: true)
         XCTAssertEqual(ids.version(for: "c1"), "7c1d8a5e-2f43-4c1b-9d0e-1f2a3b4c5d6e")
         try await push.unregister(connection: "c1", client: client)
         XCTAssertNil(ids.version(for: "c1"))
@@ -88,7 +88,7 @@ final class CloudPushTests: XCTestCase {
     func testABuildTheRelayRefusesNeverRegisters() async throws {
         var source = Self.source(relay: Relay(Self.token), permission: Permission(.authorized))
         source.device.appId = "com.slopus.happy.chat-harness"
-        let outcome = try await CloudPush(source: source).register(connection: "c1", client: AgentClient(transport: ProvidersServer(), token: "t"), ask: true)
+        let outcome = try await CloudPush(source: source).register(connection: "c1", client: AgentClient(transport: ProvidersServer(), token: "t"), ask: true, cloud: true)
         XCTAssertEqual(outcome, .unsupported)
     }
 

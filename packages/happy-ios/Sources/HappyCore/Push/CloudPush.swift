@@ -167,6 +167,8 @@ public actor CloudPush {
         case denied
         /// A build the relay doesn't take (its app id).
         case unsupported
+        /// A server that takes no registrations; it was asked nothing.
+        case unserved
     }
 
     /// How long a renewal lasts before coming back renews again.
@@ -180,9 +182,11 @@ public actor CloudPush {
 
     /// `ask`: from the person's tap, which may show the system prompt and
     /// always registers; else only where permission was given, and not
-    /// again within `renewal`.
-    public func register(connection: String, client: AgentClient, ask: Bool, now: Date = Date()) async throws -> Outcome {
+    /// again within `renewal`. `cloud`: a Happy Cloud server, the only
+    /// kind registered with.
+    public func register(connection: String, client: AgentClient, ask: Bool, cloud: Bool, now: Date = Date()) async throws -> Outcome {
         guard CloudPushDevice.appIds.contains(source.device.appId) else { return .unsupported }
+        guard cloud else { return .unserved }
         var permission = await source.permission()
         if ask, !permission.granted, permission.canAskAgain { permission = await source.requestPermission() }
         guard permission.granted else { return .denied }
