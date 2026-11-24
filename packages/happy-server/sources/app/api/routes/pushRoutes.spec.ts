@@ -115,6 +115,24 @@ describe('POST /v1/sessions/:sessionId/push-event', () => {
         expect(state.sent).toHaveLength(1);
     });
 
+    it('tags every push of a session with that session, so a later one replaces the earlier one', async () => {
+        state.sessions.push({ id: 'session-2', accountId: USER });
+        const push = (sessionId: string, kind: string, title: string) => app.inject({
+            method: 'POST',
+            url: `/v1/sessions/${sessionId}/push-event`,
+            headers: { authorization: 'Bearer t' },
+            payload: { kind, title, body: 'session title' }
+        });
+        await push(SESSION, 'permission', 'Permission request');
+        await push(SESSION, 'done', 'It is ready!');
+        await push('session-2', 'done', 'It is ready!');
+        expect(state.sent).toEqual([
+            { to: 'ExponentPushToken[aaa]', title: 'Permission request', body: 'session title', data: { sessionId: 'session-1', kind: 'permission' }, sound: 'default', channelId: 'messages', tag: 'session-1' },
+            { to: 'ExponentPushToken[aaa]', title: 'It is ready!', body: 'session title', data: { sessionId: 'session-1', kind: 'done' }, sound: 'default', channelId: 'messages', tag: 'session-1' },
+            { to: 'ExponentPushToken[aaa]', title: 'It is ready!', body: 'session title', data: { sessionId: 'session-2', kind: 'done' }, sound: 'default', channelId: 'messages', tag: 'session-2' },
+        ]);
+    });
+
     it('sends when the phone is backgrounded while a coding session is live', async () => {
         // The regression this whole change exists for: the session's own socket
         // must not be mistaken for the user watching.

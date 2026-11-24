@@ -382,6 +382,9 @@ async function push(t, sql, H, H2, sid, mock, ui, r) {
     await r('push event no tokens', 'POST', E(s2.session.id), { headers: H2, body: ev });
 
     await r('push event sent', 'POST', E(), { headers: H, body: { ...ev, kind: 'permission', data: { b: 1, 2: 'x', sessionId: 'override', kind: 'zzz', nested: { z: 1, a: 2 } } } });
+    // Another session of the same account: its messages carry their own `tag`.
+    const s3 = await t.req('create second push session', 'POST', '/v1/sessions', { headers: H, body: { tag: 'push-3', metadata: 'm' } });
+    await r('push event second session', 'POST', E(s3.session.id), { headers: H, body: ev });
     for (const [label, list] of [
         ['partial', ['ExponentPushToken[ok-2]', 'ExponentPushToken[gone-1]', 'ExponentPushToken[bad-1]']],
         ['all gone', ['ExponentPushToken[gone-2]', 'ExponentPushToken[num-1]']],

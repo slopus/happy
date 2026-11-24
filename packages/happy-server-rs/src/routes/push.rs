@@ -154,10 +154,7 @@ async fn fetch_tokens_and_send(app: &App, uid: &str, sid: &str, title: &str, bod
         tracing::info!(module = "push", "No push tokens for user {} session {} — skipped", uid, sid);
         return Ok(json!({"result": "no_tokens"}));
     }
-    let messages: Vec<Value> = tokens
-        .iter()
-        .map(|(_, t)| json!({"to": t, "title": title, "body": body, "data": data, "sound": "default", "channelId": "messages"}))
-        .collect();
+    let messages: Vec<Value> = tokens.iter().map(|(_, t)| expo_message(t, sid, title, body, &data)).collect();
     let tickets = send(&app.config.expo_push_url, &messages).await;
 
     let mut ok = 0;
@@ -200,6 +197,14 @@ async fn fetch_tokens_and_send(app: &App, uid: &str, sid: &str, title: &str, bod
     Ok(json!({"result": "partial", "tokens": tokens.len(), "delivered": ok, "reason": errors.join(", ")}))
 }
 
+/// One Expo message. `tag` is the session, so on Android a later push for a
+/// session replaces the earlier one. Expo's `collapseId` (the same on iOS) is
+/// not sent: it becomes the notification's identifier there, and released apps
+/// open a session only on the first tap of each identifier.
+fn expo_message(token: &str, sid: &str, title: &str, body: &str, data: &Value) -> Value {
+    json!({"to": token, "title": title, "body": body, "data": data, "sound": "default", "channelId": "messages", "tag": sid})
+}
+
 /// `sendPushNotifications`: batches of 100 under one 8 s deadline; a failed batch
 /// becomes one error ticket per message.
 async fn send(url: &str, messages: &[Value]) -> Vec<Value> {
@@ -227,4 +232,26 @@ async fn send(url: &str, messages: &[Value]) -> Vec<Value> {
         }
     }
     tickets
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_push_of_a_session_carries_that_session_as_its_tag() {
+        let message = |sid: &str, title: &str, kind: &str| js::stringify(&expo_message("ExponentPushToken[aaa]", sid, title, "session title", &json!({"sessionId": sid, "kind": kind})));
+        assert_eq!(
+            message("cmwubdqh200016dcx1q7ipan9", "Permission request", "permission"),
+            r#"{"to":"ExponentPushToken[aaa]","title":"Permission request","body":"session title","data":{"sessionId":"cmwubdqh200016dcx1q7ipan9","kind":"permission"},"sound":"default","channelId":"messages","tag":"cmwubdqh200016dcx1q7ipan9"}"#
+        );
+        assert_eq!(
+            message("cmwubdqh200016dcx1q7ipan9", "It's ready!", "done"),
+            r#"{"to":"ExponentPushToken[aaa]","title":"It's ready!","body":"session title","data":{"sessionId":"cmwubdqh200016dcx1q7ipan9","kind":"done"},"sound":"default","channelId":"messages","tag":"cmwubdqh200016dcx1q7ipan9"}"#
+        );
+        assert_eq!(
+            message("cmwubdqh500026dcx5yymyi0m", "It's ready!", "done"),
+            r#"{"to":"ExponentPushToken[aaa]","title":"It's ready!","body":"session title","data":{"sessionId":"cmwubdqh500026dcx5yymyi0m","kind":"done"},"sound":"default","channelId":"messages","tag":"cmwubdqh500026dcx5yymyi0m"}"#
+        );
+    }
 }

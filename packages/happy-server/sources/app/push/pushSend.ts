@@ -21,6 +21,8 @@ export interface PushMessage {
     sound?: 'default' | null;
     badge?: number;
     channelId?: string;
+    /** Android: a later notification with the same tag replaces the earlier one. */
+    tag?: string;
 }
 
 export interface PushTicket {
