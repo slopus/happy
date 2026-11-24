@@ -209,13 +209,20 @@ extension PushNotifications: UNUserNotificationCenterDelegate {
     }
 
     /// `addNotificationResponseReceivedListener`, and on a cold launch the
-    /// response `getLastNotificationResponseAsync` returns.
+    /// response `getLastNotificationResponseAsync` returns. The completion
+    /// handler is called on the main thread: UIKit updates the app's
+    /// snapshot inside it and stops the app when it is called anywhere
+    /// else, which is where this method's `async` form returns.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping @Sendable () -> Void
+    ) {
         let tap = Self.tap(response)
-        await MainActor.run { self.route(tap) }
+        Task { @MainActor in
+            self.route(tap)
+            completionHandler()
+        }
     }
 }
 
