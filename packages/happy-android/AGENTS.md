@@ -1699,6 +1699,16 @@ its member, a pairing is the member its daemon names (`profile.userId`) and
 on a standalone daemon the literal `standalone`. Forgetting a connection
 unregisters first, because a daemon keeps a phone it was never told to forget.
 
+Who is asked for the permission, and when (one ask each, never two):
+a Happy account at every foreground while the system would still show its
+prompt (`PushRegistrationEffect`); a Happy Cloud server from its
+onboarding's mobileApp gate; a paired Happy Agent or a server of one's own
+that registers, once, when its home is on screen and the system was never
+asked (`PushPermissionPromptEffect`, `asksForPushPermission`; iOS asks at
+the same moment), and a yes registers at once. After any answer only
+Settings › Notifications asks. Before Android 13 there is no permission to
+ask for: the phone registers as soon as it is connected.
+
 ## Time zone and language
 
 happy-ios docs/SERVER-SIGN-IN.md "Time zone and language", ported. A
