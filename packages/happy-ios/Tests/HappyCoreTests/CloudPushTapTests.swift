@@ -158,4 +158,131 @@ final class CloudPushTapTests: XCTestCase {
         XCTAssertNil(chosen(notice), "a push for a member signed out here opened another login")
         XCTAssertEqual(chosen(forTwo), two.id)
     }
+
+    // MARK: A paired computer
+
+    private static let standalone = CloudPushNotification(instanceId: "ipkr89pp9j4f4edhsw7rpz98", userId: "standalone", agentId: "agent-one", notificationId: "notification-one")
+
+    /// A registry on disk, whose pairings' daemon reports `instance` from
+    /// its health.
+    @MainActor
+    private func registry(instance: String? = "ipkr89pp9j4f4edhsw7rpz98") async throws -> (manager: AgentConnections, store: InMemoryAgentConnectionCredentialStore, directory: URL) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let daemon = IdentityTransport()
+        await daemon.report(instanceId: instance)
+        let store = InMemoryAgentConnectionCredentialStore()
+        let manager = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in daemon })
+        await manager.setForeground(false)
+        return (manager, store, directory)
+    }
+
+    private func pairing(_ device: String = "device") -> AgentConnectionCredentials {
+        AgentConnectionCredentials(address: "tcAddress", port: 24781, deviceID: device, deviceToken: CanonicalBase64URL.encode(Data(repeating: 7, count: 32)))
+    }
+
+    @MainActor
+    private func signIn(_ manager: AgentConnections, as userId: String?, instance: String = "ipkr89pp9j4f4edhsw7rpz98") async throws -> AgentConnection {
+        let method = OAuthMethod(id: "jwt", name: "Team", authorizationUrl: "https://auth.example/authorize", tokenUrl: "https://auth.example/token", clientId: "happy")
+        return try await manager.addServer(try AgentOrigin("https://team.example"), signIn: ServerSignInRecord(method: method, grant: OAuthGrant(clientId: "happy"), userId: userId),
+                                           access: OAuthAccess(token: "a", expiresAt: nil), name: "Team", instanceId: instance)
+    }
+
+    @MainActor
+    private func chosen(_ push: CloudPushNotification, in manager: AgentConnections) -> String? {
+        push.connection(in: manager.accounts, member: { manager.pushMember(for: $0) }, open: manager.activeID)
+    }
+
+    /// A computer of the person's own has no member, and its daemon's
+    /// pushes name `standalone` (happy-agent API.md, "What the phone
+    /// receives"): they open on its pairing, and on nothing else.
+    @MainActor
+    func testAPairedComputersPushOpensOnItsPairing() async throws {
+        let manager = try await registry().manager
+        let paired = try await manager.add(pairing(), name: "Mac")
+        XCTAssertEqual(paired.instanceId, notice.instanceId)
+        XCTAssertEqual(chosen(Self.standalone, in: manager), paired.id)
+        XCTAssertNil(chosen(notice, in: manager), "a member's push opened on a pairing")
+        var elsewhere = Self.standalone
+        elsewhere.instanceId = "iother89pp9j4f4edhsw7rpz"
+        XCTAssertNil(chosen(elsewhere, in: manager), "another computer's push opened on this pairing")
+    }
+
+    @MainActor
+    func testAPairingWhoseComputerNamedNoInstallationOpensNothing() async throws {
+        let manager = try await registry(instance: nil).manager
+        let paired = try await manager.add(pairing(), name: "Old Mac")
+        XCTAssertNil(paired.instanceId)
+        XCTAssertNil(chosen(Self.standalone, in: manager))
+    }
+
+    /// One installation reached both ways on this phone: each push opens
+    /// on its own kind of connection, whichever is open.
+    @MainActor
+    func testAStandalonePushNeverOpensOnASignInNorAMembersOnAPairing() async throws {
+        let manager = try await registry().manager
+        let signedIn = try await signIn(manager, as: "member-one")
+        XCTAssertNil(chosen(Self.standalone, in: manager), "a standalone push opened on a member's sign-in")
+        let paired = try await manager.add(pairing(), name: "Mac")
+        for open in [signedIn.id, paired.id] {
+            manager.open(open)
+            XCTAssertEqual(chosen(Self.standalone, in: manager), paired.id)
+            XCTAssertEqual(chosen(notice, in: manager), signedIn.id)
+        }
+    }
+
+    /// A sign-in still waiting for its profile is nobody yet, never the
+    /// one person of a computer.
+    @MainActor
+    func testASignInWithNoMemberYetOpensNothing() async throws {
+        let manager = try await registry().manager
+        _ = try await signIn(manager, as: nil)
+        XCTAssertNil(chosen(Self.standalone, in: manager))
+        XCTAssertNil(chosen(notice, in: manager))
+    }
+
+    /// A pairing with a team's server belongs to the member who made it:
+    /// the daemon's pushes name that member, as its bootstrap's
+    /// `profile.userId` does. Kept on disk, so a tap that launches the
+    /// app finds it.
+    @MainActor
+    func testAPairingWithATeamsServerOpensOnlyItsOwnMembersPush() async throws {
+        let (manager, store, directory) = try await registry()
+        let paired = try await manager.add(pairing(), name: "Team Mac")
+        await manager.heard(.verified(SyncEngine.Computer(health: nil, node: nil, owner: .string("member-one"))), from: paired.id)
+        XCTAssertEqual(chosen(notice, in: manager), paired.id)
+        var forTwo = notice
+        forTwo.userId = "member-two"
+        XCTAssertNil(chosen(forTwo, in: manager), "member two's push opened on member one's pairing")
+        XCTAssertNil(chosen(Self.standalone, in: manager), "a standalone push opened on a member's pairing")
+
+        let restored = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in IdentityTransport() })
+        await restored.setForeground(false)
+        try await restored.restore()
+        XCTAssertEqual(chosen(notice, in: restored), paired.id, "the member was not kept for the next launch")
+
+        // Outside a team again (the daemon's bootstrap says null): its one person.
+        await manager.heard(.verified(SyncEngine.Computer(health: nil, node: nil, owner: .null)), from: paired.id)
+        XCTAssertEqual(chosen(Self.standalone, in: manager), paired.id)
+        XCTAssertNil(chosen(notice, in: manager))
+        // A bootstrap that says nothing of it keeps what was known.
+        await manager.heard(.verified(SyncEngine.Computer(health: nil, node: nil, owner: .string("member-one"))), from: paired.id)
+        await manager.heard(.verified(SyncEngine.Computer(health: nil, node: nil)), from: paired.id)
+        XCTAssertEqual(chosen(notice, in: manager), paired.id)
+    }
+
+    /// The installation's id read after the pairing was stored (a computer
+    /// asleep when it was paired) is kept too.
+    @MainActor
+    func testAnInstallationReadLaterIsKeptForTheNextLaunch() async throws {
+        let (manager, store, directory) = try await registry(instance: nil)
+        let paired = try await manager.add(pairing(), name: "Mac")
+        let health: JSONValue = .object(["version": .object(["protocol": .number(27)]), "instanceId": .string(notice.instanceId)])
+        await manager.heard(.verified(SyncEngine.Computer(health: health, node: nil, owner: .null)), from: paired.id)
+        let restored = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in IdentityTransport() })
+        await restored.setForeground(false)
+        try await restored.restore()
+        XCTAssertEqual(chosen(Self.standalone, in: restored), paired.id)
+    }
 }
