@@ -163,6 +163,9 @@ class AppGraph(
     /** Animated Avatars, kept on this phone for every account (not cleared with local settings). */
     val liveAvatars = LiveAvatarsSetting(context.getSharedPreferences(LiveAvatarsSetting.PREFS_NAME, Context.MODE_PRIVATE))
 
+    /** Where each agent connection's home list was left, kept on this phone for an hour. */
+    val agentHomePlaces = com.slopus.happy.ui.connection.AgentHomePlaces(context.getSharedPreferences(com.slopus.happy.ui.connection.AgentHomePlaces.PREFS_NAME, Context.MODE_PRIVATE))
+
     /** Group tool calls in Happy Agent chats, kept on this phone for every connection (not cleared with local settings). */
     val toolCallsGrouped = com.slopus.happy.config.ToolCallsGroupedSetting(context.getSharedPreferences(com.slopus.happy.config.ToolCallsGroupedSetting.PREFS_NAME, Context.MODE_PRIVATE))
 

@@ -77,10 +77,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import androidx.compose.ui.text.style.TextOverflow
@@ -88,8 +91,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import com.slopus.happy.connection.AgentConnection
 import com.slopus.happy.ui.HomeRoute
-import java.util.WeakHashMap
-import java.util.concurrent.ConcurrentHashMap
 import com.slopus.happy.R
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.conversation.HeldConversations
@@ -1031,33 +1032,40 @@ internal class PreviewHold(val hold: HeldConversations.Hold) : RememberObserver 
 }
 
 /**
- * Where each agent connection's home list sits (first item, offset), out
- * here because the tablet shell swaps the phone's home for the sidebar's at
- * the breakpoint, and the sidebar leaves while hidden, which throws the list
- * away (iOS 50f34ed9f keeps its rows in place). Keyed by connection, so one
- * never opens on another's place; as legacy home's
- * [com.slopus.happy.ui.home.HomeServices.homeListOffsets].
+ * Home's list for connection [id], rebuilt where it last was ([AgentHomePlaces]) and recording where it goes.
+ * Rows that moved meanwhile (a relaunch, new activity) are checked by key once laid out: the row is put back
+ * where it was if it is on screen, else the list opens at its top.
  */
-private val agentHomePlaces = WeakHashMap<AppGraph, ConcurrentHashMap<String, Pair<Int, Int>>>()
-
-internal fun agentHomePlaces(graph: AppGraph): ConcurrentHashMap<String, Pair<Int, Int>> =
-    synchronized(agentHomePlaces) { agentHomePlaces.getOrPut(graph) { ConcurrentHashMap() } }
-
-/** Home's list for connection [id], rebuilt where it last was and recording where it goes. */
 @Composable
 internal fun rememberAgentHomeListState(graph: AppGraph, id: String): LazyListState {
-    val places = remember(graph) { agentHomePlaces(graph) }
-    val state = remember(id) {
-        val saved = places[id]
-        LazyListState(saved?.first ?: 0, saved?.second ?: 0)
-    }
+    val places = graph.agentHomePlaces
+    val saved = remember(id) { places[id] }
+    val state = remember(id) { LazyListState(saved?.index ?: 0, saved?.offset ?: 0) }
     LaunchedEffect(state, id) {
-        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
-            .distinctUntilChanged()
-            .collect { places[id] = it }
+        if (saved?.key != null) {
+            val shown = snapshotFlow { state.layoutInfo.visibleItemsInfo }.first { it.isNotEmpty() }
+            if (shown.firstOrNull { it.index == state.firstVisibleItemIndex }?.key != saved.key) {
+                val moved = shown.firstOrNull { it.key == saved.key }
+                state.requestScrollToItem(moved?.index ?: 0, if (moved != null) saved.offset else 0)
+            }
+        }
+        try {
+            snapshotFlow { state.place() }.distinctUntilChanged().collect { places.showing(id, it) }
+        } finally {
+            places.left(id, state.place())
+        }
     }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { places.left(id, state.place(), showing = true) }
     return state
 }
+
+/** Where the list is; at its very top no key, so a notice that came meanwhile shows above the rows. */
+private fun LazyListState.place() = AgentHomePlaces.Place(
+    firstVisibleItemIndex,
+    firstVisibleItemScrollOffset,
+    if (firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0) null
+    else layoutInfo.visibleItemsInfo.firstOrNull { it.index == firstVisibleItemIndex }?.key as? String,
+)
 
 /**
  * Debug builds only, for screenshots and test runs: an intent's
