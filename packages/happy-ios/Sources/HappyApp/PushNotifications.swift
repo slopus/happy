@@ -11,6 +11,8 @@ import UserNotifications
 /// and lists, and a tap opens its session. Switching accounts never
 /// unregisters, so every signed-in account keeps notifying; sign-out
 /// unregisters that account (`AccountController.signOut(accountID:)`).
+/// A Happy Cloud server's push opens its agent's chat instead, on the
+/// connection it was sent for (`CloudPushNotification`).
 @MainActor
 final class PushNotifications: NSObject {
     static let shared = PushNotifications()
@@ -127,7 +129,8 @@ final class PushNotifications: NSObject {
     private func open(_ tap: NotificationTap, on coordinator: AppCoordinator) {
         switch tap {
         case .session(let sessionId): coordinator.openSession(fromNotification: sessionId)
-        case .agent, .nothing: break
+        case .agent(let push): coordinator.openAgent(fromNotification: push)
+        case .nothing: break
         }
     }
 

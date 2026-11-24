@@ -34,9 +34,14 @@ public enum NotificationRouting {
         return decodeURIComponent(encoded) ?? encoded
     }
 
-    /// What a tap on a notification carrying `data` opens.
+    /// What a tap on a notification carrying `data` opens. A cloud push
+    /// opens its agent, or nothing when this app can't read it; anything
+    /// else is read for a session.
     public static func tap(fromData data: Any?) -> NotificationTap {
-        sessionId(fromData: data).map(NotificationTap.session) ?? .nothing
+        if let object = normalized(data), CloudPushNotification.owns(object) {
+            return CloudPushNotification(object).map(NotificationTap.agent) ?? .nothing
+        }
+        return sessionId(fromData: data).map(NotificationTap.session) ?? .nothing
     }
 
     /// `normalizeNotificationData` plus the object check: only a dictionary

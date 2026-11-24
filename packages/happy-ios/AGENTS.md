@@ -338,6 +338,17 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     A tap that launches the app waits for the stored account. One that
     needs a switch also waits for the restored account's first sync, which
     holds the account controller.
+  - **Opening a Happy Cloud server's push.** Its `body` is
+    `happy.cloud.push.v1`: an installation, a member, an agent and a
+    notification id, and nothing else (`CloudPushNotification`, Android's
+    rules). The tap opens that agent's chat
+    (`AppCoordinator.openAgent(fromNotification:)`) on the connection
+    signed in to that installation as that member, switched to first, as
+    an instance link opens. Never another login because it shares the
+    server or is the one open; signed out or not here, nothing opens. A
+    cloud payload this app can't read (another version, an extra or
+    missing field) opens nothing and is never read for a `sessionId`. A
+    tap that launches the app waits for the stored connections.
   - **Deliberate differences from happy-app:**
     - happy-app's backoff retries the server calls forever. Here each sync
       makes one registration attempt, and the next session start or
@@ -769,7 +780,7 @@ change a file another workstream owns, ask the coordinator.
 | Sending | `Core/Chat/` sending and attachments, the outbox in `SyncEngine` and `LocalStore`, `HappyStore` schema |
 | Reducer | `Core/Chat/` reducer and `ChatFeed`, `HappyWire` session-protocol decoding |
 | Ops | `Core/Sessions/` RPC operations (`sync/ops.ts`) |
-| Push | `Sources/HappyApp/PushNotifications.swift`, `Core/Push/` routing, installation id, APNs source and token sync, the entitlements, `AppCoordinator.openSession(fromNotification:)` |
+| Push | `Sources/HappyApp/PushNotifications.swift`, `Core/Push/` routing, installation id, APNs source and token sync, the entitlements, `AppCoordinator.openSession(fromNotification:)` and `openAgent(fromNotification:)` |
 | Sync perf | Presence (`Core/Presence/`), the merge rules' skip-if-unchanged and batching in `LocalStore`, the shared per-account observations (`Core/Observation/`), the thread preconditions in `SyncEngine`, `LocalStore` and `LocalChatFeed`, the sync benchmarks (`Tests/HappyCoreTests/SyncPerf*`) |
 | Apply perf | The off-main row derivation and changesets (`Core/Changes/`), the home list and chat apply paths (`SessionListViewController.apply`, `LegacyChatViewController`'s session and snapshot handling, `ChatListView.apply`, `ChatRowMeasurer`), signposts and the main-thread counter (`HappyUI/Perf/`), the changeset tests |
 | Tablet | `Sources/HappyUI/Tablet/`, `Sources/HappyLayout/Tablet/`, `Sources/HappyCore/Tablet/`, the root container switch in `AppCoordinator`. Tablet branches inside other workstreams' screens go through their owners |
@@ -848,7 +859,9 @@ To keep parallel work from colliding:
   is not wired yet. happy-app sets no `allowFontScaling={false}`; the only
   cap is `maxFontSizeMultiplier={1.2}` on the onboarding titles
   (`OnboardingContent.tsx`), so every other text scales uncapped.
-- Not verified anywhere yet: push delivery, presentation and taps,
+- Not verified anywhere yet: push delivery from a real server,
+  presentation, and a session push's tap (a cloud push's tap was run in
+  the simulator with `simctl push`, never on a device),
   a run in the simulator or on a device,
   `HappyUIKitTests` (built, never run), and a real in-place upgrade from an
   RN build.

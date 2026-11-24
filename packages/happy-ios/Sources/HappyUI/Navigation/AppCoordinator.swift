@@ -40,6 +40,8 @@ public final class AppCoordinator {
     /// The session a tapped notification named, until a signed-in home can
     /// open it.
     private var notificationSessionID: String?
+    /// A tapped Happy Cloud push, waiting for the stored connections.
+    private var notificationPush: CloudPushNotification?
     private var accountRestored = false
     private var backgrounded = false
     private var switchingForNotification = false
@@ -94,6 +96,7 @@ public final class AppCoordinator {
             self?.openPendingInstanceLink()
             self?.openPendingInvite()
             self?.openNotificationSession()
+            self?.openNotificationAgent()
         }
     }
 
@@ -180,6 +183,34 @@ public final class AppCoordinator {
         }
     }
 
+    /// Opens the chat of the agent a tapped Happy Cloud push names, on the
+    /// connection signed in to its server as the member it was sent to
+    /// (`CloudPushNotification.connection`), switched to first. With no
+    /// such connection nothing opens, and nothing shown is put away. A tap
+    /// that launched the app waits for the stored connections.
+    public func openAgent(fromNotification push: CloudPushNotification) {
+        notificationPush = push
+        openNotificationAgent()
+    }
+
+    private func openNotificationAgent() {
+        guard accountRestored, let push = notificationPush, shell.topViewController != nil else { return }
+        let connections = context.account.agentConnections
+        guard let id = push.connection(in: connections.accounts, userId: { connections.userId(for: $0) }, open: connections.activeID) else {
+            notificationPush = nil
+            return
+        }
+        // Already in that chat: a second copy over it would only add a step back.
+        if case .agentConnection(let shown) = context.account.state, shown.id == id, shell.presentedViewController == nil,
+           let chat = shell.topViewController as? ChatViewController, chat.shownAgentId == push.agentId {
+            notificationPush = nil
+            return
+        }
+        guard clearedForLink(then: { [weak self] in self?.openNotificationAgent() }) else { return }
+        notificationPush = nil
+        open(HappyLink(.reference(HappyLink.Reference(kind: .agent, id: push.agentId))), onConnection: id)
+    }
+
     /// Foreground/background, for the server's push suppression.
     public func appStateChanged(active: Bool) {
         Task { await context.account.agentConnections.setForeground(active) }
@@ -249,17 +280,22 @@ public final class AppCoordinator {
         case .unknownInstance:
             Alerts.show(Strings.InstanceLinks.unknownTitle, Strings.InstanceLinks.unknown, on: top)
         case .open(let id, let link):
-            instanceTarget = (id, link)
-            if case .agentConnection(let shown) = context.account.state, shown.id == id { return openInstanceTarget() }
-            let account = context.account
-            Task { @MainActor [weak self] in
-                do {
-                    if !account.showsAgentConnections { await account.setShowsAgentConnections(true) }
-                    try await account.switchAccount(to: id)
-                } catch {
-                    self?.instanceTarget = nil
-                    if let top = self?.linkHost { Alerts.show(Strings.InstanceLinks.unknownTitle, error.localizedDescription, on: top) }
-                }
+            open(link, onConnection: id)
+        }
+    }
+
+    /// `link` on the connection `id`, which becomes the one shown first.
+    private func open(_ link: HappyLink, onConnection id: String) {
+        instanceTarget = (id, link)
+        if case .agentConnection(let shown) = context.account.state, shown.id == id { return openInstanceTarget() }
+        let account = context.account
+        Task { @MainActor [weak self] in
+            do {
+                if !account.showsAgentConnections { await account.setShowsAgentConnections(true) }
+                try await account.switchAccount(to: id)
+            } catch {
+                self?.instanceTarget = nil
+                if let top = self?.linkHost { Alerts.show(Strings.InstanceLinks.unknownTitle, error.localizedDescription, on: top) }
             }
         }
     }
@@ -454,6 +490,7 @@ public final class AppCoordinator {
         openPendingInstanceLink()
         openPendingInvite()
         openNotificationSession()
+        openNotificationAgent()
         openInstanceTarget()
     }
 
