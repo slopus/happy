@@ -598,6 +598,34 @@ class ConversationTest {
         assertEquals(Delivery.Pending, (chat.state.value.rows.single() as ConversationRow.User).delivery)
     }
 
+    /**
+     * A daemon draining to restart answers every send 503: after its tries
+     * the message shows failed, and it goes again on its own, under the
+     * same id, once the stream is back. One the computer refused stays failed.
+     */
+    @Test fun `a send refused for now goes again once the stream is back`() = runTest {
+        val agent = FakeAgent()
+        agent.failSends = 3
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.send("While draining")
+        advanceUntilIdle()
+        assertTrue((chat.state.value.rows.single() as ConversationRow.User).delivery is Delivery.Failed)
+        assertEquals(3, agent.requests.count { it.second.endsWith("/send") })
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        val ids = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!!["id"] }
+        assertEquals(4, ids.size)
+        assertEquals("the same send", 1, ids.toSet().size)
+        assertEquals(Delivery.Pending, (chat.state.value.rows.single() as ConversationRow.User).delivery)
+        agent.sendStatus = 400
+        chat.send("Refused")
+        advanceUntilIdle()
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertEquals("a refusal isn't sent again", 5, agent.requests.count { it.second.endsWith("/send") })
+    }
+
     @Test fun `a new chat makes its task on the first send, then becomes the real chat in place`() = runTest {
         val agent = FakeAgent()
         val task = NewTask("t1", "w1", "a9", "m1")

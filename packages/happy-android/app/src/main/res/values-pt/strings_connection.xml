@@ -5,6 +5,7 @@
     <string name="connection_type">Tipo</string>
     <string name="connection_server">Servidor</string>
     <string name="connection_network">Rede disponível</string>
+    <string name="connection_last_error">Último erro</string>
     <string name="connection_open_flows">Fluxos abertos da aplicação</string>
     <string name="connection_tunnels">Túneis Tailcat</string>
     <string name="connection_tunnel">Túnel %1$d</string>

@@ -34,5 +34,6 @@
     <string name="link_status_updating">sincronizzazione…</string>
     <string name="link_status_connecting">connessione…</string>
     <string name="link_status_waiting_for_network">in attesa di rete…</string>
+    <string name="link_status_restarting">riavvio dell\'agente…</string>
     <string name="message_select">Seleziona</string>
 </resources>

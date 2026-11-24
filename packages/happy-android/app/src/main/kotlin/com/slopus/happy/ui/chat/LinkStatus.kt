@@ -37,6 +37,7 @@ fun linkStatusWords(state: LinkState): String? = when (state) {
     LinkState.Syncing -> stringResource(R.string.link_status_updating)
     LinkState.Connecting -> stringResource(R.string.link_status_connecting)
     LinkState.WaitingForNetwork -> stringResource(R.string.link_status_waiting_for_network)
+    LinkState.Restarting -> stringResource(R.string.link_status_restarting)
     LinkState.Online -> null
 }
 

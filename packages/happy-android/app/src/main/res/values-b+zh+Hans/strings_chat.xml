@@ -34,5 +34,6 @@
     <string name="link_status_updating">同步中…</string>
     <string name="link_status_connecting">连接中…</string>
     <string name="link_status_waiting_for_network">等待网络…</string>
+    <string name="link_status_restarting">Agent 重启中…</string>
     <string name="message_select">选择</string>
 </resources>

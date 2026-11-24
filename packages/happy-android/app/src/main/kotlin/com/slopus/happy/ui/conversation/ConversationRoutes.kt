@@ -441,17 +441,20 @@ private fun failureShown(row: ConversationRow.Failure, address: ChatAddress) {
  * connecting, whatever kept it away (a computer that didn't answer, a
  * pairing to redo: home says those in words of its own). Hello ends
  * connecting; each screen's P0 then decides whether it is catching up.
+ * A [draining] daemon is restarting, through the reconnect as its process
+ * goes, until a new hello says otherwise ([AgentSession.draining][com.slopus.happy.agent.AgentSession.draining]).
  */
-internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean): LinkState = when {
+internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean, draining: Boolean = false): LinkState = when {
     !network -> LinkState.WaitingForNetwork
+    draining -> LinkState.Restarting
     this != null && this != AgentLinkStatus.Connected -> LinkState.Connecting
     syncing -> LinkState.Syncing
     else -> LinkState.Online
 }
 
 /** A chat finishes P0 when its own history lands, independently of home's bootstrap or P2. */
-internal fun AgentLinkStatus?.conversationLinkState(state: ConversationState, network: Boolean): LinkState =
-    linkState(syncing = state.syncing || (state.created && !state.loaded), network = network)
+internal fun AgentLinkStatus?.conversationLinkState(state: ConversationState, network: Boolean, draining: Boolean = false): LinkState =
+    linkState(syncing = state.syncing || (state.created && !state.loaded), network = network, draining = draining)
 
 @Composable
 private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: ConversationRoute) {
@@ -483,12 +486,13 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     }
     val usage by session.usage.usage.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
+    val draining by session.draining.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     DisposableEffect(holder) { onDispose { holder.hold.show(false) } }
     // A link in this chat browses through this chat's agent's workspace (iOS's openBrowser(session:agentID:)).
     val context = LocalContext.current
     val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
-    val link = rememberShownLinkState(status.conversationLinkState(state, network))
+    val link = rememberShownLinkState(status.conversationLinkState(state, network, draining))
     val computer = computerName(graph, route.connectionId)
     // A name a message wrote, or a Happy URL, opens what it names here.
     val happyLinks = com.slopus.happy.ui.connection.LocalHappyLinks.current
