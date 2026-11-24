@@ -11,6 +11,7 @@ import com.slopus.happy.conversation.HeldConversations
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.conversation.ModelPreferences
 import com.slopus.happy.conversation.NewSessionStart
+import com.slopus.happy.conversation.ScrollPlace
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
 import com.slopus.happy.diagnostics.Timing
@@ -801,6 +802,9 @@ class AgentSession internal constructor(
 
     /** Each agent's one conversation, for whoever shows or follows it ([HeldConversations]). */
     val conversations = HeldConversations(scope)
+
+    /** Where the reader left each agent's conversation, to open on again; read and kept on the main thread. */
+    val scrollPlaces = HashMap<String, ScrollPlace>()
 
     init {
         scope.coroutineContext[Job]!!.invokeOnCompletion { stopHealth(closing = true) }

@@ -510,6 +510,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             opensAttach = route.attach,
             roleCanSend = roleCanSend,
             roleCanCompose = permissions.canWrite,
+            place = remember(conversation) { TranscriptPlace(session.scrollPlaces, conversation.agentId) },
             link = link,
             usage = usage,
             onRefreshUsage = session.usage::refresh,
