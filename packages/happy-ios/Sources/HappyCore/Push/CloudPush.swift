@@ -66,7 +66,7 @@ public enum HappyPushRelay {
     }
 }
 
-/// A Happy Cloud server's record of this install (`PUT
+/// A server's record of this install (`PUT
 /// /v0/cloud/push/registrations/:id`), kept until `expiresAt`.
 public struct CloudPushRegistration: Decodable, Equatable, Sendable {
     public var id: String
@@ -130,13 +130,23 @@ public struct CloudPushIDs: Sendable {
     }
 }
 
-/// Registers this install for push on Happy Cloud servers: the
+/// Registers this install for push on the servers that take it: the
 /// notification permission, this install's APNs token, the relay's
 /// `HappyPushToken` for it (asked again only when the APNs token
-/// changes), then the server's registration. Onboarding's `mobileApp`
-/// gate asks for the permission; coming back to a server renews quietly
-/// where it was given, at most every few hours; signing out of it takes
-/// the registration off (`unregister`).
+/// changes), then the server's registration. A Happy Cloud server always
+/// takes it, and its onboarding's `mobileApp` gate asks for the
+/// permission. Any other (a paired computer's Happy Agent daemon, a
+/// team's own server) takes it when its health says
+/// `capabilities.pushRegistrations`, with the same routes, and having no
+/// onboarding, asks the first time it is reached. Coming back to a server
+/// renews quietly where permission was given, at most every few hours;
+/// leaving it takes the registration off (`unregister`).
+///
+/// Every server gets the same `HappyPushToken`, and the relay takes a
+/// send from anyone who holds it. So a server registered with can send a
+/// push that names another connection: what a push opens is decided here
+/// (`CloudPushNotification.connection`), and only ever a chat that
+/// connection already has.
 public actor CloudPush {
     public struct Source: Sendable {
         public var device: CloudPushDevice
@@ -167,6 +177,8 @@ public actor CloudPush {
         case denied
         /// A build the relay doesn't take (its app id).
         case unsupported
+        /// A server that takes no registrations; it was asked nothing.
+        case unserved
     }
 
     /// How long a renewal lasts before coming back renews again.
@@ -175,16 +187,40 @@ public actor CloudPush {
     private let source: Source
     private var token: (apns: Data, happy: HappyPushToken)?
     private var renewed: [String: Date] = [:]
+    /// The registration on its way for a connection. A server gives each
+    /// one it takes a new version and takes off only the latest, so two
+    /// sent at once could leave the phone holding the older: one is sent at
+    /// a time, and leaving waits for it.
+    private var registering: [String: (ask: Bool, task: Task<Outcome, Error>)] = [:]
 
     public init(source: Source) { self.source = source }
 
     /// `ask`: from the person's tap, which may show the system prompt and
-    /// always registers; else only where permission was given, and not
-    /// again within `renewal`.
-    public func register(connection: String, client: AgentClient, ask: Bool, now: Date = Date()) async throws -> Outcome {
+    /// always registers; else not again within `renewal`. `cloud`: a
+    /// Happy Cloud server, which is not asked what it serves and shows
+    /// the prompt only from a tap. Any other is registered with only when
+    /// its health says it takes registrations (an older daemon answers
+    /// these routes 404, and is never asked), and shows the prompt while
+    /// iOS still would, which is once.
+    public func register(connection: String, client: AgentClient, ask: Bool, cloud: Bool, now: Date = Date()) async throws -> Outcome {
+        // A connection that comes up says so more than once at the same
+        // moment: the second is answered as the first is. A tap is never
+        // answered by a quiet renewal, which may not have asked.
+        while let running = registering[connection] {
+            let result = await running.task.result
+            if running.ask || !ask { return try result.get() }
+        }
+        let task = Task { try await send(connection: connection, client: client, ask: ask, cloud: cloud, now: now) }
+        registering[connection] = (ask, task)
+        defer { registering[connection] = nil }
+        return try await task.value
+    }
+
+    private func send(connection: String, client: AgentClient, ask: Bool, cloud: Bool, now: Date) async throws -> Outcome {
         guard CloudPushDevice.appIds.contains(source.device.appId) else { return .unsupported }
+        if !cloud, try await client.health().capabilities?.pushRegistrations != true { return .unserved }
         var permission = await source.permission()
-        if ask, !permission.granted, permission.canAskAgain { permission = await source.requestPermission() }
+        if ask || !cloud, !permission.granted, permission.canAskAgain { permission = await source.requestPermission() }
         guard permission.granted else { return .denied }
         if !ask, let last = renewed[connection], now.timeIntervalSince(last) < Self.renewal { return .current }
         let apns = try await source.apnsToken()
@@ -199,10 +235,13 @@ public actor CloudPush {
         return .registered
     }
 
-    /// Signing out of a server or leaving it: its registration goes, so
-    /// the phone stops getting the team's notifications now, not at the
-    /// registration's expiry. Called before the session is revoked.
+    /// Signing out of a server, leaving it or unpairing its computer: its
+    /// registration goes, so the phone stops getting its notifications
+    /// now, not at the registration's expiry. Called before the session
+    /// is revoked. One never registered with is sent nothing.
     public func unregister(connection: String, client: AgentClient) async throws {
+        // One on its way lands first: its version is the one to take off.
+        while let running = registering[connection] { _ = await running.task.result }
         renewed[connection] = nil
         guard let version = source.ids.version(for: connection) else { return }
         try await client.unregisterCloudPush(source.ids.registration(for: connection), version: version)

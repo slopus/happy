@@ -1,13 +1,16 @@
 import Foundation
 import HappyWire
 
-/// What a Happy Cloud server's push names (`happy.cloud.push.v1`, the
-/// `data` it hands the relay): the installation it came from, the member
-/// it was sent to, the agent whose chat a tap opens, and the notification's
-/// own id. The title and body are the notification's and never read here.
+/// What a server's push names (`happy.cloud.push.v1`, the `data` a Happy
+/// Cloud server or a Happy Agent daemon hands the relay): the installation
+/// it came from, the member it was sent to, the agent whose chat a tap
+/// opens, and the notification's own id. The title and body are the notification's and never read here.
 /// The rules are Android's `CloudPushNotification`.
 public struct CloudPushNotification: Equatable, Sendable {
     public static let kind = "happy.cloud.push.v1"
+    /// The `userId` of a daemon outside a team, whose one person has no
+    /// user ID (happy-agent API.md, "What the phone receives").
+    public static let standalone = "standalone"
 
     public var instanceId: String
     public var userId: String
@@ -52,14 +55,16 @@ public struct CloudPushNotification: Equatable, Sendable {
         }
     }
 
-    /// The connection a tap opens on: one signed in to that installation
-    /// as that member, and still signed in; `open` when it is one of them.
-    /// Never another login because it shares the server or is the one
-    /// open, and nil when there is none. `userId` is who a connection is
-    /// signed in as (`AgentConnections.userId(for:)`): nil for a pairing,
-    /// and for a sign-in still waiting for its profile.
-    public func connection(in connections: [AgentConnection], userId: (String) -> String?, open: String?) -> String? {
-        let matches = connections.filter { !$0.revoked && $0.instanceId == instanceId && userId($0.id) == self.userId }
+    /// The connection a tap opens on: one to that installation as that
+    /// member, and still usable; `open` when it is one of them. Never
+    /// another login because it shares the server or is the one open, and
+    /// nil when there is none. `member` is who a connection's pushes name
+    /// (`AgentConnections.pushMember(for:)`): a sign-in's member, nil while
+    /// it waits for its profile, and for a pairing its team user or
+    /// `standalone`. So a daemon's `standalone` push opens only on a
+    /// pairing, and a member's never on another member's connection.
+    public func connection(in connections: [AgentConnection], member: (String) -> String?, open: String?) -> String? {
+        let matches = connections.filter { !$0.revoked && $0.instanceId == instanceId && member($0.id) == userId }
         return (matches.first { $0.id == open } ?? matches.first)?.id
     }
 }

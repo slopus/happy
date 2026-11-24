@@ -8,10 +8,11 @@ public final class AgentConnections {
     public private(set) var accounts: [AgentConnection] = []
     public private(set) var activeID: String?
     public var onChange: (() -> Void)?
-    /// Said to a Happy Cloud server as the phone signs out of it, while
-    /// its session still works: the app takes this phone's push
-    /// registration off (`CloudPush.unregister`). The session's revocation
-    /// and the connection's teardown wait for it, `farewellLimit` at most.
+    /// Said to a server as the phone leaves it (signs out, or unpairs its
+    /// computer), while its session still works: the app takes this
+    /// phone's push registration off, where it made one
+    /// (`CloudPush.unregister`). The session's revocation and the
+    /// connection's teardown wait for it, `farewellLimit` at most.
     public var cloudFarewell: (@Sendable (_ id: String, _ client: AgentClient) async -> Void)?
     static let farewellLimit: Duration = .seconds(5)
     private let storage: AgentConnectionStorage
@@ -159,6 +160,18 @@ public final class AgentConnections {
     /// The team user the server `id` was signed in as; nil for a pairing.
     public func userId(for id: String) -> String? { credentials[id]?.signIn?.userId }
 
+    /// Who a push for the connection `id` names
+    /// (`CloudPushNotification.userId`). A sign-in's is the member it was
+    /// signed in as, nil while it waits for its profile. A pairing's is
+    /// the team user its daemon says it belongs to
+    /// (`AgentConnection.member`), and `standalone` when it says none: a
+    /// computer of the person's own, whose daemon has no members.
+    public func pushMember(for id: String) -> String? {
+        guard let credential = credentials[id] else { return nil }
+        if let signIn = credential.signIn { return signIn.userId }
+        return accounts.first { $0.id == id }?.member ?? CloudPushNotification.standalone
+    }
+
     /// The origin of the signed-in server `id`.
     public func server(for id: String) -> String? { credentials[id]?.signIn != nil ? credentials[id]?.publicUrl : nil }
 
@@ -199,7 +212,7 @@ public final class AgentConnections {
     /// engine hears them: no identity check of its own while it runs
     /// (`identifiedByEngine`). The picture's bytes are read only when its
     /// ThumbHash changed, on a file client over the engine's tunnels.
-    private func heard(_ news: SyncEngine.Heard, from id: String) async {
+    func heard(_ news: SyncEngine.Heard, from id: String) async {
         guard let account = accounts.first(where: { $0.id == id }), !account.revoked else { return }
         let generation = generation
         switch news {
@@ -399,10 +412,10 @@ public final class AgentConnections {
         }
     }
 
-    /// `cloudFarewell` to a cloud server about to be removed, on a client
-    /// of its own while everything it needs is still in place.
+    /// `cloudFarewell` to a server about to be removed, on a client of its
+    /// own while everything it needs is still in place.
     private func farewell(_ id: String) -> Task<Void, Never>? {
-        guard let say = cloudFarewell, HappyCloud.isCloud(server(for: id)), !signedOut(id), let client = agentClient(for: id) else { return nil }
+        guard let say = cloudFarewell, !signedOut(id), let client = agentClient(for: id) else { return nil }
         return Task { await waitAtMost(Self.farewellLimit) { await say(id, client) } }
     }
 
@@ -629,7 +642,10 @@ public final class AgentConnections {
         if account.revoked { keepStartup() }
         onChange?()
         // Status is transient. Persist identity and permanent revocation only.
-        if previous.name != account.name || previous.avatar != account.avatar || previous.avatarETag != account.avatarETag || previous.thumbhash != account.thumbhash || previous.revoked != account.revoked {
+        // The installation and the member are what a tapped push that
+        // launches the app is matched against, before anything is read.
+        if previous.name != account.name || previous.avatar != account.avatar || previous.avatarETag != account.avatarETag || previous.thumbhash != account.thumbhash || previous.revoked != account.revoked
+            || previous.instanceId != account.instanceId || previous.member != account.member {
             try? await storage.update(account)
         }
     }

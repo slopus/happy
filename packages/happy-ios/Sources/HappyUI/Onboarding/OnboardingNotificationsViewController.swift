@@ -51,8 +51,8 @@ final class OnboardingNotificationsViewController: CloudStageViewController, Onb
         defer { secondary?.isEnabled = true }
         guard let push = SettingsHooks.cloudPush else { return show(.appStore, note: Text.notificationsUnsupported) }
         do {
-            switch try await push.register(connection: session.accountID, client: session.client, ask: true) {
-            case .registered, .current: _ = try? await session.readOnboarding()
+            switch try await push.register(connection: session.accountID, client: session.client, ask: true, cloud: session.isCloud) {
+            case .registered, .current, .unserved: _ = try? await session.readOnboarding()
             case .denied: show(.settings, note: Text.notificationsOff)
             case .unsupported: show(.appStore, note: Text.notificationsUnsupported)
             }

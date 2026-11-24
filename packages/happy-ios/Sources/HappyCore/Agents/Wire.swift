@@ -130,6 +130,8 @@ extension AgentWire {
             /// Saves Gen UI secret actions' forms
             /// (`POST /v0/artifacts/:id/versions/:n/actions`); missing is none.
             public var artifactSecretActions: Bool?
+            /// The push registration routes (`/v0/cloud/push`); missing is none.
+            public var pushRegistrations: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?

@@ -35,6 +35,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// What the push's first frame had: the transcript, or nothing yet.
     private var firstFrame: Bool?
     private let spaceId: String?
+    /// Opened with no name, as a link or a tapped notification opens it
+    /// (they name only the agent): home's row names it, wherever it is.
+    private let unnamed: Bool
     private let opensFocused: Bool
     /// New work brings the keyboard up as it opens, unless it opens on the "+" sheet.
     var focusesOnOpen = true
@@ -233,6 +236,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         self.session = session
         self.saying = previewing ? nil : saying
         self.spaceId = spaceId
+        unnamed = title.isEmpty
         self.intro = intro
         self.previewing = previewing
         self.prefill = previewing ? nil : prefill
@@ -929,6 +933,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// The name home gives this conversation's row, as it changes: a bot
     /// or task the agent renames is renamed here too, on a computer whose
     /// sidebar is the account's bootstrap rather than the spaces document.
+    /// A conversation opened with no name takes its row's, a project's
+    /// session too, whenever home has it: from a closed app that is after
+    /// this screen is up.
     private func follow(_ home: HomeSnapshot) {
         let busy = References.busy(in: home.allRows)
         if busy != homeBusy {
@@ -938,7 +945,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         let agentId = media.agentId
         let spaceId = spaceId
-        guard let row = home.allRows.first(where: { row in spaceId.map { row.spaceId == $0 } ?? (row.agentId == agentId && row.depth == 0) }),
+        guard let row = home.allRows.first(where: { row in spaceId.map { row.spaceId == $0 } ?? (row.agentId == agentId && row.depth == 0) })
+                ?? (unnamed && spaceId == nil ? home.allRows.first { $0.agentId == agentId } : nil),
               rowName.map({ $0.label != row.label || $0.titled != row.titled }) ?? true else { return }
         rowName = (row.label, row.titled)
         applyTitle()

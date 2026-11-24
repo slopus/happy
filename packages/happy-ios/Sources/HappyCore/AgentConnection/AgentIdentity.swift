@@ -50,6 +50,8 @@ enum AgentIdentity {
             guard (health["version"]?["protocol"]?.numberValue ?? 0) >= 27 else { throw PairingError.updateRequired }
             updated.instanceId = health["instanceId"]?.stringValue.flatMap { HappyLink.isInstanceID($0) ? $0 : nil }
         }
+        // Null is a computer outside a team; a bootstrap without it says nothing.
+        if let owner = computer.owner { updated.member = owner.stringValue.flatMap { $0.isEmpty ? nil : $0 } }
         var readsAvatar = false
         if let node = computer.node {
             guard let name = node["name"]?.stringValue else { throw PairingError.invalidResponse }

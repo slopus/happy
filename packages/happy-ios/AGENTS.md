@@ -340,13 +340,35 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     A tap that launches the app waits for the stored account. One that
     needs a switch also waits for the restored account's first sync, which
     holds the account controller.
-  - **Opening a Happy Cloud server's push.** Its `body` is
+  - **Registering with a server.** A server's own push is `CloudPush`:
+    this install's APNs token becomes the relay's `HappyPushToken`, which
+    is registered on the server (`PUT /v0/cloud/push/registrations/:id`,
+    one id kept per connection). A Happy Cloud server always takes it, and
+    its onboarding's `mobileApp` step asks for the permission. Any other
+    server (a paired computer's Happy Agent daemon, a team's own) takes
+    it only when its health says `capabilities.pushRegistrations`; one
+    that doesn't is asked for nothing. Such a server has no onboarding,
+    so iOS's prompt shows the first time it is reached
+    (`Session.renewPush`), while iOS still would. Leaving a server, or
+    unpairing a computer from the phone, takes the registration off
+    first (`AgentConnections.cloudFarewell`). A server gives each
+    registration it takes a new version and takes off only the latest, so
+    one is sent per connection at a time and leaving waits for the one on
+    its way (`CloudPush.registering`). Every server gets the same
+    relay token and the relay takes a send from whoever holds it, so a
+    push may name a connection its sender isn't: a tap only ever opens a
+    chat that connection already has.
+  - **Opening a server's push.** Its `body` is
     `happy.cloud.push.v1`: an installation, a member, an agent and a
     notification id, and nothing else (`CloudPushNotification`, Android's
     rules). The tap opens that agent's chat
-    (`AppCoordinator.openAgent(fromNotification:)`) on the connection
-    signed in to that installation as that member, switched to first, as
-    an instance link opens. Never another login because it shares the
+    (`AppCoordinator.openAgent(fromNotification:)`) on the connection to
+    that installation as that member, switched to first, as an instance
+    link opens. A sign-in is the member it signed in as. A pairing is the
+    team user its daemon says it belongs to (the bootstrap's
+    `profile.userId`, kept as `AgentConnection.member`), and `standalone`
+    when the daemon names none: what a daemon outside a team sends
+    (`AgentConnections.pushMember`). Never another login because it shares the
     server or is the one open; signed out or not here, nothing opens. A
     cloud payload this app can't read (another version, an extra or
     missing field) opens nothing and is never read for a `sessionId`. A
@@ -354,6 +376,9 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     from a deeper screen (a chat on another server) animates the stack to
     the new home, and the chat opens once that has ended
     (`AppCoordinator.openInstanceTarget`); an instance link shares this.
+    The link and the push name only the agent, so the chat opens with no
+    name and takes its home row's, a project's session too, when home has
+    it: after the chat is up, from a closed app (`ChatViewController.unnamed`).
   - **Deliberate differences from happy-app:**
     - happy-app's backoff retries the server calls forever. Here each sync
       makes one registration attempt, and the next session start or

@@ -188,10 +188,13 @@ public actor SyncEngine {
     private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
 
     /// What the newest bootstrap says of the computer itself: its
-    /// `health` and `config.node`, nil where it carries none.
+    /// `health` and `config.node`, nil where it carries none, and whose
+    /// this connection is there (`profile.userId`): a team user's ID,
+    /// null outside a team.
     public struct Computer: Equatable, Sendable {
         public var health: JSONValue?
         public var node: JSONValue?
+        public var owner: JSONValue?
     }
 
     /// What the engine hears of its computer that its connection shows
@@ -845,7 +848,7 @@ public actor SyncEngine {
         // `GET /v0/health`: no read of its own beside it. The store hears
         // it at once: what Gen UI's actions may run.
         client.servedHealth.take(value["health"])
-        computer = Computer(health: value["health"], node: value["config"]?["node"])
+        computer = Computer(health: value["health"], node: value["config"]?["node"], owner: value["profile"]?["userId"])
         try await takeTeammates(value["teammates"])
         let served = try await client.health()
         await spaces.externalCapabilities(served.capabilities)
