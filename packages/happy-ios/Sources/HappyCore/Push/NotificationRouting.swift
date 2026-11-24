@@ -98,10 +98,11 @@ public struct NotificationResponseFilter: Sendable {
 
     public init() {}
 
-    /// Whether to route this response. The identifier is remembered before
-    /// the action is checked, as happy-app does, so a dismissal also counts
-    /// as handled.
-    public mutating func shouldRoute(requestIdentifier: String, isDefaultAction: Bool) -> Bool {
+    /// Whether to route this response. `delivered` is when the system
+    /// delivered its notification (`UNNotification.date`). The identifier is
+    /// remembered before the action is checked, as happy-app does, so a
+    /// dismissal also counts as handled.
+    public mutating func shouldRoute(requestIdentifier: String, delivered: Date, isDefaultAction: Bool) -> Bool {
         handled.insert(requestIdentifier).inserted && isDefaultAction
     }
 }

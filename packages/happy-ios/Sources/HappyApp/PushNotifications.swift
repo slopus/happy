@@ -118,7 +118,8 @@ final class PushNotifications: NSObject {
     }
 
     private func route(_ tap: Tap) {
-        guard filter.shouldRoute(requestIdentifier: tap.identifier, isDefaultAction: tap.isDefaultAction), tap.opens != .nothing else { return }
+        guard filter.shouldRoute(requestIdentifier: tap.identifier, delivered: tap.delivered, isDefaultAction: tap.isDefaultAction),
+              tap.opens != .nothing else { return }
         if let coordinator {
             open(tap.opens, on: coordinator)
         } else {
@@ -183,6 +184,8 @@ final class PushNotifications: NSObject {
     /// What routing needs from a response, read where it arrives.
     struct Tap: Sendable {
         var identifier: String
+        /// When the system delivered the notification.
+        var delivered: Date
         var isDefaultAction: Bool
         var opens: NotificationTap
     }
@@ -192,6 +195,7 @@ final class PushNotifications: NSObject {
         let data = NotificationRouting.data(userInfo: request.content.userInfo, isRemote: request.trigger is UNPushNotificationTrigger)
         return Tap(
             identifier: request.identifier,
+            delivered: response.notification.date,
             isDefaultAction: response.actionIdentifier == UNNotificationDefaultActionIdentifier,
             opens: NotificationRouting.tap(fromData: data)
         )

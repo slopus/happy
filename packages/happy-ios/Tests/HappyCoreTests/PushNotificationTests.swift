@@ -87,11 +87,12 @@ final class PushNotificationRoutingTests: XCTestCase {
 
     func testResponsesAreHandledOnceAndOnlyForTheDefaultAction() {
         var filter = NotificationResponseFilter()
-        XCTAssertTrue(filter.shouldRoute(requestIdentifier: "a", isDefaultAction: true))
-        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "a", isDefaultAction: true))
-        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "b", isDefaultAction: false))
+        let delivered = Date(timeIntervalSince1970: 1_795_502_493.724018)
+        XCTAssertTrue(filter.shouldRoute(requestIdentifier: "a", delivered: delivered, isDefaultAction: true))
+        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "a", delivered: delivered, isDefaultAction: true))
+        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "b", delivered: delivered, isDefaultAction: false))
         // A dismissed request stays handled.
-        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "b", isDefaultAction: true))
+        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "b", delivered: delivered, isDefaultAction: true))
     }
 
     func testForegroundOnlyBadgesAndLists() {
