@@ -3,18 +3,26 @@ import Foundation
 /// The browser screen. The page runs under the header and down to the
 /// screen's bottom edge, under the home indicator: WebKit insets its
 /// content by the safe area itself, so the frame never depends on the
-/// header and nothing moves when it appears. The loading bar sits on the
-/// header's bottom edge, and the error page covers the page whole.
+/// header and nothing moves when it appears. The page is told the header
+/// covers its top (`obscured`), so its fixed and sticky bars sit under the
+/// header even when it asks for the whole screen (`viewport-fit=cover`);
+/// the home indicator covers nothing and stays the page's safe area. The
+/// loading bar sits on the header's bottom edge, and the error page covers
+/// the page whole.
 public struct BrowserLayout: Equatable, Sendable {
     public let web: CGRect
     public let progress: CGRect
     public let failure: CGRect
+    /// What of the page the header covers (`WKWebView.obscuredContentInsets`).
+    public let obscured: LayoutInsets
 
     public init(size: CGSize, top: CGFloat) {
         let bounds = CGRect(origin: .zero, size: CGSize(width: max(0, size.width), height: max(0, size.height)))
+        let top = min(max(0, top), bounds.height)
         web = bounds
         failure = bounds
-        progress = CGRect(x: 0, y: min(max(0, top), bounds.height), width: bounds.width, height: BrowserMetrics.progressHeight)
+        progress = CGRect(x: 0, y: top, width: bounds.width, height: BrowserMetrics.progressHeight)
+        obscured = LayoutInsets(top: top)
     }
 
     /// The filled part of a loading bar of `bar`'s size at `value`, from
