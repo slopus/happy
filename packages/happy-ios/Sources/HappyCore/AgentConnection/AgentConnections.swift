@@ -160,9 +160,16 @@ public final class AgentConnections {
     public func userId(for id: String) -> String? { credentials[id]?.signIn?.userId }
 
     /// Who a push for the connection `id` names
-    /// (`CloudPushNotification.userId`): the member a server was signed in
-    /// as; nil for a pairing.
-    public func pushMember(for id: String) -> String? { userId(for: id) }
+    /// (`CloudPushNotification.userId`). A sign-in's is the member it was
+    /// signed in as, nil while it waits for its profile. A pairing's is
+    /// the team user its daemon says it belongs to
+    /// (`AgentConnection.member`), and `standalone` when it says none: a
+    /// computer of the person's own, whose daemon has no members.
+    public func pushMember(for id: String) -> String? {
+        guard let credential = credentials[id] else { return nil }
+        if let signIn = credential.signIn { return signIn.userId }
+        return accounts.first { $0.id == id }?.member ?? CloudPushNotification.standalone
+    }
 
     /// The origin of the signed-in server `id`.
     public func server(for id: String) -> String? { credentials[id]?.signIn != nil ? credentials[id]?.publicUrl : nil }
@@ -634,7 +641,10 @@ public final class AgentConnections {
         if account.revoked { keepStartup() }
         onChange?()
         // Status is transient. Persist identity and permanent revocation only.
-        if previous.name != account.name || previous.avatar != account.avatar || previous.avatarETag != account.avatarETag || previous.thumbhash != account.thumbhash || previous.revoked != account.revoked {
+        // The installation and the member are what a tapped push that
+        // launches the app is matched against, before anything is read.
+        if previous.name != account.name || previous.avatar != account.avatar || previous.avatarETag != account.avatarETag || previous.thumbhash != account.thumbhash || previous.revoked != account.revoked
+            || previous.instanceId != account.instanceId || previous.member != account.member {
             try? await storage.update(account)
         }
     }
