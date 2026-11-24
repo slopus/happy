@@ -351,7 +351,10 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     so iOS's prompt shows the first time it is reached
     (`Session.renewPush`), while iOS still would. Leaving a server, or
     unpairing a computer from the phone, takes the registration off
-    first (`AgentConnections.cloudFarewell`). Every server gets the same
+    first (`AgentConnections.cloudFarewell`). A server gives each
+    registration it takes a new version and takes off only the latest, so
+    one is sent per connection at a time and leaving waits for the one on
+    its way (`CloudPush.registering`). Every server gets the same
     relay token and the relay takes a send from whoever holds it, so a
     push may name a connection its sender isn't: a tap only ever opens a
     chat that connection already has.

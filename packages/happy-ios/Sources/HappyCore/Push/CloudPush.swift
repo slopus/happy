@@ -187,6 +187,11 @@ public actor CloudPush {
     private let source: Source
     private var token: (apns: Data, happy: HappyPushToken)?
     private var renewed: [String: Date] = [:]
+    /// The registration on its way for a connection. A server gives each
+    /// one it takes a new version and takes off only the latest, so two
+    /// sent at once could leave the phone holding the older: one is sent at
+    /// a time, and leaving waits for it.
+    private var registering: [String: (ask: Bool, task: Task<Outcome, Error>)] = [:]
 
     public init(source: Source) { self.source = source }
 
@@ -198,6 +203,20 @@ public actor CloudPush {
     /// these routes 404, and is never asked), and shows the prompt while
     /// iOS still would, which is once.
     public func register(connection: String, client: AgentClient, ask: Bool, cloud: Bool, now: Date = Date()) async throws -> Outcome {
+        // A connection that comes up says so more than once at the same
+        // moment: the second is answered as the first is. A tap is never
+        // answered by a quiet renewal, which may not have asked.
+        while let running = registering[connection] {
+            let result = await running.task.result
+            if running.ask || !ask { return try result.get() }
+        }
+        let task = Task { try await send(connection: connection, client: client, ask: ask, cloud: cloud, now: now) }
+        registering[connection] = (ask, task)
+        defer { registering[connection] = nil }
+        return try await task.value
+    }
+
+    private func send(connection: String, client: AgentClient, ask: Bool, cloud: Bool, now: Date) async throws -> Outcome {
         guard CloudPushDevice.appIds.contains(source.device.appId) else { return .unsupported }
         if !cloud, try await client.health().capabilities?.pushRegistrations != true { return .unserved }
         var permission = await source.permission()
@@ -221,6 +240,8 @@ public actor CloudPush {
     /// now, not at the registration's expiry. Called before the session
     /// is revoked. One never registered with is sent nothing.
     public func unregister(connection: String, client: AgentClient) async throws {
+        // One on its way lands first: its version is the one to take off.
+        while let running = registering[connection] { _ = await running.task.result }
         renewed[connection] = nil
         guard let version = source.ids.version(for: connection) else { return }
         try await client.unregisterCloudPush(source.ids.registration(for: connection), version: version)
