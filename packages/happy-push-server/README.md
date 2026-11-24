@@ -68,7 +68,7 @@ The response is `200 { "token": "HappyPushToken[3MTQ1KZhQAh5CdD4rY7xRX]" }`. The
 
 **Expo forwarding.**
 - Expo installs in one send request go to Expo as batches of up to 100 messages, one batch per app id: Expo rejects a batch that mixes tokens from different Expo projects. Each batch is one subrequest, and it shares the native sends' 6-connection budget and 6.5 s deadline. Tickets come back in request order whatever the mix of providers.
-- Message fields map onto Expo's: `title`, `subtitle`, `body`, `data`, `sound`, `badge`, `channelId`, `categoryId`, `ttl`, `mutableContent`, `interruptionLevel`, the resolved `priority`, and `contentAvailable` → `_contentAvailable`. `threadId` has no Expo equivalent and is dropped.
+- Message fields map onto Expo's: `title`, `subtitle`, `body`, `data`, `sound`, `badge`, `channelId`, `categoryId`, `ttl`, `mutableContent`, `interruptionLevel`, the resolved `priority`, and `contentAvailable` → `_contentAvailable`. `collapseId` → `collapseId` for an iOS install and `tag` for an Android one (Expo's `collapseId` is FCM's `collapse_key` on Android, which this relay does not use; see **Replacing a notification**). `threadId` has no Expo equivalent and is dropped.
 - An `ok` ticket carries Expo's own ticket id. An Expo `DeviceNotRegistered` ticket deactivates the install, as long as it still holds that token. Other Expo error codes come back unchanged with `details.provider: 'expo'`. An HTTP or network failure fails that batch's tickets without deactivating anything; Expo's 429 maps to `MessageRateExceeded`.
 - **Known limitation: no receipts.** Expo queues messages and reports the final outcome, including some `DeviceNotRegistered` cases, only through its receipts API. This Worker doesn't poll receipts. happy-server didn't either, so cleanup is no worse than today, but a dead Expo token is caught only when Expo rejects it at send time.
 - The per-recipient rate limit applies to Expo installs the same way. A raw `ExponentPushToken[…]` sent straight to `/v1/push/send` is still answered `DeviceNotRegistered`: only `HappyPushToken[…]` wrappers are accepted.
@@ -104,6 +104,7 @@ No auth header is needed. The body is one message or an array of messages, with 
 | `channelId` | — | `data.channelId` |
 | `categoryId` | `aps.category` | `data.categoryId` |
 | `threadId` | `aps.thread-id` | — |
+| `collapseId` | `apns-collapse-id` header | `data.tag` (the app's notification tag) |
 | `mutableContent` | `aps.mutable-content: 1` | — |
 | `interruptionLevel` | `aps.interruption-level` | — |
 | `contentAvailable` | `aps.content-available: 1` (wake the app for a visible alert too) | — |
@@ -115,6 +116,12 @@ No auth header is needed. The body is one message or an array of messages, with 
 - When it is omitted, a message with a title, subtitle, or body is sent `high`, and a data-only message is sent `normal`.
 - High priority means immediate delivery. On Android it also means a dozing device is woken.
 - FCM deprioritizes apps whose high-priority messages don't show a notification, so send data-only pushes at `normal` unless they really need to arrive at once.
+
+**Replacing a notification.** `collapseId` is optional: 1 to 64 characters of `A-Z a-z 0-9 _ -`. A later message with the same `collapseId` replaces the earlier one on the device instead of adding a second notification. Without it nothing changes.
+
+- **APNs.** It is the `apns-collapse-id` header, which Apple caps at 64 bytes ([Sending notification requests to APNs](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns)). That is where the length limit comes from.
+- **FCM.** It is `data.tag`. The Android app posts each notification under that tag, so the same tag replaces what is on screen.
+- **No FCM `collapse_key`.** It would make an offline device receive only the newest message per key, but FCM stores at most four different collapse keys per device and, past four, keeps an arbitrary four ([Collapsible message types](https://firebase.google.com/docs/cloud-messaging/customize-messages/collapsible-message-types)). With one `collapseId` per agent, a fifth agent's notification could be dropped without a trace. Without the key every message is delivered and the tag still leaves one notification per `collapseId`.
 
 **Background pushes.** On iOS, a message with no title, subtitle, or body is sent as a background push: `apns-push-type: background` and `content-available: 1`. Apple requires priority 5 for background pushes, so they always go out at 5, even when the message asks for `high`.
 

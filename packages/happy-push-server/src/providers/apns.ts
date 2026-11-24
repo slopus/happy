@@ -103,6 +103,7 @@ export function buildApnsRequest(message: PushMessage, device: DeviceRecord, now
         // An expiration of 0 tells APNs to try once and not store the push.
         headers['apns-expiration'] = String(message.ttl === 0 ? 0 : Math.floor(now / 1000) + message.ttl);
     }
+    if (message.collapseId !== undefined) headers['apns-collapse-id'] = message.collapseId;
 
     return { headers, payload: { aps, body: message.data ?? {} } };
 }

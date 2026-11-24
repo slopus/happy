@@ -129,6 +129,11 @@ export function buildFcmMessage(message: PushMessage, device: DeviceRecord): Rec
     // expo-notifications plays the default sound when `sound` is absent, and
     // looks up a bundled resource by name otherwise, so 'default' is omitted.
     if (typeof message.sound === 'string' && message.sound !== 'default') data.sound = message.sound;
+    // The app posts the notification under this tag, so the same tag replaces
+    // it. `android.collapse_key` is deliberately not set: FCM keeps only four
+    // collapse keys per device and drops the rest unpredictably, which would
+    // lose whole notifications once more than four agents have one pending.
+    if (message.collapseId !== undefined) data.tag = message.collapseId;
 
     const android: Record<string, unknown> = {
         // Data-only messages need HIGH to wake a dozing device promptly; FCM

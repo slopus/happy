@@ -132,6 +132,10 @@ describe('POST /v1/push/send validation', () => {
         ["Expo's priority 'default'", { priority: 'default' }, '0.priority'],
         ["Expo's expiration", { expiration: 1 }, '0'],
         ["Expo's _contentAvailable", { _contentAvailable: true }, '0'],
+        ['a 65-byte collapseId', { collapseId: 'a'.repeat(65) }, '0.collapseId'],
+        ['an empty collapseId', { collapseId: '' }, '0.collapseId'],
+        ['a collapseId with a disallowed character', { collapseId: 'agent:1' }, '0.collapseId'],
+        ['a non-ASCII collapseId', { collapseId: 'agént' }, '0.collapseId'],
     ])('rejects %s', async (_name, fields, path) => {
         const h = configured();
         const providers = mockProviders({});
@@ -718,5 +722,78 @@ describe('Expo forwarding', () => {
         const [ticket] = await tickets(await h.send({ to: EXPO_TOKEN, title: 'hi' }));
         expect(ticket).toMatchObject({ status: 'error', details: { error: 'DeviceNotRegistered' } });
         expect(providers.calls).toHaveLength(0);
+    });
+});
+
+describe('collapseId', () => {
+    const COLLAPSE_ID = 'inst_1-agent_2';
+    const LONGEST = 'a'.repeat(64);
+    const fcmOk = () => json({ name: 'projects/happy-test/messages/0:1' });
+
+    async function sendToAll(fields: Record<string, unknown>) {
+        const h = configured();
+        const providers = mockProviders({ apns: () => new Response(null, { status: 200 }), oauth: () => oauthOk(), fcm: fcmOk, expo: expoOk });
+        const to = [
+            await h.register(iosDevice()),
+            await h.register(androidDevice()),
+            await h.register(expoDevice()),
+            await h.register(expoDevice({ deviceId: 'expo-device-0002', platform: 'android', pushToken: 'ExponentPushToken[yyyyyyyyyyyyyyyyyyyyyy]' })),
+        ];
+        const result = await tickets(await h.send({ to, ...fields }));
+        expect(result.map((t) => t.status)).toEqual(['ok', 'ok', 'ok', 'ok']);
+        return {
+            apns: providers.apnsCalls()[0]!,
+            fcm: providers.fcmCalls()[0]!,
+            expo: providers.expoCalls()[0]!,
+        };
+    }
+
+    it('sends exactly the same provider requests as before when it is absent', async () => {
+        const { apns, fcm, expo } = await sendToAll({ title: 'Done', body: 'Build is green', data: { kind: 'k' }, sound: 'default', channelId: 'messages', ttl: 300 });
+
+        expect(Object.keys(apns.headers).sort()).toEqual(['apns-expiration', 'apns-id', 'apns-priority', 'apns-push-type', 'apns-topic', 'authorization', 'content-type']);
+        expect(apns.body).toBe('{"aps":{"alert":{"title":"Done","body":"Build is green"},"sound":"default"},"body":{"kind":"k"}}');
+        expect(fcm.body).toBe(`{"message":{"token":"${FCM_TOKEN}","data":{"title":"Done","message":"Build is green","body":"{\\"kind\\":\\"k\\"}","channelId":"messages"},"android":{"priority":"HIGH","ttl":"300s"}}}`);
+        expect(expo.body).toBe(
+            `[{"to":"${EXPO_TOKEN}","priority":"high","title":"Done","body":"Build is green","data":{"kind":"k"},"sound":"default","channelId":"messages","ttl":300},`
+            + '{"to":"ExponentPushToken[yyyyyyyyyyyyyyyyyyyyyy]","priority":"high","title":"Done","body":"Build is green","data":{"kind":"k"},"sound":"default","channelId":"messages","ttl":300}]'
+        );
+    });
+
+    it('tells each provider to replace the earlier notification', async () => {
+        const { apns, fcm, expo } = await sendToAll({ title: 'Done', data: { kind: 'k' }, collapseId: COLLAPSE_ID });
+
+        expect(apns.headers['apns-collapse-id']).toBe('inst_1-agent_2');
+        expect(JSON.parse(apns.body)).toEqual({ aps: { alert: { title: 'Done' } }, body: { kind: 'k' } });
+        expect(JSON.parse(fcm.body)).toEqual({
+            message: {
+                token: FCM_TOKEN,
+                data: { title: 'Done', body: '{"kind":"k"}', tag: 'inst_1-agent_2' },
+                android: { priority: 'HIGH' },
+            },
+        });
+        expect(JSON.parse(expo.body)).toEqual([
+            { to: EXPO_TOKEN, priority: 'high', title: 'Done', data: { kind: 'k' }, collapseId: 'inst_1-agent_2' },
+            { to: 'ExponentPushToken[yyyyyyyyyyyyyyyyyyyyyy]', priority: 'high', title: 'Done', data: { kind: 'k' }, tag: 'inst_1-agent_2' },
+        ]);
+    });
+
+    it('rides on a data-only background push', async () => {
+        const { apns, fcm, expo } = await sendToAll({ data: { kind: 'clear' }, collapseId: COLLAPSE_ID });
+
+        expect(apns.headers).toMatchObject({ 'apns-push-type': 'background', 'apns-priority': '5', 'apns-collapse-id': 'inst_1-agent_2' });
+        expect(JSON.parse(apns.body)).toEqual({ aps: { 'content-available': 1 }, body: { kind: 'clear' } });
+        expect(JSON.parse(fcm.body)).toEqual({
+            message: { token: FCM_TOKEN, data: { body: '{"kind":"clear"}', tag: 'inst_1-agent_2' }, android: { priority: 'NORMAL' } },
+        });
+        expect(JSON.parse(expo.body)).toEqual([
+            { to: EXPO_TOKEN, priority: 'normal', data: { kind: 'clear' }, collapseId: 'inst_1-agent_2' },
+            { to: 'ExponentPushToken[yyyyyyyyyyyyyyyyyyyyyy]', priority: 'normal', data: { kind: 'clear' }, tag: 'inst_1-agent_2' },
+        ]);
+    });
+
+    it("accepts Apple's 64-byte maximum", async () => {
+        const { apns } = await sendToAll({ title: 'Done', collapseId: LONGEST });
+        expect(apns.headers['apns-collapse-id']).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     });
 });
