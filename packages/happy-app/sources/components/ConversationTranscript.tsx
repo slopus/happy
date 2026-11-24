@@ -41,6 +41,7 @@ import { firstAgentTextIds } from './turnAvatars';
 import { AgentWorkGroupView, ToolGroupView } from './ToolGroupView';
 import { AttachmentGalleryView } from './AttachmentGalleryView';
 import { AnchorListSheet } from './AnchorListSheet';
+import { ConversationAnchorRail } from './ConversationAnchorRail';
 import { BrowserProgressContext } from './BrowserProgressContext';
 import { getBrowserStepRuns, hideLinkedBrowserSteps } from './rightPanel/browserStepRunsModel';
 import { setGroupExpansion, groupIsExpanded, itemMessages, TranscriptReadingContext, TranscriptReadingMarker,
@@ -121,6 +122,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     const showScrollButtonRef = React.useRef(false);
     const [showAnchorPill, setShowAnchorPill] = React.useState(false);
     const [anchorSheetOpen, setAnchorSheetOpen] = React.useState(false);
+    const [anchorRailAvailable, setAnchorRailAvailable] = React.useState(false);
     const [viewportHeight, setViewportHeight] = React.useState<number | null>(null);
     const [contentMeasurement, setContentMeasurement] = React.useState<{
         boundary: string;
@@ -951,7 +953,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         <BrowserProgressContext.Provider value={browserProgress}>
         <TranscriptReadingContext.Provider value={reading.markers}>
         <TranscriptGroupExpansionContext.Provider value={nestedExpansion}>
-        <View ref={viewportRef} collapsable={false} style={styles.container}>
+        <View ref={viewportRef} collapsable={false} style={[styles.container,
+            props.showAnchorNavigation !== false && anchorRailAvailable && styles.anchorRailGutter]}>
             {/* Continuation failures can occur before any scroll event, including
                 conversations shorter than the viewport. Keep their notice in
                 normal flow so it remains visible without covering messages. */}
@@ -1034,7 +1037,11 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 error={props.olderError} message={props.olderErrorMessage} retryable={props.olderRetryable} retry={() => loadBoundary('older', true)} />
             <HistoryBoundary direction="newer" reached={boundaries.newer && !isAtLatest} loading={props.isLoadingNewer}
                 error={props.newerError} retry={() => loadBoundary('newer', true)} />
-            {props.showAnchorNavigation !== false && showAnchorPill && hasAnchorNavigation ? (
+            {props.showAnchorNavigation !== false && <ConversationAnchorRail key={scrollOwnerKey}
+                anchors={anchors} items={displayItems} rows={listItems} viewportRef={viewportRef} listRef={flatListRef}
+                inverted={inverted} hasMoreOlder={props.hasMoreOlder} onSelect={scrollToAnchor}
+                onOpenList={openAnchorSheet} onAvailabilityChange={setAnchorRailAvailable} />}
+            {props.showAnchorNavigation !== false && !anchorRailAvailable && showAnchorPill && hasAnchorNavigation ? (
                 <Animated.View
                     entering={FadeIn.duration(180)}
                     exiting={FadeOut.duration(260)}
@@ -1119,6 +1126,7 @@ function isCollapsibleDisplayItem(
 
 const styles = StyleSheet.create((theme) => ({
     container: { flex: 1 },
+    anchorRailGutter: { paddingLeft: 40 },
     historyNoticeOverlay: {
         position: 'absolute', left: 12, right: 12, alignItems: 'center', pointerEvents: 'box-none',
     },
