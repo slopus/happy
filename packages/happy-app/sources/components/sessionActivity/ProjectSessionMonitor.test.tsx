@@ -5,9 +5,9 @@ import TestRenderer from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GlobalSessionRailEntry, GlobalSessionEntry, ProjectSessionMonitor, ProjectSessionSummary, ProjectTaskSessions } from './ProjectSessionMonitor.web';
 const Button = 'Button' as any;
-const mocks = vi.hoisted(() => ({ state: {} as any, push: vi.fn(), listeners: new Map<string, Function>(), deleted: new Set<string>(), deletedReads: [] as string[] }));
+const mocks = vi.hoisted(() => ({ state: {} as any, dimensions: { width: 1600, height: 900 }, push: vi.fn(), listeners: new Map<string, Function>(), deleted: new Set<string>(), deletedReads: [] as string[] }));
 vi.mock('react-dom', () => ({ createPortal: (children: any) => children }));
-vi.mock('react-native', () => ({ Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput', View: 'View', useWindowDimensions: () => ({ width: 1600, height: 900 }) }));
+vi.mock('react-native', () => ({ Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput', View: 'View', useWindowDimensions: () => mocks.dimensions }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Icon' }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/text', () => ({ t: (k: string) => k, getCurrentLanguage: () => 'zh-Hans' }));
@@ -21,6 +21,16 @@ function app(){return <ProjectSessionMonitor knownScopes={[{machineId: 'm1', pat
 function press(id: string){act(()=>renderer.root.findAllByType('Button').find((n:any)=>n.props.testID===id).props.onPress())}
 function panels(){return renderer.root.findAllByType('View').filter((n:any)=>n.props.testID==='session-activity-panel')}
 function items(){return renderer.root.findAllByType('View').filter((n:any)=>n.props.testID?.startsWith('session-activity-row-'))}
+function measurePanel(height: number) {
+    act(() => panels()[0].props.onLayout?.({ nativeEvent: { layout: { x: 0, y: 0, width: 360, height } } }));
+}
+function dragPanelToBottomRight() {
+    const handle = renderer.root.findAllByType('View').find((node: any) => node.props.testID === 'session-activity-drag-handle');
+    act(() => handle.props.onPointerDown({ button: 0, pointerId: 3, clientX: 100, clientY: 100, target: { closest: () => null }, currentTarget: { setPointerCapture: vi.fn() }, preventDefault: vi.fn() }));
+    act(() => handle.props.onPointerMove({ pointerId: 3, clientX: 9000, clientY: 9000 }));
+    act(() => handle.props.onPointerUp());
+}
+beforeEach(() => { mocks.dimensions = { width: 1600, height: 900 }; });
 beforeEach(()=>{(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;mocks.push.mockClear();mocks.deleted.clear();mocks.listeners.clear();vi.stubGlobal('window',{addEventListener:(k:string,fn:Function)=>mocks.listeners.set(k,fn),removeEventListener:(k:string)=>mocks.listeners.delete(k)});vi.stubGlobal('document', { body: {}, activeElement: null });mocks.state={socketStatus:'connected',unreadSessionIds:new Set(['done']),machines:{},sessions:{one:{id:'one',updatedAt:1,presence:'online',thinking:true,metadata:{machineId:'m1',path:'/p/t1'},agentState:{}},two:{id:'two',updatedAt:2,presence:'online',thinking:true,metadata:{machineId:'m2',path:'/other'},agentState:{}},done:{id:'done',updatedAt:3,presence:'online',thinking:false,metadata:{machineId:'m1',path:'/p/t2'},agentState:{turnStatus:{status:'completed',updatedAt:3}}}}};act(()=>{renderer=TestRenderer.create(app(),{createNodeMock:()=>({focus:vi.fn(),contains:(target:any)=>target==='inside-panel'})})})});
 afterEach(()=>{act(()=>renderer.unmount());vi.unstubAllGlobals()});
 describe('project session monitor',()=>{
@@ -106,6 +116,39 @@ describe('project session monitor',()=>{
         expect(panels()[0].props.style[1]).toMatchObject({left:1228,top:12});
         act(()=>handle.props.onLostPointerCapture());act(()=>handle.props.onPointerMove({pointerId:2,clientX:100,clientY:100}));
         expect(panels()[0].props.style[1]).toMatchObject({left:1228,top:12});
+    });
+    it('lets a short empty category reach the bottom-right viewport inset', () => {
+        press('global-session-entry');
+        press('session-activity-tab-attention');
+        expect(items()).toHaveLength(0);
+        measurePanel(200);
+        dragPanelToBottomRight();
+        expect(panels()[0].props.style[1]).toMatchObject({ left: 1228, top: 688, maxHeight: 560 });
+    });
+    it('keeps growing content visible and releases the bottom boundary when content shrinks', () => {
+        press('global-session-entry');
+        measurePanel(200);
+        dragPanelToBottomRight();
+        expect(panels()[0].props.style[1].top).toBe(688);
+        press('session-activity-tab-running');
+        measurePanel(560);
+        expect(panels()[0].props.style[1].top).toBe(328);
+        press('session-activity-tab-attention');
+        measurePanel(200);
+        dragPanelToBottomRight();
+        expect(panels()[0].props.style[1].top).toBe(688);
+    });
+    it('reclamps a short panel when the viewport shrinks and preserves its position on reopen', () => {
+        press('global-session-entry');
+        measurePanel(200);
+        dragPanelToBottomRight();
+        mocks.dimensions = { width: 1200, height: 480 };
+        act(() => renderer.update(app()));
+        expect(panels()[0].props.style[1]).toMatchObject({ left: 828, top: 268 });
+        press('session-activity-close');
+        press('global-session-entry');
+        measurePanel(200);
+        expect(panels()[0].props.style[1]).toMatchObject({ left: 828, top: 268 });
     });
     it('shows catalogue names without scope controls, search or explanatory chrome',()=>{
         mocks.state={...mocks.state,sessions:{bound:{id:'bound',presence:'online',thinking:true,updatedAt:1,metadata:{machineId:'m1',path:'/code',goalBoard:{featurePath:'/archive/project-a/features/shared',taskId:'t'}},agentState:{}}}};

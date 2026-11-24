@@ -75,9 +75,12 @@ function SessionMonitorRoot({ scope: initialScope, knownScopes: initialScopes = 
     const { theme } = useUnistyles();
     const context = React.useMemo(() => ({ rows, scope, open, close, isOpen, setProject }), [rows, scope, open, close, isOpen]);
     const [position, setPosition] = React.useState({ x: 84, y: 72 });
+    const [measuredPanelHeight, setMeasuredPanelHeight] = React.useState<number>();
     const panelWidth = Math.max(0, Math.min(360, width - 24));
     const panelHeight = Math.max(0, Math.min(560, height - 24));
-    const clamp = (point: { x: number; y: number }) => ({ x: Math.max(12, Math.min(point.x, width - panelWidth - 12)), y: Math.max(12, Math.min(point.y, height - panelHeight - 12)) });
+    // maxHeight is only a cap; short categories must reach the bottom of the viewport too.
+    const actualPanelHeight = Math.min(measuredPanelHeight ?? panelHeight, panelHeight);
+    const clamp = (point: { x: number; y: number }) => ({ x: Math.max(12, Math.min(point.x, width - panelWidth - 12)), y: Math.max(12, Math.min(point.y, height - actualPanelHeight - 12)) });
     const drag = React.useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
     const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
         if (event.button !== 0 || (event.target as HTMLElement).closest('button, [role="button"]')) return;
@@ -87,12 +90,12 @@ function SessionMonitorRoot({ scope: initialScope, knownScopes: initialScopes = 
         event.preventDefault();
     };
     const stopDrag = () => { drag.current = null; };
-    React.useEffect(() => { setPosition(point => clamp(point)); stopDrag(); }, [width, height]);
+    React.useEffect(() => { setPosition(point => clamp(point)); stopDrag(); }, [width, height, actualPanelHeight]);
     React.useEffect(() => { if (!isOpen) stopDrag(); }, [isOpen]);
     React.useEffect(() => { window.addEventListener('blur', stopDrag); return () => window.removeEventListener('blur', stopDrag); }, []);
     const point = clamp(position);
     return <Context.Provider value={context}>{children}{isOpen && typeof document !== 'undefined' && createPortal(
-        <View ref={panel} role="dialog" tabIndex={-1} aria-modal={false} aria-label={panelTitle} style={[styles.panel, { position: 'fixed', zIndex: 3000, top: point.y, left: point.x, width: panelWidth, maxHeight: panelHeight } as any]} testID="session-activity-panel">
+        <View ref={panel} onLayout={event => setMeasuredPanelHeight(event.nativeEvent.layout.height)} role="dialog" tabIndex={-1} aria-modal={false} aria-label={panelTitle} style={[styles.panel, { position: 'fixed', zIndex: 3000, top: point.y, left: point.x, width: panelWidth, maxHeight: panelHeight } as any]} testID="session-activity-panel">
             <View style={[styles.panelHeader, { cursor: 'move', touchAction: 'none', userSelect: 'none' } as any]} testID="session-activity-drag-handle" {...({
                 onPointerDown: startDrag,
                 onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
