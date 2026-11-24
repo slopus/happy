@@ -305,6 +305,14 @@ public final class AppCoordinator {
     /// anything else (a workspace, a file, a service) shows that
     /// connection's home.
     private func openInstanceTarget() {
+        guard instanceTarget != nil else { return }
+        // A switch from a deeper screen swaps the stack with an animation, and
+        // until it ends the stack still starts with the screen that is
+        // leaving: the new home is the root only then.
+        if let transition = shell.stackTransition {
+            transition.animate(alongsideTransition: nil) { [weak self] _ in self?.openInstanceTarget() }
+            return
+        }
         guard let target = instanceTarget, case .agentConnection(let shown) = context.account.state, shown.id == target.connection,
               shell.stack.first is AgentHomeViewController, let session = Session.session(for: target.connection, context: context) else { return }
         instanceTarget = nil
