@@ -95,6 +95,36 @@ final class PushNotificationRoutingTests: XCTestCase {
         XCTAssertFalse(filter.shouldRoute(requestIdentifier: "b", delivered: delivered, isDefaultAction: true))
     }
 
+    /// A push with a collapse id is delivered under that id every time, so the
+    /// notification that replaced a tapped one shares its request identifier
+    /// (measured: two Expo pushes with one `collapseId`, iOS 26.5).
+    func testATapOnTheNotificationThatReplacedATappedOneIsRouted() {
+        var filter = NotificationResponseFilter()
+        let first = Date(timeIntervalSince1970: 1_795_502_493.724018)
+        let replacement = Date(timeIntervalSince1970: 1_795_502_972.118676)
+        XCTAssertTrue(filter.shouldRoute(requestIdentifier: "cmwublq4x000180cxke7ux0wb", delivered: first, isDefaultAction: true))
+        // The launch options and the delegate both hand over the first tap.
+        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "cmwublq4x000180cxke7ux0wb", delivered: first, isDefaultAction: true))
+        XCTAssertTrue(filter.shouldRoute(requestIdentifier: "cmwublq4x000180cxke7ux0wb", delivered: replacement, isDefaultAction: true))
+        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "cmwublq4x000180cxke7ux0wb", delivered: replacement, isDefaultAction: true))
+    }
+
+    /// Dismissing a notification says nothing about the one that replaces it.
+    func testATapOnTheNotificationThatReplacedADismissedOneIsRouted() {
+        var filter = NotificationResponseFilter()
+        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "agent-1", delivered: Date(timeIntervalSince1970: 100), isDefaultAction: false))
+        XCTAssertFalse(filter.shouldRoute(requestIdentifier: "agent-1", delivered: Date(timeIntervalSince1970: 100), isDefaultAction: true))
+        XCTAssertTrue(filter.shouldRoute(requestIdentifier: "agent-1", delivered: Date(timeIntervalSince1970: 120), isDefaultAction: true))
+    }
+
+    /// Two notifications delivered in the same instant are still two.
+    func testTwoRequestsDeliveredTogetherAreEachRouted() {
+        var filter = NotificationResponseFilter()
+        let delivered = Date(timeIntervalSince1970: 100)
+        XCTAssertTrue(filter.shouldRoute(requestIdentifier: "a", delivered: delivered, isDefaultAction: true))
+        XCTAssertTrue(filter.shouldRoute(requestIdentifier: "b", delivered: delivered, isDefaultAction: true))
+    }
+
     func testForegroundOnlyBadgesAndLists() {
         XCTAssertEqual(NotificationPresentation.forApp(active: true), .init(banner: false, list: true, sound: false, badge: true))
         XCTAssertEqual(NotificationPresentation.forApp(active: false), .init(banner: true, list: true, sound: true, badge: true))
