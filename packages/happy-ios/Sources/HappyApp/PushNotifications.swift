@@ -27,7 +27,7 @@ final class PushNotifications: NSObject {
     private var active: (session: AccountSession, registration: TokenPushRegistration)?
     private var filter = NotificationResponseFilter()
     /// A tap delivered before the scene's coordinator exists.
-    private var pendingSessionID: String?
+    private var pendingTap: NotificationTap?
 
     /// This installation's id: the push exchange's `deviceId`, and the
     /// device this phone's environment reports name (`AgentConnections.environment`).
@@ -86,9 +86,9 @@ final class PushNotifications: NSObject {
         accountsObservation = context.account.observeAccounts { [weak self] _ in
             self?.accountsChanged()
         }
-        if let sessionId = pendingSessionID {
-            pendingSessionID = nil
-            coordinator.openSession(fromNotification: sessionId)
+        if let tap = pendingTap {
+            pendingTap = nil
+            open(tap, on: coordinator)
         }
     }
 
@@ -116,12 +116,18 @@ final class PushNotifications: NSObject {
     }
 
     private func route(_ tap: Tap) {
-        guard filter.shouldRoute(requestIdentifier: tap.identifier, isDefaultAction: tap.isDefaultAction),
-              let sessionId = tap.sessionId else { return }
+        guard filter.shouldRoute(requestIdentifier: tap.identifier, isDefaultAction: tap.isDefaultAction), tap.opens != .nothing else { return }
         if let coordinator {
-            coordinator.openSession(fromNotification: sessionId)
+            open(tap.opens, on: coordinator)
         } else {
-            pendingSessionID = sessionId
+            pendingTap = tap.opens
+        }
+    }
+
+    private func open(_ tap: NotificationTap, on coordinator: AppCoordinator) {
+        switch tap {
+        case .session(let sessionId): coordinator.openSession(fromNotification: sessionId)
+        case .agent, .nothing: break
         }
     }
 
@@ -175,7 +181,7 @@ final class PushNotifications: NSObject {
     struct Tap: Sendable {
         var identifier: String
         var isDefaultAction: Bool
-        var sessionId: String?
+        var opens: NotificationTap
     }
 
     nonisolated static func tap(_ response: UNNotificationResponse) -> Tap {
@@ -184,7 +190,7 @@ final class PushNotifications: NSObject {
         return Tap(
             identifier: request.identifier,
             isDefaultAction: response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-            sessionId: NotificationRouting.sessionId(fromData: data)
+            opens: NotificationRouting.tap(fromData: data)
         )
     }
 

@@ -34,6 +34,11 @@ public enum NotificationRouting {
         return decodeURIComponent(encoded) ?? encoded
     }
 
+    /// What a tap on a notification carrying `data` opens.
+    public static func tap(fromData data: Any?) -> NotificationTap {
+        sessionId(fromData: data).map(NotificationTap.session) ?? .nothing
+    }
+
     /// `normalizeNotificationData` plus the object check: only a dictionary
     /// (after `JSON.parse` for a string) can name a session.
     private static func normalized(_ data: Any?) -> [AnyHashable: Any]? {
