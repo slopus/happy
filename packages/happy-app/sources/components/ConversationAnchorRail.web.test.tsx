@@ -116,6 +116,32 @@ describe('conversation anchor rail', () => {
         expect(host.querySelector('[data-testid="conversation-anchor-rail"]')).toBeNull();
         expect(props.onAvailabilityChange).toHaveBeenLastCalledWith(false);
     });
+
+    it.each([false, true])('keeps the new rail with one loaded prompt (older history: %s)', hasMoreOlder => {
+        const singleItems = items.slice(0, 2);
+        const singleAnchors = extractUserMessageAnchors(singleItems);
+        act(() => root.render(<ConversationAnchorRail {...props} items={singleItems}
+            anchors={singleAnchors} hasMoreOlder={hasMoreOlder} />));
+        expect(track()).not.toBeNull();
+        track().getBoundingClientRect = () => rect(292, 32, 16);
+        move(300);
+        expect(host.querySelector('[role="tooltip"]')?.textContent).toBe('Third promptThird reply');
+        expect(Number.isFinite(parseFloat(host.querySelector<HTMLElement>('[data-anchor-id]')!.style.top))).toBe(true);
+        act(() => track().click());
+        expect(props.onSelect).toHaveBeenLastCalledWith(singleAnchors[0]);
+        expect(props.onAvailabilityChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('keeps a visible sidebar history entry when prompts are outside the loaded page', () => {
+        act(() => root.render(<ConversationAnchorRail {...props} anchors={[]} hasMoreOlder />));
+        expect(host.querySelector('[data-testid="conversation-anchor-rail"]')).not.toBeNull();
+        expect(track()).toBeNull();
+        const history = host.querySelector<HTMLButtonElement>('.paws-anchor-list')!;
+        expect(history.style.opacity).toBe('1');
+        act(() => history.click());
+        expect(props.onOpenList).toHaveBeenCalledOnce();
+        expect(props.onAvailabilityChange).toHaveBeenLastCalledWith(true);
+    });
 });
 
 it('extracts grouped assistant text and does not leak another turn into an unanswered prompt', () => {

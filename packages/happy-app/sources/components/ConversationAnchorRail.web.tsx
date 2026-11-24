@@ -13,7 +13,10 @@ export function ConversationAnchorRail(props: ConversationAnchorRailProps) {
     const [size, setSize] = React.useState({ width: 0, height: 0, finePointer: false });
     const [activeId, setActiveId] = React.useState<string | null>(null);
     const [currentId, setCurrentId] = React.useState<string | null>(null);
-    const available = size.width >= 520 && size.height >= 180 && size.finePointer && props.anchors.length >= 2;
+    // The loaded history window is not the whole conversation. A long running
+    // turn can leave only one (or no) prompt in the current page.
+    const available = size.width >= 520 && size.height >= 180 && size.finePointer
+        && (props.anchors.length > 0 || props.hasMoreOlder === true);
     const data = React.useRef(props);
     data.current = props;
 
@@ -79,8 +82,9 @@ export function ConversationAnchorRail(props: ConversationAnchorRailProps) {
 
     const height = Math.max(8, Math.min((props.anchors.length - 1) * 8, size.height - 160));
     const top = (size.height - height) / 2;
-    const position = (index: number) => index / (props.anchors.length - 1) * height;
+    const position = (index: number) => props.anchors.length <= 1 ? height / 2 : index / (props.anchors.length - 1) * height;
     const fromPointer = (event: React.MouseEvent<HTMLButtonElement>) => {
+        if (props.anchors.length <= 1) return 0;
         const bounds = event.currentTarget.getBoundingClientRect();
         return Math.round(Math.max(0, Math.min(1, (event.clientY - bounds.top - 4) / height)) * (props.anchors.length - 1));
     };
@@ -102,10 +106,11 @@ export function ConversationAnchorRail(props: ConversationAnchorRailProps) {
         `}</style>
         <button className="paws-anchor-list" type="button" aria-label={t('session.anchorsTitle')}
             title={props.hasMoreOlder ? t('session.anchorsLoadedSubtitle', { count: props.anchors.length }) : t('session.anchorsTitle')}
-            style={{ ...buttonStyle, top: top - 30, height: 24, pointerEvents: 'auto' }} onClick={props.onOpenList}>
+            style={{ ...buttonStyle, top: props.anchors.length ? top - 30 : size.height / 2 - 12,
+                height: 24, pointerEvents: 'auto', ...(!props.anchors.length ? { opacity: 1 } : {}) }} onClick={props.onOpenList}>
             <Octicons name="list-unordered" size={14} color={theme.colors.textSecondary} />
         </button>
-        <button className="paws-anchor-track" type="button" data-testid="conversation-anchor-track"
+        {props.anchors.length > 0 && <button className="paws-anchor-track" type="button" data-testid="conversation-anchor-track"
             aria-label={selected ? `${t('session.anchorsButton')}: ${selected.ordinal}. ${preview?.prompt}` : t('session.anchorsTitle')}
             aria-describedby={preview ? previewId : undefined}
             style={{ ...buttonStyle, top: top - 4, height: height + 8, pointerEvents: 'auto', touchAction: 'pan-y' }}
@@ -138,7 +143,7 @@ export function ConversationAnchorRail(props: ConversationAnchorRailProps) {
                         opacity: current ? 0.72 : distance === 0 ? 0.6 : 0.28,
                     }} />;
             })}
-        </button>
+        </button>}
         {preview && selectedIndex !== null && <div id={previewId} role="tooltip" data-testid="conversation-anchor-preview"
             style={{ position: 'absolute', left: 44, top: Math.max(64, Math.min(size.height - 64, top + position(selectedIndex))),
                 transform: 'translateY(-50%)', width: Math.min(320, size.width - 64), boxSizing: 'border-box',
