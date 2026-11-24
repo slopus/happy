@@ -298,6 +298,8 @@ export async function clearMachineId(): Promise<void> {
 /**
  * Read daemon state from local file
  */
+export class InvalidDaemonStateError extends Error {}
+
 export async function readDaemonState(): Promise<DaemonLocallyPersistedState | null> {
   for (const path of [configuration.daemonStateFile, configuration.legacyDaemonStateFile]) {
     let content: string;
@@ -315,7 +317,7 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
           ? typeof state.controlToken === 'string' && /^[a-f0-9]{64}$/.test(state.controlToken)
           : state.controlToken === undefined)) return state;
     } catch { /* Do not log parse errors containing state or secrets. */ }
-    throw new Error(`Invalid daemon state: ${path}`);
+    throw new InvalidDaemonStateError(`Invalid daemon state: ${path}`);
   }
   return null;
 }

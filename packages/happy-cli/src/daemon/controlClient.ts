@@ -4,22 +4,22 @@
  */
 
 import { logger } from '@/ui/logger';
-import { clearDaemonState, readDaemonState, type DaemonLocallyPersistedState } from '@/persistence';
+import { clearDaemonState, InvalidDaemonStateError, readDaemonState, type DaemonLocallyPersistedState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import type { SpawnSessionOptions } from '@/modules/common/registerCommonHandlers';
-import { readFile } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 
 function postToControlServer(state: DaemonLocallyPersistedState, path: string, body: unknown, timeout: number) {
-  // The sole legacy request is a graceful stop during upgrade. Never retry without auth.
-  const legacyStop = state.controlToken === undefined && path === '/stop';
+  // Explicit legacy status probe / graceful stop only. Never retry an authenticated request without auth.
+  const legacy = state.controlToken === undefined && (path === '/stop' || path === '/status');
   if (!Number.isInteger(state.httpPort) || state.httpPort < 1 || state.httpPort > 65535 ||
-      (!legacyStop && (typeof state.controlToken !== 'string' || !/^[a-f0-9]{64}$/.test(state.controlToken)))) {
+      (!legacy && (typeof state.controlToken !== 'string' || !/^[a-f0-9]{64}$/.test(state.controlToken)))) {
     throw new Error('Missing authenticated daemon state');
   }
   return fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
     method: 'POST', redirect: 'error',
-    headers: { 'Content-Type': 'application/json', ...(!legacyStop && { Authorization: `Bearer ${state.controlToken}` }) },
+    headers: { 'Content-Type': 'application/json', ...(!legacy && { Authorization: `Bearer ${state.controlToken}` }) },
     body: JSON.stringify(body), signal: AbortSignal.timeout(timeout),
   });
 }
@@ -159,8 +159,36 @@ export async function stopDaemonHttp(): Promise<void> {
  * We can destructure the response on the caller for richer output.
  * For instance when running `happy daemon status` we can show more information.
  */
+async function lockPid(): Promise<number | null> {
+  try { return Number((await readFile(configuration.daemonLockFile, 'utf8')).trim()); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw new Error('Cannot verify daemon lock');
+  }
+}
+
+async function discardStaleState(state: DaemonLocallyPersistedState) {
+  // The probe awaited network IO. Do not discard a replacement daemon's state or lock.
+  const current = await readDaemonState();
+  if (!current || current.pid !== state.pid || current.httpPort !== state.httpPort || current.startTime !== state.startTime ||
+      current.controlToken !== state.controlToken) return;
+  const path = state.controlToken ? configuration.daemonStateFile : configuration.legacyDaemonStateFile;
+  await unlink(path).catch(ignoreMissing);
+  if (await lockPid() === state.pid) await unlink(configuration.daemonLockFile).catch(ignoreMissing);
+}
+
+function ignoreMissing(error: NodeJS.ErrnoException) { if (error.code !== 'ENOENT') throw error; }
+
 export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
-  const state = await readDaemonState();
+  let state: DaemonLocallyPersistedState | null;
+  try { state = await readDaemonState(); } catch (error) {
+    if (!(error instanceof InvalidDaemonStateError)) throw error;
+    const owner = await lockPid();
+    if (owner !== null && Number.isSafeInteger(owner) && owner > 0 && isProcessAlive(owner)) throw error;
+    // Remove legacy first so recovering a corrupt authenticated file never exposes a tokenless fallback.
+    await unlink(configuration.legacyDaemonStateFile).catch(ignoreMissing);
+    await unlink(configuration.daemonStateFile).catch(ignoreMissing);
+    return false;
+  }
   if (!state) {
     return false;
   }
@@ -168,21 +196,29 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
   // Check if the PID is alive
   if (!isProcessAlive(state.pid)) {
     logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up state');
-    await cleanupDaemonState();
+    await discardStaleState(state);
     return false;
   }
 
   // PID is alive, but on Windows PIDs get reused after reboot.
   // Verify it's actually our daemon by HTTP pinging its control server.
-  if (!state.controlToken || !state.httpPort) return false;
+  let stale = false;
   try {
-    const response = await postToControlServer(state, '/list', {}, 5000);
-    return response.ok;
-  } catch {
-    // A timeout does not prove death. Keep the live owner's lock and state.
-    logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed`);
-    return false;
+    const response = await postToControlServer(state, state.controlToken ? '/list' : '/status', {}, 5000);
+    if (response.ok) {
+      const body = await response.json();
+      if (body && typeof body === 'object' && (state.controlToken
+        ? 'children' in body && Array.isArray(body.children)
+        : 'connected' in body && typeof body.connected === 'boolean')) return !!state.controlToken;
+      stale = true;
+    } else stale = response.status === 401 || response.status === 404;
+  } catch (error) {
+    const cause = error instanceof Error ? error.cause : undefined;
+    stale = error instanceof SyntaxError || (error as NodeJS.ErrnoException)?.code === 'ECONNREFUSED' ||
+      (cause as NodeJS.ErrnoException)?.code === 'ECONNREFUSED';
   }
+  if (stale) await discardStaleState(state);
+  return false;
 }
 
 /**
@@ -236,7 +272,7 @@ export async function cleanupDaemonState(): Promise<void> {
 
 function isProcessAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+    if (['ESRCH', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) return false;
     throw new Error(`Cannot verify daemon PID ${pid}`);
   }
 }

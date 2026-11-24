@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createDaemonControlServer } from './controlServer';
-import { notifyDaemonSessionStarted, stopDaemon } from './controlClient';
+import { checkIfDaemonRunningAndCleanupStaleState, notifyDaemonSessionStarted, stopDaemon } from './controlClient';
 import { readDaemonState, writeDaemonState } from '@/persistence';
 
 const config = vi.hoisted(() => ({ daemonStateFile: '', legacyDaemonStateFile: '', daemonLockFile: '' }));
@@ -107,4 +107,46 @@ it('never downgrades to legacy state on a corrupt authenticated state', async ()
   writeFileSync(config.legacyDaemonStateFile, JSON.stringify(state));
   writeFileSync(config.daemonStateFile, JSON.stringify(state));
   await expect(readDaemonState()).rejects.toThrow('Invalid daemon state');
+});
+
+for (const generation of ['legacy', 'authenticated']) {
+  it.each(['refused', '401', 'not a daemon', 'EPERM', 'timeout'])('%s during ' + generation + ' readiness', async outcome => {
+    const path = generation === 'legacy' ? config.legacyDaemonStateFile : config.daemonStateFile;
+    if (generation === 'legacy') writeFileSync(path, JSON.stringify(state));
+    else writeDaemonState({ ...state, controlToken: '1'.repeat(64) });
+    writeFileSync(config.daemonLockFile, String(state.pid));
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => {
+      if (outcome === 'EPERM') throw Object.assign(new Error(), { code: 'EPERM' });
+      return true;
+    });
+    const fetch = vi.fn(async () => {
+      if (outcome === 'refused') throw new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } });
+      if (outcome === 'timeout') throw new Error('timeout');
+      return Response.json({}, { status: outcome === '401' ? 401 : 200 });
+    });
+    vi.stubGlobal('fetch', fetch);
+    expect(await checkIfDaemonRunningAndCleanupStaleState()).toBe(false);
+    expect(existsSync(path)).toBe(outcome === 'timeout');
+    expect(existsSync(config.daemonLockFile)).toBe(outcome === 'timeout');
+    if (outcome === 'timeout') await expect(stopDaemon()).rejects.toThrow('confirm');
+    else await expect(stopDaemon()).resolves.toBeUndefined(); // next step in start-sync
+    expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
+  });
+}
+
+it.each([true, false])('recovers corrupt state only without a live lock owner (alive=%s)', async alive => {
+  writeFileSync(config.daemonLockFile, String(state.pid));
+  writeFileSync(config.daemonStateFile, '{');
+  writeFileSync(config.legacyDaemonStateFile, JSON.stringify(state));
+  vi.spyOn(process, 'kill').mockImplementation(() => {
+    if (!alive) throw Object.assign(new Error(), { code: 'ESRCH' });
+    return true;
+  });
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  if (alive) await expect(checkIfDaemonRunningAndCleanupStaleState()).rejects.toThrow('Invalid daemon state');
+  else expect(await checkIfDaemonRunningAndCleanupStaleState()).toBe(false);
+  expect(existsSync(config.daemonStateFile)).toBe(alive);
+  expect(existsSync(config.legacyDaemonStateFile)).toBe(alive);
+  expect(fetch).not.toHaveBeenCalled();
 });

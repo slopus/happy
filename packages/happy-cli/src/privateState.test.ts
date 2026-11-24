@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +16,7 @@ describe.skipIf(process.platform === 'win32')('private CLI state on POSIX', () =
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.doUnmock('node:os');
+    vi.restoreAllMocks();
     rmSync(scratch, { recursive: true, force: true });
   });
 
@@ -57,24 +58,38 @@ describe.skipIf(process.platform === 'win32')('private CLI state on POSIX', () =
     }
   });
 
-  it('refuses a shared-writable custom directory without chmodding it', async () => {
+  it('warns about a shared-writable custom directory without chmodding it', async () => {
     mkdirSync(dir);
     chmodSync(dir, 0o775); // Common for a custom home created under umask 002.
-    await expect(import('./configuration')).rejects.toThrow('chmod go-w');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(import('./configuration')).resolves.toBeDefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('chmod go-w'));
     expect(mode(dir)).toBe(0o775);
     chmodSync(dir, 0o755);
     vi.resetModules();
     await expect(import('./configuration')).resolves.toBeDefined();
   });
 
-  it('identifies a symlinked setting without chmodding its target', async () => {
+  it.each(['symlink', 'hardlink'])('warns on a %s without chmodding its target', async kind => {
     mkdirSync(dir);
     const target = join(scratch, 'original');
     writeFileSync(target, '{}');
     chmodSync(target, 0o644);
     const settings = join(dir, 'settings.json');
-    symlinkSync(target, settings);
-    await expect(import('./configuration')).rejects.toThrow(`Unsafe Happy state file: ${settings}`);
+    (kind === 'symlink' ? symlinkSync : linkSync)(target, settings);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(import('./configuration')).resolves.toBeDefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(settings));
     expect(mode(target)).toBe(0o644);
+  });
+
+  it('warns for foreign ownership without changing the home', async () => {
+    mkdirSync(dir);
+    chmodSync(dir, 0o755);
+    vi.spyOn(process as NodeJS.Process & { getuid(): number }, 'getuid').mockReturnValue(statSync(dir).uid + 1);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(import('./configuration')).resolves.toBeDefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(dir));
+    expect(mode(dir)).toBe(0o755);
   });
 });

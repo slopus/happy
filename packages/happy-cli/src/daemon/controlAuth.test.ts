@@ -41,7 +41,6 @@ it('protects all control callbacks and accepts authenticated local callers', asy
     await expect(stopDaemonHttp()).rejects.toThrow('did not accept');
     expect(fetch).toHaveBeenCalledTimes(3); // No tokenless retry after a 401
     vi.mocked(readDaemonState).mockResolvedValue({ ...state, controlToken: undefined });
-    expect(await checkIfDaemonRunningAndCleanupStaleState()).toBe(false);
     expect(await spawnDaemonSession('.')).toHaveProperty('error');
     expect(fetch).toHaveBeenCalledTimes(3);
     await expect(stopDaemonHttp()).rejects.toThrow('did not accept');

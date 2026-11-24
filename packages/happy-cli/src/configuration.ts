@@ -5,7 +5,7 @@
  * Environment files should be loaded using Node's --env-file flag
  */
 
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { chmodSync, closeSync, constants, existsSync, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import packageJson from '../package.json'
@@ -57,9 +57,10 @@ class Configuration {
       const dir = statSync(this.happyHomeDir)
       const dedicatedHome = !process.env.HAPPY_HOME_DIR && !lstatSync(this.happyHomeDir).isSymbolicLink()
       if (dir.uid !== process.getuid!() || (!dedicatedHome && (dir.mode & 0o022))) {
-        throw new Error(`Unsafe Happy home: ${this.happyHomeDir}. Use a dedicated directory owned by your account and not writable by other users. For your own dedicated directory, remove group/other write access with chmod go-w; otherwise set HAPPY_HOME_DIR to a private directory.`)
+        console.warn(`Happy home ${this.happyHomeDir} may be writable by other users. Use a private HAPPY_HOME_DIR or chmod go-w on your own dedicated directory.`)
+      } else if (dedicatedHome && (dir.mode & 0o777) !== 0o700) {
+        try { chmodSync(this.happyHomeDir, 0o700) } catch { console.warn(`Could not tighten Happy home permissions: ${this.happyHomeDir}`) }
       }
-      if (dedicatedHome && (dir.mode & 0o777) !== 0o700) chmodSync(this.happyHomeDir, 0o700)
       for (const path of [this.privateKeyFile, this.daemonStateFile, this.legacyDaemonStateFile, this.sessionsFile, this.settingsFile,
         this.sessionsFile + '.tmp', this.settingsFile + '.tmp', this.daemonLockFile, this.settingsFile + '.lock']) {
         protectExistingFile(path)
@@ -104,16 +105,17 @@ class Configuration {
 }
 
 function protectExistingFile(path: string) {
+  let fd: number | undefined
   try {
-    const file = lstatSync(path)
-    if (!file.isFile() || file.uid !== process.getuid!()) throw new Error(`Unsafe Happy state file: ${path}. Restore a regular file owned by your account; do not use a symlink.`)
-    if ((file.mode & 0o777) !== 0o600) {
-      if (file.nlink !== 1) throw new Error(`Cannot secure multiply linked Happy state file: ${path}`)
-      chmodSync(path, 0o600)
-    }
+    // Use the checked descriptor, not a path that another directory writer could replace.
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    const file = fstatSync(fd)
+    if (!file.isFile() || file.uid !== process.getuid!() || file.nlink !== 1) throw new Error()
+    if ((file.mode & 0o777) !== 0o600) fchmodSync(fd, 0o600)
   } catch (error) {
-    // Atomic updates and releases may remove temporary/lock files during startup.
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.warn(`Could not safely tighten Happy state permissions: ${path}. Use a private, user-owned regular file.`)
+  } finally {
+    if (fd !== undefined) closeSync(fd)
   }
 }
 
