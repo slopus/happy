@@ -301,10 +301,10 @@ final class AgentConnectionsTests: XCTestCase {
         XCTAssertEqual(manager.placeholderSeed(for: other.id), "agent:https://happy.acme.example")
     }
 
-    /// Signing out of a Happy Cloud server says its farewell (the app takes
-    /// its push registration off) while its session still works; a server
-    /// of the team's own says none.
-    func testSigningOutOfACloudServerSaysFarewellFirst() async throws {
+    /// Leaving a server says its farewell (the app takes its push
+    /// registration off) while its session still works: a Happy Cloud
+    /// server, a team's own, and a paired computer alike.
+    func testLeavingAServerSaysFarewellFirst() async throws {
         actor Farewells {
             var ids: [String] = []
             func add(_ id: String) { ids.append(id) }
@@ -324,10 +324,12 @@ final class AgentConnectionsTests: XCTestCase {
         let said = await farewells.ids
         XCTAssertEqual(said, [acme.id], "remove waits for the farewell")
         try await manager.remove(own.id)
+        let paired = try await manager.add(value(), name: "Mac")
+        try await manager.remove(paired.id)
         _ = manager.forget(globex.id)
-        for _ in 0..<50 where await farewells.ids.count < 2 { try await Task.sleep(for: .milliseconds(20)) }
+        for _ in 0..<50 where await farewells.ids.count < 4 { try await Task.sleep(for: .milliseconds(20)) }
         let all = await farewells.ids
-        XCTAssertEqual(all, [acme.id, globex.id])
+        XCTAssertEqual(all, [acme.id, own.id, paired.id, globex.id])
     }
 
     /// Happy Cloud's list joins several servers before one is opened: one

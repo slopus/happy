@@ -92,6 +92,112 @@ final class CloudPushTests: XCTestCase {
         XCTAssertEqual(outcome, .unsupported)
     }
 
+    // MARK: A server of one's own
+
+    private static let health = #"{"ready":true,"capabilities":{"userEnvironment":true,"pushRegistrations":true}}"#
+
+    /// A Happy Agent daemon that serves the routes says so in its health
+    /// (`capabilities.pushRegistrations`), and is registered with as a
+    /// Happy Cloud server is: the same relay token, the same request.
+    func testAServerThatSaysItTakesRegistrationsIsRegisteredWith() async throws {
+        let ids = CloudPushIDs(store: InMemoryKeyValueStore())
+        let relay = Relay(Self.token)
+        var source = Self.source(relay: relay, permission: Permission(.authorized))
+        source.ids = ids
+        let push = CloudPush(source: source)
+        let server = ProvidersServer()
+        await server.answer("GET /v0/health", 200, Self.health)
+        await server.answer("PUT /v0/cloud/push/registrations/\(ids.registration(for: "paired"))", 200, Self.registration)
+        await server.answer("DELETE /v0/cloud/push/registrations/\(ids.registration(for: "paired"))", 204, "")
+        let client = AgentClient(transport: server, token: "t")
+        let now = Date(timeIntervalSince1970: 1_000_000)
+
+        let outcome = try await push.register(connection: "paired", client: client, ask: false, cloud: false, now: now)
+        XCTAssertEqual(outcome, .registered)
+        let body = await server.rawBodies.last
+        XCTAssertEqual(body, .object(["token": .string(Self.token), "platform": .string("ios"), "appId": .string("com.slopus.happy.dev")]))
+        XCTAssertEqual(ids.version(for: "paired"), "7c1d8a5e-2f43-4c1b-9d0e-1f2a3b4c5d6e")
+        let soon = try await push.register(connection: "paired", client: client, ask: false, cloud: false, now: now.addingTimeInterval(3600))
+        XCTAssertEqual(soon, .current)
+        let later = try await push.register(connection: "paired", client: client, ask: false, cloud: false, now: now.addingTimeInterval(CloudPush.renewal + 1))
+        XCTAssertEqual(later, .registered)
+        XCTAssertEqual(relay.requests.count, 1)
+
+        // Unpaired from the phone: the registration goes, as on signing out.
+        try await push.unregister(connection: "paired", client: client)
+        let routes = await server.routes
+        XCTAssertEqual(routes.filter { $0.hasPrefix("DELETE ") }.count, 1)
+        XCTAssertNil(ids.version(for: "paired"))
+    }
+
+    /// An older daemon answers these routes 404 and says nothing of them
+    /// in its health: it is asked for nothing, the relay neither, and iOS
+    /// is never made to show its prompt for it.
+    func testAServerThatDoesNotSayItIsNeverAsked() async throws {
+        for health in [#"{"ready":true}"#, #"{"ready":true,"capabilities":{"userEnvironment":true}}"#, #"{"ready":true,"capabilities":{"pushRegistrations":false}}"#,
+                       #"{"ready":true,"capabilities":{"pushRegistrations":"yes"}}"#] {
+            let relay = Relay(Self.token)
+            let permission = Permission(.notDetermined)
+            let push = CloudPush(source: Self.source(relay: relay, permission: permission))
+            let server = ProvidersServer()
+            await server.answer("GET /v0/health", 200, health)
+            let client = AgentClient(transport: server, token: "t")
+            for ask in [false, true] {
+                let outcome = try await push.register(connection: "paired", client: client, ask: ask, cloud: false)
+                XCTAssertEqual(outcome, .unserved, health)
+            }
+            let routes = await server.routes
+            XCTAssertEqual(Set(routes), ["GET /v0/health"], health)
+            XCTAssertTrue(relay.requests.isEmpty, health)
+            let asked = await permission.asked
+            XCTAssertEqual(asked, 0, health)
+        }
+    }
+
+    /// A Happy Cloud server registers whatever its health says: it does
+    /// not advertise the routes it has always had.
+    func testAHappyCloudServerIsNotAskedWhatItServes() async throws {
+        let server = ProvidersServer()
+        await server.answer("PUT /v0/cloud/push/registrations/\(Self.ids.registration(for: "cloud"))", 200, Self.registration)
+        let push = CloudPush(source: Self.source(relay: Relay(Self.token), permission: Permission(.authorized)))
+        let outcome = try await push.register(connection: "cloud", client: AgentClient(transport: server, token: "t"), ask: false, cloud: true)
+        XCTAssertEqual(outcome, .registered)
+        let routes = await server.routes
+        XCTAssertEqual(routes, ["PUT /v0/cloud/push/registrations/\(Self.ids.registration(for: "cloud"))"])
+    }
+
+    /// A computer has no onboarding to ask from, so reaching it the first
+    /// time shows iOS's prompt, which iOS shows once. A Happy Cloud server
+    /// asks from its onboarding step only.
+    func testAServerOfOnesOwnAsksTheFirstTimeItIsReached() async throws {
+        let ids = CloudPushIDs(store: InMemoryKeyValueStore())
+        let permission = Permission(.notDetermined)
+        var source = Self.source(relay: Relay(Self.token), permission: permission)
+        source.ids = ids
+        let push = CloudPush(source: source)
+        let server = ProvidersServer()
+        await server.answer("GET /v0/health", 200, Self.health)
+        await server.answer("PUT /v0/cloud/push/registrations/\(ids.registration(for: "paired"))", 200, Self.registration)
+        await server.answer("PUT /v0/cloud/push/registrations/\(ids.registration(for: "cloud"))", 200, Self.registration)
+        let client = AgentClient(transport: server, token: "t")
+
+        let cloud = try await push.register(connection: "cloud", client: client, ask: false, cloud: true)
+        XCTAssertEqual(cloud, .denied)
+        var asked = await permission.asked
+        XCTAssertEqual(asked, 0, "a Happy Cloud server showed the prompt without a tap")
+
+        let first = try await push.register(connection: "paired", client: client, ask: false, cloud: false)
+        XCTAssertEqual(first, .registered)
+        asked = await permission.asked
+        XCTAssertEqual(asked, 1)
+
+        await permission.set(.denied)
+        let refused = try await push.register(connection: "paired", client: client, ask: false, cloud: false, now: Date().addingTimeInterval(CloudPush.renewal + 1))
+        XCTAssertEqual(refused, .denied)
+        asked = await permission.asked
+        XCTAssertEqual(asked, 1, "turned off in Settings, it is never asked again")
+    }
+
     func testIdsAreMadeOnceAndKept() {
         let store = InMemoryKeyValueStore()
         let ids = CloudPushIDs(store: store)
@@ -133,7 +239,10 @@ final class CloudPushTests: XCTestCase {
         init(_ system: PushPermission.SystemStatus) { self.system = system }
         func set(_ system: PushPermission.SystemStatus) { self.system = system }
         func current() -> PushPermission { PushPermission(system: system) }
+        /// How many times the system prompt was asked for.
+        private(set) var asked = 0
         func request() -> PushPermission {
+            asked += 1
             if system == .notDetermined { system = .authorized }
             return current()
         }
