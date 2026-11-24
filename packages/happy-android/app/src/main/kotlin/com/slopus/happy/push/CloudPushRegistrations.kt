@@ -1,6 +1,8 @@
 package com.slopus.happy.push
 
 import com.slopus.happy.auth.ExpoSecureStore
+import com.slopus.happy.connection.AgentConnection
+import com.slopus.happy.connection.HappyCloud
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -12,6 +14,13 @@ import java.util.concurrent.ConcurrentHashMap
 /** The local binding, not caller-supplied authority for the Cloud API. */
 @Serializable
 data class CloudPushAccount(val connectionId: String, val server: String, val userId: String)
+
+/** The binding [connection] registers for push under; null for one that doesn't register. */
+internal fun cloudPushAccount(connection: AgentConnection): CloudPushAccount? {
+    if (connection.revoked || connection.signInRequired || connection.profileRequired) return null
+    val server = connection.server?.takeIf { HappyCloud.isServer(it) } ?: return null
+    return CloudPushAccount(connection.id, server, connection.userId ?: return null)
+}
 
 @Serializable
 internal data class CloudPushBinding(

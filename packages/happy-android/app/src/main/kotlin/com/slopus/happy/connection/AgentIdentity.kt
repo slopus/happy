@@ -22,6 +22,8 @@ data class AgentInfo(
     val plugins: Boolean = false,
     /** Health's `capabilities.pipelines`: a Happy Cloud server with pipelines to list. */
     val pipelines: Boolean = false,
+    /** Health's `capabilities.pushRegistrations`; null when health wasn't read, and what is known stays. */
+    val pushRegistrations: Boolean? = null,
 )
 
 /** What `/v0/node/avatar` answered. The ETag, not the ThumbHash, says which bytes these are. */

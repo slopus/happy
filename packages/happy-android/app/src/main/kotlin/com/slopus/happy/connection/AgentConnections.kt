@@ -47,6 +47,8 @@ data class AgentConnection(
     /** Last health response's daemon version, shown separately from this phone's build. */
     val daemonVersion: String? = null,
     val protocol: Int? = null,
+    /** Health's `capabilities.pushRegistrations` when last read: the server keeps phones to notify (`/v0/cloud/push`). */
+    val pushRegistrations: Boolean = false,
 ) {
     /**
      * A team server's session ended (not just a name owed): the phone shows
