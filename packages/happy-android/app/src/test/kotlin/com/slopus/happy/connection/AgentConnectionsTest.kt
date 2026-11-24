@@ -224,6 +224,18 @@ class AgentConnectionsTest {
     }
 
     @Test
+    fun whetherTheDaemonKeepsPhonesToNotifyIsKeptFromHealth() = runBlocking {
+        val accounts = accounts()
+        assertFalse(accounts.add(credentials(), "Steve's Mac").pushRegistrations)
+        daemon.pushRegistrations = true
+        assertTrue(accounts.add(credentials(), "Steve's Mac").pushRegistrations)
+        assertTrue(accounts().accounts.value.single().pushRegistrations)
+        // Health is believed each time it is read: a daemon that stopped saying so is no longer asked.
+        daemon.pushRegistrations = false
+        assertFalse(accounts.add(credentials(), "Steve's Mac").pushRegistrations)
+    }
+
+    @Test
     fun anUnreachableAgentIsKeptUnderTheCodesName() = runBlocking {
         transport = { object : Transport by daemon {
             override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) =

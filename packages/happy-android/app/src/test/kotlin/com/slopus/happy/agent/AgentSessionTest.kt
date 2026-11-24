@@ -87,6 +87,37 @@ class AgentSessionTest {
         withTimeout(10_000) { while (!check(read())) kotlinx.coroutines.delay(20) }
     }
 
+    private fun pushingHealth() = buildJsonObject {
+        put("ready", true)
+        put("version", buildJsonObject { put("protocol", 30); put("daemon", "1.0") })
+        put("instanceId", "k3x9q2m7p0a4b8c1d5e6f7g2")
+        put("capabilities", buildJsonObject { put("pushRegistrations", true) })
+    }
+
+    @Test
+    fun aPairingLearnsFromItsDaemonWhetherItKeepsPhonesAndWhichMemberItActsFor() = runBlocking {
+        // Whoever the pairing was for before, the daemon's word now stands, and a pairing is never asked to sign in over it.
+        connections.update(id) { it.copy(userId = "earlier-member") }
+        agent.bootstrap = agent.bootstrap.with("health", pushingHealth())
+        sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ connections.accounts.value.single() }) { it.pushRegistrations }
+        val known = connections.accounts.value.single()
+        assertEquals("k3x9q2m7p0a4b8c1d5e6f7g2", known.instanceId)
+        assertEquals(Wire.USER, known.userId)
+        assertFalse(known.signInRequired)
+    }
+
+    @Test
+    fun aPairingWithAStandaloneDaemonActsForNoMember() = runBlocking {
+        connections.update(id) { it.copy(userId = "earlier-member") }
+        agent.bootstrap = agent.bootstrap.with("health", pushingHealth()).with("profile", buildJsonObject { put("userId", kotlinx.serialization.json.JsonNull) })
+        sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ connections.accounts.value.single() }) { it.pushRegistrations }
+        assertNull(connections.accounts.value.single().userId)
+    }
+
     @Test
     fun cursorResumesBeforeThirtySecondsAndStartsFreshAtThirtySeconds() = runBlocking {
         val session = sessions().session(id)!!

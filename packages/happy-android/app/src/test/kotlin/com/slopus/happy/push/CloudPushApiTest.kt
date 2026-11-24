@@ -39,6 +39,13 @@ class CloudPushApiTest {
         assertEquals(Asked("PUT", "/v0/cloud/push/registrations/$id", """{"token":"$token","platform":"android","appId":"com.slopus.happy.dev","locale":"en-US"}""", emptyMap()), server.asked.single())
     }
 
+    @Test fun aPairedDaemonIsAskedExactlyAsHappyCloudIs() = runTest {
+        val server = Server().apply { body = registered() }
+        val api = CloudPushApi(AgentClient(server, "server-bearer"))
+        assertEquals(registration, api.register(id, HappyPushToken.parse(token)!!, "com.slopus.happy.dev", "en-US"))
+        assertEquals(Asked("PUT", "/v0/cloud/push/registrations/$id", """{"token":"$token","platform":"android","appId":"com.slopus.happy.dev","locale":"en-US"}""", emptyMap()), server.asked.single())
+    }
+
     @Test fun unregisterUsesExactOpaqueVersion() = runTest {
         val server = Server().apply { status = 204 }
         val api = api(server)
