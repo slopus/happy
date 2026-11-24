@@ -66,7 +66,7 @@ public enum HappyPushRelay {
     }
 }
 
-/// A Happy Cloud server's record of this install (`PUT
+/// A server's record of this install (`PUT
 /// /v0/cloud/push/registrations/:id`), kept until `expiresAt`.
 public struct CloudPushRegistration: Decodable, Equatable, Sendable {
     public var id: String
@@ -130,13 +130,23 @@ public struct CloudPushIDs: Sendable {
     }
 }
 
-/// Registers this install for push on Happy Cloud servers: the
+/// Registers this install for push on the servers that take it: the
 /// notification permission, this install's APNs token, the relay's
 /// `HappyPushToken` for it (asked again only when the APNs token
-/// changes), then the server's registration. Onboarding's `mobileApp`
-/// gate asks for the permission; coming back to a server renews quietly
-/// where it was given, at most every few hours; signing out of it takes
-/// the registration off (`unregister`).
+/// changes), then the server's registration. A Happy Cloud server always
+/// takes it, and its onboarding's `mobileApp` gate asks for the
+/// permission. Any other (a paired computer's Happy Agent daemon, a
+/// team's own server) takes it when its health says
+/// `capabilities.pushRegistrations`, with the same routes, and having no
+/// onboarding, asks the first time it is reached. Coming back to a server
+/// renews quietly where permission was given, at most every few hours;
+/// leaving it takes the registration off (`unregister`).
+///
+/// Every server gets the same `HappyPushToken`, and the relay takes a
+/// send from anyone who holds it. So a server registered with can send a
+/// push that names another connection: what a push opens is decided here
+/// (`CloudPushNotification.connection`), and only ever a chat that
+/// connection already has.
 public actor CloudPush {
     public struct Source: Sendable {
         public var device: CloudPushDevice
@@ -181,14 +191,17 @@ public actor CloudPush {
     public init(source: Source) { self.source = source }
 
     /// `ask`: from the person's tap, which may show the system prompt and
-    /// always registers; else only where permission was given, and not
-    /// again within `renewal`. `cloud`: a Happy Cloud server, the only
-    /// kind registered with.
+    /// always registers; else not again within `renewal`. `cloud`: a
+    /// Happy Cloud server, which is not asked what it serves and shows
+    /// the prompt only from a tap. Any other is registered with only when
+    /// its health says it takes registrations (an older daemon answers
+    /// these routes 404, and is never asked), and shows the prompt while
+    /// iOS still would, which is once.
     public func register(connection: String, client: AgentClient, ask: Bool, cloud: Bool, now: Date = Date()) async throws -> Outcome {
         guard CloudPushDevice.appIds.contains(source.device.appId) else { return .unsupported }
-        guard cloud else { return .unserved }
+        if !cloud, try await client.health().capabilities?.pushRegistrations != true { return .unserved }
         var permission = await source.permission()
-        if ask, !permission.granted, permission.canAskAgain { permission = await source.requestPermission() }
+        if ask || !cloud, !permission.granted, permission.canAskAgain { permission = await source.requestPermission() }
         guard permission.granted else { return .denied }
         if !ask, let last = renewed[connection], now.timeIntervalSince(last) < Self.renewal { return .current }
         let apns = try await source.apnsToken()
@@ -203,9 +216,10 @@ public actor CloudPush {
         return .registered
     }
 
-    /// Signing out of a server or leaving it: its registration goes, so
-    /// the phone stops getting the team's notifications now, not at the
-    /// registration's expiry. Called before the session is revoked.
+    /// Signing out of a server, leaving it or unpairing its computer: its
+    /// registration goes, so the phone stops getting its notifications
+    /// now, not at the registration's expiry. Called before the session
+    /// is revoked. One never registered with is sent nothing.
     public func unregister(connection: String, client: AgentClient) async throws {
         renewed[connection] = nil
         guard let version = source.ids.version(for: connection) else { return }

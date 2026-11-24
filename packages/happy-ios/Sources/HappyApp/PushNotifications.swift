@@ -11,8 +11,9 @@ import UserNotifications
 /// and lists, and a tap opens its session. Switching accounts never
 /// unregisters, so every signed-in account keeps notifying; sign-out
 /// unregisters that account (`AccountController.signOut(accountID:)`).
-/// A Happy Cloud server's push opens its agent's chat instead, on the
-/// connection it was sent for (`CloudPushNotification`).
+/// A Happy Cloud server's or a Happy Agent daemon's push opens its
+/// agent's chat instead, on the connection it was sent for
+/// (`CloudPushNotification`).
 @MainActor
 final class PushNotifications: NSObject {
     static let shared = PushNotifications()
@@ -62,8 +63,8 @@ final class PushNotifications: NSObject {
         SettingsHooks.cloudPush = cloudPush
     }
 
-    /// Happy Cloud servers' push (`CloudPush`): the relay's token for this
-    /// install's APNs token, registered on each server.
+    /// Servers' own push (`CloudPush`): the relay's token for this
+    /// install's APNs token, registered on each server that takes it.
     private lazy var cloudPush: CloudPush = {
         let profile = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision").flatMap { try? Data(contentsOf: $0) }
         let apns = self.apns
@@ -82,7 +83,7 @@ final class PushNotifications: NSObject {
     func attach(context: AppContext, coordinator: AppCoordinator) {
         self.context = context
         self.coordinator = coordinator
-        // Signed out of a cloud server: its notifications stop now.
+        // Signed out of a server, or its computer unpaired: its notifications stop now.
         let cloudPush = self.cloudPush
         context.account.agentConnections.cloudFarewell = { id, client in try? await cloudPush.unregister(connection: id, client: client) }
         accountsObservation = context.account.observeAccounts { [weak self] _ in
