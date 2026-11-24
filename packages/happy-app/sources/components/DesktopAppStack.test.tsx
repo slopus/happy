@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error narrow renderer harness
 import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({ state: {} as any, dispatch: vi.fn(), back: vi.fn(), descriptors: null as Record<string, any> | null }));
-vi.mock('react-native', () => ({ Modal: 'Modal', Pressable: 'Pressable', Text: 'Text', View: 'View' }));
+vi.mock('react-native', () => ({ Modal: 'Modal', Pressable: 'Pressable', Text: 'Text', View: 'View', useWindowDimensions: () => ({ width: 1440 }) }));
 vi.mock('@react-navigation/native', () => ({
     createNavigatorFactory: (component: any) => () => ({ Navigator: component }),
     useNavigationBuilder: () => ({ state: mocks.state, descriptors: mocks.descriptors ?? Object.fromEntries(mocks.state.routes.map((route: any) => [route.key, { route, render: () => null, options: { headerTitle: route.name, headerRight: () => 'action' } }])), navigation: { dispatch: mocks.dispatch, goBack: mocks.back }, describe: vi.fn(), NavigationContent: React.Fragment }),
@@ -23,6 +23,7 @@ vi.mock('react-native-unistyles', () => {
 });
 import { DesktopStackNavigator, focusDesktopModalInitialTarget } from './DesktopAppStack';
 import { navigateDesktopModalBack } from '@/navigation/desktopModalNavigation';
+import { ToolDetailContentSizeContext } from './tools/ToolDetailLayout';
 let renderer: any;
 afterEach(() => {
     act(() => renderer?.unmount());
@@ -32,6 +33,43 @@ afterEach(() => {
 });
 
 describe('desktop app stack presentation', () => {
+    it('uses a bounded tool dialog and leaves the status to the detail body', () => {
+        (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+        mocks.state = { key: 'app', index: 1, routes: [
+            { key: 'background', name: 'session/[id]', params: { id: 'original' } },
+            { key: 'detail', name: 'session/[id]/message/[messageId]' },
+        ], desktopModalBaseKey: 'background' };
+        act(() => { renderer = TestRenderer.create(<DesktopStackNavigator children={null} />); });
+        const panel = renderer.root.findByProps({ testID: 'desktop-modal-panel' });
+        expect(panel.props.style[1]).toMatchObject({ maxWidth: 800, maxHeight: 640 });
+        expect(JSON.stringify(renderer.toJSON())).not.toContain('action');
+    });
+
+    it('fits short tool content, caps long output, and ignores inactive detail measurements', () => {
+        (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+        mocks.state = { key: 'app', index: 1, routes: [
+            { key: 'background', name: 'session/[id]', params: { id: 'original' } },
+            { key: 'detail', name: 'session/[id]/message/[messageId]' },
+        ], desktopModalBaseKey: 'background' };
+        function ToolBody() {
+            const report = React.useContext(ToolDetailContentSizeContext);
+            return React.createElement('ToolBody', { report });
+        }
+        mocks.descriptors = Object.fromEntries(mocks.state.routes.map((route: any) => [route.key, {
+            route, options: {}, render: () => route.key === 'detail' ? <ToolBody /> : null,
+        }]));
+        act(() => { renderer = TestRenderer.create(<DesktopStackNavigator children={null} />); });
+        const report = renderer.root.findByType('ToolBody').props.report;
+        act(() => report(210));
+        expect(renderer.root.findByProps({ testID: 'desktop-modal-panel' }).props.style[2]).toEqual({ maxHeight: 268 });
+        act(() => report(3200));
+        expect(renderer.root.findByProps({ testID: 'desktop-modal-panel' }).props.style[2]).toEqual({ maxHeight: 640 });
+        mocks.state = { ...mocks.state, routes: [...mocks.state.routes, { key: 'another', name: 'settings/index' }], index: 2 };
+        mocks.descriptors = { ...mocks.descriptors!, another: { route: mocks.state.routes[2], options: {}, render: () => null } };
+        act(() => renderer.update(<DesktopStackNavigator children={null} />));
+        act(() => report(100));
+        expect(renderer.root.findByProps({ testID: 'desktop-modal-panel' }).props.style[2]).toBe(false);
+    });
     it('preserves focus already placed inside modal content before applying the close-button fallback', () => {
         const focus = vi.fn();
         const activeElement = {} as HTMLElement;

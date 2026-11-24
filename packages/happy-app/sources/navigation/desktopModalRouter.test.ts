@@ -5,14 +5,60 @@ import { projectLocationHref, restoreProjectLocation } from '@/utils/projectRetu
 import { sessionWorkspaceRoute } from '@/utils/sessionWorkspaceRoute';
 import { createDesktopModalRouter, getDesktopModalStart, getDesktopModalBackgroundPath } from './desktopModalRouter';
 
-const options = { routeNames: ['index', 'projects', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
-function setup() {
+const options = { routeNames: ['index', 'projects', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/message/[messageId]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
+function setup(shouldPresentToolDetails = () => false) {
     const original = StackRouter({ initialRouteName: 'index' });
-    const router = createDesktopModalRouter({ initialRouteName: 'index' });
+    const router = createDesktopModalRouter({ initialRouteName: 'index' }, shouldPresentToolDetails);
     let state = original.getInitialState(options);
     const send = (action: any) => state = router.getStateForAction(state, action, options) ?? state;
     return { send, get state() { return state; } };
 }
+
+describe('tool detail presentation', () => {
+    it.each(['PUSH', 'NAVIGATE'])('opens existing %s entry points over the exact conversation and closes without replacing it', type => {
+        const app = setup(() => true);
+        app.send(StackActions.push('session/[id]', { id: 'original' }));
+        const background = app.state.routes;
+        app.send({ type, payload: { name: 'session/[id]/message/[messageId]', params: { id: 'original', messageId: 'tool-1' } } });
+        expect(getDesktopModalStart(app.state)).toBe(2);
+        expect(getDesktopModalBackgroundPath(app.state)).toBe('/session/original');
+        app.send({ type: 'CLOSE_DESKTOP_MODAL' });
+        expect(app.state.routes).toEqual(background);
+    });
+
+    it('reads the current breakpoint on each open, preserving narrow-screen page navigation', () => {
+        let desktop = false;
+        const app = setup(() => desktop);
+        app.send(StackActions.push('session/[id]', { id: 'original' }));
+        app.send(StackActions.push('session/[id]/message/[messageId]', { id: 'original', messageId: 'tool-1' }));
+        expect(getDesktopModalStart(app.state)).toBe(-1);
+        app.send({ type: 'GO_BACK' });
+        desktop = true;
+        app.send(StackActions.push('session/[id]/message/[messageId]', { id: 'original', messageId: 'tool-1' }));
+        expect(getDesktopModalStart(app.state)).toBe(2);
+    });
+
+    it.each([{ initialRoutes: [] }, { initialRoutes: [{ name: 'index' }] }])('restores a direct detail URL with its own conversation as the close destination ($initialRoutes)', ({ initialRoutes }) => {
+        const router = createDesktopModalRouter({ initialRouteName: 'index' }, () => true);
+        const restored = router.getRehydratedState({ stale: true, routes: [...initialRoutes,
+            { name: 'session/[id]/message/[messageId]', params: { id: 'original', messageId: 'tool-1' } },
+        ] }, options);
+        expect(getDesktopModalStart(restored)).toBe(restored.index);
+        expect(getDesktopModalBackgroundPath(restored)).toBe('/session/original');
+        const closed = router.getStateForAction(restored, { type: 'CLOSE_DESKTOP_MODAL' } as any, options)!;
+        expect(closed.routes[closed.index]).toMatchObject({ name: 'session/[id]', params: { id: 'original' } });
+    });
+
+    it('retains an existing project workspace underneath a restored tool detail', () => {
+        const router = createDesktopModalRouter({ initialRouteName: 'index' }, () => true);
+        const project = { key: 'project', name: 'projects', params: { project: '/example', conversation: 'original' } };
+        const restored = router.getRehydratedState({ stale: true, routes: [project,
+            { name: 'session/[id]/message/[messageId]', params: { id: 'original', messageId: 'tool-1' } },
+        ] }, options);
+        const closed = router.getStateForAction(restored, { type: 'CLOSE_DESKTOP_MODAL' } as any, options)!;
+        expect(closed.routes).toEqual([project]);
+    });
+});
 
 describe('desktop modal navigation boundary', () => {
     it.each([true, false])('round-trips the exact same task/global conversation after stack compaction (task=%s)', async task => {

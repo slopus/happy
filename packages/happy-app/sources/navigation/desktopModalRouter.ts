@@ -24,13 +24,29 @@ export function getDesktopModalBackgroundPath(state: NestedState | undefined): s
     return getDesktopModalBackgroundPath(state.routes[state.index ?? 0]?.state);
 }
 
-export function createDesktopModalRouter(options: StackRouterOptions) {
+export function createDesktopModalRouter(options: StackRouterOptions, shouldPresentToolDetails: () => boolean = () => false) {
     const original = StackRouter(options);
     return {
         ...original,
         getRehydratedState(partialState: Parameters<typeof original.getRehydratedState>[0], config: Parameters<typeof original.getRehydratedState>[1]): ModalState {
-            const restored = { ...original.getRehydratedState(partialState, config), desktopModalBaseKey: (partialState as ModalState).desktopModalBaseKey };
+            let restored: ModalState = { ...original.getRehydratedState(partialState, config), desktopModalBaseKey: (partialState as ModalState).desktopModalBaseKey };
             if (getDesktopModalStart(restored) < 0) restored.desktopModalBaseKey = undefined;
+            const current = restored.routes[restored.index];
+            // A direct detail URL has no clicked conversation underneath it. Give
+            // it the same close destination as an in-conversation tool entry.
+            if (!restored.desktopModalBaseKey && shouldPresentToolDetails()
+                && current.name === 'session/[id]/message/[messageId]'
+                && typeof (current.params as { id?: unknown } | undefined)?.id === 'string') {
+                const background = restored.routes.slice(0, restored.index);
+                if (!background.length || background.at(-1)?.name === 'index') {
+                    const conversation = original.getRehydratedState({ stale: true, routes: [
+                        { name: 'session/[id]', params: { id: (current.params as { id: string }).id } },
+                    ] }, config).routes[0];
+                    background.push(conversation);
+                }
+                restored = { ...restored, routes: [...background, current], index: background.length,
+                    desktopModalBaseKey: background[background.length - 1].key };
+            }
             return restored;
         },
         getStateForAction(state: ModalState, action: Parameters<typeof original.getStateForAction>[1], config: Parameters<typeof original.getStateForAction>[2]): ModalState | null {
@@ -50,12 +66,15 @@ export function createDesktopModalRouter(options: StackRouterOptions) {
                 state = { ...state, routes: state.routes.slice(0, start), index: start - 1, desktopModalBaseKey: undefined };
                 start = -1;
             }
-            const opensModal = params?.desktopModal === '1';
+            const explicitModal = params?.desktopModal === '1';
+            const opensModal = explicitModal || (shouldPresentToolDetails()
+                && ['PUSH', 'NAVIGATE'].includes(action.type)
+                && payload && 'name' in payload && payload.name === 'session/[id]/message/[messageId]');
             let nextAction = action;
             if (start >= 0 && action.type === 'POP') {
                 nextAction = { ...action, payload: { ...action.payload, count: Math.min(action.payload.count, state.index - start + 1) } };
             }
-            if (opensModal) {
+            if (explicitModal) {
                 const { desktopModal: _marker, ...routeParams } = params;
                 nextAction = { ...action, payload: { ...payload, params: routeParams } } as typeof action;
             }
