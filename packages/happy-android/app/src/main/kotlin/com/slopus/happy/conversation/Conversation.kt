@@ -229,6 +229,8 @@ class Conversation(
         val voice: Boolean = false,
         var accepted: Boolean = false,
         var failure: Problem? = null,
+        /** [failure] was the computer's or the link's for now (a 5xx, no answer): it goes again on the next (re)connect. */
+        var retryable: Boolean = false,
         val sentAt: Long,
         /**
          * Photos still being read (iOS's held previews): drawn from their
@@ -363,6 +365,14 @@ class Conversation(
                         // Some were lost: not current again until the read is in.
                         publish { it.copy(synced = false) }
                         reload()
+                        // Refused for now (a daemon draining to restart answers 503) or
+                        // unanswered: they go again, under the same ids, now it is back.
+                        val again = outgoing.filter { it.retryable && it.failure != null && !it.accepted }
+                        if (again.isNotEmpty()) {
+                            again.forEach { it.failure = null; it.retryable = false }
+                            publish()
+                            pump()
+                        }
                     }
                     is ConversationSignal.Event -> held?.add(signal) ?: receive(signal)
                 }
@@ -1174,6 +1184,7 @@ class Conversation(
                 } catch (e: Exception) {
                     uploads.clear(next.id)
                     next.failure = describe(e)
+                    next.retryable = transient(e)
                     // The failed bubble has only a delivery mark; explain a file refusal as well.
                     if (e is FilesUnavailable || e is FileTooLarge) publish { it.copy(alert = next.failure) }
                     if (made) errorShown(ErrorArea.MessageSend, AnalyticsReasons.error(e))

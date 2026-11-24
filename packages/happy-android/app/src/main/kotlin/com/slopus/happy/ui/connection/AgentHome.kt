@@ -934,9 +934,10 @@ private fun SignedInAgentHome(
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
     val updating by session.homeUpdating.collectAsStateWithLifecycle()
+    val draining by session.draining.collectAsStateWithLifecycle()
     val notice by session.notice.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val link = rememberShownLinkState(status.linkState(updating, rememberNetworkPath()))
+    val link = rememberShownLinkState(status.linkState(updating, rememberNetworkPath(), draining))
     // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): home past its loader.
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     com.slopus.happy.diagnostics.TimingMark("home.rows", feed.loaded)

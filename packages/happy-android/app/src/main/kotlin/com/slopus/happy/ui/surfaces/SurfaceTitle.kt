@@ -15,7 +15,8 @@ import com.slopus.happy.ui.conversation.linkState
 internal fun surfaceTitle(session: AgentSession, name: String): String {
     val status by session.status.collectAsStateWithLifecycle()
     val syncing by session.isSyncing.collectAsStateWithLifecycle()
-    val link = rememberShownLinkState(status.linkState(syncing, rememberNetworkPath()))
+    val draining by session.draining.collectAsStateWithLifecycle()
+    val link = rememberShownLinkState(status.linkState(syncing, rememberNetworkPath(), draining))
     val locale = LocalConfiguration.current.locales[0]
     return linkStatusWords(link)?.replaceFirstChar { it.titlecase(locale) } ?: name
 }

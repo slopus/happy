@@ -26,6 +26,13 @@ enum class LinkState {
 
     /** No network at all ("Waiting for network…"). */
     WaitingForNetwork,
+
+    /**
+     * The agent's daemon is draining to restart, for an update or by hand
+     * ("Agent restarting…", iOS's `LinkState.restarting`): it answers reads,
+     * refuses writes, and a new process takes over. Until a hello says otherwise.
+     */
+    Restarting,
 }
 
 /**
@@ -109,7 +116,7 @@ fun accountLinkState(connected: Boolean, catchingUp: Boolean, network: Boolean):
 
 /** Whether a header says [this] with a spinner before the words: the link on its way somewhere. */
 val LinkState.spins: Boolean
-    get() = this == LinkState.Syncing || this == LinkState.Connecting || this == LinkState.WaitingForNetwork
+    get() = this == LinkState.Syncing || this == LinkState.Connecting || this == LinkState.WaitingForNetwork || this == LinkState.Restarting
 
 /**
  * What a header shows of this flow of link states, debounced by
