@@ -404,6 +404,8 @@ describe('SessionConfigPanel composer layout', () => {
     });
 
     it('preserves a Magpie model shared by two agents without changing agent from model selection', async () => {
+        mocks.discoverMagpie = true;
+        mocks.magpieCatalog = { modelsUpdatedAt: 1, models: [{ code: 'foreign-gateway', value: 'Foreign Gateway' }] };
         mocks.cliAvailability.claude = true;
         mocks.readClaudeModels.mockResolvedValue({ source: 'claude-native', observedAt: 1,
             models: [{ code: 'gpt-5.6-sol', value: 'Magpie GPT' }, { code: 'opus', value: 'Opus' }] });
@@ -420,6 +422,7 @@ describe('SessionConfigPanel composer layout', () => {
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-sol');
         act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-magpie::foreign-gateway' })).toHaveLength(0);
         act(() => renderer.root.findByProps({ testID: 'session-composer-model-claude::gpt-5.6-sol' }).props.onPress());
         expect(mocks.draftStore.getState().agentType).toBe('claude');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-sol');

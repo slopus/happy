@@ -1025,7 +1025,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 ? [{ key: 'default', name: t('agentInput.model.cliAutomatic'), description: null }]
                 : getSuggestedModelModes(agent, metadata, t), [codexAccountProfileId]);
         const catalogDirectory = worktreeKey && !['__none__', '__new__'].includes(worktreeKey) ? worktreeKey : resolvedSelectedPath ?? selectedHomeDir ?? null;
-        const canDiscoverMagpie = !!selectedMachine && isMachineOnline(selectedMachine) && !!selectedMachine.metadata?.magpieModelCatalog
+        const canDiscoverMagpie = selectedAgent === 'codex' && !!selectedMachine && isMachineOnline(selectedMachine) && !!selectedMachine.metadata?.magpieModelCatalog
             && availableAgents.some(agent => agent.key === 'codex');
         const magpie = useMagpieModelCatalog(selectedMachineId, catalogDirectory, canDiscoverMagpie);
         const useMagpie = selectedAgent === 'codex' && draft.useMagpie === true;
@@ -1098,7 +1098,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 ? [] : (concrete.length ? concrete : currentModels).map(model => ({
                     ...model, ...labels, key: `${selectedAgent}::${model.key}`,
                 }));
-            return [...normal, ...magpieModels.map(model => ({
+            return [...normal, ...(selectedAgent === 'codex' ? magpieModels : []).map(model => ({
                 ...model, key: `magpie::${model.key}`, connectionLabel: 'Magpie',
             }))];
         }, [modelModes, magpieModels, selectedAgent, codexAccountProfileId, useMagpie, getNewSessionModels, modelMetadata]);

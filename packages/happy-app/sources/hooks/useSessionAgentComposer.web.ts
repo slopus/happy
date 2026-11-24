@@ -65,7 +65,7 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
     const choice = draft.scope === scope ? draft.choices[selected] : undefined;
     const online = Boolean(machine && isMachineOnline(machine));
     const runningMagpie = current === 'codex' && !session.metadata?.codexAccountProfileId && session.metadata?.codexMagpieConnection === true;
-    const discoverMagpie = online && !runningMagpie && !!machine?.metadata?.magpieModelCatalog
+    const discoverMagpie = selected === 'codex' && online && !runningMagpie && !!machine?.metadata?.magpieModelCatalog
         && !session.metadata?.application && available.some(agent => agent.key === 'codex');
     const magpie = useMagpieModelCatalog(machineId, directory, discoverMagpie);
     const magpieMetadata: Metadata | null = magpie.catalog && !runningMagpie
@@ -120,7 +120,7 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
             worktreeKey: null, ...selection, fastMode: choice?.fastMode === true && supportsCodexFast(modelMetadata, selection.modelMode),
             ...(useMagpie ? { magpieModel: selection.modelMode, expectedCodexAccountProfileId: null }
                 : selected === 'codex' ? { expectedCodexAccountProfileId: accountProfile } : {}),
-            prompt: submission.prompt, images: submission.images,
+            prompt: submission.prompt, images: submission.images, continuationSourceSessionId: session.id,
         }, false, args.flushDraft);
     };
     if (!directory || !machineId || !agents.some(a => a.key === current) || session.metadata?.application) return undefined;
@@ -133,10 +133,13 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
             return { scope, agent: target.key, choices };
         });
     };
-    const nativeRoutes = magpieModels.map(model => ({
+    const nativeRoutes = selected === 'codex' ? magpieModels.map(model => ({
         ...model, key: `magpie::${model.key}`, connectionLabel: 'Magpie',
-    }));
-    const sourceModels = (useMagpie ? base.modelOptions : pending ? models : base.modelOptions)
+    })) : [];
+    const accountModels = selected === 'codex' && (accountProfile === undefined || !metadata?.models?.length)
+        ? [{ key: 'default', name: t('agentInput.model.cliAutomatic'), description: null }]
+        : getSuggestedModelModes(selected, metadata, t);
+    const sourceModels = (useMagpie ? current === 'codex' ? base.modelOptions : accountModels : pending ? models : base.modelOptions)
         .map(model => ({ ...model, ...(nativeRoutes.length && current === 'codex' && (!pending || useMagpie)
             ? { connectionLabel: runningMagpie ? 'Magpie' : session.metadata?.codexAccountProfileId ? 'ChatGPT' : 'Codex' } : {}) }));
     const options = [...sourceModels, ...nativeRoutes];
@@ -150,7 +153,7 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         : pending ? stagedModel : base.model;
     const refreshCurrent = pending ? (selected === 'claude' ? claude.refresh : undefined) : base.onRefreshModels;
     const onModelChange = (key: string) => {
-        if (busy) return;
+        if (busy || !options.some(model => model.key === key)) return;
         if (key.startsWith('magpie::')) {
             const modelId = key.slice('magpie::'.length);
             if (!magpieModels.some(model => model.key === modelId)) return;
@@ -160,8 +163,16 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
                     fastMode: useMagpie && choice?.fastMode === true && supportsCodexFast(magpieMetadata, modelId) },
             } }));
         } else if (useMagpie) {
-            selectAgent(current);
-            base.onModelChange(key);
+            if (current === 'codex') {
+                selectAgent(current);
+                base.onModelChange(key);
+            } else {
+                setDraft(previous => ({ scope, agent: 'codex', choices: {
+                    ...(previous.scope === scope ? previous.choices : {}),
+                    codex: { modelMode: key, fastMode: false,
+                        modelSelection: { agent: 'codex', defaultValue: resolveAgentDefaultConfig(defaults, 'codex').modelMode } },
+                } }));
+            }
         } else if (pending) {
             update({ modelMode: key, fastMode: false,
                 modelSelection: { agent: selected, defaultValue: resolveAgentDefaultConfig(defaults, selected).modelMode } });

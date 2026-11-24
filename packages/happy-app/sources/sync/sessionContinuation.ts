@@ -1,6 +1,5 @@
-import { sync } from './sync';
 import { isRetiredSession } from './retiredSessions';
-import { buildContinuationContext } from './continuationContext';
+import { prepareSessionContinuationContext as prepareContext } from './sessionContextHandoff';
 import { MMKV, writeDeviceStorage } from '@/persistence/deviceStorage';
 import { accountStorageId, assertAccountRuntime } from '@/auth/accountRuntime';
 import { storage } from './storage';
@@ -12,31 +11,6 @@ import { getSessionName } from '@/utils/sessionUtils';
 import type { Session } from './storageTypes';
 
 const preparedContexts = new Map<string, string>();
-async function prepareContext(id: string): Promise<string> {
-    await sync.ensureMessagesLoaded(id);
-    assertAccountRuntime();
-    // Either marker can expose a stale window while the other marker disagrees.
-    const visible = storage.getState().sessionMessages[id];
-    if (visible?.hasMoreNewer || visible?.isAtLatest === false) await sync.jumpToLatestMessages(id);
-    assertAccountRuntime();
-    const history = storage.getState().sessionMessages[id];
-    if (!history?.isLoaded || !history.isAtLatest || history.hasMoreNewer || !storage.getState().sessions[id]) throw new Error('continuation-history-unavailable');
-    // The latest wire page may consist entirely of tool events. Walk a bounded
-    // number of older pages until an actual user request is included, retaining
-    // the latest text even if the visible history window shifts while paging.
-    const collected = new Map(history.messages.map(message => [message.id, message]));
-    for (let page = 0; page < 5 && ![...collected.values()].some(message => message.kind === 'user-text')
-        && storage.getState().sessionMessages[id]?.hasMoreOlder; page++) {
-        await sync.loadOlderMessages(id);
-        assertAccountRuntime();
-        const older = storage.getState().sessionMessages[id];
-        if (!older?.isLoaded || !storage.getState().sessions[id]) throw new Error('continuation-history-unavailable');
-        for (const message of older.messages) collected.set(message.id, message);
-    }
-    if (storage.getState().sessionMessages[id]?.hasMoreOlder
-        && ![...collected.values()].some(message => message.kind === 'user-text')) throw new Error('continuation-history-unavailable');
-    return buildContinuationContext([...collected.values()], storage.getState().sessions[id].metadata?.continuationContext);
-}
 const receipts = new MMKV({ id: accountStorageId('session-continuations') });
 export function continuationSpawnOptions(source: Session): SpawnSessionOptions {
     if (isRetiredSession(source)) throw new Error('personal-agent-retired');

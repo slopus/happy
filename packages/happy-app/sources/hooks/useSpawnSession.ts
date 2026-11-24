@@ -16,6 +16,7 @@ import { ensureSessionHydratedWithRetry } from '@/sync/ensureSessionHydratedWith
 import { traceStartup } from '@/sync/sessionStartupTrace';
 import { sessionStartupTraceRuntime, type WebStartupTraceHandle } from '@/sync/sessionStartupTraceRuntime';
 import { markSessionCriticalPathHydrationRetry } from '@/sync/sessionCriticalPathProbeBridge';
+import { attachSessionContinuationContext, prepareSessionContinuationContext } from '@/sync/sessionContextHandoff';
 
 export interface SpawnSessionArgs {
     machineId: string;
@@ -41,6 +42,8 @@ export interface SpawnSessionArgs {
     environmentVariables?: Record<string, string>;
     /** Optional sidebar List that should own the newly created session. */
     sidebarListId?: string | null;
+    /** Carry a bounded history excerpt when explicitly changing Agent/connection. */
+    continuationSourceSessionId?: string;
 }
 
 export type SpawnSessionCoreResult =
@@ -56,6 +59,7 @@ type PendingHydration = {
     queued: boolean;
     receipt?: LocalMessageQueueReceipt;
     configured: boolean;
+    handoff?: { sourceId: string; context: string; attached: boolean };
     onQueued?: () => void;
 };
 
@@ -244,6 +248,11 @@ export function useSpawnSession() {
     }, [beginSending, endSending]);
 
     const finishPending = React.useCallback(async (pending: PendingHydration): Promise<boolean> => {
+        if (pending.handoff && !pending.handoff.attached) {
+            await attachSessionContinuationContext(pending.sessionId, pending.handoff.sourceId, pending.handoff.context);
+            pending.handoff.attached = true;
+        }
+        if (!mountedRef.current || pendingHydration.current !== pending) return false;
         if (!pending.queued) {
             const attachments = pending.args.images?.length ? pending.args.images : undefined;
             if (pending.args.prompt || attachments) {
@@ -303,9 +312,15 @@ export function useSpawnSession() {
         });
         beginSending();
         try {
+            const handoff = args.continuationSourceSessionId ? {
+                sourceId: args.continuationSourceSessionId,
+                context: await prepareSessionContinuationContext(args.continuationSourceSessionId),
+                attached: false,
+            } : undefined;
+            if (!mountedRef.current) return false;
             const result = await spawnSession(args, approvedNewDirectoryCreation, startupTrace, sessionId => {
                 sessionStartupTraceRuntime.bindSession(startupTrace.runtimeHandle, sessionId);
-                pendingHydration.current = { sessionId, args, trace: startupTrace, retrying: false, queued: false, configured: false, onQueued };
+                pendingHydration.current = { sessionId, args, trace: startupTrace, retrying: false, queued: false, configured: false, handoff, onQueued };
             });
             if (!mountedRef.current) {
                 sessionStartupTraceRuntime.cancel(startupTrace.runtimeHandle, 'spawn-cancelled');

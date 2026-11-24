@@ -30,6 +30,13 @@ const mocks = vi.hoisted(() => ({
     applySettings: vi.fn(),
     alert: vi.fn(),
     confirm: vi.fn(),
+    prepareHandoff: vi.fn(),
+    attachHandoff: vi.fn(),
+}));
+
+vi.mock('@/sync/sessionContextHandoff', () => ({
+    prepareSessionContinuationContext: mocks.prepareHandoff,
+    attachSessionContinuationContext: mocks.attachHandoff,
 }));
 
 vi.mock('expo-crypto', () => ({
@@ -169,6 +176,8 @@ describe('useSpawnSession', () => {
         mocks.sendMessage.mockResolvedValue({ type: 'queued', sessionId: 'session-1', localIds: ['local-1'] });
         mocks.awaitLocalMessageProjection.mockReset().mockResolvedValue(true);
         mocks.confirm.mockResolvedValue(false);
+        mocks.prepareHandoff.mockReset().mockResolvedValue('Saved conversation: ORCHID-7392');
+        mocks.attachHandoff.mockReset().mockResolvedValue(undefined);
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -179,6 +188,63 @@ describe('useSpawnSession', () => {
     afterEach(() => {
         consoleErrorSpy.mockRestore();
         delete (globalThis as { __happySessionCriticalPathProbe?: unknown }).__happySessionCriticalPathProbe;
+    });
+
+    it('snapshots source history before spawn and persists it before the first Antigravity message', async () => {
+        const order: string[] = [];
+        mocks.prepareHandoff.mockImplementationOnce(async () => { order.push('snapshot'); return 'ORCHID-7392'; });
+        mocks.machineSpawnNewSession.mockImplementationOnce(async () => { order.push('spawn'); return mocks.spawnResult; });
+        mocks.attachHandoff.mockImplementationOnce(async () => { order.push('attach'); });
+        mocks.sendMessage.mockImplementationOnce(async () => {
+            order.push('send');
+            return { type: 'queued', sessionId: 'session-1', localIds: ['local-1'] };
+        });
+        const hook = renderHook();
+        await act(async () => {
+            expect(await hook.current().spawn({ ...args, agent: 'antigravity', images: [],
+                continuationSourceSessionId: 'codex-source', prompt: 'What was the code?' })).toBe(true);
+        });
+        expect(order).toEqual(['snapshot', 'spawn', 'attach', 'send']);
+        expect(mocks.attachHandoff).toHaveBeenCalledWith('session-1', 'codex-source', 'ORCHID-7392');
+        expect(mocks.sendMessage).toHaveBeenCalledWith('session-1', 'What was the code?', expect.any(Object));
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({ agent: 'antigravity' }));
+        hook.unmount();
+    });
+
+    it('fails before spawning when source history cannot be read', async () => {
+        mocks.prepareHandoff.mockRejectedValueOnce(new Error('continuation-history-unavailable'));
+        const hook = renderHook();
+        await act(async () => { expect(await hook.current().spawn({ ...args, continuationSourceSessionId: 'source' })).toBe(false); });
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        hook.unmount();
+    });
+
+    it('retries handoff persistence on the same worker without sending before it is saved', async () => {
+        mocks.attachHandoff.mockRejectedValueOnce(new Error('synthetic-metadata-failure'));
+        const hook = renderHook();
+        await act(async () => { expect(await hook.current().spawn({ ...args, continuationSourceSessionId: 'source' })).toBe(false); });
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        expect(hook.current().hydrationError).toEqual({ sessionId: 'session-1' });
+        await act(async () => { expect(await hook.current().retryHydration()).toBe(true); });
+        expect(mocks.attachHandoff).toHaveBeenCalledTimes(2);
+        expect(mocks.prepareHandoff).toHaveBeenCalledTimes(1);
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(1);
+        expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+        hook.unmount();
+    });
+
+    it('does not send an old draft if the composer unmounts while handoff persistence is pending', async () => {
+        let release!: () => void;
+        mocks.attachHandoff.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+        const hook = renderHook();
+        let pending!: Promise<boolean>;
+        await act(async () => { pending = hook.current().spawn({ ...args, continuationSourceSessionId: 'source' }); });
+        expect(mocks.attachHandoff).toHaveBeenCalledOnce();
+        hook.unmount();
+        await act(async () => { release(); expect(await pending).toBe(false); });
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
     });
 
     it('waits for receipt projection before transferring the draft and navigating once', async () => {

@@ -8,7 +8,7 @@ vi.mock('./useMagpieModelCatalog', () => ({ useMagpieModelCatalog: () => ({ cata
 const mocks = vi.hoisted(() => ({ spawn: vi.fn(), retry: vi.fn(), sending: false, hydrationError: null as any, flush: vi.fn(), update: vi.fn(),
     images: [] as any[], sessions: [] as any[], magpieCatalog: null as any, alert: vi.fn(),
     settings: { codingAgentMachines: { m: ['codex', 'claude', 'opencode'] }, agentDefaultOverrides: {} } as any,
-    machine: { id: 'm', active: true, activeAt: Date.now(), metadata: { homeDir: '/tmp', cliAvailability: { codex: true, claude: true, opencode: true } } },
+    machine: { id: 'm', active: true, activeAt: Date.now(), metadata: { homeDir: '/tmp', cliAvailability: { codex: true, claude: true, opencode: true, antigravity: true } } },
 }));
 vi.mock('@/sync/storage', () => ({ useMachine: () => mocks.machine, useAllSessions: () => mocks.sessions, useSetting: (k: string) => mocks.settings[k] }));
 vi.mock('@/hooks/useCodexAccounts', () => ({ useCodexAccounts: () => ({ loading: false, error: null, bindings: [] }) }));
@@ -23,6 +23,26 @@ function mount(source = session) { act(() => { renderer = TestRenderer.create(<H
 function Harness({ source }: any) { value = useSessionAgentComposer({ session: source, base, readSubmission: () => ({ prompt: 'keep this draft', images: mocks.images }), flushDraft: mocks.flush });return null; }
 beforeEach(() => { renderer?.unmount(); vi.clearAllMocks(); mocks.sending=false;mocks.hydrationError=null;mocks.images=[];mocks.sessions=[];mocks.magpieCatalog=null;mocks.settings.agentDefaultOverrides={};mocks.spawn.mockResolvedValue(true); });
 describe('Web composer Agent staging', () => {
+ it('keeps gateway models scoped to Codex even when a previous catalog is cached', () => {
+  mocks.magpieCatalog = { modelsUpdatedAt: 1, models: [{ code: 'gateway-gpt', value: 'Gateway GPT' }] };
+  mount({ ...session, metadata: { ...session.metadata, flavor: 'antigravity' } });
+  expect(value.modeSelector.modelOptions.map((model: any) => model.key)).toEqual(['gpt-live']);
+  act(() => value.modeSelector.onModelChange('magpie::gateway-gpt'));
+  expect(value.pendingAgent).toBeNull();
+  expect(value.modeSelector.agentSwitcher.id).toBe('antigravity');
+  expect(mocks.update).not.toHaveBeenCalled();
+  act(() => value.modeSelector.agentSwitcher.onSelect('claude'));
+  expect(value.modeSelector.modelOptions.map((model: any) => model.key)).toEqual(['sonnet-native']);
+  act(() => value.modeSelector.onModelChange('magpie::gateway-gpt'));
+  expect(value.pendingAgent).toBe('claude');
+ });
+ it('cannot apply a model outside the selected Agent catalog', () => {
+  mount();
+  act(() => value.modeSelector.onModelChange('foreign-model'));
+  expect(mocks.update).not.toHaveBeenCalled();
+  act(() => value.modeSelector.onModelChange('gpt-live'));
+  expect(mocks.update).toHaveBeenCalledWith('gpt-live');
+ });
  it('switches directly without spawning or changing source settings and restores current selection', () => {
   mount();
   expect(value.pendingAgent).toBeNull();
@@ -40,8 +60,38 @@ describe('Web composer Agent staging', () => {
   mount();
   act(() => value.modeSelector.agentSwitcher.onSelect('claude'));
   await act(async () => { await value.submit(); });
-  expect(mocks.spawn).toHaveBeenCalledWith(expect.objectContaining({ machineId:'m',path:'/tmp/project',agent:'claude',prompt:'keep this draft',modelMode:'sonnet-native' }),false,expect.any(Function));
+  expect(mocks.spawn).toHaveBeenCalledWith(expect.objectContaining({ machineId:'m',path:'/tmp/project',agent:'claude',prompt:'keep this draft',modelMode:'sonnet-native',continuationSourceSessionId:'s' }),false,expect.any(Function));
   expect(mocks.flush).toHaveBeenCalled();
+  expect(mocks.update).not.toHaveBeenCalled();
+ });
+ it('stages Antigravity explicitly and hands off the source with its native model', async () => {
+  const configured = mocks.settings.codingAgentMachines;
+  mocks.settings.codingAgentMachines = { m: ['codex', 'antigravity'] };
+  mocks.sessions = [{ id: 'agy-catalog', metadata: { machineId: 'm', flavor: 'antigravity',
+   models: [{ code: 'gemini-4-neon', value: 'Gemini 4 Neon' }] } }];
+  try {
+   mount();
+   act(() => value.modeSelector.agentSwitcher.onSelect('antigravity'));
+   expect(value.pendingAgent).toBe('antigravity');
+   expect(value.modeSelector.modelOptions.map((model: any) => model.key)).toEqual(['gemini-4-neon']);
+   await act(async () => value.submit());
+   expect(mocks.spawn).toHaveBeenCalledWith(expect.objectContaining({ agent: 'antigravity',
+    modelMode: 'gemini-4-neon', continuationSourceSessionId: 's' }), false, expect.any(Function));
+   expect(mocks.update).not.toHaveBeenCalled();
+  } finally { mocks.settings.codingAgentMachines = configured; }
+ });
+ it('keeps a staged Codex selection when returning from its Magpie connection to the account catalog', () => {
+  mocks.magpieCatalog = { modelsUpdatedAt: 1, models: [{ code: 'gateway-gpt', value: 'Gateway GPT' }] };
+  mocks.sessions = [{ id: 'codex-catalog', metadata: { machineId: 'm', flavor: 'codex',
+   models: [{ code: 'native-gpt', value: 'Native GPT' }] } }];
+  mount({ ...session, metadata: { ...session.metadata, flavor: 'claude' } });
+  act(() => value.modeSelector.agentSwitcher.onSelect('codex'));
+  act(() => value.modeSelector.onModelChange('magpie::gateway-gpt'));
+  expect(value.modeSelector.modelOptions.map((model: any) => model.key)).toEqual(['native-gpt', 'magpie::gateway-gpt']);
+  act(() => value.modeSelector.onModelChange('native-gpt'));
+  expect(value.pendingAgent).toBe('codex');
+  expect(value.modeSelector.agentSwitcher.id).toBe('codex');
+  expect(value.modeSelector.model.key).toBe('native-gpt');
   expect(mocks.update).not.toHaveBeenCalled();
  });
  it('shows gateway and account routes together and stages a new Magpie session from managed Codex', async () => {

@@ -41,6 +41,21 @@ function source() {
     return id;
 }
 describe('fresh continuation integration', () => {
+    it('attaches cross-agent context without copying source model, permissions, or backend identity', async () => {
+        const id = source();
+        state.sessions.target = { id: 'target', metadataVersion: 4,
+            metadata: { flavor: 'antigravity', path: '/project', host: 'host', currentModelCode: 'gemini-neon', custom: 'keep' } };
+        const { prepareSessionContinuationContext, attachSessionContinuationContext } = await import('./sessionContextHandoff');
+        const excerpt = await prepareSessionContinuationContext(id);
+        await attachSessionContinuationContext('target', id, excerpt);
+        expect(state.sessions.target.metadata).toMatchObject({ flavor: 'antigravity', currentModelCode: 'gemini-neon', custom: 'keep',
+            continuationOfSessionId: id, continuationContext: excerpt });
+        expect(excerpt).toContain('ORCHID');
+        expect(state.sessions[id].metadata.continuedBySessionId).toBeUndefined();
+        expect(state.updateSessionModelMode).not.toHaveBeenCalled();
+        expect(state.updateSessionPermissionMode).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+    });
     it('rejects retired history before reading recovery receipts, loading messages, or spawning another engine', async () => {
         const id = source();
         state.sessions[id].metadata.flavor = 'personal';
