@@ -28,7 +28,7 @@ describe.skipIf(process.platform === 'win32')('private CLI state on POSIX', () =
     await p.clearCredentials();
     await p.writeCredentialsDataKey({ token: 'test', publicKey: key, machineKey: key });
     await p.updateSettings(settings => settings);
-    p.writeDaemonState({ pid: 1, httpPort: 1, startTime: '', startedWithCliVersion: '' });
+    p.writeDaemonState({ pid: 1, httpPort: 1, startTime: '', startedWithCliVersion: '', controlToken: '1'.repeat(64) });
     p.persistSession('test', { encryptionKey: 'test', encryptionVariant: 'legacy', seq: 0, metadataVersion: 0,
       agentStateVersion: 0, metadata: { path: '.', host: 'test', homeDir: dir, happyHomeDir: dir,
         happyLibDir: dir, happyToolsDir: dir }, savedAt: Date.now() });

@@ -21,6 +21,7 @@ class Configuration {
   public readonly settingsFile: string
   public readonly privateKeyFile: string
   public readonly daemonStateFile: string
+  public readonly legacyDaemonStateFile: string
   public readonly daemonLockFile: string
   public readonly sessionsFile: string
   public readonly currentCliVersion: string
@@ -46,7 +47,8 @@ class Configuration {
     this.logsDir = join(this.happyHomeDir, 'logs')
     this.settingsFile = join(this.happyHomeDir, 'settings.json')
     this.privateKeyFile = join(this.happyHomeDir, 'access.key')
-    this.daemonStateFile = join(this.happyHomeDir, 'daemon.state.json')
+    this.legacyDaemonStateFile = join(this.happyHomeDir, 'daemon.state.json')
+    this.daemonStateFile = join(this.happyHomeDir, 'daemon.control.json')
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock')
     this.sessionsFile = join(this.happyHomeDir, 'sessions.json')
 
@@ -58,7 +60,7 @@ class Configuration {
         throw new Error(`Unsafe Happy home: ${this.happyHomeDir}. Use a dedicated directory owned by your account and not writable by other users. For your own dedicated directory, remove group/other write access with chmod go-w; otherwise set HAPPY_HOME_DIR to a private directory.`)
       }
       if (dedicatedHome && (dir.mode & 0o777) !== 0o700) chmodSync(this.happyHomeDir, 0o700)
-      for (const path of [this.privateKeyFile, this.daemonStateFile, this.sessionsFile, this.settingsFile,
+      for (const path of [this.privateKeyFile, this.daemonStateFile, this.legacyDaemonStateFile, this.sessionsFile, this.settingsFile,
         this.sessionsFile + '.tmp', this.settingsFile + '.tmp', this.daemonLockFile, this.settingsFile + '.lock']) {
         protectExistingFile(path)
       }

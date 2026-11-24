@@ -29,6 +29,7 @@ import type { SessionEnvelope } from '@slopus/happy-wire';
 import { getIntegrationEnv } from '@/testing/currentIntegrationEnv';
 import {
   listDaemonSessions,
+  spawnDaemonSession,
   stopDaemonSession,
 } from '@/daemon/controlClient';
 import { readDaemonState } from '@/persistence';
@@ -400,21 +401,10 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
       return;
     }
 
-    const state = await readDaemonState();
-    const port = state!.httpPort;
-    const spawnResponse = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        directory: integrationEnv.projectPath,
-        agent: 'openclaw',
-        environmentVariables: {
-          OPENCLAW_GATEWAY_URL: GATEWAY_URL,
-          OPENCLAW_GATEWAY_TOKEN: token,
-        },
-      }),
+    const spawnResult = await spawnDaemonSession(integrationEnv.projectPath, undefined, {
+      agent: 'openclaw',
+      environmentVariables: { OPENCLAW_GATEWAY_URL: GATEWAY_URL, OPENCLAW_GATEWAY_TOKEN: token },
     });
-    const spawnResult = await spawnResponse.json() as { success: boolean; sessionId: string };
     expect(spawnResult.success).toBe(true);
     expect(spawnResult.sessionId).toBeTruthy();
 
@@ -462,41 +452,18 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
       return;
     }
 
-    const state = await readDaemonState();
-    const port = state!.httpPort;
-
-    const spawn1 = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        directory: integrationEnv.projectPath,
-        agent: 'openclaw',
-        environmentVariables: {
-          OPENCLAW_GATEWAY_URL: GATEWAY_URL,
-          OPENCLAW_GATEWAY_TOKEN: token,
-        },
-      }),
+    const spawn = () => spawnDaemonSession(integrationEnv.projectPath, undefined, {
+      agent: 'openclaw',
+      environmentVariables: { OPENCLAW_GATEWAY_URL: GATEWAY_URL, OPENCLAW_GATEWAY_TOKEN: token },
     });
-    const result1 = await spawn1.json() as { success: boolean; sessionId: string };
+    const result1 = await spawn();
     expect(result1.success).toBe(true);
     await new Promise((r) => setTimeout(r, 3000));
 
     await stopDaemonSession(result1.sessionId);
     await new Promise((r) => setTimeout(r, 1000));
 
-    const spawn2 = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        directory: integrationEnv.projectPath,
-        agent: 'openclaw',
-        environmentVariables: {
-          OPENCLAW_GATEWAY_URL: GATEWAY_URL,
-          OPENCLAW_GATEWAY_TOKEN: token,
-        },
-      }),
-    });
-    const result2 = await spawn2.json() as { success: boolean; sessionId: string };
+    const result2 = await spawn();
     expect(result2.success).toBe(true);
     await new Promise((r) => setTimeout(r, 3000));
 

@@ -72,7 +72,7 @@ If you want the daemon to come back automatically after a reboot — without ope
 if [[ -o interactive ]] && [[ -z "$HAPPY_DAEMON_CHECKED" ]]; then
     export HAPPY_DAEMON_CHECKED=1
     () {
-        local state=$HOME/.happy/daemon.state.json
+        local state=${HAPPY_HOME_DIR:-$HOME/.happy}/daemon.control.json
         local pid=$(grep -oE '"pid"[[:space:]]*:[[:space:]]*[0-9]+' "$state" 2>/dev/null | grep -oE '[0-9]+')
         if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
             happy daemon start >/dev/null 2>&1
@@ -86,6 +86,12 @@ The first interactive shell after a reboot triggers the start; subsequent shells
 > **macOS users:** prefer this shell-init approach over a `launchd` LaunchAgent. A LaunchAgent runs in an agent domain that is **detached from your GUI/Aqua login session**, which means the bundled `claude-agent-sdk` cannot reach the macOS keychain and silently fails authentication ("Failed to authenticate. API Error: 401 terminated", `duration_api_ms: 0`). If you must use launchd, your wrapper has to read the OAuth access token from `~/.claude/.credentials.json` and export it as `CLAUDE_CODE_OAUTH_TOKEN` before exec'ing the daemon — and you'll need to handle token rotation yourself.
 
 ## Authentication
+
+### Moving from Happy 1.2.6 to authenticated daemon control
+
+Finish running sessions first and pause any shell startup hooks. Using the old CLI and the same Happy home, run `happy daemon stop` and verify `happy daemon status` reports no running daemon. Upgrade **all** installations that share that home, then run `happy daemon start` and verify status with the updated CLI. A new CLI can request a graceful stop from a healthy 1.2.6 daemon, but will not register sessions with it or force-kill a PID. If stop fails, check the daemon and retry; do not delete live state/lock files.
+
+Mixed versions sharing one home are **not supported**. 1.2.6 cannot discover or register with the new daemon; its status is not authoritative and its logout can still clear shared credentials. Use distinct private `HAPPY_HOME_DIR` directories and separately pair each installation if both versions are required. For a downgrade, finish sessions and stop the new daemon with the new CLI **before** launching the old one. Do not print or share `daemon.control.json`: it contains the local bearer credential.
 
 ```bash
 happy auth login

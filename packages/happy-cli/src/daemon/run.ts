@@ -14,7 +14,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, markSessionStopped } from '@/persistence';
+import { writeDaemonState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, markSessionStopped } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -958,7 +958,7 @@ export async function startDaemon(): Promise<void> {
 
     let connectionReady = () => false;
     // Start control server
-    const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
+    const { port: controlPort, controlToken, stop: stopControlServer } = await startDaemonControlServer({
       getChildren: getCurrentChildren,
       stopSession,
       spawnSession,
@@ -973,7 +973,8 @@ export async function startDaemon(): Promise<void> {
     });
 
     // Write initial daemon state (no lock needed for state file)
-    const fileState: DaemonLocallyPersistedState = {
+    const fileState = {
+      controlToken,
       pid: process.pid,
       httpPort: controlPort,
       startTime: new Date().toLocaleString(),
@@ -1112,13 +1113,9 @@ export async function startDaemon(): Promise<void> {
 
       // Heartbeat
       try {
-        const updatedState: DaemonLocallyPersistedState = {
-          pid: process.pid,
-          httpPort: controlPort,
-          startTime: fileState.startTime,
-          startedWithCliVersion: packageJson.version,
+        const updatedState = {
+          ...fileState,
           lastHeartbeat: new Date().toLocaleString(),
-          daemonLogPath: fileState.daemonLogPath
         };
         writeDaemonState(updatedState);
         if (process.env.DEBUG) {

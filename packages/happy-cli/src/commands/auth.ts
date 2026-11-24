@@ -5,7 +5,6 @@ import { configuration } from '@/configuration';
 import { handleDesktopAuth } from './desktopAuth';
 import { createInterface } from 'node:readline';
 import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
-import { logger } from '@/ui/logger';
 import os from 'node:os';
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
@@ -68,13 +67,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     console.log(chalk.gray('  • Re-authenticate and register machine\n'));
 
     // Stop daemon if running
-    try {
-      logger.debug('Stopping daemon for force auth...');
-      await stopDaemon();
-      console.log(chalk.gray('✓ Stopped daemon'));
-    } catch (error) {
-      logger.debug('Daemon was not running or failed to stop:', error);
-    }
+    await stopDaemon();
 
     // Clear credentials
     await clearCredentials();
@@ -144,10 +137,7 @@ async function handleAuthLogout(): Promise<void> {
   if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
     try {
       // Stop daemon if running
-      try {
-        await stopDaemon();
-        console.log(chalk.gray('Stopped daemon'));
-      } catch { }
+      await stopDaemon();
 
       // The home is shared with Happy Agent. Logout owns only CLI authentication,
       // never the Agent runtime/database or the local history used for resume.

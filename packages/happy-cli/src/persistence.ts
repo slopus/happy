@@ -9,6 +9,7 @@ import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/
 import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, linkSync } from 'node:fs'
 import { constants } from 'node:fs'
 import os from 'node:os'
+import { randomUUID } from 'node:crypto'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
@@ -74,6 +75,7 @@ function migrateSettings(raw: any, fromVersion: number): any {
 export interface DaemonLocallyPersistedState {
   pid: number;
   httpPort: number;
+  controlToken?: string; // Absent in state written by older daemons
   startTime: string;
   startedWithCliVersion: string;
   lastHeartbeat?: string;
@@ -297,32 +299,47 @@ export async function clearMachineId(): Promise<void> {
  * Read daemon state from local file
  */
 export async function readDaemonState(): Promise<DaemonLocallyPersistedState | null> {
-  try {
-    if (!existsSync(configuration.daemonStateFile)) {
-      return null;
+  for (const path of [configuration.daemonStateFile, configuration.legacyDaemonStateFile]) {
+    let content: string;
+    try {
+      content = await readFile(path, 'utf-8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw new Error(`Cannot read daemon state: ${path}`);
     }
-    const content = await readFile(configuration.daemonStateFile, 'utf-8');
-    return JSON.parse(content) as DaemonLocallyPersistedState;
-  } catch {
-    // State corrupted somehow :(
-    console.error(`[PERSISTENCE] Cannot read daemon state: ${configuration.daemonStateFile}`);
-    return null;
+    // Only the legacy filename authorizes a tokenless upgrade stop. Never downgrade on corruption.
+    try {
+      const state = JSON.parse(content);
+      if (Number.isSafeInteger(state.pid) && state.pid > 0 && Number.isInteger(state.httpPort) &&
+        state.httpPort > 0 && state.httpPort <= 65535 && (path === configuration.daemonStateFile
+          ? typeof state.controlToken === 'string' && /^[a-f0-9]{64}$/.test(state.controlToken)
+          : state.controlToken === undefined)) return state;
+    } catch { /* Do not log parse errors containing state or secrets. */ }
+    throw new Error(`Invalid daemon state: ${path}`);
   }
+  return null;
 }
 
 /**
  * Write daemon state to local file (synchronously for atomic operation)
  */
-export function writeDaemonState(state: DaemonLocallyPersistedState): void {
-  writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), { mode: 0o600 });
+export function writeDaemonState(state: DaemonLocallyPersistedState & { controlToken: string }): void {
+  // Publish complete snapshots: readers must not mistake a partial heartbeat for missing auth.
+  const tmpFile = `${configuration.daemonStateFile}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(tmpFile, JSON.stringify(state, null, 2), { mode: 0o600, flag: 'wx' });
+    renameSync(tmpFile, configuration.daemonStateFile);
+  } finally {
+    if (existsSync(tmpFile)) unlinkSync(tmpFile);
+  }
 }
 
 /**
  * Clean up daemon state file and lock file
  */
 export async function clearDaemonState(): Promise<void> {
-  if (existsSync(configuration.daemonStateFile)) {
-    await unlink(configuration.daemonStateFile);
+  for (const path of [configuration.daemonStateFile, configuration.legacyDaemonStateFile]) {
+    if (existsSync(path)) await unlink(path);
   }
   // Also clean up lock file if it exists (for stale cleanup)
   if (existsSync(configuration.daemonLockFile)) {

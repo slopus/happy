@@ -213,6 +213,18 @@ function killProcess(pid: number): void {
     }
 }
 
+// Use the daemon's control protocol, not an unverified PID from either generation of state.
+function stopEnvironmentDaemon(envDir: string): boolean {
+    const cliHome = path.join(envDir, 'cli', 'home');
+    if (!['daemon.control.json', 'daemon.state.json', 'daemon.state.json.lock'].some(file => fs.existsSync(path.join(cliHome, file)))) return false;
+    const bin = path.join(REPO_ROOT, 'packages', 'happy-cli', 'bin', 'happy.mjs');
+    const result = spawnSync(process.execPath, [bin, 'daemon', 'stop'], {
+        env: { ...process.env, HAPPY_HOME_DIR: cliHome }, stdio: 'inherit', timeout: 20_000,
+    });
+    if (result.status !== 0) throw new Error('Could not confirm the environment daemon stopped');
+    return true;
+}
+
 async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs: number, label: string): Promise<void> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
@@ -437,6 +449,7 @@ export async function seedEnvironment(name: string): Promise<void> {
     const secretBase64 = toBase64(secret);
 
     const cliHome = path.join(envDir, "cli", "home");
+    stopEnvironmentDaemon(envDir);
     fs.mkdirSync(cliHome, { recursive: true });
 
     fs.writeFileSync(
@@ -458,18 +471,6 @@ export async function seedEnvironment(name: string): Promise<void> {
     );
 
     writeEnvironmentConfig(config);
-
-    const daemonStatePath = path.join(envDir, "cli", "home", "daemon.state.json");
-    if (fs.existsSync(daemonStatePath)) {
-        try {
-            const daemonState = JSON.parse(fs.readFileSync(daemonStatePath, "utf-8"));
-            if (daemonState.pid && isProcessAlive(daemonState.pid)) {
-                console.log(`Stopping existing daemon (PID ${daemonState.pid})...`);
-                killProcess(daemonState.pid);
-                await new Promise(r => setTimeout(r, 1000));
-            }
-        } catch {}
-    }
 
     const envVars = buildEnvVars(envDir, config.serverPort);
     const daemonEnv = { ...process.env, ...envVars };
@@ -513,17 +514,7 @@ export function stopEnvironment(name: string): void {
         }
     }
 
-    const daemonStatePath = path.join(envDir, "cli", "home", "daemon.state.json");
-    if (fs.existsSync(daemonStatePath)) {
-        try {
-            const daemonState = JSON.parse(fs.readFileSync(daemonStatePath, "utf-8"));
-            if (daemonState.pid && isProcessAlive(daemonState.pid)) {
-                console.log(`Stopping daemon (PID ${daemonState.pid})...`);
-                killProcess(daemonState.pid);
-                killed++;
-            }
-        } catch {}
-    }
+    if (stopEnvironmentDaemon(envDir)) killed++;
 
     if (killed === 0) {
         console.log(`No running services found for "${name}".`);

@@ -1,0 +1,144 @@
+async function readDaemonState() {
+  try {
+    if (!existsSync(configuration.daemonStateFile)) {
+      return null;
+    }
+    const content = await readFile(configuration.daemonStateFile, "utf-8");
+    return JSON.parse(content);
+  } catch (error) {
+    console.error(`[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`, error);
+    return null;
+  }
+}
+async function daemonPost(path, body, timeoutMs) {
+  const state = await readDaemonState();
+  if (!state?.httpPort) {
+    const errorMessage = "No daemon running, no state file found";
+    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+    return {
+      error: errorMessage
+    };
+  }
+  try {
+    process.kill(state.pid, 0);
+  } catch (error) {
+    const errorMessage = "Daemon is not running, file is stale";
+    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+    return {
+      error: errorMessage
+    };
+  }
+  try {
+    const timeout = timeoutMs ?? (process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 1e4);
+    const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+      // Mostly increased for stress test
+      signal: AbortSignal.timeout(timeout)
+    });
+    if (!response.ok) {
+      const errorMessage = `Request failed: ${path}, HTTP ${response.status}`;
+      logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+      return {
+        error: errorMessage
+      };
+    }
+    return await response.json();
+  } catch (error) {
+    const errorMessage = `Request failed: ${path}, ${error instanceof Error ? error.message : "Unknown error"}`;
+    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+    return {
+      error: errorMessage
+    };
+  }
+}
+const SESSION_STARTED_RETRY_TIMEOUT_MS = 3e3;
+const SESSION_STARTED_RETRY_INTERVAL_MS = 100;
+async function notifyDaemonSessionStarted(sessionId, metadata, encryption) {
+  const payload = { sessionId, metadata, encryption };
+  const deadline = Date.now() + SESSION_STARTED_RETRY_TIMEOUT_MS;
+  let result;
+  while (true) {
+    result = await daemonPost("/session-started", payload);
+    if (!result?.error) {
+      return result;
+    }
+    if (Date.now() >= deadline) {
+      return result;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SESSION_STARTED_RETRY_INTERVAL_MS));
+  }
+}
+async function stopDaemonHttp() {
+  await daemonPost("/stop");
+}
+async function checkIfDaemonRunningAndCleanupStaleState() {
+  const state = await readDaemonState();
+  if (!state) {
+    return false;
+  }
+  try {
+    process.kill(state.pid, 0);
+  } catch {
+    logger.debug("[DAEMON RUN] Daemon PID not running, cleaning up state");
+    await cleanupDaemonState();
+    return false;
+  }
+  if (state.httpPort) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${state.httpPort}/list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        signal: AbortSignal.timeout(5e3)
+      });
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}, cleaning up stale state`);
+      await cleanupDaemonState();
+      return false;
+    }
+  }
+  return true;
+}
+async function stopDaemon() {
+  try {
+    const state = await readDaemonState();
+    if (!state) {
+      logger.debug("No daemon state found");
+      return;
+    }
+    logger.debug(`Stopping daemon with PID ${state.pid}`);
+    try {
+      await stopDaemonHttp();
+      await waitForProcessDeath(state.pid, 2e3);
+      logger.debug("Daemon stopped gracefully via HTTP");
+      return;
+    } catch (error) {
+      logger.debug("HTTP stop failed, will force kill", error);
+    }
+    try {
+      process.kill(state.pid, "SIGKILL");
+      logger.debug("Force killed daemon");
+    } catch (error) {
+      logger.debug("Daemon already dead");
+    }
+  } catch (error) {
+    logger.debug("Error stopping daemon", error);
+  }
+}
+async function waitForProcessDeath(pid, timeout) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    try {
+      process.kill(pid, 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch {
+      return;
+    }
+  }
+  throw new Error("Process did not die within timeout");
+}
