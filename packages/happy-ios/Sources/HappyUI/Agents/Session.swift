@@ -64,6 +64,9 @@ final class Session {
     let diffSyntax = DiffSyntaxService()
     /// The conversations read ahead and kept, so they open drawn.
     let warm: WarmChats
+    /// Where the reader left each conversation, to open there again while
+    /// the app runs, as desktop keeps it; none for one left at its newest.
+    var scrollPlaces: [String: AgentChatUltraList.Place] = [:]
     /// The person's settings for this phone.
     let localSettings: LocalSettings
     /// What this computer's placeholder picture is picked by, when it has

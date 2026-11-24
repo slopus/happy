@@ -433,6 +433,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             headerState = state
             updateHeaderStatus()
         }
+        // Left scrolled up: it opens where the reader was.
+        if !previewing { ultra.opensAt = session.scrollPlaces[shownAgentId] }
         if let warm {
             // Read ahead: what it has shows on the first frame.
             session.warm.watch(warm.chat, token: warm.token) { [weak self] snapshot in self?.apply(snapshot) }
@@ -540,6 +542,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             let conversation = conversation
             Task { await conversation.flushDraft() }
         }
+        // Where the reader is, to open on again. One still to open on, its
+        // rows never shown, stays as it was kept.
+        if !previewing, !creating, ultra.opensAt == nil { session.scrollPlaces[shownAgentId] = ultra.place }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
