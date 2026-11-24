@@ -198,6 +198,83 @@ final class CloudPushTests: XCTestCase {
         XCTAssertEqual(asked, 1, "turned off in Settings, it is never asked again")
     }
 
+    // MARK: One registration at a time
+
+    private static let newer = #"{"registration":{"id":"x","version":"9e2b7c40-5a61-4d3f-8b1a-6c7d8e9f0a1b","expiresAt":1900000000000}}"#
+
+    /// A connection that comes up says so more than once at the same
+    /// moment (`Session.reconnected`). Each registration the server takes
+    /// has a new version, and only the latest can take it off again: two
+    /// sent at once could leave the phone holding the older, and the
+    /// registration on the server for good. One is sent.
+    func testTwoRenewalsAtOnceRegisterOnce() async throws {
+        let ids = CloudPushIDs(store: InMemoryKeyValueStore())
+        let gate = Gate()
+        var source = Self.source(relay: Relay(Self.token), permission: Permission(.authorized))
+        source.ids = ids
+        source.apnsToken = { await gate.wait(); return Data([1, 2, 3]) }
+        let push = CloudPush(source: source)
+        let server = ProvidersServer()
+        let route = "PUT /v0/cloud/push/registrations/\(ids.registration(for: "paired"))"
+        await server.answer("GET /v0/health", 200, Self.health)
+        await server.answer(route, 200, Self.registration, then: Self.newer)
+        let client = AgentClient(transport: server, token: "t")
+
+        let first = Task { try await push.register(connection: "paired", client: client, ask: false, cloud: false) }
+        try await gate.arrival()
+        let second = Task { try await push.register(connection: "paired", client: client, ask: false, cloud: false) }
+        try await Task.sleep(for: .milliseconds(100))
+        await gate.open()
+        let outcomes = [try await first.value, try await second.value]
+        XCTAssertEqual(outcomes, [.registered, .registered])
+        let routes = await server.routes
+        XCTAssertEqual(routes.filter { $0 == route }.count, 1)
+        XCTAssertEqual(ids.version(for: "paired"), "7c1d8a5e-2f43-4c1b-9d0e-1f2a3b4c5d6e")
+    }
+
+    /// Unpaired while a registration is on its way: that one lands first,
+    /// and it is the one taken off. Nothing of the phone stays behind.
+    func testLeavingWhileRegisteringTakesThatRegistrationOff() async throws {
+        let ids = CloudPushIDs(store: InMemoryKeyValueStore())
+        let gate = Gate()
+        var source = Self.source(relay: Relay(Self.token), permission: Permission(.authorized))
+        source.ids = ids
+        source.apnsToken = { await gate.wait(); return Data([1, 2, 3]) }
+        let push = CloudPush(source: source)
+        let server = ProvidersServer()
+        let registration = ids.registration(for: "paired")
+        await server.answer("GET /v0/health", 200, Self.health)
+        await server.answer("PUT /v0/cloud/push/registrations/\(registration)", 200, Self.registration)
+        await server.answer("DELETE /v0/cloud/push/registrations/\(registration)", 204, "")
+        let client = AgentClient(transport: server, token: "t")
+
+        let registering = Task { try await push.register(connection: "paired", client: client, ask: false, cloud: false) }
+        try await gate.arrival()
+        let leaving = Task { try await push.unregister(connection: "paired", client: client) }
+        try await Task.sleep(for: .milliseconds(100))
+        await gate.open()
+        _ = try await registering.value
+        try await leaving.value
+        let routes = await server.routes
+        XCTAssertEqual(routes.filter { $0 != "GET /v0/health" }, ["PUT /v0/cloud/push/registrations/\(registration)", "DELETE /v0/cloud/push/registrations/\(registration)"])
+        XCTAssertNil(ids.version(for: "paired"))
+    }
+
+    /// Holds whoever waits at it until it is opened.
+    actor Gate {
+        private var waiting: [CheckedContinuation<Void, Never>] = []
+        func wait() async { await withCheckedContinuation { waiting.append($0) } }
+        func open() {
+            let held = waiting
+            waiting = []
+            for continuation in held { continuation.resume() }
+        }
+        /// Once someone waits at it.
+        func arrival() async throws {
+            for _ in 0..<200 where waiting.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        }
+    }
+
     func testIdsAreMadeOnceAndKept() {
         let store = InMemoryKeyValueStore()
         let ids = CloudPushIDs(store: store)
