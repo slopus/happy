@@ -44,7 +44,8 @@ function Button({ label, onPress, disabled, testID, icon, primary = false, expan
     return <Pressable accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ disabled, expanded, selected }} disabled={disabled} onPress={onPress} testID={testID}
         {...(Platform.OS === 'web' && selected !== undefined ? { 'aria-pressed': selected } : {})}
         onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        style={({ pressed }) => [styles.button, primary && styles.selected, !disabled && (hovered || pressed) && styles.pressed, focused && styles.focused, disabled && styles.disabled]}>
+        style={({ pressed }) => [styles.button, primary && styles.selected, !disabled && (hovered || pressed) && styles.pressed,
+            selected && styles.selected, (focused || selected) && styles.focused, disabled && styles.disabled]}>
         {icon && <Ionicons name={icon} size={17} color={theme.colors.text} />}<Text style={styles.text}>{label}</Text>
     </Pressable>;
 }

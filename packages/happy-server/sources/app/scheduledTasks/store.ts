@@ -19,6 +19,16 @@ const runKey = (taskId: string, id: string) => runPrefix(taskId) + id;
 const decode = <T>(row: Row | null): T | null => row?.value ? JSON.parse(new TextDecoder().decode(row.value)) as T : null;
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
+/** Forget only this active run's dedicated conversation, preserving all history. */
+function detachRunConversation(task: StoredTask, run: ScheduledRun): void {
+    const sessionId = run.sessionId ?? run.conversationSessionId;
+    if (!run.newChatEachRun && task.activeRunId === run.id && task.bindingVersion === run.bindingVersion
+        && sessionId && task.conversationSessionId === sessionId) {
+        task.conversationSessionId = null;
+        task.bindingVersion++;
+    }
+}
+
 export interface ScheduledMessageCreated { accountId: string; sessionId: string; userSeq: number; message: { id: string; seq: number; localId: string | null; content: { t: 'encrypted'; c: string }; createdAt: Date; updatedAt: Date } }
 export function createScheduledTaskStore(database: PrismaClient, options: { now?: () => number; onMessage?: (created: ScheduledMessageCreated) => void } = {}) {
     const now = options.now ?? Date.now;
@@ -239,7 +249,11 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                     deadlineAt: isScheduledRunTerminal(report.status) ? null : report.status === 'running' && !run.turnId ? now() + SCHEDULED_EXECUTION_TIMEOUT_MS : run.deadlineAt,
                     finishedAt: isScheduledRunTerminal(report.status) ? now() : null };
                 await write(tx, accountId, row.key, next, row);
-                if (isScheduledRunTerminal(next.status) && task.activeRunId === id) { task.activeRunId = null; task.version = taskRow.version + 1; task.updatedAt = now(); await write(tx, accountId, taskRow.key, task, taskRow); }
+                if (isScheduledRunTerminal(next.status) && task.activeRunId === id) {
+                    if (processorStartupFailed) detachRunConversation(task, run);
+                    task.activeRunId = null; task.version = taskRow.version + 1; task.updatedAt = now();
+                    await write(tx, accountId, taskRow.key, task, taskRow);
+                }
                 await prune(tx, accountId, taskId);
                 return { accountId, task, run: next, changed: true };
             });
@@ -273,7 +287,11 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                 if (!['uncertain', 'waiting-for-input'].includes(run.status)) throw new ScheduledTaskError('run-not-blocked');
                 run.status = 'cancelled'; run.reason = 'tracking-ended'; run.updatedAt = now(); run.finishedAt = now();
                 await write(tx, accountId, row.key, run, row);
-                if (task.activeRunId === id) { task.activeRunId = null; task.version = taskRow.version + 1; await write(tx, accountId, taskRow.key, task, taskRow); }
+                if (task.activeRunId === id) {
+                    detachRunConversation(task, run);
+                    task.activeRunId = null; task.version = taskRow.version + 1; task.updatedAt = now();
+                    await write(tx, accountId, taskRow.key, task, taskRow);
+                }
                 await prune(tx, accountId, taskId);
                 return { accountId, task, run };
             }); emit(change);

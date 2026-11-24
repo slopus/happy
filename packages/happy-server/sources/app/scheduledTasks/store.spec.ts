@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDatabase } from '@/app/aiServices/testDatabase';
 import { createScheduledTaskStore } from './store';
-import type { ScheduledTaskInput } from '@slopus/happy-wire';
+import { SCHEDULED_TASK_PREFIX, type ScheduledTaskInput, type ScheduledTask } from '@slopus/happy-wire';
 
 describe('durable scheduled tasks', () => {
     let context: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -99,6 +99,99 @@ describe('durable scheduled tasks', () => {
         await store.report(owner, input.id, started.id, { claimId: started.claimId!, status: 'running', sessionId, turnId: 'root', sequence: 1 });
         await expect(store.report(owner, input.id, started.id, { ...failure, claimId: started.claimId!, sequence: 2, turnId: 'root' })).rejects.toMatchObject({ code: 'turn-required' });
         expect((await store.history(owner, input.id)).find(r => r.id === started.id)?.status).toBe('running');
+    });
+    it.each([false, true])('releases only the failed dedicated binding and gives the next run a fresh conversation (mode changed=%s)', async modeChanged => {
+        input.newChatEachRun = false;
+        await store.save(owner, input, -1);
+        await store.runNow(owner, input.id, randomUUID());
+        const [run] = await store.claim(owner, machine);
+        const sessionId = 'failed-dedicated-' + owner;
+        await context.database.session.create({ data: { id: sessionId, accountId: owner, tag: sessionId, metadata: 'encrypted' } });
+        await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'claimed', sessionId });
+        await store.deliver(owner, input.id, run.id, { claimId: run.claimId!, content: 'failed-input-preserved', expectedSessionSeq: 0 });
+        if (modeChanged) await store.save(owner, { ...input, newChatEachRun: true }, (await store.list(owner))[0].version);
+        const failure = { claimId: run.claimId!, status: 'failed' as const, reason: 'processor-startup-failed', sessionId, sequence: 1 };
+        await store.report(owner, input.id, run.id, failure);
+        const recovered = (await store.list(owner))[0];
+        expect(recovered).toMatchObject({ activeRunId: null, conversationSessionId: null, bindingVersion: run.bindingVersion + 1 });
+        expect((await store.history(owner, input.id))).toHaveLength(1);
+        expect((await store.history(owner, input.id))[0]).toMatchObject({ id: run.id, status: 'failed', sessionId });
+        expect(await context.database.sessionMessage.count({ where: { sessionId } })).toBe(1);
+        if (modeChanged) await store.save(owner, input, recovered.version);
+        await store.runNow(owner, input.id, randomUUID());
+        const [next] = await store.claim(owner, machine);
+        expect(next).toMatchObject({ newChatEachRun: false, conversationSessionId: null, sessionId: null, bindingVersion: run.bindingVersion + 1 });
+        expect(next.id).not.toBe(run.id);
+        const nextSessionId = 'replacement-' + owner;
+        await context.database.session.create({ data: { id: nextSessionId, accountId: owner, tag: nextSessionId, metadata: 'encrypted' } });
+        await store.report(owner, input.id, next.id, { claimId: next.claimId!, status: 'claimed', sessionId: nextSessionId });
+        await store.report(owner, input.id, run.id, { ...failure, sequence: 2 });
+        expect((await store.list(owner))[0]).toMatchObject({ activeRunId: next.id, conversationSessionId: nextSessionId, bindingVersion: next.bindingVersion });
+    });
+    it.each(['uncertain-bound', 'uncertain-snapshot', 'waiting-for-input'] as const)('detaches the exact dedicated binding when tracking ends: %s', async scenario => {
+        input.newChatEachRun = false;
+        await store.save(owner, input, -1);
+        await store.runNow(owner, input.id, randomUUID());
+        const [first] = await store.claim(owner, machine);
+        const sessionId = 'abandoned-dedicated-' + owner;
+        await context.database.session.create({ data: { id: sessionId, accountId: owner, tag: sessionId, metadata: 'encrypted' } });
+        await store.report(owner, input.id, first.id, { claimId: first.claimId!, status: 'running', sessionId, turnId: 'first-root', sequence: 1 });
+        await store.report(owner, input.id, first.id, { claimId: first.claimId!, status: 'completed', sessionId, turnId: 'first-root', sequence: 2 });
+        await store.runNow(owner, input.id, randomUUID());
+        const [run] = await store.claim(owner, machine);
+        expect(run.conversationSessionId).toBe(sessionId);
+        if (scenario === 'waiting-for-input') {
+            await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'running', sessionId, turnId: 'waiting-root', sequence: 1 });
+            await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'waiting-for-input', sessionId, turnId: 'waiting-root', sequence: 2 });
+        } else await store.report(owner, input.id, run.id, {
+            claimId: run.claimId!, status: 'uncertain', reason: 'session-unavailable',
+            ...(scenario === 'uncertain-bound' ? { sessionId } : {}),
+        });
+        await store.abandon(owner, input.id, run.id);
+        expect((await store.list(owner))[0]).toMatchObject({ activeRunId: null, conversationSessionId: null, bindingVersion: run.bindingVersion + 1 });
+        expect((await store.history(owner, input.id)).find(r => r.id === run.id)).toMatchObject({
+            status: 'cancelled', reason: 'tracking-ended', conversationSessionId: sessionId,
+            sessionId: scenario === 'uncertain-snapshot' ? null : sessionId,
+        });
+        expect(await context.database.session.count({ where: { id: sessionId } })).toBe(1);
+        await store.runNow(owner, input.id, randomUUID());
+        const [next] = await store.claim(owner, machine);
+        expect(next).toMatchObject({ conversationSessionId: null, bindingVersion: run.bindingVersion + 1 });
+        await expect(store.abandon(owner, input.id, run.id)).rejects.toMatchObject({ code: 'run-not-blocked' });
+        expect((await store.list(owner))[0].activeRunId).toBe(next.id);
+    });
+    it.each(['startup-failed', 'abandon'].flatMap(operation => ['binding-version', 'conversation', 'active-run', 'per-run'].map(identity => ({ operation, identity }))))('preserves other binding identities during $operation/$identity', async ({ operation, identity }) => {
+        input.newChatEachRun = identity === 'per-run';
+        await store.save(owner, input, -1);
+        await store.runNow(owner, input.id, randomUUID());
+        const [run] = await store.claim(owner, machine);
+        const sessionId = 'superseded-' + owner;
+        await context.database.session.create({ data: { id: sessionId, accountId: owner, tag: sessionId, metadata: 'encrypted' } });
+        await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'claimed', sessionId });
+        if (operation === 'abandon') await store.report(owner, input.id, run.id, { claimId: run.claimId!, status: 'uncertain', sessionId });
+        // Seed a superseding task identity in the isolated DB to exercise stale
+        // worker receipts; public save intentionally prevents active rebinding.
+        const key = SCHEDULED_TASK_PREFIX + 'task:' + input.id;
+        const row = await context.database.userKVStore.findUniqueOrThrow({ where: { accountId_key: { accountId: owner, key } } });
+        const task = JSON.parse(new TextDecoder().decode(row.value!)) as ScheduledTask;
+        const replacement = { ...task, version: row.version + 1, conversationSessionId: sessionId,
+            ...(identity === 'binding-version' ? { bindingVersion: task.bindingVersion + 1 } : {}),
+            ...(identity === 'conversation' ? { conversationSessionId: 'new-conversation' } : {}),
+            ...(identity === 'active-run' ? { activeRunId: randomUUID() } : {}) };
+        await context.database.userKVStore.update({ where: { accountId_key: { accountId: owner, key } },
+            data: { value: new TextEncoder().encode(JSON.stringify(replacement)), version: { increment: 1 } } });
+        if (operation === 'startup-failed') {
+            const completion = store.report(owner, input.id, run.id, {
+                claimId: run.claimId!, status: 'failed', reason: 'processor-startup-failed', sessionId, sequence: 1,
+            });
+            if (identity === 'conversation') await expect(completion).rejects.toMatchObject({ code: 'run-binding-conflict' });
+            else await completion;
+        }
+        else await store.abandon(owner, input.id, run.id);
+        expect((await store.list(owner))[0]).toMatchObject({
+            conversationSessionId: replacement.conversationSessionId, bindingVersion: replacement.bindingVersion,
+            activeRunId: identity === 'active-run' || (operation === 'startup-failed' && identity === 'conversation') ? replacement.activeRunId : null,
+        });
     });
     it('bounds startup to five minutes and grants the execution window only on the first root start', async () => {
         await store.save(owner, input, -1);

@@ -9,7 +9,7 @@ import { ScheduleChoice } from './ScheduleChoice';
 import { DesktopDialogFrame } from '@/components/DesktopDialogFrame';
 import type { DecryptedScheduledTask } from '@/sync/scheduledTasks';
 
-const mocks = vi.hoisted(() => ({ save: vi.fn(), confirm: vi.fn(), machines: [{ id: 'machine', active: true, metadata: { scheduledTasks: 1, homeDir: '/work', host: 'Machine' } }] }));
+const mocks = vi.hoisted(() => ({ save: vi.fn(), confirm: vi.fn(), efforts: [] as Array<{ key: string; name: string }>, machines: [{ id: 'machine', active: true, metadata: { scheduledTasks: 1, homeDir: '/work', host: 'Machine' } }] }));
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', TextInput: 'TextInput', Pressable: 'Pressable', ScrollView: 'ScrollView', KeyboardAvoidingView: 'KeyboardAvoidingView', Platform: { OS: 'web' } }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => {
@@ -27,13 +27,14 @@ vi.mock('@/sync/storage', () => ({ useAllMachines: () => mocks.machines, useAllS
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true }));
 vi.mock('@/hooks/useCodexAccounts', () => ({ useCodexAccounts: () => ({ loading: false, error: null, bindings: [] }) }));
 vi.mock('@/utils/newSessionModelMetadata', () => ({ getLatestSessionModelMetadata: () => null }));
-vi.mock('@/components/modelModeOptions', () => ({ getSuggestedModelModes: () => [], getEffortLevelsForModel: () => [] }));
+vi.mock('@/components/modelModeOptions', () => ({ getSuggestedModelModes: () => [], getEffortLevelsForModel: () => mocks.efforts }));
 
 const renderers: ReturnType<typeof TestRenderer.create>[] = [];
 beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     mocks.save.mockReset().mockResolvedValue(undefined);
     mocks.confirm.mockReset().mockResolvedValue(true);
+    mocks.efforts = [];
     mocks.machines = [{ id: 'machine', active: true, metadata: { scheduledTasks: 1, homeDir: '/work', host: 'Machine' } }];
 });
 afterEach(async () => {
@@ -121,6 +122,16 @@ it('retains custom execution settings when the current machine, agent or model i
     expect(field(renderer, 'scheduled-task-directory').props.value).toBe('/work/custom');
     expect(choice(renderer, 'scheduled-task-model').props.value).toBe('pinned-model');
     expect(choice(renderer, 'scheduled-task-effort').props.value).toBe('high');
+});
+
+it('does not offer a native model effort that the scheduled execution runtime rejects', async () => {
+    mocks.efforts = [{ key: 'high', name: 'High' }, { key: 'max', name: 'Max' }, { key: 'ultra', name: 'Ultra' }];
+    const renderer = await renderEditor({ task: task(), onClose: () => {} });
+    await act(async () => button(renderer, 'scheduled-task-advanced').props.onPress());
+    const options = choice(renderer, 'scheduled-task-effort').props.options as Array<{ key: string }>;
+    expect(options.some(option => option.key === 'ultra')).toBe(false);
+    expect(options.some(option => option.key === 'high')).toBe(true);
+    expect(options.some(option => option.key === 'max')).toBe(true);
 });
 
 it('submits once, protects the pending draft from closing, and reports the saved task before closing', async () => {

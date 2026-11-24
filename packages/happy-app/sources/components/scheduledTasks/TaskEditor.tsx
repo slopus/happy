@@ -95,7 +95,7 @@ export const TaskEditor = React.memo(function TaskEditor({ task: liveTask, templ
     const models = [{ key: '', name: t('scheduledTasks.defaultModel') }, ...(modelMetadata?.models?.length ? getSuggestedModelModes('codex', modelMetadata, t)
         .filter(model => model.key !== 'default').map(model => ({ key: model.key, name: model.name })) : [])];
     const efforts = [{ key: '', name: t('scheduledTasks.defaultModel') }, ...getEffortLevelsForModel('codex', draft.model, modelMetadata)
-        .filter(option => ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(option.key)).map(option => ({ key: option.key, name: option.name }))];
+        .filter(option => ['low', 'medium', 'high', 'xhigh', 'max'].includes(option.key)).map(option => ({ key: option.key, name: option.name }))];
     const bindingChanged = Boolean(task?.config && (draft.machineId !== task.machineId || draft.agent !== task.config.agent || draft.directory !== task.config.directory));
     const update = <K extends keyof ScheduleDraft>(key: K, value: ScheduleDraft[K]) => {
         if (busyRef.current) return;
