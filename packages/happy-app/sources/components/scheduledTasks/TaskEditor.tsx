@@ -17,21 +17,13 @@ import { getLatestSessionModelMetadata } from '@/utils/newSessionModelMetadata';
 import { getSuggestedModelModes, getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { DecryptedScheduledTask } from '@/sync/scheduledTasks';
 import { createScheduleDraft, localScheduleDateTime, prepareScheduleDraft, type ScheduleDraft } from './draft';
+import { ScheduleChoice as Choice } from './ScheduleChoice';
 
 function Field({ label, value, onChange, multiline = false, testID }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean; testID?: string }) {
     const { theme } = useUnistyles();
     return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} testID={testID} value={value}
         onChangeText={onChange} multiline={multiline} placeholderTextColor={theme.colors.textSecondary} autoCapitalize="none" autoCorrect={false}
         style={[styles.input, multiline && styles.instruction]} /></View>;
-}
-function Choice({ title, value, options, onChange, testID }: { title: string; value: string; options: Array<{ key: string; name: string }>; onChange: (key: string) => void; testID?: string }) {
-    const [expanded, setExpanded] = React.useState(false);
-    const { theme } = useUnistyles();
-    return <View><Item title={title} detail={options.find(option => option.key === value)?.name ?? value} onPress={() => setExpanded(v => !v)} testID={testID}
-        rightElement={<Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} color={theme.colors.textSecondary} size={16} />} />
-        {expanded && <ScrollView style={styles.choices} nestedScrollEnabled>{options.map(option => <Item key={option.key} title={option.name} selected={option.key === value}
-            onPress={() => { onChange(option.key); setExpanded(false); }} showChevron={false} testID={`${testID}-${option.key}`} />)}</ScrollView>}
-    </View>;
 }
 
 export const TaskEditor = React.memo(function TaskEditor({ task: liveTask, template, onClose }: { task?: DecryptedScheduledTask; template?: { title: string; prompt: string }; onClose: () => void }) {
@@ -141,7 +133,7 @@ const styles = StyleSheet.create(theme => ({
     editorBody: { flexShrink: 1 }, form: { paddingVertical: 12, paddingHorizontal: 16, gap: 10 },
     field: { gap: 7 }, label: { color: theme.colors.text, fontSize: 14 }, input: { color: theme.colors.text, backgroundColor: theme.colors.input.background, borderColor: theme.colors.divider, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15, minHeight: 44 },
     instruction: { minHeight: 120, textAlignVertical: 'top' }, hint: { color: theme.colors.textSecondary, fontSize: 13, lineHeight: 20, paddingHorizontal: 8 },
-    choices: { maxHeight: 220, backgroundColor: theme.colors.surface }, days: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    days: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     day: { padding: 10, minWidth: 40, borderRadius: 8, backgroundColor: theme.colors.surface }, selected: { backgroundColor: theme.colors.surfaceSelected }, pressed: { backgroundColor: theme.colors.surfacePressed },
     footer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.divider, flexDirection: 'row', justifyContent: 'flex-end', padding: 16, gap: 10 },
     button: { minHeight: 44, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.colors.surface }, error: { color: theme.colors.textDestructive, fontSize: 14, padding: 8 },
