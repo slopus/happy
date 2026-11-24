@@ -5,7 +5,7 @@
  * Environment files should be loaded using Node's --env-file flag
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import packageJson from '../package.json'
@@ -50,6 +50,20 @@ class Configuration {
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock')
     this.sessionsFile = join(this.happyHomeDir, 'sessions.json')
 
+    mkdirSync(this.happyHomeDir, { recursive: true, mode: 0o700 })
+    if (process.platform !== 'win32') {
+      const dir = statSync(this.happyHomeDir)
+      const dedicatedHome = !process.env.HAPPY_HOME_DIR && !lstatSync(this.happyHomeDir).isSymbolicLink()
+      if (dir.uid !== process.getuid!() || (!dedicatedHome && (dir.mode & 0o022))) {
+        throw new Error(`Unsafe Happy home: ${this.happyHomeDir}. Use a dedicated directory owned by your account and not writable by other users. For your own dedicated directory, remove group/other write access with chmod go-w; otherwise set HAPPY_HOME_DIR to a private directory.`)
+      }
+      if (dedicatedHome && (dir.mode & 0o777) !== 0o700) chmodSync(this.happyHomeDir, 0o700)
+      for (const path of [this.privateKeyFile, this.daemonStateFile, this.sessionsFile, this.settingsFile,
+        this.sessionsFile + '.tmp', this.settingsFile + '.tmp', this.daemonLockFile, this.settingsFile + '.lock']) {
+        protectExistingFile(path)
+      }
+    }
+
     // URL precedence (both): HAPPY_*_URL env > settings.<key> > default.
     // Settings are read sync here (avoid circular import with persistence.ts).
     // webappUrl must follow the same chain as serverUrl, otherwise `happy server`
@@ -80,13 +94,24 @@ class Configuration {
       console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.happyHomeDir)
     }
 
-    if (!existsSync(this.happyHomeDir)) {
-      mkdirSync(this.happyHomeDir, { recursive: true })
-    }
     // Ensure directories exist
     if (!existsSync(this.logsDir)) {
-      mkdirSync(this.logsDir, { recursive: true })
+      mkdirSync(this.logsDir, { recursive: true, mode: 0o700 })
     }
+  }
+}
+
+function protectExistingFile(path: string) {
+  try {
+    const file = lstatSync(path)
+    if (!file.isFile() || file.uid !== process.getuid!()) throw new Error(`Unsafe Happy state file: ${path}. Restore a regular file owned by your account; do not use a symlink.`)
+    if ((file.mode & 0o777) !== 0o600) {
+      if (file.nlink !== 1) throw new Error(`Cannot secure multiply linked Happy state file: ${path}`)
+      chmodSync(path, 0o600)
+    }
+  } catch (error) {
+    // Atomic updates and releases may remove temporary/lock files during startup.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
 }
 

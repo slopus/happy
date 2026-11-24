@@ -124,7 +124,7 @@ export async function readSettings(): Promise<Settings> {
 
 export async function writeSettings(settings: Settings): Promise<void> {
   if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+    await mkdir(configuration.happyHomeDir, { recursive: true, mode: 0o700 })
   }
 
   // Ensure schema version is set before writing
@@ -133,7 +133,7 @@ export async function writeSettings(settings: Settings): Promise<void> {
     schemaVersion: settings.schemaVersion ?? SUPPORTED_SCHEMA_VERSION
   };
 
-  await writeFile(configuration.settingsFile, JSON.stringify(settingsWithVersion, null, 2))
+  await writeFile(configuration.settingsFile, JSON.stringify(settingsWithVersion, null, 2), { mode: 0o600 })
 }
 
 /**
@@ -158,7 +158,7 @@ export async function updateSettings(
   while (attempts < MAX_LOCK_ATTEMPTS) {
     try {
       // O_CREAT | O_EXCL | O_WRONLY = create exclusively, fail if exists
-      fileHandle = await open(lockFile, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY);
+      fileHandle = await open(lockFile, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
       break;
     } catch (err: any) {
       if (err.code === 'EEXIST') {
@@ -192,11 +192,11 @@ export async function updateSettings(
 
     // Ensure directory exists
     if (!existsSync(configuration.happyHomeDir)) {
-      await mkdir(configuration.happyHomeDir, { recursive: true });
+      await mkdir(configuration.happyHomeDir, { recursive: true, mode: 0o700 });
     }
 
     // Write atomically using rename
-    await writeFile(tmpFile, JSON.stringify(updated, null, 2));
+    await writeFile(tmpFile, JSON.stringify(updated, null, 2), { mode: 0o600 });
     await rename(tmpFile, configuration.settingsFile); // Atomic on POSIX
 
     return updated;
@@ -262,22 +262,22 @@ export async function readCredentials(): Promise<Credentials | null> {
 
 export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, token: string }): Promise<void> {
   if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+    await mkdir(configuration.happyHomeDir, { recursive: true, mode: 0o700 })
   }
   await writeFile(configuration.privateKeyFile, JSON.stringify({
     secret: encodeBase64(credentials.secret),
     token: credentials.token
-  }, null, 2));
+  }, null, 2), { mode: 0o600 });
 }
 
 export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Array, machineKey: Uint8Array, token: string }): Promise<void> {
   if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+    await mkdir(configuration.happyHomeDir, { recursive: true, mode: 0o700 })
   }
   await writeFile(configuration.privateKeyFile, JSON.stringify({
     encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
     token: credentials.token
-  }, null, 2));
+  }, null, 2), { mode: 0o600 });
 }
 
 export async function clearCredentials(): Promise<void> {
@@ -303,9 +303,9 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
     }
     const content = await readFile(configuration.daemonStateFile, 'utf-8');
     return JSON.parse(content) as DaemonLocallyPersistedState;
-  } catch (error) {
+  } catch {
     // State corrupted somehow :(
-    console.error(`[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`, error);
+    console.error(`[PERSISTENCE] Cannot read daemon state: ${configuration.daemonStateFile}`);
     return null;
   }
 }
@@ -314,7 +314,7 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
  * Write daemon state to local file (synchronously for atomic operation)
  */
 export function writeDaemonState(state: DaemonLocallyPersistedState): void {
-  writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), 'utf-8');
+  writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), { mode: 0o600 });
 }
 
 /**
@@ -351,7 +351,7 @@ export async function acquireDaemonLock(
   const tempPath = `${configuration.daemonLockFile}.${process.pid}.tmp`;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      writeFileSync(tempPath, String(process.pid));
+      writeFileSync(tempPath, String(process.pid), { mode: 0o600, flag: 'wx' });
       linkSync(tempPath, configuration.daemonLockFile);
       unlinkSync(tempPath);
       // Hold an open handle for the daemon's lifetime (released by releaseDaemonLock)
@@ -517,7 +517,7 @@ export function markSessionStopped(sessionId: string): void {
 
 function writeSessionsFile(sessions: Record<string, PersistedSession>): void {
   const tmpFile = configuration.sessionsFile + '.tmp';
-  writeFileSync(tmpFile, JSON.stringify({ sessions }, null, 2), 'utf-8');
+  writeFileSync(tmpFile, JSON.stringify({ sessions }, null, 2), { mode: 0o600 });
   renameSync(tmpFile, configuration.sessionsFile);
 }
 
