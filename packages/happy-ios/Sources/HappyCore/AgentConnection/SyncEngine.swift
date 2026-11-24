@@ -165,6 +165,9 @@ public actor SyncEngine {
     private var refresh: Task<Void, Never>?
     private var delivery: Task<Void, Never>?
     private var messageDelivery: Task<Void, Never>?
+    /// The wait before the next try of a send that failed, cut short once
+    /// the computer is verified again (`allowDelivery`).
+    private var messageBackoff: Task<Void, Never>?
     private var messageListeners: [UUID: (agentID: String, continuation: AsyncStream<DeliveryEvent>.Continuation)] = [:]
     private var profileListeners: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var verified = false
@@ -738,6 +741,10 @@ public actor SyncEngine {
     }
 
     private func allowDelivery(_ generation: Int) async {
+        // A send refused or unanswered before (a daemon draining for an
+        // update answers every write 503) goes again now, not when the
+        // backoff those failures built up, up to 30 seconds, comes round.
+        messageBackoff?.cancel()
         beginDelivery(generation)
         beginMessageDelivery(generation)
         await intents.setOnline(deliveryAllowed)
@@ -1570,7 +1577,12 @@ public actor SyncEngine {
                     for listener in messageListeners.values where listener.agentID == message.agentID { listener.continuation.yield(.failed(message.id, message.failure ?? "")) }
                     continue
                 }
-                do { try await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5)))) } catch { return }
+                let delay = Duration.seconds(min(30, 1 << min(attempt, 5)))
+                let backoff = Task { _ = try? await Task.sleep(for: delay) }
+                messageBackoff = backoff
+                await withTaskCancellationHandler { await backoff.value } onCancel: { backoff.cancel() }
+                if messageBackoff == backoff { messageBackoff = nil }
+                guard !Task.isCancelled else { return }
                 attempt += 1
             }
         }
