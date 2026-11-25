@@ -365,6 +365,79 @@ class CloudPushRegistrationsTest {
         assertFalse(disk!!.contains("device-token-secret"))
     }
 
+    /** The registration that named the version also renewed the row: the farewell is owed for as long as that row now lives, not the one before. */
+    @Test fun aFarewellThatRegisteredOnceMoreIsOwedUntilThatRegistrationsExpiry() = runTest {
+        val day = 24L * 60 * 60 * 1000
+        var live: String? = null
+        var lose = false
+        var down = false
+        val versions = listOf(version, nextVersion, thirdVersion).iterator()
+        val daemon = Server().apply { respond = { request ->
+            if (request.method == "DELETE") {
+                if (down) 503 to "{}" else {
+                    if (request.headers["If-Match"] == live) live = null
+                    204 to ""
+                }
+            } else {
+                live = versions.next()
+                if (lose) throw java.io.IOException("the answer never came")
+                200 to """{"registration":{"id":"$id","version":"$live","expiresAt":${now + 30 * day}}}"""
+            }
+        } }
+        val manager = manager()
+        register(manager, api(daemon))
+        // A day before that registration ends the row is renewed, and the phone never hears of it.
+        now = 29 * day
+        lose = true
+        register(manager, api(daemon))
+        lose = false
+        down = true
+        manager.leaving(account.connectionId, route)
+        manager.remove(account, null) { renewal }
+        signedIn = false
+        assertEquals(30 * day, ledger.snapshot().pending.single().registration.expiresAt)
+
+        assertTrue(manager.retire { CloudPushFarewellLink(api(daemon)) })
+        assertEquals("the row lives 30 days from the registration just answered", 59 * day, ledger.snapshot().pending.single().registration.expiresAt)
+        // Past the old registration's end the daemon still holds the row, and is still asked.
+        now = 31 * day
+        down = false
+        assertFalse(manager.retire { CloudPushFarewellLink(api(daemon)) })
+        assertEquals(listOf("PUT", "PUT", "PUT", "DELETE", "DELETE"), daemon.asked.map { it.method })
+        assertEquals(mapOf("If-Match" to thirdVersion), daemon.asked.last().headers)
+        assertNull("the daemon keeps no row", live)
+        assertTrue(ledger.snapshot().pending.isEmpty())
+    }
+
+    /** A tap's registration waiting behind a renewal when the unpair begins has not been sent, and is not: whether it may is asked after the wait. */
+    @Test fun aRegistrationWaitingBehindAnotherWhenItsConnectionLeavesIsNotSent() = runTest {
+        val rows = Rows()
+        val manager = manager()
+        register(manager, api(rows.server))
+        val gate = CompletableDeferred<Unit>()
+        val real = rows.server.respond
+        rows.server.respond = { request ->
+            if (request.method == "PUT") gate.await()
+            real(request)
+        }
+        val renewing = launch { register(manager, api(rows.server)) }
+        runCurrent()
+        val tapped = async { register(manager, api(rows.server)) }
+        runCurrent()
+        manager.leaving(account.connectionId, route)
+        val removing = launch { manager.remove(account, api(rows.server)) { renewal } }
+        runCurrent()
+        assertEquals("both wait for the renewal", listOf("PUT", "PUT"), rows.server.asked.map { it.method })
+        gate.complete(Unit)
+        renewing.join(); removing.join()
+        assertFalse(tapped.await())
+        assertEquals(listOf("PUT", "PUT", "DELETE"), rows.server.asked.map { it.method })
+        assertEquals(mapOf("If-Match" to nextVersion), rows.server.asked.last().headers)
+        assertNull("the daemon keeps no row", rows.live)
+        assertTrue(ledger.snapshot().bindings.isEmpty())
+        assertTrue(ledger.snapshot().pending.isEmpty())
+    }
+
     /** No relay token to be had: what is known is all there is. A limit, not a fix. */
     @Test fun withNothingToRegisterWithAnUnsureFarewellSendsTheVersionItHasOrNothing() = runTest {
         val rows = Rows()
