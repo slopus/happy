@@ -46,6 +46,7 @@ export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
         close: async () => {},
         updateMetadata: () => {},
         updateMetadataAndAwait: async () => {},
+        declareDelegationSupport: () => {},
         updateAgentState: async () => {},
         onUserMessage: () => {},
         rpcHandlerManager: {

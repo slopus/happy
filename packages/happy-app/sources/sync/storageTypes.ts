@@ -6,6 +6,8 @@ import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnap
 // Agent states
 //
 
+// Metadata is also an encrypted read-modify-write envelope. Preserve fields
+// introduced by newer workers while still validating every known field.
 export const MetadataSchema = z.object({
     delegationProtocol: z.literal(1).optional(),
     delegationRoles: z.array(DelegationRoleSchema).max(100).optional(),
@@ -64,14 +66,14 @@ export const MetadataSchema = z.object({
         claudeModelCatalogRefresh: z.boolean().optional(),
         composerPrediction: z.boolean().optional(),
         artifactLeases: z.union([z.literal(1),z.literal(ARTIFACT_PROTOCOL)]).optional(),
-    }).optional(),
+    }).passthrough().optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
     codexThreadId: z.string().optional(), // Codex app-server thread ID
     codexAccountProfileId: z.string().uuid().optional(),
     codexAccountCredentialVersion: z.number().int().positive().optional(),
     // Cursor for reconnect-safe Codex Desktop/Paws history reconciliation.
-    // MetadataSchema strips unknown keys, so this must remain explicit.
+    // Keep this explicit so callers validate and type the reconnect cursor.
     codexSyncCursor: z.object({
         threadId: z.string(),
         turnId: z.string(),
@@ -119,7 +121,7 @@ export const MetadataSchema = z.object({
     crossAgentSourceAgent: z.enum(['claude', 'codex']).optional(),
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
-});
+}).passthrough();
 
 export type Metadata = z.infer<typeof MetadataSchema>;
 

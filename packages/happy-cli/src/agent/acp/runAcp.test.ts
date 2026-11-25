@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
     processorStarting: vi.fn(() => true),
     processorReady: vi.fn(() => true),
     reportDelegationReady: vi.fn(),
+    declareDelegationSupport: vi.fn(),
     updateMetadata: vi.fn(),
     updateMetadataAndAwait: vi.fn(async (_handler: (metadata: any) => any) => {}),
     sendSessionDeath: vi.fn(),
@@ -1137,6 +1138,17 @@ describe('runAcp', () => {
     .map(([envelope]: any[]) => envelope.ev).filter(ev => ev.t === 'turn-end').map(ev => ev.status);
   const emitBackend = (event: any) => { for (const listener of mocks.backendState.listeners) listener(event); };
 
+  it('declares AGY delegation only after its three handlers are registered', async () => {
+    mocks.mockSession.declareDelegationSupport.mockImplementationOnce(() => {
+      expect([...mocks.sessionHandlers.keys()]).toEqual(expect.arrayContaining(['delegation-context', 'delegation-prepare', 'delegation-abort']));
+    });
+    const run = runDelegationWorker(false);
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      expect(mocks.mockSession.declareDelegationSupport).toHaveBeenCalledExactlyOnceWith('antigravity');
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
   it('suspends only the active root deadline during a real delegation wait and ignores its stale release after completion', async () => {
     let finishNative!: () => void;
     mocks.backendState.holdPrompt = new Promise(resolve => { finishNative = resolve; });
@@ -1334,11 +1346,15 @@ describe('runAcp', () => {
       const stalePrepare = mocks.sessionHandlers.get('delegation-prepare')!;
       const freshHandlers = new Map<string, any>();
       const replacement = { ...mocks.mockSession, sessionId: 'session-2', getMetadata: vi.fn(() => ({ ...mocks.mockSession.getMetadata() })),
+        declareDelegationSupport: vi.fn(() => {
+          expect([...freshHandlers.keys()]).toEqual(expect.arrayContaining(['delegation-context', 'delegation-prepare', 'delegation-abort']));
+        }),
         rpcHandlerManager: { registerHandler: vi.fn((name: string, handler: any) => freshHandlers.set(name, handler)) },
         updateMetadataAndAwait: vi.fn(async (handler: any) => { replacement.getMetadata.mockReturnValue(handler(replacement.getMetadata())); }) };
       mocks.mockSetupOfflineReconnection.mock.calls[0][0].onSessionSwap(replacement);
       expect(mocks.mockStartHappyServer.mock.calls[0][1].currentDelegationSessionId()).toBe('session-2');
       expect([...freshHandlers.keys()]).toEqual(expect.arrayContaining(['delegation-context', 'delegation-prepare', 'delegation-abort']));
+      expect(replacement.declareDelegationSupport).toHaveBeenCalledExactlyOnceWith('antigravity');
       await expect(staleContext({})).rejects.toThrow('worker changed');
       await expect(stalePrepare({ model: 'Argon', permissionMode: 'default' })).rejects.toThrow('worker changed');
       expect(await freshHandlers.get('delegation-prepare')({ model: 'Argon', permissionMode: 'default' })).toEqual({ model: 'gemini-4-argon', effort: 'medium' });

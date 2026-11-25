@@ -7,7 +7,7 @@ import { applyCodexReconnectUpdate } from '@/codex/reconnectMetadata';
 import { ApiClient } from './api';
 import { createWorkerSessionStartupLifecycleFromEnvironment, WorkerSessionStartupLifecycle } from './sessionStartupTrace';
 import { decodeBase64, decrypt, decryptBlob, encodeBase64, encrypt } from './encryption';
-import type { Update } from './types';
+import type { Metadata, Session, Update } from './types';
 import { immediateCodexCommandEnvelopes } from '@/codex/codexImmediateCommand';
 
 const {
@@ -19,6 +19,7 @@ const {
     mockDelay,
     mockShouldReconnect,
     mockLoggerDebug,
+    mockDelegationLaunchContext,
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
     mockAxiosGet: vi.fn(),
@@ -38,7 +39,10 @@ const {
     mockDelay: vi.fn(async () => undefined),
     mockShouldReconnect: vi.fn(() => true),
     mockLoggerDebug: vi.fn(),
+    mockDelegationLaunchContext: vi.fn(() => null as null | { directory: string; parentSessionId: string; taskId: string; nonce: string }),
 }));
+
+vi.mock('@/daemon/delegationLaunchContext', () => ({ delegationLaunchContext: mockDelegationLaunchContext }));
 
 vi.mock('socket.io-client', () => ({
     io: mockIo
@@ -68,8 +72,10 @@ vi.mock('@/ui/logger', () => ({
 
 vi.mock('@/api/rpc/RpcHandlerManager', () => ({
     RpcHandlerManager: class {
-        registerHandler = vi.fn();
-        unregisterHandler = vi.fn();
+        private handlers = new Set<string>();
+        registerHandler = vi.fn((name: string) => { this.handlers.add(name); });
+        unregisterHandler = vi.fn((name: string) => { this.handlers.delete(name); });
+        hasHandler = (name: string) => this.handlers.has(name);
         onSocketConnect = vi.fn();
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
@@ -92,7 +98,7 @@ vi.mock('@/utils/lidState', () => ({
 type SocketHandler = (...args: any[]) => void;
 type SocketHandlers = Record<string, SocketHandler[]>;
 
-function makeSession() {
+function makeSession(): Session {
     return {
         id: 'test-session-id',
         seq: 0,
@@ -217,6 +223,16 @@ describe('ApiSessionClient v3 messages API migration', () => {
         handlers.forEach((handler) => handler(...args));
     };
 
+    const receiveMetadata = (metadata: Metadata, version: number) => emitSocketEvent('update', {
+        id: `metadata-${version}`, seq: version, createdAt: 1,
+        body: { t: 'update-session', sid: session.id, metadata: { version, value: encryptContent(session, metadata) } },
+    });
+
+    const declareDelegation = (client: ApiSessionClient, agent: 'codex' | 'antigravity' = 'codex') => {
+        for (const method of ['delegation-context', 'delegation-prepare', 'delegation-abort']) client.rpcHandlerManager.registerHandler(method, async () => ({}));
+        client.declareDelegationSupport(agent);
+    };
+
     const createApiWithBoundStartupSession = async (traceId?: string) => {
         if (traceId) process.env.HAPPY_SESSION_STARTUP_TRACE_ID = traceId;
         else delete process.env.HAPPY_SESSION_STARTUP_TRACE_ID;
@@ -253,6 +269,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         vi.clearAllMocks();
         mockLoggerDebug.mockReset();
         mockShouldReconnect.mockReturnValue(true);
+        mockDelegationLaunchContext.mockReturnValue(null);
         socketHandlers = {};
         session = makeSession();
         mockSocket = {
@@ -349,6 +366,159 @@ describe('ApiSessionClient v3 messages API migration', () => {
         } };
         for (const callback of socketHandlers.update) callback(lateEvent);
         expect(observed).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['codex', 'antigravity'] as const)('repairs an old-schema writeback for a declared %s worker once and preserves normal edits', async flavor => {
+        const initial: Metadata = { ...session.metadata, hostPid: process.pid, flavor, capabilities: { delegation: 1, regenerateTitle: true } };
+        session.metadata = initial;
+        const client = new ApiSessionClient('fake-token', session);
+        declareDelegation(client, flavor);
+        expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+        const projected: Metadata & { lastUserMessageAt: number } = { ...initial, name: 'user rename', path: '/changed', lastUserMessageAt: 99,
+            currentOperatingModeCode: 'read-only', currentModelCode: 'selected-model', capabilities: { regenerateTitle: true } };
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: 2, metadata: payload.metadata }));
+        receiveMetadata(projected, 1);
+        receiveMetadata(projected, 1);
+        await waitForCheck(() => expect(client.getMetadata()?.capabilities?.delegation).toBe(1));
+        const restored = client.getMetadata()!;
+        expect(restored).toEqual({ ...projected, capabilities: { regenerateTitle: true, delegation: 1 } });
+        expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
+        expect(mockSocket.emitWithAck.mock.calls[0][1].expectedVersion).toBe(1);
+        receiveMetadata(restored, 2);
+        receiveMetadata(projected, 1);
+        await client.updateMetadataAndAwait(metadata => metadata);
+        expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
+    });
+
+    it('declares support only after all real delegation handlers have been registered', async () => {
+        session.metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex' } as Metadata;
+        const client = new ApiSessionClient('fake-token', session);
+        client.rpcHandlerManager.registerHandler('delegation-context', async () => ({}));
+        client.rpcHandlerManager.registerHandler('delegation-prepare', async () => ({}));
+        expect(() => client.declareDelegationSupport('codex')).toThrow('RPCs must be installed');
+        expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+        client.rpcHandlerManager.registerHandler('delegation-abort', async () => ({}));
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: 1, metadata: payload.metadata }));
+        client.declareDelegationSupport('codex');
+        await waitForCheck(() => expect(client.getMetadata()?.capabilities?.delegation).toBe(1));
+        expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
+    });
+
+    it('coalesces old-client events while repairing and follows a newer write that overtakes its ACK', async () => {
+        session.metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex', capabilities: { delegation: 1 } };
+        const client = new ApiSessionClient('fake-token', session);
+        declareDelegation(client);
+        let acknowledge!: (response: unknown) => void;
+        mockSocket.emitWithAck.mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }))
+            .mockImplementationOnce(async (_event: string, payload: any) => ({ result: 'success', version: 4, metadata: payload.metadata }));
+        receiveMetadata({ ...session.metadata, capabilities: {}, name: 'first edit' }, 1);
+        await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledOnce());
+        receiveMetadata({ ...session.metadata, capabilities: {}, name: 'newer edit', currentModelCode: 'latest-model' }, 3);
+        acknowledge({ result: 'success', version: 2, metadata: mockSocket.emitWithAck.mock.calls[0][1].metadata });
+        await waitForCheck(() => expect(client.getMetadata()?.capabilities?.delegation).toBe(1));
+        expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+        expect(mockSocket.emitWithAck.mock.calls[1][1].expectedVersion).toBe(3);
+        expect(client.getMetadata()).toMatchObject({ name: 'newer edit', currentModelCode: 'latest-model' });
+    });
+
+    it('retains declared capabilities in an ordinary CAS retry after an old-client projection wins the race', async () => {
+        const initial: Metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex', capabilities: { delegation: 1 } };
+        session.metadata = initial;
+        const client = new ApiSessionClient('fake-token', session);
+        declareDelegation(client);
+        const remote = { ...initial, currentModelCode: 'remote-selected', capabilities: { codexSteer: true }, lastUserMessageAt: 77 };
+        mockSocket.emitWithAck.mockResolvedValueOnce({ result: 'version-mismatch', version: 2, metadata: encryptContent(session, remote) })
+            .mockImplementationOnce(async (_event: string, payload: any) => ({ result: 'success', version: 3, metadata: payload.metadata }));
+        await client.updateMetadataAndAwait(metadata => ({ ...metadata, name: 'local title' }));
+        expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+        expect(client.getMetadata()).toEqual({ ...remote, name: 'local title', capabilities: { codexSteer: true, delegation: 1 } });
+    });
+
+    it.each(['codex', 'antigravity', 'claude', 'gemini'])('does not infer local delegation authority from remote %s metadata', async flavor => {
+        session.metadata = { ...session.metadata, flavor, hostPid: process.pid, capabilities: { delegation: 1 },
+            delegationProtocol: 1, delegationRoles: [], delegatedTasks: [], parentSessionId: 'remote-parent',
+            delegatedTask: { taskId: 'remote-task', parentSessionId: 'remote-parent' } } as Metadata;
+        const client = new ApiSessionClient('fake-token', session);
+        const remote: Metadata = { ...makeSession().metadata, flavor, hostPid: process.pid, currentModelCode: 'user choice' };
+        receiveMetadata(remote, 1);
+        await client.updateMetadataAndAwait(metadata => metadata);
+        expect(client.getMetadata()).toEqual(remote);
+        expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+    });
+
+    it.each([{ flavor: 'gemini', hostPid: process.pid }, { flavor: 'codex', hostPid: process.pid + 1 }])('does not repair another flavor or replacement worker: %j', async identity => {
+        session.metadata = { ...session.metadata, ...identity } as Metadata;
+        const client = new ApiSessionClient('fake-token', session);
+        declareDelegation(client);
+        receiveMetadata({ ...session.metadata, currentModelCode: 'replacement-model' }, 1);
+        await client.updateMetadataAndAwait(metadata => metadata);
+        expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+        expect(client.getMetadata()?.capabilities?.delegation).toBeUndefined();
+    });
+
+    it('advertises an explicitly registered resumed worker only when its own PID has been persisted', async () => {
+        session.metadata = { ...session.metadata, flavor: 'codex', hostPid: process.pid + 1 };
+        const client = new ApiSessionClient('fake-token', session);
+        declareDelegation(client);
+        expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: 1, metadata: payload.metadata }));
+        await client.updateMetadataAndAwait(metadata => ({ ...metadata, hostPid: process.pid, currentModelCode: 'resumed-model' }));
+        expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
+        expect(client.getMetadata()).toMatchObject({ hostPid: process.pid, currentModelCode: 'resumed-model', capabilities: { delegation: 1 } });
+    });
+
+    it('restores only acknowledged publication fields on omission and allows a subsequent explicit empty snapshot', async () => {
+        session.metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex' } as Metadata;
+        const client = new ApiSessionClient('fake-token', session);
+        let version = 0;
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: ++version, metadata: payload.metadata }));
+        const publish = (client.rpcHandlerManager.registerHandler as any).mock.calls.find(([name]: [string]) => name === 'delegation-publish')[1];
+        const roles = [{ id: 'writer', name: 'Writer', description: 'Write docs', agent: 'codex', model: 'observed-model', autoDelegate: false, createdAt: 1, updatedAt: 1 }];
+        const task: NonNullable<Metadata['delegatedTasks']>[number] = { id: 'task', parentSessionId: session.id, title: 'Docs', roleId: 'writer', roleName: 'Writer',
+            agent: 'codex', model: 'observed-model', version: 1, status: 'running', startedAt: 1, updatedAt: 1, resultAvailable: false };
+        await publish({ roles, tasks: [task] });
+        version = 2;
+        receiveMetadata({ ...session.metadata, name: 'client edit' }, version);
+        await waitForCheck(() => expect(client.getMetadata()?.delegationRoles).toEqual(roles));
+        expect(client.getMetadata()).toMatchObject({ delegationProtocol: 1, delegationRoles: roles, delegatedTasks: [task], name: 'client edit' });
+        expect(client.getMetadata()?.capabilities?.delegation).toBeUndefined();
+        const completed = { ...task, status: 'completed' as const, updatedAt: 2, resultAvailable: true };
+        receiveMetadata({ ...client.getMetadata()!, delegatedTasks: [completed] }, ++version);
+        await client.updateMetadataAndAwait(metadata => metadata);
+        expect(client.getMetadata()?.delegatedTasks).toEqual([completed]);
+        expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+        await publish({ roles: [], tasks: [] });
+        expect(client.getMetadata()?.delegationRoles).toEqual([]);
+        version += 1;
+        receiveMetadata({ ...session.metadata, name: 'next edit' }, version);
+        await waitForCheck(() => expect(client.getMetadata()?.delegationProtocol).toBe(1));
+        expect(client.getMetadata()?.delegationRoles).toEqual([]);
+    });
+
+    it('restores a child binding only from its local trusted delegated launch', async () => {
+        mockDelegationLaunchContext.mockReturnValue({ directory: '/tmp/paws-delegation-unit', taskId: 'local-task', parentSessionId: 'local-parent', nonce: 'a'.repeat(64) });
+        session.metadata = { ...session.metadata, flavor: 'codex', hostPid: process.pid,
+            parentSessionId: 'local-parent', delegatedTask: { taskId: 'local-task', parentSessionId: 'local-parent' } } as Metadata;
+        const client = new ApiSessionClient('fake-token', session);
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: 2, metadata: payload.metadata }));
+        receiveMetadata({ ...makeSession().metadata, flavor: 'codex', hostPid: process.pid, currentModelCode: 'selected-model' }, 1);
+        await waitForCheck(() => expect(client.getMetadata()?.delegatedTask?.taskId).toBe('local-task'));
+        expect(client.getMetadata()).toMatchObject({ parentSessionId: 'local-parent', delegatedTask: { taskId: 'local-task', parentSessionId: 'local-parent' }, currentModelCode: 'selected-model' });
+        expect(client.getMetadata()?.capabilities?.delegation).toBeUndefined();
+        receiveMetadata({ ...makeSession().metadata, flavor: 'codex', hostPid: process.pid + 1 }, 3);
+        await client.updateMetadataAndAwait(metadata => metadata);
+        expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
+        expect(client.getMetadata()?.delegatedTask).toBeUndefined();
+    });
+
+    it('does not retry its own unsuccessful repair ACK as an event loop', async () => {
+        session.metadata = { ...session.metadata, flavor: 'codex', hostPid: process.pid } as Metadata;
+        const client = new ApiSessionClient('fake-token', session);
+        declareDelegation(client);
+        await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledOnce());
+        await new Promise(resolve => setImmediate(resolve));
+        expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
+        expect(client.getMetadata()?.capabilities?.delegation).toBeUndefined();
     });
 
     it('encrypts volatile text previews without persisting them and drops disconnected or oversized sends', () => {

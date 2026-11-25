@@ -135,6 +135,11 @@ export class ApiSessionClient extends EventEmitter {
     readonly artifactRuntime: ReturnType<typeof createArtifactRuntime>;
     private metadata: Metadata | null;
     private metadataVersion: number;
+    private delegationSupport: 'codex' | 'antigravity' | null = null;
+    private readonly delegatedBinding: Metadata['delegatedTask'];
+    private publishedDelegation: Pick<Metadata, 'delegationRoles' | 'delegatedTasks'> | null = null;
+    private delegationMetadataRepairQueued = false;
+    private delegationMetadataRepairRequested = false;
     private agentState: AgentState | null;
     private agentStateVersion: number;
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -185,6 +190,7 @@ export class ApiSessionClient extends EventEmitter {
         this.token = token;
         this.sessionId = session.id;
         const delegatedLaunch = delegationLaunchContext();
+        this.delegatedBinding = delegatedLaunch ? { taskId: delegatedLaunch.taskId, parentSessionId: delegatedLaunch.parentSessionId } : undefined;
         this.delegationReporter = delegatedLaunch ? createDelegationReporter({ descriptor: delegatedLaunch, sessionId: session.id }) : null;
         this.initialMessageSeq = session.seq;
         this.metadata = session.metadata;
@@ -220,6 +226,9 @@ export class ApiSessionClient extends EventEmitter {
             if (this.metadata?.delegationProtocol !== 1 || !saved.success || JSON.stringify(saved.data) !== JSON.stringify(snapshot)) {
                 throw new Error('Delegation publication was not acknowledged');
             }
+            // Learn publication authority only from an acknowledged coordinator
+            // RPC, never from arbitrary session metadata received from clients.
+            this.publishedDelegation = { delegationRoles: snapshot.roles, delegatedTasks: snapshot.tasks };
             return { success: true };
         });
         registerArtifactHandlers(this.rpcHandlerManager, this.artifactRuntime.getStore, this.metadata.path);
@@ -283,6 +292,7 @@ export class ApiSessionClient extends EventEmitter {
                 this.reconnectInterval = null;
             }
             this.rpcHandlerManager.onSocketConnect(this.socket);
+            this.requestDelegationMetadataRepair();
             void this.scheduledRunTracker.flush();
             this.receiveSync.invalidate();
             this.emit('connected');
@@ -331,6 +341,7 @@ export class ApiSessionClient extends EventEmitter {
                     this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && this.acceptMetadata(data.body.metadata.version, data.body.metadata.value)) {
+                        this.requestDelegationMetadataRepair();
                         // Check if session was archived from web/mobile
                         const meta = this.metadata as any;
                         if (meta?.lifecycleState === 'archiveRequested' || meta?.lifecycleState === 'archived') {
@@ -1135,6 +1146,59 @@ export class ApiSessionClient extends EventEmitter {
         void this.updateMetadataAndAwait(handler);
     }
 
+    /** Call only after this worker has installed all three delegation RPCs. */
+    declareDelegationSupport(agent: 'codex' | 'antigravity'): void {
+        if (!['delegation-context', 'delegation-prepare', 'delegation-abort'].every(name => this.rpcHandlerManager.hasHandler(name))) {
+            throw new Error('Delegation RPCs must be installed before declaring support');
+        }
+        this.delegationSupport = agent;
+        this.requestDelegationMetadataRepair();
+    }
+
+    private retainWorkerDelegationMetadata(metadata: Metadata): Metadata {
+        // A still-alive replaced worker must not restore capabilities or parent
+        // bindings onto its replacement's session snapshot.
+        if (metadata.hostPid !== process.pid) return metadata;
+        let updated = metadata;
+        if (this.delegationSupport && metadata.flavor === this.delegationSupport && metadata.capabilities?.delegation !== 1) {
+            updated = { ...updated, capabilities: { ...updated.capabilities, delegation: 1 } };
+        }
+        if (this.delegatedBinding && (metadata.parentSessionId !== this.delegatedBinding.parentSessionId
+            || metadata.delegatedTask?.taskId !== this.delegatedBinding.taskId
+            || metadata.delegatedTask.parentSessionId !== this.delegatedBinding.parentSessionId)) {
+            updated = { ...updated, parentSessionId: this.delegatedBinding.parentSessionId, delegatedTask: { ...this.delegatedBinding } };
+        }
+        // Old schema projections omit these fields. Preserve confirmed data on
+        // omission while allowing newer explicit snapshots/normal edits through.
+        if (this.publishedDelegation) {
+            if (metadata.delegationProtocol === undefined) updated = { ...updated, delegationProtocol: 1 };
+            if (metadata.delegationRoles === undefined) updated = { ...updated, delegationRoles: this.publishedDelegation.delegationRoles };
+            if (metadata.delegatedTasks === undefined) updated = { ...updated, delegatedTasks: this.publishedDelegation.delegatedTasks };
+        }
+        return updated;
+    }
+
+    private requestDelegationMetadataRepair(): void {
+        if (!this.metadata || this.retainWorkerDelegationMetadata(this.metadata) === this.metadata) return;
+        this.delegationMetadataRepairRequested = true;
+        if (this.delegationMetadataRepairQueued) return;
+        this.delegationMetadataRepairQueued = true;
+        void this.updateMetadataAndAwait(metadata => {
+            this.delegationMetadataRepairRequested = false;
+            return metadata;
+        }).catch(() => {
+            logger.debug('[API] Failed to retain worker delegation metadata');
+        }).finally(() => {
+            this.delegationMetadataRepairQueued = false;
+            // Only another incoming event can request a follow-up. Our own CAS
+            // ACK is never a repair trigger, so failed/echoed writes cannot loop.
+            if (this.delegationMetadataRepairRequested) {
+                this.delegationMetadataRepairRequested = false;
+                this.requestDelegationMetadataRepair();
+            }
+        });
+    }
+
     private acceptMetadata(version: number, encrypted: string): boolean {
         if (version <= this.metadataVersion) return false;
         this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(encrypted));
@@ -1146,7 +1210,7 @@ export class ApiSessionClient extends EventEmitter {
     async updateMetadataAndAwait(handler: (metadata: Metadata) => Metadata): Promise<void> {
         await this.metadataLock.inLock(async () => {
             await backoff(async () => {
-                let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
+                const updated = this.retainWorkerDelegationMetadata(handler(this.metadata!));
                 if (updated === this.metadata) return;
                 const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
                 if (answer.result === 'success') {

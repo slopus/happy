@@ -19,7 +19,14 @@ export async function delegationRequest(sessionId: string, input: AppDelegationR
     const parent = storage.getState().sessions[sessionId];
     const machineId = parent?.metadata?.machineId;
     if (!machineId) throw new Error(t('delegation.missingMachine'));
-    if (parent?.metadata?.capabilities?.delegation !== 1) throw new Error(t('delegation.protocolHint'));
+    // Existing parent-owned results use the backend's inspection-only read,
+    // including after worker exit or a lossy older client's metadata write.
+    // Every other action still needs the live worker's declared capability.
+    const canReadPublishedTask = input.action === 'read'
+        && parent.metadata?.capabilities?.delegation === undefined
+        && parent.metadata?.delegationProtocol === 1
+        && parent.metadata.delegatedTasks?.some(task => task.id === input.taskId && task.parentSessionId === sessionId);
+    if (parent.metadata?.capabilities?.delegation !== 1 && !canReadPublishedTask) throw new Error(t('delegation.protocolHint'));
     const machine = storage.getState().machines[machineId];
     if (!machine?.active) throw new Error(t('delegation.offline'));
     if (machine.metadata?.delegation !== 1) throw new Error(t('delegation.unsupported'));

@@ -143,6 +143,7 @@ describe('real delegation panels', () => {
 
     it('requires the current parent worker capability for composer dispatch', async () => {
         mocks.session.metadata.capabilities = {};
+        mocks.session.metadata.delegationProtocol = 1;
         await render(roleSelection);
         expect(button('delegation-role-use').props.disabled).toBe(true);
         expect(button('delegation-role-save').props.disabled).toBe(true);
@@ -156,6 +157,23 @@ describe('real delegation panels', () => {
         expect(mocks.remove).not.toHaveBeenCalled();
         await act(async () => renderer.update(element(taskSelection)));
         expect(button('delegation-task-append').props.disabled).toBe(true);
+        await press('delegation-tab-result');
+        expect(renderer.root.findByProps({ testID: 'delegation-result-text' }).children.join('')).toBe('Third result');
+        expect(mocks.compose).not.toHaveBeenCalled();
+    });
+
+    it('keeps a published running task inspectable while disabling cancellation and append without a worker capability', async () => {
+        const running = { ...task, status: 'running' as const, finishedAt: undefined };
+        mocks.session.metadata = { ...mocks.session.metadata, capabilities: {}, delegationProtocol: 1, delegatedTasks: [running] };
+        mocks.read.mockResolvedValueOnce(running);
+        await render(taskSelection);
+        await press('delegation-tab-result');
+        expect(renderer.root.findByProps({ testID: 'delegation-result-text' }).children.join('')).toBe('Third result');
+        expect(button('delegation-task-append').props.disabled).toBe(true);
+        expect(button('delegation-task-cancel').props.disabled).toBe(true);
+        await press('delegation-task-cancel');
+        expect(mocks.read).toHaveBeenCalledTimes(1);
+        expect(mocks.cancel).not.toHaveBeenCalled();
         expect(mocks.compose).not.toHaveBeenCalled();
     });
 

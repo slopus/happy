@@ -60,4 +60,33 @@ describe('MetadataSchema', () => {
         expect(metadata.codexAccountProfileId).toBe('00000000-0000-4000-8000-000000000001');
         expect(metadata.codexAccountCredentialVersion).toBe(3);
     });
+
+    it('preserves worker fields and capabilities unknown to this App version', () => {
+        const metadata = MetadataSchema.parse({
+            path: '/tmp/project', host: 'local-machine',
+            delegatedTask: { parentSessionId: 'parent-a', taskId: 'task-a' },
+            futureWorkerState: { revision: 2, ready: true },
+            capabilities: { delegation: 1, futureWorkerProtocol: { version: 2 } },
+        });
+        expect(metadata.delegatedTask).toEqual({ parentSessionId: 'parent-a', taskId: 'task-a' });
+        expect(metadata.futureWorkerState).toEqual({ revision: 2, ready: true });
+        expect(metadata.capabilities).toEqual({ delegation: 1, futureWorkerProtocol: { version: 2 } });
+    });
+
+    it.each([
+        { delegation: true },
+        { delegation: 2 },
+        { regenerateTitle: 'yes' },
+        { artifactLeases: '2' },
+    ])('still rejects malformed known capabilities: %j', capabilities => {
+        expect(MetadataSchema.safeParse({ path: '/tmp/project', host: 'local-machine', capabilities }).success).toBe(false);
+    });
+
+    it.each([
+        { path: 7 },
+        { delegationProtocol: 2 },
+        { codexSyncCursor: { threadId: 'thread-a', turnId: 7 } },
+    ])('still rejects malformed known metadata: %j', invalid => {
+        expect(MetadataSchema.safeParse({ path: '/tmp/project', host: 'local-machine', ...invalid }).success).toBe(false);
+    });
 });

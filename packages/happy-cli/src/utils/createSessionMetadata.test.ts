@@ -20,6 +20,9 @@ function createSandboxConfig(overrides: Partial<SandboxConfig> = {}): SandboxCon
 }
 
 describe('createSessionMetadata', () => {
+    it.each(['codex', 'antigravity', 'claude', 'gemini'] as const)('does not declare delegation before the %s worker has installed its RPCs', flavor => {
+        expect(createSessionMetadata({ flavor, machineId: 'machine-1' }).metadata.capabilities?.delegation).toBeUndefined();
+    });
     it('sets metadata.sandbox to the config when enabled', () => {
         const sandbox = createSandboxConfig();
         const { metadata } = createSessionMetadata({

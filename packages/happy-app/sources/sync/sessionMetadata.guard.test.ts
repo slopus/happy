@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Metadata } from './storageTypes';
+import { MetadataSchema, type Metadata } from './storageTypes';
 import { updateEncryptedSessionMetadata } from './sessionMetadata';
 import { withMessageOptionResponse } from './messageOptionResponses';
 
@@ -12,6 +12,21 @@ const update = (value: Metadata) => (value.lastUserMessageAt ?? 0) >= 20 ? value
 
 describe('user activity metadata ownership', () => {
     beforeEach(() => vi.clearAllMocks());
+    it('keeps newer worker fields through an older reader projection and a successful user-clock CAS without a conflict', async () => {
+        const serverMetadata = { ...metadata,
+            capabilities: { delegation: 1, regenerateTitle: true, futureWorkerProtocol: { version: 2 } },
+            delegatedTask: { parentSessionId: 'parent-a', taskId: 'task-a' },
+            futureWorkerState: { revision: 2, ready: true },
+        };
+        // These worker fields are unknown to this reader. A stripping schema
+        // loses them before the ordinary lastUserMessageAt writer ever runs.
+        const projection = MetadataSchema.parse(serverMetadata);
+        mocks.emit.mockImplementationOnce(async (_event, payload) => ({ result: 'success', version: 2, metadata: payload.metadata }));
+        const result = await updateEncryptedSessionMetadata('session', projection, 1, crypto(), update);
+        expect(mocks.emit).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(mocks.emit.mock.calls[0][1].metadata)).toEqual({ ...serverMetadata, lastUserMessageAt: 20 });
+        expect(result).toEqual({ version: 2, metadata: { ...serverMetadata, lastUserMessageAt: 20 } });
+    });
     it('merges a newer title on conflict without reducing a newer user clock', async () => {
         mocks.emit.mockResolvedValueOnce({ result: 'version-mismatch', version: 5, metadata: encode({ ...metadata, name: 'new title', lastUserMessageAt: 30 }) });
         const result = await updateEncryptedSessionMetadata('session', metadata, 1, crypto(), update);

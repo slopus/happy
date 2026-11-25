@@ -543,6 +543,7 @@ export async function runCodex(opts: {
             if (delegationPreparation) newSession.rpcHandlerManager.registerHandler('delegation-prepare', delegationPreparation.prepare);
             if (delegationAbortHandler) newSession.rpcHandlerManager.registerHandler('delegation-abort', delegationAbortHandler);
             if (delegationContextHandler) newSession.rpcHandlerManager.registerHandler('delegation-context', delegationContextHandler);
+            if (delegationPreparation && delegationAbortHandler && delegationContextHandler) newSession.declareDelegationSupport('codex');
             if (predictionHandlers) {
                 newSession.rpcHandlerManager.registerHandler('composerPrediction', predictionHandlers.request);
                 newSession.rpcHandlerManager.registerHandler('composerPredictionCancel', predictionHandlers.cancel);
@@ -1366,6 +1367,7 @@ export async function runCodex(opts: {
         },
     });
     session.rpcHandlerManager.registerHandler('delegation-prepare', delegationPreparation.prepare);
+    session.declareDelegationSupport('codex');
     // A delegated caller prepares its model immediately after this webhook.
     // Advertise the worker only after all three delegation RPCs are callable.
     if (delegatedLaunch && !deferForkReport && !expectMagpieConnection) await reportSessionStarted();

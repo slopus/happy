@@ -44,6 +44,52 @@ describe('parent-scoped delegation RPC', () => {
         await expect(saveDelegationRole('parent-a', role)).rejects.toThrow('delegation.protocolHint');
         expect(mocks.rpc).not.toHaveBeenCalled();
     });
+    it('reads an already published parent-owned result without a live worker capability', async () => {
+        mocks.state.sessions['parent-a'] = { active: false, metadata: {
+            machineId: 'machine-a', lifecycleState: 'archived', delegationProtocol: 1, delegatedTasks: [summary], capabilities: {},
+        } };
+        mocks.rpc.mockResolvedValue({ success: true, task });
+        expect(await readDelegatedTask('parent-a', task.id)).toEqual(task);
+        expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('machine-a', 'delegation', { action: 'read', parentSessionId: 'parent-a', taskId: task.id });
+    });
+    it.each([
+        { label: 'an old worker with no published delegation', metadata: {} },
+        { label: 'a protocol flag without a published task', metadata: { delegationProtocol: 1, delegatedTasks: [] } },
+        { label: 'a task without the published protocol', metadata: { delegatedTasks: [summary] } },
+        { label: 'another task ID', metadata: { delegationProtocol: 1, delegatedTasks: [{ ...summary, id: 'task-b' }] } },
+        { label: 'a task owned by another parent', metadata: { delegationProtocol: 1, delegatedTasks: [{ ...summary, parentSessionId: 'parent-b' }] } },
+        { label: 'an invalid capability value', metadata: { delegationProtocol: 1, delegatedTasks: [summary], capabilities: { delegation: 2 } } },
+    ])('refuses the inspection exception for $label', async ({ metadata }) => {
+        mocks.state.sessions['parent-a'].metadata = { machineId: 'machine-a', ...metadata };
+        await expect(readDelegatedTask('parent-a', task.id)).rejects.toThrow('delegation.protocolHint');
+        expect(mocks.rpc).not.toHaveBeenCalled();
+    });
+    it.each([
+        { action: 'roles-list' as const },
+        { action: 'roles-save' as const, role },
+        { action: 'roles-delete' as const, roleId: role.id },
+        { action: 'cancel' as const, taskId: task.id },
+    ])('never extends published-task inspection to $action', async input => {
+        mocks.state.sessions['parent-a'].metadata = { machineId: 'machine-a', delegationProtocol: 1, delegatedTasks: [summary], capabilities: {} };
+        await expect(delegationRequest('parent-a', input)).rejects.toThrow('delegation.protocolHint');
+        expect(mocks.rpc).not.toHaveBeenCalled();
+    });
+    it('still requires an online capable machine for published-task inspection', async () => {
+        mocks.state.sessions['parent-a'].metadata = { machineId: 'machine-a', delegationProtocol: 1, delegatedTasks: [summary] };
+        mocks.state.machines['machine-a'].active = false;
+        await expect(readDelegatedTask('parent-a', task.id)).rejects.toThrow('delegation.offline');
+        mocks.state.machines['machine-a'].active = true;
+        mocks.state.machines['machine-a'].metadata = {};
+        await expect(readDelegatedTask('parent-a', task.id)).rejects.toThrow('delegation.unsupported');
+        expect(mocks.rpc).not.toHaveBeenCalled();
+    });
+    it('rejects a foreign readback even through the published-task inspection exception', async () => {
+        mocks.state.sessions['parent-a'].metadata = { machineId: 'machine-a', delegationProtocol: 1, delegatedTasks: [summary] };
+        mocks.rpc.mockResolvedValue({ success: true, task: { ...task, parentSessionId: 'parent-b' } });
+        await expect(readDelegatedTask('parent-a', task.id)).rejects.toThrow('delegation.invalidResponse');
+        mocks.rpc.mockResolvedValue({ success: true, task: { ...task, id: 'task-b' } });
+        await expect(readDelegatedTask('parent-a', task.id)).rejects.toThrow('delegation.invalidResponse');
+    });
     it('does not report a role saved without a matching durable role acknowledgement', async () => {
         mocks.rpc.mockResolvedValue({ success: true });
         await expect(saveDelegationRole('parent-a', role)).rejects.toThrow('delegation.invalidResponse');

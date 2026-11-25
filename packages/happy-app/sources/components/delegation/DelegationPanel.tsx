@@ -245,6 +245,7 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionI
     const selected = versions.get(version ?? task?.version ?? 0) ?? (task ? versions.get(task.version) : undefined);
     const remember = (nextTab = tab, nextVersion = version) => inspector?.taskViews?.current.set(taskId, { tab: nextTab, version: nextVersion });
     const cancel = async () => {
+        if (session?.metadata?.capabilities?.delegation !== 1) return;
         setCancelling(true); setError(null);
         try { const result = await cancelDelegatedTask(sessionId, taskId); if (alive.current) { if (result) setTask(result); setCancelRequested(true); } }
         catch (failure) { if (alive.current) setError(errorMessage(failure)); }
@@ -276,7 +277,7 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionI
             {isActive && (cancelRequested || currentSummary?.cancelRequested) ? <Text style={styles.secondary}>{t('delegation.cancelRequested')}</Text> : null}
             {session?.metadata?.capabilities?.delegation !== 1 ? <Text style={styles.caption}>{t('delegation.protocolHint')}</Text> : null}
             <View style={styles.actions}><Button label={t('delegation.append')} onPress={() => onCompose(t('delegation.appendPrompt', { id: taskId }))} disabled={session?.metadata?.capabilities?.delegation !== 1} testID="delegation-task-append" />
-                {isActive ? <Button label={t('delegation.cancelTask')} onPress={() => { void cancel(); }} disabled={cancelling || cancelRequested || currentSummary?.cancelRequested} destructive testID="delegation-task-cancel" /> : null}</View>
+                {isActive ? <Button label={t('delegation.cancelTask')} onPress={() => { void cancel(); }} disabled={session?.metadata?.capabilities?.delegation !== 1 || cancelling || cancelRequested || currentSummary?.cancelRequested} destructive testID="delegation-task-cancel" /> : null}</View>
         </ScrollView>
     </View>;
 }

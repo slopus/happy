@@ -1332,6 +1332,7 @@ export async function runAcp(opts: {
       await handleAbort();
       return { cancelled: root.cancelled };
     });
+    boundSession.declareDelegationSupport('antigravity');
   };
   bindDelegationHandlers();
 
