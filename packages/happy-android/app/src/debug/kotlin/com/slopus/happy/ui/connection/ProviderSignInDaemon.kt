@@ -65,7 +65,8 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
         Account("claude_work", "claude", "Claude (work)", "internal", listOf("browser"), acceptsToken = true, email = "ada@example.com", plan = "Max", refreshedAt = ago(30 * MINUTE), expiresAt = ago(-7 * HOUR)),
         Account("grok", "grok", "Grok", "configured", listOf("device"), acceptsToken = false, installed = scene != "missing", signIn = "signed_out"),
     ) + if (scene != "states") emptyList() else listOf(
-        Account("claude_home", "claude", "Claude (home)", "internal", listOf("browser"), acceptsToken = true, email = "ada@example.com", plan = "Pro", signIn = "signed_out", lastUsedAt = ago(5 * DAY), refreshError = refreshError(400, "invalid_grant", permanent = true, since = ago(5 * DAY), at = ago(20 * MINUTE))),
+        // Background renewal is Codex's and Grok's alone: a Claude account never carries a refresh error.
+        Account("codex_home", "codex", "Codex (home)", "internal", listOf("device", "browser"), acceptsToken = false, email = "ada@example.com", plan = "Pro", signIn = "signed_out", lastUsedAt = ago(5 * DAY), refreshError = refreshError(400, "invalid_grant", permanent = true, since = ago(5 * DAY), at = ago(20 * MINUTE))),
         Account("codex_team", "codex", "Codex (team)", "internal", listOf("device", "browser"), acceptsToken = false, email = "ada@example.com", plan = "Team", lastUsedAt = ago(1 * HOUR), refreshedAt = ago(21 * HOUR), expiresAt = ago(-3 * HOUR), refreshError = refreshError(503, null, permanent = false, since = ago(2 * HOUR), at = ago(12 * MINUTE))),
         Account("grok_side", "grok", "Grok (side)", "internal", listOf("device"), acceptsToken = false, plan = "SuperGrok", signIn = null),
         Account("claude_old", "claude", "Claude (old)", "configured", listOf("browser"), acceptsToken = true, enabled = false, lastUsedAt = ago(40 * DAY)),

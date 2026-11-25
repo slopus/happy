@@ -63,7 +63,11 @@ class ProviderAccountsTest {
         signIn = "signed_in", plan = "Max", login = AccountLogin(now - 30 * minute, now + 7 * hour, null), loginReported = true,
     )
     private val grok = ProviderAccount("grok", null, "grok", ProviderCredential(CredentialSource.Configured, listOf("device"), acceptsToken = false), signIn = "signed_out", loginReported = true)
-    private val claudeHome = claude.copy(id = "claude_home", name = "Claude (home)", plan = "Pro", signIn = "signed_out", login = AccountLogin(null, null, error(400, "invalid_grant", permanent = true)))
+    // Only Codex and Grok renew in the background, so only they carry a refresh error.
+    private val codexHome = codex.copy(
+        id = "codex_home", name = "Codex (home)", credential = codex.credential.copy(source = CredentialSource.Internal), plan = "Pro", signIn = "signed_out",
+        lastUsedAt = null, login = AccountLogin(null, null, error(400, "invalid_grant", permanent = true)),
+    )
     private val codexTeam = codex.copy(
         id = "codex_team", name = "Codex (team)", credential = codex.credential.copy(source = CredentialSource.Internal), plan = "Team",
         login = AccountLogin(now - 21 * hour, now + 3 * hour, error(503, null, permanent = false)),
@@ -85,7 +89,7 @@ class ProviderAccountsTest {
     /** Every line a row can say, the first that applies, each account's dot on its icon. */
     @Test
     fun eachRowSaysTheFirstThingThatApplies() {
-        showAccounts(ProviderAccountsState.Loaded(listOf(codex, claude, grok, claudeHome, codexTeam, grokSide, claudeOld, legacy)))
+        showAccounts(ProviderAccountsState.Loaded(listOf(codex, claude, grok, codexHome, codexTeam, grokSide, claudeOld, legacy)))
         rule.onNodeWithText("Inference").assertExists()
         rule.onNodeWithText("ACCOUNTS").assertExists()
         // The account's own name, else its assistant's, with its plan.
@@ -102,7 +106,7 @@ class ProviderAccountsTest {
         rule.onNodeWithText("Off").assertExists()
         // An older agent: only when usage last looked.
         rule.onNodeWithText("System login · Last checked 5m ago").assertExists()
-        for (id in listOf("codex", "claude_work", "grok", "claude_home", "codex_team", "grok_side", "claude_old", "codex_old")) {
+        for (id in listOf("codex", "claude_work", "grok", "codex_home", "codex_team", "grok_side", "claude_old", "codex_old")) {
             rule.node(ProviderAccountsTags.dot(id)).assertExists()
         }
         // Nothing to press on a row but the row, and nothing under the card.
@@ -115,7 +119,7 @@ class ProviderAccountsTest {
     @Test
     fun everyRowIsTheSameHeightWhateverItSays() {
         val long = codexTeam.copy(id = "long", login = AccountLogin(null, null, error(503, "a_very_long_vendor_error_code_that_would_otherwise_wrap", permanent = false)))
-        val all = listOf(codex, claude, grok, claudeHome, codexTeam, grokSide, claudeOld, legacy, long)
+        val all = listOf(codex, claude, grok, codexHome, codexTeam, grokSide, claudeOld, legacy, long)
         showAccounts(ProviderAccountsState.Loaded(all))
         for (account in all) {
             val row = rule.node(ProviderAccountsTags.account(account.id)).performScrollTo().bounds
@@ -192,7 +196,7 @@ class ProviderAccountsTest {
 
     @Test
     fun aFailingRefreshShowsItsCodeAndSinceWhen() {
-        showAccount(claudeHome)
+        showAccount(codexHome)
         rule.onNodeWithText("Last refresh error").assertExists()
         rule.onNodeWithText("invalid_grant · since Nov 20", useUnmergedTree = true).assertExists()
     }
