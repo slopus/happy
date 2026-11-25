@@ -1695,9 +1695,23 @@ server or paired Happy Agent only while its health says
 `capabilities.pushRegistrations` (kept on the connection). A push names an
 installation and a member, and is shown and opened only on a connection
 that is both (`cloudPushConnection`, the same rule as iOS's): a sign-in is
-its member, a pairing is the member its daemon names (`profile.userId`) and
-on a standalone daemon the literal `standalone`. Forgetting a connection
-unregisters first, because a daemon keeps a phone it was never told to forget.
+its member and never `standalone`; a pairing is the member its daemon names
+(`profile.userId`), on a standalone daemon the literal `standalone`, and
+nobody at all until a bootstrap has said which (`memberRead`), so it then
+registers nothing and matches nothing. Where more than one connection
+matches, Happy Cloud's wins, then the open one, then the first.
+
+After unpair the daemon holds no registration for this phone. Forgetting a
+connection unregisters first (`beforeRemoval`), because a daemon keeps a
+phone it was never told to forget. A registration sent is never cancelled
+(the daemon gives every one a new version, and a removal naming an older
+one removes nothing). A farewell the daemon did not answer stays in the
+encrypted ledger: a pairing's with that pairing's own route to its daemon
+(`CloudPushFarewellRoute`, the only credential the ledger ever holds, and
+only until delivered), asked again at launch, on foreground, when the
+network returns and on a backing-off timer, until the daemon answers or
+the registration would have expired; a sign-in's without any credential,
+until the same member signs in again.
 
 Who is asked for the permission, and when (one ask each, never two):
 a Happy account at every foreground while the system would still show its

@@ -71,12 +71,14 @@ class CloudPushApi(private val client: AgentClient) {
     }
 
     private fun <T> decode(read: () -> T): T = try { read() } catch (_: Exception) { throw CloudPushException() }
-    private fun path(id: String) = "$ROOT/registrations/${uuid(id)}"
+    private fun path(id: String) = registrationPath(id)
     private fun version(registration: CloudPushRegistration) = mapOf("If-Match" to uuid(registration.version))
 
     companion object {
         private const val ROOT = "/v0/cloud/push"
         val APP_IDS = setOf("com.slopus.happy.dev", "com.slopus.happy.preview", "com.ex3ndr.happy")
         private fun uuid(value: String): String = UUID.fromString(value).toString().also { require(it == value) }
+        /** One registration's path, for the farewell a forgotten pairing sends without a client of its own. */
+        internal fun registrationPath(id: String) = "$ROOT/registrations/${uuid(id)}"
     }
 }

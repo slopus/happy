@@ -52,6 +52,8 @@ class CloudPushSyncTest {
             notificationsAllowed = { allowed }, appId = "com.slopus.happy.dev", locale = { "en-US" },
             dispatcher = StandardTestDispatcher(scope.testScheduler),
             registered = { registered += it.connectionId },
+            // Before every registration here expires: a removal past its registration's expiry is dropped.
+            clock = { 0 },
         )
         init { sync.start(scope.backgroundScope) }
     }

@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +15,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Foreground/native-token/network triggers; never requests OS permission or runs a polling timer. */
+/**
+ * Foreground/native-token/network triggers; never requests OS permission.
+ * The one timer is a farewell's: while a forgotten pairing's daemon has not
+ * answered, it is asked again, further and further apart.
+ */
 class CloudPushSync(
     private val accounts: StateFlow<List<CloudPushAccount>>,
     private val foreground: StateFlow<Boolean>,
@@ -35,6 +40,7 @@ class CloudPushSync(
 ) {
     private data class Trigger(val sequence: Long, val native: Boolean = false)
     private val revision = MutableStateFlow(Trigger(0))
+    private val farewells = MutableStateFlow(0L)
     private var handledNative = -1L
     private var work: Job? = null
     private var nativeToken: String? = null
@@ -48,7 +54,19 @@ class CloudPushSync(
                 launch {
                     networkReturns.collect {
                         for (account in accounts.value) client(account)?.let { client -> attempt { registrations.cleanup(account, client) } }
+                        retire()
                         refresh()
+                    }
+                }
+                launch {
+                    // What a forgotten pairing still owes its daemon: asked at the start, when the app or the network
+                    // comes back and when a connection is forgotten, then after 2, 4, 8 … seconds, at most five minutes.
+                    combine(farewells, foreground) { _, _ -> }.collectLatest {
+                        var wait = FAREWELL_FIRST_WAIT
+                        while (owed()) {
+                            delay(wait)
+                            wait = (wait * 2).coerceAtMost(FAREWELL_LONGEST_WAIT)
+                        }
                     }
                 }
                 launch {
@@ -56,6 +74,8 @@ class CloudPushSync(
                         attempt {
                             for (gone in registrations.accounts().filterNot { it in current }) registrations.remove(gone, null)
                         }
+                        // A connection forgotten while its registration was in flight is only queued here.
+                        retire()
                     }
                 }
                 combine(accounts, foreground, revision) { current, front, changed -> Triple(current, front, changed) }
@@ -82,7 +102,8 @@ class CloudPushSync(
                             return@collectLatest
                         }
                         for (account in current) client(account)?.let { client ->
-                            attempt { if (registrations.register(account, client, token, appId, locale())) registered(account) }
+                            // Not taken may be "its connection went meanwhile": that registration is then a farewell owed.
+                            attempt { if (registrations.register(account, client, token, appId, locale())) registered(account) else retire() }
                         }
                     }
             }
@@ -90,7 +111,11 @@ class CloudPushSync(
     }
 
     /** A connection was just forgotten: its farewell is asked now. */
-    fun retire() {}
+    fun retire() { farewells.update { it + 1 } }
+
+    private suspend fun owed(): Boolean = try { registrations.retire(clock(), farewell) }
+    catch (e: CancellationException) { throw e }
+    catch (_: Exception) { false }
 
     /** Native token changed, permission was explicitly granted, or connectivity returned. */
     fun refresh(native: Boolean = false) { revision.update { Trigger(it.sequence + 1, native) } }
@@ -98,6 +123,11 @@ class CloudPushSync(
     private fun client(account: CloudPushAccount): CloudPushApi? = try { api(account) }
     catch (e: CancellationException) { throw e }
     catch (_: Exception) { null }
+
+    private companion object {
+        const val FAREWELL_FIRST_WAIT = 2_000L
+        const val FAREWELL_LONGEST_WAIT = 300_000L
+    }
 
     private suspend fun attempt(action: suspend () -> Unit) {
         try { action() } catch (e: CancellationException) { throw e } catch (_: Exception) { /* Retry on the next authorized trigger, without credential-bearing logs. */ }

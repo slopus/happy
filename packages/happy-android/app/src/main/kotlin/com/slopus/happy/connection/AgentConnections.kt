@@ -200,6 +200,7 @@ class AgentConnections(
                     daemonVersion = agent?.daemonVersion ?: previous?.daemonVersion,
                     protocol = agent?.protocol ?: previous?.protocol,
                     pushRegistrations = agent?.pushRegistrations ?: previous?.pushRegistrations ?: false,
+                    memberRead = previous?.memberRead ?: false,
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
