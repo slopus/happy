@@ -617,7 +617,9 @@ ported from happy-agent-client's `happyLinks.ts`.
 - **File links** (`happy://agents/<id>/files/<path>#L<n>`) are read when
   tapped (`AgentClient.linkedFile`: the agent's workspace, then
   `GET /v0/workspaces/:id/file`), then shown read-only by
-  `WorkspaceFileViewController` at the line. A 403 says politely that the
+  `WorkspaceFileViewController` at the line; a picture is fitted to the
+  screen and zooms, and a recording plays in the system's player
+  (`FileViewer.mediaKind`). A 403 says politely that the
   person has no access. A file that isn't there, or a server without
   workspace files yet (404, 501), turns the link into its label as words
   for as long as the conversation is open.

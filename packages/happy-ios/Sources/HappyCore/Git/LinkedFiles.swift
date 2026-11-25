@@ -9,6 +9,8 @@ import HappyWire
 public enum LinkedFiles {
     public enum Outcome: Equatable, Sendable {
         case file(FileViewer.Content)
+        /// A picture or a recording (`FileViewer.mediaKind`), its bytes whole.
+        case media(FileViewer.MediaKind, Data)
         /// The server said no (403): the reader's role doesn't reach it.
         case forbidden
         /// Not there to open: an unknown or archived agent, a missing
@@ -26,6 +28,15 @@ public enum LinkedFiles {
         if status == 501 || ((400..<500).contains(status) && ![408, 409, 429].contains(status)) { return .unavailable }
         return .failed(message)
     }
+
+    /// The file's base64 as the viewer shows it: a picture's or a
+    /// recording's bytes, else its text (`FileViewer.decode`).
+    public static func read(_ base64: String, path: String) -> Outcome {
+        if let kind = FileViewer.mediaKind(path), let bytes = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) {
+            return .media(kind, bytes)
+        }
+        return .file(FileViewer.decode(base64: base64))
+    }
 }
 
 extension AgentClient {
@@ -40,7 +51,8 @@ extension AgentClient {
                 guard agent.archivedAt == nil else { return .unavailable }
                 workspaceId = agent.workspaceId
             }
-            return .file(FileViewer.decode(base64: try await workspaceFile(workspaceId, path: link.path)))
+            let base64 = try await workspaceFile(workspaceId, path: link.path)
+            return LinkedFiles.read(base64, path: link.path)
         } catch {
             return LinkedFiles.outcome(error)
         }
