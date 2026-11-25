@@ -156,7 +156,7 @@ public actor CloudPush {
         public var requestPermission: @Sendable () async -> PushPermission
         public var apnsToken: @Sendable () async throws -> Data
         /// Registrations still to be taken off computers since unpaired.
-        public var leaving: any CloudPushUnregisterStore = InMemoryCloudPushUnregisterStore()
+        public var leaving: any CloudPushUnregisterStore
         /// A way to a computer by a pairing's credentials alone, for
         /// asking it again once the pairing's own is gone.
         public var connect: @Sendable (AgentConnectionCredentials) -> any AgentTransport = {
@@ -165,7 +165,9 @@ public actor CloudPush {
 
         public init(device: CloudPushDevice, ids: CloudPushIDs, transport: any HTTPTransport,
                     permission: @escaping @Sendable () async -> PushPermission, requestPermission: @escaping @Sendable () async -> PushPermission,
-                    apnsToken: @escaping @Sendable () async throws -> Data) {
+                    apnsToken: @escaping @Sendable () async throws -> Data,
+                    leaving: any CloudPushUnregisterStore = InMemoryCloudPushUnregisterStore()) {
+            self.leaving = leaving
             self.device = device
             self.ids = ids
             self.transport = transport
@@ -193,7 +195,7 @@ public actor CloudPush {
     /// How long a renewal lasts before coming back renews again.
     public static let renewal: TimeInterval = 6 * 3600
 
-    private let source: Source
+    private var source: Source
     private var token: (apns: Data, happy: HappyPushToken)?
     private var renewed: [String: Date] = [:]
     /// The registration on its way for a connection. A server gives each
@@ -201,6 +203,21 @@ public actor CloudPush {
     /// sent at once could leave the phone holding the older: one is sent at
     /// a time, and leaving waits for it.
     private var registering: [String: (ask: Bool, task: Task<Outcome, Error>)] = [:]
+    /// The connections being left, or left: nothing registers on one
+    /// again. A renewal as the app comes back, while its computer is being
+    /// told or after, would leave a registration the phone no longer knows.
+    private var left: Set<String> = []
+    /// Registrations still to be taken off computers since unpaired, by
+    /// connection (`Source.leaving`, read once).
+    private var waiting: [String: PendingCloudPushUnregister] = [:]
+    private var loaded = false
+    private var asking: Task<Void, Never>?
+    /// How long one later try may take: a way to the computer made anew,
+    /// over the relay too, and its answer.
+    var attemptTimeout: Duration = .seconds(15)
+    /// A registration lasts this long on a computer: one kept longer is
+    /// gone there.
+    static let registrationLife: TimeInterval = 30 * 24 * 60 * 60
 
     public init(source: Source) { self.source = source }
 
@@ -212,6 +229,7 @@ public actor CloudPush {
     /// these routes 404, and is never asked), and shows the prompt while
     /// iOS still would, which is once.
     public func register(connection: String, client: AgentClient, ask: Bool, cloud: Bool, now: Date = Date()) async throws -> Outcome {
+        guard !left.contains(connection) else { return .leaving }
         // A connection that comes up says so more than once at the same
         // moment: the second is answered as the first is. A tap is never
         // answered by a quiet renewal, which may not have asked.
@@ -248,24 +266,131 @@ public actor CloudPush {
     /// registration goes, so the phone stops getting its notifications
     /// now, not at the registration's expiry. Called before the session
     /// is revoked. One never registered with is sent nothing.
+    ///
+    /// `credentials`: the connection's. A pairing's are kept, with the
+    /// registration's id and version and nothing else, before its computer
+    /// is asked, and until it answers: a computer that is off or out of
+    /// reach, or an app left or killed with the request on its way, is
+    /// asked again (`resume`) rather than left holding the registration
+    /// for its thirty days. A sign-in's are never kept: its session ends
+    /// with it, and a server not told throws as before.
     public func unregister(connection: String, client: AgentClient, credentials: AgentConnectionCredentials? = nil) async throws {
+        left.insert(connection)
         // One on its way lands first: its version is the one to take off.
         while let running = registering[connection] { _ = await running.task.result }
         renewed[connection] = nil
         guard let version = source.ids.version(for: connection) else { return }
-        try await client.unregisterCloudPush(source.ids.registration(for: connection), version: version)
+        let registration = source.ids.registration(for: connection)
+        guard let credentials, credentials.signIn == nil else {
+            try await client.unregisterCloudPush(registration, version: version)
+            source.ids.forget(connection)
+            return
+        }
+        let pending = PendingCloudPushUnregister(credentials: credentials, registration: registration, version: version)
+        load()
+        try? source.leaving.save(pending, id: connection)
+        waiting[connection] = pending
         source.ids.forget(connection)
+        if await Self.answered(pending, by: client) { settle(connection, pending) } else { ask(afresh: true) }
     }
 
-    /// How soon a computer that didn't answer is asked again.
+    /// How soon a computer that didn't answer is asked again: at 2, 4, 8 …
+    /// seconds, then every five minutes while the app runs.
     var backoff = Backoff(initial: .seconds(2), maximum: .seconds(300))
     func setBackoff(_ backoff: Backoff) { self.backoff = backoff }
     /// For tests: another way to the computers from here on.
-    func setConnect(_ connect: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport) {}
+    func setConnect(_ connect: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport) { source.connect = connect }
 
     /// Asks the computers an earlier launch could not tell.
-    public func resume() {}
+    public func resume() {
+        load()
+        ask()
+    }
 
     /// Returns once no computer is still to be told, or `limit` has passed.
-    public func waitUntilSettled(limit: Duration = .seconds(10)) async {}
+    public func waitUntilSettled(limit: Duration = .seconds(10)) async {
+        let deadline = ContinuousClock.now + limit
+        while !waiting.isEmpty, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    private func load() {
+        guard !loaded else { return }
+        // A locked Keychain leaves them for the next launch.
+        guard let saved = try? source.leaving.all() else { return }
+        loaded = true
+        waiting.merge(saved) { current, _ in current }
+    }
+
+    private func settle(_ connection: String, _ pending: PendingCloudPushUnregister) {
+        guard waiting[connection] == pending else { return }
+        waiting.removeValue(forKey: connection)
+        try? source.leaving.remove(id: connection)
+    }
+
+    /// `afresh`: one just kept is asked for now, not when a wait for an
+    /// older one ends.
+    private func ask(afresh: Bool = false) {
+        if afresh { asking?.cancel(); asking = nil }
+        guard asking == nil, !waiting.isEmpty else { return }
+        round += 1
+        asking = Task { [round] in await self.askAll(round) }
+    }
+    private var round = 0
+
+    private func askAll(_ mine: Int) async {
+        var attempt = 0
+        while !waiting.isEmpty, !Task.isCancelled {
+            for (connection, pending) in waiting.sorted(by: { $0.value.queuedAt < $1.value.queuedAt }) {
+                var done = Date().timeIntervalSince(pending.queuedAt) > Self.registrationLife
+                if !done { done = await again(pending) }
+                if done { settle(connection, pending) }
+            }
+            guard !waiting.isEmpty else { break }
+            attempt += 1
+            try? await Task.sleep(for: backoff.delay(attempt: attempt))
+        }
+        // Started afresh meanwhile: that one goes on.
+        guard round == mine else { return }
+        asking = nil
+        // One kept while the last pass was on its way out.
+        ask()
+    }
+
+    /// One later try, on a way to the computer of its own, closed after.
+    /// One that doesn't answer within `attemptTimeout` is left behind.
+    private func again(_ pending: PendingCloudPushUnregister) async -> Bool {
+        let transport = source.connect(pending.credentials)
+        let client = AgentClient(transport: transport, token: pending.credentials.deviceToken)
+        let answer = Answered()
+        let request = Task { answer.set(await Self.answered(pending, by: client)) }
+        await waitAtMost(attemptTimeout) { await request.value }
+        request.cancel()
+        Task { await transport.close() }
+        return answer.value
+    }
+
+    /// True once the computer has answered for good: taken off, already
+    /// gone, a route it doesn't have, or a phone it no longer knows (401,
+    /// revoked there: nothing this phone can take off). 408, 429, a 5xx
+    /// and no answer are asked again.
+    private static func answered(_ pending: PendingCloudPushUnregister, by client: AgentClient) async -> Bool {
+        do {
+            try await client.unregisterCloudPush(pending.registration, version: pending.version)
+            return true
+        } catch AgentClientError.revoked {
+            return true
+        } catch let error as CloudPushError {
+            guard let status = error.status else { return false }
+            return (400..<500).contains(status) && status != 408 && status != 429
+        } catch {
+            return false
+        }
+    }
+}
+
+private final class Answered: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = false // under `lock`
+    var value: Bool { lock.withLock { stored } }
+    func set(_ value: Bool) { lock.withLock { stored = value } }
 }

@@ -354,7 +354,16 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     first (`AgentConnections.cloudFarewell`). A server gives each
     registration it takes a new version and takes off only the latest, so
     one is sent per connection at a time and leaving waits for the one on
-    its way (`CloudPush.registering`). Every server gets the same
+    its way (`CloudPush.registering`). Once leaving a connection has
+    begun nothing registers on it again. A pairing's farewell is durable:
+    its credentials, the registration's id and its version are kept in a
+    Keychain item of their own (`happy-ios:cloud-push-unregister`) before
+    the computer is asked, and until it answers, a 401 included; a
+    computer off or out of reach is asked again while the app runs and at
+    each launch, for the registration's thirty days at most, and the app
+    left right after the tap holds background time for it. A sign-in's
+    credentials are never kept: its session ends with it. Every server
+    gets the same
     relay token and the relay takes a send from whoever holds it, so a
     push may name a connection its sender isn't: a tap only ever opens a
     chat that connection already has.
