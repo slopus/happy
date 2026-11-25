@@ -4,5 +4,6 @@
     <string name="viewers_show">Ver quién está aquí</string>
     <string name="viewers_here_now">aquí ahora</string>
     <string name="viewers_minutes_short">%1$d min</string>
+    <string name="viewers_editing">editando</string>
     <string name="viewers_someone">Alguien</string>
 </resources>

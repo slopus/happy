@@ -4,5 +4,6 @@
     <string name="viewers_show">Mostra qui hi ha</string>
     <string name="viewers_here_now">aquí ara</string>
     <string name="viewers_minutes_short">%1$d min</string>
+    <string name="viewers_editing">editant</string>
     <string name="viewers_someone">Algú</string>
 </resources>

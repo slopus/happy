@@ -8,6 +8,7 @@
     <string name="viewers_show">Show who\'s here</string>
     <string name="viewers_here_now">here now</string>
     <string name="viewers_minutes_short">%1$dm</string>
+    <string name="viewers_editing">editing</string>
     <string name="viewers_someone">Someone</string>
     <string name="viewers_more" translatable="false">+%1$d</string>
 </resources>
