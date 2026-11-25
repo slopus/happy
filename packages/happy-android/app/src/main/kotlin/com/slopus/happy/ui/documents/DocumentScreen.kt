@@ -54,6 +54,9 @@ import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.slopus.happy.ui.viewers.ViewersSlot
+import com.slopus.happy.viewers.ViewerTarget
+import com.slopus.happy.viewers.ViewersAvailability
 
 /**
  * iOS's `DocumentScreenLayout.Metrics`: the text 16 below the bar and 96
@@ -93,6 +96,7 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
     val save by holder.save.collectAsStateWithLifecycle()
     val notice by holder.notice.collectAsStateWithLifecycle()
     val peers by holder.peers.collectAsStateWithLifecycle()
+    val viewersAvailability by session.viewers.availability.collectAsStateWithLifecycle()
     // A role that reads but doesn't write sees the document as it is: no cursor, no keyboard, no renaming.
     val writes = session.permissions.collectAsStateWithLifecycle().value.canWrite
     LaunchedEffect(writes) { holder.controller?.editable = writes }
@@ -124,7 +128,9 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
         active = active,
         onBack = onBack,
         actions = {
-            DocumentPeers(peers)
+            // Viewers say who is here with their faces; the cursor-coloured peers stand in where the computer serves none.
+            ViewersSlot(session, ViewerTarget.surface(surfaceId))
+            if (viewersAvailability != ViewersAvailability.Served) DocumentPeers(peers)
             SurfaceMenu(session, surfaceId, onBack, open) { close ->
                 if (writes) HappyMenuItem(stringResource(R.string.common_rename), onClick = { close(); renaming = true })
                 HappyMenuItem(stringResource(R.string.document_history), onClick = { close(); onHistory() })

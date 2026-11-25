@@ -91,6 +91,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.Serializable
+import com.slopus.happy.ui.viewers.ViewersSlot
+import com.slopus.happy.viewers.ViewerTarget
 
 /**
  * One conversation of the agent connection [connectionId]; [agentId] null
@@ -515,6 +517,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             roleCanSend = roleCanSend,
             roleCanCompose = permissions.canWrite,
             place = remember(conversation) { TranscriptPlace(session.scrollPlaces, conversation.agentId) },
+            viewers = { ViewersSlot(session, ViewerTarget.agent(conversation.agentId)) },
             link = link,
             usage = usage,
             onRefreshUsage = session.usage::refresh,

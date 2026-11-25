@@ -2657,6 +2657,43 @@ every locale, not happy-i18n.
 - Tests: `vaults/*Test` (listing, events, uploads against a fake daemon,
   routes, presets) and `ui/vaults/VaultLayoutTest`.
 
+### Viewers
+
+Who else is on a conversation or a Surface, in its header (happy-agent
+API.md, "Viewers"; the same contract happy-cluster serves). `viewers/` is
+the wire and state, `ui/viewers/` the slot; words are
+`strings_viewers.xml` in every locale.
+
+- **Store** (`Viewers`, one per `AgentSession`): the hello's `streamId`
+  opens it, the stream's end closes it (and drops the lists). A screen
+  holds its target while resumed (`ViewersSlot` does it with
+  `repeatOnLifecycle(RESUMED)`), so background, lock and leaving all
+  unview it. What is viewed (newest first, at most 8) goes to `PUT
+  /v0/viewers/streams/:streamId` 300 ms after it settles, every 15 s while
+  anything is, and `[]` once nothing is. Each answer replaces the lists;
+  `viewers.updated` frames (routed beside the document frames, never to the
+  journal) land on top in arrival order. A 404 (standalone, older) hides
+  the slot and asks nothing more until the next stream.
+- **Tiers** (`ViewerTier`): Here, Recent (gone at most 10 minutes) and
+  Seen; the slot redraws at the next badge minute or tier change
+  (`ViewerTier.nextChange`), never on a fixed tick.
+- **Slot** (`ViewersSpec`): 104 wide whenever viewers are served, the same
+  with 0 or 50 people, so the title never moves; four faces 18 apart at its
+  end, then `+N`. Here wears a ring in the person's colour that breathes on
+  the RenderThread (`RenderThreadBreath`, `viewer_ring_breathe.xml`) and a
+  green dot, pops in on a spring and fades its ring as they go; faces move
+  by translation alone. Recent shows its minutes, Seen is smaller and grey.
+  A tap lists everyone: "here now", "4 minutes ago", "Nov 12". In a
+  document the slot stands in for the cursor-coloured peers once served.
+- **Where:** the chat's bar (`ConversationScreen(viewers)`) and every
+  Surface's bar beside its menu (todo, document, calendar, system monitor,
+  vault, references and the rest).
+- **Fixture:** debug builds have `ui.viewers.ViewersFixturesActivity`: the
+  real store and slot over an in-memory computer (`--es viewers.screen
+  chat|todo --es viewers.scene tiers|none|ten|live`). `LiveViewersTest`
+  runs two people's sessions against a real team-mode daemon when
+  `HAPPY_VIEWERS_ENV` names the JSON happy-agent's live fixture writes.
+
 ### Plugins
 
 A Happy Cloud server's plugins (happy-cluster API.md, "Plugins"; desktop's

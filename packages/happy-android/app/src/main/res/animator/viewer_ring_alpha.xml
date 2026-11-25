@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- With the breath: full as it draws in, 55% as it goes out. -->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:propertyName="strokeAlpha"
+    android:valueFrom="1"
+    android:valueTo="0.55"
+    android:valueType="floatType"
+    android:duration="1200"
+    android:repeatCount="infinite"
+    android:repeatMode="reverse"
+    android:interpolator="@android:interpolator/fast_out_slow_in" />

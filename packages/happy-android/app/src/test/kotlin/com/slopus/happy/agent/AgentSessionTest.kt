@@ -1224,6 +1224,43 @@ class AgentSessionTest {
         eventually({ session.feed.value.conversations.map { it.agentId } }) { "at9" in it }
     }
 
+    /**
+     * Viewers ride the stream its hello names: what is viewed goes to
+     * `PUT /v0/viewers/streams/:streamId`, and `viewers.updated` frames land
+     * on the answer.
+     */
+    @Test
+    fun viewersFollowTheStreamItsHelloNames(): Unit = runBlocking {
+        val chat = com.slopus.happy.viewers.ViewerTarget.agent("at1")
+        agent.resources["/v0/viewers/streams/st1"] = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"targets":[{"target":{"type":"agent","id":"at1"},"viewers":[{"userId":"kirill","here":true,"lastSeenAt":5000}]}]}""",
+        ) as kotlinx.serialization.json.JsonObject
+        val session = sessions().session(id)!!
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c0\",\"gap\":false,\"resumed\":false,\"daemonId\":\"d1\",\"streamId\":\"st1\"}\n\n")
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        val viewing = scope.launch { session.viewers.view(chat) }
+        eventually({ session.viewers.lists.value[chat] }) { it == listOf(com.slopus.happy.viewers.Viewer("kirill", true, 5_000)) }
+        assertEquals(com.slopus.happy.viewers.ViewersAvailability.Served, session.viewers.availability.value)
+        assertTrue(agent.calls.contains("PUT /v0/viewers/streams/st1"))
+        agent.frames.send("event: viewers.updated\ndata: {\"target\":{\"type\":\"agent\",\"id\":\"at1\"},\"viewer\":{\"userId\":\"kirill\",\"here\":false,\"lastSeenAt\":6000}}\n\n")
+        eventually({ session.viewers.lists.value[chat] }) { it == listOf(com.slopus.happy.viewers.Viewer("kirill", false, 6_000)) }
+        viewing.cancel()
+    }
+
+    /** A computer without viewers (standalone, older) answers 404: the slot stays hidden and nothing more is asked. */
+    @Test
+    fun aComputerWithoutViewersIsAskedOnce(): Unit = runBlocking {
+        val session = sessions().session(id)!!
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c0\",\"gap\":false,\"resumed\":false,\"daemonId\":\"d1\",\"streamId\":\"st1\"}\n\n")
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        val viewing = scope.launch { session.viewers.view(com.slopus.happy.viewers.ViewerTarget.surface("s1")) }
+        eventually({ session.viewers.availability.value }) { it == com.slopus.happy.viewers.ViewersAvailability.Refused }
+        val more = scope.launch { session.viewers.view(com.slopus.happy.viewers.ViewerTarget.surface("s2")) }
+        kotlinx.coroutines.delay(800)
+        assertEquals(1, agent.calls.count { it.startsWith("PUT /v0/viewers/") })
+        viewing.cancel(); more.cancel()
+    }
+
     /** A session whose `POST /v0/surfaces/:id/leave` waits for [gate], then answers [status] with [error]. */
     private fun leavingSession(gate: CompletableDeferred<Unit>, status: Int, error: String? = null, bodies: MutableList<String> = mutableListOf()): AgentSession {
         agent.bootstrap = Wire.bootstrap(

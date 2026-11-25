@@ -18,6 +18,8 @@ import com.slopus.happy.diagnostics.Timing
 import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.documents.DocumentLibrary
 import com.slopus.happy.documents.DocumentStreams
+import com.slopus.happy.viewers.AgentViewersBackend
+import com.slopus.happy.viewers.Viewers
 import com.slopus.happy.feed.AgentFeedRoutes
 import com.slopus.happy.feed.FeedLibrary
 import com.slopus.happy.feed.FeedCovers
@@ -556,6 +558,9 @@ class AgentSession internal constructor(
      * `<connection>.documents/`; their live frames come off this session's stream.
      */
     val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope)
+
+    /** Who else is on the conversations and Surfaces this phone shows. */
+    val viewers = Viewers(scope, AgentViewersBackend(client))
 
     val artifacts = com.slopus.happy.artifacts.ArtifactCatalogFeed(
         scope, fetch = { cursor -> ArtifactClient(client).catalog(cursor) },
@@ -1116,6 +1121,10 @@ class AgentSession internal constructor(
                         documents.frame(frame.event, frame.data)
                         continue
                     }
+                    if (frame.event == Viewers.FRAME) {
+                        viewers.frame(frame.data)
+                        continue
+                    }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
                         Timing.mark("link.hello")
@@ -1127,6 +1136,7 @@ class AgentSession internal constructor(
                         drainingState.value = hello.draining
                         statusState.value = AgentLinkStatus.Connected
                         phaseState.value = SyncPhase.P0Live
+                        viewers.opened(event.data.string("streamId"))
                         snapshot.await()
                         if (hello.gap && (resumed || wasVerified)) readSnapshot()
                         resumeAllowed = true
@@ -1169,6 +1179,7 @@ class AgentSession internal constructor(
         } finally {
             secondary?.cancel()
             documents.closed()
+            viewers.closed()
             feedLibrary.disconnected()
             stream.close()
         }

@@ -44,6 +44,11 @@
         <activity
             android:name=".ui.pipelines.PipelinesFixturesActivity"
             android:exported="true" />
+        <!-- The header's viewers over an in-memory computer (ui/viewers/ViewersFixturesActivity). -->
+        <activity
+            android:name=".ui.viewers.ViewersFixturesActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
         <!-- The plugin pages over an in-memory Happy Cloud server (ui/plugins/PluginsFixturesActivity). -->
         <activity
             android:name=".ui.plugins.PluginsFixturesActivity"
