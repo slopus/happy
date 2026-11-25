@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     release: vi.fn(),
     openDocument: vi.fn(async () => undefined),
     downloadOriginal: vi.fn(async () => true),
+    saveVideo: vi.fn(async (): Promise<'saved' | 'shared' | 'downloaded'> => 'saved'),
     openImageViewer: vi.fn(),
     resolveSource: vi.fn(async () => ({
         uri: 'https://files.test/acceptance.mp4',
@@ -45,6 +46,7 @@ vi.mock('@/sync/resolveMediaAttachmentSource', () => ({ resolveMediaAttachmentSo
 vi.mock('@/sync/resolveMotionPhotoAttachmentSource', () => ({ resolveMotionPhotoAttachmentSource: mocks.resolveMotionSource }));
 vi.mock('@/sync/openDocumentAttachment', () => ({ openDocumentAttachment: mocks.openDocument }));
 vi.mock('@/sync/downloadOriginalAttachment', () => ({ downloadOriginalAttachment: mocks.downloadOriginal }));
+vi.mock('@/sync/saveVideoAttachment', () => ({ saveVideoAttachment: mocks.saveVideo }));
 vi.mock('./MediaAttachmentPlayer', () => ({ MediaAttachmentPlayer: 'MediaAttachmentPlayer' }));
 vi.mock('@/components/DesktopShortcutTooltip', () => ({ DesktopShortcutTooltip: 'DesktopShortcutTooltip' }));
 vi.mock('@/text', () => ({
@@ -122,6 +124,8 @@ describe('FileView media playback', () => {
         mocks.release.mockClear();
         mocks.openDocument.mockClear();
         mocks.downloadOriginal.mockClear();
+        mocks.saveVideo.mockReset();
+        mocks.saveVideo.mockResolvedValue('saved');
         mocks.openImageViewer.mockClear();
         mocks.resolveSource.mockReset();
         mocks.resolveSource.mockResolvedValue({
@@ -135,6 +139,107 @@ describe('FileView media playback', () => {
     });
 
     afterEach(() => consoleWarnSpy.mockRestore());
+
+    it('offers saving while playback is still loading and exports an independently owned original video', async () => {
+        const releaseDownload = vi.fn();
+        mocks.resolveSource.mockImplementationOnce(() => new Promise(() => {}));
+        mocks.resolveSource.mockResolvedValueOnce({ uri: 'file:///cache/acceptance.mp4', headers: {}, release: releaseDownload });
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<FileView tool={videoTool({ encrypted: false, source: 'generated' })} sessionId="s1" metadata={null} messages={[]} />);
+        });
+        expect(renderer.root.findAllByType('MediaAttachmentPlayer')).toHaveLength(0);
+        const button = renderer.root.findByProps({ testID: 'media-attachment-save-generated' });
+        expect(button.props.disabled).toBe(false);
+        await act(async () => { await button.props.onPress(); });
+        expect(mocks.resolveSource).toHaveBeenLastCalledWith({ sessionId: 's1', ref: 'sessions/s1/attachments/acceptance.mp4', mimeType: 'video/mp4', fileName: 'acceptance.mp4', encrypted: false });
+        expect(mocks.saveVideo).toHaveBeenCalledWith(expect.objectContaining({ uri: 'file:///cache/acceptance.mp4' }), 'acceptance.mp4', 'video/mp4');
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-status' }).props.children).toBe('imageUpload.mediaSavedToLibrary:');
+        expect(releaseDownload).toHaveBeenCalledOnce();
+        await act(async () => renderer.unmount());
+    });
+
+    it('prevents duplicate saves and keeps the export file alive if the playing card unmounts', async () => {
+        const releaseDownload = vi.fn();
+        let finishSave!: (result: 'saved') => void;
+        mocks.saveVideo.mockImplementationOnce(() => new Promise((resolve) => { finishSave = resolve; }));
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<FileView tool={videoTool()} sessionId="s1" metadata={null} messages={[]} />);
+        });
+        mocks.resolveSource.mockResolvedValueOnce({ uri: 'file:///cache/export.mp4', headers: {}, release: releaseDownload });
+        let pending!: Promise<void>;
+        await act(async () => {
+            const button = renderer.root.findByProps({ testID: 'media-attachment-save-user' });
+            pending = button.props.onPress();
+            await button.props.onPress();
+        });
+        expect(mocks.saveVideo).toHaveBeenCalledOnce();
+        expect(mocks.resolveSource).toHaveBeenCalledTimes(2);
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.accessibilityState).toMatchObject({ disabled: true, busy: true });
+        await act(async () => renderer.unmount());
+        expect(mocks.release).toHaveBeenCalledOnce();
+        expect(releaseDownload).not.toHaveBeenCalled();
+        await act(async () => { finishSave('saved'); await pending; });
+        expect(releaseDownload).toHaveBeenCalledOnce();
+    });
+
+    it('allows a save retry after playback and export errors without hiding the download button', async () => {
+        mocks.resolveSource.mockRejectedValueOnce(new Error('Playback failed'));
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<FileView tool={videoTool()} sessionId="s1" metadata={null} messages={[]} />);
+        });
+        expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+        mocks.saveVideo.mockRejectedValueOnce(new Error('Disk full'));
+        await act(async () => { await renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.onPress(); });
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-status' }).props.children).toBe('imageUpload.mediaSaveFailed:');
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.disabled).toBe(false);
+        await act(async () => { await renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.onPress(); });
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-status' }).props.children).toBe('imageUpload.mediaSavedToLibrary:');
+        await act(async () => renderer.unmount());
+    });
+
+    it('does not claim a video was saved after only opening the system share sheet', async () => {
+        mocks.saveVideo.mockResolvedValueOnce('shared');
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<FileView tool={videoTool()} sessionId="s1" metadata={null} messages={[]} />);
+        });
+        await act(async () => { await renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.onPress(); });
+        expect(renderer.root.findAllByProps({ testID: 'media-attachment-save-status' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.disabled).toBe(false);
+        await act(async () => renderer.unmount());
+    });
+
+    it('releases a late download after the user leaves the card without launching native saving', async () => {
+        let resolveDownload!: (source: any) => void;
+        const releaseDownload = vi.fn();
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<FileView tool={videoTool()} sessionId="s1" metadata={null} messages={[]} />);
+        });
+        mocks.resolveSource.mockImplementationOnce(() => new Promise((resolve) => { resolveDownload = resolve; }));
+        let pending!: Promise<void>;
+        await act(async () => { pending = renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.onPress(); });
+        await act(async () => renderer.unmount());
+        await act(async () => { resolveDownload({ uri: 'file:///cache/export.mp4', headers: {}, release: releaseDownload }); await pending; });
+        expect(mocks.saveVideo).not.toHaveBeenCalled();
+        expect(releaseDownload).toHaveBeenCalledOnce();
+    });
+
+    it('downloads public video cards without requiring session credentials', async () => {
+        const tool = videoTool({ encrypted: false });
+        tool.input.ref = 'https://public.test/shared/video';
+        mocks.saveVideo.mockResolvedValueOnce('downloaded');
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<FileView tool={tool} metadata={null} messages={[]} />); });
+        await act(async () => { await renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.onPress(); });
+        expect(mocks.resolveSource).not.toHaveBeenCalled();
+        expect(mocks.saveVideo).toHaveBeenCalledWith({ uri: 'https://public.test/shared/video', headers: {} }, 'acceptance.mp4', 'video/mp4');
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-status' }).props.children).toBe('imageUpload.mediaDownloadStarted:');
+        await act(async () => renderer.unmount());
+    });
 
     it('renders a generated plaintext MP4 directly without a file card', async () => {
         let renderer: any;

@@ -59,6 +59,7 @@ export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
             testID={props.testID}
             source={{ html: mediaDocument(props), ...(baseUrl ? { baseUrl } : {}) }}
             style={style}
+            containerStyle={{ ...style, flex: 0 }}
             originWhitelist={['*']}
             allowFileAccess
             allowingReadAccessToURL={baseUrl}

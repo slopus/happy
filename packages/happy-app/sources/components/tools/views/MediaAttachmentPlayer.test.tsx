@@ -38,6 +38,7 @@ describe('MediaAttachmentPlayer native video document', () => {
         expect(webView.props.source.baseUrl).toBe('file:///cache/');
         expect(webView.props.allowFileAccess).toBe(true);
         expect(webView.props.allowingReadAccessToURL).toBe('file:///cache/');
+        expect(webView.props.containerStyle).toMatchObject({ width: '100%', aspectRatio: 16 / 9, flex: 0 });
 
         await act(async () => renderer.unmount());
     });
@@ -64,6 +65,7 @@ describe('MediaAttachmentPlayer native video document', () => {
         expect(webView.props.source.html).not.toContain(' autoplay');
         expect(webView.props.source.html).toContain('background:transparent');
         expect(webView.props.style).toMatchObject({ height: 54, backgroundColor: 'transparent' });
+        expect(webView.props.containerStyle).toMatchObject({ height: 54, flex: 0 });
         expect(webView.props.mediaPlaybackRequiresUserAction).toBe(true);
 
         await act(async () => renderer.unmount());

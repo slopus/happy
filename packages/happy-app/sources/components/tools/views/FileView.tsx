@@ -27,6 +27,7 @@ import { openDocumentAttachment } from '@/sync/openDocumentAttachment';
 import { MAX_PDF_FILE_SIZE } from '@/sync/attachmentLimits';
 import type { MotionPhotoMetadata } from '@/sync/attachmentTypes';
 import { downloadOriginalAttachment } from '@/sync/downloadOriginalAttachment';
+import { saveVideoAttachment } from '@/sync/saveVideoAttachment';
 import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 
 const fileInputSchema = z.object({
@@ -71,6 +72,7 @@ export const FileView = React.memo<ToolViewProps & { onOpenImage?: (source: Imag
                 ref_={parsed.data.ref}
                 sessionId={sessionId}
                 name={parsed.data.name}
+                size={parsed.data.size}
                 mimeType={parsed.data.mimeType}
                 encrypted={parsed.data.encrypted}
                 source={parsed.data.source}
@@ -193,10 +195,11 @@ function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, so
     );
 }
 
-function InlineVideoFile({ ref_, sessionId, name, mimeType, encrypted, source: attachmentSource }: {
+function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, source: attachmentSource }: {
     ref_: string;
     sessionId?: string;
     name: string;
+    size?: number;
     mimeType?: string;
     encrypted?: boolean;
     source?: 'user' | 'generated' | 'browser_step';
@@ -209,6 +212,57 @@ function InlineVideoFile({ ref_, sessionId, name, mimeType, encrypted, source: a
     const sourceType = attachmentSource === 'generated' ? 'generated' : 'user';
     const resolvedMimeType = mimeType ?? 'video/mp4';
     const directUri = directAttachmentUri(ref_, sessionId);
+    const [saveState, setSaveState] = React.useState<'idle' | 'saving' | 'saved' | 'downloaded' | 'error'>('idle');
+    const saveRequest = React.useRef(0);
+    const saving = React.useRef(false);
+    const canSave = Boolean(sessionId || directUri);
+    const sizeLabel = humanSize(size);
+
+    React.useEffect(() => {
+        saveRequest.current += 1;
+        saving.current = false;
+        setSaveState('idle');
+        return () => { saveRequest.current += 1; };
+    }, [encrypted, generation, name, ref_, resolvedMimeType, sessionId]);
+
+    const handleSave = React.useCallback(async () => {
+        if (!canSave || saving.current) return;
+        const request = ++saveRequest.current;
+        saving.current = true;
+        setSaveState('saving');
+        let downloadSource: MediaPlaybackSource | null = null;
+        try {
+            // Own this source separately: a scrolling/unmounted player may release
+            // its cache file while the OS is still saving or sharing the video.
+            downloadSource = directUri
+                ? { uri: directUri, headers: {} }
+                : await resolveMediaAttachmentSource({
+                    sessionId: sessionId!, ref: ref_, mimeType: resolvedMimeType, fileName: name, encrypted,
+                });
+            if (saveRequest.current !== request || attachmentCacheGeneration() !== generation) return;
+            if (downloadSource.isCurrent && !downloadSource.isCurrent()) return;
+            const result = await saveVideoAttachment(downloadSource, name, resolvedMimeType);
+            if (saveRequest.current === request && attachmentCacheGeneration() === generation) {
+                setSaveState(result === 'shared' ? 'idle' : result);
+            }
+        } catch (cause) {
+            if (saveRequest.current === request && attachmentCacheGeneration() === generation) {
+                console.warn(`[media-attachment] failed to save ${name}`, cause);
+                setSaveState('error');
+            }
+        } finally {
+            try {
+                await downloadSource?.release?.();
+            } catch (cause) {
+                console.warn('[media-attachment] failed to release video download source', cause);
+            } finally {
+                if (saveRequest.current === request) {
+                    saving.current = false;
+                    setSaveState((state) => state === 'saving' ? 'idle' : state);
+                }
+            }
+        }
+    }, [canSave, directUri, encrypted, generation, name, ref_, resolvedMimeType, sessionId]);
 
     React.useEffect(() => {
         // Invalidation also destroys active streaming DOM. Resolve with the new
@@ -262,9 +316,45 @@ function InlineVideoFile({ ref_, sessionId, name, mimeType, encrypted, source: a
                 />
             ) : (
                 <View style={styles.videoLoadingFrame}>
-                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    {error
+                        ? <Ionicons name="alert-circle-outline" size={24} color={theme.colors.textSecondary} />
+                        : <ActivityIndicator size="small" color={theme.colors.textSecondary} />}
                 </View>
             )}
+            <View style={styles.videoMetaRow}>
+                <View style={styles.videoMeta}>
+                    <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
+                    {sizeLabel ? <Text style={[styles.mediaSub, { color: theme.colors.textSecondary }]}>{sizeLabel}</Text> : null}
+                </View>
+                <Pressable
+                    testID={`media-attachment-save-${sourceType}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('imageUpload.mediaSaveVideo')}
+                    accessibilityState={{ disabled: !canSave || saveState === 'saving', busy: saveState === 'saving' }}
+                    disabled={!canSave || saveState === 'saving'}
+                    onPress={handleSave}
+                    style={(press) => [styles.videoSaveButton, {
+                        backgroundColor: press.pressed ? theme.colors.surfacePressed : theme.colors.surface,
+                    }]}
+                >
+                    {saveState === 'saving'
+                        ? <ActivityIndicator size="small" color={theme.colors.text} />
+                        : <Ionicons name="download-outline" size={18} color={theme.colors.text} />}
+                    <Text style={[styles.videoSaveLabel, { color: theme.colors.text }]}>
+                        {t(saveState === 'saving' ? 'imageUpload.mediaSaving' : 'imageUpload.mediaSaveVideo')}
+                    </Text>
+                </Pressable>
+            </View>
+            {saveState === 'saved' || saveState === 'downloaded' || saveState === 'error' ? (
+                <Text
+                    testID="media-attachment-save-status"
+                    accessibilityLiveRegion="polite"
+                    style={[styles.videoSaveStatus, { color: saveState === 'error' ? theme.colors.textDestructive : theme.colors.textSecondary }]}
+                >
+                    {t(saveState === 'saved' ? 'imageUpload.mediaSavedToLibrary'
+                        : saveState === 'downloaded' ? 'imageUpload.mediaDownloadStarted' : 'imageUpload.mediaSaveFailed')}
+                </Text>
+            ) : null}
             {error ? (
                 <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
                     {t('imageUpload.mediaLoadFailed')}
@@ -583,6 +673,35 @@ const styles = StyleSheet.create(() => ({
         width: 300,
         maxWidth: '100%',
         alignSelf: 'flex-start',
+    },
+    videoMetaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 4,
+        paddingVertical: 4,
+        gap: 8,
+    },
+    videoMeta: {
+        flex: 1,
+        minWidth: 0,
+    },
+    videoSaveButton: {
+        minHeight: 48,
+        paddingHorizontal: 12,
+        borderRadius: BORDER_RADIUS,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+    },
+    videoSaveLabel: {
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    videoSaveStatus: {
+        fontSize: 12,
+        paddingHorizontal: 4,
+        paddingBottom: 4,
     },
     audioPlayButton: {
         width: 300,
