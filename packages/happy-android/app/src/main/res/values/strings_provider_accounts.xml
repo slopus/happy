@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">Provider accounts</string>
+    <string name="provider_accounts_system">Using system login</string>
+    <string name="provider_accounts_internal">Signed in to Happy</string>
+    <string name="provider_accounts_configured">Configured in config file</string>
+    <string name="provider_accounts_signed_out">Signed out</string>
+    <string name="provider_accounts_sign_in_again">Sign in again</string>
+    <string name="provider_accounts_in_progress">In progress</string>
+    <string name="provider_accounts_update_token">Update token</string>
+    <string name="provider_accounts_footer">Signing in here gives this account a login only Happy uses, so it stops using the system login.</string>
+    <string name="provider_accounts_owner_only">Only the team owner can change how accounts sign in.</string>
+    <string name="provider_accounts_not_installed">Install %1$s on the computer to sign in.</string>
+    <string name="provider_accounts_computer_only">This account signs in on the computer, not from a phone.</string>
+    <string name="provider_accounts_empty">No accounts sign in with a subscription.</string>
+    <string name="provider_accounts_load_failed">Couldn\'t load the accounts.</string>
+    <string name="provider_sign_in_starting">Starting the sign-in…</string>
+    <string name="provider_sign_in_enter_code">Enter this code on the sign-in page</string>
+    <string name="provider_sign_in_open">Open sign-in page</string>
+    <string name="provider_sign_in_paste_intro">Open the sign-in page, then paste the code it shows.</string>
+    <string name="provider_sign_in_paste_code">Paste the code</string>
+    <string name="provider_sign_in_checking">Checking…</string>
+    <string name="provider_sign_in_on_computer">This sign-in finishes in a browser on the computer. Finish it there, or cancel it.</string>
+    <string name="provider_sign_in_done">Signed in</string>
+    <string name="provider_sign_in_done_action">Done</string>
+    <string name="provider_sign_in_close">Close</string>
+    <string name="provider_sign_in_expired">Sign-in expired</string>
+    <string name="provider_sign_in_save_failed">Couldn\'t save the sign-in</string>
+    <string name="provider_sign_in_kept">The account keeps the login it had.</string>
+    <string name="provider_token_hint">Paste a token from `claude setup-token` on your computer.</string>
+    <string name="provider_token_updated">Token updated</string>
+    <string name="provider_token_failed">Couldn\'t update the token</string>
+</resources>

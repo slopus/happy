@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">プロバイダーアカウント</string>
+    <string name="provider_accounts_system">システムのログインを使用中</string>
+    <string name="provider_accounts_internal">Happy にサインイン済み</string>
+    <string name="provider_accounts_configured">設定ファイルで構成済み</string>
+    <string name="provider_accounts_signed_out">サインアウト済み</string>
+    <string name="provider_accounts_sign_in_again">もう一度サインイン</string>
+    <string name="provider_accounts_in_progress">進行中</string>
+    <string name="provider_accounts_update_token">トークンを更新</string>
+    <string name="provider_accounts_footer">ここでサインインすると、このアカウントは Happy だけが使うログインを持ち、システムのログインを使わなくなります。</string>
+    <string name="provider_accounts_owner_only">アカウントのサインイン方法を変更できるのはチームのオーナーだけです。</string>
+    <string name="provider_accounts_not_installed">サインインするには、コンピューターに %1$s をインストールしてください。</string>
+    <string name="provider_accounts_computer_only">このアカウントは電話ではなくコンピューターでサインインします。</string>
+    <string name="provider_accounts_empty">サブスクリプションでサインインするアカウントはありません。</string>
+    <string name="provider_accounts_load_failed">アカウントを読み込めませんでした。</string>
+    <string name="provider_sign_in_starting">サインインを開始しています…</string>
+    <string name="provider_sign_in_enter_code">サインインページでこのコードを入力してください</string>
+    <string name="provider_sign_in_open">サインインページを開く</string>
+    <string name="provider_sign_in_paste_intro">サインインページを開き、表示されたコードを貼り付けてください。</string>
+    <string name="provider_sign_in_paste_code">コードを貼り付け</string>
+    <string name="provider_sign_in_checking">確認中…</string>
+    <string name="provider_sign_in_on_computer">このサインインはコンピューター上のブラウザーで完了します。そちらで完了するか、キャンセルしてください。</string>
+    <string name="provider_sign_in_done">サインインしました</string>
+    <string name="provider_sign_in_done_action">完了</string>
+    <string name="provider_sign_in_close">閉じる</string>
+    <string name="provider_sign_in_expired">サインインの有効期限が切れました</string>
+    <string name="provider_sign_in_save_failed">サインインを保存できませんでした</string>
+    <string name="provider_sign_in_kept">アカウントは以前のログインのままです。</string>
+    <string name="provider_token_hint">コンピューターで `claude setup-token` を実行して得たトークンを貼り付けてください。</string>
+    <string name="provider_token_updated">トークンを更新しました</string>
+    <string name="provider_token_failed">トークンを更新できませんでした</string>
+</resources>

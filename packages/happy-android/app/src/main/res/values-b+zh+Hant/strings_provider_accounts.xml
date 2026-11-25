@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">供應商帳戶</string>
+    <string name="provider_accounts_system">使用系統登入</string>
+    <string name="provider_accounts_internal">已登入 Happy</string>
+    <string name="provider_accounts_configured">在設定檔中設定</string>
+    <string name="provider_accounts_signed_out">已登出</string>
+    <string name="provider_accounts_sign_in_again">重新登入</string>
+    <string name="provider_accounts_in_progress">進行中</string>
+    <string name="provider_accounts_update_token">更新權杖</string>
+    <string name="provider_accounts_footer">在此登入後，此帳戶將擁有僅供 Happy 使用的登入，不再使用系統登入。</string>
+    <string name="provider_accounts_owner_only">只有團隊擁有者可以變更帳戶的登入方式。</string>
+    <string name="provider_accounts_not_installed">請在電腦上安裝 %1$s 以登入。</string>
+    <string name="provider_accounts_computer_only">此帳戶需要在電腦上登入，而非在手機上。</string>
+    <string name="provider_accounts_empty">沒有透過訂閱登入的帳戶。</string>
+    <string name="provider_accounts_load_failed">無法載入帳戶。</string>
+    <string name="provider_sign_in_starting">正在開始登入…</string>
+    <string name="provider_sign_in_enter_code">在登入頁面輸入此代碼</string>
+    <string name="provider_sign_in_open">開啟登入頁面</string>
+    <string name="provider_sign_in_paste_intro">開啟登入頁面，然後貼上其顯示的代碼。</string>
+    <string name="provider_sign_in_paste_code">貼上代碼</string>
+    <string name="provider_sign_in_checking">正在檢查…</string>
+    <string name="provider_sign_in_on_computer">此登入需在電腦上的瀏覽器中完成。請在那裡完成，或取消。</string>
+    <string name="provider_sign_in_done">已登入</string>
+    <string name="provider_sign_in_done_action">完成</string>
+    <string name="provider_sign_in_close">關閉</string>
+    <string name="provider_sign_in_expired">登入已過期</string>
+    <string name="provider_sign_in_save_failed">無法儲存登入</string>
+    <string name="provider_sign_in_kept">帳戶保留原本的登入。</string>
+    <string name="provider_token_hint">貼上你在電腦上透過 `claude setup-token` 取得的權杖。</string>
+    <string name="provider_token_updated">權杖已更新</string>
+    <string name="provider_token_failed">無法更新權杖</string>
+</resources>

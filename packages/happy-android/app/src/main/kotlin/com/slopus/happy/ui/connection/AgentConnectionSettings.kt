@@ -112,7 +112,7 @@ data class AgentSettingsRow(val id: String, val title: String, val icon: Ionicon
  * connection away. The titles are the page's own (`AgentSettingsIndexTest`).
  */
 @Composable
-fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable: Boolean = false): List<AgentSettingsRow> {
+fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable: Boolean = false, providerAccountsAvailable: Boolean = false): List<AgentSettingsRow> {
     fun row(id: String, title: String, icon: Ionicon, place: AgentSettingsPlace = AgentSettingsPlace.Settings, ask: String? = null) =
         AgentSettingsRow(id, title, icon, place, ask)
     return listOfNotNull(
@@ -131,6 +131,7 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable
         row(AgentSharingTags.row(AutoJoinKind.Surfaces), stringResource(R.string.sharing_surfaces), Ionicon.PeopleOutline, AgentSettingsPlace.Notifications),
         row(AgentVoiceTags.SUPPORT, stringResource(R.string.agent_voice_support_title), Ionicon.Heart),
         row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
+        row(ProviderAccountsTags.ROW, stringResource(R.string.provider_accounts_title), Ionicon.KeyOutline).takeIf { providerAccountsAvailable },
         row(AgentUsageTags.ROW, stringResource(R.string.usage_title), Ionicon.AnalyticsOutline),
         row(PrivacyTags.ROW, stringResource(R.string.settings_account_privacy), Ionicon.LockClosedOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
@@ -191,6 +192,8 @@ class AgentSettingsActions(
     val onAgents: (() -> Unit)? = null,
     /** Members: who is on this Happy Cloud server, and leaving it; null for any other connection. */
     val onMembers: (() -> Unit)? = null,
+    /** Provider accounts: where each Codex, Claude and Grok account's login comes from, and signing it in again; null where the agent doesn't offer it. */
+    val onProviderAccounts: (() -> Unit)? = null,
     /** AI providers: the Happy Cloud server's connections, and adding ChatGPT, Claude and API keys; null for any other connection. */
     val onProviders: (() -> Unit)? = null,
     /** A Happy Cloud server's instructions and security policy, where its settings serve them ([PolicyDocument.served]). */
@@ -225,7 +228,8 @@ data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, va
  * desktop's Hide projects; the person's own Profile; Voice;
  * Data and Storage; Notifications, which is Sharing and on a Cloud server
  * its push settings too), Support Happy's boba row under it, Agents
- * (Agents, Inference, Compute, Usage), Team (Members, on Cloud); Privacy;
+ * (Agents, Provider accounts, Inference, Compute, Usage), Team (Members,
+ * on Cloud); Privacy;
  * the agent's version; About; Disconnect, after a
  * confirm. A device token can't reach
  * the agent's device list (API.md, "Credentials on the connector's
@@ -312,6 +316,14 @@ fun AgentConnectionSettingsScreen(
                         id = AgentAgentsTags.ROW,
                         title = stringResource(R.string.settings_agents),
                         icon = { SettingsTile(Ionicon.OptionsOutline, SettingsTiles.teal) },
+                        onClick = open,
+                    )
+                },
+                actions.onProviderAccounts?.let { open ->
+                    SettingsEntry(
+                        id = ProviderAccountsTags.ROW,
+                        title = stringResource(R.string.provider_accounts_title),
+                        icon = { SettingsTile(Ionicon.KeyOutline, SettingsTiles.indigo) },
                         onClick = open,
                     )
                 },
@@ -546,7 +558,9 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     val askChief = permissions?.allows(Permission.BOTS_MANAGE) ?: true
     val compute = ComputeRole.of(cloud, permissions ?: com.slopus.happy.agent.ServerPermissions.Unknown) != ComputeRole.None
     val policy = cloud && permissions?.let(com.slopus.happy.agent.PolicyDocument::served) == true
-    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy) {
+    // Happy Cloud keeps its own AI providers; a Happy Agent says it signs accounts in.
+    val providerAccounts = !cloud && session?.providerSignInAvailable?.collectAsStateWithLifecycle()?.value == true
+    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy, providerAccounts) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
@@ -556,6 +570,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onSharing = { nav.navigate(AgentSharingRoute(connectionId)) },
             onAgents = { nav.navigate(AgentAgentsRoute(connectionId)) },
             onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
+            onProviderAccounts = if (providerAccounts) ({ nav.navigate(ProviderAccountsRoute(connectionId)) }) else null,
             onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
             onPolicy = if (policy) ({ document -> nav.navigate(PolicyDocumentRoute(connectionId, document.id)) }) else null,
             onCompute = if (compute) ({ nav.navigate(CloudComputeRoute(connectionId)) }) else null,

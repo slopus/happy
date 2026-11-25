@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">Аккаунты провайдеров</string>
+    <string name="provider_accounts_system">Используется системный вход</string>
+    <string name="provider_accounts_internal">Вход выполнен в Happy</string>
+    <string name="provider_accounts_configured">Настроено в файле конфигурации</string>
+    <string name="provider_accounts_signed_out">Выполнен выход</string>
+    <string name="provider_accounts_sign_in_again">Войти снова</string>
+    <string name="provider_accounts_in_progress">Выполняется</string>
+    <string name="provider_accounts_update_token">Обновить токен</string>
+    <string name="provider_accounts_footer">Вход здесь даёт этому аккаунту отдельный вход, которым пользуется только Happy, и он перестаёт использовать системный вход.</string>
+    <string name="provider_accounts_owner_only">Только владелец команды может менять, как входят аккаунты.</string>
+    <string name="provider_accounts_not_installed">Установите %1$s на компьютер, чтобы войти.</string>
+    <string name="provider_accounts_computer_only">Этот аккаунт входит на компьютере, а не с телефона.</string>
+    <string name="provider_accounts_empty">Нет аккаунтов, которые входят по подписке.</string>
+    <string name="provider_accounts_load_failed">Не удалось загрузить аккаунты.</string>
+    <string name="provider_sign_in_starting">Начинаем вход…</string>
+    <string name="provider_sign_in_enter_code">Введите этот код на странице входа</string>
+    <string name="provider_sign_in_open">Открыть страницу входа</string>
+    <string name="provider_sign_in_paste_intro">Откройте страницу входа, затем вставьте код, который она покажет.</string>
+    <string name="provider_sign_in_paste_code">Вставьте код</string>
+    <string name="provider_sign_in_checking">Проверяем…</string>
+    <string name="provider_sign_in_on_computer">Этот вход завершается в браузере на компьютере. Завершите его там или отмените.</string>
+    <string name="provider_sign_in_done">Вход выполнен</string>
+    <string name="provider_sign_in_done_action">Готово</string>
+    <string name="provider_sign_in_close">Закрыть</string>
+    <string name="provider_sign_in_expired">Время входа истекло</string>
+    <string name="provider_sign_in_save_failed">Не удалось сохранить вход</string>
+    <string name="provider_sign_in_kept">Аккаунт сохраняет прежний вход.</string>
+    <string name="provider_token_hint">Вставьте токен из `claude setup-token` на вашем компьютере.</string>
+    <string name="provider_token_updated">Токен обновлён</string>
+    <string name="provider_token_failed">Не удалось обновить токен</string>
+</resources>

@@ -372,6 +372,13 @@ class AgentSession internal constructor(
     private val pipelinesAvailability = keptCapability(PIPELINES_AVAILABLE)
     val pipelinesAvailable: StateFlow<Boolean> get() = pipelinesAvailability.available
 
+    /** Whether Settings lists Provider accounts: bootstrap health's `capabilities.providerSignIn`, never probed. */
+    private val providerSignInAvailability = keptCapability(PROVIDER_SIGN_IN_AVAILABLE)
+    val providerSignInAvailable: StateFlow<Boolean> get() = providerSignInAvailability.available
+
+    /** The provider accounts' sign-ins (Settings › Provider accounts), made when a page first asks. */
+    val providerAccounts: ProviderAccounts by lazy { ProviderAccounts(AgentProviderSignIns(client), events, scope) }
+
     /** A capability kept in the connection's resources under [resource], so home's row doesn't come and go on each start. */
     private fun keptCapability(resource: String) = CapabilityAvailability(
         probe = null,
@@ -1077,6 +1084,7 @@ class AgentSession internal constructor(
         client.noteHealth(bootstrap.health ?: JsonObject(emptyMap()))
         pluginsAvailability.noteHealth(info.plugins)
         pipelinesAvailability.noteHealth(info.pipelines)
+        providerSignInAvailability.noteHealth(info.providerSignIn)
         avatarHash = info.thumbhash?.takeIf { it != known?.thumbhash || known.avatarFile == null }
         if (known != null) {
             val hasNode = bootstrap.config?.get("node") is JsonObject
@@ -1434,6 +1442,8 @@ class AgentSession internal constructor(
     private companion object {
         /** Where the connection keeps whether it has pipelines. */
         const val PIPELINES_AVAILABLE = "pipelines-available"
+        /** Where the connection keeps whether its accounts sign in here. */
+        const val PROVIDER_SIGN_IN_AVAILABLE = "provider-sign-in-available"
 
         /** Surface events that come together read the snapshot once. */
         const val SNAPSHOT_COALESCE = 300L

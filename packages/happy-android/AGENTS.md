@@ -424,6 +424,29 @@ win:
   put into words: no error text, and an account with no windows, no
   model tokens and no history is left out (`usageVendors`).
   `UsageFixtures` is the test and shot data (`UsageShots`).
+- **Settings › Provider accounts** (`ui/connection/ProviderAccounts.kt`,
+  `agent/ProviderSignIn.kt`, `agent/ProviderAccounts.kt`; iOS has the same
+  page and words) is happy-agent API.md's "Provider sign-in": a row after
+  Agents, only on a Happy Agent whose health says
+  `capabilities.providerSignIn` (kept per connection, never probed; Happy
+  Cloud keeps its AI providers). One card per `codex`, `claude` and `grok`
+  account of `GET /v0/config` carrying `credential`: where its login comes
+  from (an unknown `source` reads as the config file), its email and plan
+  from the sign-in object, "Signed out" from `GET /v0/usage`; Sign in again,
+  and Update token where `acceptsToken`. A phone signs in with `device`, or
+  Claude's `browser` page with its code pasted back; never Codex's or Grok's
+  browser, which finishes on the computer. The page started's operation is
+  followed through `provider_sign_in.updated` (the greater `version` wins)
+  and read again on resume and each reconnect; leaving it unfinished
+  cancels it. The agent says nothing of who owns a team until it refuses
+  (`403 forbidden`), so that refusal is remembered for the session and the
+  actions stay off with the reason. Codes and tokens are never kept,
+  logged or sent to analytics. Debug builds have
+  `ui.connection.ProviderAccountsFixturesActivity`: the real client over
+  `ProviderSignInDaemon`, the contract in memory (`--es
+  providerAccounts.scene normal|success|failure|owner|missing`, `--es
+  providerAccounts.signIn codex`, `--es providerAccounts.token
+  claude_work`).
 - **Agent home search** looks and moves as iOS's
   (`HappyCore/Agents/Search.swift`, `SearchShown.swift`,
   `ui/connection/AgentSearch.kt`) and lists what desktop's ⌘K palette

@@ -22,6 +22,8 @@ data class AgentInfo(
     val plugins: Boolean = false,
     /** Health's `capabilities.pipelines`: a Happy Cloud server with pipelines to list. */
     val pipelines: Boolean = false,
+    /** Health's `capabilities.providerSignIn`: accounts sign in to a credential the agent owns (Settings › Provider accounts). */
+    val providerSignIn: Boolean = false,
 )
 
 /** What `/v0/node/avatar` answered. The ETag, not the ThumbHash, says which bytes these are. */
@@ -47,7 +49,7 @@ object AgentIdentity {
     private const val MAX_AVATAR_BYTES = 8 * 1024 * 1024
 
     @Serializable private class Version(val protocol: Int, val daemon: String? = null)
-    @Serializable private class Capabilities(val webSocketTunnels: Boolean = false, val search: Boolean = false, val plugins: Boolean = false, val pipelines: Boolean = false)
+    @Serializable private class Capabilities(val webSocketTunnels: Boolean = false, val search: Boolean = false, val plugins: Boolean = false, val pipelines: Boolean = false, val providerSignIn: Boolean = false)
     @Serializable private class Health(val ready: Boolean, val version: Version, val capabilities: Capabilities? = null, val instanceId: String? = null)
     @Serializable private class Avatar(val thumbhash: String? = null)
     @Serializable private class Node(val name: String, val avatar: Avatar? = null)
@@ -96,6 +98,7 @@ object AgentIdentity {
             search = health.capabilities?.search == true,
             plugins = health.capabilities?.plugins == true,
             pipelines = health.capabilities?.pipelines == true,
+            providerSignIn = health.capabilities?.providerSignIn == true,
         )
     }
 
@@ -146,6 +149,7 @@ object AgentIdentity {
             search = state?.capabilities?.search == true,
             plugins = state?.capabilities?.plugins == true,
             pipelines = state?.capabilities?.pipelines == true,
+            providerSignIn = state?.capabilities?.providerSignIn == true,
         )
     }
 

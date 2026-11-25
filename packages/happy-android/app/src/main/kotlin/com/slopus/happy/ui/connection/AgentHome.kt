@@ -185,6 +185,8 @@ class AgentHomeActions(
     /** Projects belong to self-hosted connections, never Cloud. */
     val projectsAvailable: Boolean = true,
     val notificationsAvailable: Boolean = false,
+    /** The agent signs provider accounts in (health's `capabilities.providerSignIn`), so search finds Provider accounts. */
+    val providerAccountsAvailable: Boolean = false,
     /** Opens a team member's profile; null where there are none (any server but Happy Cloud's), and search finds no people. */
     val onOpenPerson: ((userId: String) -> Unit)? = null,
 )
@@ -699,7 +701,7 @@ private fun rememberSearchEntries(actions: AgentHomeActions, endSearch: () -> Un
     val connect = stringResource(R.string.agent_search_connect_agent)
     val scan = stringResource(R.string.onboarding_scan_button)
     val openSettings = stringResource(R.string.agent_search_open_settings)
-    val index = agentSettingsIndex(projectsAvailable = actions.projectsAvailable, notificationsAvailable = actions.notificationsAvailable)
+    val index = agentSettingsIndex(projectsAvailable = actions.projectsAvailable, notificationsAvailable = actions.notificationsAvailable, providerAccountsAvailable = actions.providerAccountsAvailable)
     return remember(actions, newTask, newTaskPicture, connect, scan, openSettings, index) {
         // happy-ios HomeViewController.quickActions (7a605f6ce). Connect and Scan both open the
         // scanner here: Android's one Add scanner takes a computer's, a terminal's or an agent's code.
@@ -951,7 +953,8 @@ private fun SignedInAgentHome(
     val permissions by session.permissions.collectAsStateWithLifecycle()
     val canCompose = permissions.canWrite
     val canAskChief = permissions.allows(com.slopus.happy.agent.Permission.BOTS_MANAGE)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, onOpenPlugins, onOpenPipelines, voice, onOpenVaultItem, onOpenPerson, canCompose, canAskChief) {
+    val providerSignIn by session.providerSignInAvailable.collectAsStateWithLifecycle()
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, onOpenPlugins, onOpenPipelines, voice, onOpenVaultItem, onOpenPerson, canCompose, canAskChief, providerSignIn) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -975,6 +978,7 @@ private fun SignedInAgentHome(
             canAskChief = canAskChief,
             projectsAvailable = !session.client.cloud,
             notificationsAvailable = session.client.cloud,
+            providerAccountsAvailable = providerSignIn && !session.client.cloud,
             onOpenPerson = onOpenPerson.takeIf { session.client.cloud },
         )
     }

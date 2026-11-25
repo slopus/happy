@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">提供商账户</string>
+    <string name="provider_accounts_system">使用系统登录</string>
+    <string name="provider_accounts_internal">已登录到 Happy</string>
+    <string name="provider_accounts_configured">在配置文件中配置</string>
+    <string name="provider_accounts_signed_out">已退出登录</string>
+    <string name="provider_accounts_sign_in_again">重新登录</string>
+    <string name="provider_accounts_in_progress">进行中</string>
+    <string name="provider_accounts_update_token">更新令牌</string>
+    <string name="provider_accounts_footer">在此登录后，此账户将拥有仅供 Happy 使用的登录，不再使用系统登录。</string>
+    <string name="provider_accounts_owner_only">只有团队所有者可以更改账户的登录方式。</string>
+    <string name="provider_accounts_not_installed">请在电脑上安装 %1$s 以登录。</string>
+    <string name="provider_accounts_computer_only">此账户需要在电脑上登录，而不是在手机上。</string>
+    <string name="provider_accounts_empty">没有通过订阅登录的账户。</string>
+    <string name="provider_accounts_load_failed">无法加载账户。</string>
+    <string name="provider_sign_in_starting">正在开始登录…</string>
+    <string name="provider_sign_in_enter_code">在登录页面输入此代码</string>
+    <string name="provider_sign_in_open">打开登录页面</string>
+    <string name="provider_sign_in_paste_intro">打开登录页面，然后粘贴其显示的代码。</string>
+    <string name="provider_sign_in_paste_code">粘贴代码</string>
+    <string name="provider_sign_in_checking">正在检查…</string>
+    <string name="provider_sign_in_on_computer">此登录需在电脑上的浏览器中完成。请在那里完成，或取消。</string>
+    <string name="provider_sign_in_done">已登录</string>
+    <string name="provider_sign_in_done_action">完成</string>
+    <string name="provider_sign_in_close">关闭</string>
+    <string name="provider_sign_in_expired">登录已过期</string>
+    <string name="provider_sign_in_save_failed">无法保存登录</string>
+    <string name="provider_sign_in_kept">账户保留原来的登录。</string>
+    <string name="provider_token_hint">粘贴你在电脑上通过 `claude setup-token` 获得的令牌。</string>
+    <string name="provider_token_updated">令牌已更新</string>
+    <string name="provider_token_failed">无法更新令牌</string>
+</resources>

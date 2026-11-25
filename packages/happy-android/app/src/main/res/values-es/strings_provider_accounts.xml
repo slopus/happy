@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">Cuentas de proveedores</string>
+    <string name="provider_accounts_system">Usa el inicio de sesión del sistema</string>
+    <string name="provider_accounts_internal">Sesión iniciada en Happy</string>
+    <string name="provider_accounts_configured">Configurado en el archivo de configuración</string>
+    <string name="provider_accounts_signed_out">Sesión cerrada</string>
+    <string name="provider_accounts_sign_in_again">Volver a iniciar sesión</string>
+    <string name="provider_accounts_in_progress">En curso</string>
+    <string name="provider_accounts_update_token">Actualizar token</string>
+    <string name="provider_accounts_footer">Iniciar sesión aquí da a esta cuenta un inicio de sesión que solo usa Happy, así que deja de usar el del sistema.</string>
+    <string name="provider_accounts_owner_only">Solo el propietario del equipo puede cambiar cómo inician sesión las cuentas.</string>
+    <string name="provider_accounts_not_installed">Instala %1$s en el ordenador para iniciar sesión.</string>
+    <string name="provider_accounts_computer_only">Esta cuenta inicia sesión en el ordenador, no desde un teléfono.</string>
+    <string name="provider_accounts_empty">Ninguna cuenta inicia sesión con una suscripción.</string>
+    <string name="provider_accounts_load_failed">No se pudieron cargar las cuentas.</string>
+    <string name="provider_sign_in_starting">Iniciando sesión…</string>
+    <string name="provider_sign_in_enter_code">Introduce este código en la página de inicio de sesión</string>
+    <string name="provider_sign_in_open">Abrir página de inicio de sesión</string>
+    <string name="provider_sign_in_paste_intro">Abre la página de inicio de sesión y pega el código que muestre.</string>
+    <string name="provider_sign_in_paste_code">Pega el código</string>
+    <string name="provider_sign_in_checking">Comprobando…</string>
+    <string name="provider_sign_in_on_computer">Este inicio de sesión termina en un navegador del ordenador. Termínalo allí o cancélalo.</string>
+    <string name="provider_sign_in_done">Sesión iniciada</string>
+    <string name="provider_sign_in_done_action">Listo</string>
+    <string name="provider_sign_in_close">Cerrar</string>
+    <string name="provider_sign_in_expired">El inicio de sesión caducó</string>
+    <string name="provider_sign_in_save_failed">No se pudo guardar el inicio de sesión</string>
+    <string name="provider_sign_in_kept">La cuenta conserva el inicio de sesión que tenía.</string>
+    <string name="provider_token_hint">Pega un token de `claude setup-token` en tu ordenador.</string>
+    <string name="provider_token_updated">Token actualizado</string>
+    <string name="provider_token_failed">No se pudo actualizar el token</string>
+</resources>
