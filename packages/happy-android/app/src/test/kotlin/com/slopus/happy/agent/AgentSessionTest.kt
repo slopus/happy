@@ -780,6 +780,8 @@ class AgentSessionTest {
     fun theBackgroundStopsALinkWhoseReadsBlock() = runBlocking {
         val chunks = java.util.concurrent.LinkedBlockingQueue<String>()
         val streams = java.util.concurrent.atomic.AtomicInteger()
+        val waiting = java.util.concurrent.atomic.AtomicInteger()
+        val helloRead = java.util.concurrent.atomic.AtomicBoolean()
         val stopped = CompletableDeferred<Unit>()
         val session = sessions {
             object : Transport by agent {
@@ -789,7 +791,9 @@ class AgentSessionTest {
                     return TransportStream.open(object : ByteSource {
                         override suspend fun read(): ByteArray = try {
                             runInterruptible(Dispatchers.IO) {
-                                if (headSent) chunks.take().toByteArray().let { "${it.size.toString(16)}\r\n".toByteArray() + it + "\r\n".toByteArray() }
+                                // A read begun after the hello was handed over: the one the background has to stop.
+                                if (helloRead.get()) waiting.incrementAndGet()
+                                if (headSent) chunks.take().also { helloRead.set(true) }.toByteArray().let { "${it.size.toString(16)}\r\n".toByteArray() + it + "\r\n".toByteArray() }
                                 else "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n".toByteArray().also { headSent = true }
                             }
                         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -804,6 +808,8 @@ class AgentSessionTest {
         }.session(id)!!
         chunks.put(Wire.hello("c0"))
         eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        // Connected is said before the snapshot is read: only once the link is back in a read that blocks is that what the background stops.
+        eventually({ waiting.get() }) { it > 0 }
         foreground.value = false
         withTimeout(2_000) { stopped.await() }
         foreground.value = true
