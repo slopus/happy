@@ -228,6 +228,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// on a glass capsule between the bar's own glass buttons.
     private let header = ChatHeaderView()
     private var titleView: ChatTitleView { header.titleView }
+    /// Who else has this conversation open, left of Compose; a new task
+    /// gets it once the computer has made it.
+    private var viewersItem: UIBarButtonItem?
 
     init(session: Session, agentId: String, title: String, spaceId: String?, intro: Intro?, newTask: NewTask? = nil, prefill: ChatPrefill? = nil, saying: String? = nil, previewing: Bool = false) {
         self.session = session
@@ -265,6 +268,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         header.resize()
         navigationItem.titleView = header
         navigationItem.largeTitleDisplayMode = .never
+        if newTask == nil, !previewing {
+            viewersItem = ViewersBar.item(session: session, target: .agent(agentId), ground: UIColor(Palette.surface))
+        }
         // A new task's media is under the ID the computer gives it, once
         // its first message has made it; from then on its row on home
         // names this screen, as the task names itself.
@@ -274,6 +280,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 guard let id = try? await newTask.made() else { return }
                 self?.media.agentId = id
                 self?.creating = false
+                if let self {
+                    viewersItem = ViewersBar.item(session: session, target: .agent(id), ground: UIColor(Palette.surface))
+                    showHeader(animated: true)
+                }
                 self?.skillsFollow?.cancel()
                 for await home in await engine.snapshots() {
                     guard let self, !Task.isCancelled else { return }
@@ -863,7 +873,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// (`ConversationHeader`); every other conversation's has its name and
     /// Compose.
     private func showHeader(animated: Bool) {
-        ConversationHeader.show(newTask == nil || newWorkPanelGone, title: header, items: mayWrite == true ? composeItems : [], on: navigationItem, animated: animated)
+        let items = (mayWrite == true ? composeItems : []) + (viewersItem.map { [$0] } ?? [])
+        ConversationHeader.show(newTask == nil || newWorkPanelGone, title: header, items: items, on: navigationItem, animated: animated)
     }
 
     /// Nothing typed or picked.

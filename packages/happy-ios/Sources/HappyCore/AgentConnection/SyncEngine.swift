@@ -49,6 +49,8 @@ public actor SyncEngine {
     /// The documents open on this account and those with changes still to
     /// send; the stream's live document frames go to them.
     public nonisolated let documents: DocumentLibrary
+    /// Who else looks at the conversations and Surfaces on screen.
+    public nonisolated let viewers: ViewersStore
     /// The todo lists open on this account or with changes on their way.
     public nonisolated let todos: TodoLibrary
     /// The vaults' folders, Trash and settings open on this account, and
@@ -238,6 +240,7 @@ public actor SyncEngine {
         })
         self.intents = intents
         documents = DocumentLibrary(client: client, directory: directory)
+        viewers = ViewersStore { streamId, targets in try await client.putViewers(streamId: streamId, targets: targets) }
         let spaces = Store(client: client, offline: offline, intents: intents)
         self.spaces = spaces
         let keep = EngineResources()
@@ -310,6 +313,7 @@ public actor SyncEngine {
     public func background() async {
         guard !backgrounded else { return }
         backgrounded = true
+        await viewers.setForeground(false)
         // Only a verified stream is held: a held winner brings no hello to verify.
         guard !stopped, runner != nil, snapshot.live, verified, eventStream != nil else { await pause(); return }
         let id = UUID()
@@ -340,6 +344,7 @@ public actor SyncEngine {
             guard await pause() else { return }
         }
         backgrounded = false
+        await viewers.setForeground(true)
         holdID = nil; holdDeadline = nil
         holdTimer?.cancel(); holdTimer = nil
         let release = releaseHold; releaseHold = nil
@@ -386,6 +391,7 @@ public actor SyncEngine {
         await intents.setOnline(false)
         guard generation == pausedGeneration else { return false }
         await documents.closed()
+        await viewers.closed()
         await spaces.pause()
         guard generation == pausedGeneration else { return false }
         if snapshot.live { streamHeard = .now }
@@ -440,6 +446,7 @@ public actor SyncEngine {
         await pause()
         await spaces.stop()
         await documents.stop()
+        await viewers.stop()
         await todos.stop()
         await vaults.stop()
         await feed.stop()
@@ -603,6 +610,7 @@ public actor SyncEngine {
                         await lookups.opened()
                         // The documents on screen, as the chat on screen.
                         await documents.opened(hello)
+                        await viewers.opened(hello)
                         // Conversations and lists read again only for what they missed.
                         await spaces.externalOpened(missedBefore: continued ? nil : streamStart)
                         // Home verified before this hello came.
@@ -613,6 +621,10 @@ public actor SyncEngine {
                     }
                     if DocumentStreams.isDocumentFrame(frame.event) {
                         await documents.frame(frame.event, data: frame.data)
+                        continue
+                    }
+                    if ViewersStore.isViewersFrame(frame.event) {
+                        await viewers.frame(frame.data)
                         continue
                     }
                     guard let event = try? JSONValue.decode(Data(frame.data.utf8)) else { continue }
@@ -719,6 +731,7 @@ public actor SyncEngine {
             }
             if resetStream { await resetCarrier() }
             await documents.closed()
+            await viewers.closed()
             guard current(generation) else { return }
             snapshot.live = false
             snapshot.reconnecting = true
@@ -938,6 +951,9 @@ public actor SyncEngine {
         guard let id, let desktop else { return }
         if id == desktop.profile?.userId || users[id] != nil { scheduleReconcile(generation) }
     }
+
+    /// The team's members as the newest bootstrap named them, by ID.
+    public func teammates() -> [String: TeamUser] { users }
 
     /// The bootstrap's `teammates`, kept for the next launch: names and
     /// pictures for the tasks' authors. Standalone, it sends none.

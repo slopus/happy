@@ -532,6 +532,20 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   list stays current through its feed (events, a resync after a gap, a
   read when it opens or the stream reconnects); a page reloads from its
   header's button.
+- **Viewers in headers** (Steve, every client), on a team server's agent
+  conversations and Surface screens (`ViewersBar`, `ViewersSlotView`; the
+  store is `SyncEngine.viewers`, `Core/Viewers/`). The route is
+  happy-agent `API.md`'s Viewers: `PUT /v0/viewers/streams/:streamId`
+  and `viewers.updated` frames.
+  - A screen views its target while its slot is in a window; the app in
+    the background views nothing (`[]`). Every target shown goes in one
+    PUT, again every 15 s. A 404 hides the slot until the next stream.
+  - The slot is 88 wide whenever it shows, so a header with nobody is
+    laid out as one with fifty. Motion is Core Animation only (the ring's
+    breathing, the pop, the fades); faces are placed only on news or a
+    tier's change (`ViewerTiers.nextChange`).
+  - No haptic on an arrival: `Haptics` plays only for the person's own
+    acts.
 
 ## Record kinds: current vs retired
 

@@ -17,6 +17,11 @@ final class DocumentViewController: UIViewController {
     private let cursors = DocumentCursorsView()
     private let moreItem = UIBarButtonItem()
     private let peersItem = UIBarButtonItem()
+    /// In a team, who else looks at it stands for who else edits it: the
+    /// same faces, their rings in their cursors' hues.
+    private lazy var viewersItem = ViewersBar.item(session: session, target: .surface(surfaceId), ground: UIColor(Palette.documentGround)) { [weak self] in
+        self?.showPeers()
+    }
     private var controller: DocumentTextController?
     private var sync: DocumentSync?
     private var following: Task<Void, Never>?
@@ -94,6 +99,10 @@ final class DocumentViewController: UIViewController {
 
     /// The faces of whoever else has it open, left of the menu; their names in its menu.
     private func showPeers() {
+        if let viewersItem, !viewersItem.isHidden {
+            navigationItem.rightBarButtonItems = [moreItem, viewersItem]
+            return
+        }
         guard let image = DocumentPeersView.image(peers, traits: traitCollection) else {
             navigationItem.rightBarButtonItems = [moreItem]
             return
