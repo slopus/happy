@@ -109,7 +109,7 @@ val postHogKey = providers.environmentVariable("EXPO_PUBLIC_POSTHOG_API_KEY").or
 // release time by scripts/native-version.cjs (see AGENTS.md, "Versions and
 // signing"). Store builds must provide a versionCode above the last published
 // build; local builds default to 1.
-val defaultVersionName = "2026.11.1"
+val defaultVersionName = "2026.11.2"
 val versionNameValue = providers.environmentVariable("HAPPY_VERSION_NAME").orNull
     ?: providers.gradleProperty("happy.versionName").orNull
     ?: defaultVersionName
