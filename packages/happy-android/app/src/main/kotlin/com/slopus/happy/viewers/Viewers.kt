@@ -137,11 +137,14 @@ enum class ViewersAvailability {
  * What is viewed (newest first, at most 8) is sent [settleMillis] after the
  * last change to it, again [heartbeatMillis] after each send while anything
  * is, and `[]` once nothing is and the stream may still hold something (a
- * send whose answer was lost counts). A target whose last screen leaves is
- * kept for [handoffMillis], so going from one screen of it to another (a
+ * send whose answer was lost counts). One send at a time per stream: the
+ * computer may still apply one whose call was given up, so the next waits
+ * for its answer rather than racing it, and only a new stream or its end
+ * drops it. A target the stream was told of is kept [handoffMillis] after
+ * its last screen leaves, so going from one screen of it to another (a
  * vault's folders) never says it was left. Each answer replaces the lists,
- * and `viewers.updated` frames land on top in arrival order, those that
- * overtook the answer included.
+ * and `viewers.updated` frames that come after it land on top in arrival
+ * order; one that overtook it is healed by the next heartbeat.
  */
 class Viewers(
     private val scope: CoroutineScope,
@@ -195,14 +198,12 @@ class Viewers(
     private var streamId: String? = null
     private var served = ViewersAvailability.Unknown
     private val views = ArrayList<ViewerTarget>()
-    /** Targets whose last screen left, until when they still count as viewed. */
+    /** Targets the stream was told of whose last screen left, until when they still count as viewed. */
     private val leaving = LinkedHashMap<ViewerTarget, Long>()
     /** The stream may hold targets: set when a non-empty send goes out, cleared by an answered `[]` or a new stream. */
     private var mayHold = false
     private var sending: Job? = null
     private var sendNumber = 0
-    /** Frames that came while a send was out: newer than its answer, so they go back on top of it. */
-    private val sinceSend = ArrayList<Pair<ViewerTarget, Viewer>>()
     /** What the last send asked for, answered or not. */
     private var sent: List<ViewerTarget>? = null
     /** When what is viewed has settled after a change. */
@@ -215,7 +216,9 @@ class Viewers(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val owner = scope.launch {
         while (true) {
-            val wake = listOfNotNull(changeAt, renewAt, leaving.values.minOrNull()).minOrNull()
+            // While a send is out the next one waits for its answer, so only a handoff running out wakes the owner.
+            val due = if (sending == null) listOfNotNull(changeAt, renewAt) else emptyList()
+            val wake = (due + leaving.values).minOrNull()
             // A select, so an event is never lost to the timeout.
             val event: Event? = if (wake == null) events.receive() else select<Event?> {
                 events.onReceive { it }
@@ -228,14 +231,18 @@ class Viewers(
             if (after != before && streamId != null) {
                 changeAt = if (event == null) now() else now() + settleMillis
             }
-            val time = now()
-            if (renewAt?.let { it <= time } == true) {
-                send()
-            } else if (changeAt?.let { it <= time } == true) {
-                changeAt = null
-                // Changed and changed back since the last send: the lease it renewed still stands.
-                if (after != sent?.toSet()) send()
-            }
+            if (sending == null) sendIfDue()
+        }
+    }
+
+    private fun sendIfDue() {
+        val time = now()
+        if (renewAt?.let { it <= time } == true) {
+            send()
+        } else if (changeAt?.let { it <= time } == true) {
+            changeAt = null
+            // Changed and changed back since the last send: the lease it renewed still stands.
+            if (wanted().toSet() != sent?.toSet()) send()
         }
     }
 
@@ -247,7 +254,8 @@ class Viewers(
             }
             is Event.Unview -> {
                 views.remove(event.target)
-                if (event.target !in views) leaving[event.target] = now() + handoffMillis
+                // Only what the computer was told of can be said to be left; anything else just goes.
+                if (event.target !in views && sent?.contains(event.target) == true) leaving[event.target] = now() + handoffMillis
             }
             is Event.Opened -> {
                 if (event.streamId == streamId) return
@@ -261,9 +269,9 @@ class Viewers(
                 streamId = null
             }
             is Event.Frame -> {
-                val update = ViewersWire.frame(event.data) ?: return
-                if (sending != null) sinceSend += update
-                listsState.value = landed(listsState.value, update)
+                val (target, viewer) = ViewersWire.frame(event.data) ?: return
+                val list = listsState.value[target] ?: return
+                listsState.value = listsState.value + (target to ordered(list.filter { it.userId != viewer.userId } + viewer))
             }
             is Event.Answer -> answered(event)
         }
@@ -283,7 +291,8 @@ class Viewers(
         sending = null
         sendNumber++
         sent = null
-        sinceSend.clear()
+        // The computer ends a stream's views with it, so nothing is left to hand off.
+        leaving.clear()
         changeAt = null
         renewAt = null
         mayHold = false
@@ -298,11 +307,9 @@ class Viewers(
             renewAt = null
             return
         }
-        sending?.cancel()
         if (targets.isNotEmpty()) mayHold = true
         val number = ++sendNumber
         sent = targets
-        sinceSend.clear()
         // Renewed from when it went, so a slow answer never lets the computer's lease lapse.
         renewAt = if (targets.isEmpty()) null else now() + heartbeatMillis
         sending = scope.launch {
@@ -332,19 +339,11 @@ class Viewers(
             publishAvailability(ViewersAvailability.Served)
             if (targets.isEmpty()) mayHold = false
             val viewed = wanted().toSet()
-            val answered = targets.filter { it in viewed }.associateWith { ordered(lists[it].orEmpty()) } +
+            listsState.value = targets.filter { it in viewed }.associateWith { ordered(lists[it].orEmpty()) } +
                 listsState.value.filterKeys { it in viewed && it !in targets }
-            listsState.value = sinceSend.fold(answered, ::landed)
         }.onFailure {
             renewAt = minOf(renewAt ?: Long.MAX_VALUE, now() + retryMillis)
         }
-    }
-
-    /** [update] on its target's list, when that target has one. */
-    private fun landed(lists: Map<ViewerTarget, List<Viewer>>, update: Pair<ViewerTarget, Viewer>): Map<ViewerTarget, List<Viewer>> {
-        val (target, viewer) = update
-        val list = lists[target] ?: return lists
-        return lists + (target to ordered(list.filter { it.userId != viewer.userId } + viewer))
     }
 
     private fun publishAvailability(value: ViewersAvailability) {

@@ -213,9 +213,8 @@ fun ViewersRow(
         }
         if (more > 0) {
             key("+") {
-                // Under the last face, unless large text widens it into that face.
-                val over = LocalDensity.current.fontScale > 1.3f
-                Slide(x(shown.size), Modifier.zIndex(if (over) 1f else -ViewersSpec.SHOWN.toFloat())) {
+                // Over the faces, so the count is never covered, whichever way the row runs and however wide large text makes it.
+                Slide(x(shown.size), Modifier.zIndex(1f)) {
                     // Large text widens the chip past its cell rather than being cut.
                     Box(
                         Modifier

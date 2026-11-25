@@ -7,15 +7,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -28,10 +32,12 @@ import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.viewers.Viewer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * The header's viewers ([ViewersSpec]): a 104 slot whatever the count, so
@@ -139,5 +145,34 @@ class ViewersSlotTest {
         rule.setHappyContent { ViewersRow(emptyList(), people, editors = listOf(ViewersEditor("Anna", Color.Red)), clock = { now }) }
         rule.node(ViewersTags.SLOT).performClick()
         rule.onNodeWithText("Anna").assertExists()
+    }
+
+    /** The `+N` chip's middle row, as drawn: its ground and its text alone, no face's colour over it, and some text. */
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun theCountIsDrawnOverTheFacesEitherWayAndAtLargeText() {
+        var direction by mutableStateOf(LayoutDirection.Ltr)
+        var fontScale by mutableStateOf(1f)
+        rule.setHappyContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalLayoutDirection provides direction, LocalDensity provides Density(density.density, fontScale)) {
+                ViewersRow(crowd(10), emptyMap(), clock = { now })
+            }
+        }
+        for (scale in listOf(1f, 2f)) for (way in LayoutDirection.entries) {
+            direction = way
+            fontScale = scale
+            rule.waitForIdle()
+            val chip = rule.node(ViewersTags.MORE).captureToImage().asAndroidBitmap()
+            val inset = with(rule.density) { 2.dp.roundToPx() }
+            val row = (inset until chip.width - inset).map { chip.getPixel(it, chip.height / 2) }
+            val tinted = row.filter { pixel ->
+                val channels = listOf(pixel shr 16 and 0xFF, pixel shr 8 and 0xFF, pixel and 0xFF)
+                channels.max() - channels.min() > 30
+            }
+            assertEquals("$way at ${scale}x: no face over the count", 0, tinted.size)
+            val ink = row.count { pixel -> (pixel shr 16 and 0xFF) + (pixel shr 8 and 0xFF) + (pixel and 0xFF) < 3 * 110 }
+            assertTrue("$way at ${scale}x: the count's text shows", ink > 0)
+        }
     }
 }

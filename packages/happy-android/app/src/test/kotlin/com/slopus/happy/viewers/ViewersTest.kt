@@ -40,15 +40,23 @@ class ViewersTest {
     }
 
     /**
-     * The computer's side of the route: each PUT is applied as it arrives
-     * ([held]), then answered at once, or held for the test to answer, fail
-     * or never answer.
+     * The computer's side of the route: each PUT is applied ([held], in
+     * [applied] order) as it arrives or when the test lets it, then answered
+     * at once, or held for the test to answer, fail or never answer.
      */
     private class Computer(var people: (ViewerTarget) -> List<Viewer> = { emptyList() }) {
-        class Call(val at: Long, val streamId: String, val targets: List<ViewerTarget>, val reply: CompletableDeferred<Map<ViewerTarget, List<Viewer>>?>)
+        class Call(
+            val at: Long,
+            val streamId: String,
+            val targets: List<ViewerTarget>,
+            val apply: CompletableDeferred<Unit>,
+            val reply: CompletableDeferred<Map<ViewerTarget, List<Viewer>>?>,
+        )
         val calls = mutableListOf<Call>()
         val held = mutableMapOf<String, List<ViewerTarget>>()
+        val applied = mutableListOf<List<ViewerTarget>>()
         var refuse = false
+        var holdApply = false
         var holdReplies = false
         lateinit var clock: () -> Long
 
@@ -56,9 +64,11 @@ class ViewersTest {
 
         val backend = ViewersBackend { streamId, targets ->
             if (refuse) return@ViewersBackend null
-            held[streamId] = targets
-            val call = Call(clock(), streamId, targets, CompletableDeferred())
+            val call = Call(clock(), streamId, targets, CompletableDeferred(), CompletableDeferred())
             calls += call
+            if (holdApply) call.apply.await()
+            held[streamId] = targets
+            applied += targets
             if (holdReplies) call.reply.await() else answer(targets)
         }
         val sent get() = calls.map { it.targets }
@@ -136,7 +146,7 @@ class ViewersTest {
     }
 
     @Test
-    fun aSendStillWaitingForItsAnswerIsClearedOnLeaving() = runTest {
+    fun aSendStillWaitingForItsAnswerIsClearedOnceItEnds() = runTest {
         val computer = Computer().apply { holdReplies = true }
         val viewers = store(computer)
         viewers.opened("st1")
@@ -144,23 +154,83 @@ class ViewersTest {
         advanceTimeBy(settle + 1)
         view.cancel()
         advanceTimeBy(handoff + 1)
+        assertEquals("nothing races the send that is out", 1, computer.calls.size)
+        computer.holdReplies = false
+        computer.calls.single().reply.completeExceptionally(java.io.IOException("timed out"))
+        runCurrent()
         assertEquals(listOf(listOf(chat), emptyList()), computer.sent)
         assertEquals(emptyList<ViewerTarget>(), computer.held["st1"])
     }
 
     @Test
-    fun framesThatOvertakeAnAnswerStayOnIt() = runTest {
-        val computer = Computer { listOf(kirill) }.apply { holdReplies = true }
+    fun aSlowSendIsNeverOvertakenByTheNextOne() = runTest {
+        val computer = Computer { listOf(kirill) }.apply { holdApply = true }
+        val viewers = store(computer)
+        viewers.opened("st1")
+        val view = viewing(viewers, chat)
+        advanceTimeBy(settle + 1)
+        view.cancel()
+        advanceTimeBy(handoff + 1)
+        assertEquals(1, computer.calls.size)
+        // The computer gets to the slow [chat] only now; the [] waits for it, so it lands last.
+        computer.calls.single().apply.complete(Unit)
+        runCurrent()
+        computer.calls.last().apply.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(listOf(chat), emptyList()), computer.applied)
+        assertEquals(emptyList<ViewerTarget>(), computer.held["st1"])
+        assertEquals(emptyMap<ViewerTarget, List<Viewer>>(), viewers.lists.value)
+    }
+
+    @Test
+    fun aPageLeftBeforeItWasSentIsNotKept() = runTest {
+        val computer = Computer()
         val viewers = store(computer)
         viewers.opened("st1")
         viewing(viewers, chat)
         advanceTimeBy(settle + 1)
+        val peek = viewing(viewers, todo)
+        advanceTimeBy(100)
+        peek.cancel()
+        advanceTimeBy(handoff + settle)
+        assertEquals(listOf(listOf(chat)), computer.sent)
+    }
+
+    @Test
+    fun aNewStreamKeepsNothingTheOldOneWasToldOf() = runTest {
+        val computer = Computer()
+        val viewers = store(computer)
+        viewers.opened("st1")
+        viewing(viewers, chat)
+        val other = viewing(viewers, todo)
+        advanceTimeBy(settle + 1)
+        other.cancel()
+        runCurrent()
+        viewers.closed()
+        viewers.opened("st2")
+        runCurrent()
+        assertEquals("st2" to listOf(chat), computer.calls.last().let { it.streamId to it.targets })
+    }
+
+    @Test
+    fun anAnswerReplacesTheListAndOnlyLaterFramesLandOnIt() = runTest {
+        val computer = Computer { listOf(kirill) }
+        val viewers = store(computer)
+        viewers.opened("st1")
+        viewing(viewers, chat)
+        advanceTimeBy(settle + 1)
+        assertEquals(mapOf(chat to listOf(kirill)), viewers.lists.value)
+        computer.holdReplies = true
+        advanceTimeBy(beat)
         viewers.frame("""{"target":{"type":"agent","id":"a1"},"viewer":{"userId":"anna","here":true,"lastSeenAt":1000500}}""")
-        viewers.frame("""{"target":{"type":"agent","id":"a1"},"viewer":{"userId":"kirill","here":false,"lastSeenAt":1000600}}""")
         runCurrent()
-        computer.calls.single().reply.complete(mapOf(chat to listOf(kirill, anna)))
+        assertEquals(mapOf(chat to listOf(Viewer("anna", true, 1_000_500), kirill)), viewers.lists.value)
+        computer.calls.last().reply.complete(mapOf(chat to emptyList()))
         runCurrent()
-        assertEquals(mapOf(chat to listOf(Viewer("anna", true, 1_000_500), Viewer("kirill", false, 1_000_600))), viewers.lists.value)
+        assertEquals("the answer is the list", mapOf(chat to emptyList<Viewer>()), viewers.lists.value)
+        viewers.frame("""{"target":{"type":"agent","id":"a1"},"viewer":{"userId":"max","here":true,"lastSeenAt":1000700}}""")
+        runCurrent()
+        assertEquals(mapOf(chat to listOf(Viewer("max", true, 1_000_700))), viewers.lists.value)
     }
 
     @Test
@@ -180,17 +250,15 @@ class ViewersTest {
         assertEquals(emptyMap<ViewerTarget, List<Viewer>>(), viewers.lists.value)
         viewers.opened("st2")
         runCurrent()
-        assertEquals("st2" to listOf(todo, chat), computer.calls.last().let { it.streamId to it.targets })
-        computer.calls.last().reply.complete(computer.answer(listOf(todo, chat)))
-        runCurrent()
-        assertEquals(mapOf(todo to listOf(kirill), chat to listOf(kirill)), viewers.lists.value)
-        // The chat's handoff runs out: it is cleared, and its list goes.
-        advanceTimeBy(handoff + 1)
         assertEquals("st2" to listOf(todo), computer.calls.last().let { it.streamId to it.targets })
+        viewers.frame("""{"target":{"type":"surface","id":"s1"},"viewer":{"userId":"anna","here":true,"lastSeenAt":1000500}}""")
+        runCurrent()
+        assertEquals("no list before the answer", emptyMap<ViewerTarget, List<Viewer>>(), viewers.lists.value)
         computer.calls.last().reply.complete(computer.answer(listOf(todo)))
         runCurrent()
         assertEquals(mapOf(todo to listOf(kirill)), viewers.lists.value)
-        assertEquals(3, computer.calls.size)
+        advanceTimeBy(beat - 1)
+        assertEquals(2, computer.calls.size)
     }
 
     @Test
@@ -215,7 +283,7 @@ class ViewersTest {
     }
 
     @Test
-    fun aChangeWhileASendIsOutGoesOnceSettledNotAtTheNextHeartbeat() = runTest {
+    fun aChangeWhileASendIsOutGoesWhenItIsAnsweredNotAtTheNextHeartbeat() = runTest {
         val computer = Computer().apply { holdReplies = true }
         val viewers = store(computer)
         viewers.opened("st1")
@@ -223,8 +291,12 @@ class ViewersTest {
         advanceTimeBy(settle + 1)
         viewing(viewers, todo)
         advanceTimeBy(settle + 1)
+        assertEquals(1, computer.calls.size)
+        advanceTimeBy(1_000)
+        computer.calls.single().reply.complete(computer.answer(listOf(chat)))
+        runCurrent()
         assertEquals(listOf(listOf(chat), listOf(todo, chat)), computer.sent)
-        assertEquals(2 * settle + 1, computer.calls.last().at)
+        assertEquals(2 * settle + 1_002, computer.calls.last().at)
     }
 
     @Test
