@@ -540,7 +540,10 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   - A screen views its target while its slot is in a window; the app in
     the background views nothing (`[]`). Every target shown goes in one
     PUT, again every 15 s. A PUT whose answer was lost counts as applied,
-    so leaving after it still says `[]`. A 404 hides the slot until the
+    so leaving after it still says `[]`. PUTs on one stream go one at a
+    time and are never cancelled (a cancelled body may still land after a
+    later `[]`); a new or closed stream retires the old one's pump, its
+    request cancelled and its answer ignored. A 404 hides the slot until the
     next stream; the item, not the slot, watches for that and for the
     bootstrap that makes it a team's (not loaded is not standalone).
   - Only an answer on this stream, for a target still on screen, is live.

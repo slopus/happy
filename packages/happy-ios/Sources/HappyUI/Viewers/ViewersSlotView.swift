@@ -30,8 +30,8 @@ final class ViewersSlotView: UIButton {
     private let more = UILabel()
     /// The names a document's awareness has editing it now: marked in the
     /// list and in what VoiceOver says. Awareness names people, not IDs,
-    /// so a viewer is matched by name; an editor nobody matches (an agent,
-    /// another name) still has a row.
+    /// so a viewer is matched by a name no other viewer has; an editor
+    /// nobody matches (an agent, another name, a shared one) has its own row.
     var editors: [String] = [] {
         didSet { if editors != oldValue { describe() } }
     }
@@ -70,6 +70,11 @@ final class ViewersSlotView: UIButton {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    #if DEBUG || HAPPY_FIXTURES
+    /// The engine it watches, for the harness.
+    var engine: SyncEngine { session.engine }
+    #endif
 
     override var intrinsicContentSize: CGSize { CGSize(width: ViewersSlotLayout.Metrics.width, height: ViewersSlotLayout.Metrics.height) }
 
@@ -166,15 +171,16 @@ final class ViewersSlotView: UIButton {
         scheduleTick(now: now)
     }
 
-    /// What VoiceOver says, and whether there is a list to open.
+    /// What VoiceOver says, and whether there is a list to open: only
+    /// with faces to tap. Editors alone (an agent writing) are said, not
+    /// drawn, so an empty slot is no button.
     private func describe() {
-        let some = !viewers.isEmpty || !editors.isEmpty
-        isUserInteractionEnabled = some
-        isAccessibilityElement = some
+        isUserInteractionEnabled = !viewers.isEmpty
+        isAccessibilityElement = !viewers.isEmpty || !editors.isEmpty
         let here = viewers.filter(\.here).count
         let summary = Strings.Viewers.summary(here: here, others: viewers.count - here)
         accessibilityLabel = [viewers.isEmpty && !editors.isEmpty ? "" : summary, Strings.Viewers.editing(editors)].filter { !$0.isEmpty }.joined(separator: ". ")
-        accessibilityTraits = .button
+        accessibilityTraits = viewers.isEmpty ? .staticText : .button
     }
 
     private func name(_ userId: String) -> String {
@@ -207,11 +213,14 @@ final class ViewersSlotView: UIButton {
                 self?.openProfile(user ?? TeamUser(id: viewer.userId, name: name))
             }
         }
+        // A name two viewers share says neither: its editor keeps a row of its own.
+        let names = Dictionary(viewers.map { (name($0.userId), 1) }, uniquingKeysWith: +)
         var unmatched = editors
         var editing: [UIMenuElement] = []
         var rest: [Viewer] = []
         for viewer in viewers {
-            if let index = unmatched.firstIndex(of: name(viewer.userId)) {
+            let name = name(viewer.userId)
+            if names[name] == 1, let index = unmatched.firstIndex(of: name) {
                 unmatched.remove(at: index)
                 editing.append(row(viewer, editing: true))
             } else {

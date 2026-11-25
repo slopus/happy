@@ -365,6 +365,14 @@ final class ViewersHarness {
             (at, { [weak self] in self?.shoot(window, at) })
         }
         if let at = value("-openList").flatMap(Double.init) { moments.append((at, { [weak self] in self?.openList(window) })) }
+        // `-reconnect 12`: the event stream drops and comes back, as on a
+        // network change: a new stream, so a new `streamId`.
+        if let at = value("-reconnect").flatMap(Double.init), let engine = Self.slot(window)?.engine {
+            moments.append((at, {
+                print("VIEWERS-RECONNECT")
+                Task { if await engine.pause() { await engine.start() } }
+            }))
+        }
         // `-cover 10,18`: another screen over this one from 10 s to 18 s, so
         // its slot leaves the window and comes back.
         let cover = (value("-cover") ?? "").split(separator: ",").compactMap { Double($0) }
