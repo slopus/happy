@@ -33,6 +33,8 @@ class CloudPushUnpairTest {
         val asked = mutableListOf<String>()
         var hold: CompletableDeferred<Unit>? = null
         var down = false
+        /** The daemon takes a registration and its answer never reaches the phone. */
+        var lose = false
         override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
             if (down) throw IOException("unreachable")
             val id = path.substringAfterLast('/')
@@ -41,6 +43,7 @@ class CloudPushUnpairTest {
                 "PUT" -> {
                     val version = UUID.randomUUID().toString()
                     rows[id] = version
+                    if (lose) throw IOException("the answer never came")
                     hold?.await()
                     TransportResponse(200, emptyMap(), """{"registration":{"id":"$id","version":"$version","expiresAt":1796688000000}}""".toByteArray())
                 }
@@ -61,7 +64,8 @@ class CloudPushUnpairTest {
         val accounts = MutableStateFlow(first)
         val foreground = MutableStateFlow(false)
         val ledger = CloudPushLedger({ disk[0] }, { disk[0] = it })
-        val registrations = CloudPushRegistrations(ledger, { it in accounts.value })
+        // The clock stands before every registration here expires.
+        val registrations = CloudPushRegistrations(ledger, { it in accounts.value }, clock = { 0 })
         val api = CloudPushApi(AgentClient(daemon, "device-token"))
         val sync = CloudPushSync(
             accounts, foreground, MutableSharedFlow(), registrations,
@@ -71,20 +75,17 @@ class CloudPushUnpairTest {
             notificationsAllowed = { true }, appId = "com.slopus.happy.dev", locale = { "en-US" },
             dispatcher = StandardTestDispatcher(scope.testScheduler),
             // The pairing's own way to its daemon: the same daemon, asked with what the route kept.
-            farewell = { way, registration ->
+            farewell = { way ->
                 assertEquals(route, way)
-                try {
-                    farewellAnswered(daemon.request("DELETE", "/v0/cloud/push/registrations/${registration.id}", way.deviceToken, null, mapOf("If-Match" to registration.version)).status)
-                } catch (_: IOException) { false }
+                CloudPushFarewellLink(CloudPushApi(AgentClient(daemon, way.deviceToken)))
             },
-            clock = { 0 },
         )
         init { sync.start(scope.backgroundScope) }
 
         /** removeAgentConnection: the farewell while the connection can still ask, then the connection goes. */
         suspend fun unpair(account: CloudPushAccount) {
             registrations.leaving(account.connectionId, route)
-            registrations.remove(account, api)
+            registrations.remove(account, api) { sync.renewal() }
             sync.retire()
             accounts.value = accounts.value - account
         }
@@ -117,6 +118,71 @@ class CloudPushUnpairTest {
         answer.complete(Unit)
         unpairing.join(); runCurrent()
         assertEquals(f.left, 0, f.daemon.rows.size)
+    }
+
+    /** A trigger that fires again while a renewal is in flight neither doubles the row nor loses the version the daemon gave. */
+    @Test fun aTriggerThatFiresWhileARenewalIsInFlightLeavesOneRowWhoseVersionThePhoneHolds() = runTest {
+        val f = Fixture(this, listOf(paired))
+        f.foreground.value = true; runCurrent()
+        val answer = CompletableDeferred<Unit>()
+        f.daemon.hold = answer
+        f.foreground.value = false; runCurrent()
+        f.foreground.value = true; runCurrent()
+        // Held. The app goes away and comes back again before the answer.
+        f.foreground.value = false; runCurrent()
+        f.foreground.value = true; runCurrent()
+        assertEquals("one renewal in flight, nothing beside it", 2, f.daemon.asked.size)
+        f.daemon.hold = null
+        answer.complete(Unit); runCurrent()
+        assertEquals(f.left, 1, f.daemon.rows.size)
+        val binding = f.ledger.snapshot().bindings.single()
+        assertEquals("the phone holds the daemon's latest version", f.daemon.rows[binding.id], binding.registration!!.version)
+        assertEquals(false, binding.unanswered)
+        f.unpair(paired); runCurrent()
+        assertEquals(f.left, 0, f.daemon.rows.size)
+    }
+
+    /** The daemon took a renewal and its answer never came (a timeout, a dead process): only registering again names the row's version. */
+    @Test fun aRenewalWhoseAnswerNeverCameLeavesNoRowAfterUnpair() = runTest {
+        val f = Fixture(this, listOf(paired))
+        f.foreground.value = true; runCurrent()
+        f.daemon.lose = true
+        f.foreground.value = false; runCurrent()
+        f.foreground.value = true; runCurrent()
+        f.daemon.lose = false
+        f.unpair(paired); runCurrent()
+        assertEquals(f.left, 0, f.daemon.rows.size)
+        assertTrue(f.ledger.snapshot().pending.isEmpty())
+    }
+
+    @Test fun aFirstRegistrationWhoseAnswerNeverCameLeavesNoRowAfterUnpair() = runTest {
+        val f = Fixture(this, listOf(paired))
+        f.daemon.lose = true
+        f.foreground.value = true; runCurrent()
+        assertEquals(f.left, 1, f.daemon.rows.size)
+        f.daemon.lose = false
+        f.unpair(paired); runCurrent()
+        assertEquals(f.left, 0, f.daemon.rows.size)
+    }
+
+    /** Both at once: the answer never came, and the daemon is unreachable at unpair. The next launch has only the ledger. */
+    @Test fun aRenewalWhoseAnswerNeverCameIsRemovedAtTheNextLaunchWhenTheDaemonWasDownAtUnpair() = runTest {
+        val disk = arrayOfNulls<String>(1)
+        val f = Fixture(this, listOf(paired), disk = disk)
+        f.foreground.value = true; runCurrent()
+        f.daemon.lose = true
+        f.foreground.value = false; runCurrent()
+        f.foreground.value = true; runCurrent()
+        f.daemon.lose = false
+        f.daemon.down = true
+        f.unpair(paired); runCurrent()
+        assertEquals(f.left, 1, f.daemon.rows.size)
+        f.daemon.down = false
+        val next = Fixture(this, emptyList(), f.daemon, disk)
+        runCurrent()
+        assertEquals(next.left, 0, f.daemon.rows.size)
+        assertTrue(next.ledger.snapshot().pending.isEmpty())
+        assertTrue("nothing of the pairing is kept once told", disk[0]!!.let { "device-token" !in it && "HappyPushToken" !in it })
     }
 
     /** A team's daemon: the pairing has no member, and no row, until the daemon names one; the row it then gets goes at unpair. */

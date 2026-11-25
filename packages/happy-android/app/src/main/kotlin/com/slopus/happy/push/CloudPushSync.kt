@@ -34,17 +34,34 @@ class CloudPushSync(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     /** Each registration the server took: onboarding's mobileApp gate is done by it. */
     private val registered: (CloudPushAccount) -> Unit = {},
-    /** Sends one forgotten pairing's farewell over its own route; true once its daemon answered. */
-    private val farewell: suspend (CloudPushFarewellRoute, CloudPushRegistration) -> Boolean = { _, _ -> false },
-    private val clock: () -> Long = System::currentTimeMillis,
+    /** A forgotten pairing's own way to its daemon, made for one farewell; none means farewells stay queued. */
+    private val farewell: ((CloudPushFarewellRoute) -> CloudPushFarewellLink)? = null,
 ) {
     private data class Trigger(val sequence: Long, val native: Boolean = false)
     private val revision = MutableStateFlow(Trigger(0))
     private val farewells = MutableStateFlow(0L)
     private var handledNative = -1L
     private var work: Job? = null
-    private var nativeToken: String? = null
-    private var wrapper: HappyPushToken? = null
+    @Volatile private var nativeToken: String? = null
+    @Volatile private var wrapper: HappyPushToken? = null
+    @Volatile private var wrapped: String? = null
+
+    /** What a registration is sent with now: the relay capability for this device's token, exchanged once per token. Null without one. */
+    suspend fun renewal(): CloudPushRenewal? = try {
+        deviceTokens.token()?.let { native ->
+            if (native != nativeToken || wrapper == null) {
+                val exchanged = exchange(native)
+                wrapper = exchanged
+                wrapped = exchanged.value
+                nativeToken = native
+            }
+            wrapped?.let { CloudPushRenewal(it, appId, locale()) }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
 
     /** Call after cold start. Repeated calls keep one set of collectors. */
     @Synchronized fun start(scope: CoroutineScope) {
@@ -53,7 +70,7 @@ class CloudPushSync(
             coroutineScope {
                 launch {
                     networkReturns.collect {
-                        for (account in accounts.value) client(account)?.let { client -> attempt { registrations.cleanup(account, client) } }
+                        for (account in accounts.value) client(account)?.let { client -> attempt { registrations.cleanup(account, client, ::renewal) } }
                         retire()
                         refresh()
                     }
@@ -72,7 +89,7 @@ class CloudPushSync(
                 launch {
                     accounts.collect { current ->
                         attempt {
-                            for (gone in registrations.accounts().filterNot { it in current }) registrations.remove(gone, null)
+                            for (gone in registrations.accounts().filterNot { it in current }) registrations.remove(gone, null, ::renewal)
                         }
                         // A connection forgotten while its registration was in flight is only queued here.
                         retire()
@@ -84,23 +101,13 @@ class CloudPushSync(
                         if ((!front && !nativeChange) || current.isEmpty()) return@collectLatest
                         if (nativeChange) handledNative = trigger.sequence
                         // Authenticated cleanup does not depend on OS notification permission.
-                        for (account in current) client(account)?.let { client -> attempt { registrations.cleanup(account, client) } }
+                        for (account in current) client(account)?.let { client -> attempt { registrations.cleanup(account, client, ::renewal) } }
                         if (!notificationsAllowed()) {
-                            for (account in current) client(account)?.let { client -> attempt { registrations.remove(account, client) } }
+                            for (account in current) client(account)?.let { client -> attempt { registrations.remove(account, client, ::renewal) } }
                             return@collectLatest
                         }
-                        val token = try {
-                            val native = deviceTokens.token() ?: return@collectLatest
-                            if (native != nativeToken || wrapper == null) {
-                                wrapper = exchange(native)
-                                nativeToken = native
-                            }
-                            requireNotNull(wrapper)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (_: Exception) {
-                            return@collectLatest
-                        }
+                        renewal() ?: return@collectLatest
+                        val token = wrapper ?: return@collectLatest
                         for (account in current) client(account)?.let { client ->
                             // Not taken may be "its connection went meanwhile": that registration is then a farewell owed.
                             attempt { if (registrations.register(account, client, token, appId, locale())) registered(account) else retire() }
@@ -113,7 +120,7 @@ class CloudPushSync(
     /** A connection was just forgotten: its farewell is asked now. */
     fun retire() { farewells.update { it + 1 } }
 
-    private suspend fun owed(): Boolean = try { registrations.retire(clock(), farewell) }
+    private suspend fun owed(): Boolean = try { farewell?.let { registrations.retire(it) } ?: false }
     catch (e: CancellationException) { throw e }
     catch (_: Exception) { false }
 

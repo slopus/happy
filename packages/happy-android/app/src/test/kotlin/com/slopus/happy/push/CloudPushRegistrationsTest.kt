@@ -23,7 +23,8 @@ class CloudPushRegistrationsTest {
     private var disk: String? = null
     private val ledger = CloudPushLedger({ disk }, { disk = it })
     private var signedIn = true
-    private fun manager() = CloudPushRegistrations(ledger, { it == account && signedIn }, { id })
+    private var now = 0L
+    private fun manager() = CloudPushRegistrations(ledger, { it == account && signedIn }, { id }, { now })
 
     private class Server : Transport {
         data class Asked(val method: String, val path: String, val headers: Map<String, String>)
@@ -158,6 +159,7 @@ class CloudPushRegistrationsTest {
     }
 
     private val route = CloudPushFarewellRoute("tcAddress", 24781, "device-token-secret")
+    private val expiry = 1796688000000
 
     /** Its daemon could not be told at unpair: the farewell keeps that pairing's own way to it, until the daemon answers. */
     @Test fun aForgottenPairingsFarewellKeepsItsRouteUntilItsDaemonAnswers() = runTest {
@@ -172,14 +174,34 @@ class CloudPushRegistrationsTest {
 
         // A new process: nothing but the ledger is left of the pairing.
         val later = manager()
-        val asked = mutableListOf<Pair<CloudPushFarewellRoute, CloudPushRegistration>>()
-        assertTrue("still owed", later.retire(now = 0) { route, registration -> asked += route to registration; false })
+        val ways = mutableListOf<CloudPushFarewellRoute>()
+        val daemon = Server().apply { respond = { 503 to "{}" } }
+        assertTrue("still owed", later.retire { ways += it; CloudPushFarewellLink(api(daemon)) })
         assertEquals(1, ledger.snapshot().pending.size)
-        assertFalse("answered", later.retire(now = 0) { route, registration -> asked += route to registration; true })
-        assertEquals(listOf(route to CloudPushRegistration(id, version, 1796688000000), route to CloudPushRegistration(id, version, 1796688000000)), asked)
+        daemon.respond = { 204 to "" }
+        var closed = 0
+        assertFalse("answered", later.retire { ways += it; CloudPushFarewellLink(api(daemon)) { closed++ } })
+        assertEquals(listOf(route, route), ways)
+        assertEquals(1, closed)
+        assertEquals(listOf("DELETE", "DELETE"), daemon.asked.map { it.method })
+        assertEquals(mapOf("If-Match" to version), daemon.asked.last().headers)
         assertTrue(ledger.snapshot().pending.isEmpty())
         assertFalse("the route goes with the farewell", disk!!.contains("device-token-secret"))
-        assertFalse(later.retire(now = 0) { _, _ -> fail("nothing is owed"); true })
+        assertFalse(later.retire { fail("nothing is owed"); CloudPushFarewellLink(api(daemon)) })
+    }
+
+    /** The desktop removed the phone meanwhile: the daemon answers, and asking again would change nothing. */
+    @Test fun aFarewellRefusedForGoodIsNotAskedAgain() = runTest {
+        val server = Server().apply { respond = { registered() } }
+        val manager = manager()
+        register(manager, api(server))
+        manager.leaving(account.connectionId, route)
+        manager.remove(account, null)
+        signedIn = false
+        val daemon = Server().apply { respond = { 401 to "{}" } }
+        assertFalse(manager.retire { CloudPushFarewellLink(api(daemon)) })
+        assertTrue(ledger.snapshot().pending.isEmpty())
+        assertFalse(disk!!.contains("device-token-secret"))
     }
 
     @Test fun aFarewellIsNotAskedPastItsRegistrationsOwnExpiry() = runTest {
@@ -189,8 +211,11 @@ class CloudPushRegistrationsTest {
         manager.leaving(account.connectionId, route)
         manager.remove(account, null)
         signedIn = false
-        assertTrue(manager.retire(now = 1796688000000 - 1) { _, _ -> false })
-        assertFalse(manager.retire(now = 1796688000000) { _, _ -> fail("the daemon has dropped it by itself"); true })
+        val daemon = Server().apply { respond = { 503 to "{}" } }
+        now = expiry - 1
+        assertTrue(manager.retire { CloudPushFarewellLink(api(daemon)) })
+        now = expiry
+        assertFalse(manager.retire { fail("the daemon has dropped it by itself"); CloudPushFarewellLink(api(daemon)) })
         assertTrue(ledger.snapshot().pending.isEmpty())
         assertFalse(disk!!.contains("device-token-secret"))
     }
@@ -204,7 +229,7 @@ class CloudPushRegistrationsTest {
         manager.remove(account, null)
         signedIn = false
         assertNull(ledger.snapshot().pending.single().route)
-        assertFalse(manager.retire(now = 0) { _, _ -> fail("no route to ask over"); true })
+        assertFalse(manager.retire { fail("no route to ask over"); CloudPushFarewellLink(api(server)) })
         assertEquals(1, ledger.snapshot().pending.size)
     }
 
@@ -231,9 +256,156 @@ class CloudPushRegistrationsTest {
         assertEquals(route, ledger.snapshot().pending.single().route)
     }
 
-    @Test fun aFarewellIsSettledByAnAnswerAndNotByADaemonThatIsBusyOrDown() {
-        for (status in listOf(200, 204, 400, 401, 403, 404, 410)) assertTrue("$status", farewellAnswered(status))
-        for (status in listOf(408, 429, 500, 502, 503, 504)) assertFalse("$status", farewellAnswered(status))
+    @Test fun anAnswerSettlesARequestAndADaemonThatIsBusyOrDownDoesNot() {
+        for (status in listOf(200, 204, 400, 401, 403, 404, 410)) assertTrue("$status", pushAnswerSettles(status))
+        for (status in listOf(408, 429, 500, 502, 503, 504)) assertFalse("$status", pushAnswerSettles(status))
+    }
+
+    // The daemon took a registration and the phone never heard the answer: the row has a version only that answer named.
+
+    /** happy-agent's rows: every PUT gives a new version, a DELETE naming another answers 204 and keeps the row. */
+    private inner class Rows {
+        var live: String? = null
+        private var minted = 0
+        val server = Server().apply { respond = { request ->
+            if (request.method == "DELETE") {
+                if (request.headers["If-Match"] == live) live = null
+                204 to ""
+            } else {
+                live = listOf(version, nextVersion, thirdVersion)[minted++]
+                if (lose) throw java.io.IOException("the answer never came")
+                registered(live!!)
+            }
+        } }
+        var lose = false
+    }
+    private val thirdVersion = "9d2f6c1e-0b7a-4f43-8a5e-6f2f1f6f2c11"
+    private val renewal = CloudPushRenewal("HappyPushToken[0123456789ABCDEFGHIJKL]", "com.slopus.happy.dev", "en-US")
+
+    @Test fun aRegistrationWhoseAnswerNeverCameIsRegisteredOnceMoreAndRemovedWithThatVersion() = runTest {
+        val rows = Rows()
+        val manager = manager()
+        assertTrue(register(manager, api(rows.server)))
+        rows.lose = true
+        assertFalse(register(manager, api(rows.server)))
+        assertEquals("the phone still holds the version before", version, ledger.snapshot().bindings.single().registration!!.version)
+        assertTrue(ledger.snapshot().bindings.single().unanswered)
+        rows.lose = false
+        manager.remove(account, api(rows.server)) { renewal }
+        assertEquals(listOf("PUT", "PUT", "PUT", "DELETE"), rows.server.asked.map { it.method })
+        assertEquals(mapOf("If-Match" to thirdVersion), rows.server.asked.last().headers)
+        assertNull("the daemon keeps no row", rows.live)
+        assertTrue(ledger.snapshot().pending.isEmpty())
+    }
+
+    /** The very first registration: the phone has no version at all, and a row may be there. */
+    @Test fun aFirstRegistrationWhoseAnswerNeverCameIsStillRemoved() = runTest {
+        val rows = Rows().apply { lose = true }
+        val manager = manager()
+        assertFalse(register(manager, api(rows.server)))
+        assertNull(ledger.snapshot().bindings.single().registration)
+        rows.lose = false
+        manager.remove(account, api(rows.server)) { renewal }
+        assertEquals(listOf("PUT", "PUT", "DELETE"), rows.server.asked.map { it.method })
+        assertNull(rows.live)
+        assertTrue(ledger.snapshot().pending.isEmpty())
+    }
+
+    @Test fun anAnswerThatSettlesLeavesNothingUnsureAndSilenceDoes() = runTest {
+        val server = Server().apply { respond = { registered() } }
+        val manager = manager()
+        register(manager, api(server))
+        assertFalse(ledger.snapshot().bindings.single().unanswered)
+        for (status in listOf(503, 429, 408)) {
+            server.respond = { status to "{}" }
+            assertFalse(register(manager, api(server)))
+            assertTrue("$status", ledger.snapshot().bindings.single().unanswered)
+        }
+        // Refused: the daemon answered and changed nothing.
+        server.respond = { 409 to "{}" }
+        assertFalse(register(manager, api(server)))
+        assertFalse(ledger.snapshot().bindings.single().unanswered)
+        assertEquals(version, ledger.snapshot().bindings.single().registration!!.version)
+        server.respond = { 204 to "" }
+        val before = server.asked.size
+        manager.remove(account, api(server)) { fail("nothing to register again for"); renewal }
+        assertEquals(listOf("DELETE"), server.asked.drop(before).map { it.method })
+    }
+
+    /** The daemon was unreachable at unpair too: the farewell that outlives the pairing registers once more, then removes. */
+    @Test fun aForgottenPairingsUnsureFarewellKeepsWhatItRegistersWithUntilItHasTheVersion() = runTest {
+        val rows = Rows()
+        val manager = manager()
+        register(manager, api(rows.server))
+        rows.lose = true
+        register(manager, api(rows.server))
+        manager.leaving(account.connectionId, route)
+        manager.remove(account, null) { renewal }
+        signedIn = false
+        val queued = ledger.snapshot().pending.single()
+        assertTrue(queued.putFirst)
+        assertEquals(renewal, queued.renewal)
+        rows.lose = false
+
+        // The PUT is answered, the DELETE is not: the record now has the version, and nothing to register with.
+        var answers = 0
+        val real = rows.server.respond
+        rows.server.respond = { request -> if (request.method == "DELETE" && answers++ == 0) 503 to "{}" else real(request) }
+        val later = manager()
+        assertTrue(later.retire { CloudPushFarewellLink(api(rows.server)) })
+        val heard = ledger.snapshot().pending.single()
+        assertFalse(heard.putFirst)
+        assertNull(heard.renewal)
+        assertEquals(thirdVersion, heard.registration.version)
+        assertFalse(disk!!.contains("HappyPushToken"))
+        assertFalse(later.retire { CloudPushFarewellLink(api(rows.server)) })
+        assertEquals(listOf("PUT", "PUT", "PUT", "DELETE", "DELETE"), rows.server.asked.map { it.method })
+        assertNull(rows.live)
+        assertTrue(ledger.snapshot().pending.isEmpty())
+        assertFalse(disk!!.contains("device-token-secret"))
+    }
+
+    /** No relay token to be had: what is known is all there is. A limit, not a fix. */
+    @Test fun withNothingToRegisterWithAnUnsureFarewellSendsTheVersionItHasOrNothing() = runTest {
+        val rows = Rows()
+        val manager = manager()
+        register(manager, api(rows.server))
+        rows.lose = true
+        register(manager, api(rows.server))
+        rows.lose = false
+        manager.remove(account, api(rows.server)) { null }
+        assertEquals(mapOf("If-Match" to version), rows.server.asked.last().headers)
+        assertEquals("the row the phone never heard of stays", nextVersion, rows.live)
+        assertTrue(ledger.snapshot().pending.isEmpty())
+
+        // And with no version ever heard, there is nothing to send.
+        disk = null
+        val first = Rows().apply { lose = true }
+        val again = manager()
+        register(again, api(first.server))
+        first.lose = false
+        again.remove(account, api(first.server)) { null }
+        assertEquals(listOf("PUT"), first.server.asked.map { it.method })
+        assertTrue(ledger.snapshot().pending.isEmpty())
+    }
+
+    /** A sign-in's record never holds the relay capability: whoever delivers it brings one. */
+    @Test fun aSignInsUnsureRemovalRegistersOnceMoreWithWhatIsAtHandThen() = runTest {
+        val rows = Rows()
+        val manager = manager()
+        register(manager, api(rows.server))
+        rows.lose = true
+        register(manager, api(rows.server))
+        rows.lose = false
+        manager.remove(account, null) { renewal }
+        val queued = ledger.snapshot().pending.single()
+        assertTrue(queued.putFirst)
+        assertNull(queued.renewal)
+        assertFalse(disk!!.contains("HappyPushToken"))
+        manager.cleanup(account, api(rows.server)) { renewal }
+        assertEquals(listOf("PUT", "PUT", "PUT", "DELETE"), rows.server.asked.map { it.method })
+        assertNull(rows.live)
+        assertTrue(ledger.snapshot().pending.isEmpty())
     }
 
     @Test fun registerAndRemoveSerializePerBinding() = runTest {

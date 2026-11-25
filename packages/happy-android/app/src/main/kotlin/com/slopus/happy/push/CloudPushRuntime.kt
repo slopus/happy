@@ -11,7 +11,6 @@ import com.slopus.happy.connection.networkPath
 import com.slopus.happy.connection.returns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -60,25 +59,13 @@ class CloudPushRuntime(
     )
 
     /**
-     * One forgotten pairing's farewell, over a way to its daemon made for
-     * this one request from what the pairing kept ([route]): the phone
-     * forgot the daemon, the daemon still knows the phone's device token
-     * until the phone is removed there. True once the daemon answered.
+     * A way to a forgotten pairing's daemon, made for one farewell from what
+     * the pairing kept ([route]): the phone forgot the daemon, the daemon
+     * still knows the phone's device token until the phone is removed there.
      */
-    private suspend fun farewell(route: CloudPushFarewellRoute, registration: CloudPushRegistration): Boolean {
+    private fun farewell(route: CloudPushFarewellRoute): CloudPushFarewellLink {
         val transport = makeTransport(route)
-        return try {
-            val response = withTimeoutOrNull(FAREWELL_TIMEOUT) {
-                transport.request("DELETE", CloudPushApi.registrationPath(registration.id), route.deviceToken, null, mapOf("If-Match" to registration.version))
-            }
-            response != null && farewellAnswered(response.status)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            false
-        } finally {
-            withContext(NonCancellable) { runCatching { transport.close() } }
-        }
+        return CloudPushFarewellLink(CloudPushApi(AgentClient(transport, route.deviceToken))) { transport.close() }
     }
 
     private fun api(account: CloudPushAccount): CloudPushApi? =
@@ -106,7 +93,8 @@ class CloudPushRuntime(
             }
             registrations.leaving(connectionId, route)
             val account = cloudPushAccount(connection) ?: return@withContext
-            withTimeoutOrNull(3_000) { registrations.remove(account, api(account)) }
+            // What it would register with now, should the last registration have gone unanswered: what is at hand, or soon is.
+            withTimeoutOrNull(3_000) { registrations.remove(account, api(account)) { withTimeoutOrNull(1_500) { sync.renewal() } } }
         }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (_: Exception) { /* Push storage failure must not prevent signing out. */ }
@@ -119,6 +107,5 @@ class CloudPushRuntime(
     companion object {
         const val PREFS = "cloud-push-registrations"
         const val KEYCHAIN_SERVICE = "cloud-push"
-        private const val FAREWELL_TIMEOUT = 20_000L
     }
 }

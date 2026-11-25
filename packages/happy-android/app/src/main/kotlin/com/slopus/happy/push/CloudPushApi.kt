@@ -1,6 +1,7 @@
 package com.slopus.happy.push
 
 import com.slopus.happy.agent.AgentApiException
+import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.CancellationException
@@ -66,6 +67,9 @@ class CloudPushApi(private val client: AgentClient) {
     } catch (e: AgentApiException) {
         // Preserve only the status needed for stale-version handling, never an echoed capability.
         throw CloudPushException(e.status)
+    } catch (e: AgentConnectionException) {
+        // A pairing whose daemon no longer knows this phone answered too: that is not "could not be reached".
+        throw CloudPushException(401.takeIf { e.reason == AgentConnectionException.Reason.Revoked })
     } catch (_: Exception) {
         throw CloudPushException()
     }
