@@ -2,6 +2,7 @@ import { isGenericToolFailure, selectToolFailure, summarizeToolFailureOutput } f
 import { Message, ToolCall, ToolCallMessage } from '@/sync/typesMessage';
 import { getEffectiveToolName, getSkillDocumentName } from './toolIdentity';
 import { getSkillCommandNames } from './skillCommandReads';
+import { getToolSummaryDetail } from './toolDisplay';
 
 export type ConversationActivityStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -27,6 +28,13 @@ export type SubagentConversationActivity = {
     updatedAt: number;
     depth: number;
     order: number;
+    startedAt?: number | null;
+    completedAt?: number | null;
+    currentAction?: string | null;
+    model?: string | null;
+    effort?: string | null;
+    provider?: string | null;
+    failureSummary?: string | null;
 };
 
 export type ConversationActivities = {
@@ -143,13 +151,75 @@ function getSubagentTitle(tool: ToolCall): string | null {
     return null;
 }
 
+function explicitText(...values: unknown[]): string | null {
+    return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim() ?? null;
+}
+
+function timestamp(...values: unknown[]): number | null {
+    return values.find((value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0) ?? null;
+}
+
+function* ownSubagentTools(messages: Message[]): Generator<ToolCallMessage> {
+    for (const message of messages) {
+        if (message.kind !== 'tool-call') continue;
+        // A delegated agent owns its entire subtree. Its commands are not
+        // actions or failures belonging to this agent.
+        if (message.tool.name === 'Agent' || message.tool.name === 'Task') continue;
+        yield message;
+        yield* ownSubagentTools(message.children);
+    }
+}
+
+function getSubagentAction(messages: Message[], running: boolean): ToolCallMessage | null {
+    let latest: ToolCallMessage | null = null;
+    let latestAt = -1;
+    let active: ToolCallMessage | null = null;
+    let activeAt = -1;
+    for (const message of ownSubagentTools(messages)) {
+        const at = timestamp(message.tool.completedAt, message.tool.startedAt, message.createdAt) ?? 0;
+        if (at >= latestAt) { latest = message; latestAt = at; }
+        if (toolStatus(message.tool) === 'running' && at >= activeAt) { active = message; activeAt = at; }
+    }
+    return running ? active ?? latest : latest;
+}
+
+function getSubagentFailure(agentCalls: ToolCallMessage[], messages: Message[], runStartedAt?: number): string | null {
+    // A successful resume/sendInput supersedes errors from older calls to this
+    // agent. Cleanup or log reads may succeed after its actual failing command.
+    // Select the latest own failure independently from the displayed action.
+    const latestCall = [...agentCalls].sort((a, b) => (
+        (timestamp(a.tool.startedAt, a.createdAt) ?? 0) - (timestamp(b.tool.startedAt, b.createdAt) ?? 0)
+    )).at(-1);
+    let failedAction: ToolCallMessage | null = null;
+    let failedActionAt = -1;
+    for (const message of ownSubagentTools(messages)) {
+        if (message.tool.state !== 'error') continue;
+        const at = timestamp(message.tool.completedAt, message.tool.startedAt, message.createdAt) ?? 0;
+        if (at >= failedActionAt) { failedAction = message; failedActionAt = at; }
+    }
+    let summary: string | null = null;
+    let latestFailureAt = -1;
+    for (const candidate of [latestCall, failedAction]) {
+        if (!candidate) continue;
+        const failure = getToolFailure(candidate);
+        const at = timestamp(candidate.tool.completedAt, candidate.tool.startedAt, candidate.createdAt) ?? 0;
+        if (failure?.summary && at >= (runStartedAt ?? 0) && at >= latestFailureAt) {
+            summary = failure.summary;
+            latestFailureAt = at;
+        }
+    }
+    return summary;
+}
+
 export function collectConversationActivities(
     messages: Message[],
     options: { rootSubagentId?: string } = {},
 ): ConversationActivities {
     const skillActivities = new Map<string, SkillConversationActivity>();
     const subagentDefaults = new Map<string, SubagentConversationActivity>();
+    const subagentTools = new Map<string, ToolCallMessage[]>();
     const subagentEvents: SubagentConversationActivity[] = [];
+    const subagentRunStarts = new Map<string, number>();
     let sequence = 0;
 
     const visit = (items: Message[], depth: number, ownerPath: string[]): void => {
@@ -216,6 +286,8 @@ export function collectConversationActivities(
             if ((message.tool.name === 'Task' || message.tool.name === 'Agent')
                 && typeof sessionSubagent === 'string'
                 && sessionSubagent.length > 0) {
+                const previous = subagentDefaults.get(sessionSubagent);
+                const startedAt = timestamp(message.tool.startedAt, message.tool.createdAt, message.createdAt);
                 subagentDefaults.set(sessionSubagent, {
                     kind: 'subagent',
                     id: sessionSubagent,
@@ -224,7 +296,15 @@ export function collectConversationActivities(
                     updatedAt: message.tool.completedAt ?? message.createdAt,
                     depth,
                     order: sequence,
+                    startedAt: previous?.startedAt != null && startedAt != null ? Math.min(previous.startedAt, startedAt) : startedAt ?? previous?.startedAt ?? null,
+                    completedAt: toolStatus(message.tool) === 'running' ? null : timestamp(message.tool.completedAt),
+                    // Tool metadata can describe the parent's selected mode;
+                    // only explicit arguments to this agent identify its mode.
+                    model: explicitText(message.tool.input?.model) ?? previous?.model ?? null,
+                    effort: explicitText(message.tool.input?.reasoningEffort, message.tool.input?.reasoning_effort, message.tool.input?.effort) ?? previous?.effort ?? null,
+                    provider: explicitText(message.tool.input?.provider, message.tool.input?.flavor) ?? previous?.provider ?? null,
                 });
+                subagentTools.set(sessionSubagent, [...(subagentTools.get(sessionSubagent) ?? []), message]);
                 visit(message.children, depth + 1, [...ownerPath, sessionSubagent]);
                 continue;
             }
@@ -240,8 +320,10 @@ export function collectConversationActivities(
     subagentEvents
         .sort((a, b) => a.updatedAt - b.updatedAt || a.order - b.order)
         .forEach((event) => {
+            if (event.status === 'running') subagentRunStarts.set(event.id, event.updatedAt);
             const existing = subagents.get(event.id);
             subagents.set(event.id, {
+                ...existing,
                 kind: 'subagent',
                 id: event.id,
                 title: event.title ?? existing?.title ?? null,
@@ -249,11 +331,26 @@ export function collectConversationActivities(
                 updatedAt: event.updatedAt,
                 depth: existing?.depth ?? event.depth,
                 order: existing?.order ?? event.order,
+                // A spawn tool may return long before its agent finishes.
+                // Lifecycle events are authoritative and freeze terminal time.
+                startedAt: existing?.startedAt ?? (event.status === 'running' ? event.updatedAt : null),
+                completedAt: event.status === 'running' ? null : event.updatedAt,
             });
         });
 
     return {
         skills: [...skillActivities.values()].sort((a, b) => a.order - b.order),
-        subagents: [...subagents.values()].sort((a, b) => a.order - b.order),
+        subagents: [...subagents.values()].sort((a, b) => a.order - b.order).map((activity) => {
+            const agentCalls = subagentTools.get(activity.id) ?? [];
+            const ownMessages = agentCalls.flatMap((agent) => agent.children);
+            const action = getSubagentAction(ownMessages, activity.status === 'running');
+            return {
+                ...activity,
+                currentAction: action ? getToolSummaryDetail(action.tool) ?? getEffectiveToolName(action.tool) : null,
+                failureSummary: activity.status === 'failed'
+                    ? getSubagentFailure(agentCalls, ownMessages, subagentRunStarts.get(activity.id))
+                    : null,
+            };
+        }),
     };
 }

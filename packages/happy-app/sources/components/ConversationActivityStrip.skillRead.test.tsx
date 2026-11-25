@@ -3,6 +3,7 @@ import { act } from 'react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { ConversationActivityStrip } from './ConversationActivityStrip';
+vi.mock('./subagent/SubagentActivityGroup', () => ({ SubagentActivityGroup: 'SubagentActivityGroup' }));
 
 // @ts-expect-error react-test-renderer does not ship TypeScript declarations.
 import TestRenderer from 'react-test-renderer';

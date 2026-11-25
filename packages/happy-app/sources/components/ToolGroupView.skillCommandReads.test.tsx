@@ -13,6 +13,7 @@ vi.mock('react-native', () => ({
     Pressable: 'Pressable', Text: 'Text', View: 'View',
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', Octicons: 'Octicons' }));
+vi.mock('./codingAgents/CodingAgentIcon', () => ({ CodingAgentIcon: 'CodingAgentIcon' }));
 vi.mock('./MessageView', () => ({ MessageView: 'MessageView' }));
 vi.mock('./tools/knownTools', () => ({ knownTools: {} }));
 vi.mock('./tools/views/MCPToolView', () => ({ formatMCPTitle: (name: string) => name }));
@@ -85,7 +86,9 @@ cat /Users/example/skills/android-ops/SKILL.md`;
         expect(texts).toContain('Release verification');
         expect(texts).toContain('Regression verification');
         expect(texts.filter((text: string) => text === 'toolGroup.skillCommandStatus.completed')).toHaveLength(2);
-        expect(texts.filter((text: string) => text === 'toolGroup.subagentLabel')).toHaveLength(2);
+        expect(texts.filter((text: string) => text === 'toolGroup.subagents.count')).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'activity-subagent-release-agent' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'activity-subagent-regression-agent' })).toHaveLength(1);
         expect(onToggle).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });

@@ -87,6 +87,11 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
                     <Text numberOfLines={2} style={styles.title} testID="subagent-inspector-title">
                         {title}
                     </Text>
+                    {liveActivity?.model || liveActivity?.effort ? (
+                        <Text numberOfLines={2} style={styles.metadata} testID="subagent-inspector-model">
+                            {[liveActivity.model, liveActivity.effort].filter(Boolean).join(' · ')}
+                        </Text>
+                    ) : null}
                 </View>
                 <View style={styles.statusPill}>
                     <SubagentStatusIcon status={status} />
@@ -229,6 +234,12 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 20,
         fontFamily: 'monospace',
         fontWeight: '600',
+    },
+    metadata: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 17,
+        marginTop: 3,
     },
     statusPill: {
         flexShrink: 0,

@@ -113,6 +113,16 @@ describe('SubagentInspectorPanel', () => {
         mocks.sessionActive = true;
     });
 
+    it('makes explicitly recorded model information available in the existing detail panel', () => {
+        mocks.messages = [toolMessage('1', { sessionSubagent: 'agent-target', model: 'recorded-model', reasoningEffort: 'high' })];
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SubagentInspectorPanel selection={selection} sessionId="session-one" onBack={vi.fn()} />); });
+        expect(renderer.root.findByProps({ testID: 'subagent-inspector-model' }).children.join('')).toBe('recorded-model · high');
+        act(() => renderer.update(<SubagentInspectorPanel selection={{...selection,id:'unknown'}} sessionId="session-one" onBack={vi.fn()} />));
+        expect(renderer.root.findAllByProps({ testID: 'subagent-inspector-model' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
     it('renders the selected review task, visible work, and finding without leaking hidden or parent content', () => {
         const visibleProgress: Message = {
             kind: 'agent-text',

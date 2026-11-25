@@ -1,4 +1,5 @@
 import * as React from 'react';
+vi.mock('./subagent/SubagentActivityGroup', () => ({ SubagentActivityGroup: 'SubagentActivityGroup' }));
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolCallMessage } from '@/sync/typesMessage';

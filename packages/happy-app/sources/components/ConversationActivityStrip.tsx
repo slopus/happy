@@ -11,6 +11,7 @@ import {
 } from '@/utils/conversationActivity';
 import { useSubagentInspector } from './subagent/SubagentInspectorContext';
 import { SkillBrowserProgress } from './SkillBrowserProgress';
+import { SubagentActivityGroup } from './subagent/SubagentActivityGroup';
 
 export const ConversationActivitySuppressedContext = React.createContext(false);
 
@@ -25,15 +26,16 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
     nested?: boolean;
     rootSubagentId?: string;
 }) {
-    const { theme } = useUnistyles();
     const suppressed = React.useContext(ConversationActivitySuppressedContext);
     const inspector = useSubagentInspector();
     const activities = React.useMemo(
         () => collectConversationActivities(props.messages, { rootSubagentId: props.rootSubagentId }),
         [props.messages, props.rootSubagentId],
     );
+    // One stable group per strip keeps the user's expansion state as agents
+    // arrive. Skills retain their order around the first subagent entry.
     const orderedActivities = React.useMemo(
-        () => [...activities.skills, ...activities.subagents].sort((a, b) => a.order - b.order),
+        () => [...activities.skills, ...activities.subagents.slice(0, 1)].sort((a, b) => a.order - b.order),
         [activities.skills, activities.subagents],
     );
 
@@ -48,51 +50,14 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
                         key={`skill-${activity.id}`}
                         activity={activity}
                     />
-                ) : inspector ? (
-                    <Pressable
-                        {...activityAnchor('subagent', activity.id)}
-                        accessibilityLabel={t('toolGroup.openSubagentDetails', {
-                            title: activity.title ?? activity.id,
-                        })}
-                        accessibilityRole="button"
-                        accessibilityState={{ expanded: inspector.selection?.id === activity.id }}
-                        aria-expanded={inspector.selection?.id === activity.id}
-                        key={`subagent-${activity.id}`}
-                        onPress={() => inspector.open({
-                            id: activity.id,
-                            title: activity.title,
-                            status: activity.status,
-                        })}
-                        style={({ pressed }) => [
-                            styles.subagentRow,
-                            { paddingLeft: 8 + activity.depth * 16 },
-                            pressed && styles.rowPressed,
-                        ]}
-                        testID={`activity-subagent-${activity.id}`}
-                    >
-                        <Ionicons name="git-branch-outline" size={14} color={theme.colors.textSecondary} />
-                        <Text style={styles.kind}>{t('toolGroup.subagentLabel')}</Text>
-                        <Text style={styles.title} numberOfLines={1}>{activity.title ?? activity.id}</Text>
-                        <View style={styles.statusPill}>
-                            <ActivityStatusIcon status={activity.status} />
-                            <Text style={styles.statusText}>{getStatusLabel(activity.status)}</Text>
-                        </View>
-                    </Pressable>
                 ) : (
-                    <View
-                        {...activityAnchor('subagent', activity.id)}
-                        key={`subagent-${activity.id}`}
-                        style={[styles.subagentRow, { paddingLeft: 8 + activity.depth * 16 }]}
-                        testID={`activity-subagent-${activity.id}`}
-                    >
-                        <Ionicons name="git-branch-outline" size={14} color={theme.colors.textSecondary} />
-                        <Text style={styles.kind}>{t('toolGroup.subagentLabel')}</Text>
-                        <Text style={styles.title} numberOfLines={1}>{activity.title ?? activity.id}</Text>
-                        <View style={styles.statusPill}>
-                            <ActivityStatusIcon status={activity.status} />
-                            <Text style={styles.statusText}>{getStatusLabel(activity.status)}</Text>
-                        </View>
-                    </View>
+                    <SubagentActivityGroup
+                        key="subagent-group"
+                        activities={activities.subagents}
+                        selectedId={inspector?.selection?.id}
+                        onOpen={inspector ? (item) => inspector.open({ id: item.id, title: item.title, status: item.status }) : undefined}
+                        nested={props.nested}
+                    />
                 ))}
         </View>
     );
@@ -218,17 +183,6 @@ const styles = StyleSheet.create((theme) => ({
     row: {
         minWidth: 0,
         minHeight: 24,
-        gap: 6,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 7,
-        backgroundColor: theme.colors.surfaceHigh,
-    },
-    subagentRow: {
-        minWidth: 0,
-        minHeight: 24,
-        flexDirection: 'row',
-        alignItems: 'center',
         gap: 6,
         paddingHorizontal: 8,
         paddingVertical: 3,

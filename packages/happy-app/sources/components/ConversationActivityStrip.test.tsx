@@ -12,12 +12,14 @@ import { getBrowserStepRuns } from './rightPanel/browserStepRunsModel';
 import TestRenderer from 'react-test-renderer';
 
 vi.mock('react-native', () => ({
-    Platform: { OS: 'web' },
+    Platform: { OS: 'web', select: (options: any) => options.web ?? options.default },
     ActivityIndicator: 'ActivityIndicator',
     Pressable: 'Pressable',
     Text: 'Text',
     View: 'View',
+    Image: 'Image',
 }));
+vi.mock('./codingAgents/CodingAgentIcon', () => ({ CodingAgentIcon: 'CodingAgentIcon' }));
 vi.mock('./rightPanel/BrowserStepsPopover', () => ({ BrowserStepsPopover: 'BrowserStepsPopover' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({
@@ -29,6 +31,12 @@ vi.mock('react-native-unistyles', () => ({
                     box: { error: { background: '#330000', border: '#aa0000', text: '#ff7777' } },
                     surfaceHigh: '#222222',
                     surfaceHighest: '#333333',
+                    surface: '#191919',
+                    surfacePressed: '#222222',
+                    surfaceSelected: '#333333',
+                    divider: '#444444',
+                    textLink: '#88bbff',
+                    shadow: { color: '#000000', opacity: 0.1 },
                     text: '#ffffff',
                     textDestructive: '#ff0000',
                     textSecondary: '#aaaaaa',
@@ -176,6 +184,65 @@ describe('ConversationActivityStrip', () => {
         expect(subagentRow.props.accessibilityState).toEqual({ expanded: true });
 
         act(() => renderer.unmount());
+    });
+
+    it('keeps one subagent group collapsed when history and new agents arrive', () => {
+        const first = toolMessage('2', 'Agent', { sessionSubagent: 'first', description: 'First task' });
+        const second = toolMessage('4', 'Agent', { sessionSubagent: 'second', description: 'Second task' });
+        const messages = [toolMessage('1', 'Skill', { skill: 'design' }), first,
+            toolMessage('3', 'Skill', { skill: 'review' }), second];
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ConversationActivityStrip messages={messages} />); });
+        expect(renderer.root.findAllByProps({ testID: 'subagent-activity-group' })).toHaveLength(1);
+        const anchor = renderer.root.findByProps({ testID: 'activity-subagent-first' }).props.dataSet.transcriptActivity;
+        act(() => renderer.root.findByProps({ testID: 'subagent-activity-group-toggle' }).props.onPress());
+        act(() => renderer.update(<ConversationActivityStrip messages={[
+            toolMessage('0', 'Skill', { skill: 'older-history' }), ...messages,
+            toolMessage('5', 'Agent', { sessionSubagent: 'third', description: 'Third task' }),
+        ]} />));
+        expect(renderer.root.findByProps({ testID: 'subagent-activity-group-toggle' }).props['aria-expanded']).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'activity-subagent-first' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'subagent-activity-group-toggle' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'activity-subagent-first' }).props.dataSet.transcriptActivity).toBe(anchor);
+        expect(renderer.root.findAllByProps({ testID: 'activity-subagent-third' })).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+
+    it('displays an actual child command and keeps readonly rows readable', () => {
+        const child = toolMessage('2', 'Bash', { command: 'pnpm --filter happy-app test' });
+        const agent = toolMessage('1', 'Agent', { sessionSubagent: 'check', description: 'Check implementation' }, [child]);
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ConversationActivityStrip messages={[agent]} />); });
+        const row = renderer.root.findByProps({ testID: 'activity-subagent-check' });
+        expect(row.type).toBe('View');
+        expect(row.props.onPress).toBeUndefined();
+        expect(renderer.root.findAllByType('Text').map((node: any) => node.children.join(''))).toContain('pnpm --filter happy-app test');
+        act(() => renderer.unmount());
+    });
+
+    it('updates a running elapsed time and freezes it at the lifecycle completion', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(8000);
+        const agent = toolMessage('1000', 'Agent', { sessionSubagent: 'clock', description: 'Timed task' });
+        agent.tool.state = 'running'; agent.tool.completedAt = null;
+        let renderer: any;
+        try {
+            act(() => { renderer = TestRenderer.create(<ConversationActivityStrip messages={[agent]} />); });
+            const time = () => renderer.root.findByProps({ testID: 'activity-subagent-duration-clock' }).children.join('');
+            expect(time()).toBe('7s');
+            act(() => vi.advanceTimersByTime(2000));
+            expect(time()).toBe('9s');
+            const completed: Message = { kind: 'agent-event', id: 'clock-end', createdAt: 10500,
+                event: { type: 'subagent-status', subagent: 'clock', status: 'completed' } };
+            act(() => renderer.update(<ConversationActivityStrip messages={[agent, completed]} />));
+            expect(time()).toBe('9s');
+            expect(vi.getTimerCount()).toBe(0);
+            act(() => vi.advanceTimersByTime(10000));
+            expect(time()).toBe('9s');
+        } finally {
+            if (renderer) act(() => renderer.unmount());
+            vi.useRealTimers();
+        }
     });
 
     it('shows a failed Skill summary and expands its diagnostic detail', () => {

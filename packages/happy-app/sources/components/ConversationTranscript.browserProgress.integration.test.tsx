@@ -21,6 +21,7 @@ vi.mock('react-native', () => ({
 vi.mock('@/realtime/RealtimeSession', () => ({ RealtimeSession: {} }));
 vi.mock('react-native-device-info', () => ({ getDeviceType: () => 'Desktop' }));
 vi.mock('@expo/vector-icons', () => ({ Octicons: 'Octicons', Ionicons: 'Ionicons' }));
+vi.mock('./codingAgents/CodingAgentIcon', () => ({ CodingAgentIcon: 'CodingAgentIcon' }));
 vi.mock('react-native-reanimated', () => ({
     default: { View: 'AnimatedView' }, FadeIn: { duration: vi.fn() }, FadeOut: { duration: vi.fn() },
 }));

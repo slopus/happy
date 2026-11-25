@@ -241,6 +241,169 @@ describe('conversation activity model', () => {
     });
 });
 
+describe('subagent display data', () => {
+    it('shows a running child command and the explicitly requested agent mode', () => {
+        const active = toolMessage('20', 'CodexBash', {
+            parsed_cmd: [{ cmd: 'pnpm --filter happy-app test' }],
+        }, 'running');
+        active.tool.startedAt = 20;
+        const finished = toolMessage('30', 'Read', { file_path: 'README.md' });
+        finished.tool.completedAt = 30;
+        const agent = toolMessage('10', 'Agent', {
+            sessionSubagent: 'agent-live', model: 'gpt-6.1-sol', reasoningEffort: 'ultra', provider: 'codex',
+        }, 'running', [active, finished]);
+        agent.tool.startedAt = 10;
+
+        expect(collectConversationActivities([agent]).subagents[0]).toMatchObject({
+            id: 'agent-live', startedAt: 10, completedAt: null,
+            currentAction: 'pnpm --filter happy-app test', model: 'gpt-6.1-sol', effort: 'ultra', provider: 'codex',
+        });
+    });
+
+    it('freezes the lifecycle completion time and ignores a late-arriving older running event', () => {
+        const status = (id: string, at: number, value: 'running' | 'completed'): Message => ({
+            kind: 'agent-event', id, createdAt: at,
+            event: { type: 'subagent-status', subagent: 'agent-finished', status: value },
+        });
+        const command = toolMessage('40', 'Bash', { command: 'pnpm test' });
+        command.tool.completedAt = 45;
+        const agent = toolMessage('10', 'Agent', { sessionSubagent: 'agent-finished' }, 'completed', [
+            status('start', 11, 'running'), command, status('stop', 80, 'completed'), status('late-start', 20, 'running'),
+        ]);
+        agent.tool.startedAt = 10;
+        agent.tool.completedAt = 12; // Returning from spawn is not the agent's stop.
+
+        expect(collectConversationActivities([agent]).subagents[0]).toMatchObject({
+            status: 'completed', startedAt: 10, completedAt: 80, updatedAt: 80, currentAction: 'pnpm test',
+        });
+        const noLifecycle = toolMessage('90', 'Task', { sessionSubagent: 'task-finished' });
+        noLifecycle.tool.startedAt = null;
+        noLifecycle.tool.createdAt = 90;
+        noLifecycle.tool.completedAt = 100;
+        expect(collectConversationActivities([noLifecycle]).subagents[0]).toMatchObject({ startedAt: 90, completedAt: 100 });
+    });
+
+    it('does not turn parent message metadata or a model name into unknown subagent mode facts', () => {
+        const command = toolMessage('20', 'Bash', { command: 'rg node src' });
+        command.meta = { model: 'parent-model', effort: 'high' };
+        const agent = toolMessage('10', 'Agent', { sessionSubagent: 'agent-unknown' }, 'running', [command]);
+        agent.meta = { model: 'parent-model', effort: 'high' };
+        expect(collectConversationActivities([agent]).subagents[0]).toMatchObject({ model: null, effort: null, provider: null });
+
+        agent.tool.input.model = 'gpt-6.1-sol';
+        expect(collectConversationActivities([agent]).subagents[0]).toMatchObject({ model: 'gpt-6.1-sol', provider: null });
+    });
+
+    it('keeps nested agent actions in their own rows while retaining ownership depth and order', () => {
+        const ownCommand = toolMessage('20', 'Bash', { command: 'rg publish server/app' });
+        ownCommand.tool.completedAt = 20;
+        const nestedCommand = toolMessage('40', 'Bash', { command: 'node --test test/reviewer.test.js' }, 'running');
+        nestedCommand.tool.startedAt = 40;
+        const nested = toolMessage('30', 'Agent', { sessionSubagent: 'agent-nested', model: 'review-model' }, 'running', [nestedCommand]);
+        const root = toolMessage('10', 'Agent', { sessionSubagent: 'agent-root' }, 'running', [ownCommand, nested]);
+
+        expect(collectConversationActivities([root]).subagents).toEqual([
+            expect.objectContaining({ id: 'agent-root', depth: 0, order: 1, currentAction: 'rg publish server/app', model: null }),
+            expect.objectContaining({ id: 'agent-nested', depth: 1, order: 3, currentAction: 'node --test test/reviewer.test.js', model: 'review-model' }),
+        ]);
+    });
+
+    it('retains the last real command and its failure summary for a failed agent', () => {
+        const command = toolMessage('20', 'Bash', { command: 'node --test test/publish.test.js' }, 'error');
+        command.tool.failure = { summary: 'Expected createPublish to be exported.' };
+        const agent = toolMessage('10', 'Agent', { sessionSubagent: 'agent-failed' }, 'completed', [command, {
+            kind: 'agent-event', id: 'stop', createdAt: 30,
+            event: { type: 'subagent-status', subagent: 'agent-failed', status: 'failed' },
+        }]);
+
+        expect(collectConversationActivities([agent]).subagents[0]).toMatchObject({
+            status: 'failed', completedAt: 30, currentAction: 'node --test test/publish.test.js',
+            failureSummary: 'Expected createPublish to be exported.',
+        });
+    });
+
+    it('retains real lifetime and display data when a later Agent call addresses the same subagent', () => {
+        const command = toolMessage('20', 'Bash', { command: 'pnpm test' }, 'running');
+        command.tool.startedAt = 20;
+        const spawn = toolMessage('10', 'Agent', { sessionSubagent: 'agent-one', model: 'test-model' }, 'completed', [command]);
+        spawn.tool.startedAt = 10;
+        const sendInput = toolMessage('30', 'Agent', { sessionSubagent: 'agent-one', tool: 'sendInput' }, 'completed');
+        sendInput.tool.startedAt = 30;
+        const activities = collectConversationActivities([spawn, sendInput]).subagents;
+
+        expect(activities).toHaveLength(1);
+        expect(activities[0]).toMatchObject({ id: 'agent-one', startedAt: 10, model: 'test-model', currentAction: 'pnpm test' });
+    });
+
+    it('uses the new child failure after a failed start is successfully resumed', () => {
+        const first = toolMessage('10', 'Agent', { sessionSubagent: 'agent-recovered' }, 'error');
+        first.tool.startedAt = 10;
+        first.tool.completedAt = 20;
+        first.tool.failure = { summary: 'Initial agent startup failed.' };
+        const command = toolMessage('40', 'Bash', { command: 'pnpm test' }, 'error');
+        command.tool.startedAt = 40;
+        command.tool.completedAt = 50;
+        command.tool.failure = { summary: 'Current test assertion failed.' };
+        const resumed = toolMessage('30', 'Agent', { sessionSubagent: 'agent-recovered', tool: 'resume' }, 'completed', [command, {
+            kind: 'agent-event', id: 'resumed', createdAt: 31,
+            event: { type: 'subagent-status', subagent: 'agent-recovered', status: 'running' },
+        }, {
+            kind: 'agent-event', id: 'failed', createdAt: 60,
+            event: { type: 'subagent-status', subagent: 'agent-recovered', status: 'failed' },
+        }]);
+        resumed.tool.startedAt = 30;
+        resumed.tool.completedAt = 32;
+
+        expect(collectConversationActivities([first, resumed]).subagents[0]).toMatchObject({
+            status: 'failed', currentAction: 'pnpm test', failureSummary: 'Current test assertion failed.',
+        });
+
+        resumed.tool.state = 'error';
+        resumed.tool.failure = { summary: 'Resume failed before the command finished.' };
+        resumed.tool.completedAt = 45;
+        expect(collectConversationActivities([first, resumed]).subagents[0].failureSummary).toBe('Current test assertion failed.');
+        resumed.tool.completedAt = 55;
+        expect(collectConversationActivities([first, resumed]).subagents[0].failureSummary).toBe('Resume failed before the command finished.');
+    });
+
+    it('does not reuse a child error from before the current lifecycle resumed', () => {
+        const command = toolMessage('20', 'Bash', { command: 'pnpm test' }, 'error');
+        command.tool.completedAt = 25;
+        command.tool.failure = { summary: 'Old test failure.' };
+        const agent = toolMessage('10', 'Agent', { sessionSubagent: 'agent-resumed' }, 'completed', [command, {
+            kind: 'agent-event', id: 'resumed', createdAt: 30,
+            event: { type: 'subagent-status', subagent: 'agent-resumed', status: 'running' },
+        }, {
+            kind: 'agent-event', id: 'failed', createdAt: 40,
+            event: { type: 'subagent-status', subagent: 'agent-resumed', status: 'failed' },
+        }]);
+
+        expect(collectConversationActivities([agent]).subagents[0].failureSummary).toBeNull();
+    });
+
+    it('retains the current lifecycle failure after a successful cleanup command', () => {
+        const failed = toolMessage('20', 'Bash', { command: 'pnpm test' }, 'error');
+        failed.tool.startedAt = 20;
+        failed.tool.completedAt = 30;
+        failed.tool.failure = { summary: 'Publish test assertion failed.' };
+        const cleanup = toolMessage('40', 'Bash', { command: 'node scripts/cleanup-test-fixtures.js' });
+        cleanup.tool.startedAt = 40;
+        cleanup.tool.completedAt = 50;
+        const agent = toolMessage('10', 'Agent', { sessionSubagent: 'agent-cleaned' }, 'completed', [{
+            kind: 'agent-event', id: 'started', createdAt: 11,
+            event: { type: 'subagent-status', subagent: 'agent-cleaned', status: 'running' },
+        }, failed, cleanup, {
+            kind: 'agent-event', id: 'failed', createdAt: 60,
+            event: { type: 'subagent-status', subagent: 'agent-cleaned', status: 'failed' },
+        }]);
+
+        expect(collectConversationActivities([agent]).subagents[0]).toMatchObject({
+            currentAction: 'node scripts/cleanup-test-fixtures.js',
+            failureSummary: 'Publish test assertion failed.', status: 'failed',
+        });
+    });
+});
+
 describe('subagent transcript lookup', () => {
     it('returns a direct subagent transcript in chronological order', () => {
         const later: Message = {
