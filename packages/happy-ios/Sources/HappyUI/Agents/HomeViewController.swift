@@ -135,6 +135,8 @@ final class HomeViewController: UIViewController {
         }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
+        sidebar.onReorder = { [weak self] move in self?.reorder(move) }
+        sidebar.onArchive = { [weak self] row in self?.archive(row) }
         sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
         sidebar.onScroll = { [weak self] in self?.listDidScroll() }
         sidebar.onMove = { [weak self] in self?.onListScroll?() }
@@ -260,6 +262,22 @@ final class HomeViewController: UIViewController {
         // Prioritizing being off is Settings' business: home says nothing of it.
         sidebar.notice = notice
         view.setNeedsLayout()
+    }
+
+    // MARK: Moving and archiving
+
+    /// A bot or task carried somewhere new, as desktop moves it: it stays
+    /// where it was put, and goes back only if the computer refuses.
+    private func reorder(_ move: SidebarReorder.Move) {
+        guard let engine = session?.engine else { return }
+        Task { await engine.reorder(move) }
+    }
+
+    /// A bot or task swiped to Archive, as desktop's row menu archives it:
+    /// at once, without asking; its row comes back if the computer refuses.
+    private func archive(_ row: Row) {
+        guard let engine = session?.engine, let kind = row.targetKind, let id = row.targetId else { return }
+        Task { await engine.archive(kind: kind, id: id) }
     }
 
     // MARK: Search

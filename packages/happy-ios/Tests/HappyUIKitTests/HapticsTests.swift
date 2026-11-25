@@ -34,6 +34,7 @@ final class HapticsTests: XCTestCase {
             (.lift, .impact(.medium)),
             (.slot, .selection),
             (.drop, .impact(.light)),
+            (.armed, .impact(.medium)),
             (.putAway, .notification(.success)),
             (.renamed, .impact(.light)),
             (.send, .impact(.light)),

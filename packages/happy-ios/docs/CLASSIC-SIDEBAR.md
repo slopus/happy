@@ -78,8 +78,28 @@ UIKit lays home out with its toolbar on its way, and no layout follows the
 toolbar's return; read then, the list used to end under the search field
 after any way back.
 
-A hold on a conversation's row shows its preview. There is no menu and
-nothing moves: the phone doesn't reorder this list.
+A hold on a conversation's row shows its preview. There is no menu.
+
+Bots and tasks move as desktop moves them (`SidebarReorder`): a held row
+that then moves lifts out of the list (its preview, if open, goes) and is
+carried among its own kind only, a bot among the bots and a task among the
+person's tasks, with its subtasks folded away until it is set down
+(`SidebarCarryLayout`; held near the list's top or bottom, the list
+scrolls). Set down, it is one `reorder` intent in the account's outbox,
+told to the computer by desktop's routes (`POST /v0/bots/:id/reorder` with
+`If-Match`, `POST /v0/tasks/:id/reorder`), as the row it now follows, nil
+for first. Every move is kept as its own and they replay in the order made
+(`IntentOverlay.moves`), so the row stands where it was put until the
+computer's own order arrives, and goes back if the computer refuses.
+
+A bot or task the person may archive (`Row.canArchive`) swipes toward its
+leading edge (`SidebarSwipeLayout`): the row slides inside its card over
+a red Archive, both clipped to the card. Let go past half the action, the
+row stands open on it, and a tap on it archives; past 55% of the card the
+action fills the row and letting go archives at once. As desktop's row
+menu, archiving doesn't ask: the row goes through the outbox's `archive`
+intent and comes back if the computer refuses. VoiceOver offers Archive as
+the row's custom action.
 
 ## Live updates
 
@@ -93,6 +113,10 @@ reorders all arrive this way.
 
 - `ClassicSidebarTests` (HappyCoreTests): the rows and their order, no
   titles and no folds.
+- `SidebarReorderTests` (HappyCoreTests): what moves and with what, the
+  move as the route's `afterId`, waiting moves replayed in order, and the
+  routes. `SidebarSwipeLayoutTests` and `SidebarCarryLayoutTests`
+  (HappyLayoutTests): the swipe's and the carry's frames.
   `SyncEngineTests` checks that the old Stem Cells setting leaves home
   classic and never reads the sidebar document.
 - `ClassicSidebarUITests` (HappyDirectUITests), against a throwaway daemon

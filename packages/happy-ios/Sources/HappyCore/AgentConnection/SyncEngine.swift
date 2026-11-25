@@ -1314,6 +1314,14 @@ public actor SyncEngine {
         return try? await intents.enqueue(.archive, target: id, value: .object(["kind": .string(kind)]))
     }
 
+    /// Moves a bot or task (`move.kind`) in home's list: it stands where it
+    /// was put at once, and goes back only if the computer refuses.
+    @discardableResult
+    public func reorder(_ move: SidebarReorder.Move) async -> Intent? {
+        guard !stopped else { return nil }
+        return try? await intents.enqueue(.reorder, target: move.id, value: .object(["kind": .string(move.kind), "afterId": move.afterId.map(JSONValue.string) ?? .null]))
+    }
+
     /// Leaves a task or Surface (`kind`): out of this person's list at once.
     @discardableResult
     public func leave(kind: String, id: String) async -> Intent? {
@@ -1447,6 +1455,9 @@ public actor SyncEngine {
                 case "agent": try await client.archiveAgent(intent.target, mutationId: intent.id)
                 default: try await client.archiveTask(intent.target)
                 }
+            case .reorder:
+                let afterId = intent.value["afterId"]?.stringValue
+                if kind == "bot" { try await client.reorderBot(intent.target, after: afterId, mutationId: intent.id) } else { try await client.reorderTask(intent.target, after: afterId, mutationId: intent.id) }
             case .leave:
                 if kind == "surface" { try await client.leaveSurface(intent.target, mutationId: intent.id) } else { try await client.leaveTask(intent.target, mutationId: intent.id) }
             case .join:

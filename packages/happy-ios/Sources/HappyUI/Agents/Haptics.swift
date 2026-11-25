@@ -16,6 +16,8 @@ enum Haptics {
         case slot
         /// A carried row was set down.
         case drop
+        /// A swipe went far enough that letting go does its action.
+        case armed
         /// Work was archived, left or closed.
         case putAway
         /// A rename was kept.
@@ -38,7 +40,7 @@ enum Haptics {
 
     static func feedback(_ moment: Moment) -> Feedback {
         switch moment {
-        case .lift: .impact(.medium)
+        case .lift, .armed: .impact(.medium)
         case .slot, .pick: .selection
         case .hold, .drop, .renamed, .send, .newWork, .fold: .impact(.light)
         case .putAway: .notification(.success)

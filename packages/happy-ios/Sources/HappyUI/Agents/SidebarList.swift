@@ -19,6 +19,12 @@ import UltraView
 /// screen with its menu. The rows on screen stay where they are when rows
 /// change above them, and at the very top new rows are seen arriving.
 ///
+/// Where home allows it, a bot's or task's row moves and archives as
+/// desktop's do: held and then moved, the row lifts out of the list and is
+/// carried among its peers (`SidebarReorder`, `SidebarCarryLayout`), and
+/// swiped toward its leading edge it uncovers Archive
+/// (`SidebarSwipeLayout`).
+///
 /// UltraList is not a scroll view, so the screen's bar shades `edge`
 /// instead: a scroll view that never scrolls under a finger and follows the
 /// list's place, which iOS 26's soft scroll edge and the scroll indicator
@@ -40,6 +46,10 @@ final class SidebarList: UIView {
     var preview: ((Row) -> UIViewController?)?
     /// The preview was tapped: the row opens at once, under it.
     var onOpenPreview: ((Row) -> Void)?
+    /// A bot or task was carried somewhere new; nil: nothing is carried.
+    var onReorder: ((SidebarReorder.Move) -> Void)?
+    /// A bot's or task's swipe let go on Archive; nil: nothing swipes.
+    var onArchive: ((Row) -> Void)?
     var images: Images?
 
     /// The list moved: a finger, a glide or a jump.
@@ -95,6 +105,17 @@ final class SidebarList: UIView {
     private var indicatorFlashed: CFTimeInterval = 0
     /// Applies waiting for their rows to be drawn.
     private var waiters: [CheckedContinuation<Void, Never>] = []
+    /// The row standing swiped open, if one is.
+    private weak var swiped: SidebarItemView?
+    /// The row a finger carries, and the one being set down after it.
+    private var carry: Carry?
+    private var landing: String?
+    /// The rows home gave while one was carried or set down: shown once it lands.
+    private var heldRows: [Row]?
+    /// The carried row's own view, empty under its picture.
+    private weak var hiddenView: SidebarItemView?
+    /// When the last carry ended: the lift that ends it is not a tap.
+    private var carriedAt: CFTimeInterval = 0
 
     struct Input: Equatable, Sendable {
         var rows: [Row]
@@ -176,8 +197,12 @@ final class SidebarList: UIView {
         super.init(frame: frame)
         list.accessibilityIdentifier = "home-list"
         list.onScroll = { [weak self] _ in self?.scrolled() }
-        list.onVisibleWindowChanged = { [weak self] in self?.mirror() }
+        list.onVisibleWindowChanged = { [weak self] in
+            self?.mirror()
+            self?.hideCarried()
+        }
         list.willBeginDragging = { [weak self] in
+            self?.closeSwipe()
             self?.flashIndicator(force: true)
             self?.onWillBeginDragging?()
         }
@@ -225,7 +250,10 @@ final class SidebarList: UIView {
     override func willMove(toWindow newWindow: UIWindow?) {
         super.willMove(toWindow: newWindow)
         // Leaving the screen mid-hold: nothing is left behind in the window.
-        if newWindow == nil { hold?.close(animated: false) }
+        if newWindow == nil {
+            hold?.close(animated: false)
+            closeSwipe(animated: false)
+        }
     }
 
     // MARK: Rows
@@ -234,6 +262,12 @@ final class SidebarList: UIView {
     /// list takes them in one apply, touching only the rows that changed.
     func apply(_ rows: [Row]) {
         dispatchPrecondition(condition: .onQueue(.main))
+        // A row in a finger's hand stays where the finger put it: what came
+        // meanwhile shows once it is set down.
+        guard carry == nil, landing == nil else {
+            heldRows = rows
+            return
+        }
         self.rows = rows
         update()
     }
@@ -355,6 +389,8 @@ final class SidebarList: UIView {
         }
         edge.contentSize = CGSize(width: band.width, height: next.contentHeight)
         mirror()
+        hideCarried()
+        if carry != nil { follow() }
         let waiting = waiters
         waiters = []
         for waiter in waiting { waiter.resume() }
@@ -591,20 +627,26 @@ final class SidebarList: UIView {
 
     /// A press began on `view`'s row.
     func pressed(_ view: SidebarItemView) {
-        guard onSelect != nil, hold == nil else { return }
+        guard onSelect != nil, hold == nil, swiped == nil, carry == nil else { return }
         onIntent?(view.row)
     }
 
     /// Whether a press lights `row`: it opens something.
     func lightsOnPress(_ row: Row) -> Bool {
-        guard hold == nil else { return false }
+        guard hold == nil, swiped == nil, carry == nil else { return false }
         return row.kind == .section ? false : onSelect != nil
     }
 
     /// A tap on `view` at `point`, in the view.
     func tap(_ view: SidebarItemView, at point: CGPoint) {
         // The touch that opened a hold, let go: the hold stays and that is all.
-        guard hold == nil else { return }
+        guard hold == nil, carry == nil, CACurrentMediaTime() - carriedAt > 0.3 else { return }
+        // A row stands swiped open: a tap on its action does it, any other
+        // tap only puts it back.
+        if let open = swiped {
+            if open === view, view.isOnAction(point) { archive(view) } else { closeSwipe() }
+            return
+        }
         let row = view.row
         switch row.kind {
         case .section, .separator:
@@ -619,7 +661,8 @@ final class SidebarList: UIView {
     /// of it with the menu under it, and a light tap is felt. A row with
     /// neither a menu nor a conversation shows nothing.
     func openHold(_ view: SidebarItemView) {
-        guard hold == nil, let window else { return }
+        closeSwipe()
+        guard hold == nil, carry == nil, let window else { return }
         let row = view.row
         let items = menu?(row) ?? []
         let preview = preview?(row)
@@ -644,14 +687,266 @@ final class SidebarList: UIView {
         overlay.present()
     }
 
-    /// What VoiceOver offers on `row`: its hold's menu.
+    /// What VoiceOver offers on `row`: its hold's menu, and Archive where
+    /// it swipes.
     func actions(for view: SidebarItemView) -> [UIAccessibilityCustomAction] {
-        (menu?(view.row) ?? []).joined().map { item in
+        var actions = (menu?(view.row) ?? []).joined().map { item in
             UIAccessibilityCustomAction(name: item.title, image: Glyphs.image(item.icon)) { _ in
                 item.run()
                 return true
             }
         }
+        let row = view.row
+        if swipes(row) {
+            actions.append(UIAccessibilityCustomAction(name: Strings.archive) { [weak self] _ in
+                self?.onArchive?(row)
+                return true
+            })
+        }
+        return actions
+    }
+
+    // MARK: Swipe
+
+    /// Whether `row` swipes to Archive: a bot or task the person may archive,
+    /// on a list that archives.
+    func swipes(_ row: Row) -> Bool {
+        onArchive != nil && row.canArchive && SidebarReorder.movable(row) && hold == nil && carry == nil
+    }
+
+    /// A swipe began on `view`: any other row standing open closes.
+    func swipeBegan(_ view: SidebarItemView) {
+        if let other = swiped, other !== view { other.setReveal(0, full: false, animated: true) }
+        swiped = view
+    }
+
+    /// The finger let go of `view`'s swipe.
+    func swipeEnded(_ view: SidebarItemView, outcome: SidebarSwipeLayout.Outcome) {
+        switch outcome {
+        case .closed:
+            view.setReveal(0, full: false, animated: true)
+            if swiped === view { swiped = nil }
+        case .open:
+            view.setReveal(SidebarSwipeLayout.reveal(.open, width: view.box.width), full: false, animated: true)
+            swiped = view
+        case .full:
+            archive(view)
+        }
+    }
+
+    /// Archives `view`'s row: its action fills it, then it goes as the
+    /// list loses it. One the list still has a moment later (the phone
+    /// could not keep the archive) closes again.
+    private func archive(_ view: SidebarItemView) {
+        let row = view.row
+        if swiped === view { swiped = nil }
+        Haptics.play(.putAway)
+        view.setReveal(view.box.width, full: true, animated: true) { [weak self, weak view] in
+            self?.onArchive?(row)
+            Task { @MainActor [weak self, weak view] in
+                try? await Task.sleep(for: .seconds(1.5))
+                guard let self, let view, view.row.id == row.id, view.reveal > 0, rows.contains(where: { $0.id == row.id }) else { return }
+                view.setReveal(0, full: false, animated: true)
+            }
+        }
+    }
+
+    /// Puts a row standing swiped open back.
+    func closeSwipe(animated: Bool = true) {
+        swiped?.setReveal(0, full: false, animated: animated)
+        swiped = nil
+    }
+
+    // MARK: Carry
+
+    /// A row in a finger's hand: its picture over the list, where the finger
+    /// took it, and the rows as they were when it was lifted.
+    private final class Carry {
+        let rowId: String
+        let lifted: [Row]
+        let picture: UIView
+        /// The row's box in this view when lifted, and the finger's height in it.
+        let box: CGRect
+        let grab: CGFloat
+        var finger: CGFloat
+        var link: CADisplayLink?
+        var ticked: CFTimeInterval = 0
+
+        init(rowId: String, lifted: [Row], picture: UIView, box: CGRect, grab: CGFloat) {
+            self.rowId = rowId
+            self.lifted = lifted
+            self.picture = picture
+            self.box = box
+            self.grab = grab
+            finger = box.minY + grab
+        }
+    }
+
+    /// A held finger moved, from `start` to `point` in this view: far enough,
+    /// on a bot or task where the list moves them, it lifts the row;
+    /// carried, the row follows it.
+    func holdMoved(_ view: SidebarItemView, to point: CGPoint, from start: CGPoint) {
+        if carry == nil {
+            guard onReorder != nil, SidebarReorder.movable(view.row), landing == nil,
+                  hypot(point.x - start.x, point.y - start.y) >= SidebarCarryLayout.liftDistance else { return }
+            lift(view, at: start)
+        }
+        guard let carry else { return }
+        carry.finger = point.y
+        follow()
+    }
+
+    /// The held finger lifted: a carried row is set down where it is, and the
+    /// computer told; `cancelled`, it goes back.
+    func holdEnded(_ view: SidebarItemView, cancelled: Bool) {
+        guard let carry else { return }
+        self.carry = nil
+        carry.link?.invalidate()
+        carriedAt = CACurrentMediaTime()
+        landing = carry.rowId
+        // The row's place among its peers now, as a move from where it was.
+        var move: SidebarReorder.Move?
+        if !cancelled, let index = rows.firstIndex(where: { $0.id == carry.rowId }),
+           let place = SidebarReorder.family(rows, at: index)?.firstIndex(where: { $0.lowerBound == index }),
+           let from = carry.lifted.firstIndex(where: { $0.id == carry.rowId }) {
+            move = SidebarReorder.move(carry.lifted, at: from, to: place)
+        }
+        Haptics.play(.drop)
+        if let move { onReorder?(move) }
+        let target = self.view(for: carry.rowId).map { $0.convert($0.box, to: self) } ?? carry.box
+        let picture = carry.picture
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+            picture.transform = .identity
+            picture.center = CGPoint(x: target.midX, y: target.midY)
+            picture.layer.shadowOpacity = 0
+        } completion: { [weak self] _ in
+            picture.removeFromSuperview()
+            guard let self else { return }
+            landing = nil
+            hideCarried()
+            // What home sent meanwhile, with the move laid over it until home
+            // has it too; else the rows as they were, the row put back.
+            let base = heldRows ?? carry.lifted
+            heldRows = nil
+            rows = move.map { SidebarReorder.moved(base, $0) } ?? base
+            update()
+        }
+    }
+
+    /// Lifts `view`'s row out of the list under the finger that held it at
+    /// `start`: its picture grows over the list and its own place empties;
+    /// what nests under it folds away until it is set down.
+    private func lift(_ view: SidebarItemView, at start: CGPoint) {
+        guard let index = rows.firstIndex(where: { $0.id == view.row.id }),
+              let unit = SidebarReorder.family(rows, at: index)?.first(where: { $0.lowerBound == index }) else { return }
+        hold?.close(animated: false)
+        closeSwipe(animated: false)
+        view.pressed = false
+        let box = view.convert(view.box, to: self)
+        // The row's card as it rests, drawn once: a picture, not a live
+        // snapshot, so whatever draws the window (a recording) has it too.
+        let card = view.box
+        let snapshot = UIImageView(image: UIGraphicsImageRenderer(size: card.size).image { _ in
+            view.drawHierarchy(in: CGRect(origin: CGPoint(x: -card.minX, y: -card.minY), size: view.bounds.size), afterScreenUpdates: true)
+        })
+        let picture = UIView(frame: box)
+        picture.isUserInteractionEnabled = false
+        picture.layer.shadowColor = UIColor.black.cgColor
+        picture.layer.shadowRadius = SidebarCarryLayout.shadowRadius
+        picture.layer.shadowOffset = CGSize(width: 0, height: SidebarCarryLayout.shadowOffset)
+        picture.layer.shadowOpacity = 0
+        snapshot.frame = picture.bounds
+        snapshot.layer.cornerRadius = GroupedSidebarMetrics.radius
+        snapshot.layer.cornerCurve = .continuous
+        snapshot.layer.masksToBounds = true
+        picture.addSubview(snapshot)
+        picture.accessibilityIdentifier = "home-carry"
+        addSubview(picture)
+        let carry = Carry(rowId: view.row.id, lifted: rows, picture: picture, box: box, grab: start.y - box.minY)
+        self.carry = carry
+        // The finger carries the row now, not the list.
+        for pan in list.contentView.gestureRecognizers ?? [] where pan is UIPanGestureRecognizer {
+            pan.isEnabled = false
+            pan.isEnabled = true
+        }
+        list.haltScrolling()
+        Haptics.play(.lift)
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+            picture.transform = CGAffineTransform(scaleX: SidebarCarryLayout.liftScale, y: SidebarCarryLayout.liftScale)
+            picture.layer.shadowOpacity = SidebarCarryLayout.shadowOpacity
+        }
+        hideCarried()
+        let link = CADisplayLink(target: CarryTicker(self), selector: #selector(CarryTicker.tick(_:)))
+        link.add(to: .main, forMode: .common)
+        carry.link = link
+        if unit.count > 1 {
+            rows.removeSubrange(unit.lowerBound + 1..<unit.upperBound)
+            update()
+        }
+    }
+
+    /// The carried row's picture under the finger, and the row's place
+    /// among its peers where the picture's middle now is.
+    private func follow() {
+        guard let carry else { return }
+        let frame = SidebarCarryLayout.frame(box: carry.box, grab: carry.grab, finger: carry.finger, top: contentInsets.top, bottom: bounds.height - contentInsets.bottom)
+        carry.picture.center = CGPoint(x: frame.midX, y: frame.midY)
+        // Until the list shows the rows last given, their places are not known.
+        guard let prepared, prepared.input.rows == rows, let index = rows.firstIndex(where: { $0.id == carry.rowId }),
+              let units = SidebarReorder.family(rows, at: index), let from = units.firstIndex(where: { $0.lowerBound == index }) else { return }
+        var spans: [String: CGRect] = [:]
+        for entry in prepared.entries { spans[entry.row.id] = entry.box.offsetBy(dx: 0, dy: entry.top) }
+        let peers = units.enumerated().filter { $0.offset != from }.compactMap { _, unit -> ClosedRange<CGFloat>? in
+            guard let first = spans[rows[unit.lowerBound].id], let last = spans[rows[unit.upperBound - 1].id] else { return nil }
+            return first.minY...last.maxY
+        }
+        guard peers.count == units.count - 1 else { return }
+        // The picture's middle in the content: the list's place under it.
+        let center = convert(CGPoint(x: frame.midX, y: frame.midY), to: list).y + contentOffsetY
+        let place = SidebarCarryLayout.place(center: center, peers: peers)
+        guard let move = SidebarReorder.move(rows, at: index, to: place) else { return }
+        rows = SidebarReorder.moved(rows, move)
+        Haptics.play(.slot)
+        update()
+    }
+
+    /// One frame of a carry: held near the view's top or bottom, the list
+    /// scrolls under the row.
+    fileprivate func tick(_ link: CADisplayLink) {
+        guard let carry else { return link.invalidate() }
+        let elapsed = carry.ticked == 0 ? 0 : min(link.timestamp - carry.ticked, 0.05)
+        carry.ticked = link.timestamp
+        let frame = SidebarCarryLayout.frame(box: carry.box, grab: carry.grab, finger: carry.finger, top: contentInsets.top, bottom: bounds.height - contentInsets.bottom)
+        let speed = SidebarCarryLayout.scrollSpeed(frame: frame, top: contentInsets.top, bottom: bounds.height - contentInsets.bottom)
+        guard speed != 0, elapsed > 0, let prepared else { return }
+        let lowest = -contentInsets.top
+        let highest = max(lowest, prepared.contentHeight + contentInsets.bottom - bounds.height)
+        let offset = contentOffsetY
+        let next = min(max(offset + speed * CGFloat(elapsed), lowest), highest)
+        guard abs(next - offset) > 0.1 else { return }
+        setContentOffsetY(next)
+        follow()
+    }
+
+    /// The carried row's own view stays hidden under its picture, whichever
+    /// view shows it as the list mounts rows.
+    private func hideCarried() {
+        let shown = (carry?.rowId ?? landing).flatMap(view(for:))
+        if hiddenView !== shown { hiddenView?.isCarried = false }
+        hiddenView = shown
+        shown?.isCarried = true
+    }
+}
+
+/// The carry's display link, which holds its target strongly: this holds
+/// the list weakly.
+@MainActor
+private final class CarryTicker: NSObject {
+    weak var list: SidebarList?
+    init(_ list: SidebarList) { self.list = list }
+    @objc func tick(_ link: CADisplayLink) {
+        guard let list else { return link.invalidate() }
+        list.tick(link)
     }
 }
 

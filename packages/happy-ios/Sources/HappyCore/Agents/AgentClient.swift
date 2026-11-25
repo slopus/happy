@@ -275,6 +275,28 @@ public final class AgentClient: Sendable {
         _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/archive", json: .object(["mutationId": .string(mutationId)]))
     }
 
+    /// Moves a task in the person's own list, after `afterId` (nil: first).
+    public func reorderTask(_ taskId: String, after afterId: String?, mutationId: String = ClientID.make()) async throws {
+        _ = try await send("POST", "/v0/tasks/\(Self.escape(taskId))/reorder", json: .object(["afterId": afterId.map(JSONValue.string) ?? .null, "mutationId": .string(mutationId)]))
+    }
+
+    /// Moves a bot among the bots, after `afterId` (nil: first). It names
+    /// the version it moves (`If-Match`); one that lost a race reads the
+    /// newer version and moves that.
+    public func reorderBot(_ botId: String, after afterId: String?, mutationId: String = ClientID.make()) async throws {
+        let path = "/v0/bots/\(Self.escape(botId))"
+        let body: JSONValue = .object(["afterId": afterId.map(JSONValue.string) ?? .null, "mutationId": .string(mutationId)])
+        for attempt in 0..<2 {
+            guard let version = try await decode(JSONValue.self, "GET", path)["bot"]?["version"]?.stringValue else { throw AgentClientError.invalidResponse }
+            do {
+                _ = try await send("POST", path + "/reorder", json: body, headers: ["If-Match": version])
+                return
+            } catch AgentClientError.status(409, _, _) where attempt == 0 {
+                continue
+            }
+        }
+    }
+
     /// Archival names the version it archives (`If-Match`).
     private func archive(_ path: String, key: String) async throws {
         guard let version = try await decode(JSONValue.self, "GET", path)[key]?["version"]?.stringValue else { throw AgentClientError.invalidResponse }

@@ -16,6 +16,9 @@ public struct Intent: Codable, Equatable, Sendable {
         case delete
         case rename
         case answer
+        /// A bot or task moved in home's list (`SidebarReorder`): each move
+        /// is kept as its own, so they reach the computer in the order made.
+        case reorder
         /// A todo list's changes (`TodoOp`): one slot per todo for each.
         case todoCreate = "todo.create"
         case todoText = "todo.text"
@@ -66,8 +69,9 @@ public struct Intent: Codable, Equatable, Sendable {
         self.nextAttemptAt = nextAttemptAt
     }
 
-    /// One row per slot.
-    public var slot: String { "\(kind.slot)|\(target)" }
+    /// One row per slot. Every move has a slot of its own: a later move of
+    /// the same row lands where the ones before it left the others.
+    public var slot: String { kind == .reorder ? "\(kind.slot)|\(target)|\(id)" : "\(kind.slot)|\(target)" }
 }
 
 /// What a delivery throws when the other side said no for good: the intent
@@ -397,17 +401,23 @@ public struct IntentOverlay: Equatable, Sendable {
     public var titles: [String: String] = [:]
     /// Answers given here, by question ID.
     public var answers: [String: JSONValue] = [:]
+    /// Bots and tasks moved here, in the order they were moved.
+    public var moves: [SidebarReorder.Move] = []
 
     public init() {}
 
     public init(_ intents: [Intent]) {
-        for intent in intents {
+        // Moves replay in the order they were made, whatever order they come in.
+        for intent in intents.sorted(by: { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }) {
             switch intent.kind {
             case .read: read.insert(intent.target)
             case .archive, .leave, .delete: removed.insert(intent.target)
             case .unarchive: restored.insert(intent.target)
             case .rename: if let title = intent.value["title"]?.stringValue ?? intent.value.stringValue { titles[intent.target] = title }
             case .answer: answers[intent.target] = intent.value
+            case .reorder:
+                guard let kind = intent.value["kind"]?.stringValue else { break }
+                moves.append(SidebarReorder.Move(kind: kind, id: intent.target, afterId: intent.value["afterId"]?.stringValue))
             case .join, .todoCreate, .todoText, .todoStatus, .todoMove, .feedSeen, .feedReadAll: break
             }
         }
@@ -417,7 +427,8 @@ public struct IntentOverlay: Equatable, Sendable {
 
     /// An agent account's home rows as this phone's pending actions leave
     /// them: a chat read here has no dot, a task archived or left is gone
-    /// with what nests under it, a task or bot renamed wears its new name.
+    /// with what nests under it, a task or bot renamed wears its new name,
+    /// and one moved stands where it was put.
     public func apply(_ rows: [Row]) -> [Row] {
         guard !isEmpty else { return rows }
         var result: [Row] = []
@@ -442,6 +453,7 @@ public struct IntentOverlay: Equatable, Sendable {
             }
             result.append(row)
         }
+        for move in moves { result = SidebarReorder.moved(result, move) }
         return result
     }
 }
