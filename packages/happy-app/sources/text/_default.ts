@@ -494,6 +494,8 @@ export const en = {
         unsupported: "This machine needs a CLI with project workspace support.",
     },
     fileWorkspace: {
+        emptyDirectory: 'This folder is empty.',
+        directoryDraftKept: 'The original file is now a folder. Your unsaved draft is kept below; copy or download it before closing.',
         tabActions: "Tab actions",
         closeOtherTabs: "Close other tabs",
         closeAllTabs: "Close all tabs",

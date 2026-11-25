@@ -391,6 +391,8 @@ export const zhHant: TranslationStructure = {
         deliveryDraft: ({ title }: { title: string }) => `我們來討論「${title}」的交付內容和驗收方式，先整理建議讓我確認。`,
     },
     fileWorkspace: {
+        emptyDirectory: '此資料夾為空。',
+        directoryDraftKept: '原檔案已變為資料夾，未儲存的草稿已保留在下方，可複製或下載後再關閉。',
         tabActions: "分頁操作",
         closeOtherTabs: "關閉其他分頁",
         closeAllTabs: "關閉全部分頁",

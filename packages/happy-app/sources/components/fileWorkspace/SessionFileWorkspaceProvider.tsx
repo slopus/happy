@@ -11,7 +11,7 @@ import { t } from '@/text';
 import { artifactRequest, artifactInvalidations } from '@/sync/artifactWorkspace';
 import { loadWorkspaceVersionOperations, saveWorkspaceVersionOperations } from '@/sync/persistence';
 import { VersionController, type RestoreSelection } from './versionController';
-import { FileWorkspaceController } from './controller';
+import { FileWorkspaceController, type FileWorkspaceIO } from './controller';
 import { EventRefreshQueue } from './eventRefreshQueue';
 import { readWorkspaceText, writeWorkspaceText } from './fileIO';
 import { FileWorkspaceContext, type FileReference, type FileWorkspaceContextValue } from './context';
@@ -20,7 +20,7 @@ export type FileWorkspaceBinding = {
     root: string; scope: string; machineId: string;
     readOnly?: boolean;
     readBytes: (path: string, signal?: AbortSignal) => Promise<Uint8Array>;
-    readText: (path: string, signal?: AbortSignal) => Promise<{ content: string; hash: string; media?: import('./controller').FileDocument['media']; fileRevision?: string }>;
+    readText: FileWorkspaceIO['read'];
     writeText: (path: string, content: string, hash: string) => Promise<{ hash: string; fileRevision?: string }>;
 };
 export function SessionFileWorkspaceProvider({ sessionId, binding, children }: { sessionId: string; binding?: FileWorkspaceBinding; children: React.ReactNode }) {
@@ -46,7 +46,7 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, binding, children
         read: async (path, signal) => {
             const external = !resolveSessionFilePath(path, root)?.withinSessionRoot;
             const content = await (binding ? binding.readText(path, signal) : readWorkspaceText(transportSession.current, path, external));
-            if (!external && !binding?.readOnly && machineId && /\.(md|markdown|html?)$/i.test(path)) {
+            if (!content.directory && !external && !binding?.readOnly && machineId && /\.(md|markdown|html?)$/i.test(path)) {
                 void versions.current(path).catch(() => {});
             }
             return content;

@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { read, externalRead } = vi.hoisted(() => ({ read: vi.fn(), externalRead: vi.fn() }));
+const { read, externalRead, list, externalList } = vi.hoisted(() => ({ read: vi.fn(), externalRead: vi.fn(), list: vi.fn(), externalList: vi.fn() }));
 vi.mock('@/sync/ops', () => ({
     sessionReadFile: externalRead,
     sessionWorkspaceReadFile: read,
+    sessionWorkspaceListDirectory: list,
+    sessionListDirectory: externalList,
     sessionWorkspaceWriteFile: vi.fn(),
 }));
 vi.mock('@/text', () => ({ t: (key: string, params?: { path: string }) => `${key}${params ? ':' + params.path : ''}` }));
 
 import { readWorkspaceText } from './fileIO';
 
-beforeEach(() => { read.mockReset(); externalRead.mockReset(); });
+beforeEach(() => { read.mockReset(); externalRead.mockReset(); list.mockReset(); externalList.mockReset(); });
 
 describe('workspace file reads', () => {
     it('decodes an empty or UTF-8 file and computes the content baseline', async () => {
@@ -34,6 +36,29 @@ describe('workspace file reads', () => {
         read.mockResolvedValue({ success: false, error: 'Access denied: symlink outside workspace' });
         await expect(readWorkspaceText('session', '/project/doc.md')).rejects.toThrow('Access denied: symlink outside workspace');
         expect(read).toHaveBeenCalledTimes(1);
+        expect(list).not.toHaveBeenCalled();
+        expect(externalList).not.toHaveBeenCalled();
+    });
+    it('opens a project directory with the scoped listing RPC after the old non-file response', async () => {
+        const entries = [{ name: '中文 文档.md', type: 'file' }, { name: '截图', type: 'directory' }];
+        read.mockResolvedValue({ success: false, error: 'Not a regular file' });
+        list.mockResolvedValue({ success: true, entries });
+        expect(await readWorkspaceText('session', '/project/参考拆解')).toEqual({ content: '', hash: '', directory: entries });
+        expect(list).toHaveBeenCalledExactlyOnceWith('session', '/project/参考拆解');
+        expect(externalList).not.toHaveBeenCalled();
+    });
+    it('opens external directory links on an already running CLI, including empty folders', async () => {
+        externalRead.mockResolvedValue({ success: false, error: 'EISDIR: illegal operation on a directory, read' });
+        externalList.mockResolvedValue({ success: true, entries: [] });
+        expect(await readWorkspaceText('session', '/skills/参考拆解', true)).toEqual({ content: '', hash: '', directory: [] });
+        expect(externalList).toHaveBeenCalledExactlyOnceWith('session', '/skills/参考拆解');
+        expect(list).not.toHaveBeenCalled();
+    });
+    it('keeps directory access failures visible and never retries with a broader scope', async () => {
+        read.mockResolvedValue({ success: false, error: 'Not a regular file' });
+        list.mockResolvedValue({ success: false, error: 'Access denied: symlink outside workspace' });
+        await expect(readWorkspaceText('session', '/project/folder')).rejects.toThrow('Access denied: symlink outside workspace');
+        expect(externalList).not.toHaveBeenCalled();
     });
 });
 

@@ -1,4 +1,5 @@
-import { sessionReadFile, sessionWorkspaceReadFile, sessionWorkspaceWriteFile } from '@/sync/ops';
+import { sessionReadFile, sessionListDirectory, sessionWorkspaceListDirectory, sessionWorkspaceReadFile, sessionWorkspaceWriteFile } from '@/sync/ops';
+import type { FileWorkspaceIO } from './controller';
 import { t } from '@/text';
 export async function readWorkspaceBytes(sessionId: string, path: string, limit = 10 * 1024 * 1024, externalReadOnly = false): Promise<Uint8Array> {
     let response;
@@ -22,8 +23,18 @@ export async function readWorkspaceBytes(sessionId: string, path: string, limit 
     if (bytes.byteLength > limit) throw new Error(t('fileWorkspace.tooLarge'));
     return bytes;
 }
-export async function readWorkspaceText(sessionId: string, path: string, externalReadOnly = false) {
-    const bytes = await readWorkspaceBytes(sessionId, path, 2 * 1024 * 1024, externalReadOnly);
+export async function readWorkspaceText(sessionId: string, path: string, externalReadOnly = false): ReturnType<FileWorkspaceIO['read']> {
+    let bytes: Uint8Array;
+    try {
+        bytes = await readWorkspaceBytes(sessionId, path, 2 * 1024 * 1024, externalReadOnly);
+    } catch (error) {
+        // Current and older CLI sessions report directories differently. Confirm
+        // with the existing listing RPC, retaining the original read's scope.
+        if (!(error instanceof Error) || !(/^(EISDIR):/.test(error.message) || error.message === 'Not a regular file')) throw error;
+        const listing = await (externalReadOnly ? sessionListDirectory : sessionWorkspaceListDirectory)(sessionId, path);
+        if (!listing.success || !Array.isArray(listing.entries)) throw new Error(listing.error || t('fileWorkspace.readError'));
+        return { content: '', hash: '', directory: listing.entries };
+    }
     if (bytes.includes(0)) throw new Error(t('fileWorkspace.binary'));
     const content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource))).map(x => x.toString(16).padStart(2, '0')).join('');

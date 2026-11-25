@@ -1,10 +1,12 @@
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
+import type { DirectoryEntry } from '@/sync/ops';
 
 export type FileDocument = {
     path: string; revision: number; phase: 'loading' | 'ready' | 'error'; content: string; draft: string;
     hash: string | null; draftBaseHash: string | null; saving: boolean; conflict: boolean; error: string | null;
     readOnly?: boolean;
     media?: { bytes: Uint8Array; mime: string };
+    directory?: DirectoryEntry[];
     fileRevision?: string;
 };
 export type FileWorkspaceSnapshot = {
@@ -13,11 +15,11 @@ export type FileWorkspaceSnapshot = {
 export type FileWorkspaceIO = {
     root: string;
     allowExternalReadOnly?: boolean;
-    read: (path: string, signal?: AbortSignal) => Promise<{ content: string; hash: string; media?: FileDocument['media']; fileRevision?: string }>;
+    read: (path: string, signal?: AbortSignal) => Promise<{ content: string; hash: string; media?: FileDocument['media']; directory?: DirectoryEntry[]; fileRevision?: string }>;
     write: (path: string, content: string, expectedHash: string) => Promise<{ hash: string; fileRevision?: string }>;
     isCurrent?: () => boolean;
 };
-export const documentDirty = (document: FileDocument) => document.phase === 'ready' && document.draft !== document.content;
+export const documentDirty = (document: FileDocument) => !document.directory && document.phase === 'ready' && document.draft !== document.content;
 
 /** Owns loaded baselines and drafts, not versions. One instance per account/session/root. */
 export class FileWorkspaceController {
@@ -57,13 +59,13 @@ export class FileWorkspaceController {
         if (!exists) await this.refresh(path);
     }
     edit(path: string, draft: string) {
-        if (this.snapshot.documents[path]?.media || this.snapshot.documents[path]?.readOnly) return;
+        if (this.snapshot.documents[path]?.directory || this.snapshot.documents[path]?.media || this.snapshot.documents[path]?.readOnly) return;
         if (this.snapshot.documents[path]?.phase === 'ready' && this.snapshot.documents[path].draft !== draft) { this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1); this.update(path, { draft }); }
     }
     restoreDraft(path: string, saved: { draft: string; hash: string }) {
         const entry = this.snapshot.documents[path];
         if (!entry || entry.readOnly || documentDirty(entry)) return;
-        if (entry.phase !== 'ready') { this.restoredDrafts.set(path, saved); this.commit({ ...this.snapshot }); return; }
+        if (entry.phase !== 'ready' || entry.directory) { this.restoredDrafts.set(path, saved); this.commit({ ...this.snapshot }); return; }
         this.update(path, { draft: saved.draft, draftBaseHash: saved.hash, conflict: saved.hash !== entry.hash });
     }
     exportDrafts() {
@@ -111,9 +113,9 @@ export class FileWorkspaceController {
             if (!discardCurrentDraft && documentDirty(entry)) {
                 this.update(path, { revision: entry.revision + 1, conflict: value.hash !== (entry.draftBaseHash ?? entry.hash), error: null });
             } else {
-                const saved = discardCurrentDraft ? undefined : this.restoredDrafts.get(path);
-                this.restoredDrafts.delete(path);
-                this.update(path, { revision: entry.revision + 1, phase: 'ready', content: value.content, draft: saved?.draft ?? value.content, hash: value.hash, draftBaseHash: saved?.hash ?? value.hash, conflict: !!saved && saved.hash !== value.hash, error: null, media: value.media, fileRevision: value.fileRevision });
+                const saved = discardCurrentDraft || value.directory ? undefined : this.restoredDrafts.get(path);
+                if (!value.directory || discardCurrentDraft) this.restoredDrafts.delete(path);
+                this.update(path, { revision: entry.revision + 1, phase: 'ready', content: value.content, draft: saved?.draft ?? value.content, hash: value.hash, draftBaseHash: saved?.hash ?? value.hash, conflict: !!saved && saved.hash !== value.hash, error: null, media: value.media, directory: value.directory, fileRevision: value.fileRevision });
             }
         } catch (error) {
             if (!this.current() || this.requests.get(path) !== token) return;
@@ -123,7 +125,7 @@ export class FileWorkspaceController {
     }
     async save(path: string) {
         const entry = this.snapshot.documents[path];
-        if (!this.current() || !entry || entry.readOnly || entry.phase !== 'ready' || !entry.hash || entry.conflict || entry.saving) return false;
+        if (!this.current() || !entry || entry.directory || entry.readOnly || entry.phase !== 'ready' || !entry.hash || entry.conflict || entry.saving) return false;
         if (!documentDirty(entry)) return true;
         const content = entry.draft, expectedHash = entry.hash;
         const token = {}; this.requests.set(path, token);

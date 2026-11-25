@@ -496,6 +496,8 @@ export const zhHans: TranslationStructure = {
         unsupported: "请使用支持项目工作区的新版 CLI 连接这台机器。",
     },
     fileWorkspace: {
+        emptyDirectory: '此文件夹为空。',
+        directoryDraftKept: '原文件已变为文件夹，未保存的草稿已保留在下方，可复制或下载后再关闭。',
         tabActions: "标签操作",
         closeOtherTabs: "关闭其他标签",
         closeAllTabs: "关闭全部标签",

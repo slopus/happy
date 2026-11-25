@@ -24,23 +24,58 @@ vi.mock('./FileTabContextMenu', () => ({ FileTabContextMenu: 'TabMenu' }));
 vi.mock('./VersionHistoryPanel', () => ({ VersionHistoryPanel: 'VersionHistoryPanel' }));
 vi.mock('./ArtifactPreview', () => ({ ArtifactPreview: 'ArtifactPreview' }));
 vi.mock('./HtmlFilePreview', () => ({ HtmlFilePreview: 'HtmlFilePreview' }));
+vi.mock('./WorkspaceDirectoryPreview', () => ({ WorkspaceDirectoryPreview: 'WorkspaceDirectoryPreview' }));
 import { FileWorkspaceContext } from './context';
 import { FileWorkspace, FileWorkspaceResizeHandle } from './FileWorkspace';
 let controller: FileWorkspaceController;
 let maximized = false;
 let expanded = true;
 const toggleTree = vi.fn();
+const openReference = vi.fn();
 function Harness({ sessionId = 's', readOnly = false, readingSurface, locationRequest }: { sessionId?: string; readOnly?: boolean; readingSurface?: 'wide' | 'compact' | 'inherited'; locationRequest?: { path: string; line: number; column: number | null } }) {
     const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
     const value = { enabled: true, readOnly, locationRequest, root: '/work', snapshot, controller, maximized, setMaximized: vi.fn(),
-        versions: { currentForHash: () => null }, setReference: vi.fn() } as any;
+        versions: { currentForHash: () => null }, setReference: vi.fn(), openReference } as any;
     return <FileWorkspaceContext.Provider value={value}><FileWorkspace sessionId={sessionId} readingSurface={readingSurface} fileTreeExpanded={expanded} onToggleFileTree={toggleTree} /></FileWorkspaceContext.Provider>;
 }
 beforeEach(async () => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     controller = new FileWorkspaceController({ root: '/work', read: async () => ({ content: '# Base', hash: 'base' }), write: async () => ({ hash: 'saved' }) });
     await controller.open('a.md'); await controller.open('b.md'); await controller.open('c.md');
-    maximized = false; expanded = true; state.reduced = false; state.skin = 'gingham'; state.alert.mockReset(); toggleTree.mockReset();
+    maximized = false; expanded = true; state.reduced = false; state.skin = 'gingham'; state.alert.mockReset(); toggleTree.mockReset(); openReference.mockReset();
+});
+it.each(['参考拆解', 'folder.md', 'folder.mp4'])('opens directory %s as a browsable list with file-only actions unavailable', async (name) => {
+    const entries = [{ name: '中文 文件.md', type: 'file' as const }, { name: '子目录', type: 'directory' as const }];
+    controller = new FileWorkspaceController({ root: '/work', read: async () => ({ content: '', hash: '', directory: entries }), write: vi.fn() });
+    await controller.open(name);
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    const directory = renderer.root.findByType('WorkspaceDirectoryPreview');
+    expect(directory.props).toMatchObject({ path: '/work/' + name, entries });
+    act(() => directory.props.onOpen('/work/' + name + '/中文 文件.md'));
+    expect(openReference).toHaveBeenCalledExactlyOnceWith('/work/' + name + '/中文 文件.md');
+    expect(renderer.root.findAllByType('CodeEditor')).toHaveLength(0);
+    expect(renderer.root.findAllByType('MarkdownView')).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'workspace-history-open' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'workspace-save' }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ label: 'fileWorkspace.download' }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ label: 'fileWorkspace.mention' }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ label: 'fileWorkspace.refresh' }).props.disabled).toBe(false);
+    act(() => renderer.unmount());
+});
+it('shows and protects a cached draft when its original file has become a directory', async () => {
+    controller = new FileWorkspaceController({ root: '/work', read: async () => ({ content: '', hash: '', directory: [] }), write: vi.fn() });
+    await controller.open('old.md'); controller.restoreDraft('/work/old.md', { draft: 'Only unsaved copy', hash: 'old' });
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    expect(JSON.stringify(renderer.toJSON())).toContain('Only unsaved copy');
+    expect(JSON.stringify(renderer.toJSON())).toContain('fileWorkspace.directoryDraftKept');
+    expect(renderer.root.findByProps({ label: 'fileWorkspace.download' }).props.disabled).toBe(false);
+    act(() => renderer.root.findByType('TabMenu').props.onAction(['/work/old.md']));
+    expect(state.alert).toHaveBeenCalledOnce();
+    expect(state.alert.mock.calls[0][2].map((action: any) => action.text)).not.toContain('fileWorkspace.save');
+    expect(controller.exportDrafts()['/work/old.md'].draft).toBe('Only unsaved copy');
+    act(() => renderer.unmount());
 });
 it('opens actions on the clicked tab without switching the active document', () => {
     let renderer: any;

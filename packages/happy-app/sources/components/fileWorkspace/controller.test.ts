@@ -16,6 +16,43 @@ function setup() {
     return { controller, files, writes };
 }
 describe('file workspace real document state', () => {
+    it('keeps directories noneditable, refreshes their entries and clears the type if replaced by a file', async () => {
+        let directory = true;
+        let entries = [{ name: '文档.md', type: 'file' as const }];
+        const writes: string[] = [];
+        const controller = new FileWorkspaceController({ root, read: async () => directory ? { content: '', hash: '', directory: entries } : { content: '# File', hash: 'h' }, write: async path => { writes.push(path); return { hash: 'saved' }; } });
+        const path = root + '/参考拆解';
+        await controller.open(path);
+        controller.edit(path, 'overwrite');
+        expect(await controller.save(path)).toBe(false);
+        expect(writes).toEqual([]);
+        expect(controller.exportDrafts()).toEqual({});
+        entries = [];
+        await controller.refresh(path);
+        expect(controller.getSnapshot().documents[path]).toMatchObject({ phase: 'ready', directory: [], draft: '', error: null });
+        directory = false;
+        await controller.refresh(path);
+        expect(controller.getSnapshot().documents[path].directory).toBeUndefined();
+        controller.edit(path, '# Edited');
+        expect(await controller.save(path)).toBe(true);
+        expect(writes).toEqual([path]);
+    });
+    it('preserves the only cached draft when its file has become a directory, including a pending read', async () => {
+        let finish!: (value: { content: string; hash: string; directory: [] }) => void;
+        const controller = new FileWorkspaceController({ root, read: () => new Promise(resolve => { finish = resolve; }), write: async () => ({ hash: 'saved' }) });
+        const path = root + '/doc.md';
+        const opening = controller.open(path);
+        const saved = { draft: 'Only unsaved copy', hash: 'old' };
+        controller.restoreDraft(path, saved);
+        finish({ content: '', hash: '', directory: [] }); await opening;
+        expect(controller.exportDrafts()[path]).toEqual(saved);
+        expect(controller.close(path)).toBe(false);
+        controller.restoreDraft(path, saved);
+        expect(controller.exportDrafts()[path]).toEqual(saved);
+        expect(controller.getSnapshot().documents[path].draft).toBe('');
+        expect(await controller.save(path)).toBe(false);
+        expect(controller.close(path, true)).toBe(true);
+    });
     it('opens relative and absolute references as one tab, with a real loaded baseline', async () => {
         const { controller } = setup();
         await controller.open('docs/计划.md'); await controller.open('/workspace/project/docs/计划.md');
