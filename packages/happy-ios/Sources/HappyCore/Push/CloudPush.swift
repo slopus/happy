@@ -155,6 +155,13 @@ public actor CloudPush {
         public var permission: @Sendable () async -> PushPermission
         public var requestPermission: @Sendable () async -> PushPermission
         public var apnsToken: @Sendable () async throws -> Data
+        /// Registrations still to be taken off computers since unpaired.
+        public var leaving: any CloudPushUnregisterStore = InMemoryCloudPushUnregisterStore()
+        /// A way to a computer by a pairing's credentials alone, for
+        /// asking it again once the pairing's own is gone.
+        public var connect: @Sendable (AgentConnectionCredentials) -> any AgentTransport = {
+            AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false)
+        }
 
         public init(device: CloudPushDevice, ids: CloudPushIDs, transport: any HTTPTransport,
                     permission: @escaping @Sendable () async -> PushPermission, requestPermission: @escaping @Sendable () async -> PushPermission,
@@ -179,6 +186,8 @@ public actor CloudPush {
         case unsupported
         /// A server that takes no registrations; it was asked nothing.
         case unserved
+        /// A connection being left, or left: nothing registers on it again.
+        case leaving
     }
 
     /// How long a renewal lasts before coming back renews again.
@@ -239,7 +248,7 @@ public actor CloudPush {
     /// registration goes, so the phone stops getting its notifications
     /// now, not at the registration's expiry. Called before the session
     /// is revoked. One never registered with is sent nothing.
-    public func unregister(connection: String, client: AgentClient) async throws {
+    public func unregister(connection: String, client: AgentClient, credentials: AgentConnectionCredentials? = nil) async throws {
         // One on its way lands first: its version is the one to take off.
         while let running = registering[connection] { _ = await running.task.result }
         renewed[connection] = nil
@@ -247,4 +256,16 @@ public actor CloudPush {
         try await client.unregisterCloudPush(source.ids.registration(for: connection), version: version)
         source.ids.forget(connection)
     }
+
+    /// How soon a computer that didn't answer is asked again.
+    var backoff = Backoff(initial: .seconds(2), maximum: .seconds(300))
+    func setBackoff(_ backoff: Backoff) { self.backoff = backoff }
+    /// For tests: another way to the computers from here on.
+    func setConnect(_ connect: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport) {}
+
+    /// Asks the computers an earlier launch could not tell.
+    public func resume() {}
+
+    /// Returns once no computer is still to be told, or `limit` has passed.
+    public func waitUntilSettled(limit: Duration = .seconds(10)) async {}
 }

@@ -13,7 +13,7 @@ public final class AgentConnections {
     /// phone's push registration off, where it made one
     /// (`CloudPush.unregister`). The session's revocation and the
     /// connection's teardown wait for it, `farewellLimit` at most.
-    public var cloudFarewell: (@Sendable (_ id: String, _ client: AgentClient) async -> Void)?
+    public var cloudFarewell: (@Sendable (_ id: String, _ credentials: AgentConnectionCredentials, _ client: AgentClient) async -> Void)?
     static let farewellLimit: Duration = .seconds(5)
     private let storage: AgentConnectionStorage
     private var credentials: [String: AgentConnectionCredentials] = [:]
@@ -415,8 +415,8 @@ public final class AgentConnections {
     /// `cloudFarewell` to a server about to be removed, on a client of its
     /// own while everything it needs is still in place.
     private func farewell(_ id: String) -> Task<Void, Never>? {
-        guard let say = cloudFarewell, !signedOut(id), let client = agentClient(for: id) else { return nil }
-        return Task { await waitAtMost(Self.farewellLimit) { await say(id, client) } }
+        guard let say = cloudFarewell, !signedOut(id), let credential = credential(for: id), let client = agentClient(for: id) else { return nil }
+        return Task { await waitAtMost(Self.farewellLimit) { await say(id, credential, client) } }
     }
 
     /// What `forget` took away, for its owner to stop off screen.

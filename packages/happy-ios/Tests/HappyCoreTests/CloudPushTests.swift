@@ -94,7 +94,7 @@ final class CloudPushTests: XCTestCase {
 
     // MARK: A server of one's own
 
-    private static let health = #"{"ready":true,"capabilities":{"userEnvironment":true,"pushRegistrations":true}}"#
+    static let health = #"{"ready":true,"capabilities":{"userEnvironment":true,"pushRegistrations":true}}"#
 
     /// A Happy Agent daemon that serves the routes says so in its health
     /// (`capabilities.pushRegistrations`), and is registered with as a
@@ -200,7 +200,7 @@ final class CloudPushTests: XCTestCase {
 
     // MARK: One registration at a time
 
-    private static let newer = #"{"registration":{"id":"x","version":"9e2b7c40-5a61-4d3f-8b1a-6c7d8e9f0a1b","expiresAt":1900000000000}}"#
+    static let newer = #"{"registration":{"id":"x","version":"9e2b7c40-5a61-4d3f-8b1a-6c7d8e9f0a1b","expiresAt":1900000000000}}"#
 
     /// A connection that comes up says so more than once at the same
     /// moment (`Session.reconnected`). Each registration the server takes
