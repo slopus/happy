@@ -380,61 +380,65 @@ function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, sou
                         : <ActivityIndicator size="small" color={theme.colors.textSecondary} />}
                 </View>
             )}
-            <View style={styles.videoMetaRow}>
-                <View style={styles.videoMeta}>
-                    <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
-                    {sizeLabel ? <Text style={[styles.mediaSub, { color: theme.colors.textSecondary }]}>{sizeLabel}</Text> : null}
-                </View>
-                <Pressable
-                    testID={`media-attachment-save-${sourceType}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('imageUpload.mediaSaveVideo')}
-                    accessibilityState={{ disabled: !canSave || saveState === 'saving', busy: saveState === 'saving' }}
-                    disabled={!canSave || saveState === 'saving'}
-                    onPress={handleSave}
-                    style={(press) => [styles.videoSaveButton, {
-                        backgroundColor: press.pressed ? theme.colors.surfacePressed : theme.colors.surface,
-                    }]}
-                >
-                    {saveState === 'saving'
-                        ? <ActivityIndicator size="small" color={theme.colors.text} />
-                        : <Ionicons name="download-outline" size={18} color={theme.colors.text} />}
-                    <Text style={[styles.videoSaveLabel, { color: theme.colors.text }]}>
-                        {saveState !== 'saving' ? t('imageUpload.mediaSaveVideo')
-                            : t(savePhase === 'connecting' ? 'imageUpload.mediaConnecting'
-                                : savePhase === 'downloading' ? 'imageUpload.mediaDownloading'
-                                    : savePhase === 'sharing' ? 'imageUpload.mediaSharing' : 'imageUpload.mediaSavingToLibrary')}
-                    </Text>
-                </Pressable>
-                {saveState === 'saving' && (savePhase === 'connecting' || savePhase === 'downloading') ? (
-                    <Pressable
-                        testID="media-attachment-cancel-save"
-                        accessibilityRole="button"
-                        accessibilityLabel={t('common.cancel')}
-                        onPress={handleCancelSave}
-                        style={styles.videoCancelButton}
-                    >
-                        <Ionicons name="close-outline" size={22} color={theme.colors.textSecondary} />
-                    </Pressable>
-                ) : null}
-            </View>
-            {saveState === 'saving' && savePhase === 'downloading' && progress ? (
-                <Text testID="media-attachment-save-progress" style={[styles.videoSaveStatus, { color: theme.colors.textSecondary }]}>
-                    {progress.totalBytes
-                        ? `${Math.min(100, Math.floor(progress.bytesWritten / progress.totalBytes * 100))}% · ${humanSize(progress.bytesWritten) ?? '0KB'} / ${humanSize(progress.totalBytes)}`
-                        : humanSize(progress.bytesWritten) ?? '0KB'}
-                </Text>
-            ) : null}
-            {saveState === 'saved' || saveState === 'downloaded' || saveState === 'error' ? (
-                <Text
-                    testID="media-attachment-save-status"
-                    accessibilityLiveRegion="polite"
-                    style={[styles.videoSaveStatus, { color: saveState === 'error' ? theme.colors.textDestructive : theme.colors.textSecondary }]}
-                >
-                    {t(saveState === 'saved' ? 'imageUpload.mediaSavedToLibrary'
-                        : saveState === 'downloaded' ? 'imageUpload.mediaDownloadStarted'
-                            : timedOut ? 'imageUpload.mediaSaveTimedOut' : 'imageUpload.mediaSaveFailed')}
-                </Text>
+            {Platform.OS !== 'web' ? (
+                <>
+                    <View style={styles.videoMetaRow}>
+                        <View style={styles.videoMeta}>
+                            <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
+                            {sizeLabel ? <Text style={[styles.mediaSub, { color: theme.colors.textSecondary }]}>{sizeLabel}</Text> : null}
+                        </View>
+                        <Pressable
+                            testID={`media-attachment-save-${sourceType}`}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('imageUpload.mediaSaveVideo')}
+                            accessibilityState={{ disabled: !canSave || saveState === 'saving', busy: saveState === 'saving' }}
+                            disabled={!canSave || saveState === 'saving'}
+                            onPress={handleSave}
+                            style={(press) => [styles.videoSaveButton, {
+                                backgroundColor: press.pressed ? theme.colors.surfacePressed : theme.colors.surface,
+                            }]}
+                        >
+                            {saveState === 'saving'
+                                ? <ActivityIndicator size="small" color={theme.colors.text} />
+                                : <Ionicons name="download-outline" size={18} color={theme.colors.text} />}
+                            <Text style={[styles.videoSaveLabel, { color: theme.colors.text }]}>
+                                {saveState !== 'saving' ? t('imageUpload.mediaSaveVideo')
+                                    : t(savePhase === 'connecting' ? 'imageUpload.mediaConnecting'
+                                        : savePhase === 'downloading' ? 'imageUpload.mediaDownloading'
+                                            : savePhase === 'sharing' ? 'imageUpload.mediaSharing' : 'imageUpload.mediaSavingToLibrary')}
+                            </Text>
+                        </Pressable>
+                        {saveState === 'saving' && (savePhase === 'connecting' || savePhase === 'downloading') ? (
+                            <Pressable
+                                testID="media-attachment-cancel-save"
+                                accessibilityRole="button"
+                                accessibilityLabel={t('common.cancel')}
+                                onPress={handleCancelSave}
+                                style={styles.videoCancelButton}
+                            >
+                                <Ionicons name="close-outline" size={22} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        ) : null}
+                    </View>
+                    {saveState === 'saving' && savePhase === 'downloading' && progress ? (
+                        <Text testID="media-attachment-save-progress" style={[styles.videoSaveStatus, { color: theme.colors.textSecondary }]}>
+                            {progress.totalBytes
+                                ? `${Math.min(100, Math.floor(progress.bytesWritten / progress.totalBytes * 100))}% · ${humanSize(progress.bytesWritten) ?? '0KB'} / ${humanSize(progress.totalBytes)}`
+                                : humanSize(progress.bytesWritten) ?? '0KB'}
+                        </Text>
+                    ) : null}
+                    {saveState === 'saved' || saveState === 'downloaded' || saveState === 'error' ? (
+                        <Text
+                            testID="media-attachment-save-status"
+                            accessibilityLiveRegion="polite"
+                            style={[styles.videoSaveStatus, { color: saveState === 'error' ? theme.colors.textDestructive : theme.colors.textSecondary }]}
+                        >
+                            {t(saveState === 'saved' ? 'imageUpload.mediaSavedToLibrary'
+                                : saveState === 'downloaded' ? 'imageUpload.mediaDownloadStarted'
+                                    : timedOut ? 'imageUpload.mediaSaveTimedOut' : 'imageUpload.mediaSaveFailed')}
+                        </Text>
+                    ) : null}
+                </>
             ) : null}
             {error ? (
                 <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
