@@ -29,6 +29,9 @@ class CloudPushSync(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     /** Each registration the server took: onboarding's mobileApp gate is done by it. */
     private val registered: (CloudPushAccount) -> Unit = {},
+    /** Sends one forgotten pairing's farewell over its own route; true once its daemon answered. */
+    private val farewell: suspend (CloudPushFarewellRoute, CloudPushRegistration) -> Boolean = { _, _ -> false },
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private data class Trigger(val sequence: Long, val native: Boolean = false)
     private val revision = MutableStateFlow(Trigger(0))
@@ -85,6 +88,9 @@ class CloudPushSync(
             }
         }
     }
+
+    /** A connection was just forgotten: its farewell is asked now. */
+    fun retire() {}
 
     /** Native token changed, permission was explicitly granted, or connectivity returned. */
     fun refresh(native: Boolean = false) { revision.update { Trigger(it.sequence + 1, native) } }

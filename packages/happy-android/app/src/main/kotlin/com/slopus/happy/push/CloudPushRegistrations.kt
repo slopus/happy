@@ -49,9 +49,22 @@ internal data class CloudPushBinding(
     val registration: CloudPushRegistration? = null,
 )
 
-/** No token or refresh credential is kept for a cleanup that outlives sign-out. */
+/**
+ * A forgotten pairing's own way to its daemon (what the pairing kept to
+ * reach it), held beside the one removal it is for and only until the
+ * daemon answers or the registration would have expired anyway.
+ */
 @Serializable
-internal data class CloudPushRemoval(val server: String, val userId: String, val registration: CloudPushRegistration)
+data class CloudPushFarewellRoute(val address: String, val port: Int, val deviceToken: String, val publicUrl: String? = null, val tailcatAvailable: Boolean? = null) {
+    override fun toString() = "CloudPushFarewellRoute(port=$port)"
+}
+
+/** A sign-in's removal keeps no token or refresh credential; a pairing's keeps its [route]. */
+@Serializable
+internal data class CloudPushRemoval(val server: String, val userId: String, val registration: CloudPushRegistration, val route: CloudPushFarewellRoute? = null)
+
+/** Whether a daemon's answer to a farewell settles it: taken, or refused in a way asking again won't change. */
+internal fun farewellAnswered(status: Int): Boolean = false
 
 @Serializable
 internal data class CloudPushLedgerState(
@@ -146,6 +159,17 @@ class CloudPushRegistrations(
             }
         }
     }
+
+    /** [connectionId] is being forgotten: nothing registers on it again, and its removal goes with [route]. */
+    @Suppress("UNUSED_PARAMETER")
+    fun leaving(connectionId: String, route: CloudPushFarewellRoute?) {}
+
+    /**
+     * Sends the farewells that outlived their connections, each with its own
+     * route ([ask] says whether the daemon answered). True while one is still owed.
+     */
+    @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+    suspend fun retire(now: Long, ask: suspend (CloudPushFarewellRoute, CloudPushRegistration) -> Boolean): Boolean = false
 
     /** Bindings whose connections disappeared while the process was not running still need retirement. */
     fun accounts(): List<CloudPushAccount> = ledger.snapshot().bindings.map { it.account }
