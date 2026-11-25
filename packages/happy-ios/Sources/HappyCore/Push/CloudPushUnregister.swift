@@ -9,13 +9,20 @@ public struct PendingCloudPushUnregister: Codable, Equatable, Sendable {
     /// The pairing's, kept only until the computer answers.
     public var credentials: AgentConnectionCredentials
     public var registration: String
-    public var version: String
+    /// The version the computer gave the registration; nil when its only
+    /// registration's answer never came.
+    public var version: String?
+    /// The relay's token for this install, kept only while the computer
+    /// must first be registered with again to learn the version it holds
+    /// (`CloudPushIDs.unsure`), and gone once it has answered that.
+    public var registerWith: String?
     public var queuedAt: Date
 
-    public init(credentials: AgentConnectionCredentials, registration: String, version: String, queuedAt: Date = Date()) {
+    public init(credentials: AgentConnectionCredentials, registration: String, version: String?, registerWith: String? = nil, queuedAt: Date = Date()) {
         self.credentials = credentials
         self.registration = registration
         self.version = version
+        self.registerWith = registerWith
         self.queuedAt = queuedAt
     }
 }

@@ -362,7 +362,14 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     computer off or out of reach is asked again while the app runs and at
     each launch, for the registration's thirty days at most, and the app
     left right after the tap holds background time for it. A sign-in's
-    credentials are never kept: its session ends with it. Every server
+    credentials are never kept: its session ends with it. A registration
+    sent and not settled is marked (`CloudPushIDs.unsure`, kept across
+    launches, cleared by a 2xx or a 4xx other than 408 and 429): the
+    server may hold a version the phone was never given. Leaving one so
+    marked registers once more first, with the same token, for the
+    version the server holds now, then takes that off; a pairing's kept
+    farewell carries the relay token for it (`registerWith`) until the
+    computer has said its version. Every server
     gets the same
     relay token and the relay takes a send from whoever holds it, so a
     push may name a connection its sender isn't: a tap only ever opens a
