@@ -63,12 +63,16 @@ private actor ProviderSignInDaemon: AgentTransport {
             accounts = [
                 Account(id: "codex_work", name: "Work ChatGPT", type: "codex", source: "internal", email: "ada@example.com", plan: "Pro", signIn: "signed_in",
                         health: #""lastUsedAt":\#(ago(4)),"login":{"refreshedAt":\#(ago(65)),"expiresAt":\#(ahead(9 * 60)),"refreshError":null}"#),
+                // In the keychain: no file to date, so no refresh time.
                 Account(id: "claude", name: "Claude", type: "claude", source: "system", signIn: "signed_in",
-                        health: #""lastUsedAt":\#(ago(30)),"login":{"refreshedAt":\#(ago(180)),"expiresAt":null,"refreshError":null}"#),
+                        health: #""lastUsedAt":\#(ago(30)),"login":{"refreshedAt":null,"expiresAt":null,"refreshError":null}"#),
                 Account(id: "codex_home", name: "Home ChatGPT", type: "codex", source: "internal", email: "ada@example.com", plan: "Plus", signIn: "signed_in",
                         health: #""lastUsedAt":\#(ago(120)),"login":{"refreshedAt":\#(ago(26 * 60)),"expiresAt":\#(ahead(180)),"refreshError":{"status":503,"code":null,"permanent":false,"since":\#(ago(40)),"at":\#(ago(6))}}"#),
-                Account(id: "claude_team", name: "Team Claude", type: "claude", source: "internal", signIn: "signed_out",
+                Account(id: "codex_team", name: "Team ChatGPT", type: "codex", source: "internal", signIn: "signed_out",
                         health: #""lastUsedAt":\#(ago(5 * 24 * 60)),"login":{"refreshedAt":\#(ago(6 * 24 * 60)),"expiresAt":\#(ago(4 * 24 * 60)),"refreshError":{"status":400,"code":"invalid_grant","permanent":true,"since":\#(ago(4 * 24 * 60)),"at":\#(ago(60))}}"#),
+                // Claude isn't renewed in the background: signed out says only that.
+                Account(id: "claude_team", name: "Team Claude", type: "claude", source: "internal", signIn: "signed_out",
+                        health: #""lastUsedAt":\#(ago(5 * 24 * 60)),"login":null"#),
                 Account(id: "grok", name: "Grok", type: "grok", source: "system", signIn: "unknown", enabled: false,
                         health: #""lastUsedAt":null,"login":null"#),
                 Account(id: "codex_old", name: "Studio ChatGPT", type: "codex", source: "system", signIn: "unknown"),
@@ -256,6 +260,11 @@ final class ProviderSignInHarness {
                 list.open(picked)
                 try? await Task.sleep(for: .seconds(0.6))
                 (navigation.topViewController as? ProviderAccountViewController)?.signIn()
+                // `-steps <name>`: each state the page passes through, drawn
+                // with where its slots are, to show nothing moves.
+                if let name = value("-steps"), let page = navigation.topViewController as? AccountSignInViewController {
+                    Task { @MainActor in await self.steps(page, window, name) }
+                }
                 // `-code <code>`: pasted back once the page waits for it.
                 if let code = value("-code") {
                     try? await Task.sleep(for: .seconds(2.5))
@@ -267,6 +276,25 @@ final class ProviderSignInHarness {
             print("PROVIDER-SIGN-IN ready \(scenario.rawValue) \(open)")
         } catch {
             print("PROVIDER-SIGN-IN error: \(error)")
+        }
+    }
+
+    private func steps(_ page: AccountSignInViewController, _ window: UIWindow, _ name: String) async {
+        var seen: [String] = []
+        var log = ""
+        for _ in 0..<150 {
+            let phase = page.shownPhase.map { "\($0)" } ?? "none"
+            if seen.last != phase {
+                try? await Task.sleep(for: .milliseconds(400)) // past the cross-fade
+                seen.append(phase)
+                let slots = page.shownSlots.map { "\(Int($0.minY))+\(Int($0.height))" }.joined(separator: " ")
+                log += "\(seen.count) \(phase.prefix(40)) | \(slots)\n"
+                snapshot(window, "\(name)-\(seen.count)")
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            try? log.write(to: documents.appendingPathComponent("\(name).txt"), atomically: true, encoding: .utf8)
         }
     }
 

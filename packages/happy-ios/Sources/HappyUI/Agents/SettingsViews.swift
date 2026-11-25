@@ -283,6 +283,9 @@ struct SettingsRow {
     /// How many lines it wraps to, 0 for as many as it needs; one line is
     /// cut in the middle, more at the end.
     var subtitleLines = 1
+    /// A one-line subtitle cut at its end, not its middle: a status line
+    /// rather than a path.
+    var subtitleCutsTail = false
     /// Drawn where the value goes, instead of it, at its own size: line
     /// counts, a copy glyph, a spinner.
     var valueView: UIView?
@@ -524,7 +527,7 @@ final class SettingsCardView: UIView {
                 // An art row's line wraps, at the person's text size.
                 label.font = fonts?.subtitle ?? Self.subtitleFont
                 label.numberOfLines = fonts == nil ? row.subtitleLines : 0
-                label.lineBreakMode = fonts != nil ? .byWordWrapping : row.subtitleLines == 1 ? .byTruncatingMiddle : .byTruncatingTail
+                label.lineBreakMode = fonts != nil ? .byWordWrapping : row.subtitleLines == 1 && !row.subtitleCutsTail ? .byTruncatingMiddle : .byTruncatingTail
                 label.frame = local(frame)
             } else {
                 subtitle?.isHidden = true

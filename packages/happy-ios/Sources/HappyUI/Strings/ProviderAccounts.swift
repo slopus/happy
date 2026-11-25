@@ -1,12 +1,13 @@
 import Foundation
 import HappyCore
 
-// Settings › Provider accounts: a computer's Codex, Claude and Grok
+// Settings › Inference: a computer's Codex, Claude and Grok
 // accounts and their sign-in. English only; the words are Android's,
 // word for word.
 extension Strings {
     enum ProviderAccounts {
-        static let title = "Provider accounts"
+        static let title = "Inference"
+        static let accountsHeader = "Accounts"
         static let systemLogin = "Using system login"
         static let signedInToHappy = "Signed in to Happy"
         static let configured = "Configured in config file"
@@ -47,14 +48,17 @@ extension Strings {
         static let systemPrefix = "System login"
         static let notUsedYet = "Not used yet"
 
-        static func status(_ status: ProviderAccountStatus, source: ProviderCredential.Source, account: ProviderSignIn.Account?, now: Date) -> String {
+        /// The row's one line. `expires`, while renewing fails and the login
+        /// runs out within a day, takes the place of when it was last tried.
+        static func status(_ status: ProviderAccountStatus, source: ProviderCredential.Source, account: ProviderSignIn.Account?, expires: Date? = nil, now: Date) -> String {
             switch status {
             case .off:
                 return off
             case .needsSignIn(let since):
                 return since.map { "Needs sign-in since \(shortDate($0))" } ?? "Needs sign-in"
             case .refreshFailed(let reason, let at):
-                return (["Couldn’t refresh"] + [reason].compactMap { $0 } + ["last tried \(ago(at, now: now))"]).joined(separator: " · ")
+                let when = expires.map { $0 <= now ? "login expired" : "expires in \(span($0.timeIntervalSince(now)))" } ?? "last tried \(ago(at, now: now))"
+                return (["Couldn’t refresh"] + [reason].compactMap { $0 } + [when]).joined(separator: " · ")
             case .working(_, let system, let used, let refreshed, let checked):
                 var parts: [String] = []
                 switch used {
@@ -67,11 +71,6 @@ extension Strings {
                 if system { return ([systemPrefix] + parts).joined(separator: " · ") }
                 return parts.isEmpty ? credential(source, account: account) : parts.joined(separator: " · ")
             }
-        }
-
-        /// The row's warning while renewing fails and the login runs out within a day.
-        static func expires(_ at: Date, now: Date) -> String {
-            at <= now ? "Login expired" : "Login expires in \(span(at.timeIntervalSince(now)))"
         }
 
         /// "just now", "4m ago", "3h ago", "2d ago".
@@ -97,11 +96,16 @@ extension Strings {
         static let enabled = "Enabled"
         static let loginHeader = "Login"
         static let source = "Source"
+        static let lastUsed = "Last used"
         static let lastRefresh = "Last refresh"
-        static let lastChecked = "Last checked"
         static let tokenExpires = "Token expires"
         static let lastRefreshError = "Last refresh error"
-        static let never = "Never"
+        /// A value the computer doesn't know, or an error there isn't.
+        static let unknown = "—"
+        // The sign-in row's value while it can't be used here.
+        static let ownerOnlyShort = "Owner only"
+        static let notInstalledShort = "Not installed"
+        static let onComputerShort = "On the computer"
         static let couldNotSwitch = "Couldn’t change the account"
 
         static func refreshError(_ error: ProviderAccountHealth.RefreshError) -> String {
@@ -116,6 +120,7 @@ extension Strings {
         static let starting = "Starting the sign-in…"
         static let deviceInstructions = "Enter this code on the sign-in page"
         static let browserInstructions = "Open the sign-in page, then paste the code it shows."
+        static let finishOnComputerTitle = "Finish on the computer"
         static let finishOnComputer = "This sign-in finishes in a browser on the computer. Finish it there, or cancel it."
         static let openPage = "Open sign-in page"
         static let codePlaceholder = "Paste the code"

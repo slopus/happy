@@ -89,20 +89,37 @@ final class HostedProviderAccountsTests: XCTestCase {
         XCTAssertEqual(list.shownRow("provider-account-codex")?.subtitle, "Needs sign-in since \(Strings.ProviderAccounts.shortDate(Date(timeIntervalSince1970: 1_763_596_800)))")
         XCTAssertEqual(list.shownDot("codex"), .red)
         XCTAssertEqual(Strings.ProviderAccounts.status(.needsSignIn(since: nil), source: .internal, account: nil, now: Date()), "Needs sign-in", "no date when the computer doesn't know one")
+        let now = Date()
+        XCTAssertEqual(Strings.ProviderAccounts.status(.refreshFailed(reason: "HTTP 503", at: now), source: .internal, account: nil, expires: now.addingTimeInterval(7_300), now: now),
+                       "Couldn’t refresh · HTTP 503 · expires in 2h", "the warning takes the place of when it was tried")
+        XCTAssertEqual(list.shownRow("provider-account-codex")?.subtitleLines, 1, "one line in every state")
+        XCTAssertEqual(list.shownRow("provider-account-codex")?.subtitleCutsTail, true)
         XCTAssertEqual(list.shownRow("provider-account-claude")?.title, "Claude · Max")
         XCTAssertEqual(list.shownRow("provider-account-claude")?.subtitle, "Used 4m ago · refreshed 1h ago")
         XCTAssertEqual(list.shownDot("claude"), .green)
         XCTAssertEqual(list.shownRow("provider-account-claude")?.accessory, .chevron)
-        _ = try await until { list.shownFooters == ["Signing in here gives this account a login only Happy uses, so it stops using the system login."] ? true : nil }
+        XCTAssertEqual(list.shownHeaders, ["ACCOUNTS"])
 
         let detail = try await page("claude", list, navigation)
-        XCTAssertEqual(detail.shownRowIDs, [["provider-detail-name", "provider-detail-enabled"],
-                                            ["provider-detail-source", "provider-detail-refreshed"],
-                                            ["provider-sign-in-claude", "provider-token-claude"]])
+        let rows = [["provider-detail-name", "provider-detail-enabled"],
+                    ["provider-detail-source", "provider-detail-used", "provider-detail-refreshed", "provider-detail-expires", "provider-detail-error"],
+                    ["provider-sign-in-claude", "provider-token-claude"]]
+        XCTAssertEqual(detail.shownRowIDs, rows)
+        XCTAssertEqual(detail.shownRow("provider-detail-used")?.value, "4m ago")
+        XCTAssertEqual(detail.shownRow("provider-detail-expires")?.value, "—")
+        XCTAssertEqual(detail.shownRow("provider-detail-error")?.subtitle, "—")
         XCTAssertEqual(detail.shownRow("provider-detail-source")?.value, "Signed in to Happy")
-        XCTAssertEqual(detail.shownRow("provider-detail-source")?.subtitle, "ada@example.com · Max")
-        XCTAssertEqual(detail.shownRow("provider-detail-name")?.value, "Claude")
+        XCTAssertNil(detail.shownRow("provider-detail-source")?.subtitle)
+        XCTAssertEqual(detail.shownRow("provider-detail-name")?.subtitle, "Claude · Max · ada@example.com")
         XCTAssertEqual(detail.shownFooters.last, "Signing in here gives this account a login only Happy uses, so it stops using the system login.")
+        navigation.popViewController(animated: false)
+        let codex = try await page("codex", list, navigation)
+        XCTAssertEqual(codex.shownRowIDs.dropLast(), rows.dropLast(), "the same rows whatever the state")
+        XCTAssertEqual(codex.shownRow("provider-detail-name")?.subtitle, "Codex", "the vendor at least: the line is always there")
+        XCTAssertEqual(codex.shownRow("provider-detail-used")?.value, "Not used yet")
+        XCTAssertEqual(codex.shownRow("provider-detail-refreshed")?.value, "—", "an unknown refresh, not none")
+        XCTAssertEqual(codex.shownRow("provider-detail-error")?.subtitle, "invalid_grant · since \(Strings.ProviderAccounts.shortDate(Date(timeIntervalSince1970: 1_763_596_800)))")
+        XCTAssertEqual(codex.shownRow("provider-detail-error")?.destructive, true)
     }
 
     /// The account's page, as a tap on its row opens it, once it shows.
@@ -135,8 +152,10 @@ final class HostedProviderAccountsTests: XCTestCase {
         try await page("claude", list, navigation).tapRow("provider-sign-in-claude")
         let page = try await until { navigation.topViewController as? AccountSignInViewController }
         _ = try await until { page.shownPhase == .pasteCode(url: URL(string: "https://claude.ai/oauth/authorize")) ? true : nil }
+        let slots = page.shownSlots
         page.enterCode("  pasted-code ")
         _ = try await until { page.shownPhase == .succeeded(ProviderSignIn.Account(email: "ada@example.com", plan: "Max")) ? true : nil }
+        XCTAssertEqual(page.shownSlots, slots, "nothing moves from one state to the next")
         let routes = await daemon.routes
         XCTAssertTrue(routes.contains("POST /v0/providers/claude/sign-in/code"))
         XCTAssertFalse(routes.contains("POST /v0/providers/claude/sign-in/cancel"), "a finished sign-in isn't cancelled")
@@ -153,13 +172,14 @@ final class HostedProviderAccountsTests: XCTestCase {
         XCTAssertNil(Self.find(UIButton.self, in: signIn.view) { $0.accessibilityIdentifier == "account-sign-in-retry" }, "trying again can't help")
         navigation.popViewController(animated: false)
         _ = try await until { detail.shownRow("provider-sign-in-codex")?.dimmed == true ? true : nil }
-        XCTAssertNil(detail.shownRow("provider-sign-in-codex")?.action)
+        XCTAssertEqual(detail.shownRow("provider-sign-in-codex")?.value, "Owner only")
+        XCTAssertEqual(detail.shownRow("provider-sign-in-codex")?.hint, "Only the team owner can change how accounts sign in.")
         XCTAssertNil(detail.shownRow("provider-detail-enabled")?.toggled, "the switch is the owner's too")
-        let owners = "Only the team owner can change how accounts sign in. Signing in here gives this account a login only Happy uses, so it stops using the system login."
-        _ = try await until { detail.shownFooters.last == owners ? true : nil }
+        XCTAssertEqual(detail.shownFooters.last, "Signing in here gives this account a login only Happy uses, so it stops using the system login.", "the footer never changes")
         navigation.popViewController(animated: false)
         let claude = try await page("claude", list, navigation)
-        XCTAssertNil(claude.shownRow("provider-token-claude")?.action)
+        XCTAssertEqual(claude.shownRow("provider-token-claude")?.dimmed, true)
+        XCTAssertEqual(claude.shownRow("provider-token-claude")?.value, "Owner only")
     }
 
     private func host(_ daemon: SignInDaemon) async throws -> (ProviderAccountsViewController, UINavigationController, UIWindow, Session) {
