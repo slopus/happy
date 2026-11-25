@@ -373,12 +373,20 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     rules). The tap opens that agent's chat
     (`AppCoordinator.openAgent(fromNotification:)`) on the connection to
     that installation as that member, switched to first, as an instance
-    link opens. A sign-in is the member it signed in as. A pairing is the
-    team user its daemon says it belongs to (the bootstrap's
-    `profile.userId`, kept as `AgentConnection.member`), and `standalone`
-    when the daemon names none: what a daemon outside a team sends
-    (`AgentConnections.pushMember`). Never another login because it shares the
-    server or is the one open; signed out or not here, nothing opens. A
+    link opens. A sign-in is the member it signed in as, never
+    `standalone`. A pairing is the team user its daemon says it belongs
+    to (the bootstrap's `profile.userId`, kept as
+    `AgentConnection.member`), and `standalone` when the daemon says
+    null: what a daemon outside a team sends
+    (`AgentConnections.pushMember`). Until a bootstrap has carried that
+    key (`AgentConnection.memberKnown`) a pairing is nobody's: it
+    registers nothing (`registersForPush`, `Session.renewPush` registers
+    when it turns) and no push opens on it, so a team's daemon is never
+    taken for a computer of one's own. Never another login because it
+    shares the server or is the one open; signed out or not here, nothing
+    opens. Nothing checks that a server is the installation it says it
+    is: when more than one connection matches, those to a Happy Cloud
+    host come first, then the open one, then the first listed. A
     cloud payload this app can't read (another version, an extra or
     missing field) opens nothing and is never read for a `sessionId`. A
     tap that launches the app waits for the stored connections. A switch

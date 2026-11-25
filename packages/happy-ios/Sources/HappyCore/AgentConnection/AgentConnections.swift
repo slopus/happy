@@ -162,18 +162,28 @@ public final class AgentConnections {
 
     /// Who a push for the connection `id` names
     /// (`CloudPushNotification.userId`). A sign-in's is the member it was
-    /// signed in as, nil while it waits for its profile. A pairing's is
+    /// signed in as, nil while it waits for its profile, and never
+    /// `standalone`, whatever its server calls its user. A pairing's is
     /// the team user its daemon says it belongs to
     /// (`AgentConnection.member`), and `standalone` when it says none: a
-    /// computer of the person's own, whose daemon has no members.
+    /// computer of the person's own, whose daemon has no members. Until
+    /// its daemon has said (`AgentConnection.memberKnown`) it has none: a
+    /// team's daemon is never taken for a computer of the person's own.
     public func pushMember(for id: String) -> String? {
         guard let credential = credentials[id] else { return nil }
-        if let signIn = credential.signIn { return signIn.userId }
-        return accounts.first { $0.id == id }?.member ?? CloudPushNotification.standalone
+        if let signIn = credential.signIn { return signIn.userId == CloudPushNotification.standalone ? nil : signIn.userId }
+        guard let account = accounts.first(where: { $0.id == id }), account.memberKnown == true else { return nil }
+        return account.member ?? CloudPushNotification.standalone
     }
 
-    /// Whether the connection `id` registers for push now.
-    public func registersForPush(_ id: String) -> Bool { true }
+    /// Whether the connection `id` registers for push now. A sign-in
+    /// does: its server knows who asks. A pairing does once its computer
+    /// has said whose it is, so that nothing is registered as the one
+    /// person of a computer that turns out to be a team's.
+    public func registersForPush(_ id: String) -> Bool {
+        guard let credential = credentials[id] else { return false }
+        return credential.signIn != nil || accounts.first { $0.id == id }?.memberKnown == true
+    }
 
     /// The origin of the signed-in server `id`.
     public func server(for id: String) -> String? { credentials[id]?.signIn != nil ? credentials[id]?.publicUrl : nil }
@@ -648,7 +658,7 @@ public final class AgentConnections {
         // The installation and the member are what a tapped push that
         // launches the app is matched against, before anything is read.
         if previous.name != account.name || previous.avatar != account.avatar || previous.avatarETag != account.avatarETag || previous.thumbhash != account.thumbhash || previous.revoked != account.revoked
-            || previous.instanceId != account.instanceId || previous.member != account.member {
+            || previous.instanceId != account.instanceId || previous.member != account.member || previous.memberKnown != account.memberKnown {
             try? await storage.update(account)
         }
     }
