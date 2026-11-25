@@ -6,20 +6,21 @@ extension Strings {
     /// has the same states; activity is shown only once the link is online.
     enum HeaderStatus {
         /// Telegram's: "updating…" while it catches up, "connecting…" while it
-        /// reaches the server, "waiting for network…" with no way out at all.
+        /// reaches the server, "waiting for network…" with no way out at all;
+        /// "agent restarting…" while the computer's daemon drains to restart.
         typealias State = LinkState
 
         static let translations: [String: [String]] = [
-            "en": ["online", "updating…", "connecting…", "Thinking", "Working", "Waiting for your answer", "waiting for network…"],
-            "ru": ["в сети", "синхронизация…", "подключение…", "Думает", "Работает", "Ждёт вашего ответа", "ожидание сети…"],
-            "pl": ["online", "synchronizacja…", "łączenie…", "Myśli", "Pracuje", "Czeka na Twoją odpowiedź", "oczekiwanie na sieć…"],
-            "es": ["en línea", "sincronizando…", "conectando…", "Pensando", "Trabajando", "Esperando tu respuesta", "esperando red…"],
-            "it": ["online", "sincronizzazione…", "connessione…", "Sta pensando", "Al lavoro", "In attesa della tua risposta", "in attesa di rete…"],
-            "pt": ["online", "sincronizando…", "conectando…", "Pensando", "Trabalhando", "Aguardando sua resposta", "aguardando rede…"],
-            "ca": ["en línia", "sincronitzant…", "connectant…", "Pensant", "Treballant", "Esperant la teva resposta", "esperant la xarxa…"],
-            "zh-Hans": ["在线", "同步中…", "连接中…", "思考中", "工作中", "等待你的回答", "等待网络…"],
-            "zh-Hant": ["在線", "同步中…", "連線中…", "思考中", "工作中", "等待你的回答", "等待網路…"],
-            "ja": ["オンライン", "同期中…", "接続中…", "思考中", "作業中", "あなたの回答を待っています", "ネットワーク待機中…"],
+            "en": ["online", "updating…", "connecting…", "Thinking", "Working", "Waiting for your answer", "waiting for network…", "agent restarting…"],
+            "ru": ["в сети", "синхронизация…", "подключение…", "Думает", "Работает", "Ждёт вашего ответа", "ожидание сети…", "агент перезапускается…"],
+            "pl": ["online", "synchronizacja…", "łączenie…", "Myśli", "Pracuje", "Czeka na Twoją odpowiedź", "oczekiwanie na sieć…", "restart agenta…"],
+            "es": ["en línea", "sincronizando…", "conectando…", "Pensando", "Trabajando", "Esperando tu respuesta", "esperando red…", "reiniciando el agente…"],
+            "it": ["online", "sincronizzazione…", "connessione…", "Sta pensando", "Al lavoro", "In attesa della tua risposta", "in attesa di rete…", "riavvio dell'agente…"],
+            "pt": ["online", "sincronizando…", "conectando…", "Pensando", "Trabalhando", "Aguardando sua resposta", "aguardando rede…", "reiniciando o agente…"],
+            "ca": ["en línia", "sincronitzant…", "connectant…", "Pensant", "Treballant", "Esperant la teva resposta", "esperant la xarxa…", "reiniciant l'agent…"],
+            "zh-Hans": ["在线", "同步中…", "连接中…", "思考中", "工作中", "等待你的回答", "等待网络…", "Agent 重启中…"],
+            "zh-Hant": ["在線", "同步中…", "連線中…", "思考中", "工作中", "等待你的回答", "等待網路…", "Agent 重新啟動中…"],
+            "ja": ["オンライン", "同期中…", "接続中…", "思考中", "作業中", "あなたの回答を待っています", "ネットワーク待機中…", "エージェント再起動中…"],
         ]
 
         static var all: [String] { translations[AppLocalization.language] ?? translations["en"]! }
@@ -31,12 +32,13 @@ extension Strings {
             case .syncing: 1
             case .connecting: 2
             case .waitingForNetwork: 6
+            case .restarting: 7
             }
         }
 
         /// The link on its way somewhere: said with the spinner before it.
         static func spins(_ state: State) -> Bool {
-            state == .syncing || state == .connecting || state == .waitingForNetwork
+            state == .syncing || state == .connecting || state == .waitingForNetwork || state == .restarting
         }
 
         /// The words said with the spinner, in the screens' language.

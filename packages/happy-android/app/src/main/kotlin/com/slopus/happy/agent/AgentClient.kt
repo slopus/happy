@@ -76,6 +76,7 @@ class AgentClient private constructor(
         }
 
         private val random = SecureRandom()
+        private val SERVER_CODE = Regex("[A-Za-z0-9_-]{1,40}")
         private const val ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 
         /**
@@ -113,13 +114,13 @@ class AgentClient private constructor(
             observeAsk?.invoke(method, path)
             onAsked()
             link.transport.request(method, path, token, bytes, headers, category)
-        })
+        }, method)
     }
 
     /** Sends [bytes] as they are (an image), with their Content-Type in [headers]: a [RequestCategory.File]. */
     suspend fun sendBytes(method: String, path: String, bytes: ByteArray, headers: Map<String, String>): TransportResponse {
         val link = link()
-        return check(link, authorized(link) { token -> link.transport.request(method, path, token, bytes, headers, RequestCategory.File) })
+        return check(link, authorized(link) { token -> link.transport.request(method, path, token, bytes, headers, RequestCategory.File) }, method)
     }
 
     /**
@@ -324,7 +325,17 @@ class AgentClient private constructor(
         throw AgentConnectionException(reason)
     }
 
-    private suspend fun check(link: Link, response: TransportResponse): TransportResponse {
+    private val serverErrorState = MutableStateFlow<String?>(null)
+
+    /**
+     * The last answer the agent gave but couldn't act on (a 5xx; a daemon
+     * draining to restart refuses every write 503), as "POST answered 503
+     * (draining)": the connection page's last error (iOS's
+     * `MeteredAgentTransport`). Its code only when it is a short identifier.
+     */
+    val lastServerError: StateFlow<String?> = serverErrorState.asStateFlow()
+
+    private suspend fun check(link: Link, response: TransportResponse, method: String = "GET"): TransportResponse {
         if (link.oauth && SignInRule.requiresSignIn(response)) signInRequired(link)
         if (link.oauth && SignInRule.requiresProfile(response)) signInRequired(link, profileRequired = true)
         if (!link.oauth && response.status == 401) throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
@@ -336,6 +347,10 @@ class AgentClient private constructor(
         }
         val error = runCatching { failure?.jsonObject?.get("error")?.jsonPrimitive?.contentOrNull }.getOrNull()
         val code = runCatching { failure?.jsonObject?.get("code")?.jsonPrimitive?.contentOrNull }.getOrNull()
+        if (response.status >= 500) {
+            val said = code?.takeIf { SERVER_CODE.matches(it) }?.let { " ($it)" }.orEmpty()
+            serverErrorState.value = "$method answered ${response.status}$said"
+        }
         throw AgentApiException(response.status, code, error).also { it.body = failure }
     }
 }

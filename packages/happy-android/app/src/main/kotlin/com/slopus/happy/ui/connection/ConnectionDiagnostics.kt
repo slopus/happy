@@ -54,9 +54,13 @@ private fun ConnectionDiagnostics(graph: AppGraph, accountId: String, onBack: ()
     val state = if (agent != null) {
         val session = remember(graph, accountId) { graph.agentSessions.session(accountId) }
         val status = session?.status?.collectAsStateWithLifecycle()?.value ?: AgentLinkStatus.Connecting
+        // Draining to restart: the headers' own words, begun with a capital as a value is.
+        val draining = session?.draining?.collectAsStateWithLifecycle()?.value == true
+        val lastError = session?.client?.lastServerError?.collectAsStateWithLifecycle()?.value
         val kind = transports.map { it.kind }.distinct().singleOrNull()
         ConnectionPageState(
-            status = statusText(status),
+            status = if (draining) stringResource(R.string.link_status_restarting).replaceFirstChar { it.titlecase() } else statusText(status),
+            lastError = lastError,
             type = when (kind) {
                 TransportDiagnostics.Kind.Tailcat -> "Tailcat"
                 TransportDiagnostics.Kind.Https -> "HTTPS"

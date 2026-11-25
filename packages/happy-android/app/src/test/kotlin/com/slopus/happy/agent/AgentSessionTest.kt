@@ -118,6 +118,45 @@ class AgentSessionTest {
         assertNull(connections.accounts.value.single().userId)
     }
 
+    /**
+     * A daemon draining to restart says so on the stream: the headers say
+     * restarting through the drop as the old process goes, and the new
+     * process's hello clears it. Another process's `daemon.draining`,
+     * replayed from a journal kept across a restart, doesn't bring it back.
+     */
+    @Test
+    fun aDrainingDaemonIsRestartingUntilANewProcessSaysHello() = runBlocking {
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.phase.value }) { it == SyncPhase.Verified }
+        assertFalse(session.draining.value)
+        agent.frames.send(Wire.frame("c1", "daemon.draining", buildJsonObject { put("daemonId", "d1"); put("draining", true) }))
+        eventually({ session.draining.value }) { it }
+        assertEquals(LinkState.Restarting, session.status.value.linkState(syncing = false, network = true, draining = session.draining.value))
+        assertEquals(LinkState.WaitingForNetwork, session.status.value.linkState(syncing = false, network = false, draining = true))
+        // The old process goes: the stream drops and is opened again, still restarting.
+        var dropped = agent.frames
+        agent.frames = Channel(Channel.UNLIMITED)
+        dropped.close()
+        eventually({ agent.streamCursors.size }) { it == 2 }
+        assertTrue("said through the reconnect", session.draining.value)
+        assertEquals(LinkState.Restarting, session.status.value.linkState(syncing = false, network = true, draining = session.draining.value))
+        // A new process says hello, not draining.
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c1\",\"gap\":false,\"resumed\":true,\"daemonId\":\"d2\",\"draining\":false}\n\n")
+        eventually({ session.draining.value }) { !it }
+        agent.frames.send(Wire.frame("c2", "daemon.draining", buildJsonObject { put("daemonId", "d1"); put("draining", true) }))
+        agent.frames.send(Wire.frame("c3", "agent.updated", Wire.updated("agentId", "at1", "01", "02", buildJsonObject { put("status", "thinking") })))
+        eventually({ session.catalog.value.cursor }) { it == "c3" }
+        assertFalse("an older process's drain, replayed", session.draining.value)
+        // A hello that says it is draining.
+        dropped = agent.frames
+        agent.frames = Channel(Channel.UNLIMITED)
+        dropped.close()
+        eventually({ agent.streamCursors.size }) { it == 3 }
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c3\",\"gap\":false,\"resumed\":true,\"daemonId\":\"d2\",\"draining\":true}\n\n")
+        eventually({ session.draining.value }) { it }
+    }
+
     @Test
     fun cursorResumesBeforeThirtySecondsAndStartsFreshAtThirtySeconds() = runBlocking {
         val session = sessions().session(id)!!

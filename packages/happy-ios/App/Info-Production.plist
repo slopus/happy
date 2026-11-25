@@ -7,7 +7,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>Happy</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2026.11.1</string>
+	<string>2026.11.2</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -28,7 +28,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>163</string>
+	<string>164</string>
 	<key>GIDClientID</key>
 	<string>$(HAPPY_GOOGLE_CLIENT).apps.googleusercontent.com</string>
 	<key>HappyAppVariant</key>

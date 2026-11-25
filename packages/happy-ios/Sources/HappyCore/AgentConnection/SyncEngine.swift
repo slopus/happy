@@ -22,6 +22,10 @@ public struct HomeSnapshot: Equatable, Sendable {
     /// its way back, "connecting…", as a Happy account's socket is, never
     /// an `error` home says. Android's `AgentSession.reconnecting`.
     public var reconnecting = false
+    /// The daemon said it is draining to restart (its hello's `draining`,
+    /// or `daemon.draining`): writes are refused until a new process says
+    /// hello. Kept through the reconnect in between.
+    public var draining = false
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
     public init() {}
@@ -165,6 +169,9 @@ public actor SyncEngine {
     private var refresh: Task<Void, Never>?
     private var delivery: Task<Void, Never>?
     private var messageDelivery: Task<Void, Never>?
+    /// The wait before the next try of a send that failed, cut short once
+    /// the computer is verified again (`allowDelivery`).
+    private var messageBackoff: Task<Void, Never>?
     private var messageListeners: [UUID: (agentID: String, continuation: AsyncStream<DeliveryEvent>.Continuation)] = [:]
     private var profileListeners: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var verified = false
@@ -568,6 +575,7 @@ public actor SyncEngine {
                         // anything is delivered.
                         if resuming && !continued { await readAgain(generation) }
                         snapshot.live = true; snapshot.error = nil; snapshot.reconnecting = false; attempt = 0
+                        snapshot.draining = hello["draining"] == .bool(true)
                         snapshot.syncing = !verified
                         streamDaemon = daemon
                         // The process a read verified answering again is the
@@ -620,6 +628,13 @@ public actor SyncEngine {
                        gitInterest.contains(id), let value = event["payload"]?["git"],
                        let state = try? JSONDecoder().decode(WorkspaceLineChanges.self, from: JSONEncoder().encode(value)) {
                         receiveGit([id: state])
+                    }
+                    // Only this process's: a journal kept across a restart
+                    // replays the one before's.
+                    if event["type"] == .string("daemon.draining"), event["payload"]?["draining"] != .bool(false),
+                       streamDaemon == nil || event["payload"]?["daemonId"]?.stringValue.map({ $0 == streamDaemon }) != false {
+                        snapshot.draining = true
+                        publish()
                     }
                     if event["type"] == .string("profile.updated") {
                         profileChanged()
@@ -738,6 +753,10 @@ public actor SyncEngine {
     }
 
     private func allowDelivery(_ generation: Int) async {
+        // A send refused or unanswered before (a daemon draining for an
+        // update answers every write 503) goes again now, not when the
+        // backoff those failures built up, up to 30 seconds, comes round.
+        messageBackoff?.cancel()
         beginDelivery(generation)
         beginMessageDelivery(generation)
         await intents.setOnline(deliveryAllowed)
@@ -1570,7 +1589,12 @@ public actor SyncEngine {
                     for listener in messageListeners.values where listener.agentID == message.agentID { listener.continuation.yield(.failed(message.id, message.failure ?? "")) }
                     continue
                 }
-                do { try await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5)))) } catch { return }
+                let delay = Duration.seconds(min(30, 1 << min(attempt, 5)))
+                let backoff = Task { _ = try? await Task.sleep(for: delay) }
+                messageBackoff = backoff
+                await withTaskCancellationHandler { await backoff.value } onCancel: { backoff.cancel() }
+                if messageBackoff == backoff { messageBackoff = nil }
+                guard !Task.isCancelled else { return }
                 attempt += 1
             }
         }

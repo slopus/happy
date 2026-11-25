@@ -8,6 +8,8 @@ final class BrowserLayoutTests: XCTestCase {
         XCTAssertEqual(result.web, CGRect(x: 0, y: 0, width: 402, height: 874))
         XCTAssertEqual(result.failure, CGRect(x: 0, y: 0, width: 402, height: 874))
         XCTAssertEqual(result.progress, CGRect(x: 0, y: 116, width: 402, height: 2.5))
+        // The page is told the header covers its top; the home indicator is its own safe area.
+        XCTAssertEqual(result.obscured, LayoutInsets(top: 116))
     }
 
     func testLandscapeAndTheHeaderNeverMoveThePage() {
@@ -19,6 +21,9 @@ final class BrowserLayoutTests: XCTestCase {
         XCTAssertEqual(bare.web, CGRect(x: 0, y: 0, width: 402, height: 874))
         XCTAssertEqual(bare.progress, CGRect(x: 0, y: 0, width: 402, height: 2.5))
         XCTAssertEqual(BrowserLayout(size: CGSize(width: 100, height: 50), top: 80).progress, CGRect(x: 0, y: 50, width: 100, height: 2.5))
+        XCTAssertEqual(landscape.obscured, LayoutInsets(top: 68))
+        XCTAssertEqual(bare.obscured, LayoutInsets())
+        XCTAssertEqual(BrowserLayout(size: CGSize(width: 100, height: 50), top: 80).obscured, LayoutInsets(top: 50))
     }
 
     func testProgressFill() {

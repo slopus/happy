@@ -5,6 +5,7 @@
     <string name="connection_type">種類</string>
     <string name="connection_server">サーバー</string>
     <string name="connection_network">ネットワーク利用可能</string>
+    <string name="connection_last_error">最後のエラー</string>
     <string name="connection_open_flows">アプリの開いているストリーム</string>
     <string name="connection_tunnels">Tailcat トンネル</string>
     <string name="connection_tunnel">トンネル %1$d</string>

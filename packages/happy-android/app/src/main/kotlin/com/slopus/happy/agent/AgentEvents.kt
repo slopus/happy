@@ -24,14 +24,15 @@ data class AgentEvent(val cursor: String?, val type: String, val data: JsonObjec
     }
 }
 
-/** The `hello` frame's facts. */
-data class AgentHello(val cursor: String?, val gap: Boolean, val resumed: Boolean, val daemonId: String?) {
+/** The `hello` frame's facts; [draining]: the daemon is draining to restart. */
+data class AgentHello(val cursor: String?, val gap: Boolean, val resumed: Boolean, val daemonId: String?, val draining: Boolean = false) {
     companion object {
         fun of(event: AgentEvent) = AgentHello(
             cursor = event.data.string("cursor"),
             gap = event.data["gap"]?.toString() == "true",
             resumed = event.data["resumed"]?.toString() == "true",
             daemonId = event.data.string("daemonId"),
+            draining = event.data["draining"]?.toString() == "true",
         )
     }
 }

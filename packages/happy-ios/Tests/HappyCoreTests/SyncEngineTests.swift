@@ -56,12 +56,19 @@ private actor SyncFixture: AgentTransport {
     func savedWrites() -> [JSONValue] { writes }
     func savedSends() -> [JSONValue] { sends }
     func loseNextSendAcknowledgement() { loseSendAck = true }
+    /// The next `count` sends are refused as a draining daemon refuses
+    /// every write, while its reads and stream go on.
+    var refusedSends = 0
+    func refuseSends(_ count: Int) { refusedSends = count }
     /// Each of the next `reads` bootstrap reads has news come while it is
     /// on its way, as when agents work.
     var newsDuringReads = 0
     /// The process every hello names; nil as an older daemon's.
     var daemonId: String?
     var nextHelloGap = false
+    /// What every hello says of `draining`; nil leaves it out, as an older daemon does.
+    var helloDraining: Bool?
+    func setHelloDraining(_ draining: Bool?) { helloDraining = draining }
     /// The next bootstrap read waits, deaf to cancellation, until `release`.
     var holdNextRead = false
     var held: CheckedContinuation<Void, Never>?
@@ -212,6 +219,10 @@ private actor SyncFixture: AgentTransport {
         if method == "POST", path.hasSuffix("/send") {
             sends.append(try JSONDecoder().decode(JSONValue.self, from: body!))
             if loseSendAck { loseSendAck = false; throw URLError(.networkConnectionLost) }
+            if refusedSends > 0 {
+                refusedSends -= 1
+                return .init(status: 503, body: Data(#"{"error":"Happy Agent is draining and no longer accepts mutations.","code":"draining"}"#.utf8))
+            }
             return .init(status: 200, body: Data("{}".utf8))
         }
         return .init(status: 404, body: Data("{}".utf8))
@@ -226,8 +237,9 @@ private actor SyncFixture: AgentTransport {
         let process = daemonId.map { ",\"daemonId\":\"\($0)\"" } ?? ""
         let gap = nextHelloGap ? "true" : "false"
         nextHelloGap = false
+        let draining = helloDraining.map { ",\"draining\":\($0)" } ?? ""
         if holdHello { holdHello = false; heldHello = continuation; return .init(status: 200, body: body) }
-        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"cursor-1\",\"resumed\":true,\"gap\":\(gap)\(process)}\n\n".utf8))
+        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"cursor-1\",\"resumed\":true,\"gap\":\(gap)\(process)\(draining)}\n\n".utf8))
         return .init(status: 200, body: body)
     }
     func close() { continuations.forEach { $0.finish() }; continuations.removeAll() }
@@ -634,6 +646,86 @@ final class SyncEngineTests: XCTestCase {
         let retried = await transport.savedSends()
         XCTAssertEqual(retried.count, 2)
         XCTAssertEqual(retried.first, retried.last)
+        await engine.stop()
+    }
+
+    /// A daemon draining for an update answers every send 503 while its
+    /// stream and reads go on, so home stays online and the message waits
+    /// in the outbox. Once the computer is verified again (here a new
+    /// process after the restart), the message goes at once, not when the
+    /// backoff the refusals built up next comes round.
+    func testASendRefusedWhileTheDaemonDrainsGoesOnceTheComputerIsVerifiedAgain() async throws {
+        let transport = SyncFixture()
+        await transport.refuseSends(3)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let mode = AgentWire.Mode(providerId: "test", modelId: "test-model", effort: "low", serviceTier: nil, permissionMode: "auto")
+        try await engine.enqueueMessage(.init(id: "while-draining", agentID: "chat", text: "Sent while draining", pictures: [], mode: mode))
+        // Refused at once, then after one second and two more.
+        for _ in 0..<100 {
+            if (await transport.savedSends()).count == 3 { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let refused = await transport.savedSends().count
+        XCTAssertEqual(refused, 3)
+        // Every refusal answered: home still says online, the send still waits.
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let waiting = try await engine.queuedMessages(for: "chat").map(\.id)
+        XCTAssertEqual(waiting, ["while-draining"])
+        // The drain ends and a new process answers; the next try would be four seconds off.
+        await transport.setDaemon("restarted")
+        await transport.dropStreams()
+        let back = ContinuousClock.now
+        for _ in 0..<80 {
+            if (await transport.savedSends()).count == 4 { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let sends = await transport.savedSends()
+        XCTAssertEqual(sends.count, 4)
+        XCTAssertLessThan(ContinuousClock.now - back, .milliseconds(2500), "the send waited out its backoff after the computer was verified again")
+        XCTAssertEqual(Set(sends.map { $0["id"] }), [.string("while-draining")])
+        for _ in 0..<40 {
+            if (try await engine.queuedMessages(for: "chat")).isEmpty { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let left = try await engine.queuedMessages(for: "chat")
+        XCTAssertTrue(left.isEmpty)
+        await engine.stop()
+    }
+
+    /// The daemon draining to restart says so on the stream: home's header
+    /// says "agent restarting…" through the drop as the old process goes,
+    /// and the new process's hello clears it. Another process's
+    /// `daemon.draining`, replayed from a journal kept across a restart,
+    /// doesn't bring it back.
+    func testADrainingDaemonIsRestartingUntilANewProcessSaysHello() async throws {
+        let transport = SyncFixture()
+        await transport.setDaemon("old")
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await transport.emit(.object(["type": .string("daemon.draining"), "payload": .object(["daemonId": .string("old"), "draining": .bool(true)])]))
+        let draining = try await wait(engine) { $0.draining }
+        XCTAssertEqual(LinkState.home(draining), .restarting)
+        XCTAssertEqual(LinkState.chat(home: LinkState.home(draining), historyRead: true), .restarting)
+        XCTAssertEqual(LinkState.home(draining, network: false), .waitingForNetwork)
+        // The old process goes; the stream drops and is opened again.
+        await transport.setDaemon("new")
+        await transport.setHelloDraining(true)
+        await transport.dropStreams()
+        let dropped = try await wait(engine) { !$0.live }
+        XCTAssertEqual(LinkState.home(dropped), .restarting, "said through the reconnect")
+        _ = try await wait(engine) { $0.live && $0.draining }
+        // The drain's end: a process whose hello says it isn't draining.
+        await transport.setHelloDraining(false)
+        await transport.dropStreams()
+        let back = try await wait(engine) { $0.live && !$0.draining && !$0.syncing }
+        XCTAssertEqual(LinkState.home(back), .online)
+        await transport.emit(.object(["type": .string("daemon.draining"), "payload": .object(["daemonId": .string("old"), "draining": .bool(true)])]))
+        try await Task.sleep(for: .milliseconds(200))
+        let replayed = try await wait(engine) { _ in true }
+        XCTAssertFalse(replayed.draining, "an older process's drain, replayed")
         await engine.stop()
     }
 
