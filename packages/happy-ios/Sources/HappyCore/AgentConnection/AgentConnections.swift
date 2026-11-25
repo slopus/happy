@@ -172,6 +172,9 @@ public final class AgentConnections {
         return accounts.first { $0.id == id }?.member ?? CloudPushNotification.standalone
     }
 
+    /// Whether the connection `id` registers for push now.
+    public func registersForPush(_ id: String) -> Bool { true }
+
     /// The origin of the signed-in server `id`.
     public func server(for id: String) -> String? { credentials[id]?.signIn != nil ? credentials[id]?.publicUrl : nil }
 
