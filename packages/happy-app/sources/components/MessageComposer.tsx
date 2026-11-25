@@ -75,8 +75,10 @@ interface MessageComposerProps {
     sendIcon?: React.ReactNode;
     sendLabel?: string;
     sendHint?: string;
-    /** Web-only staged Agent switch. null keeps the reversible normal-send surface. */
+    /** Web-only staged Agent target; ordinary send keeps the current conversation. */
     newSessionAgent?: string | null;
+    /** Explicit alternative to ordinary send: continue in a separate new session. */
+    onNewSession?: () => void;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
     connectionStatus?: {
@@ -523,7 +525,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const { width: screenWidth } = useWindowDimensions();
-    const [hoveredAction, setHoveredAction] = React.useState<'attach' | 'send' | null>(null);
+    const [hoveredAction, setHoveredAction] = React.useState<'attach' | 'send' | 'new-session' | null>(null);
+    const [focusedAction, setFocusedAction] = React.useState<'send' | 'new-session' | null>(null);
     const [directoryInvalid, setDirectoryInvalid] = React.useState(false);
     const isSendBlocked = (props.blockSend ?? false)
         || directoryInvalid
@@ -542,7 +545,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     referencesRef.current = references;
     const [hasText, setHasText] = React.useState(() => props.initialValue.trim().length > 0);
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
-    const hasPayload = hasText || hasImages || !!props.hasContext || Boolean(props.newSessionAgent);
+    const hasPayload = hasText || hasImages || !!props.hasContext;
     const primaryAction = resolveComposerPrimaryAction({
         mode: props.mode,
         showAbortButton: props.showAbortButton ?? false,
@@ -887,10 +890,16 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         hapticsLight();
         // Live read avoids stalling behind the transitioned `hasText`.
         const liveHasText = (inputRef.current?.getText() ?? '').trim().length > 0 || referencesRef.current.length > 0;
-        if (liveHasText || hasImages || props.hasContext || props.newSessionAgent) {
+        if (liveHasText || hasImages || props.hasContext) {
             props.onSend();
         }
-    }, [handleBlockedSendAttempt, hasImages, props.hasContext, isSendBlocked, props.isSendDisabled, props.isSending, props.onSend, props.newSessionAgent]);
+    }, [handleBlockedSendAttempt, hasImages, props.hasContext, isSendBlocked, props.isSendDisabled, props.isSending, props.onSend]);
+
+    const handleNewSessionPress = React.useCallback(() => {
+        if (isSendBlocked || props.isSendDisabled || props.isSending || !props.onNewSession) return;
+        hapticsLight();
+        props.onNewSession();
+    }, [isSendBlocked, props.isSendDisabled, props.isSending, props.onNewSession]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -940,8 +949,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             return true;
         }
 
-        // Staged navigation always needs an explicit click, never an accidental Enter/Tab.
-        if (props.newSessionAgent && (event.key === 'Enter' || event.key === 'Tab')) return false;
+        // A staged target still sends normally on Enter. Tab must not create a new session.
+        if (props.newSessionAgent && event.key === 'Tab') return false;
 
         // Original key handling
         if (Platform.OS === 'web') {
@@ -959,7 +968,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 // Read live text from the textarea — `hasText` is debounced via
                 // startTransition and would lag behind a quick type-then-Enter.
                 const liveText = inputRef.current?.getText() ?? '';
-                if (liveText.trim() || referencesRef.current.length || props.hasContext) {
+                if (liveText.trim() || referencesRef.current.length || hasImages || props.hasContext) {
                     if (isSendBlocked) {
                         handleBlockedSendAttempt();
                     } else if (!props.isSendDisabled && !props.isSending) {
@@ -1115,6 +1124,37 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     <SessionComposerModeSelector {...props.modeSelector} compact={screenWidth < 600} />
                                 ) : null}
 
+                                {Platform.OS === 'web' && props.newSessionAgent && props.onNewSession ? (
+                                    <Shaker
+                                        testID="message-composer-new-session-surface"
+                                        style={[
+                                            styles.sendButton,
+                                            hoveredAction === 'new-session' && styles.sendButtonHovered,
+                                            !props.isSending && !props.isSendDisabled && !isSendBlocked
+                                                ? styles.sendButtonActive : styles.sendButtonInactive,
+                                            getComposerAgentActionStyle(props.newSessionAgent, t('sidebar.newSession')),
+                                        ]}
+                                    >
+                                        <Pressable
+                                            testID="message-composer-new-session-button"
+                                            accessibilityRole="button"
+                                            accessibilityLabel={t('sidebar.newSession')}
+                                            accessibilityHint={t('agentInput.newAgentSessionHint')}
+                                            onFocus={() => setFocusedAction('new-session')}
+                                            onBlur={() => setFocusedAction(null)}
+                                            onHoverIn={() => setHoveredAction('new-session')}
+                                            onHoverOut={() => setHoveredAction(null)}
+                                            onPress={handleNewSessionPress}
+                                            disabled={Boolean(props.isSending || props.isSendDisabled || isSendBlocked)}
+                                            style={({ pressed }) => ({ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.75 : 1 })}
+                                        >
+                                            <ComposerAgentAction agent={props.newSessionAgent} label={t('sidebar.newSession')} busy={props.isSending}
+                                                fallback={<ActivityIndicator size="small" color={theme.colors.button.composer.tint} />} />
+                                            <ComposerTooltip testID="composer-new-session-tooltip" label={t('sidebar.newSession')} visible={hoveredAction === 'new-session' || focusedAction === 'new-session'} />
+                                        </Pressable>
+                                    </Shaker>
+                                ) : null}
+
                                 {/* Primary action: stop while running and empty, send when there is a payload. */}
                                 <Shaker
                                     testID="message-composer-action-surface"
@@ -1125,7 +1165,6 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                         (isAbortAction || isAbortConfirmationArmed || canPressSendButton || props.isSending)
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive,
-                                        getComposerAgentActionStyle(props.newSessionAgent, t('sidebar.newSession'))
                                     ]}
                                 >
                                     <Pressable
@@ -1137,6 +1176,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             ? t('keyboardShortcuts.stopRunningAgent')
                                             : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))}
                                         accessibilityHint={(isAbortAction || isAbortConfirmationArmed) ? undefined : props.sendHint}
+                                        onFocus={() => setFocusedAction('send')}
+                                        onBlur={() => setFocusedAction(null)}
                                         onHoverIn={() => setHoveredAction('send')}
                                         onHoverOut={() => setHoveredAction(null)}
                                         style={(p) => ({
@@ -1158,8 +1199,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             ? isAborting
                                             : !canPressSendButton}
                                     >
-                                        <ComposerAgentAction agent={props.newSessionAgent} label={t('sidebar.newSession')} busy={props.isSending}
-                                            fallback={<>{((isAbortAction || isAbortConfirmationArmed) && isAborting)
+                                        {((isAbortAction || isAbortConfirmationArmed) && isAborting)
                                             || (!isAbortAction && !isAbortConfirmationArmed && props.isSending) ? (
                                             <ActivityIndicator
                                                 size="small"
@@ -1169,8 +1209,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             <Text style={styles.abortConfirmationLabel}>Esc</Text>
                                         ) : (
                                             <ComposerActionIcon size={Platform.OS === 'web' ? 20 : 24} stop={isAbortAction} color={theme.colors.button.composer.tint} />
-                                        )}</>} />
-                                        <ComposerTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('agentInput.stop') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && hoveredAction === 'send'} />
+                                        )}
+                                        <ComposerTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('agentInput.stop') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && (hoveredAction === 'send' || focusedAction === 'send')} />
                                     </Pressable>
                                 </Shaker>
                                 </View>

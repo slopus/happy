@@ -1,3 +1,5 @@
+import { resolveConversationSessionId } from '@/sync/conversationSession';
+import { recoverConversationSwitch } from '@/sync/conversationSwitch';
 import { useAgyConfig } from '@/hooks/useAgyConfig';
 import { useSessionAttachmentDraft } from '@/hooks/useSessionAttachmentDraft';
 import { useSessionAgentComposer } from '@/hooks/useSessionAgentComposer';
@@ -546,12 +548,72 @@ function DesktopReadingWidthControl() {
 
 type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string }; embedded?: boolean; projectTaskContext?: boolean; fullWidth?: boolean; emptyState?: React.ReactNode | ((appendDraft: (text: string) => void) => React.ReactNode) };
 
+function ConversationDeleteRecovery({ session }: { session: Session }) {
+    const router = useRouter();
+    const { theme } = useUnistyles();
+    const actions = useSessionQuickActions(session, { onAfterDelete: () => router.navigate('/') });
+    return <Pressable testID="conversation-delete-retry" accessibilityRole="button" accessibilityLabel={t('common.delete')}
+        disabled={actions.deletingSession} onPress={() => { void actions.confirmDeleteSession(); }}>
+        <Text style={{ color: theme.colors.text }}>{t('common.delete')}</Text>
+    </Pressable>;
+}
+
 export const SessionView = React.memo((props: SessionViewProps) => {
     const session = useSession(props.id);
+    const rootId = session?.metadata?.conversationRootSessionId ?? props.id;
+    const root = useSession(rootId);
+    const targetId = root?.metadata?.conversationActiveSessionId ?? rootId;
+    const target = useSession(targetId);
+    const [failed, setFailed] = React.useState(false);
+    const [retry, setRetry] = React.useState(0);
+    const [recovering, setRecovering] = React.useState(false);
+    const { theme } = useUnistyles();
+    const currentId = resolveConversationSessionId({
+        ...(session ? { [session.id]: session } : {}),
+        ...(root ? { [root.id]: root } : {}),
+        ...(target ? { [target.id]: target } : {}),
+    }, props.id);
+    React.useEffect(() => {
+        let current = true;
+        setFailed(false);
+        const missing = [...new Set([!session ? props.id : '', !root ? rootId : '', !target ? targetId : ''])].filter(Boolean);
+        void (async () => {
+            for (const id of missing) {
+                if (!await sync.ensureSessionHydrated(id)) throw new Error('missing-conversation-session');
+            }
+        })().catch(() => { if (current) setFailed(true); });
+        return () => { current = false; };
+    }, [props.id, rootId, targetId, Boolean(session), Boolean(root), Boolean(target), retry]);
     if (session && isRetiredSession(session)) return <Redirect href="/bots" />;
-    return <SubagentInspectorProvider sessionId={props.id}>
-        {props.embedded ? <SessionViewContent key={props.id} {...props} /> : <SessionFileWorkspaceProvider sessionId={props.id}><SessionViewContent key={props.id} {...props} /></SessionFileWorkspaceProvider>}
-    </SubagentInspectorProvider>;
+    const pending = root?.metadata?.conversationSwitch;
+    const retrySwitch = async () => {
+        setRecovering(true);
+        try { await recoverConversationSwitch(rootId); }
+        catch (error) { Modal.alert(t('common.error'), error instanceof Error ? error.message : t('common.retry')); }
+        finally { setRecovering(false); }
+    };
+    if (!currentId && (session?.metadata?.conversationRootSessionId || root?.metadata?.conversationActiveSessionId)) return (
+        <View testID="conversation-unavailable" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
+            {!failed && !target ? <ActivityIndicator /> : <Text style={{ color: theme.colors.text }}>{t('session.agentSwitchUnavailable')}</Text>}
+            {root?.metadata?.conversationDeletePlan && <ConversationDeleteRecovery session={root} />}
+            <Pressable accessibilityRole="button" accessibilityLabel={t('common.retry')} onPress={() => setRetry(value => value + 1)}>
+                <Text style={{ color: theme.colors.text }}>{t('common.retry')}</Text>
+            </Pressable>
+        </View>
+    );
+    const effectiveId = currentId ?? props.id;
+    const contentProps = { ...props, id: effectiveId };
+    return <View style={{ flex: 1 }}>
+        {pending && <View testID="conversation-switch-pending" style={{ padding: 12, flexDirection: 'row', gap: 12, backgroundColor: theme.colors.surface }}>
+            <Text style={{ color: theme.colors.textSecondary, flex: 1 }}>{t('session.agentSwitchPending')}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('common.retry')} disabled={recovering} onPress={() => { void retrySwitch(); }}>
+                <Text style={{ color: theme.colors.text }}>{t('common.retry')}</Text>
+            </Pressable>
+        </View>}
+        <SubagentInspectorProvider sessionId={effectiveId}>
+            {props.embedded ? <SessionViewContent key={effectiveId} {...contentProps} /> : <SessionFileWorkspaceProvider sessionId={effectiveId}><SessionViewContent key={effectiveId} {...contentProps} /></SessionFileWorkspaceProvider>}
+        </SubagentInspectorProvider>
+    </View>;
 });
 
 
@@ -561,7 +623,11 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const router = useRouter();
     const navigation = useNavigation();
     const isFocused = useIsFocused();
-    const session = useSession(sessionId);
+    const executionSession = useSession(sessionId);
+    const conversationRoot = useSession(executionSession?.metadata?.conversationRootSessionId ?? sessionId);
+    const session = React.useMemo(() => executionSession?.metadata?.conversationRootSessionId && conversationRoot?.metadata
+        ? { ...executionSession, metadata: { ...executionSession.metadata, summary: conversationRoot.metadata.summary } }
+        : executionSession, [executionSession, conversationRoot?.metadata?.summary]);
     const { messages: cachedMessages, isLoaded: hasLoadedMessageCache, latestVerifiedOwnerEpoch } = useSessionMessages(sessionId);
     const isDataReady = useIsDataReady();
     const [retryGeneration, setRetryGeneration] = React.useState(0);
@@ -1812,10 +1878,25 @@ function SessionViewLoaded({
         session, base: modeSelector,
         flushDraft: () => composerHandleRef.current?.flushDraft(),
         readSubmission: () => {
-            const liveMessage = composerHandleRef.current?.getMessage() ?? '';
+            const composer = composerHandleRef.current;
+            const liveMessage = composer?.getMessage() ?? '';
             const annotated = prepareAnnotatedMessage(sessionId, liveMessage);
-            return { prompt: buildFileContextMessage(annotated.text, fileWorkspace?.reference ?? null).text,
-                images: selectedImagesRef.current };
+            const submittedReference = fileWorkspace?.reference;
+            const fileMessage = buildFileContextMessage(annotated.text, submittedReference ?? null);
+            const submittedImages = selectedImagesRef.current;
+            return { prompt: fileMessage.text, images: submittedImages,
+                onQueued: () => {
+                    let cleanupFailed = false;
+                    try { annotated.commit(); } catch { cleanupFailed = true; }
+                    if (fileMessage.fileReference) fileWorkspace?.setReference(current => current === submittedReference ? null : current);
+                    if (composerHandleRef.current === composer) {
+                        if (composer?.getMessage() === liveMessage) composer.clearMessage();
+                        for (const attachment of submittedImages) removeImage(attachment.id);
+                    }
+                    setFollowLatestRequest(value => value + 1);
+                    if (cleanupFailed) Modal.alert(t('messageAnnotations.submitted'), t('messageAnnotations.cleanupError'));
+                },
+            };
         },
     });
 
@@ -2073,13 +2154,14 @@ function SessionViewLoaded({
             blockSend={false}
             hasContext={annotations.length > 0 || !!fileWorkspace?.reference}
             contextContent={<><AnnotationComposer sessionId={sessionId} /><FileReferencePill /></>}
-            onSend={agentComposer?.pendingAgent ? () => { void agentComposer.submit(); } : handleSend}
+            onSend={agentComposer?.pendingAgent ? () => { void agentComposer.submitInChat(); } : handleSend}
+            onNewSession={agentComposer?.pendingAgent ? () => { void agentComposer.submitNewSession(); } : undefined}
             newSessionAgent={agentComposer?.pendingAgent}
             isSending={agentComposer?.sending}
             isSendDisabled={agyConfig.busy || Boolean(agentComposer?.pendingAgent && agentComposer.disabled)}
             onQueue={!agentComposer?.pendingAgent && isTaskRunning ? handleSend : undefined}
-            sendLabel={agentComposer?.pendingAgent ? t('sidebar.newSession') : isTaskRunning ? t('messageQueue.enqueueSend') : undefined}
-            sendHint={agentComposer?.pendingAgent ? t('agentInput.newAgentSessionHint') : isTaskRunning ? t('messageQueue.enqueueHint') : undefined}
+            sendLabel={agentComposer?.pendingAgent ? t('agentInput.switchInConversation') : isTaskRunning ? t('messageQueue.enqueueSend') : undefined}
+            sendHint={!agentComposer?.pendingAgent && isTaskRunning ? t('messageQueue.enqueueHint') : undefined}
             onAbort={isDisconnected ? undefined : handleAbort}
             showAbortButton={sessionStatus.state === 'running' && !agentComposer?.pendingAgent}
             selectedImages={selectedImages}

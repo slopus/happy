@@ -6,7 +6,7 @@ import { createSessionContinuation } from '@/sync/sessionContinuation';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionRequestArchiveMetadata, sessionRestoreMetadata, sessionKill, sessionDelete, sessionRegenerateTitle, sessionUpdateMetadata, forkAndSpawn, codexListRewindPoints, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionRestoreMetadata, sessionRegenerateTitle, sessionUpdateMetadata, forkAndSpawn, codexListRewindPoints, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -32,6 +32,8 @@ import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { buildDirectMessageForkOptions, resolveCodexMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
 import { describeSpawnSessionError } from '@/utils/spawnSessionError';
 import { resolveSessionResumeAvailability } from '@/utils/sessionResumeAvailability';
+import { getConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
+import { BulkSessionActionError, bulkArchiveSessions, bulkDeleteSessions, resolveSessionsForBulkAction } from './bulkSessionActions';
 
 export interface SessionActionItem {
     id: string;
@@ -53,6 +55,14 @@ type ResumeAvailability = {
     canShowResume: boolean;
     subtitle: string;
     message: string;
+};
+
+export type SessionGroupActionFailure = {
+    action: 'archive' | 'delete' | 'restore';
+    message: string;
+    completedIds: readonly string[];
+    failedSessionId: string | null;
+    pendingIds: readonly string[];
 };
 
 function isRegenerateTitleRpcUnavailable(message: string | undefined): boolean {
@@ -133,7 +143,7 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
 }
 
 export function useSessionQuickActions(
-    session: Session,
+    providedSession: Session,
     options: UseSessionQuickActionsOptions = {},
 ) {
     const {
@@ -144,15 +154,90 @@ export function useSessionQuickActions(
     } = options;
     const router = useRouter();
     const navigateToSession = useNavigateToSession();
+    const rootId = getConversationRootSessionId(providedSession);
+    const rootSession = useSession(rootId);
+    const executionSessionId = resolveConversationSessionId(storage.getState().sessions, providedSession.id);
+    const session = useSession(executionSessionId ?? providedSession.id) ?? providedSession;
+    const canRetryConversationDelete = Boolean(rootSession?.metadata?.conversationDeletePlan);
+    const executionReady = Boolean(executionSessionId && !canRetryConversationDelete && !rootSession?.metadata?.conversationSwitch);
+    const requireExecutionSession = React.useCallback(() => {
+        const state = storage.getState();
+        const id = resolveConversationSessionId(state.sessions, rootId);
+        const current = id ? state.sessions[id] : undefined;
+        if (!current || state.sessions[rootId]?.metadata?.conversationSwitch || state.sessions[rootId]?.metadata?.conversationDeletePlan) {
+            throw new HappyError(t('session.agentSwitchUnavailable'), false);
+        }
+        return current;
+    }, [rootId]);
+    const [groupActionFailure, setGroupActionFailure] = React.useState<SessionGroupActionFailure | null>(null);
+    const prepareLifecycleAction = React.useCallback(async (action: 'archive' | 'delete' | 'restore') => {
+        setGroupActionFailure(null);
+        try {
+            const refresh = async (id: string) => {
+                try {
+                    if (await sync.refreshConversationSession(id)) return;
+                } catch { /* An unreadable authority cannot authorize a lifecycle mutation. */ }
+                throw new HappyError(t('session.agentSwitchUnavailable'), false);
+            };
+            // The object used to open a menu may predate the first Agent switch.
+            // Resolve identity from a fresh user-triggered read before choosing a path.
+            await refresh(providedSession.id);
+            let state = storage.getState();
+            const source = state.sessions[providedSession.id];
+            if (!source?.metadata) throw new HappyError(t('session.agentSwitchUnavailable'), false);
+            if (getConversationRootSessionId(source) !== rootId) throw new HappyError(t('session.agentSwitchChanged'), false);
+            if (rootId !== source.id) await refresh(rootId);
+            state = storage.getState();
+            const root = state.sessions[rootId];
+            if (!root?.metadata || getConversationRootSessionId(root) !== rootId) throw new HappyError(t('session.agentSwitchUnavailable'), false);
+            if (root.metadata.conversationSwitch) throw new HappyError(t('session.agentSwitchPending'), false);
+            if (root.metadata.conversationDeletePlan) {
+                if (action !== 'delete') throw new HappyError(t('session.conversationDeletePending'), false);
+                return { root, current: null, grouped: true };
+            }
+            const activeId = root.metadata.conversationActiveSessionId ?? rootId;
+            if (activeId !== source.id && activeId !== rootId) await refresh(activeId);
+            state = storage.getState();
+            const currentId = resolveConversationSessionId(state.sessions, source.id);
+            if (!currentId || currentId !== activeId || state.sessions[rootId]?.metadata?.conversationSwitch
+                || state.sessions[rootId]?.metadata?.conversationDeletePlan) throw new HappyError(t('session.agentSwitchChanged'), false);
+            return { root: state.sessions[rootId], current: state.sessions[currentId],
+                grouped: Boolean(source.metadata.conversationRootSessionId || state.sessions[rootId].metadata?.conversationActiveSessionId) };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('errors.unknownError');
+            setGroupActionFailure({ action, message, completedIds: [], failedSessionId: null, pendingIds: [] });
+            throw error instanceof HappyError ? error : new HappyError(message, false);
+        }
+    }, [providedSession.id, rootId]);
+    const performConversationGroupAction = React.useCallback(async (action: 'archive' | 'delete') => {
+        setGroupActionFailure(null);
+        const root = storage.getState().sessions[rootId];
+        try {
+            if (!root) throw new Error(t('session.agentSwitchUnavailable'));
+            if (action === 'archive') await bulkArchiveSessions([root]);
+            else await bulkDeleteSessions([root]);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('errors.unknownError');
+            setGroupActionFailure({ action, message,
+                completedIds: error instanceof BulkSessionActionError ? error.completedIds : [],
+                failedSessionId: error instanceof BulkSessionActionError ? error.failedSessionId : null,
+                pendingIds: error instanceof BulkSessionActionError ? error.pendingIds : [],
+            });
+            // Reflect completed segments without claiming the whole conversation changed.
+            await sync.refreshSessions().catch(() => {});
+            throw new HappyError(message, false);
+        }
+    }, [rootId]);
     const sessionStatus = useSessionStatus(session);
     const machineId = session.metadata?.machineId ?? '';
     const machine = useMachine(machineId);
     const expResumeSession = useSetting('expResumeSession');
-    const sessionManagement = useSessionManagementPreferences([session.id], { prune: false });
-    const sessionPinned = sessionManagement.isPinned(session.id);
+    const sessionManagement = useSessionManagementPreferences([rootId], { prune: false });
+    const sessionPinned = sessionManagement.isPinned(rootId);
     const resumeAvailability = React.useMemo(
-        () => getResumeAvailability(session, machine, sessionStatus.isConnected),
-        [machine, session, sessionStatus.isConnected],
+        () => executionReady ? getResumeAvailability(session, machine, sessionStatus.isConnected)
+            : { canResume: false, canShowResume: false, subtitle: '', message: t('session.agentSwitchUnavailable') },
+        [executionReady, machine, session, sessionStatus.isConnected],
     );
 
     // Fork eligibility is separate from resume because fork works on both
@@ -167,24 +252,26 @@ export function useSessionQuickActions(
         session.metadata?.codexThreadId,
     ]);
     const canFork = Boolean(
-        expResumeSession
+        executionReady
+        && expResumeSession
         && forkSource
         && machine
         && isMachineOnline(machine),
     );
-    const canRegenerateTitle = canRegenerateSessionTitle(session);
-    const crossAgentTarget = getCrossAgentTarget(session, machine);
+    const canRegenerateTitle = executionReady && canRegenerateSessionTitle(session);
+    const crossAgentTarget = executionReady ? getCrossAgentTarget(session, machine) : null;
     const [continuingWithAgent, performContinueWithAgent] = useHappyAction(async () => {
         if (!crossAgentTarget) throw new HappyError(t('session.crossAgentUnavailable'), false);
-        const id = await createCrossAgentContinuation(session.id, crossAgentTarget);
+        const current = requireExecutionSession();
+        const id = await createCrossAgentContinuation(current.id, crossAgentTarget);
         hapticsSuccess(); navigateToSession(id);
     });
     const continueWithAgent = React.useCallback(() => { performContinueWithAgent(); }, [performContinueWithAgent]);
 
 
     const openDetails = React.useCallback(() => {
-        router.push(`/session/${session.id}/info`);
-    }, [router, session.id]);
+        router.push(`/session/${rootId}/info`);
+    }, [router, rootId]);
 
     const copySessionMetadata = React.useCallback(() => {
         void (async () => {
@@ -205,18 +292,15 @@ export function useSessionQuickActions(
     }, [onAfterCopySessionMetadata, session]);
 
     const togglePinSession = React.useCallback(() => {
-        sessionManagement.togglePinned(session.id);
-    }, [session.id, sessionManagement]);
+        sessionManagement.togglePinned(rootId);
+    }, [rootId, sessionManagement]);
 
     const resumeOriginalSession = React.useCallback(async () => {
         // Restore awaits metadata and refresh first. Another device may have
         // reconnected the worker during that time; never restart it using the
         // availability captured when the action was rendered.
         const currentState = storage.getState();
-        const currentSession = currentState.sessions[session.id];
-        if (!currentSession) {
-            throw new HappyError(t('errors.sessionDeleted'), false);
-        }
+        const currentSession = requireExecutionSession();
         if (currentSession.presence === 'online' && !isArchivedLifecycleState(currentSession.metadata?.lifecycleState)) return;
         const currentMachineId = currentSession.metadata?.machineId ?? '';
         const availability = getResumeAvailability(currentSession, currentState.machines[currentMachineId], false);
@@ -251,7 +335,7 @@ export function useSessionQuickActions(
                     storage.getState().updateSessionEffortLevel(result.sessionId, currentSession.effortLevel);
                 }
 
-                navigateToSession(result.sessionId);
+                navigateToSession(rootId);
                 return;
             }
             case 'requestToApproveDirectoryCreation':
@@ -259,14 +343,14 @@ export function useSessionQuickActions(
             case 'error':
                 throw new HappyError(result.errorMessage, false);
         }
-    }, [navigateToSession, session.id]);
+    }, [navigateToSession, requireExecutionSession, rootId]);
 
     const [resumingSession, performResume] = useHappyAction(resumeOriginalSession);
 
-    const canContinue = !isRetiredSession(session) && (!sessionStatus.isConnected || sessionStatus.state === 'failed' || Boolean(session.metadata?.continuedBySessionId));
+    const canContinue = executionReady && !isRetiredSession(session) && (!sessionStatus.isConnected || sessionStatus.state === 'failed' || Boolean(session.metadata?.continuedBySessionId));
     const [continuingSession, continueSession] = useHappyAction(async () => {
         try {
-            const id = await createSessionContinuation(session.id);
+            const id = await createSessionContinuation(requireExecutionSession().id);
             navigateToSession(id);
         } catch (error) {
             const message = error instanceof Error ? error.message : '';
@@ -280,25 +364,13 @@ export function useSessionQuickActions(
     });
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
-        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
-
-        // Archive is durable encrypted lifecycle metadata. Transport `active`
-        // remains presence-only, so an offline but resumable session is never
-        // mistaken for an archived row.
-        await sessionRequestArchiveMetadata(session);
-
-        // Only wait for the kill RPC when presence proves the agent is
-        // connected. Archived/offline rows have no responder, so calling the
-        // RPC first would make this inline action stall until its ack timeout.
-        const killResult = sessionStatus.isConnected && Boolean(session.metadata?.machineId)
-            ? await sessionKill(session.id)
-            : { success: false };
-        if (!killResult.success) {
-            const archiveResult = await sessionArchive(session.id);
-            if (!archiveResult.success) {
-                throw new HappyError(archiveResult.message || t('sessionInfo.failedToArchiveSession'), false);
-            }
+        const authority = await prepareLifecycleAction('archive');
+        if (!authority.grouped) {
+            const current = authority.current!;
+            await maybeCleanupWorktree(current.id, current.metadata?.path, current.metadata?.machineId);
         }
+        // Shared lifecycle operations recheck authority after optional worktree UI.
+        await performConversationGroupAction('archive');
         await sync.refreshSessions();
         onAfterArchive?.();
     });
@@ -308,18 +380,55 @@ export function useSessionQuickActions(
     }, [performArchive]);
 
     const [restoringSession, performRestore] = useHappyAction(async () => {
+        const authority = await prepareLifecycleAction('restore');
+        const original = authority.current!;
+        const originallyConnected = original.presence === 'online' && !isArchivedLifecycleState(original.metadata?.lifecycleState);
+        const resumeAtStart = getResumeAvailability(original,
+            storage.getState().machines[original.metadata?.machineId ?? ''], originallyConnected).canResume;
         // Keep the lifecycle gate closed while the daemon captures its resume
         // cursor. Clearing it first lets another open page submit queued input
         // before the replacement worker has established its history boundary.
         await sync.refreshSessions();
-        if (resumeAvailability.canResume) {
+        let group: Session[] | null = null;
+        if (authority.grouped) {
+            setGroupActionFailure(null);
+            try { group = await resolveSessionsForBulkAction([storage.getState().sessions[rootId] ?? providedSession]); }
+            catch (error) {
+                const message = error instanceof Error ? error.message : t('errors.unknownError');
+                setGroupActionFailure({ action: 'restore', message, completedIds: [], failedSessionId: null, pendingIds: [] });
+                throw new HappyError(message, false);
+            }
+        }
+        const current = requireExecutionSession();
+        if (current.id !== authority.current?.id) throw new HappyError(t('session.agentSwitchChanged'), false);
+        const currentMachineId = current.metadata?.machineId ?? '';
+        const connected = current.presence === 'online' && !isArchivedLifecycleState(current.metadata?.lifecycleState);
+        const availability = getResumeAvailability(current, storage.getState().machines[currentMachineId], connected);
+        if (resumeAtStart || availability.canResume) {
             await resumeOriginalSession();
         }
         // Resume refreshes the worker metadata. Do not write the object from
         // the archived render back over its new PID, capabilities or cursor.
-        const currentSession = storage.getState().sessions[session.id];
-        if (!currentSession) throw new HappyError(t('errors.sessionDeleted'), false);
-        await sessionRestoreMetadata(currentSession);
+        if (group) {
+            setGroupActionFailure(null);
+            const completedIds: string[] = [];
+            for (const [index, member] of group.entries()) {
+                try {
+                    const latest = storage.getState().sessions[member.id];
+                    if (!latest) throw new Error(t('errors.sessionDeleted'));
+                    await sessionRestoreMetadata(latest);
+                    completedIds.push(member.id);
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : t('errors.unknownError');
+                    setGroupActionFailure({ action: 'restore', message, completedIds, failedSessionId: member.id,
+                        pendingIds: group.slice(index + 1).map(next => next.id) });
+                    throw new HappyError(message, false);
+                }
+            }
+        } else {
+            const currentSession = requireExecutionSession();
+            await sessionRestoreMetadata(currentSession);
+        }
         await sync.refreshSessions();
         hapticsSuccess();
     });
@@ -329,19 +438,20 @@ export function useSessionQuickActions(
     }, [performRestore]);
 
     const updateSessionTitle = React.useCallback(async (nextTitle: string) => {
-        if (!session.metadata) {
+        const titleSession = storage.getState().sessions[rootId];
+        if (!titleSession?.metadata || getConversationRootSessionId(titleSession) !== rootId) {
             throw new HappyError(t('sessionInfo.renameSessionMissingMetadata'), false);
         }
 
         const trimmedTitle = nextTitle.trim();
-        if (!trimmedTitle || trimmedTitle === getSessionName(session)) {
+        if (!trimmedTitle || trimmedTitle === getSessionName(titleSession)) {
             return;
         }
 
         await sessionUpdateMetadata(
-            session.id,
-            session.metadata,
-            session.metadataVersion,
+            rootId,
+            titleSession.metadata,
+            titleSession.metadataVersion,
             metadata => ({
                 ...metadata,
                 summary: {
@@ -350,14 +460,15 @@ export function useSessionQuickActions(
                 },
             }),
         );
-    }, [session]);
+    }, [rootId]);
 
     const [renamingFromPrompt, performRename] = useHappyAction(async () => {
-        if (!session.metadata) {
+        const titleSession = storage.getState().sessions[rootId];
+        if (!titleSession?.metadata || getConversationRootSessionId(titleSession) !== rootId) {
             throw new HappyError(t('sessionInfo.renameSessionMissingMetadata'), false);
         }
 
-        const currentTitle = getSessionName(session);
+        const currentTitle = getSessionName(titleSession);
         const nextTitle = await Modal.prompt(
             t('sessionInfo.renameSession'),
             t('sessionInfo.renameSessionPrompt'),
@@ -388,26 +499,28 @@ export function useSessionQuickActions(
     }, [performInlineRename]);
 
     const [regeneratingTitle, performRegenerateTitle] = useHappyAction(async () => {
-        if (!session.metadata || !sessionStatus.isConnected) {
+        const current = requireExecutionSession();
+        if (!current.metadata || !sessionStatus.isConnected) {
             throw new HappyError(t('sessionInfo.regenerateTitleUnavailable'), false);
         }
         if (!canRegenerateTitle) {
             throw new HappyError(t('sessionInfo.regenerateTitleRequiresUpdatedCli'), false);
         }
 
-        await sync.ensureMessagesLoaded(session.id);
-        const messages = storage.getState().sessionMessages[session.id]?.messages ?? [];
+        await sync.ensureMessagesLoaded(current.id);
+        if (requireExecutionSession().id !== current.id) throw new HappyError(t('session.agentSwitchChanged'), false);
+        const messages = storage.getState().sessionMessages[current.id]?.messages ?? [];
         const transcript = buildSessionTitleTranscript(messages);
         if (!transcript) {
             throw new HappyError(t('sessionInfo.regenerateTitleNoMessages'), false);
         }
 
-        const result = await sessionRegenerateTitle(session.id, {
+        const result = await sessionRegenerateTitle(current.id, {
             transcript,
-            currentTitle: session.metadata.summary?.text ?? null,
-            projectPath: session.metadata.path ?? null,
-            model: session.modelMode ?? session.metadata.currentModelCode ?? null,
-            effort: session.effortLevel ?? session.metadata.currentThoughtLevelCode ?? null,
+            currentTitle: storage.getState().sessions[rootId]?.metadata?.summary?.text ?? null,
+            projectPath: current.metadata.path ?? null,
+            model: current.modelMode ?? current.metadata.currentModelCode ?? null,
+            effort: current.effortLevel ?? current.metadata.currentThoughtLevelCode ?? null,
         });
         if (!result.success) {
             const message = isRegenerateTitleRpcUnavailable(result.message)
@@ -416,6 +529,7 @@ export function useSessionQuickActions(
             throw new HappyError(message, false);
         }
 
+        if (current.id !== rootId) await updateSessionTitle(result.title);
         await sync.refreshSessions();
         hapticsSuccess();
     });
@@ -427,18 +541,12 @@ export function useSessionQuickActions(
     // Permanently delete a session. If it is still active, first try to stop
     // the CLI process so the server accepts the delete.
     const [deletingSession, performDelete] = useHappyAction(async () => {
-        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
-
-        // Best-effort kill in case the session reactivated between render and tap.
-        if (sessionStatus.isConnected || session.active) {
-            await sessionKill(session.id).catch(() => {});
+        const authority = await prepareLifecycleAction('delete');
+        if (!authority.grouped) {
+            const current = authority.current!;
+            await maybeCleanupWorktree(current.id, current.metadata?.path, current.metadata?.machineId);
         }
-
-        const result = await sessionDelete(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
-        }
-        sync.removeSessionLocally(session.id);
+        await performConversationGroupAction('delete');
         onAfterDelete?.();
     });
 
@@ -586,8 +694,8 @@ export function useSessionQuickActions(
             canFork,
             canCopySessionMetadata,
             sessionPinned,
-            sessionActive: !sessionArchived,
-            sessionArchived,
+            sessionActive: !canRetryConversationDelete && !sessionArchived,
+            sessionArchived: !canRetryConversationDelete && sessionArchived,
             canSelect: Boolean(onSelectSession),
         });
     }, [
@@ -608,6 +716,7 @@ export function useSessionQuickActions(
         regenerateTitle,
         renameSession,
         canContinue,
+        canRetryConversationDelete,
         continueSession,
         continuingSession,
         session.metadata?.continuedBySessionId,
@@ -632,6 +741,8 @@ export function useSessionQuickActions(
 
     return {
         actionItems,
+        groupActionFailure,
+        canRetryConversationDelete,
         crossAgentTarget,
         continuingWithAgent,
         continueWithAgent,
@@ -641,7 +752,7 @@ export function useSessionQuickActions(
         showActionAlert,
         archiveSession,
         archivingSession,
-        canArchive: session.active,
+        canArchive: !canRetryConversationDelete && session.active,
         canDelete: true,
         deleteSession,
         // For callers that already presented their own local confirmation.

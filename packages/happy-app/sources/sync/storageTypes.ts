@@ -117,6 +117,21 @@ export const MetadataSchema = z.object({
     continuationOfSessionId: z.string().optional(),
     continuationContext: z.string().max(24000).optional(),
     continuedBySessionId: z.string().optional(),
+    /** Logical chat membership; ordinary continuation/fork sessions remain independent. */
+    conversationRootSessionId: z.string().min(1).optional(),
+    /** Authoritative execution session, stored only on the logical root. */
+    conversationActiveSessionId: z.string().min(1).optional(),
+    conversationSwitch: z.object({
+        id: z.string().min(1),
+        sourceSessionId: z.string().min(1),
+        targetSessionId: z.string().min(1).optional(),
+    }).optional(),
+    /** A verified deletion plan survives partial failure without guessing at missing history. */
+    conversationDeletePlan: z.object({
+        sessionIds: z.array(z.string().min(1)).min(1).max(1000),
+        completedSessionIds: z.array(z.string().min(1)).max(1000),
+        activeSessionId: z.string().min(1),
+    }).optional(),
     crossAgentRequestId: z.string().optional(),
     crossAgentSourceAgent: z.enum(['claude', 'codex']).optional(),
     parentSessionId: z.string().optional(),

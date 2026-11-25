@@ -4,7 +4,7 @@ import type { AttachmentPreview } from '@/sync/attachmentTypes';
 export type SessionAgentComposerArgs = {
     session: Session;
     base: SessionComposerModeSelectorConfig;
-    readSubmission: () => { prompt: string; images?: AttachmentPreview[] };
+    readSubmission: () => { prompt: string; images?: AttachmentPreview[]; onQueued?: () => void };
     flushDraft: () => void;
 };
 export type SessionAgentComposer = {
@@ -14,4 +14,6 @@ export type SessionAgentComposer = {
     sending: boolean;
     disabled: boolean;
     submit: () => Promise<boolean>;
+    submitInChat: () => Promise<boolean>;
+    submitNewSession: () => Promise<boolean>;
 };

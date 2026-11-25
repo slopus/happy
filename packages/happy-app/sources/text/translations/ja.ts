@@ -1311,6 +1311,19 @@ export const ja: TranslationStructure = {
     },
 
     session: {
+        conversationActionUnavailable: "会話履歴を読み込めないか、変更されています。再読み込みして、もう一度お試しください。",
+        conversationDeletePending: "この会話の削除を完了してから、他の操作を行ってください。",
+        conversationDeletePlanInvalid: "保存された削除計画に不整合があります。これ以上のセッションは削除していません。",
+        conversationDeleteStateUnavailable: "削除状況を読み込めません。再読み込みして、もう一度お試しください。",
+        conversationDeleteStateChanged: "削除の進捗を保存する前に会話が変更されました。",
+        conversationDeleteReceiptFailed: "削除の進捗を保存できませんでした。もう一度お試しください。",
+        conversationDeletePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `会話全体を削除できませんでした。完了 ${completed} 件、残り ${remaining} 件。もう一度お試しください。${detail}`,
+        conversationArchivePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `会話全体をアーカイブできませんでした。完了 ${completed} 件、残り ${remaining} 件。もう一度お試しください。${detail}`,
+        agentSwitchBusy: "現在のタスク、承認待ちの操作、送信待ちのメッセージを処理してから、エージェントを切り替えてください。",
+        agentSwitchChanged: "このチャットは別の場所で切り替えられました。チャットを再読み込みして、もう一度お試しください。",
+        agentSwitchUnavailable: "現在のエージェントセッションを読み込めませんでした。もう一度お試しください。",
+        agentSwitchPending: "エージェントを切り替えています。少し待ってから送信してください。",
+        contextHandoff: "コンテキストの引き継ぎ",
         crossAgentSourceLabel: projectGoalsBase.session.crossAgentSourceLabel,
         crossAgentSourceSubtitle: projectGoalsBase.session.crossAgentSourceSubtitle,
         continueWithClaude: projectGoalsBase.session.continueWithClaude,
@@ -1610,6 +1623,7 @@ failedContinueTask: "未完了の作業を続ける",
         "enable": "Enable"
 },
     agentInput: {
+        switchInConversation: "送信してエージェントを切り替え",
         newAgentSessionHint: '選択した Coding Agent で新しいセッションを開きます。現在の会話と下書きは保持されます。',
         switchCodingAgent: 'コーディングエージェントを切り替える',
         stop: '停止',

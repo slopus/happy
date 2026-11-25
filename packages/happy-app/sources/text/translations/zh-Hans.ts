@@ -1589,6 +1589,19 @@ export const zhHans: TranslationStructure = {
     },
 
     session: {
+        conversationActionUnavailable: "会话历史不可用或已发生变化，请重新加载后重试。",
+        conversationDeletePending: "请先完成此会话的删除，再进行其他操作。",
+        conversationDeletePlanInvalid: "已保存的删除计划不一致，未继续删除其他会话。",
+        conversationDeleteStateUnavailable: "无法读取删除状态，请重新加载后重试。",
+        conversationDeleteStateChanged: "保存删除进度前，会话已发生变化。",
+        conversationDeleteReceiptFailed: "未能保存删除进度，请重试以完成删除。",
+        conversationDeletePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `未能删除整个会话：已完成 ${completed} 个部分，剩余 ${remaining} 个。请重试以完成。${detail}`,
+        conversationArchivePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `未能归档整个会话：已完成 ${completed} 个部分，剩余 ${remaining} 个。请重试以完成。${detail}`,
+        agentSwitchBusy: "请先处理完当前任务、待审批操作和待发消息，再切换 Agent。",
+        agentSwitchChanged: "此聊天已在其他位置切换，请重新加载聊天后重试。",
+        agentSwitchUnavailable: "无法加载当前执行会话，请重试。",
+        agentSwitchPending: "正在切换 Agent，请稍后再发送。",
+        contextHandoff: "上下文交接",
         crossAgentSourceLabel: '接续来源',
         crossAgentSourceSubtitle: '已携带另一 Agent 的上下文。点击查看原会话中的消息。',
         continueWithClaude: '新建 Claude 会话接着做',
@@ -1888,6 +1901,7 @@ failedContinueTask: "继续未完成的任务",
         "enable": "启用"
 },
     agentInput: {
+        switchInConversation: "发送并切换 Agent",
         newAgentSessionHint: '将使用所选 Coding Agent 新建会话；当前对话和草稿保留。',
         switchCodingAgent: '切换编程智能体',
         stop: '停止',

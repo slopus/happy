@@ -42,6 +42,8 @@ const mocks = vi.hoisted(() => ({
     setDesktopReadingWidth: vi.fn(),
     previewLocalSettings: vi.fn(),
     flushDraft: vi.fn(),
+    agentComposer: undefined as any,
+    agentComposerArgs: undefined as any,
     isTablet: false,
     isLandscape: false,
     focusContext: null as unknown as React.Context<boolean>,
@@ -323,6 +325,10 @@ vi.mock('@/components/FileViewPanel', async () => {
 });
 vi.mock('@/components/diff/PierreDiffView', () => ({ prefetchPierreDiff: vi.fn() }));
 vi.mock('@/hooks/useDraft', () => ({ useDraft: () => ({ clearDraft: vi.fn(), updateDraft: vi.fn(), flushDraft: mocks.flushDraft }) }));
+vi.mock('@/hooks/useSessionAgentComposer', () => ({ useSessionAgentComposer: (args: any) => {
+    mocks.agentComposerArgs = args;
+    return mocks.agentComposer;
+} }));
 vi.mock('@/hooks/useComposerPrediction', () => ({ useComposerPrediction: () => ({ text: null, invalidate: vi.fn(), onTextChange: vi.fn(), onInputActivity: vi.fn() }) }));
 vi.mock('@/hooks/useSessionManagementPreferences', () => ({
     useSessionManagementPreferences: () => ({ isPinned: () => false, togglePinned: vi.fn() }),
@@ -516,6 +522,8 @@ describe('SessionView Agent-space boundary', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.selectedImages = [];
+        mocks.agentComposer = undefined;
+        mocks.agentComposerArgs = undefined;
         mocks.pendingCloseCallback = null;
         mocks.isDataReady = false;
         mocks.zenMode = false;
@@ -568,6 +576,53 @@ describe('SessionView Agent-space boundary', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it('routes ordinary send and explicit new session to different staged Agent actions', async () => {
+        mocks.isDataReady = true;
+        mocks.platformOS = 'web';
+        const inChat = vi.fn();
+        const newSession = vi.fn();
+        mocks.agentComposer = { pendingAgent: 'claude', sending: false, disabled: false,
+            submitInChat: inChat, submitNewSession: newSession, modeSelector: {} };
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        const composer = renderer.root.findByType('MessageComposer');
+        expect(composer.props.newSessionAgent).toBe('claude');
+        expect(composer.props.sendLabel).toBe('agentInput.switchInConversation');
+        act(() => composer.props.onSend());
+        expect(inChat).toHaveBeenCalledOnce();
+        expect(newSession).not.toHaveBeenCalled();
+        act(() => composer.props.onNewSession());
+        expect(newSession).toHaveBeenCalledOnce();
+        expect(mocks.stageSessionMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('cleans the submitted in-chat snapshot only when its accepted callback runs', async () => {
+        mocks.isDataReady = true;
+        mocks.platformOS = 'web';
+        mocks.selectedImages = [{ id: 'submitted-image', uri: 'blob:image' }];
+        mocks.agentComposer = { pendingAgent: 'claude', sending: false, disabled: false,
+            submitInChat: vi.fn(), submitNewSession: vi.fn(), modeSelector: {} };
+        let draft = 'Continue the task';
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />, {
+                createNodeMock: (element: any) => element.type === 'MessageComposer' ? {
+                    getText: () => draft,
+                    setTextAndSelection: (value: string) => { draft = value; },
+                } : null,
+            });
+        });
+        const submitted = mocks.agentComposerArgs.readSubmission();
+        expect(submitted.prompt).toBe('Continue the task');
+        expect(draft).toBe('Continue the task');
+        expect(mocks.removeImage).not.toHaveBeenCalled();
+        act(() => submitted.onQueued());
+        expect(draft).toBe('');
+        expect(mocks.removeImage).toHaveBeenCalledExactlyOnceWith('submitted-image');
+        act(() => renderer.unmount());
+    });
 
     it('keeps the discussion action available in zen mode without a separate composer row', async () => {
         mocks.zenMode = true;

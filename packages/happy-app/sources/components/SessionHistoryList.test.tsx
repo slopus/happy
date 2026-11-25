@@ -122,6 +122,18 @@ describe('SessionHistoryList', () => {
         act(() => renderer.unmount());
     });
 
+    it('shows one archived logical chat based on its current execution rather than each old segment', () => {
+        mocks.sessions = [
+            { id: 'root', createdAt: 1, updatedAt: 2, name: 'Chat', metadata: { path: '/repo', conversationActiveSessionId: 'current' } },
+            { id: 'old', createdAt: 2, updatedAt: 3, name: 'Old worker', metadata: { path: '/repo', conversationRootSessionId: 'root', lifecycleState: 'archived' } },
+            { id: 'current', createdAt: 3, updatedAt: 4, name: 'Current worker', metadata: { path: '/repo', conversationRootSessionId: 'root', lifecycleState: 'archived' } },
+        ];
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionHistoryList variant="sidebar" />); });
+        expect(renderer.root.findAllByType('CompactSessionRow').map((node: any) => node.props.session.id)).toEqual(['root']);
+        act(() => renderer.unmount());
+    });
+
     it('ignores native offset changes without a drag and consumes one native drag', () => {
         mocks.platform = 'ios';
         let renderer: any;

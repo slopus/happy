@@ -156,3 +156,52 @@ describe('sidebar status priority and durable user recency', () => {
         expect(storage.getState().sessions.a.lastUserMessageAt).toBe(120);
     });
 });
+
+describe('logical conversation sidebar projection', () => {
+    beforeEach(() => storage.setState({ sessions: {}, sessionsData: null, sessionListViewData: null, sessionMessages: {}, unreadSessionIds: new Set(), currentViewingSessionId: null }));
+    const rows = () => storage.getState().sessionListViewData?.flatMap(item => item.type === 'active-sessions' ? item.sessions : item.type === 'session' ? [item.session] : []) ?? [];
+    const metadata = { path: '/repo', host: 'mac', machineId: 'machine' };
+
+    it('shows one stable row with the active worker status, root title, and real action identity', () => {
+        const root = { ...session('root', 1, 10), metadata: { ...metadata, conversationActiveSessionId: 'target', summary: { text: 'Kept title', updatedAt: 1 } } };
+        const target = { ...session('target', 20, 30), active: true, presence: 'online' as const,
+            metadata: { ...metadata, conversationRootSessionId: 'root', flavor: 'antigravity', summary: { text: 'Worker title', updatedAt: 30 } },
+            agentState: { turnStatus: { status: 'running' as const, updatedAt: 30 } } };
+        storage.getState().applySessions([root, target, session('other-chat', 3, 25)]);
+        expect(rows().map(row => row.id)).toEqual(['root', 'other-chat']);
+        expect(rows()[0]).toMatchObject({ id: 'root', executionSessionId: 'target', name: 'Kept title', flavor: 'antigravity', state: 'running', createdAt: 1, lastUserMessageAt: 30 });
+        expect(storage.getState().sessions.root.metadata?.flavor).toBeUndefined();
+        expect(storage.getState().sessions.target.id).toBe('target');
+        storage.getState().updateSessionDraft('target', 'next request');
+        expect(rows()[0].hasDraft).toBe(true);
+        storage.getState().updateSessionDraft('target', null);
+        expect(rows()[0].hasDraft).toBe(false);
+    });
+
+    it('aggregates unread work across segments and clears it by viewing the active worker', () => {
+        storage.getState().applySessions([
+            { ...session('root', 1, 10), metadata: { ...metadata, conversationActiveSessionId: 'target' } },
+            { ...session('previous', 2, 20), metadata: { ...metadata, conversationRootSessionId: 'root' } },
+            { ...session('target', 3, 30), metadata: { ...metadata, conversationRootSessionId: 'root' } },
+        ]);
+        storage.getState().markSessionUnread('previous');
+        storage.getState().markSessionUnread('target');
+        expect(rows()).toMatchObject([{ id: 'root', hasUnread: true }]);
+        storage.getState().setCurrentViewingSession('target');
+        expect(storage.getState().currentViewingSessionId).toBe('target');
+        expect(rows()[0].hasUnread).toBe(false);
+        expect(storage.getState().unreadSessionIds.size).toBe(0);
+        storage.getState().markSessionUnread('root');
+        storage.getState().markSessionRead('target');
+        expect(rows()[0].hasUnread).toBe(false);
+    });
+
+    it('keeps a separately requested continuation visible and never hides an inconsistent target', () => {
+        storage.getState().applySessions([
+            { ...session('root', 1, 10), metadata: { ...metadata, conversationActiveSessionId: 'wrong' } },
+            { ...session('wrong', 2, 20), metadata: { ...metadata, conversationRootSessionId: 'elsewhere' } },
+            { ...session('separate', 3, 30), metadata: { ...metadata, continuationOfSessionId: 'root' } },
+        ]);
+        expect(new Set(rows().map(row => row.id))).toEqual(new Set(['root', 'wrong', 'separate']));
+    });
+});

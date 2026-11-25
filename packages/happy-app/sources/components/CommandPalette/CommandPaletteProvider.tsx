@@ -14,6 +14,7 @@ import { useDesktopSettingsModal } from '@/components/DesktopSettingsModal';
 import { getLanguageNativeName, SUPPORTED_LANGUAGES, t } from '@/text';
 import { formatLastSeen } from '@/utils/sessionUtils';
 import type { Message } from '@/sync/typesMessage';
+import { projectConversationSessions, resolveConversationSessionId, type ConversationSessionProjection } from '@/sync/conversationSession';
 
 interface CommandPaletteLauncher {
     isAvailable: boolean;
@@ -195,15 +196,16 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             },
         ];
 
-        const recentSessions = Object.values(sessions).filter(session => !isRetiredSession(session)).sort((a, b) => b.updatedAt - a.updatedAt);
-        const currentSession = currentViewingSessionId ? sessions[currentViewingSessionId] : undefined;
-        const projectSession = currentSession?.metadata?.path
+        const recentSessions = projectConversationSessions(sessions).filter(session => !isRetiredSession(session)).sort((a, b) => b.updatedAt - a.updatedAt);
+        const currentExecutionId = currentViewingSessionId ? resolveConversationSessionId(sessions, currentViewingSessionId) : null;
+        const currentSession = currentExecutionId ? sessions[currentExecutionId] : undefined;
+        const projectSession: ConversationSessionProjection | undefined = currentSession?.metadata?.path
             ? currentSession
-            : recentSessions.find((session) => Boolean(session.metadata?.path));
+            : recentSessions.find((session) => Boolean(session.metadata?.path) && resolveConversationSessionId(sessions, session.id) !== null);
 
         // Reuse the existing session file browser. The focused variant lands directly in its search input.
         if (projectSession) {
-            const filesRoute = `/session/${projectSession.id}/files`;
+            const filesRoute = `/session/${projectSession.executionSessionId ?? projectSession.id}/files`;
             const projectPath = projectSession.metadata?.path ?? t('common.files');
             cmds.push(
                 {

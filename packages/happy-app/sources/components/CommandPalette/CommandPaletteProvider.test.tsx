@@ -216,6 +216,26 @@ describe('CommandPaletteProvider', () => {
         });
     });
 
+    it('shows a switched chat once and routes its project files to the active execution', () => {
+        const original = mocks.state.sessions;
+        const source = original.abc123456;
+        mocks.state.sessions = {
+            abc123456: { ...source, metadata: { ...source.metadata, conversationActiveSessionId: 'worker' } },
+            worker: { ...source, id: 'worker', updatedAt: 5, metadata: { ...source.metadata, conversationRootSessionId: 'abc123456', flavor: 'antigravity', summary: { text: 'Worker title' } } },
+        } as any;
+        try {
+            act(() => { renderer = TestRenderer.create(<CommandPaletteProvider><></></CommandPaletteProvider>); });
+            act(() => mocks.keyboardHandler?.());
+            const commands = mocks.modalShow.mock.calls[0][0].props.commands as Command[];
+            const chats = commands.filter(command => command.id.startsWith('session-'));
+            expect(chats.map(command => [command.id, command.title])).toEqual([['session-abc123456', 'Launch plan']]);
+            act(() => commands.find(command => command.id === 'open-project-folder')?.action());
+            expect(mocks.openRoute).toHaveBeenCalledWith('/session/worker/files');
+            act(() => chats[0].action());
+            expect(mocks.navigateToSession).toHaveBeenCalledWith('abc123456');
+        } finally { mocks.state.sessions = original; }
+    });
+
     it('静态命令和跨项目会话元数据均进入同一个面板', () => {
         act(() => {
             renderer = TestRenderer.create(

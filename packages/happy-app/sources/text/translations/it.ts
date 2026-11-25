@@ -1308,6 +1308,19 @@ export const it: TranslationStructure = {
     },
 
     session: {
+        conversationActionUnavailable: "La cronologia della conversazione non è disponibile o è cambiata. Ricarica e riprova.",
+        conversationDeletePending: "Completa l’eliminazione di questa conversazione prima di apportare altre modifiche.",
+        conversationDeletePlanInvalid: "Il piano di eliminazione salvato non è coerente. Non sono state eliminate altre sessioni.",
+        conversationDeleteStateUnavailable: "Lo stato dell’eliminazione non è disponibile. Ricarica e riprova.",
+        conversationDeleteStateChanged: "La conversazione è cambiata prima che fosse possibile salvare l’avanzamento dell’eliminazione.",
+        conversationDeleteReceiptFailed: "Impossibile salvare l’avanzamento dell’eliminazione. Riprova per completare.",
+        conversationDeletePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `Impossibile eliminare tutta la conversazione: ${completed} parti completate, ${remaining} rimanenti. Riprova per completare. ${detail}`,
+        conversationArchivePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `Impossibile archiviare tutta la conversazione: ${completed} parti completate, ${remaining} rimanenti. Riprova per completare. ${detail}`,
+        agentSwitchBusy: "Completa l’attività corrente e gestisci le approvazioni in sospeso e i messaggi in coda prima di cambiare agente.",
+        agentSwitchChanged: "L’agente di questa chat è stato cambiato altrove. Ricarica la chat e riprova.",
+        agentSwitchUnavailable: "Impossibile caricare la sessione dell’agente attuale. Riprova.",
+        agentSwitchPending: "Cambio agente in corso. Attendi un momento prima di inviare un altro messaggio.",
+        contextHandoff: "Passaggio del contesto",
         crossAgentSourceLabel: projectGoalsBase.session.crossAgentSourceLabel,
         crossAgentSourceSubtitle: projectGoalsBase.session.crossAgentSourceSubtitle,
         continueWithClaude: projectGoalsBase.session.continueWithClaude,
@@ -1607,6 +1620,7 @@ failedContinueTask: "Continua il lavoro in sospeso",
         "enable": "Enable"
 },
     agentInput: {
+        switchInConversation: "Invia e cambia agente",
         newAgentSessionHint: 'Opens a new session with the selected Coding Agent; this conversation and its draft are kept.',
         switchCodingAgent: 'Cambia agente di programmazione',
         stop: 'Ferma',

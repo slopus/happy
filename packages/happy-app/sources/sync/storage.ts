@@ -37,6 +37,7 @@ import { selectAgentSpaceSessions } from '@/utils/agentSpaceIdentity';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { compareSessionOrder, getSessionExecutionPriority } from '@/utils/sessionOrdering';
 import { getSessionActivityTime, mergeLastMessageAt, compareSessionActivity } from '@/utils/sessionActivity';
+import { projectConversationSessions, type ConversationSessionProjection } from './conversationSession';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -94,6 +95,8 @@ interface SessionMessages {
 // Display-only row data — all primitives, cheap to deep-equal
 export interface SessionRowData {
     id: string;
+    /** Actual worker behind a stable logical chat row. */
+    executionSessionId?: string;
     name: string;
     subtitle: string;
     application?: Metadata['application'];
@@ -120,11 +123,12 @@ export interface SessionRowData {
     hasUnread: boolean;
 }
 
-export function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
+export function buildSessionRowData(session: ConversationSessionProjection, unreadSessionIds?: Set<string>): SessionRowData {
     const resolved = resolveSessionState(session);
 
     return {
         id: session.id,
+        ...(session.executionSessionId ? { executionSessionId: session.executionSessionId } : {}),
         application: session.metadata?.application,
         name: getSessionName(session),
         subtitle: getSessionSubtitle(session),
@@ -146,7 +150,7 @@ export function buildSessionRowData(session: Session, unreadSessionIds?: Set<str
         homeDir: session.metadata?.homeDir ?? null,
         completedTodosCount: session.todos?.filter(todo => todo.status === 'completed').length ?? 0,
         totalTodosCount: session.todos?.length ?? 0,
-        hasUnread: unreadSessionIds?.has(session.id) ?? false,
+        hasUnread: (session.conversationSessionIds ?? [session.id]).some(id => unreadSessionIds?.has(id) === true),
     };
 }
 
@@ -263,10 +267,10 @@ function buildSessionListViewData(
 ): SessionListViewItem[] {
     // Explicit lifecycle archives and completed application turns share archive
     // membership. Transport presence alone never implies an archive.
-    const regularSessions: Session[] = [];
-    const archivedSessions: Session[] = [];
+    const regularSessions: ConversationSessionProjection[] = [];
+    const archivedSessions: ConversationSessionProjection[] = [];
 
-    Object.values(sessions).forEach(session => {
+    projectConversationSessions(sessions).forEach(session => {
         if (isRetiredSession(session)) return;
         if (isSessionArchived(session)) {
             archivedSessions.push(session);
@@ -292,7 +296,7 @@ function buildSessionListViewData(
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
 
-    let currentDateGroup: Session[] = [];
+    let currentDateGroup: ConversationSessionProjection[] = [];
     let currentDateString: string | null = null;
 
     for (const session of archivedSessions) {
@@ -353,6 +357,12 @@ function buildSessionListViewData(
     }
 
     return listData;
+}
+
+function conversationReadSessionIds(sessions: Record<string, Session>, sessionId: string): readonly string[] {
+    const row = projectConversationSessions(sessions).find(session => session.id === sessionId
+        || session.executionSessionId === sessionId || session.conversationSessionIds?.includes(sessionId));
+    return row?.conversationSessionIds ?? [sessionId];
 }
 
 export const storage = create<StorageState>()((set, get) => {
@@ -1134,13 +1144,13 @@ export const storage = create<StorageState>()((set, get) => {
                     ? state.sessionListViewData
                     : state.sessionListViewData?.map(item => {
                         // Keep unread and all other derived flags intact.
-                        const patchRow = (row: SessionRowData) => row.id === sessionId
+                        const patchRow = (row: SessionRowData) => (row.executionSessionId ?? row.id) === sessionId
                             ? { ...row, hasDraft: !!normalizedDraft }
                             : row;
-                        if (item.type === 'session' && item.session.id === sessionId) {
+                        if (item.type === 'session' && (item.session.executionSessionId ?? item.session.id) === sessionId) {
                             return { ...item, session: patchRow(item.session) };
                         }
-                        if (item.type === 'active-sessions' && item.sessions.some(row => row.id === sessionId)) {
+                        if (item.type === 'active-sessions' && item.sessions.some(row => (row.executionSessionId ?? row.id) === sessionId)) {
                             return { ...item, sessions: item.sessions.map(patchRow) };
                         }
                         return item;
@@ -1526,9 +1536,10 @@ export const storage = create<StorageState>()((set, get) => {
             friendsLoaded: false  // Reset loading flag
         })),
         markSessionRead: (sessionId: string) => set((state) => {
-            if (!state.unreadSessionIds.has(sessionId)) return state;
+            const readIds = conversationReadSessionIds(state.sessions, sessionId);
+            if (!readIds.some(id => state.unreadSessionIds.has(id))) return state;
             const next = new Set(state.unreadSessionIds);
-            next.delete(sessionId);
+            readIds.forEach(id => next.delete(id));
             return {
                 ...state,
                 unreadSessionIds: next,
@@ -1548,8 +1559,9 @@ export const storage = create<StorageState>()((set, get) => {
         setCurrentViewingSession: (sessionId: string | null) => set((state) => {
             if (state.currentViewingSessionId === sessionId) return state;
             // If switching to a new session, mark it as read
-            const next = sessionId && state.unreadSessionIds.has(sessionId)
-                ? (() => { const s = new Set(state.unreadSessionIds); s.delete(sessionId); return s; })()
+            const readIds = sessionId ? conversationReadSessionIds(state.sessions, sessionId) : [];
+            const next = readIds.some(id => state.unreadSessionIds.has(id))
+                ? (() => { const s = new Set(state.unreadSessionIds); readIds.forEach(id => s.delete(id)); return s; })()
                 : state.unreadSessionIds;
             return {
                 ...state,
@@ -1686,7 +1698,8 @@ export function useAgentSpaceSessions(machineId: string | null, path: string | n
     }));
     const unreadSessionIds = storage((state) => state.unreadSessionIds);
     return React.useMemo(
-        () => sessions.map((s) => buildSessionRowData(s, unreadSessionIds)),
+        () => projectConversationSessions(Object.fromEntries(sessions.map(session => [session.id, session])))
+            .map((s) => buildSessionRowData(s, unreadSessionIds)),
         [sessions, unreadSessionIds],
     );
 }

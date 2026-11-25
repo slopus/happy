@@ -54,3 +54,31 @@ describe('retired Personal navigation', () => {
         expect(router.navigate).toHaveBeenCalledWith('/session/code');
     });
 });
+
+describe('logical chat navigation', () => {
+    it('normalizes current and earlier execution links to the validated root', () => {
+        state.sessions = {
+            root: { id: 'root', metadata: { path: '/repo', conversationActiveSessionId: 'current' } },
+            earlier: { id: 'earlier', metadata: { path: '/repo', conversationRootSessionId: 'root' } },
+            current: { id: 'current', metadata: { path: '/repo', conversationRootSessionId: 'root' } },
+        };
+        const router = { navigate: vi.fn() };
+        navigateToSession(router as any, 'earlier');
+        expect(router.navigate).toHaveBeenCalledExactlyOnceWith('/session/root');
+        expect(trackSessionSwitched).toHaveBeenCalledWith(state.sessions.current);
+        expect(state.sessions.earlier.metadata.conversationRootSessionId).toBe('root');
+    });
+
+    it('does not canonicalize an unverified root or turn ordinary continuation into a shared chat', () => {
+        state.sessions = {
+            root: { id: 'root', metadata: { path: '/repo', conversationActiveSessionId: 'unloaded' } },
+            child: { id: 'child', metadata: { path: '/repo', conversationRootSessionId: 'root' } },
+            separate: { id: 'separate', metadata: { path: '/repo', continuationOfSessionId: 'root' } },
+        };
+        const router = { navigate: vi.fn() };
+        navigateToSession(router as any, 'child');
+        expect(router.navigate).toHaveBeenLastCalledWith('/session/child');
+        navigateToSession(router as any, 'separate');
+        expect(router.navigate).toHaveBeenLastCalledWith('/session/separate');
+    });
+});

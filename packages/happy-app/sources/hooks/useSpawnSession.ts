@@ -1,3 +1,4 @@
+import { prepareConversationSwitch, claimConversationSwitch, commitConversationSwitch, releaseConversationSwitch, type ConversationSwitch } from '@/sync/conversationSwitch';
 import * as React from 'react';
 import { randomUUID } from 'expo-crypto';
 import { Modal } from '@/modal';
@@ -19,6 +20,7 @@ import { markSessionCriticalPathHydrationRetry } from '@/sync/sessionCriticalPat
 import { attachSessionContinuationContext, prepareSessionContinuationContext } from '@/sync/sessionContextHandoff';
 
 export interface SpawnSessionArgs {
+    continueInCurrentConversation?: boolean;
     machineId: string;
     machine: Machine;
     /** Working directory on the machine; null/empty falls back to the home dir (~). */
@@ -61,6 +63,7 @@ type PendingHydration = {
     configured: boolean;
     handoff?: { sourceId: string; context: string; attached: boolean };
     onQueued?: () => void;
+    conversation?: ConversationSwitch & { claimed?: boolean; committed?: boolean; sendingStarted?: boolean };
 };
 
 type SessionStartupTraceContext = {
@@ -253,11 +256,34 @@ export function useSpawnSession() {
             pending.handoff.attached = true;
         }
         if (!mountedRef.current || pendingHydration.current !== pending) return false;
+        if (pending.conversation && !pending.conversation.claimed) {
+            await claimConversationSwitch(pending.conversation);
+            pending.conversation.claimed = true;
+        }
+        if (!mountedRef.current || pendingHydration.current !== pending) {
+            if (pending.conversation?.claimed && !pending.conversation.sendingStarted) await releaseConversationSwitch(pending.conversation);
+            return false;
+        }
         if (!pending.queued) {
             const attachments = pending.args.images?.length ? pending.args.images : undefined;
             if (pending.args.prompt || attachments) {
                 try {
-                    const receipt = await sync.sendMessage(pending.sessionId, pending.args.prompt, { source: 'new_session', attachments });
+                    if (pending.conversation) pending.conversation.sendingStarted = true;
+                    let receipt: LocalMessageQueueReceipt;
+                    try {
+                        receipt = await sync.sendMessage(pending.sessionId, pending.args.prompt, { source: 'new_session', attachments,
+                            ...(pending.conversation ? { conversationSwitchRequestId: pending.conversation.requestId } : {}),
+                        });
+                    } catch (error) {
+                        // sendMessage throws only before its atomic outbox commit.
+                        // A rejected upload/encryption must not strand the source.
+                        if (pending.conversation) {
+                            pending.conversation.claimed = false;
+                            pending.conversation.sendingStarted = false;
+                            await releaseConversationSwitch(pending.conversation);
+                        }
+                        throw error;
+                    }
                     if (receipt?.type !== 'queued' || receipt.sessionId !== pending.sessionId || !receipt.localIds.length) {
                         throw new Error('local-message-queue-unconfirmed');
                     }
@@ -273,11 +299,19 @@ export function useSpawnSession() {
         if (pending.receipt && !await sync.awaitLocalMessageProjection(pending.sessionId, pending.receipt.localIds, pending.receipt)) {
             throw new Error('local-message-projection-unconfirmed');
         }
+        if (pending.conversation) await sync.awaitConversationHandoffDelivery(pending.sessionId, pending.conversation.sourceId);
         if (!mountedRef.current || pendingHydration.current !== pending) return false;
+        if (pending.conversation && !pending.conversation.committed) {
+            // Snapshot cleanup precedes the active-pointer write, which remounts the view.
+            pending.onQueued?.();
+            pending.onQueued = undefined;
+            await commitConversationSwitch(pending.conversation);
+            pending.conversation.committed = true;
+        }
         // The route may synchronously dismiss/unmount the compose component.
         // Transfer or clear its accepted draft before invoking navigation.
         pending.onQueued?.();
-        navigateToSession(pending.sessionId);
+        if (!pending.conversation) navigateToSession(pending.sessionId);
         traceWebStartupStage(pending.trace, 'web.session.navigated', pending.sessionId);
         pendingHydration.current = null;
         if (mountedRef.current) setHydrationError(null);
@@ -312,6 +346,9 @@ export function useSpawnSession() {
         });
         beginSending();
         try {
+            if (args.continueInCurrentConversation && !args.continuationSourceSessionId) throw new Error('conversation-source-required');
+            const conversationRootId = args.continueInCurrentConversation
+                ? await prepareConversationSwitch(args.continuationSourceSessionId!) : undefined;
             const handoff = args.continuationSourceSessionId ? {
                 sourceId: args.continuationSourceSessionId,
                 context: await prepareSessionContinuationContext(args.continuationSourceSessionId),
@@ -320,7 +357,9 @@ export function useSpawnSession() {
             if (!mountedRef.current) return false;
             const result = await spawnSession(args, approvedNewDirectoryCreation, startupTrace, sessionId => {
                 sessionStartupTraceRuntime.bindSession(startupTrace.runtimeHandle, sessionId);
-                pendingHydration.current = { sessionId, args, trace: startupTrace, retrying: false, queued: false, configured: false, handoff, onQueued };
+                pendingHydration.current = { sessionId, args, trace: startupTrace, retrying: false, queued: false, configured: false, handoff, onQueued,
+                    ...(conversationRootId ? { conversation: { rootId: conversationRootId, sourceId: args.continuationSourceSessionId!, targetId: sessionId, requestId: traceId } } : {}),
+                };
             });
             if (!mountedRef.current) {
                 sessionStartupTraceRuntime.cancel(startupTrace.runtimeHandle, 'spawn-cancelled');

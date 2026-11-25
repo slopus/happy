@@ -1327,6 +1327,19 @@ export const pl: TranslationStructure = {
     },
 
     session: {
+        conversationActionUnavailable: "Historia rozmowy jest niedostępna lub zmieniła się. Odśwież i spróbuj ponownie.",
+        conversationDeletePending: "Przed innymi działaniami dokończ usuwanie tej rozmowy.",
+        conversationDeletePlanInvalid: "Zapisany plan usuwania jest niespójny. Nie usunięto kolejnych sesji.",
+        conversationDeleteStateUnavailable: "Stan usuwania jest niedostępny. Odśwież i spróbuj ponownie.",
+        conversationDeleteStateChanged: "Rozmowa zmieniła się przed zapisaniem postępu usuwania.",
+        conversationDeleteReceiptFailed: "Nie udało się zapisać postępu usuwania. Spróbuj ponownie, aby dokończyć.",
+        conversationDeletePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `Nie udało się usunąć całej rozmowy: ukończono ${completed}, pozostało ${remaining}. Spróbuj ponownie, aby dokończyć. ${detail}`,
+        conversationArchivePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `Nie udało się zarchiwizować całej rozmowy: ukończono ${completed}, pozostało ${remaining}. Spróbuj ponownie, aby dokończyć. ${detail}`,
+        agentSwitchBusy: "Przed zmianą agenta zakończ bieżące zadanie i obsłuż oczekujące zatwierdzenia oraz wiadomości w kolejce.",
+        agentSwitchChanged: "Agent tego czatu został zmieniony w innym miejscu. Odśwież czat i spróbuj ponownie.",
+        agentSwitchUnavailable: "Nie udało się wczytać bieżącej sesji agenta. Spróbuj ponownie.",
+        agentSwitchPending: "Trwa zmiana agenta. Poczekaj chwilę przed wysłaniem kolejnej wiadomości.",
+        contextHandoff: "Przekazanie kontekstu",
         crossAgentSourceLabel: projectGoalsBase.session.crossAgentSourceLabel,
         crossAgentSourceSubtitle: projectGoalsBase.session.crossAgentSourceSubtitle,
         continueWithClaude: projectGoalsBase.session.continueWithClaude,
@@ -1625,6 +1638,7 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
         "enable": "Enable"
 },
     agentInput: {
+        switchInConversation: "Wyślij i zmień agenta",
         newAgentSessionHint: 'Otwiera nową sesję z wybranym agentem. Ta rozmowa i jej szkic zostaną zachowane.',
         switchCodingAgent: 'Zmień agenta programistycznego',
         stop: 'Zatrzymaj',

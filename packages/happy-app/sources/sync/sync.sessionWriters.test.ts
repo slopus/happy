@@ -154,10 +154,58 @@ beforeEach(() => {
     subject.sessionsSync = { awaitQueue: async () => undefined };
     mocks.fetchSnapshot.mockResolvedValue(snapshot());
     mocks.apiRequest.mockResolvedValue({ ok: true, json: async () => ({ messages: [], hasMore: false }) });
+    // These writer-composition cases inject authoritative metadata directly into
+    // the store. Keep that authority seam stable; the fresh-read cases below
+    // restore the real HTTP/decryption path to exercise the conversation gate.
+    vi.spyOn(sync, 'refreshConversationSession').mockImplementation(async id => !!storage.getState().sessions[id]);
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('real session writer composition', () => {
+    it('refreshes an ordinary stale source before sending after another device switches it', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const source = storage.getState().sessions['writer-session'];
+        expect(source.metadata).not.toHaveProperty('conversationActiveSessionId');
+        vi.mocked(sync.refreshConversationSession).mockRestore();
+        const crypto = subject.encryption.getSessionEncryption('writer-session');
+        // Real route hydration decrypts through a detached crypto wrapper.
+        crypto.encryptor.decrypt = async () => [{ ...source.metadata!, conversationActiveSessionId: 'new-agent-session' }];
+        const encrypt = vi.spyOn(crypto, 'encryptRawRecord');
+        mocks.fetchSnapshot.mockResolvedValue(snapshot({ metadataVersion: 2 }));
+        mocks.fetchSnapshot.mockClear(); mocks.apiRequest.mockClear();
+        await expect(sync.sendMessage('writer-session', 'Must not reach the old agent')).rejects.toThrow('switched elsewhere');
+        expect(mocks.fetchSnapshot).toHaveBeenCalledWith(subject.credentials, 'writer-session');
+        expect(storage.getState().sessions['writer-session'].metadata?.conversationActiveSessionId).toBe('new-agent-session');
+        expect(encrypt).not.toHaveBeenCalled();
+        expect(mocks.apiRequest).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
+    it('rechecks fresh conversation authority after attachment upload and refuses an old executor', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const source = storage.getState().sessions['writer-session'];
+        vi.mocked(sync.refreshConversationSession).mockRestore();
+        const crypto = subject.encryption.getSessionEncryption('writer-session');
+        crypto.encryptor.decrypt = async (records: Uint8Array[]) => records.map(bytes => ({
+            ...source.metadata!, conversationActiveSessionId: bytes[0] === 2 ? 'new-agent-session' : 'writer-session',
+        }));
+        mocks.fetchSnapshot.mockReset()
+            .mockResolvedValueOnce(snapshot({ metadataVersion: 2, metadata: 'AQ==' }))
+            .mockResolvedValueOnce(snapshot({ metadataVersion: 3, metadata: 'Ag==' }));
+        const uploading = deferred<any>(); const uploadStarted = deferred<void>();
+        vi.spyOn(subject, 'uploadAttachmentsForSession').mockImplementation(() => { uploadStarted.resolve(); return uploading.promise; });
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        mocks.apiRequest.mockClear();
+        const sending = sync.sendMessage('writer-session', 'Describe this image', { attachments: [{ id: 'image', kind: 'image' }] as any });
+        await uploadStarted.promise;
+        expect(subject.pendingOutbox.size).toBe(0);
+        uploading.resolve({ failed: 0, uploaded: [{ ref: 'image-ref', name: 'image.png', size: 1, width: 1, height: 1 }] });
+        await expect(sending).rejects.toThrow('switched elsewhere');
+        expect(mocks.fetchSnapshot).toHaveBeenCalledTimes(2);
+        expect(mocks.apiRequest).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
     it('refuses a retired Personal send before encryption, outbox admission, or provider recovery', async () => {
         await sync.ensureSessionHydrated('writer-session');
         const current = storage.getState().sessions['writer-session'];

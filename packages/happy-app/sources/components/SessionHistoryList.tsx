@@ -8,7 +8,8 @@ import { StyleSheet } from 'react-native-unistyles';
 import { EmptySessionsTablet, shouldShowSessionEmptyState } from '@/components/EmptySessionsTablet';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { buildSessionRowData, storage, type SessionRowData, useAllSessions, useIsDataReady } from '@/sync/storage';
+import { buildSessionRowData, storage, type SessionRowData, useIsDataReady } from '@/sync/storage';
+import { useConversationSessions } from '@/hooks/useConversationSessions';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
@@ -112,7 +113,7 @@ export const SessionHistoryList = React.memo(function SessionHistoryList({
     const styles = stylesheet;
     const scrollState = useSidebarScrollState<SessionHistoryItem>('history');
     const safeArea = useSafeAreaInsets();
-    const allSessions = useAllSessions();
+    const allSessions = useConversationSessions();
     const isDataReady = useIsDataReady();
     const pathname = usePathname();
     const sidebar = variant === 'sidebar';

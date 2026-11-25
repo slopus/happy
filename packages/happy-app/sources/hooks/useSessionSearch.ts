@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { useAllSessions, useAllMachines } from '@/sync/storage';
+import { useAllMachines } from '@/sync/storage';
+import { useConversationSessions } from './useConversationSessions';
 import type { Session } from '@/sync/storageTypes';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 
@@ -27,7 +28,7 @@ export interface SessionSearchResult {
  * store's existing recency order (newest `updatedAt` first) is preserved.
  */
 export function useSessionSearch(query: string): SessionSearchResult[] {
-    const sessions = useAllSessions();
+    const sessions = useConversationSessions();
     const machines = useAllMachines({ includeOffline: true });
 
     // Map machineId -> display name so a query can match the machine a session

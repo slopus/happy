@@ -21,7 +21,7 @@ const css = `
 .paws-agent-new{position:absolute;inset:0;display:flex;align-items:center;gap:6px;padding-left:11px;padding-right:8px;white-space:nowrap;overflow:hidden;opacity:0;transform:translateX(-5px);transition:opacity 160ms,transform 380ms cubic-bezier(.22,.8,.2,1)}
 .paws-agent-action[data-pending=true] .paws-agent-arrow{opacity:0;transform:scale(.65) rotate(35deg)}
 .paws-agent-action[data-pending=true] .paws-agent-new{opacity:1;transform:translateX(0);transition-delay:80ms}
-@media(prefers-reduced-motion:reduce){.paws-agent-action span,[data-testid=message-composer-action-surface]{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.paws-agent-action span,[data-testid=message-composer-action-surface],[data-testid=message-composer-new-session-surface]{transition:none!important}}
 `;
 export function ComposerAgentAction({ agent, label, fallback, busy }: ComposerAgentActionProps) {
     if (agent === undefined) return <>{fallback}</>;

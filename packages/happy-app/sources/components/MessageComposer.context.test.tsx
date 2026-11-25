@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
-    suggestions: [] as any[], hapticsLight: vi.fn(), liveText: '', write: vi.fn(), width: 390, hasGit: false,
+    suggestions: [] as any[], hapticsLight: vi.fn(), liveText: '', write: vi.fn(), width: 390, hasGit: false, platformOS: 'ios', enterToSend: false,
 }));
 
 vi.mock('react-native', async () => {
@@ -29,7 +29,7 @@ vi.mock('react-native', async () => {
     return {
         ActivityIndicator: 'ActivityIndicator',
         Platform: {
-            OS: 'ios',
+            get OS() { return mocks.platformOS; },
             select: (values: Record<string, unknown>) => values.ios ?? values.default,
         },
         Pressable,
@@ -73,7 +73,7 @@ vi.mock('./autocomplete/useActiveSuggestions', () => ({
 }));
 vi.mock('./AgentInputAutocomplete', () => ({ AgentInputAutocomplete: 'AgentInputAutocomplete' }));
 vi.mock('./GitStatusBadge', () => ({ GitStatusBadge: 'GitStatusBadge', useHasMeaningfulGitStatus: () => mocks.hasGit }));
-vi.mock('@/sync/storage', () => ({ useSetting: () => false }));
+vi.mock('@/sync/storage', () => ({ useSetting: (key: string) => key === 'agentInputEnterToSend' ? mocks.enterToSend : false }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 800 } }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
@@ -122,7 +122,7 @@ import { MessageComposer } from './MessageComposer';
 
 describe('MessageComposer unified context entry', () => {
     let renderer: any;
-    beforeEach(() => { vi.clearAllMocks(); mocks.liveText = ''; mocks.width = 390; mocks.hasGit = false; (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
+    beforeEach(() => { vi.clearAllMocks(); mocks.liveText = ''; mocks.width = 390; mocks.hasGit = false; mocks.platformOS = 'ios'; mocks.enterToSend = false; (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
     afterEach(() => { if (renderer) act(() => renderer.unmount()); });
     const mount = (props: any = {}) => act(() => { renderer = TestRenderer.create(<MessageComposer mode="home" initialValue="" placeholder="Message" onSend={vi.fn()} {...props} />); });
     const input = () => renderer.root.findByType('MultiTextInput');
@@ -132,6 +132,61 @@ describe('MessageComposer unified context entry', () => {
         input().props.onChangeText(text);
     });
     const menu = () => renderer.root.findByType('ComposerContextPicker');
+    it('keeps ordinary send and the explicit new-session action independently clickable', () => {
+        mocks.platformOS = 'web';
+        const send = vi.fn();
+        const newSession = vi.fn();
+        mount({ mode: 'session', sessionId: 's', newSessionAgent: 'claude', onSend: send, onNewSession: newSession });
+        type('Continue the task');
+        const sendButton = renderer.root.findByProps({ testID: 'message-composer-send-button' });
+        expect(sendButton.props.accessibilityLabel).toBe('keyboardShortcuts.sendMessage');
+        act(() => sendButton.props.onPress());
+        expect(send).toHaveBeenCalledOnce();
+        expect(newSession).not.toHaveBeenCalled();
+        act(() => renderer.root.findByProps({ testID: 'message-composer-new-session-button' }).props.onPress());
+        expect(newSession).toHaveBeenCalledOnce();
+        expect(send).toHaveBeenCalledOnce();
+    });
+    it('uses Enter for ordinary send and never creates a session from Enter or Tab', () => {
+        mocks.platformOS = 'web';
+        mocks.enterToSend = true;
+        const send = vi.fn();
+        const newSession = vi.fn();
+        mount({ mode: 'session', sessionId: 's', newSessionAgent: 'claude', onSend: send, onNewSession: newSession });
+        type('Continue the task');
+        act(() => { expect(input().props.onKeyPress({ key: 'Enter' })).toBe(true); });
+        expect(send).toHaveBeenCalledOnce();
+        act(() => { expect(input().props.onKeyPress({ key: 'Tab' })).toBe(false); });
+        expect(newSession).not.toHaveBeenCalled();
+    });
+    it('keeps ordinary empty send disabled while the explicit new-session action stays available', () => {
+        mocks.platformOS = 'web';
+        const send = vi.fn();
+        const newSession = vi.fn();
+        mount({ mode: 'session', sessionId: 's', newSessionAgent: 'claude', onSend: send, onNewSession: newSession });
+        const sendButton = renderer.root.findByProps({ testID: 'message-composer-send-button' });
+        expect(sendButton.props.disabled).toBe(true);
+        act(() => sendButton.props.onPress());
+        expect(send).not.toHaveBeenCalled();
+        const newButton = renderer.root.findByProps({ testID: 'message-composer-new-session-button' });
+        expect(newButton.props.disabled).toBe(false);
+        act(() => newButton.props.onPress());
+        expect(newSession).toHaveBeenCalledOnce();
+    });
+    it('blocks both actions while a switch is being sent', () => {
+        mocks.platformOS = 'web';
+        const send = vi.fn();
+        const newSession = vi.fn();
+        mount({ mode: 'session', sessionId: 's', newSessionAgent: 'claude', onSend: send, onNewSession: newSession, isSending: true });
+        type('Continue the task');
+        const sendButton = renderer.root.findByProps({ testID: 'message-composer-send-button' });
+        const newButton = renderer.root.findByProps({ testID: 'message-composer-new-session-button' });
+        expect(sendButton.props.disabled).toBe(true);
+        expect(newButton.props.disabled).toBe(true);
+        act(() => { sendButton.props.onPress(); newButton.props.onPress(); });
+        expect(send).not.toHaveBeenCalled();
+        expect(newSession).not.toHaveBeenCalled();
+    });
     it('dismisses slash suggestions on outside and Escape without changing draft, and reopens after typing', () => {
         mocks.suggestions = [{ key: 'compact', text: '/compact', component: () => null }];
         mount({ autocompletePrefixes: ['/'] });

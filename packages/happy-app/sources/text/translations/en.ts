@@ -1128,6 +1128,19 @@ export const en: TranslationStructure = {
     },
 
     session: {
+        conversationActionUnavailable: "Conversation history is unavailable or changed. Reload and retry.",
+        conversationDeletePending: "Finish deleting this conversation before changing it.",
+        conversationDeletePlanInvalid: "The saved deletion plan is inconsistent. No further sessions were deleted.",
+        conversationDeleteStateUnavailable: "Deletion state is unavailable. Reload and retry.",
+        conversationDeleteStateChanged: "The conversation changed before deletion progress could be saved.",
+        conversationDeleteReceiptFailed: "Deletion progress could not be saved. Retry to finish.",
+        conversationDeletePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `Could not delete the entire conversation; ${completed} completed, ${remaining} remaining. Retry to finish. ${detail}`,
+        conversationArchivePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `Could not archive the entire conversation; ${completed} completed, ${remaining} remaining. Retry to finish. ${detail}`,
+        agentSwitchBusy: "Finish the current task and handle pending approvals and queued messages before switching agents.",
+        agentSwitchChanged: "This conversation was switched elsewhere. Reload the conversation and try again.",
+        agentSwitchUnavailable: "Could not load the current agent session. Try again.",
+        agentSwitchPending: "Switching agents. Wait a moment before sending another message.",
+        contextHandoff: "Context handoff",
         crossAgentSourceLabel: 'Source conversation',
         crossAgentSourceSubtitle: 'Context carried over from another agent. Open the original conversation to review its messages.',
         continueWithClaude: 'Continue in a new Claude session',
@@ -1427,6 +1440,7 @@ failedContinueTask: "Continue unfinished task",
         "enable": "Enable"
 },
     agentInput: {
+        switchInConversation: "Send and switch agent",
         newAgentSessionHint: 'Opens a new session with the selected Coding Agent; this conversation and its draft are kept.',
         switchCodingAgent: 'Switch coding agent',
         stop: 'Stop',

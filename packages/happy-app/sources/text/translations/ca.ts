@@ -1310,6 +1310,19 @@ export const ca: TranslationStructure = {
     },
 
     session: {
+        conversationActionUnavailable: "L’historial de la conversa no està disponible o ha canviat. Torna a carregar i prova-ho de nou.",
+        conversationDeletePending: "Acaba d’eliminar aquesta conversa abans de fer altres canvis.",
+        conversationDeletePlanInvalid: "El pla d’eliminació desat és inconsistent. No s’han eliminat més sessions.",
+        conversationDeleteStateUnavailable: "L’estat d’eliminació no està disponible. Torna a carregar i prova-ho de nou.",
+        conversationDeleteStateChanged: "La conversa ha canviat abans de poder desar el progrés d’eliminació.",
+        conversationDeleteReceiptFailed: "No s’ha pogut desar el progrés d’eliminació. Torna-ho a provar per acabar.",
+        conversationDeletePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `No s’ha pogut eliminar tota la conversa: ${completed} parts completades i ${remaining} pendents. Torna-ho a provar per acabar. ${detail}`,
+        conversationArchivePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `No s’ha pogut arxivar tota la conversa: ${completed} parts completades i ${remaining} pendents. Torna-ho a provar per acabar. ${detail}`,
+        agentSwitchBusy: "Acaba la tasca actual i gestiona les aprovacions pendents i els missatges en cua abans de canviar d’agent.",
+        agentSwitchChanged: "L’agent d’aquest xat s’ha canviat en un altre lloc. Torna a carregar el xat i prova-ho de nou.",
+        agentSwitchUnavailable: "No s’ha pogut carregar la sessió de l’agent actual. Torna-ho a provar.",
+        agentSwitchPending: "S’està canviant d’agent. Espera un moment abans d’enviar un altre missatge.",
+        contextHandoff: "Traspàs de context",
         crossAgentSourceLabel: projectGoalsBase.session.crossAgentSourceLabel,
         crossAgentSourceSubtitle: projectGoalsBase.session.crossAgentSourceSubtitle,
         continueWithClaude: projectGoalsBase.session.continueWithClaude,
@@ -1609,6 +1622,7 @@ failedContinueTask: "Continua la tasca pendent",
         "enable": "Enable"
 },
     agentInput: {
+        switchInConversation: "Envia i canvia d’agent",
         newAgentSessionHint: 'Opens a new session with the selected Coding Agent; this conversation and its draft are kept.',
         switchCodingAgent: 'Canvia l’agent de programació',
         stop: 'Atura',

@@ -8,23 +8,20 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { storage, useSession, useIsDataReady } from '@/sync/storage';
+import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionKill, sessionDelete, sessionRequestArchiveMetadata } from '@/sync/ops';
 import { sync } from '@/sync/sync';
-import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
-import { useHappyAction } from '@/hooks/useHappyAction';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
-import { HappyError } from '@/utils/errors';
+import { getConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -125,12 +122,13 @@ function formatDangerouslySkipPermissionsMetadata(
     return 'Unknown';
 }
 
-function SessionInfoContent({ session }: { session: Session }) {
+function SessionInfoContent({ session, rootSession }: { session: Session; rootSession: Session }) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const devModeEnabled = __DEV__;
-    const sessionName = getSessionName(session);
+    const sessionName = getSessionName(rootSession);
     const sessionStatus = useSessionStatus(session);
+    const leaveRemovedSession = useCallback(() => { router.back(); router.back(); }, [router]);
     const {
         canShowResume,
         crossAgentTarget,
@@ -145,7 +143,11 @@ function SessionInfoContent({ session }: { session: Session }) {
         regeneratingTitle,
         resumeSession,
         resumeSessionSubtitle,
-    } = useSessionQuickActions(session);
+        archiveSession: handleArchiveSession,
+        archivingSession,
+        deleteSession: handleDeleteSession,
+        deletingSession,
+    } = useSessionQuickActions(session, { onAfterArchive: leaveRemovedSession, onAfterDelete: leaveRemovedSession });
 
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -153,12 +155,12 @@ function SessionInfoContent({ session }: { session: Session }) {
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
         try {
-            await Clipboard.setStringAsync(session.id);
+            await Clipboard.setStringAsync(rootSession.id);
             Modal.alert(t('common.success'), t('sessionInfo.happySessionIdCopied'));
         } catch (error) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
         }
-    }, [session]);
+    }, [rootSession.id]);
 
     const handleCopyMetadata = useCallback(() => {
         void copySessionMetadataToClipboard(session);
@@ -167,62 +169,6 @@ function SessionInfoContent({ session }: { session: Session }) {
     const handleCopyMetadataAndLogs = useCallback(() => {
         void copySessionMetadataAndLogsToClipboard(session);
     }, [session]);
-
-    // Use HappyAction for archiving - it handles errors automatically
-    const [archivingSession, performArchive] = useHappyAction(async () => {
-        // Prompt for worktree cleanup before killing (needs an active machine connection)
-        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
-        await sessionRequestArchiveMetadata(session);
-
-        // Try to kill the CLI process; if it's already dead, force-archive via server
-        const killResult = await sessionKill(session.id);
-        if (!killResult.success) {
-            await sessionArchive(session.id);
-        }
-        // Success - navigate back
-        router.back();
-        router.back();
-    });
-
-    const handleArchiveSession = useCallback(() => {
-        performArchive();
-    }, [performArchive]);
-
-    // Use HappyAction for deletion - kills session first if needed, then deletes
-    const [deletingSession, performDelete] = useHappyAction(async () => {
-        // Prompt for worktree cleanup before killing (needs an active machine connection)
-        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
-
-        // Navigate back optimistically
-        router.back();
-        router.back();
-
-        // Kill session first if it's still active (best-effort)
-        if (sessionStatus.isConnected || session.active) {
-            await sessionKill(session.id).catch(() => {});
-        }
-
-        const result = await sessionDelete(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
-        }
-        sync.removeSessionLocally(session.id);
-    });
-
-    const handleDeleteSession = useCallback(() => {
-        Modal.alert(
-            t('sessionInfo.deleteSession'),
-            t('sessionInfo.deleteSessionWarning'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('sessionInfo.deleteSession'),
-                    style: 'destructive',
-                    onPress: performDelete
-                }
-            ]
-        );
-    }, [performDelete]);
 
     const formatDate = useCallback((timestamp: number) => {
         return new Date(timestamp).toLocaleString();
@@ -286,7 +232,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                 <ItemGroup>
                     <Item
                         title={t('sessionInfo.happySessionId')}
-                        subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}
+                        subtitle={`${rootSession.id.substring(0, 8)}...${rootSession.id.substring(rootSession.id.length - 8)}`}
                         icon={<Ionicons name="finger-print-outline" size={29} color={theme.colors.accent} />}
                         onPress={handleCopySessionId}
                     />
@@ -338,7 +284,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                     />
                     <Item
                         title={t('sessionInfo.created')}
-                        subtitle={formatDate(session.createdAt)}
+                        subtitle={formatDate(rootSession.createdAt)}
                         icon={<Ionicons name="calendar-outline" size={29} color={theme.colors.accent} />}
                         showChevron={false}
                     />
@@ -422,12 +368,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                         subtitle={t('sessionInfo.archiveSessionSubtitle')}
                         icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
                         onPress={handleArchiveSession}
+                        loading={archivingSession}
                     />
                     <Item
                         title={t('sessionInfo.deleteSession')}
                         subtitle={t('sessionInfo.deleteSessionSubtitle')}
                         icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
                         onPress={handleDeleteSession}
+                        loading={deletingSession}
                     />
                 </ItemGroup>
 
@@ -638,11 +586,35 @@ export default React.memo(() => {
     const { theme } = useUnistyles();
     const { id } = useLocalSearchParams<{ id: string }>();
     const session = useSession(id);
+    const rootId = session ? getConversationRootSessionId(session) : id;
+    const root = useSession(rootId);
+    const activeId = root?.metadata?.conversationActiveSessionId ?? rootId;
+    const active = useSession(activeId);
     const isDataReady = useIsDataReady();
+    const [lookupFailed, setLookupFailed] = React.useState(false);
+    const [retry, setRetry] = React.useState(0);
+    const deletingConversation = Boolean(root?.metadata?.conversationDeletePlan);
+    const currentId = resolveConversationSessionId({
+        ...(session ? { [session.id]: session } : {}),
+        ...(root ? { [root.id]: root } : {}),
+        ...(active ? { [active.id]: active } : {}),
+    }, id);
+    React.useEffect(() => {
+        let current = true;
+        setLookupFailed(false);
+        if (!isDataReady || deletingConversation) return () => { current = false; };
+        const missing = [...new Set([!session ? id : '', !root ? rootId : '', !active ? activeId : ''])].filter(Boolean);
+        void (async () => {
+            for (const missingId of missing) {
+                if (!await sync.ensureSessionHydrated(missingId)) throw new Error('missing-conversation-session');
+            }
+        })().catch(() => { if (current) setLookupFailed(true); });
+        return () => { current = false; };
+    }, [isDataReady, id, rootId, activeId, Boolean(session), Boolean(root), Boolean(active), deletingConversation, retry]);
     if (session && isRetiredSession(session)) return <Redirect href="/bots" />;
 
     // Handle three states: loading, deleted, and exists
-    if (!isDataReady) {
+    if (!isDataReady || (!session || !root || !active) && !lookupFailed && !deletingConversation) {
         // Still loading data
         return (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -663,8 +635,26 @@ export default React.memo(() => {
         );
     }
 
-    return <SessionInfoContent session={session} />;
+    if (deletingConversation && root) return <SessionInfoDeleteRecovery session={root} />;
+    if (!root || !active || !currentId) return <View testID="session-info-unavailable" style={{ flex: 1, padding: 24 }}>
+        <Text style={{ color: theme.colors.text }}>{t('session.agentSwitchUnavailable')}</Text>
+        <Item title={t('common.retry')} onPress={() => setRetry(value => value + 1)} />
+    </View>;
+
+    return <SessionInfoContent session={active} rootSession={root} />;
 });
+
+function SessionInfoDeleteRecovery({ session }: { session: Session }) {
+    const router = useRouter();
+    const { theme } = useUnistyles();
+    const actions = useSessionQuickActions(session, { onAfterDelete: () => { router.back(); router.back(); } });
+    return <View testID="session-info-delete-recovery" style={{ flex: 1, padding: 24 }}>
+        <Text style={{ color: theme.colors.text }}>{getSessionName(session)}</Text>
+        <Item testID="session-info-delete-retry" title={t('sessionInfo.deleteSession')}
+            subtitle={t('session.conversationDeletePending')} loading={actions.deletingSession}
+            onPress={() => { void actions.confirmDeleteSession(); }} />
+    </View>;
+}
 
 function CopyableItem({ title, subtitle, icon, copyText }: { title: string; subtitle: string; icon: React.ReactNode; copyText: string }) {
     const [copied, setCopied] = React.useState(false);

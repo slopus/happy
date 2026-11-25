@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     fetchNextHistoryPage: vi.fn(),
     openSession: vi.fn(),
     session: null as any,
+    conversationSessions: null as Record<string, any> | null,
     sessionListeners: new Set<() => void>(),
     messages: [] as any[],
     messagesLoaded: false,
@@ -105,15 +106,15 @@ vi.mock('@react-navigation/native', async () => {
 });
 
 vi.mock('@/sync/storage', () => ({
-    storage: { getState: () => ({ sessions: mocks.session ? { [mocks.session.id]: mocks.session } : {}, currentViewingSessionId: mocks.currentViewingSessionId, setCurrentViewingSession: mocks.setCurrentViewingSession }) },
+    storage: { getState: () => ({ sessions: mocks.conversationSessions ?? (mocks.session ? { [mocks.session.id]: mocks.session } : {}), currentViewingSessionId: mocks.currentViewingSessionId, setCurrentViewingSession: mocks.setCurrentViewingSession }) },
     useIsDataReady: () => true,
     useSocketStatus: () => ({ status: 'connected' }),
     useLocalSetting: (key: string) => key === 'sidebarOrganization' ? { lists: [], tags: [], sessions: {} } : false,
     useLocalSettingMutable: () => [false, vi.fn()],
     useMachine: () => null,
-    useSession: () => React.useSyncExternalStore(
+    useSession: (id: string) => React.useSyncExternalStore(
         listener => { mocks.sessionListeners.add(listener); return () => { mocks.sessionListeners.delete(listener); }; },
-        () => mocks.session,
+        () => mocks.conversationSessions ? mocks.conversationSessions[id] ?? null : mocks.session,
     ),
     useSessionMessages: () => ({
         messages: mocks.messages,
@@ -300,6 +301,7 @@ describe('SessionView deep-link hydration', () => {
             originalConsoleError(...values);
         });
         mocks.session = null;
+        mocks.conversationSessions = null;
         mocks.messages = [];
         mocks.messagesLoaded = false;
         mocks.messagesAtLatest = true;
@@ -1029,6 +1031,41 @@ describe('SessionView deep-link hydration', () => {
             delete (globalThis as { __happySessionCriticalPathProbe?: unknown }).__happySessionCriticalPathProbe;
         }
     });
+    it('routes a stable logical chat to its active execution session and remounts on handoff', async () => {
+        const base = { seq: 1, active: true, activeAt: 10, createdAt: 1, updatedAt: 10, metadataVersion: 1, agentState: null, agentStateVersion: 0, thinking: false, thinkingAt: 0 };
+        mocks.messagesLoaded = true;
+        mocks.conversationSessions = {
+            root: { ...base, id: 'root', metadata: { path: '/test', host: 'test', conversationActiveSessionId: 'agent-b' } },
+            'agent-b': { ...base, id: 'agent-b', metadata: { path: '/test', host: 'test', conversationRootSessionId: 'root', continuationOfSessionId: 'root' } },
+            'agent-c': { ...base, id: 'agent-c', metadata: { path: '/test', host: 'test', conversationRootSessionId: 'root', continuationOfSessionId: 'agent-b' } },
+        };
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionView id="root" />); });
+            await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+            expect(mocks.openSession.mock.calls.some(call => call[0] === 'agent-b')).toBe(true);
+            expect(renderer.root.findByType('MessageComposer').props.sessionId).toBe('agent-b');
+            await act(async () => {
+                mocks.conversationSessions = { ...mocks.conversationSessions!, root: { ...mocks.conversationSessions!.root, metadata: { ...mocks.conversationSessions!.root.metadata, conversationActiveSessionId: 'agent-c' } } };
+                mocks.sessionListeners.forEach(listener => listener());
+            });
+            await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+            expect(renderer.root.findByType('MessageComposer').props.sessionId).toBe('agent-c');
+            expect(mocks.openSession.mock.calls.some(call => call[0] === 'root')).toBe(false);
+        } finally { act(() => renderer?.unmount()); }
+    });
+    it('does not expose the old worker when its active conversation target is unavailable', async () => {
+        mocks.conversationSessions = { root: { id: 'root', metadata: { path: '/test', host: 'test', conversationActiveSessionId: 'missing' } } };
+        mocks.ensureSessionHydrated.mockResolvedValue(false);
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionView id="root" />); });
+            expect(renderer.root.findAllByType('MessageComposer')).toHaveLength(0);
+            expect(mocks.openSession).not.toHaveBeenCalled();
+            expect(renderer.root.findAllByProps({ testID: 'conversation-unavailable' }).length).toBeGreaterThan(0);
+        } finally { act(() => renderer?.unmount()); }
+    });
+
 });
 
 // File workspace transport/ownership is covered in its dedicated tests and real App fixture.
@@ -1042,4 +1079,5 @@ it('lets the task page own navigation without reserving an embedded session head
     expect(renderer.root.findAllByType('ChatHeaderView')).toHaveLength(0);
     expect(renderer.root.findByProps({ testID: 'session-content' }).props.style.paddingTop).toBe(0);
     act(() => renderer.unmount());
+
 });

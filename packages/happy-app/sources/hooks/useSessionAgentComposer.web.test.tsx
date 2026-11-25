@@ -6,7 +6,7 @@ import TestRenderer from 'react-test-renderer';
 import { useSessionAgentComposer } from './useSessionAgentComposer.web';
 vi.mock('./useMagpieModelCatalog', () => ({ useMagpieModelCatalog: () => ({ catalog: mocks.magpieCatalog, refresh: vi.fn() }) }));
 const mocks = vi.hoisted(() => ({ spawn: vi.fn(), retry: vi.fn(), sending: false, hydrationError: null as any, flush: vi.fn(), update: vi.fn(),
-    images: [] as any[], sessions: [] as any[], magpieCatalog: null as any, alert: vi.fn(),
+    images: [] as any[], sessions: [] as any[], magpieCatalog: null as any, alert: vi.fn(), queued: vi.fn(), prompt: 'keep this draft',
     settings: { codingAgentMachines: { m: ['codex', 'claude', 'opencode'] }, agentDefaultOverrides: {} } as any,
     machine: { id: 'm', active: true, activeAt: Date.now(), metadata: { homeDir: '/tmp', cliAvailability: { codex: true, claude: true, opencode: true, antigravity: true } } },
 }));
@@ -20,9 +20,47 @@ const session: any = { id: 's', metadata: { machineId: 'm', path: '/tmp/project'
 const base: any = { online: true, model: { key: 'gpt-live', name: 'GPT Live' }, modelOptions: [{ key: 'gpt-live', name: 'GPT Live' }], effort: { key: 'high', name: 'High' }, effortOptions: [], onModelChange: mocks.update, onEffortChange: vi.fn() };
 let value: any;let renderer: any;
 function mount(source = session) { act(() => { renderer = TestRenderer.create(<Harness source={source} />); }); }
-function Harness({ source }: any) { value = useSessionAgentComposer({ session: source, base, readSubmission: () => ({ prompt: 'keep this draft', images: mocks.images }), flushDraft: mocks.flush });return null; }
-beforeEach(() => { renderer?.unmount(); vi.clearAllMocks(); mocks.sending=false;mocks.hydrationError=null;mocks.images=[];mocks.sessions=[];mocks.magpieCatalog=null;mocks.settings.agentDefaultOverrides={};mocks.spawn.mockResolvedValue(true); });
+function Harness({ source }: any) { value = useSessionAgentComposer({ session: source, base, readSubmission: () => ({ prompt: mocks.prompt, images: mocks.images, onQueued: mocks.queued }), flushDraft: mocks.flush });return null; }
+beforeEach(() => { renderer?.unmount(); vi.clearAllMocks(); mocks.sending=false;mocks.hydrationError=null;mocks.images=[];mocks.sessions=[];mocks.magpieCatalog=null;mocks.prompt='keep this draft';mocks.settings.agentDefaultOverrides={};mocks.spawn.mockResolvedValue(true); });
 describe('Web composer Agent staging', () => {
+ it('stages Agent and model choices until ordinary send explicitly continues this conversation', async () => {
+  mount();
+  act(() => value.modeSelector.agentSwitcher.onSelect('claude'));
+  act(() => value.modeSelector.onModelChange('sonnet-native'));
+  expect(mocks.spawn).not.toHaveBeenCalled();
+  expect(mocks.update).not.toHaveBeenCalled();
+  await act(async () => value.submitInChat());
+  expect(mocks.spawn).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+   agent: 'claude', modelMode: 'sonnet-native', prompt: 'keep this draft',
+   continuationSourceSessionId: 's', continueInCurrentConversation: true,
+  }), false, mocks.queued);
+  expect(mocks.queued).not.toHaveBeenCalled();
+ });
+ it('keeps explicit new-session submission separate and preserves its source draft callback', async () => {
+  mount();
+  act(() => value.modeSelector.agentSwitcher.onSelect('claude'));
+  await act(async () => value.submitNewSession());
+  expect(mocks.spawn).toHaveBeenCalledExactlyOnceWith(expect.not.objectContaining({
+   continueInCurrentConversation: true,
+  }), false, mocks.flush);
+  expect(mocks.queued).not.toHaveBeenCalled();
+ });
+ it('requires a payload for ordinary send while allowing an explicit empty new session', async () => {
+  mount();
+  act(() => value.modeSelector.agentSwitcher.onSelect('claude'));
+  mocks.prompt = '   ';
+  await expect(value.submitInChat()).resolves.toBe(false);
+  expect(mocks.spawn).not.toHaveBeenCalled();
+  await act(async () => value.submitNewSession());
+  expect(mocks.spawn).toHaveBeenCalledOnce();
+ });
+ it('does not clear the in-chat draft after a failed spawn', async () => {
+  mocks.spawn.mockResolvedValueOnce(false);
+  mount();
+  act(() => value.modeSelector.agentSwitcher.onSelect('claude'));
+  await expect(value.submitInChat()).resolves.toBe(false);
+  expect(mocks.queued).not.toHaveBeenCalled();
+ });
  it('keeps gateway models scoped to Codex even when a previous catalog is cached', () => {
   mocks.magpieCatalog = { modelsUpdatedAt: 1, models: [{ code: 'gateway-gpt', value: 'Gateway GPT' }] };
   mount({ ...session, metadata: { ...session.metadata, flavor: 'antigravity' } });

@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { SessionsList } from './SessionsList';
+import { loadPendingPermissionMessageId } from '@/utils/pendingPermission';
+import { sync } from '@/sync/sync';
 
 const mocks = vi.hoisted(() => {
     (globalThis as any).__DEV__ = false;
@@ -15,6 +17,7 @@ const mocks = vi.hoisted(() => {
         sessions: [] as any[],
         pinnedOrder: [] as string[],
         pathname: '/',
+        routeNavigate: vi.fn(),
     };
     return Object.assign(state, {
         updateExpansion(updater: (current: Record<string, boolean>) => Record<string, boolean>) {
@@ -42,7 +45,7 @@ vi.mock('react-native', async () => {
     };
 });
 vi.mock('@expo/vector-icons', () => ({ Feather: 'Feather' }));
-vi.mock('expo-router', () => ({ usePathname: () => mocks.pathname, useRouter: () => ({ canDismiss: () => false, navigate: vi.fn() }) }));
+vi.mock('expo-router', () => ({ usePathname: () => mocks.pathname, useRouter: () => ({ canDismiss: () => false, navigate: mocks.routeNavigate }) }));
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 vi.mock('@/hooks/useVisibleSessionListViewData', () => ({ useVisibleSessionListViewData: () => [{ type: 'active-sessions', sessions: mocks.sessions }] }));
 vi.mock('@/utils/requestReview', () => ({ requestReview: vi.fn() }));
@@ -97,7 +100,7 @@ vi.mock('@/utils/sessionUtils', () => ({
     getSessionStateLabel: (state: string) => state,
 }));
 vi.mock('./SessionRowChrome', () => ({
-    SessionRowActions: () => null,
+    SessionRowActions: (props: any) => React.createElement('SessionRowActions', props),
     SessionRowDetails: () => null,
     useSessionRowDisclosure: () => ({
         detailsAnchor: null,
@@ -171,6 +174,20 @@ describe('ActiveSessionsGroupCompact project expansion persistence', () => {
         expect(cell.root.findAllByType('Pressable')).toHaveLength(1);
         expect(cell.root.findByProps({ testID: 'session-row-c' }).props.accessibilityState.selected).toBe(true);
         act(() => { cell.unmount(); renderer.unmount(); });
+    });
+
+    it('opens permissions on the current execution while keeping selection and row actions on the stable chat', async () => {
+        vi.mocked(loadPendingPermissionMessageId).mockImplementation(async reader => { await reader.ensureLoaded(); return 'permission-message'; });
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ActiveSessionsGroupCompact selectedSessionId="root"
+            sessions={[{ ...session, id: 'root', executionSessionId: 'current', state: 'permission_required' }]} />); });
+        const row = renderer.root.findByProps({ testID: 'session-row-root' });
+        expect(row.props.accessibilityState.selected).toBe(true);
+        await act(async () => { await row.props.onPress(); });
+        expect(sync.ensureMessagesLoaded).toHaveBeenCalledWith('current');
+        expect(mocks.routeNavigate).toHaveBeenCalledExactlyOnceWith('/session/current/message/permission-message');
+        expect(renderer.root.findByType('SessionRowActions').props.sessionId).toBe('root');
+        act(() => renderer.unmount());
     });
 
     it.each(['projects', 'time'] as const)('virtualizes all 1000 sessions as outer FlatList rows in %s mode', (layoutMode) => {

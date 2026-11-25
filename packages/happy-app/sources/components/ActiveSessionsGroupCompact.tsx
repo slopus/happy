@@ -324,20 +324,21 @@ export const CompactSessionRow = React.memo(({ nested = false, onOrganize, sessi
             return;
         }
         if (session.state === 'permission_required') {
+            const executionId = session.executionSessionId ?? session.id;
             const messageId = await loadPendingPermissionMessageId({
-                ensureLoaded: () => sync.ensureMessagesLoaded(session.id),
-                getMessages: () => storage.getState().sessionMessages[session.id]?.messages ?? [],
+                ensureLoaded: () => sync.ensureMessagesLoaded(executionId),
+                getMessages: () => storage.getState().sessionMessages[executionId]?.messages ?? [],
             });
             if (messageId) {
                 if (router.canDismiss()) {
                     router.dismissTo('/');
                 }
-                router.navigate(`/session/${encodeURIComponent(session.id)}/message/${encodeURIComponent(messageId)}` as any);
+                router.navigate(`/session/${encodeURIComponent(executionId)}/message/${encodeURIComponent(messageId)}` as any);
                 return;
             }
         }
         navigateToSession(session.id);
-    }, [navigateToSession, onToggleSelection, router, selectionMode, session.id, session.state]);
+    }, [navigateToSession, onToggleSelection, router, selectionMode, session.id, session.executionSessionId, session.state]);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();

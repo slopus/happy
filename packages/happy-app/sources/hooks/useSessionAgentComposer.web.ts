@@ -102,7 +102,7 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
     const targetAvailable = available.some(a => a.key === selected);
     const disabled = !online || !targetAvailable || modelUnavailable
         || (selected === 'codex' && !useMagpie && accountProfile === undefined);
-    const submit = async () => {
+    const submitWithDestination = async (continueInCurrentConversation: boolean) => {
         if (!pending || disabled || spawn.sending) return false;
         if (spawn.hydrationError) return spawn.retryHydration();
         args.flushDraft();
@@ -110,6 +110,7 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         try { submission = args.readSubmission(); }
         catch (error) { Modal.alert(t('common.error'), error instanceof Error ? error.message : String(error)); return false; }
         const attachments = submission.images ?? [];
+        if (continueInCurrentConversation && !submission.prompt.trim() && !attachments.length) return false;
         const supportsAttachments = selected === 'claude' || selected === 'codex'
             || (selected === 'opencode' && attachments.every(a => !a.kind || a.kind === 'image'));
         if (attachments.length && !supportsAttachments) {
@@ -121,8 +122,11 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
             ...(useMagpie ? { magpieModel: selection.modelMode, expectedCodexAccountProfileId: null }
                 : selected === 'codex' ? { expectedCodexAccountProfileId: accountProfile } : {}),
             prompt: submission.prompt, images: submission.images, continuationSourceSessionId: session.id,
-        }, false, args.flushDraft);
+            ...(continueInCurrentConversation ? { continueInCurrentConversation: true } : {}),
+        }, false, continueInCurrentConversation ? submission.onQueued : args.flushDraft);
     };
+    const submitInChat = () => submitWithDestination(true);
+    const submitNewSession = () => submitWithDestination(false);
     if (!directory || !machineId || !agents.some(a => a.key === current) || session.metadata?.application) return undefined;
     const selectAgent = (key: string) => {
         const target = destinations.find(agent => agent.key === key);
@@ -181,7 +185,9 @@ export function useSessionAgentComposer(args: SessionAgentComposerArgs): Session
         }
     };
     return { pendingAgent: pending ? selected : null, sending: spawn.sending, disabled,
-        submit,
+        submit: submitNewSession,
+        submitInChat,
+        submitNewSession,
         permissionSelector: pending ? {
             online: online && !busy, supported: resolveTaskPermissionAgent(selected) !== null,
             supportsAutomatic: selected === 'codex', currentMode: selection.permissionMode,

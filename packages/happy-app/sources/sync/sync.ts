@@ -1,3 +1,4 @@
+import { assertConversationSendAllowed } from './conversationSwitch';
 import { isAgyConfigPending } from './agyConfigPending';
 import { createScheduledTasksController } from './scheduledTasks';
 import { resolveComposerReferences, parseComposerDraft, composerReferenceDisplay, buildComposerReferenceExcerpt } from './composerReferences';
@@ -337,6 +338,7 @@ type OutboxMessage = {
 };
 
 type SendMessageOptions = {
+    conversationSwitchRequestId?: string;
     /** Submission time survives recovery, locks and attachment upload. */
     userSentAt?: number;
     /** Preserve the controls chosen when a message entered the staging queue. */
@@ -1965,6 +1967,26 @@ class Sync {
     private failedCodexRecovery = new FailedCodexSessionRecovery();
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<LocalMessageQueueReceipt> {
+        const originalEncryptionOwner = this.encryption;
+        const originalSessionEncryption = originalEncryptionOwner.getSessionEncryption(sessionId);
+        const originalDeletion = this.sessionDeletionMutationGenerations.get(sessionId) ?? 0;
+        const originalSession = storage.getState().sessions[sessionId];
+        if (!originalSession || !originalSessionEncryption) throw new Error('local-message-session-unavailable');
+        const assertSendOwner = () => {
+            if (this.encryption !== originalEncryptionOwner || !accountRuntimeCurrent()
+                || originalEncryptionOwner.getSessionEncryption(sessionId) !== originalSessionEncryption
+                || !storage.getState().sessions[sessionId]
+                || (this.sessionDeletionMutationGenerations.get(sessionId) ?? 0) !== originalDeletion
+                || options?.isCurrent?.() === false) throw new Error('local-message-session-unavailable');
+        };
+        // A stale first-generation tab may not yet know that its session became
+        // a logical root. Every authenticated send rechecks this one source.
+        if (this.credentials && !await this.refreshConversationSession(sessionId)) throw new Error(t('session.agentSwitchUnavailable'));
+        const conversation = storage.getState().sessions[sessionId]?.metadata;
+        if (conversation?.conversationRootSessionId && this.credentials
+            && !await this.refreshConversationSession(conversation.conversationRootSessionId)) throw new Error(t('session.agentSwitchUnavailable'));
+        assertSendOwner();
+        assertConversationSendAllowed(sessionId, options?.conversationSwitchRequestId);
         if (isAgyConfigPending(sessionId)) throw new Error('Wait for the model configuration to finish before sending');
         if (isRetiredSession(storage.getState().sessions[sessionId] ?? {})) throw new Error('personal-agent-retired');
         const userSentAt = Date.now();
@@ -2001,7 +2023,7 @@ class Sync {
         return lock.inLock(() => this.sendMessageWithContext(sessionId, text, { ...options, isCurrent }, snapshots));
     }
 
-    private async hasDeliveredContinuation(sessionId: string, source: string, isCurrent: () => boolean): Promise<boolean> {
+    private async hasDeliveredContinuation(sessionId: string, source: string, isCurrent: () => boolean, allowPending = true): Promise<boolean> {
         const owner = this.encryption;
         const encryption = owner.getSessionEncryption(sessionId);
         const assertCurrent = () => {
@@ -2013,7 +2035,7 @@ class Sync {
         if (!encryption) throw new Error('local-message-session-unavailable');
         const delivery = this.continuationDeliveries.get(sessionId);
         if (delivery?.owner === owner && delivery.source === source && (delivery.confirmed
-            || this.pendingOutbox.get(sessionId)?.some(message => message.localId === delivery.localId))) return true;
+            || (allowPending && this.pendingOutbox.get(sessionId)?.some(message => message.localId === delivery.localId)))) return true;
         // Read from the beginning independently of history windows. This also
         // recovers evidence after reload and across devices, without moving the
         // user's reading position. Never infer successful delivery from a local
@@ -2229,6 +2251,10 @@ class Sync {
             userSentAt,
         });
 
+        // Recheck after uploads/encryption; a linked conversation may have
+        // changed while the attachment was being prepared.
+        if (this.credentials && !await this.refreshConversationSession(session.metadata?.conversationRootSessionId ?? sessionId)) throw new Error(t('session.agentSwitchUnavailable'));
+        assertConversationSendAllowed(sessionId, options?.conversationSwitchRequestId);
         // No awaits between ownership validation and the complete outbox commit.
         // Nothing from a failed upload/encryption attempt becomes locally queued.
         if (!isCurrent() || this.encryption !== encryptionOwner
@@ -3250,6 +3276,34 @@ class Sync {
 
     // Kept as a compatibility alias while call sites migrate to the more
     // precise ensureSessionHydrated() name.
+    /** Single fresh read for a user-triggered conversation switch or send. */
+    public refreshConversationSession = async (sessionId: string): Promise<boolean> => {
+        if (!this.credentials) return false;
+        const sessions = await this.writeSessionSnapshots(async () => {
+            const raw = await fetchSessionSnapshot(this.credentials, sessionId);
+            return raw ? [raw] : [];
+        });
+        return sessions.some(session => session.id === sessionId);
+    };
+
+    public awaitConversationHandoffDelivery = async (sessionId: string, sourceId: string): Promise<void> => {
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+            // Existing outbox acknowledgements wake this waiter. A single timeout
+            // preserves the receipt for Retry; it never starts a status-query loop.
+            await Promise.race([
+                this.getSendSync(sessionId).awaitQueue(),
+                new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error(t('session.agentSwitchPending'))), 20_000); }),
+            ]);
+            if (!await this.hasConversationHandoffDelivery(sessionId, sourceId)) throw new Error(t('session.agentSwitchPending'));
+        } finally { if (timeout !== undefined) clearTimeout(timeout); }
+    };
+
+    public hasConversationHandoffDelivery = (sessionId: string, sourceId: string): Promise<boolean> => {
+        const owner = this.encryption;
+        return this.hasDeliveredContinuation(sessionId, sourceId, () => this.encryption === owner && accountRuntimeCurrent(), false);
+    };
+
     public refreshSession = this.ensureSessionHydrated;
 
     public getCredentials() {

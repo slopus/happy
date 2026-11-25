@@ -6,11 +6,18 @@ import { Dimensions, Platform } from 'react-native';
 import { projectSessionRoute } from '@/utils/projectSessionRoute';
 import { storage } from '@/sync/storage';
 import { trackSessionSwitched } from '@/track';
+import { getConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
 
 export function navigateToSession(router: Router, sessionId: string) {
-    const session = storage.getState().sessions[sessionId];
+    const sessions = storage.getState().sessions;
+    let session = sessions[sessionId];
+    const executionId = resolveConversationSessionId(sessions, sessionId);
+    if (session && executionId) {
+        sessionId = getConversationRootSessionId(session);
+        session = sessions[sessionId];
+    }
     if (session) {
-        trackSessionSwitched(session);
+        trackSessionSwitched(executionId ? sessions[executionId] : session);
     }
     if (session && isRetiredSession(session)) {
         router.navigate('/bots');

@@ -548,7 +548,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const sourceMetadata = item.source ? item.source.metadata : props.metadata;
         const readOnly = item.source?.readOnly ?? false;
         if (item.continuationBoundary) return <View testID="session-continuation-boundary" style={{ padding: 20, marginVertical: 12, borderTopWidth: 1, borderColor: theme.colors.divider }}>
-            <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{t('session.continueBoundary')}</Text>
+            <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{item.handoffEndpoints ? `${t('session.contextHandoff')} · ${item.handoffEndpoints.from} → ${item.handoffEndpoints.to}` : t('session.continueBoundary')}</Text>
             {(readOnly || item.continuationWaiting) && <Text style={{ color: theme.colors.textSecondary, marginTop: 6 }}>{t(readOnly ? 'session.continueOld' : 'session.continueWaiting')}</Text>}
         </View>;
         if (item.type === 'tool-group') {

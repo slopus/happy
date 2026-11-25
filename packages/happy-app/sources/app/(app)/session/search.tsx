@@ -22,7 +22,8 @@ import {
     useSessionManagementPreferences,
     type SessionManagementQueue,
 } from '@/hooks/useSessionManagementPreferences';
-import { useAllMachines, useAllSessions, useSessionListViewData, useUnreadSessionIds } from '@/sync/storage';
+import { useAllMachines, useSessionListViewData, useUnreadSessionIds } from '@/sync/storage';
+import { useConversationSessions } from '@/hooks/useConversationSessions';
 import type { Session } from '@/sync/storageTypes';
 import {
     buildSessionManagementSections,
@@ -66,7 +67,7 @@ export default React.memo(function SessionSearchScreen() {
     const [filter, setFilter] = React.useState<SessionFilter>('all');
     const [sortMode, setSortMode] = React.useState(false);
     const [expandedSessionId, setExpandedSessionId] = React.useState<string | null>(null);
-    const sessions = useAllSessions();
+    const sessions = useConversationSessions();
     const sessionListViewData = useSessionListViewData();
     const machines = useAllMachines({ includeOffline: true });
     const unreadSessionIds = useUnreadSessionIds();
@@ -94,7 +95,7 @@ export default React.memo(function SessionSearchScreen() {
             const incompleteTodosCount = session.todos?.filter((todo) => todo.status !== 'completed').length ?? 0;
             const totalTodosCount = session.todos?.length ?? 0;
             const manualFocus = management.isFocused(session.id);
-            const unread = unreadSessionIds.has(session.id);
+            const unread = (session.conversationSessionIds ?? [session.id]).some(id => unreadSessionIds.has(id));
             const running = session.thinking === true;
             const hasDraft = !!session.draft;
             const needsAction = manualFocus || hasPermission || unread || hasDraft || incompleteTodosCount > 0;

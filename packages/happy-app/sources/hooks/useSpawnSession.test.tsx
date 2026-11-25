@@ -32,7 +32,14 @@ const mocks = vi.hoisted(() => ({
     confirm: vi.fn(),
     prepareHandoff: vi.fn(),
     attachHandoff: vi.fn(),
+    prepareConversation: vi.fn(async () => 'source'),
+    claimConversation: vi.fn(),
+    commitConversation: vi.fn(),
+    awaitConversationDelivery: vi.fn(),
+    releaseConversation: vi.fn(),
 }));
+
+vi.mock('@/sync/conversationSwitch', () => ({ prepareConversationSwitch: mocks.prepareConversation, claimConversationSwitch: mocks.claimConversation, commitConversationSwitch: mocks.commitConversation, releaseConversationSwitch: mocks.releaseConversation }));
 
 vi.mock('@/sync/sessionContextHandoff', () => ({
     prepareSessionContinuationContext: mocks.prepareHandoff,
@@ -62,6 +69,7 @@ vi.mock('@/sync/sync', () => ({
         refreshSessions: mocks.refreshSessions,
         sendMessage: mocks.sendMessage,
         awaitLocalMessageProjection: mocks.awaitLocalMessageProjection,
+        awaitConversationHandoffDelivery: mocks.awaitConversationDelivery,
         applySettings: mocks.applySettings,
     },
 }));
@@ -178,6 +186,11 @@ describe('useSpawnSession', () => {
         mocks.confirm.mockResolvedValue(false);
         mocks.prepareHandoff.mockReset().mockResolvedValue('Saved conversation: ORCHID-7392');
         mocks.attachHandoff.mockReset().mockResolvedValue(undefined);
+        mocks.prepareConversation.mockReset().mockResolvedValue('source');
+        mocks.claimConversation.mockReset().mockResolvedValue(undefined);
+        mocks.commitConversation.mockReset().mockResolvedValue(undefined);
+        mocks.awaitConversationDelivery.mockReset().mockResolvedValue(undefined);
+        mocks.releaseConversation.mockReset().mockResolvedValue(undefined);
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -862,4 +875,43 @@ describe('useSpawnSession', () => {
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
         hook.unmount();
     });
+
+
+describe('same-conversation spawn', () => {
+    it('claims before the prompt, commits after its receipt and keeps the route', async () => {
+        const hook = renderHook();
+        const queued = vi.fn();
+        await act(async () => {
+            expect(await hook.current().spawn({ ...args, images: [], continuationSourceSessionId: 'source', continueInCurrentConversation: true }, false, queued)).toBe(true);
+        });
+        expect(mocks.prepareConversation).toHaveBeenCalledWith('source');
+        expect(mocks.claimConversation).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'source', targetId: 'session-1', rootId: 'source' }));
+        expect(mocks.sendMessage).toHaveBeenCalledWith('session-1', 'Build it', expect.objectContaining({ conversationSwitchRequestId: expect.any(String) }));
+        expect(mocks.claimConversation.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.sendMessage.mock.invocationCallOrder.at(-1)!);
+        expect(mocks.sendMessage.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.commitConversation.mock.invocationCallOrder.at(-1)!);
+        expect(queued).toHaveBeenCalledOnce();
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        hook.unmount();
+    });
+    it('does not create a worker when the active conversation changed', async () => {
+        mocks.prepareConversation.mockRejectedValueOnce(new Error('conversation-changed'));
+        const hook = renderHook();
+        await act(async () => { expect(await hook.current().spawn({ ...args, continueInCurrentConversation: true, continuationSourceSessionId: 'source' })).toBe(false); });
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        hook.unmount();
+    });
+    it('retries a failed active-pointer write on the same worker without resending', async () => {
+        mocks.commitConversation.mockRejectedValueOnce(new Error('save-failed'));
+        const hook = renderHook();
+        await act(async () => { expect(await hook.current().spawn({ ...args, images: [], continueInCurrentConversation: true, continuationSourceSessionId: 'source' })).toBe(false); });
+        await act(async () => { expect(await hook.current().retryHydration()).toBe(true); });
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledOnce();
+        expect(mocks.sendMessage).toHaveBeenCalledOnce();
+        expect(mocks.commitConversation).toHaveBeenCalledTimes(2);
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        hook.unmount();
+    });
+});
+
 });

@@ -9,6 +9,7 @@ export type ScopedTranscriptItem = DisplayItem & {
     source?: { sessionId: string; metadata: Metadata | null; readOnly: boolean; reading?: TranscriptReadingAdapter; browserRuns?: ReturnType<typeof getBrowserStepRuns> };
     continuationBoundary?: boolean;
     continuationWaiting?: boolean;
+    handoffEndpoints?: { from: string; to: string };
 };
 
 /** Newest-first, keeping provider identities and grouping inside each session. */
@@ -23,7 +24,10 @@ export function composeContinuationItems(sections: ContinuationSection[], curren
             }));
         if (section.metadata?.continuationOfSessionId) {
             const id = JSON.stringify([section.id, 'continuation-boundary']);
+            const previous = sections.find(previous => previous.id === section.metadata?.continuationOfSessionId);
+            const endpoint = (metadata: Metadata | null | undefined) => metadata?.currentModelCode ?? metadata?.flavor ?? '';
             items.push({ type: 'message', id, source, continuationBoundary: true, continuationWaiting: section.messages.length === 0,
+                ...(section.metadata.conversationRootSessionId ? { handoffEndpoints: { from: endpoint(previous?.metadata), to: endpoint(section.metadata) } } : {}),
                 message: { kind: 'agent-text', id, localId: null, createdAt: 0, text: '' } });
         }
         return items;

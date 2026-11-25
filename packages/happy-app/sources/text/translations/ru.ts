@@ -1535,6 +1535,19 @@ export const ru: TranslationStructure = {
     },
 
     session: {
+        conversationActionUnavailable: "История чата недоступна или изменилась. Перезагрузите чат и повторите попытку.",
+        conversationDeletePending: "Завершите удаление этого чата перед другими действиями.",
+        conversationDeletePlanInvalid: "Сохранённый план удаления содержит несоответствия. Другие сеансы не удалены.",
+        conversationDeleteStateUnavailable: "Состояние удаления недоступно. Перезагрузите чат и повторите попытку.",
+        conversationDeleteStateChanged: "Чат изменился до сохранения хода удаления.",
+        conversationDeleteReceiptFailed: "Не удалось сохранить ход удаления. Повторите попытку для завершения.",
+        conversationDeletePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `Не удалось удалить весь чат: завершено ${completed}, осталось ${remaining}. Повторите попытку для завершения. ${detail}`,
+        conversationArchivePartial: ({ completed, remaining, detail }: { completed: number; remaining: number; detail: string }) => `Не удалось архивировать весь чат: завершено ${completed}, осталось ${remaining}. Повторите попытку для завершения. ${detail}`,
+        agentSwitchBusy: "Завершите текущую задачу и обработайте ожидающие подтверждения и сообщения в очереди перед сменой агента.",
+        agentSwitchChanged: "Агент этого чата был изменён в другом месте. Перезагрузите чат и повторите попытку.",
+        agentSwitchUnavailable: "Не удалось загрузить текущий сеанс агента. Повторите попытку.",
+        agentSwitchPending: "Выполняется смена агента. Подождите перед отправкой следующего сообщения.",
+        contextHandoff: "Передача контекста",
         crossAgentSourceLabel: projectGoalsBase.session.crossAgentSourceLabel,
         crossAgentSourceSubtitle: projectGoalsBase.session.crossAgentSourceSubtitle,
         continueWithClaude: projectGoalsBase.session.continueWithClaude,
@@ -1625,6 +1638,7 @@ failedContinueTask: "Продолжить незавершённую задач�
         "enable": "Enable"
 },
     agentInput: {
+        switchInConversation: "Отправить и сменить агента",
         newAgentSessionHint: 'Открывает новый сеанс с выбранным агентом. Текущий разговор и черновик сохраняются.',
         switchCodingAgent: 'Сменить агента программирования',
         stop: 'Стоп',
