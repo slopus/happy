@@ -99,6 +99,27 @@ public enum FileViewer {
         }
     }
 
+    /// A file shown as what it is rather than as its bytes.
+    public enum MediaKind: Equatable, Sendable {
+        /// Fitted to the screen and zoomed by pinching.
+        case image
+        /// Played with the system's controls.
+        case video
+    }
+
+    /// Desktop FilePreview's `image` and `video` extensions, less what the
+    /// phone can't draw itself: SVG reads as text (as on Android), and
+    /// WebM and Matroska, which AVFoundation doesn't play, stay binary.
+    public static func mediaKind(_ path: String) -> MediaKind? {
+        let name = path.split(separator: "/", omittingEmptySubsequences: false).last.map(String.init) ?? path
+        guard let dot = name.lastIndex(of: "."), dot != name.startIndex else { return nil }
+        switch name[name.index(after: dot)...].lowercased() {
+        case "avif", "bmp", "gif", "heic", "ico", "jpeg", "jpg", "png", "tiff", "webp": return .image
+        case "m4v", "mov", "mp4": return .video
+        default: return nil
+        }
+    }
+
     private static let binaryExtensions: Set<String> = [
         "png", "jpg", "jpeg", "gif", "bmp", "svg", "ico",
         "mp4", "avi", "mov", "wmv", "flv", "webm",

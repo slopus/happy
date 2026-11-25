@@ -2084,6 +2084,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             case .file(let content):
                 let viewer = WorkspaceFileViewController(session: session, file: file, content: content)
                 navigationController?.pushViewController(viewer, animated: true)
+            case .media(let kind, let bytes):
+                let viewer = WorkspaceFileViewController(session: session, file: file, media: kind, bytes: bytes)
+                navigationController?.pushViewController(viewer, animated: true)
             case .forbidden:
                 Alerts.show(Strings.FileLinks.noAccessTitle, Strings.FileLinks.noAccess, on: self)
             case .unavailable:
