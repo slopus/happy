@@ -29,6 +29,9 @@ enum SettingsIndex {
     static var language: Entry { Entry(id: "language", title: Strings.SettingsLanguage.title, glyph: "language-outline", tile: .green) }
     static var agents: Entry { Entry(id: "agents", title: Strings.Settings.agents, glyph: "options-outline", tile: .teal) }
     static var providers: Entry { Entry(id: "providers", title: Strings.Providers.title, glyph: "key-outline", tile: .indigo) }
+    /// A computer's Codex, Claude and Grok accounts and their sign-in,
+    /// where its health serves it.
+    static var providerAccounts: Entry { Entry(id: "provider-accounts", title: Strings.ProviderAccounts.title, glyph: "key-outline", tile: .orange) }
     /// A Happy Cloud server's two documents every agent follows.
     static var instructions: Entry { Entry(id: "instructions", title: Strings.PolicyDocuments.title(.instructions), glyph: "document-text-outline", tile: .gray) }
     static var securityPolicy: Entry { Entry(id: "security-policy", title: Strings.PolicyDocuments.title(.security), glyph: "shield-checkmark-outline", tile: .green) }

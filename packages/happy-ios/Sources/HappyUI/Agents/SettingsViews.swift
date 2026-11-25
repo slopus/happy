@@ -570,6 +570,8 @@ final class SettingsCardView: UIView {
                 toggle.frame = local(frame)
                 // Not under a finger: a layout mid-tap would undo the tap.
                 if toggle.isOn != row.isOn, !toggle.isTracking { toggle.setOn(row.isOn, animated: window != nil) }
+                // A dimmed switch nothing listens to can't be moved.
+                toggle.isEnabled = !(row.dimmed && row.toggled == nil)
             }
             separator.isHidden = frames.separator == nil
             if let frame = frames.separator { separator.frame = local(frame) }
