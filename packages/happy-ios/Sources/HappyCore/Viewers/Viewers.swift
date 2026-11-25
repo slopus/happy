@@ -108,19 +108,44 @@ public struct ViewersFrame: Equatable, Sendable, Decodable {
     public var viewer: Viewer
 }
 
+/// The PUT's answer: who else looks at each target, in the order asked.
+/// A target of a type this app doesn't know is skipped, not the whole
+/// answer: servers echo whatever types they were asked.
+struct ViewersAnswer: Decodable, Sendable {
+    var targets: [(target: ViewerTarget, viewers: [Viewer])]
+
+    private struct Entry: Decodable {
+        let target: ViewerTarget?
+        let viewers: [Viewer]
+
+        enum CodingKeys: String, CodingKey { case target, viewers }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            target = try? container.decode(ViewerTarget.self, forKey: .target)
+            viewers = try container.decode([Viewer].self, forKey: .viewers)
+        }
+    }
+
+    enum CodingKeys: String, CodingKey { case targets }
+
+    init(from decoder: Decoder) throws {
+        let entries = try decoder.container(keyedBy: CodingKeys.self).decode([Entry].self, forKey: .targets)
+        targets = entries.compactMap { entry in entry.target.map { ($0, entry.viewers) } }
+    }
+}
+
 extension AgentClient {
     /// Says everything this stream looks at now, replacing what it said
     /// before; answers who else looks at each, in the order asked.
     public func putViewers(streamId: String, targets: [ViewerTarget]) async throws -> [(target: ViewerTarget, viewers: [Viewer])] {
-        struct Entry: Decodable { let target: ViewerTarget; let viewers: [Viewer] }
-        struct Response: Decodable { let targets: [Entry] }
         let body = JSONValue.object(["targets": .array(targets.map { target in
             switch target {
             case .agent(let id): .object(["type": .string("agent"), "id": .string(id)])
             case .surface(let id): .object(["type": .string("surface"), "id": .string(id)])
             }
         })])
-        let response = try await decode(Response.self, "PUT", "/v0/viewers/streams/\(Self.escape(streamId))", json: body)
-        return response.targets.map { ($0.target, $0.viewers) }
+        let answer = try await decode(ViewersAnswer.self, "PUT", "/v0/viewers/streams/\(Self.escape(streamId))", json: body)
+        return answer.targets
     }
 }

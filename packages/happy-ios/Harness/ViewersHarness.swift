@@ -237,6 +237,7 @@ final class ViewersHarness {
     private var account: AccountController?
     private var recorder: FrameRecorder?
     private var name = ""
+    private var lifecycle: [NSObjectProtocol] = []
 
     init(window: HarnessWindow, arguments: [String]) {
         Task { await open(window: window, arguments: arguments) }
@@ -294,6 +295,21 @@ final class ViewersHarness {
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: ViewersOffline(), connector: ViewersNoSocket()
         )
         self.account = account
+        // The app's lifecycle as `AppDelegate` and `CompositionRoot` wire
+        // it: away, the engine holds its stream on a background task.
+        account.agentConnections.streamHold = { expired in
+            await MainActor.run { () -> (@Sendable () async -> Void)? in
+                let task = UIApplication.shared.beginBackgroundTask(withName: "viewers.events") { expired() }
+                guard task != .invalid else { return nil }
+                return { await MainActor.run { UIApplication.shared.endBackgroundTask(task) } }
+            }
+        }
+        for (name, active) in [(UIApplication.didBecomeActiveNotification, true), (UIApplication.didEnterBackgroundNotification, false)] {
+            lifecycle.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+                print("VIEWERS-REAL \(active ? "foreground" : "background")")
+                Task { await account.agentConnections.setForeground(active) }
+            })
+        }
         do {
             let connection = try await account.agentConnections.add(AgentConnectionCredentials(address: host, port: port, deviceID: "viewers-real", deviceToken: token), name: "Team daemon")
             let context = AppContext(account: account, variant: .development, version: "viewers-real")
@@ -303,9 +319,16 @@ final class ViewersHarness {
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             window.rootViewController = navigation
             window.layoutIfNeeded()
-            // The slot is a team's: the bootstrap names the person first.
-            for _ in 0..<100 where session.home.userId == nil { try? await Task.sleep(for: .milliseconds(100)) }
-            print("VIEWERS-REAL user=\(session.home.userId ?? "none") live=\(session.home.live)")
+            // As a cold link opens it: before the bootstrap says whose team
+            // this is, so the slot has to come in when it does.
+            print("VIEWERS-REAL opening user=\(session.home.userId ?? "none") live=\(session.home.live)")
+            var named = false
+            let watch = session.watchHome { home in
+                guard !named, let user = home.userId else { return }
+                named = true
+                print("VIEWERS-REAL user=\(user) live=\(home.live)")
+            }
+            defer { watch.invalidate() }
             let screen: UIViewController = switch open {
             case "todo": SurfaceScreens.make(session: session, surface: AgentWire.Surface(id: target, type: "todo", name: "Todos"))
             case "document": SurfaceScreens.make(session: session, surface: AgentWire.Surface(id: target, type: "document", name: "Notes"))
@@ -336,10 +359,28 @@ final class ViewersHarness {
         }
         try? await Task.sleep(for: .seconds(2))
         probe(navigation)
+        // `-editors Kirill,Agent`: a document's awareness names, as its peers would set them.
+        if let names = value("-editors") { Self.slot(window)?.editors = names.split(separator: ",").map(String.init) }
         var moments: [(Double, () -> Void)] = (value("-shots") ?? "").split(separator: ",").compactMap { Double($0) }.map { at in
             (at, { [weak self] in self?.shoot(window, at) })
         }
         if let at = value("-openList").flatMap(Double.init) { moments.append((at, { [weak self] in self?.openList(window) })) }
+        // `-cover 10,18`: another screen over this one from 10 s to 18 s, so
+        // its slot leaves the window and comes back.
+        let cover = (value("-cover") ?? "").split(separator: ",").compactMap { Double($0) }
+        if cover.count == 2 {
+            moments.append((cover[0], {
+                let blank = UIViewController()
+                blank.view.backgroundColor = .systemBackground
+                blank.title = "Elsewhere"
+                navigation.pushViewController(blank, animated: false)
+                print("VIEWERS-COVER on")
+            }))
+            moments.append((cover[1], {
+                navigation.popViewController(animated: false)
+                print("VIEWERS-COVER off")
+            }))
+        }
         for (at, run) in moments.sorted(by: { $0.0 < $1.0 }) {
             try? await Task.sleep(until: opened + .milliseconds(Int(at * 1000)), clock: .continuous)
             run()
@@ -395,7 +436,7 @@ final class ViewersHarness {
         }
         let file = Self.directory.appendingPathComponent(String(format: "%@-%04.1f.png", name, at))
         try? image.pngData()?.write(to: file)
-        print("VIEWERS-SHOT \(file.lastPathComponent)")
+        print("VIEWERS-SHOT \(file.lastPathComponent) says=\(Self.slot(window)?.accessibilityLabel ?? "no slot")")
     }
 
     /// As a tap on the slot opens it; UIKit has no public call for a

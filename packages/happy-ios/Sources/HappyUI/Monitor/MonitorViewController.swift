@@ -119,7 +119,7 @@ final class MonitorViewController: UIViewController, UISearchResultsUpdating, UI
         navigationItem.preferredSearchBarPlacement = .integratedButton
         if #available(iOS 26.0, *) { navigationItem.searchBarPlacementAllowsToolbarIntegration = false }
         sortItem.accessibilityIdentifier = "system-monitor-sort"
-        navigationItem.rightBarButtonItems = [sortItem] + (ViewersBar.item(session: session, target: .surface(surfaceId), ground: UIColor(Palette.groupedGround)).map { [$0] } ?? [])
+        navigationItem.rightBarButtonItems = [sortItem] + [ViewersBarItem(session: session, target: .surface(surfaceId), ground: UIColor(Palette.groupedGround))]
         updateSortItem()
     }
 
