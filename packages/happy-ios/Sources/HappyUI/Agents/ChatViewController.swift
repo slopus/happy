@@ -230,7 +230,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var titleView: ChatTitleView { header.titleView }
     /// Who else has this conversation open, left of Compose; a new task
     /// gets it once the computer has made it.
-    private var viewersItem: UIBarButtonItem?
+    private var viewersItem: ViewersBarItem?
 
     init(session: Session, agentId: String, title: String, spaceId: String?, intro: Intro?, newTask: NewTask? = nil, prefill: ChatPrefill? = nil, saying: String? = nil, previewing: Bool = false) {
         self.session = session
@@ -269,7 +269,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         navigationItem.titleView = header
         navigationItem.largeTitleDisplayMode = .never
         if newTask == nil, !previewing {
-            viewersItem = ViewersBar.item(session: session, target: .agent(agentId), ground: UIColor(Palette.surface))
+            viewersItem = ViewersBarItem(session: session, target: .agent(agentId), ground: UIColor(Palette.surface))
         }
         // A new task's media is under the ID the computer gives it, once
         // its first message has made it; from then on its row on home
@@ -281,7 +281,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 self?.media.agentId = id
                 self?.creating = false
                 if let self {
-                    viewersItem = ViewersBar.item(session: session, target: .agent(id), ground: UIColor(Palette.surface))
+                    viewersItem = ViewersBarItem(session: session, target: .agent(id), ground: UIColor(Palette.surface))
                     showHeader(animated: true)
                 }
                 self?.skillsFollow?.cancel()

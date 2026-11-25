@@ -161,11 +161,11 @@ final class VaultViewController: UIViewController {
     }
 
     /// Who else looks at the vault, whichever of its folders.
-    private lazy var viewersItem = ViewersBar.item(session: session, target: .surface(surfaceId), ground: UIColor(Palette.groupedGround))
+    private lazy var viewersItem = ViewersBarItem(session: session, target: .surface(surfaceId), ground: UIColor(Palette.groupedGround))
 
     /// "+" while the folder can change, and "…", then the viewers.
     private func updateBarItems() {
-        let viewers = viewersItem.map { [$0] } ?? []
+        let viewers = [viewersItem]
         let more = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in done(self?.moreItems() ?? []) }]))
         more.accessibilityLabel = Strings.Vaults.more
         more.accessibilityIdentifier = "vault-more"

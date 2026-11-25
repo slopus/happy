@@ -4,13 +4,14 @@ import HappyLayout
 import UIKit
 
 /// Who else looks at a conversation or Surface, in its header
-/// (`ViewersBar`): one fixed-width slot, so the header is laid out the
+/// (`ViewersBarItem`): one fixed-width slot, so the header is laid out the
 /// same for nobody and for fifty. Up to four faces, then "+N". Someone
 /// here wears a breathing ring in their colour and a green dot, and pops
 /// in when they arrive; someone gone within ten minutes is in full
 /// colour, the one who left last saying how long ago ("4m": two badges
 /// side by side would run into each other); someone seen before is
-/// smaller, grey and tucked behind. A tap lists everyone.
+/// smaller, grey and tucked behind. A tap lists everyone, those editing
+/// (a document's `editors`) first.
 ///
 /// Every motion is Core Animation on prepared layers (transform,
 /// position, opacity), so the render server runs it however busy the
@@ -27,8 +28,13 @@ final class ViewersSlotView: UIButton {
     private var live = false
     private var faces: [String: ViewerFaceView] = [:]
     private let more = UILabel()
-    /// Hidden while the computer serves no viewers.
-    var onAvailable: ((Bool) -> Void)?
+    /// The names a document's awareness has editing it now: marked in the
+    /// list and in what VoiceOver says. Awareness names people, not IDs,
+    /// so a viewer is matched by name; an editor nobody matches (an agent,
+    /// another name) still has a row.
+    var editors: [String] = [] {
+        didSet { if editors != oldValue { describe() } }
+    }
 
     init(session: Session, target: ViewerTarget, ground: UIColor) {
         self.session = session
@@ -87,28 +93,32 @@ final class ViewersSlotView: UIButton {
         }
     }
 
+    /// Back from away: no tier moved while the app slept, so they are
+    /// worked out again now, not at the tick that was due.
     @objc private func foregrounded() {
+        guard window != nil else { return }
+        render(animated: false)
         for face in faces.values { face.resume() }
     }
 
     private func apply(_ state: ViewersState) {
-        switch state {
-        case .unavailable:
-            onAvailable?(false)
-        case .viewers(let list, let isLive):
-            onAvailable?(true)
-            // Only news on a live stream arrives; what the first answer
-            // says was already so.
-            let arrivals = live && isLive
-            viewers = list
-            live = isLive
-            session.viewerPeople.want(list.prefix(ViewersSlotLayout.Metrics.most).map(\.userId))
-            render(animated: arrivals)
+        // Unavailable, the item hides (`ViewersBarItem`); empty meanwhile.
+        let (list, isLive) = switch state {
+        case .unavailable: ([Viewer](), false)
+        case .viewers(let list, let live): (list, live)
         }
+        // Only news on a live stream arrives; what the first answer says
+        // was already so.
+        let arrivals = live && isLive
+        viewers = list
+        live = isLive
+        session.viewerPeople.want(list.prefix(ViewersSlotLayout.Metrics.most).map(\.userId))
+        render(animated: arrivals)
     }
 
     private func peopleChanged() {
         for (id, face) in faces { face.person(session.viewerPeople.user(id), images: session.images) }
+        describe()
     }
 
     // MARK: Drawing
@@ -152,12 +162,23 @@ final class ViewersSlotView: UIButton {
         if (more.alpha == 1) != showsMore {
             UIView.animate(withDuration: animated ? 0.25 : 0) { self.more.alpha = showsMore ? 1 : 0 }
         }
-        isUserInteractionEnabled = !viewers.isEmpty
-        isAccessibilityElement = !viewers.isEmpty
-        let here = viewers.filter(\.here).count
-        accessibilityLabel = Strings.Viewers.summary(here: here, others: viewers.count - here)
-        accessibilityTraits = .button
+        describe()
         scheduleTick(now: now)
+    }
+
+    /// What VoiceOver says, and whether there is a list to open.
+    private func describe() {
+        let some = !viewers.isEmpty || !editors.isEmpty
+        isUserInteractionEnabled = some
+        isAccessibilityElement = some
+        let here = viewers.filter(\.here).count
+        let summary = Strings.Viewers.summary(here: here, others: viewers.count - here)
+        accessibilityLabel = [viewers.isEmpty && !editors.isEmpty ? "" : summary, Strings.Viewers.editing(editors)].filter { !$0.isEmpty }.joined(separator: ". ")
+        accessibilityTraits = .button
+    }
+
+    private func name(_ userId: String) -> String {
+        session.viewerPeople.user(userId).map { $0.name.isEmpty ? Strings.Viewers.someone : $0.name } ?? Strings.Viewers.someone
     }
 
     /// Recent decays to seen, and "4m" to "5m", with no news from the
@@ -177,20 +198,34 @@ final class ViewersSlotView: UIButton {
     private func menuItems() -> [UIMenuElement] {
         let now = Date().timeIntervalSince1970 * 1000
         session.viewerPeople.want(viewers.map(\.userId))
-        func row(_ viewer: Viewer) -> UIAction {
+        func row(_ viewer: Viewer, editing: Bool) -> UIAction {
             let user = session.viewerPeople.user(viewer.userId)
-            let name = user.map { $0.name.isEmpty ? Strings.Viewers.someone : $0.name } ?? Strings.Viewers.someone
+            let name = name(viewer.userId)
             let face = faces[viewer.userId]?.menuImage ?? ViewerFaceView.placeholderImage(viewer.userId, thumbhash: user?.photo?.thumbhash)
-            return UIAction(title: Strings.Viewers.row(name, ViewerTiers.when(viewer, now: now)), image: face) { [weak self] _ in
+            let when = editing ? Strings.Viewers.editingNow : Strings.Viewers.when(ViewerTiers.when(viewer, now: now))
+            return UIAction(title: Strings.Viewers.row(name, when), image: face) { [weak self] _ in
                 self?.openProfile(user ?? TeamUser(id: viewer.userId, name: name))
             }
         }
-        let groups: [[Viewer]] = [
-            viewers.filter { ViewerTiers.tier($0, now: now) == .here },
-            viewers.filter { if case .recent = ViewerTiers.tier($0, now: now) { true } else { false } },
-            viewers.filter { ViewerTiers.tier($0, now: now) == .seen },
+        var unmatched = editors
+        var editing: [UIMenuElement] = []
+        var rest: [Viewer] = []
+        for viewer in viewers {
+            if let index = unmatched.firstIndex(of: name(viewer.userId)) {
+                unmatched.remove(at: index)
+                editing.append(row(viewer, editing: true))
+            } else {
+                rest.append(viewer)
+            }
+        }
+        editing += unmatched.map { UIAction(title: Strings.Viewers.row($0, Strings.Viewers.editingNow), attributes: .disabled) { _ in } }
+        let groups: [[UIMenuElement]] = [
+            editing,
+            rest.filter { ViewerTiers.tier($0, now: now) == .here }.map { row($0, editing: false) },
+            rest.filter { if case .recent = ViewerTiers.tier($0, now: now) { true } else { false } }.map { row($0, editing: false) },
+            rest.filter { ViewerTiers.tier($0, now: now) == .seen }.map { row($0, editing: false) },
         ]
-        return groups.filter { !$0.isEmpty }.map { UIMenu(options: .displayInline, children: $0.map(row)) }
+        return groups.filter { !$0.isEmpty }.map { UIMenu(options: .displayInline, children: $0) }
     }
 
     private func openProfile(_ user: TeamUser) {

@@ -3,20 +3,47 @@ import XCTest
 @testable import HappyCore
 import HappyWire
 
-/// `PUT /v0/viewers/streams/:streamId` as API.md has it: every call heard,
-/// each target answered with the people set for it, or 404 while refused.
+/// `PUT /v0/viewers/streams/:streamId` as API.md has it, under the test's
+/// hand: every call heard; while `holding`, each waits until the test
+/// says how it ends. `lose` applies the request and then loses the
+/// answer, as a dropped connection after the server did its part; `drop`
+/// loses the request before the server sees it.
 private actor FakeViewersServer {
+    enum Outcome { case answer, lose, drop, refuse }
+
     private(set) var calls: [(stream: String, targets: [ViewerTarget])] = []
+    /// What each stream looks at, as the server applied it.
+    private(set) var holds: [String: [ViewerTarget]] = [:]
     var people: [ViewerTarget: [Viewer]] = [:]
-    var refusing = false
+    var outcome = Outcome.answer
+    var holding = false
+    private var waiting: [CheckedContinuation<Outcome, Never>] = []
 
     func set(_ target: ViewerTarget, _ viewers: [Viewer]) { people[target] = viewers }
-    func refuse(_ refusing: Bool) { self.refusing = refusing }
+    func refuse(_ refusing: Bool) { outcome = refusing ? .refuse : .answer }
+    func end(_ outcome: Outcome) { self.outcome = outcome }
+    func hold(_ holding: Bool) { self.holding = holding }
 
-    func put(_ stream: String, _ targets: [ViewerTarget]) throws -> [(target: ViewerTarget, viewers: [Viewer])] {
+    /// Ends the oldest call held.
+    func release(_ outcome: Outcome) { waiting.removeFirst().resume(returning: outcome) }
+    var held: Int { waiting.count }
+
+    func put(_ stream: String, _ targets: [ViewerTarget]) async throws -> [(target: ViewerTarget, viewers: [Viewer])] {
         calls.append((stream, targets))
-        if refusing { throw AgentClientError.status(404, code: "not_found", message: nil) }
-        return targets.map { ($0, people[$0] ?? []) }
+        var ending = outcome
+        if holding { ending = await withCheckedContinuation { waiting.append($0) } }
+        switch ending {
+        case .refuse:
+            throw AgentClientError.status(404, code: "not_found", message: nil)
+        case .lose:
+            holds[stream] = targets
+            throw URLError(.networkConnectionLost)
+        case .drop:
+            throw URLError(.networkConnectionLost)
+        case .answer:
+            holds[stream] = targets
+            return targets.map { ($0, people[$0] ?? []) }
+        }
     }
 
     var said: [[ViewerTarget]] { calls.map(\.targets) }
@@ -79,11 +106,33 @@ final class ViewerTierTests: XCTestCase {
         XCTAssertEqual(frame, ViewersFrame(target: .surface("s1"), viewer: Viewer(userId: "anna", here: true, lastSeenAt: 1_800_000_000_000)))
         XCTAssertEqual(String(decoding: try JSONEncoder().encode(ViewerTarget.agent("a1")), as: UTF8.self).contains(#""type":"agent""#), true)
     }
+
+    func testAnAnswerSkipsATargetOfATypeThisAppDoesNotKnow() throws {
+        let answer = try JSONDecoder().decode(ViewersAnswer.self, from: Data(#"""
+        {"targets":[
+          {"target":{"type":"agent","id":"a1"},"viewers":[{"userId":"anna","here":true,"lastSeenAt":1800000000000}]},
+          {"target":{"type":"whiteboard","id":"w1"},"viewers":[{"userId":"max","here":true,"lastSeenAt":1800000000000}]},
+          {"target":{"type":"surface","id":"s1"},"viewers":[]}
+        ]}
+        """#.utf8))
+        XCTAssertEqual(answer.targets.map(\.target), [.agent("a1"), .surface("s1")])
+        XCTAssertEqual(answer.targets.first?.viewers, [Viewer(userId: "anna", here: true, lastSeenAt: now)])
+    }
 }
 
 final class ViewersStoreTests: XCTestCase {
     private func makeStore(_ server: FakeViewersServer, heartbeat: Duration = .seconds(60)) -> ViewersStore {
-        ViewersStore(heartbeat: heartbeat, settle: .milliseconds(5)) { stream, targets in try await server.put(stream, targets) }
+        ViewersStore(heartbeat: heartbeat, settle: .milliseconds(5), retry: .milliseconds(20)) { stream, targets in try await server.put(stream, targets) }
+    }
+
+    /// The next state a header draws that `wanted` accepts, skipping any
+    /// in between (a watch keeps only the newest).
+    private func next(_ states: inout AsyncStream<ViewersState>.Iterator, _ what: String, _ wanted: (ViewersState) -> Bool) async -> ViewersState? {
+        while let state = await states.next() {
+            if wanted(state) { return state }
+        }
+        XCTFail("never: \(what)")
+        return nil
     }
 
     private func eventually(_ what: String, timeout: TimeInterval = 2, _ check: () async -> Bool) async {
@@ -107,7 +156,7 @@ final class ViewersStoreTests: XCTestCase {
         let before = await server.calls.count
         XCTAssertEqual(before, 0)
         await store.opened(hello("s1"))
-        let answered = await states.next()
+        let answered = await next(&states, "answered") { $0 != .viewers([], live: false) }
         XCTAssertEqual(answered, .viewers([anna], live: true))
         let calls = await server.calls
         XCTAssertEqual(calls.map(\.stream), ["s1"])
@@ -234,5 +283,164 @@ final class ViewersStoreTests: XCTestCase {
         await store.closed()
         let closed = await states.next()
         XCTAssertEqual(closed, .viewers([Viewer(userId: "kirill", here: false, lastSeenAt: now + 5_000), Viewer(userId: "anna", here: false, lastSeenAt: now - 360_000)], live: false))
+    }
+
+    // MARK: Lost answers, in flight, reconnects, reopening
+
+    func testAnAnswerLostAfterTheServerAppliedItStillEndsInAClearWhenTheScreenLeaves() async {
+        let server = FakeViewersServer()
+        await server.hold(true)
+        let store = makeStore(server)
+        await store.opened(hello("s1"))
+        let watching = Task { for await _ in await store.view(todo) {} }
+        await eventually("asked") { await server.held == 1 }
+        // The screen goes while the PUT is out; then its answer is lost.
+        watching.cancel()
+        try? await Task.sleep(for: .milliseconds(20))
+        await server.hold(false)
+        await server.release(.lose)
+        await eventually("the server holds it though the phone never heard so") { await server.holds["s1"] != nil }
+        await eventually("cleared") { await server.holds["s1"] == [] }
+        let said = await server.said
+        XCTAssertEqual(said.last, [])
+    }
+
+    func testAnAnswerLostBeforeTheAppGoesAwayStillEndsInAClear() async {
+        let server = FakeViewersServer()
+        await server.end(.lose)
+        let store = makeStore(server)
+        await store.opened(hello("s1"))
+        let watching = Task { for await _ in await store.view(chat) {} }
+        await eventually("applied, answer lost") { await server.holds["s1"] == [chat] }
+        await server.end(.answer)
+        await store.setForeground(false)
+        await eventually("cleared") { await server.holds["s1"] == [] }
+        let count = await server.said.count
+        try? await Task.sleep(for: .milliseconds(80))
+        let after = await server.said.count
+        XCTAssertEqual(after, count, "known clear: nothing more while away")
+        watching.cancel()
+    }
+
+    func testAClearLostOnTheWayIsSaidAgain() async {
+        let server = FakeViewersServer()
+        let store = makeStore(server)
+        await store.opened(hello("s1"))
+        let watching = Task { for await _ in await store.view(chat) {} }
+        await eventually("said") { await server.holds["s1"] == [chat] }
+        await server.hold(true)
+        watching.cancel()
+        await eventually("clearing") { await server.held == 1 }
+        // Lost before the server applied it: it still holds the chat.
+        await server.hold(false)
+        await server.release(.drop)
+        await eventually("cleared") { await server.holds["s1"] == [] }
+    }
+
+    func testAPutInFlightWhenTheAppGoesAwayIsFollowedByAClearInOrder() async {
+        let server = FakeViewersServer()
+        await server.set(chat, [Viewer(userId: "anna", here: true, lastSeenAt: now)])
+        await server.hold(true)
+        let store = makeStore(server)
+        await store.opened(hello("s1"))
+        var states = await store.view(chat).makeAsyncIterator()
+        _ = await states.next()
+        await eventually("in flight") { await server.held == 1 }
+        await store.setForeground(false)
+        try? await Task.sleep(for: .milliseconds(30))
+        let whileHeld = await server.said
+        XCTAssertEqual(whileHeld, [[chat]], "one PUT at a time: the clear waits for the one in flight")
+        await server.release(.answer)
+        await eventually("clear asked") { await server.held == 1 }
+        await server.release(.answer)
+        await eventually("cleared") { await server.holds["s1"] == [] }
+        let said = await server.said
+        XCTAssertEqual(said, [[chat], []])
+        // Answered after the app went away: drawn as history, nobody here.
+        let drawn = await next(&states, "drawn") { $0 != .viewers([], live: false) }
+        XCTAssertEqual(drawn, .viewers([Viewer(userId: "anna", here: false, lastSeenAt: now)], live: false))
+    }
+
+    func testAfterAReconnectNobodyIsHereUntilTheNewStreamAnswers() async {
+        let server = FakeViewersServer()
+        let anna = Viewer(userId: "anna", here: true, lastSeenAt: now)
+        await server.set(chat, [anna])
+        let store = makeStore(server)
+        await store.opened(hello("s1"))
+        var states = await store.view(chat).makeAsyncIterator()
+        let live = await next(&states, "live") { $0 == .viewers([anna], live: true) }
+        XCTAssertNotNil(live)
+        await server.hold(true)
+        await store.closed()
+        let closed = await states.next()
+        XCTAssertEqual(closed, .viewers([Viewer(userId: "anna", here: false, lastSeenAt: now)], live: false))
+        // Anna left while the phone was away from the stream.
+        await server.set(chat, [Viewer(userId: "anna", here: false, lastSeenAt: now + 9_000)])
+        await store.opened(hello("s2"))
+        await eventually("asked on s2") { await server.held == 1 }
+        await server.release(.answer)
+        let fresh = await states.next()
+        XCTAssertEqual(fresh, .viewers([Viewer(userId: "anna", here: false, lastSeenAt: now + 9_000)], live: true))
+    }
+
+    func testReopeningAScreenDoesNotDrawTheOldAnswerAsHere() async {
+        let server = FakeViewersServer()
+        let anna = Viewer(userId: "anna", here: true, lastSeenAt: now)
+        await server.set(todo, [anna])
+        let store = makeStore(server)
+        await store.opened(hello("s1"))
+        var first = await store.view(todo).makeAsyncIterator()
+        let live = await next(&first, "live") { $0 == .viewers([anna], live: true) }
+        XCTAssertNotNil(live)
+        first = AsyncStream<ViewersState> { $0.finish() }.makeAsyncIterator()
+        await eventually("left") { await server.holds["s1"] == [] }
+        // Anna leaves; this phone, looking elsewhere, hears no frame.
+        await server.set(todo, [Viewer(userId: "anna", here: false, lastSeenAt: now + 4_000)])
+        await server.hold(true)
+        var again = await store.view(todo).makeAsyncIterator()
+        let reopened = await again.next()
+        XCTAssertEqual(reopened, .viewers([Viewer(userId: "anna", here: false, lastSeenAt: now)], live: false))
+        await eventually("asked again") { await server.held == 1 }
+        await server.release(.answer)
+        let fresh = await again.next()
+        XCTAssertEqual(fresh, .viewers([Viewer(userId: "anna", here: false, lastSeenAt: now + 4_000)], live: true))
+    }
+
+    func testAwayNobodyIsHere() async {
+        let server = FakeViewersServer()
+        let anna = Viewer(userId: "anna", here: true, lastSeenAt: now)
+        await server.set(chat, [anna])
+        let store = makeStore(server)
+        await store.opened(hello("s1"))
+        var states = await store.view(chat).makeAsyncIterator()
+        _ = await next(&states, "live") { $0 == .viewers([anna], live: true) }
+        await store.setForeground(false)
+        let away = await states.next()
+        XCTAssertEqual(away, .viewers([Viewer(userId: "anna", here: false, lastSeenAt: now)], live: false))
+        await store.setForeground(true)
+        let back = await states.next()
+        XCTAssertEqual(back, .viewers([anna], live: true))
+    }
+
+    func testAvailabilityIsWatchedWithoutLookingAtAnything() async {
+        let server = FakeViewersServer()
+        await server.refuse(true)
+        let store = makeStore(server)
+        var available = await store.available().makeAsyncIterator()
+        let first = await available.next()
+        XCTAssertEqual(first, true)
+        await store.opened(hello("s1"))
+        let watching = Task { for await _ in await store.view(chat) {} }
+        let refused = await available.next()
+        XCTAssertEqual(refused, false)
+        watching.cancel()
+        try? await Task.sleep(for: .milliseconds(30))
+        await store.closed()
+        await server.refuse(false)
+        await store.opened(hello("s2"))
+        let back = await available.next()
+        XCTAssertEqual(back, true)
+        let calls = await server.calls.count
+        XCTAssertEqual(calls, 1, "watching availability says nothing to the server")
     }
 }

@@ -313,9 +313,9 @@ public actor SyncEngine {
     public func background() async {
         guard !backgrounded else { return }
         backgrounded = true
-        await viewers.setForeground(false)
         // Only a verified stream is held: a held winner brings no hello to verify.
-        guard !stopped, runner != nil, snapshot.live, verified, eventStream != nil else { await pause(); return }
+        // Unheld, its close ends what it looked at on the server.
+        guard !stopped, runner != nil, snapshot.live, verified, eventStream != nil else { await viewers.setForeground(false); await pause(); return }
         let id = UUID()
         holdID = id
         let deadline = ContinuousClock.now + streamHoldDuration
@@ -323,11 +323,13 @@ public actor SyncEngine {
         let release = await streamHold { [weak self] in Task { await self?.expireHold(id) } }
         guard holdID == id else { await release?(); return }
         releaseHold = release
-        guard release != nil else { await expireHold(id); return }
+        guard release != nil else { await viewers.setForeground(false); await expireHold(id); return }
         holdTimer = Task {
             do { try await Task.sleep(until: deadline, clock: .continuous) } catch { return }
             await self.expireHold(id)
         }
+        // Held, the stream stays: the store says `[]` on it within the hold.
+        await viewers.setForeground(false)
         await intents.setOnline(false)
     }
 

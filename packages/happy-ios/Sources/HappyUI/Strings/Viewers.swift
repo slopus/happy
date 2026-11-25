@@ -16,6 +16,21 @@ extension Strings {
             "\(name) · \(self.when(when, now: now, calendar: calendar))"
         }
 
+        /// "Anna · editing": a row with its own ending.
+        public static func row(_ name: String, _ when: String) -> String { "\(name) · \(when)" }
+
+        /// In a document, someone whose cursor is in it now.
+        public static let editingNow = "editing"
+
+        /// "Anna is editing", "Anna and Max are editing".
+        public static func editing(_ names: [String]) -> String {
+            switch names.count {
+            case 0: ""
+            case 1: "\(names[0]) is editing"
+            default: "\(names.dropLast().joined(separator: ", ")) and \(names.last!) are editing"
+            }
+        }
+
         public static func when(_ when: ViewerTiers.When, now: Date = Date(), calendar: Calendar = .current) -> String {
             switch when {
             case .now: return "here now"
