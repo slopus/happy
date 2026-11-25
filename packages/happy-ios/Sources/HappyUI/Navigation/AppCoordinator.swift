@@ -35,8 +35,9 @@ public final class AppCoordinator {
     private var pendingInvite: CloudInvite?
     /// Links a screen hands over to open as links from outside open (`openHappyLink`).
     private var linkRequests: NSObjectProtocol?
-    /// What an instance link opens once its connection is home.
-    private var instanceTarget: (connection: String, link: HappyLink)?
+    /// What an instance link opens once its connection is home. `pushed`:
+    /// a tapped push's agent rather than a link's.
+    private var instanceTarget: (connection: String, link: HappyLink, pushed: Bool)?
     /// The session a tapped notification named, until a signed-in home can
     /// open it.
     private var notificationSessionID: String?
@@ -208,7 +209,7 @@ public final class AppCoordinator {
         }
         guard clearedForLink(then: { [weak self] in self?.openNotificationAgent() }) else { return }
         notificationPush = nil
-        open(HappyLink(.reference(HappyLink.Reference(kind: .agent, id: push.agentId))), onConnection: id)
+        open(HappyLink(.reference(HappyLink.Reference(kind: .agent, id: push.agentId))), onConnection: id, pushed: true)
     }
 
     /// Foreground/background, for the server's push suppression.
@@ -285,8 +286,8 @@ public final class AppCoordinator {
     }
 
     /// `link` on the connection `id`, which becomes the one shown first.
-    private func open(_ link: HappyLink, onConnection id: String) {
-        instanceTarget = (id, link)
+    private func open(_ link: HappyLink, onConnection id: String, pushed: Bool = false) {
+        instanceTarget = (id, link, pushed)
         if case .agentConnection(let shown) = context.account.state, shown.id == id { return openInstanceTarget() }
         let account = context.account
         Task { @MainActor [weak self] in
