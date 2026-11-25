@@ -10,6 +10,10 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
@@ -147,11 +151,72 @@ class WorkspaceFilesLayoutTest {
         assertDp("centred", (PHONE_WIDTH.dp - 40.dp) / 2, picture.left)
     }
 
+    /** desktop's ImageViewer "fit": all of it, at most life size, so a tall picture fits the height too. */
     @Test
-    fun bytesReadAsTextBinaryOrPicture() {
+    fun aTallPictureFitsTheScreen() {
+        val png = ByteArrayOutputStream().also { Bitmap.createBitmap(300, 6000, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        val load = fileLoadOf("art/tall.png", png)
+        show { FileScreen(load, "art/tall.png", onBack = {}) }
+        val bar = rule.node(FileTags.PATH_BAR).bounds
+        val picture = rule.node(FileTags.PICTURE).bounds
+        // 2000 dp tall at its own size: fitted between the path bar and the foot, 16 in.
+        assertDp("16 under the path bar", bar.bottom + 16.dp, picture.top)
+        assertDp("16 above the foot", rule.onRoot().bounds.bottom - 16.dp, picture.bottom)
+        assertDp("its shape kept", picture.height / 20, picture.width)
+    }
+
+    /** Pinched or double-tapped, the picture zooms where it is, inside its box. */
+    @Test
+    fun aPictureZoomsInPlace() {
+        val png = ByteArrayOutputStream().also { Bitmap.createBitmap(120, 60, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        show { FileScreen(fileLoadOf("art/logo.png", png), "art/logo.png", onBack = {}) }
+        rule.node(FileTags.PICTURE).performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        // 40 × 20 at 2.5 times, drawn scaled (the layout box stays 40 × 20).
+        val zoomed = rule.node(FileTags.PICTURE).getBoundsInRoot()
+        assertDp("in to 2.5", 100, zoomed.width)
+        assertDp("about its middle", (PHONE_WIDTH.dp - 100.dp) / 2, zoomed.left)
+        rule.onAllNodesWithTag(com.slopus.happy.ui.conversation.PictureViewerTags.VIEWER, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    /** A recording plays in place, fitted on black under the path bar, with the viewer's controls. */
+    @Test
+    fun aRecordingPlaysUnderThePathBar() {
+        val load = fileLoadOf("media/clip.mp4", "\u0000\u0000\u0000\u0018ftypmp42".toByteArray())
+        assertTrue(load is FileLoad.Video)
+        show { FileScreen(load, "media/clip.mp4", onBack = {}) }
+        val bar = rule.node(FileTags.PATH_BAR).bounds
+        val video = rule.node(FileTags.VIDEO).bounds
+        assertBox("the rest of the screen", video, 0.dp, bar.bottom, PHONE_WIDTH.dp, rule.onRoot().bounds.bottom - bar.bottom)
+        rule.node(com.slopus.happy.ui.conversation.PictureViewerTags.PLAY).assertExists()
+    }
+
+    @Test
+    fun bytesReadAsTextBinaryPictureOrRecording() {
         assertEquals(FileLoad.Loaded("hello\n", null), fileLoadOf("a.txt", "hello\n".toByteArray()))
         assertEquals(FileLoad.Binary, fileLoadOf("a.dat", byteArrayOf(1, 0, 2)))
         assertEquals(FileLoad.Binary, fileLoadOf("broken.png", byteArrayOf(1, 2, 3)))
+        assertTrue(fileLoadOf("clip.MOV", byteArrayOf(0, 0, 0, 1)) is FileLoad.Video)
+        assertEquals("nothing to play", FileLoad.Binary, fileLoadOf("empty.mp4", ByteArray(0)))
+        // desktop FilePreview's kinds, where Android can draw or play them.
+        for (name in listOf("a.png", "a.JPG", "a.jpeg", "a.gif", "a.webp", "a.bmp", "a.ico", "a.heic", "a.heif", "a.avif")) assertTrue(name, isPicturePath(name))
+        for (name in listOf("a.mp4", "a.m4v", "a.mov", "a.mkv", "a.WEBM")) assertTrue(name, isVideoPath(name))
+        for (name in listOf("a.svg", "a.mp3", "a.tiff", "mp4")) assertTrue(name, !isPicturePath(name) && !isVideoPath(name))
+    }
+
+    /** Over the relay, a picture isn't binary by its name: it is read and shown. */
+    @Test
+    fun aRelayPictureIsReadRatherThanCalledBinary() = kotlinx.coroutines.test.runTest {
+        val png = ByteArrayOutputStream().also { Bitmap.createBitmap(30, 30, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        val ops = object : SessionFileOps {
+            override suspend fun bash(sessionId: String, command: String, cwd: String?, timeoutMs: Long) = error("no diff for a picture")
+            override suspend fun readFile(sessionId: String, path: String) = com.slopus.happy.sync.ReadFileResult(true, java.util.Base64.getEncoder().encodeToString(png))
+            override suspend fun gitState(sessionId: String) = error("unused")
+            override suspend fun readGitFile(sessionId: String, base: String, file: com.slopus.happy.sync.GitFile) = error("unused")
+        }
+        val load = ops.loadFile("s", "/repo/logo.png", "/repo", "logo.png")
+        assertTrue(load is FileLoad.Picture)
+        assertEquals(30, (load as FileLoad.Picture).width)
     }
 
     /** A file is a document: iOS's document heading ramp (DocumentTokens.headingSize 30 / 24 / 20), h1 the largest. */
