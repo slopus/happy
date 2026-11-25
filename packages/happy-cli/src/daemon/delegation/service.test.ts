@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createEnvelope, type DelegationRoleInput } from '@slopus/happy-wire';
+import { createEnvelope, DelegationRoleV1Schema, type DelegationRoleInput } from '@slopus/happy-wire';
 import { createDelegationService, DelegationDeliveryError, type DelegationDependencies, type DelegationParent, type DelegationSendOptions } from './service';
 import { createDelegationReporter, DELEGATION_REPORTER_ENV, parseDelegationReporterDescriptor, readDelegationReports } from './journal';
 import { writeDelegationJson } from './store';
@@ -17,7 +17,7 @@ afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); for (con
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 async function fixture(waitTimeoutMs = 1000) {
     const directory = mkdtempSync(join(tmpdir(), 'paws-delegation-service-')); directories.push(directory);
-    const parent: DelegationParent = { id: 'parent-one', agent: 'codex', directory: '/project', permissionMode: 'read-only', accountProfileId: 'private-account-reference' };
+    const parent: DelegationParent = { id: 'parent-one', agent: 'codex', directory: '/project', permissionMode: 'read-only', accountProfileId: 'private-account-reference', delegationRoutes: true };
     const alive = new Set<string>(); const reporters = new Map<string, Reporter>(); const sent: Sent[] = []; const events = new EventEmitter();
     let sendError: Error | undefined;
     let prepare: (() => Promise<void>) | undefined;
@@ -68,6 +68,122 @@ function finish(sent: Sent, text = '# Result', status: 'completed' | 'failed' | 
     sent.reporter.observe(createEnvelope('agent', { t: 'turn-end', status }, { turn }));
 }
 describe('persistent delegation coordinator', () => {
+    it('shares machine and session CRUD with stable generated IDs and never executes a created role', async () => {
+        const f = await fixture(); vi.mocked(f.deps.resolveParent).mockClear();
+        const created = await f.service.handleRoles({ action: 'create', role: {
+            name: role.name, description: 'A separate role with the same display name', agent: 'antigravity',
+        } });
+        expect(created.success).toBe(true);
+        expect(created.role).toMatchObject({ name: role.name, autoDelegate: false });
+        expect(created.role?.id).not.toBe(role.id);
+        expect(created.role?.model).toBeUndefined();
+        expect(f.deps.resolveParent).not.toHaveBeenCalled();
+        expect(f.deps.spawn).not.toHaveBeenCalled(); expect(f.deps.send).not.toHaveBeenCalled();
+        const id = created.role!.id;
+        expect((await f.service.handleRoles({ action: 'create', role: { ...role, id } })).success).toBe(false);
+        expect((await f.service.handleRoles({ action: 'update', roleId: 'missing', patch: { name: 'Do not upsert' } })).success).toBe(false);
+        const updated = await f.service.handle({ action: 'roles-update', parentSessionId: f.parent.id, protocolVersion: 2, roleId: id, patch: { name: 'Updated by conversation' } });
+        expect(updated.role).toMatchObject({ id, name: 'Updated by conversation', createdAt: created.role!.createdAt });
+        expect((await f.service.handleRoles({ action: 'list' })).roles?.find(item => item.id === id)?.name).toBe('Updated by conversation');
+        await f.service.handleRoles({ action: 'delete', roleId: id });
+        expect((await f.service.handle({ action: 'roles-list', parentSessionId: f.parent.id })).roles?.map(item => item.id)).toEqual([role.id]);
+        expect(JSON.parse(readFileSync(join(f.directory, 'roles.json'), 'utf8'))).toHaveLength(1);
+    });
+
+    it('clears native defaults with a patch without changing the stable role ID', async () => {
+        const f = await fixture();
+        await f.service.handleRoles({ action: 'update', roleId: role.id, patch: { effort: 'high' } });
+        const cleared = await f.service.handleRoles({ action: 'update', roleId: role.id, patch: { model: null, effort: null } });
+        expect(cleared.role?.id).toBe(role.id); expect(cleared.role?.model).toBeUndefined(); expect(cleared.role?.effort).toBeUndefined();
+        expect((await f.service.handleRoles({ action: 'update', roleId: role.id, patch: { id: 'replacement' } } as any)).success).toBe(false);
+    });
+
+    it('selects the client response protocol independently from the worker execution capability', async () => {
+        const f = await fixture();
+        const defaults = await f.service.handleRoles({ action: 'create', role: { name: 'Native defaults', description: 'Use native defaults', agent: 'codex' } });
+        // Even on a new worker, an old App must receive a fully parseable V1 list.
+        const legacy = await f.service.handle({ action: 'roles-list', parentSessionId: f.parent.id });
+        expect(DelegationRoleV1Schema.array().parse(legacy.roles).map(item => item.id)).toEqual([role.id]);
+        f.parent.delegationRoutes = false;
+        expect((await f.service.handle({ action: 'roles-list', parentSessionId: f.parent.id })).roles?.map(item => item.id)).toEqual([role.id]);
+        expect((await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2, requestId: 'old-default', roleId: defaults.role!.id, prompt: 'Draft' })).error).toContain('updated parent worker');
+        expect((await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2, requestId: 'old-route', route: { agent: 'codex' }, intent: 'explicit', prompt: 'Draft' })).success).toBe(false);
+        expect(f.deps.spawn).not.toHaveBeenCalled();
+        expect((await f.service.handleRoles({ action: 'list' })).roles).toHaveLength(2);
+        // A new client can read/configure complete roles without native execution support.
+        expect((await f.service.handle({ action: 'roles-list', parentSessionId: f.parent.id, protocolVersion: 2 })).roles).toHaveLength(2);
+        expect((await f.service.handle({ action: 'roles-update', parentSessionId: f.parent.id, protocolVersion: 2,
+            roleId: defaults.role!.id, patch: { name: 'Edited on old worker' } })).role?.name).toBe('Edited on old worker');
+        f.parent.delegationRoutes = true;
+        expect((await f.service.handle({ action: 'roles-list', parentSessionId: f.parent.id, protocolVersion: 2 })).roles).toHaveLength(2);
+    });
+
+    it('rejects V2-only execution before creating or dispatching an unrepresentable V1 task', async () => {
+        const f = await fixture();
+        const defaults = await f.service.handleRoles({ action: 'create', role: { name: 'Native defaults', description: 'Use native defaults', agent: 'codex' } });
+        expect((await f.service.handle({ action: 'start', parentSessionId: f.parent.id, requestId: 'v1-route',
+            route: { agent: 'antigravity', model: 'Neon' }, intent: 'explicit', prompt: 'Draft' })).error).toContain('protocolVersion 2');
+        expect((await f.service.handle({ action: 'start', parentSessionId: f.parent.id, requestId: 'v1-default',
+            roleId: defaults.role!.id, prompt: 'Draft' })).error).toContain('protocolVersion 2');
+        expect(f.deps.spawn).not.toHaveBeenCalled(); expect(f.deps.send).not.toHaveBeenCalled();
+        expect(readdirSync(join(f.directory, 'tasks'))).toEqual([]);
+    });
+
+    it('enforces automatic intent against the saved role policy before creating a child', async () => {
+        const f = await fixture();
+        await f.service.handleRoles({ action: 'update', roleId: role.id, patch: { autoDelegate: false } });
+        const common = { action: 'start' as const, parentSessionId: f.parent.id, protocolVersion: 2 as const, prompt: 'Draft', intent: 'automatic' as const };
+        expect((await f.service.handle({ ...common, requestId: 'auto-off', roleId: role.id })).error).toContain('Automatic delegation is disabled');
+        expect((await f.service.handle({ ...common, requestId: 'auto-route', route: { agent: 'antigravity' } })).success).toBe(false);
+        expect(f.deps.spawn).not.toHaveBeenCalled();
+        await f.service.handleRoles({ action: 'update', roleId: role.id, patch: { autoDelegate: true } });
+        const started = await f.service.handle({ ...common, requestId: 'auto-on', roleId: role.id });
+        const sent = await f.nextSent(); finish(sent);
+        const read = await f.service.handle({ action: 'read', parentSessionId: f.parent.id, protocolVersion: 2, taskId: started.taskId! });
+        expect(read.task?.history[0].intent).toBe('automatic');
+        expect((await f.service.handle({ ...common, requestId: 'auto-revise', taskId: started.taskId! })).success).toBe(false);
+    });
+
+    it('uses a temporary native-default route without saving a role and revises the same resolved worker', async () => {
+        const f = await fixture();
+        const started = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2, requestId: 'one-off',
+            route: { agent: 'antigravity' }, intent: 'explicit', prompt: 'Draft once' });
+        const first = await f.nextSent();
+        expect(first.options.model).toBeUndefined(); expect(first.options.effort).toBeUndefined();
+        expect((await f.service.handle({ action: 'cancel', parentSessionId: f.parent.id, taskId: started.taskId! })).error).toContain('protocolVersion 2');
+        expect(f.deps.cancel).not.toHaveBeenCalled();
+        finish(first, 'One-off result');
+        const read = await f.service.handle({ action: 'read', parentSessionId: f.parent.id, protocolVersion: 2, taskId: started.taskId! });
+        expect(read.task).toMatchObject({ model: 'gemini-neon-actual', effort: 'high' });
+        expect(read.task?.roleId).toBeUndefined();
+        expect((await f.service.handleRoles({ action: 'list' })).roles?.map(item => item.id)).toEqual([role.id]);
+        expect((await f.service.handle({ action: 'start', parentSessionId: f.parent.id, requestId: 'v1-revision', taskId: started.taskId!, prompt: 'Old client revision' })).error).toContain('protocolVersion 2');
+        expect(f.deps.send).toHaveBeenCalledTimes(1);
+        const revised = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2, requestId: 'one-off-v2',
+            taskId: started.taskId!, intent: 'explicit', prompt: 'Make that shorter' });
+        const second = await f.nextSent(1);
+        expect(second.child).toBe(first.child); expect(second.options).toMatchObject({ model: 'gemini-neon-actual', effort: 'high' });
+        expect(revised.taskId).toBe(started.taskId); finish(second);
+    });
+
+    it('keeps a 200-character temporary title readable and reloadable without dispatching a retried request twice', async () => {
+        const f = await fixture();
+        const title = '临时任务'.repeat(50);
+        const input = { action: 'start' as const, parentSessionId: f.parent.id, protocolVersion: 2 as const, requestId: 'long-temporary-title',
+            title, route: { agent: 'antigravity' as const }, intent: 'explicit' as const, prompt: 'Draft once' };
+        const started = await f.service.handle(input);
+        expect(started.success).toBe(true); expect(started.task?.title).toBe(title); expect(started.task?.roleName.length).toBe(100);
+        const sent = await f.nextSent(); finish(sent, 'Long title result');
+        const result = await f.service.handle({ action: 'read', parentSessionId: f.parent.id, protocolVersion: 2, taskId: started.taskId! });
+        expect(result).toMatchObject({ success: true, task: { title, roleName: title.slice(0, 100), status: 'completed' } });
+        f.service.dispose();
+        const reloaded = await createDelegationService({ directory: f.directory, deps: f.deps }); disposers.push(reloaded.dispose);
+        const retried = await reloaded.handle(input);
+        expect(retried).toMatchObject({ success: true, taskId: started.taskId, task: { title, version: 1, status: 'completed' } });
+        expect(f.deps.spawn).toHaveBeenCalledTimes(1); expect(f.deps.send).toHaveBeenCalledTimes(1);
+        const reread = await reloaded.handle({ action: 'read', parentSessionId: f.parent.id, protocolVersion: 2, taskId: started.taskId! });
+        expect(reread.task?.result?.text).toBe('Long title result');
+    });
     it('waits on a real root result, preserves model ACK and exposes only task-scoped data', async () => {
         const f = await fixture();
         const response = f.service.handle({ action: 'start', parentSessionId: f.parent.id, roleId: role.id, requestId: 'request-one', prompt: 'Write README.', context: 'Verified facts', wait: true });

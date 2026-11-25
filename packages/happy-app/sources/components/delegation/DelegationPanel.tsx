@@ -7,11 +7,13 @@ import { DelegationRoleInputSchema, type DelegationRole, type DelegationRoleInpu
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { Modal } from '@/modal';
-import { useSession, useMachine } from '@/sync/storage';
+import { useSession } from '@/sync/storage';
 import { listDelegationRoles, saveDelegationRole, deleteDelegationRole, readDelegatedTask, cancelDelegatedTask } from '@/sync/apiDelegation';
 import { useRightSwipePanel } from '../RightSwipePanelHost';
 import { useDesktopReadingWidth } from '../DesktopReadingWidth';
 import { CodingAgentIcon } from '../codingAgents/CodingAgentIcon';
+import { SubagentActivityGroup } from '../subagent/SubagentActivityGroup';
+import { delegatedActivity } from './delegatedActivity';
 import { useSubagentInspector, type SubagentInspectorSelection } from '../subagent/SubagentInspectorContext';
 
 const EMPTY_ROLES: DelegationRole[] = [];
@@ -45,57 +47,20 @@ function Button({ label, onPress, disabled, selected, destructive, testID }: {
     </Pressable>;
 }
 
-/** The pill only opens management; creation and dispatch use the main agent's real tools. */
-export const DelegationAssistantBar = React.memo(function DelegationAssistantBar({ sessionId }: { sessionId: string }) {
-    const session = useSession(sessionId);
-    const machine = useMachine(session?.metadata?.machineId ?? '');
-    const inspector = useSubagentInspector();
-    const metadataRoles = session?.metadata?.delegationRoles;
-    const roles = inspector?.delegationRoles ?? metadataRoles ?? EMPTY_ROLES;
-    React.useEffect(() => { inspector?.setDelegationRoles?.(null); }, [metadataRoles]);
-    if (!inspector || (!session?.metadata?.delegationProtocol && machine?.metadata?.delegation !== 1 && !roles.length)) return null;
-    const first = roles[0];
-    const open = () => inspector.open({ kind: 'agent-roles', id: 'agent-roles', title: t('delegation.rolesTitle'), status: 'completed', roleId: first?.id });
-    return <View style={styles.assistantBar} testID="delegation-assistant-bar">
-        <Pressable accessibilityRole="button" accessibilityLabel={t('delegation.rolesTitle')} onPress={open}
-            style={({ pressed }) => [styles.pill, pressed && styles.pressed]} testID="delegation-assistant-pill">
-            {first ? <CodingAgentIcon agent={first.agent} size={16} /> : null}
-            <Text numberOfLines={1} style={styles.pillTitle}>{first?.name ?? t('delegation.assistants')}</Text>
-            {first ? <Text numberOfLines={1} style={styles.pillRoute}>{agentLabel(first.agent)} / {first.model}</Text> : null}
-        </Pressable>
-        <Button label={t('delegation.manage')} onPress={open} testID="delegation-manage" />
-    </View>;
-});
-
-/** A distinct footer group: external sessions are never inserted into the native tool tree. */
+/** Linked tasks reuse the approved subagent rows and their real executor brands. */
 export const DelegatedTaskGroup = React.memo(function DelegatedTaskGroup({ sessionId }: { sessionId: string }) {
     const session = useSession(sessionId);
     const inspector = useSubagentInspector();
-    const { theme } = useUnistyles();
     const readingWidth = useDesktopReadingWidth();
-    const [expanded, setExpanded] = React.useState(true);
-    const [compact, setCompact] = React.useState(false);
-    const tasks = (session?.metadata?.delegatedTasks ?? []).filter(task => task.parentSessionId === sessionId);
-    if (!tasks.length || !inspector) return null;
-    return <View style={[styles.taskGroup, { maxWidth: readingWidth }]} onLayout={event => setCompact(event.nativeEvent.layout.width < 540)} testID="delegated-task-group">
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded }} aria-expanded={expanded}
-            onPress={() => setExpanded(value => !value)} style={({ pressed }) => [styles.groupHeading, pressed && styles.pressed]} testID="delegated-task-group-toggle">
-            <View style={styles.stack}>{tasks.slice(0, 3).map((task, index) => <View key={task.id} style={[styles.avatar, index > 0 && styles.stacked]}><CodingAgentIcon agent={task.agent} size={18} /></View>)}</View>
-            <Text style={styles.heading}>{t('delegation.count', { count: tasks.length })}</Text>
-            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.colors.textSecondary} />
-        </Pressable>
-        {expanded ? <View style={styles.taskList}>{tasks.map(task => {
-            const selected = inspector.selection?.kind === 'delegated-task' && inspector.selection.id === task.id;
-            return <Pressable key={task.id} accessibilityRole="button" accessibilityLabel={task.title} accessibilityState={{ expanded: selected }} aria-expanded={selected}
-                onPress={() => inspector.open({ kind: 'delegated-task', id: task.id, title: task.title, status: task.status === 'completed' ? 'completed' : task.status === 'failed' ? 'failed' : task.status === 'cancelled' ? 'cancelled' : 'running' })}
-                style={(state: { pressed: boolean; hovered?: boolean }) => [styles.taskRow, (state.pressed || state.hovered) && styles.pressed, selected && styles.selected]}
-                testID={`delegated-task-${task.id}`}>
-                <View style={styles.avatar}><CodingAgentIcon agent={task.agent} size={18} /></View>
-                <View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{task.title}</Text><Text numberOfLines={1} style={styles.secondary}>{task.roleName} · {agentLabel(task.agent)} / {task.model}</Text></View>
-                <View style={[styles.rowMeta, compact && styles.compactMeta]}><Text style={[styles.status, ['failed', 'interrupted'].includes(task.status) && styles.error]}>{delegatedStatusLabel(task.status)}</Text><Text style={styles.caption}>v{task.version}</Text></View>
-                <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />
-            </Pressable>;
-        })}</View> : null}
+    const tasks = session?.metadata?.delegationV2?.tasks ?? session?.metadata?.delegatedTasks;
+    const activities = React.useMemo(() => (tasks ?? [])
+        .filter(task => task.parentSessionId === sessionId)
+        .map(delegatedActivity), [tasks, sessionId]);
+    if (!activities.length || !inspector) return null;
+    return <View style={[styles.taskGroup, { maxWidth: readingWidth }]} testID="delegated-task-group">
+        <SubagentActivityGroup activities={activities}
+            selectedId={inspector.selection?.kind === 'delegated-task' ? inspector.selection.id : null}
+            onOpen={activity => inspector.open({ kind: 'delegated-task', id: activity.id, title: activity.title, status: activity.status })} />
     </View>;
 });
 
@@ -124,7 +89,7 @@ function AgentRolesPanel({ sessionId, initialRoleId, onBack, onCompose }: { sess
     const session = useSession(sessionId);
     const inspector = useSubagentInspector();
     const { theme } = useUnistyles();
-    const initialRoles = inspector?.delegationRoles ?? session?.metadata?.delegationRoles ?? EMPTY_ROLES;
+    const initialRoles = inspector?.delegationRoles ?? session?.metadata?.delegationV2?.roles ?? session?.metadata?.delegationRoles ?? EMPTY_ROLES;
     const canUseTools = session?.metadata?.capabilities?.delegation === 1;
     const [roles, setRoles] = React.useState(initialRoles);
     const [selectedId, setSelectedId] = React.useState(initialRoleId ?? 'new');
@@ -219,7 +184,7 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionI
     const session = useSession(sessionId);
     const inspector = useSubagentInspector();
     const { theme } = useUnistyles();
-    const live = session?.metadata?.delegatedTasks?.find(item => item.id === taskId && item.parentSessionId === sessionId);
+    const live = (session?.metadata?.delegationV2?.tasks ?? session?.metadata?.delegatedTasks)?.find(item => item.id === taskId && item.parentSessionId === sessionId);
     const preferences = inspector?.taskViews?.current.get(taskId);
     const [tab, setTab] = React.useState<'task' | 'context' | 'result'>(preferences?.tab ?? 'task');
     const [version, setVersion] = React.useState<number | undefined>(preferences?.version);
@@ -252,7 +217,7 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionI
         finally { if (alive.current) setCancelling(false); }
     };
     const tabs = ['task', 'context', 'result'] as const;
-    return <View style={styles.panel} testID="delegation-task-inspector"><Header title={summary?.title ?? taskId} subtitle={summary ? `${summary.roleName} · ${agentLabel(summary.agent)} / ${summary.model} · v${summary.version}` : taskId} onBack={onBack} />
+    return <View style={styles.panel} testID="delegation-task-inspector"><Header title={summary?.title ?? taskId} subtitle={summary ? `${summary.roleName} · ${agentLabel(summary.agent)} / ${summary.model || t('delegation.nativeDefault')} · v${summary.version}` : taskId} onBack={onBack} />
         <View style={styles.tabs}>{tabs.map(value => <Button key={value} label={t(`delegation.${value}`)} selected={tab === value} onPress={() => { setTab(value); remember(value); }} testID={`delegation-tab-${value}`} />)}</View>
         <ScrollView contentContainerStyle={styles.panelBody}>
             <View style={styles.actions}>{loading ? <ActivityIndicator size="small" color={theme.colors.textLink} /> : null}<Button label={t('delegation.refresh')} onPress={() => { void load(); }} disabled={loading} testID="delegation-task-refresh" /></View>
@@ -262,7 +227,7 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionI
             {tab === 'task' ? <>
                 <Field label={t('delegation.parent')}><Text selectable style={styles.body}>{sessionId}</Text></Field>
                 <Field label={t('delegation.task')}><Text selectable style={styles.body}>{taskId}</Text></Field>
-                {summary ? <><Field label={t('delegation.role')}><Text style={styles.body}>{summary.roleName}</Text></Field><Field label={t('delegation.route')}><Text selectable style={styles.body}>{agentLabel(summary.agent)} / {summary.model}{summary.effort ? ` · ${summary.effort}` : ''}</Text></Field></> : null}
+                {summary ? <>{summary.roleId ? <Field label={t('delegation.role')}><Text selectable style={styles.body}>{summary.roleName} · {summary.roleId}</Text></Field> : null}<Field label={t('delegation.route')}><Text selectable style={styles.body}>{agentLabel(summary.agent)} / {summary.model || t('delegation.nativeDefault')}{summary.effort ? ` · ${summary.effort}` : ''}</Text></Field></> : null}
                 <Text style={styles.caption}>{t('delegation.accountBoundary')}</Text>
                 {task ? <Field label={t('delegation.originalPrompt')}><Text selectable style={styles.body}>{task.prompt}</Text></Field> : null}
                 {live?.error || task?.error ? <Text selectable style={styles.error}>{live?.error ?? task?.error}</Text> : null}
@@ -283,10 +248,6 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionI
 }
 
 const styles = StyleSheet.create(theme => ({
-    assistantBar: { minHeight: 35, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 4, marginBottom: 5 },
-    pill: { minWidth: 0, maxWidth: '85%', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: theme.colors.divider, borderRadius: 18, backgroundColor: theme.colors.surface },
-    pillTitle: { flexShrink: 1, color: theme.colors.text, fontSize: 12, ...Typography.default() },
-    pillRoute: { flexShrink: 1, color: theme.colors.textSecondary, fontSize: 11, ...Typography.default() },
     panel: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface },
     panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.divider, padding: 14 },
     back: { width: 32, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },
@@ -310,15 +271,6 @@ const styles = StyleSheet.create(theme => ({
     focused: { borderColor: theme.colors.textLink },
     disabled: { opacity: 0.45 },
     taskGroup: { width: '100%', alignSelf: 'center', paddingHorizontal: 16, marginVertical: 10 },
-    groupHeading: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4, paddingVertical: 8, borderRadius: 8 },
-    stack: { flexDirection: 'row', flexShrink: 0 },
-    stacked: { marginLeft: -9 },
-    avatar: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surfacePressed, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    taskList: { padding: 4, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, borderRadius: 11 },
-    taskRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 9, paddingVertical: 9, borderRadius: 7 },
     rowCopy: { flex: 1, minWidth: 0, gap: 4 },
     rowTitle: { color: theme.colors.text, fontSize: 14, lineHeight: 20, ...Typography.default('semiBold') },
-    rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
-    compactMeta: { flexDirection: 'column', alignItems: 'flex-end', gap: 3 },
-    status: { color: theme.colors.textSecondary, fontSize: 11, lineHeight: 18, ...Typography.default() },
 }));

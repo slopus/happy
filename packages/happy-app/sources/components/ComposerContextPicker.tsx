@@ -3,13 +3,17 @@ import * as React from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { storage } from '@/sync/storage';
+import { storage, useSocketStatus } from '@/sync/storage';
+import { getFirstSubmissionScope, subscribeFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 import { usePlugins } from '@/hooks/usePlugins';
 import { getSessionName } from '@/utils/sessionUtils';
 import { resolvePluginText } from './plugins/pluginText';
 import { searchFiles, type FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
 import type { KeyPressEvent } from './MultiTextInput';
+import type { DelegationRole } from '@slopus/happy-wire';
+import { CodingAgentIcon } from './codingAgents/CodingAgentIcon';
+import { roleContextItems } from './delegation/roleContextItems';
 import { contextPlugins, contextSessions, contextSites, filterContextItems, type ContextItem } from './autocomplete/contextItems';
 
 export type ComposerContextPickerHandle = { handleKey: (event: KeyPressEvent) => boolean };
@@ -17,12 +21,13 @@ type Props = {
     query: string;
     ownerRef?: React.RefObject<View | null>;
     sessionId?: string;
+    canManageRoles?: boolean;
     onSelect: (item: ContextItem) => void;
     onPickFiles?: () => void;
     onClose: (restoreFocus?: boolean) => void;
 };
 const ROW_HEIGHT = Platform.OS === 'web' ? 34 : 44;
-const groups = ['files', 'plugins', 'sites', 'sessions'] as const;
+const groups = ['files', 'agents', 'plugins', 'sites', 'sessions'] as const;
 export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandle, Props>(function ComposerContextPicker(props, ref) {
     const { theme } = useUnistyles();
     const [selected, setSelected] = React.useState(0);
@@ -31,6 +36,40 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
     const { plugins, loading: pluginsLoading, status: pluginsStatus, refresh } = usePlugins();
     const sessions = storage(s => s.sessions);
     const histories = storage(s => s.sessionMessages);
+    const parent = sessions[props.sessionId ?? ''];
+    const machineId = parent?.metadata?.machineId;
+    const canDelegate = parent?.metadata?.capabilities?.delegation === 1;
+    const canRouteDefaults = parent?.metadata?.capabilities?.delegationRoutes === 1;
+    const machines = storage(s => s.machines);
+    const machineRoles = !!machineId && machines?.[machineId]?.metadata?.delegationRoles === 1;
+    const machineActive = !!machineId && machines?.[machineId]?.active === true;
+    const connectionReady = useSocketStatus().status === 'connected';
+    const account = React.useSyncExternalStore(subscribeFirstSubmissionScope, getFirstSubmissionScope, getFirstSubmissionScope);
+    const scope = React.useMemo(() => ({ account, sessionId: props.sessionId, machineId, canDelegate, canRouteDefaults, machineRoles, machineActive, connectionReady }),
+        [account, props.sessionId, machineId, canDelegate, canRouteDefaults, machineRoles, machineActive, connectionReady]);
+    const currentScope = React.useRef(scope);
+    currentScope.current = scope;
+    const [roles, setRoles] = React.useState<DelegationRole[]>([]);
+    const [rolesScope, setRolesScope] = React.useState<typeof scope | null>(null);
+    const [rolesLoading, setRolesLoading] = React.useState(false);
+    const [rolesError, setRolesError] = React.useState(false);
+    const [rolesReload, reloadRoles] = React.useReducer(value => value + 1, 0);
+    // Query once when the menu opens or the user retries. Metadata updates do
+    // not cause another RPC, avoiding a publish -> request -> publish loop.
+    React.useEffect(() => {
+        let active = true;
+        const isCurrent = () => active && currentScope.current === scope && getFirstSubmissionScope() === account;
+        setRoles([]); setRolesError(false);
+        if (!account || !connectionReady || !machineActive || !props.sessionId || !machineId || !canDelegate) { setRolesLoading(false); return; }
+        setRolesLoading(true);
+        void import('@/sync/apiDelegation').then(api => !isCurrent() ? undefined : machineRoles
+            ? api.listMachineDelegationRoles(machineId)
+            : api.listDelegationRoles(props.sessionId!))
+            .then(next => { if (next && isCurrent()) { setRoles(next); setRolesScope(scope); } })
+            .catch(() => { if (isCurrent()) setRolesError(true); })
+            .finally(() => { if (isCurrent()) setRolesLoading(false); });
+        return () => { active = false; };
+    }, [props.sessionId, machineId, canDelegate, rolesReload, scope]);
     const scrollRef = React.useRef<ScrollView>(null);
     const rootRef = React.useRef<View>(null);
     const rowOffsets = React.useRef(new Map<string, number>());
@@ -51,13 +90,19 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
     const pluginItems = React.useMemo(() => contextPlugins(plugins, resolvePluginText), [plugins]);
     const siteItems = React.useMemo(() => contextSites(histories), [histories]);
     const sessionItems = React.useMemo(() => contextSessions(sessions, props.sessionId, getSessionName), [sessions, props.sessionId]);
+    const roleItems = React.useMemo(() => roleContextItems(rolesScope === scope
+        ? canRouteDefaults ? roles : roles.filter(role => !!role.model)
+        : []), [roles, rolesScope, scope, canRouteDefaults]);
     const items = React.useMemo(() => {
         const all: ContextItem[] = [];
         if (props.onPickFiles) all.push({ id: 'upload', category: 'files', title: t('composerContext.files'), detail: t('composerContext.uploadHint'), text: '', icon: 'attach-outline', action: 'upload' });
         all.push(...files.map(file => ({ id: `file:${file.fullPath}`, category: 'files' as const, title: file.fileName, detail: file.filePath, text: `@${file.fullPath}`, icon: file.fileType === 'folder' ? 'folder-outline' as const : 'document-text-outline' as const })));
+        // Keep management reachable even for accounts with many saved roles.
+        all.push(...filterContextItems(roleItems, 'agents', props.query).slice(0, props.query.trim() ? 20 : 8));
+        if (props.canManageRoles) all.push({ id: 'manage-agent-roles', category: 'agents', title: t('delegation.manageRoles'), detail: '', text: '', icon: 'settings-outline', action: 'manage-roles' });
         all.push(...pluginItems, ...siteItems, ...sessionItems);
         return filterContextItems(all, 'all', props.query).slice(0, props.query.trim() ? 60 : 30);
-    }, [files, pluginItems, siteItems, sessionItems, props.onPickFiles, props.query]);
+    }, [files, roleItems, pluginItems, siteItems, sessionItems, props.onPickFiles, props.canManageRoles, props.query]);
     React.useEffect(() => { keyboardSelection.current = false; setSelected(0); }, [props.query]);
     const safeSelected = Math.min(selected, Math.max(0, items.length - 1));
     // Hover only changes the highlight. Scroll-to-selection is exclusively a
@@ -77,9 +122,10 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
     const select = React.useCallback((index: number) => {
         const item = items[index];
         if (!item) return;
+        if (item.provider && (rolesScope !== scope || currentScope.current !== scope || getFirstSubmissionScope() !== account)) return;
         props.onSelect(item);
         if (item.action === 'upload') props.onPickFiles?.();
-    }, [items, props.onSelect, props.onPickFiles]);
+    }, [items, props.onSelect, props.onPickFiles, rolesScope, scope, account]);
     const handleKey = React.useCallback((event: KeyPressEvent) => {
         if (event.key === 'Escape') { props.onClose(); return true; }
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -99,6 +145,20 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
             return !!node?.contains(target) || !!owner?.contains(target);
         },
     });
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+        // The Add button and portalled menu can own focus, so Escape cannot
+        // depend solely on the textarea's key handler. Keep other overlays' keys.
+        const escape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || !(event.target instanceof Node)) return;
+            const root = rootRef.current as unknown as HTMLElement | null;
+            const owner = props.ownerRef?.current as unknown as HTMLElement | null;
+            if (!root?.contains(event.target) && !owner?.contains(event.target)) return;
+            event.preventDefault(); event.stopPropagation(); props.onClose();
+        };
+        document.addEventListener('keydown', escape, true);
+        return () => document.removeEventListener('keydown', escape, true);
+    }, [props.ownerRef, props.onClose]);
     let offset = 0;
     rowOffsets.current.clear();
     return <View ref={rootRef} style={styles.container} testID="composer-context-picker">
@@ -108,20 +168,22 @@ export const ComposerContextPicker = React.forwardRef<ComposerContextPickerHandl
                 if (!rows.length) return null;
                 offset += 26;
                 return <View key={group}>
-                    <Text style={styles.heading} testID={`composer-context-group-${group}`}>{t(group === 'files' ? 'composerContext.addGroup' : group === 'sessions' ? 'composerContext.conversationsGroup' : `composerContext.${group}`)}</Text>
+                    <Text style={styles.heading} testID={`composer-context-group-${group}`}>{t(group === 'files' ? 'composerContext.addGroup' : group === 'agents' ? 'delegation.addGroup' : group === 'sessions' ? 'composerContext.conversationsGroup' : `composerContext.${group}`)}</Text>
                     {rows.map(item => {
                         const index = items.indexOf(item);
                         rowOffsets.current.set(item.id, offset); offset += ROW_HEIGHT;
                         return <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${item.title}, ${item.detail}`} accessibilityState={{ selected: safeSelected === index }} testID={`composer-context-item-${item.id}`}
                             onHoverIn={() => { keyboardSelection.current = false; setSelected(index); }} onPress={() => select(index)}
                             style={({ pressed }) => [styles.row, { height: ROW_HEIGHT, backgroundColor: pressed ? theme.colors.surfacePressed : safeSelected === index ? theme.colors.surfaceSelected : theme.colors.surface }]}>
-                            <Ionicons name={item.icon} size={16} color={theme.colors.textSecondary} />
+                            {item.provider ? <CodingAgentIcon agent={item.provider} size={16} /> : <Ionicons name={item.icon} size={16} color={theme.colors.textSecondary} />}
                             <Text numberOfLines={1} style={styles.itemTitle}>{item.title}</Text>
                             {!!item.detail && <Text numberOfLines={1} style={styles.detail}>{item.detail}</Text>}
                         </Pressable>;
                     })}
                 </View>;
             })}
+            {rolesLoading && <View style={styles.empty}><ActivityIndicator size="small" color={theme.colors.textSecondary} /><Text style={styles.emptyText}>{t('composerContext.loading')}</Text></View>}
+            {rolesError && <Pressable accessibilityRole="button" testID="composer-roles-retry" style={styles.empty} onPress={reloadRoles}><Text style={styles.emptyText}>{t('delegation.roleLoadFailed')}</Text></Pressable>}
             {(filesLoading || pluginsLoading) && <View style={styles.empty}><ActivityIndicator size="small" color={theme.colors.textSecondary} /><Text style={styles.emptyText}>{t('composerContext.loading')}</Text></View>}
             {pluginsStatus === 'error' && <Pressable style={styles.empty} onPress={() => { void refresh().catch(() => undefined); }}><Text style={styles.emptyText}>{t('composerContext.unavailable')} · {t('composerContext.retry')}</Text></Pressable>}
             {!items.length && !filesLoading && !pluginsLoading && <Text style={styles.emptyText}>{t('composerContext.empty')}</Text>}

@@ -30,6 +30,16 @@ describe('parent-scoped delegation RPC', () => {
         expect(await listDelegationRoles('parent-a')).toMatchObject([{ id: role.id, model: role.model }]);
         expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('machine-a', 'delegation', { action: 'roles-list', parentSessionId: 'parent-a' });
     });
+    it('requests the V2 response only from an upgraded daemon, independently of worker route capability', async () => {
+        mocks.state.machines['machine-a'].metadata.delegationRoles = 1;
+        mocks.rpc.mockResolvedValue({ success: true, roles: [{ ...role, createdAt: 1, updatedAt: 2 }] });
+        await listDelegationRoles('parent-a');
+        expect(mocks.rpc).toHaveBeenLastCalledWith('machine-a', 'delegation', { action: 'roles-list', parentSessionId: 'parent-a', protocolVersion: 2 });
+        delete mocks.state.machines['machine-a'].metadata.delegationRoles;
+        mocks.state.sessions['parent-a'].metadata.capabilities.delegationRoutes = 1;
+        await listDelegationRoles('parent-a');
+        expect(mocks.rpc).toHaveBeenLastCalledWith('machine-a', 'delegation', { action: 'roles-list', parentSessionId: 'parent-a' });
+    });
     it('does not contact an offline or older daemon', async () => {
         mocks.state.machines['machine-a'].active = false;
         await expect(listDelegationRoles('parent-a')).rejects.toThrow('delegation.offline');
@@ -51,6 +61,24 @@ describe('parent-scoped delegation RPC', () => {
         mocks.rpc.mockResolvedValue({ success: true, task });
         expect(await readDelegatedTask('parent-a', task.id)).toEqual(task);
         expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('machine-a', 'delegation', { action: 'read', parentSessionId: 'parent-a', taskId: task.id });
+    });
+    it('reads a published temporary/default task from V2 without inventing a role ID or model', async () => {
+        const { roleId: _roleId, model: _model, ...nativeTask } = task;
+        const { roleId: _summaryRoleId, model: _summaryModel, ...nativeSummary } = summary;
+        mocks.state.sessions['parent-a'] = { active: false, metadata: { machineId: 'machine-a', capabilities: {},
+            delegationV2: { version: 2, roles: [], tasks: [nativeSummary] } } };
+        mocks.state.machines['machine-a'].metadata.delegationRoles = 1;
+        mocks.rpc.mockResolvedValue({ success: true, task: nativeTask });
+        expect(await readDelegatedTask('parent-a', nativeTask.id)).toEqual(nativeTask);
+        expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('machine-a', 'delegation', { action: 'read', parentSessionId: 'parent-a', taskId: nativeTask.id, protocolVersion: 2 });
+    });
+    it('treats V2 as authoritative instead of reading a stale V1 task or another parent', async () => {
+        for (const tasks of [[], [{ ...summary, parentSessionId: 'other-parent' }]]) {
+            mocks.state.sessions['parent-a'].metadata = { machineId: 'machine-a', capabilities: {}, delegationProtocol: 1,
+                delegatedTasks: [summary], delegationV2: { version: 2, roles: [], tasks } };
+            await expect(readDelegatedTask('parent-a', task.id)).rejects.toThrow('delegation.protocolHint');
+        }
+        expect(mocks.rpc).not.toHaveBeenCalled();
     });
     it.each([
         { label: 'an old worker with no published delegation', metadata: {} },

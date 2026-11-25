@@ -334,19 +334,26 @@ describe('persisted delegation session recovery', () => {
         expect(process.kill).not.toHaveBeenCalledWith(0, 0);
     });
 
-    it('reads an archived parent task from retained encryption without a worker, but refuses start or mutation', async () => {
+    it.each(['saved', 'temporary'] as const)('reads an archived %s parent task without worker capabilities, but refuses start or mutation', async kind => {
         const f = await fixture(); f.persist('parent'); f.parentMetadata.lifecycleState = 'archived';
         vi.mocked(process.kill).mockImplementation(() => { throw Object.assign(new Error('not running'), { code: 'ESRCH' }); });
         f.rpc.mockRejectedValue(new Error('Worker is offline'));
         const directory = mkdtempSync(join(tmpdir(), 'paws-delegation-inspection-')); directories.push(directory);
         const taskId = '00000000-0000-4000-8000-000000000001';
         createDelegationStore(directory).saveTask({ id: taskId, parentSessionId: 'parent', childSessionId: 'child', title: 'Completed draft', role,
+            ...(kind === 'temporary' ? { temporaryRoute: true } : {}),
             nonce: 'a'.repeat(64), createdAt: 1, versions: [{ version: 1, requestId: 'request-one', inputHash: 'b'.repeat(64), prompt: 'Write the draft',
                 status: 'completed', startedAt: 1, updatedAt: 2, finishedAt: 2, result: { text: 'Retained final result' }, phase: 'sent', reportSequence: 1 }] });
         const actual = await vi.importActual<typeof import('./delegation/service')>('./delegation/service');
         const service = await actual.createDelegationService({ directory, deps: f.deps }); disposers.push(service.dispose);
-        const result = await service.handle({ action: 'read', parentSessionId: 'parent', taskId });
+        if (kind === 'temporary') {
+            const legacy = await service.handle({ action: 'read', parentSessionId: 'parent', taskId });
+            expect(legacy).toMatchObject({ success: false, error: expect.stringContaining('protocolVersion 2') });
+            expect(legacy.task).toBeUndefined();
+        }
+        const result = await service.handle({ action: 'read', parentSessionId: 'parent', protocolVersion: 2, taskId });
         expect(result).toMatchObject({ success: true, task: { status: 'completed', result: { text: 'Retained final result' } } });
+        expect(result.task?.roleId).toBe(kind === 'temporary' ? undefined : role.id);
         await new Promise<void>(resolve => setImmediate(resolve));
         expect(process.kill).not.toHaveBeenCalled(); expect(f.rpc).not.toHaveBeenCalled();
         const forgedInspection = { action: 'start' as const, parentSessionId: 'parent', taskId, requestId: 'request-two', prompt: 'Revise this draft', inspection: true };

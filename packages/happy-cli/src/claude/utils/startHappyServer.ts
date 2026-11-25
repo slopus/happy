@@ -158,6 +158,8 @@ function createMcpServer(handlers: HappyMcpHandlers): McpServer {
         if (name === 'agent_roles') {
             const input = AgentRolesInputSchema.parse(args);
             action = input.action === 'list' ? { action: 'roles-list' }
+                : input.action === 'create' ? { action: 'roles-create', role: input.role }
+                    : input.action === 'update' ? { action: 'roles-update', roleId: input.roleId, patch: input.patch }
                 : input.action === 'save' ? { action: 'roles-save', role: input.role }
                     : { action: 'roles-delete', roleId: input.roleId };
         } else if (name === 'delegate_task') {
@@ -165,7 +167,7 @@ function createMcpServer(handlers: HappyMcpHandlers): McpServer {
         } else {
             action = { ...DelegatedTaskTargetInputSchema.parse(args), action: name === 'read_delegated_task' ? 'read' : 'cancel' };
         }
-        return delegationToolResponse(await handlers.delegation(action));
+        return delegationToolResponse(await handlers.delegation({ ...action, protocolVersion: 2 }));
     });
 
     mcp.registerTool('change_title', {

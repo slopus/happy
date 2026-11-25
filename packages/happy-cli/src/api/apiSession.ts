@@ -6,6 +6,7 @@ import { createScheduledRunTracker } from './scheduledRun';
 import { createDelegationReporter } from '@/daemon/delegation/journal';
 import { delegationLaunchContext } from '@/daemon/delegationLaunchContext';
 import { DelegationRoleSchema, DelegatedTaskSummarySchema } from '@slopus/happy-wire';
+import { projectDelegationSnapshotV1 } from '@/delegation/compatibility';
 import { z } from 'zod';
 import { scheduleJournalDirectory } from '@/daemon/scheduledTasks/journal';
 import { EventEmitter } from 'node:events'
@@ -137,7 +138,7 @@ export class ApiSessionClient extends EventEmitter {
     private metadataVersion: number;
     private delegationSupport: 'codex' | 'antigravity' | null = null;
     private readonly delegatedBinding: Metadata['delegatedTask'];
-    private publishedDelegation: Pick<Metadata, 'delegationRoles' | 'delegatedTasks'> | null = null;
+    private publishedDelegation: Pick<Metadata, 'delegationRoles' | 'delegatedTasks' | 'delegationV2'> | null = null;
     private delegationMetadataRepairQueued = false;
     private delegationMetadataRepairRequested = false;
     private agentState: AgentState | null;
@@ -220,15 +221,18 @@ export class ApiSessionClient extends EventEmitter {
             const schema = z.object({ roles: z.array(DelegationRoleSchema).max(100), tasks: z.array(DelegatedTaskSummarySchema).max(100) }).strict();
             const snapshot = schema.parse(input);
             if (snapshot.tasks.some(task => task.parentSessionId !== this.sessionId)) throw new Error('Delegated task belongs to another parent session');
+            const legacy = projectDelegationSnapshotV1(snapshot.roles, snapshot.tasks);
+            const delegationV2 = { version: 2 as const, ...snapshot };
             await this.updateMetadataAndAwait(metadata => ({ ...metadata, delegationProtocol: 1,
-                delegationRoles: snapshot.roles, delegatedTasks: snapshot.tasks }));
+                delegationRoles: legacy.roles, delegatedTasks: legacy.tasks, delegationV2 }));
             const saved = schema.safeParse({ roles: this.metadata?.delegationRoles, tasks: this.metadata?.delegatedTasks });
-            if (this.metadata?.delegationProtocol !== 1 || !saved.success || JSON.stringify(saved.data) !== JSON.stringify(snapshot)) {
+            if (this.metadata?.delegationProtocol !== 1 || !saved.success || JSON.stringify(saved.data) !== JSON.stringify(legacy)
+                || JSON.stringify(this.metadata?.delegationV2) !== JSON.stringify(delegationV2)) {
                 throw new Error('Delegation publication was not acknowledged');
             }
             // Learn publication authority only from an acknowledged coordinator
             // RPC, never from arbitrary session metadata received from clients.
-            this.publishedDelegation = { delegationRoles: snapshot.roles, delegatedTasks: snapshot.tasks };
+            this.publishedDelegation = { delegationRoles: legacy.roles, delegatedTasks: legacy.tasks, delegationV2 };
             return { success: true };
         });
         registerArtifactHandlers(this.rpcHandlerManager, this.artifactRuntime.getStore, this.metadata.path);
@@ -1160,8 +1164,9 @@ export class ApiSessionClient extends EventEmitter {
         // bindings onto its replacement's session snapshot.
         if (metadata.hostPid !== process.pid) return metadata;
         let updated = metadata;
-        if (this.delegationSupport && metadata.flavor === this.delegationSupport && metadata.capabilities?.delegation !== 1) {
-            updated = { ...updated, capabilities: { ...updated.capabilities, delegation: 1 } };
+        if (this.delegationSupport && metadata.flavor === this.delegationSupport
+            && (metadata.capabilities?.delegation !== 1 || metadata.capabilities?.delegationRoutes !== 1)) {
+            updated = { ...updated, capabilities: { ...updated.capabilities, delegation: 1, delegationRoutes: 1 } };
         }
         if (this.delegatedBinding && (metadata.parentSessionId !== this.delegatedBinding.parentSessionId
             || metadata.delegatedTask?.taskId !== this.delegatedBinding.taskId
@@ -1174,6 +1179,7 @@ export class ApiSessionClient extends EventEmitter {
             if (metadata.delegationProtocol === undefined) updated = { ...updated, delegationProtocol: 1 };
             if (metadata.delegationRoles === undefined) updated = { ...updated, delegationRoles: this.publishedDelegation.delegationRoles };
             if (metadata.delegatedTasks === undefined) updated = { ...updated, delegatedTasks: this.publishedDelegation.delegatedTasks };
+            if (metadata.delegationV2 === undefined) updated = { ...updated, delegationV2: this.publishedDelegation.delegationV2 };
         }
         return updated;
     }

@@ -1,5 +1,5 @@
 import { ArtifactChangedSchema, ARTIFACT_PROTOCOL } from '@slopus/happy-wire';
-import type { DelegationRole, DelegatedTaskSummary } from '@slopus/happy-wire';
+import type { DelegationRole, DelegatedTaskSummary, DelegationSnapshotV2 } from '@slopus/happy-wire';
 import { z } from 'zod'
 import type { AsyncQuestionResponse, GoalBoardBinding, GoalBoardSnapshot, Update, UpdateMachineBody, SessionStreamEnvelope } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
@@ -132,6 +132,7 @@ export type Session = {
  */
 export const MachineMetadataSchema = z.object({
   delegation: z.literal(1).optional(),
+  delegationRoles: z.literal(1).optional(),
   scheduledTasks: z.literal(1).optional(),
   host: z.string(),
   platform: z.string(),
@@ -374,8 +375,9 @@ export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
   delegationProtocol?: 1;
-  delegationRoles?: DelegationRole[];
-  delegatedTasks?: DelegatedTaskSummary[];
+  delegationRoles?: Array<DelegationRole & { model: string }>;
+  delegatedTasks?: Array<DelegatedTaskSummary & { roleId: string; model: string }>;
+  delegationV2?: DelegationSnapshotV2;
   delegatedTask?: { taskId: string; parentSessionId: string };
   codexAsyncQuestionResponses?: Record<string, AsyncQuestionResponse>;
   goalBoard?: GoalBoardBinding;
@@ -406,6 +408,7 @@ export type Metadata = {
   },
   capabilities?: {
     delegation?: 1
+    delegationRoutes?: 1
     acpPermissionPolicy?: boolean
     regenerateTitle?: boolean
     codexCredentialRecovery?: boolean

@@ -39,7 +39,7 @@ describe('registerHappyBridgeTools', () => {
         const { server, registrations } = createServerMock();
         const callTool = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'result' }] }));
         registerHappyBridgeTools(server, async () => ({ callTool }) as unknown as Client);
-        const args = { requestId: 'stable-request', taskId: 'same-task', prompt: 'Make the draft shorter' };
+        const args = { requestId: 'stable-request', taskId: 'same-task', intent: 'explicit', prompt: 'Make the draft shorter' };
         await registrations.find(item => item.name === 'delegate_task')!.handler(args);
         expect(callTool).toHaveBeenCalledWith({ name: 'delegate_task', arguments: args }, undefined, { timeout: 11 * 60_000 });
         expect(registrations).toHaveLength(15);

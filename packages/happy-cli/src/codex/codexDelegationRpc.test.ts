@@ -43,6 +43,63 @@ describe('Codex delegated worker preparation', () => {
         expect(apply).not.toHaveBeenCalled();
     });
 
+    it('uses the actual startup model and current effort when both overrides are omitted', async () => {
+        catalog = [model(), { ...model('gpt-configured', 'Configured Model'), isDefault: false }];
+        const runtime = prepare();
+        const pending = runtime.prepare({ permissionMode: 'read-only' });
+        await Promise.resolve();
+        expect(apply).not.toHaveBeenCalled();
+        state.metadata = { ...state.metadata!, currentModelCode: 'gpt-configured', currentThoughtLevelCode: 'high' };
+        runtime.ready();
+        expect(await pending).toEqual({ model: 'gpt-configured', effort: 'high' });
+        expect(apply).toHaveBeenCalledExactlyOnceWith({ model: 'gpt-configured', effort: 'high', permissionMode: 'read-only' }, expect.any(Function));
+    });
+
+    it('uses the selected native model default after a model switch instead of another model effort', async () => {
+        state.metadata = { ...state.metadata!, currentModelCode: 'gpt-parent', currentThoughtLevelCode: 'ultra' };
+        catalog = [model(), { ...model('gpt-parent', 'Parent'), supportedReasoningEfforts: [{ reasoningEffort: 'ultra', description: '' }], defaultReasoningEffort: 'ultra' }];
+        const runtime = prepare(); runtime.ready();
+        expect(await runtime.prepare({ model: 'Sol', permissionMode: 'read-only' })).toEqual({ model: 'gpt-observed', effort: 'medium' });
+    });
+
+    it('uses an advertised native default when the current model has no explicit current effort', async () => {
+        state.metadata = { ...state.metadata!, currentModelCode: 'gpt-observed' };
+        const runtime = prepare(); runtime.ready();
+        expect(await runtime.prepare({ permissionMode: 'read-only' })).toEqual({ model: 'gpt-observed', effort: 'medium' });
+    });
+
+    it('never guesses a current model from the catalog default or an unobserved metadata label', async () => {
+        const runtime = prepare(); runtime.ready();
+        await expect(runtime.prepare({ permissionMode: 'read-only' })).rejects.toThrow('current native Codex model is unavailable');
+        state.metadata = { ...state.metadata!, currentModelCode: 'Observed Sol' };
+        await expect(runtime.prepare({ permissionMode: 'read-only' })).rejects.toThrow('current native Codex model is unavailable');
+        expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('resolves only unique observed effort codes or descriptions for the actual model', async () => {
+        state.metadata = { ...state.metadata!, currentModelCode: 'gpt-observed' };
+        catalog = [{ ...model(), supportedReasoningEfforts: [
+            { reasoningEffort: 'medium', description: 'Balanced reasoning' }, { reasoningEffort: 'high', description: 'Deep reasoning' },
+        ] }];
+        const runtime = prepare(); runtime.ready();
+        expect(await runtime.prepare({ effort: 'High', permissionMode: 'read-only' })).toEqual({ model: 'gpt-observed', effort: 'high' });
+        expect(await runtime.prepare({ effort: 'Balanced Reasoning', permissionMode: 'read-only' })).toEqual({ model: 'gpt-observed', effort: 'medium' });
+        apply.mockClear();
+        catalog[0].supportedReasoningEfforts[1].description = 'Balanced reasoning';
+        await expect(runtime.prepare({ effort: 'Balanced reasoning', permissionMode: 'read-only' })).rejects.toThrow('effort is ambiguous');
+        await expect(runtime.prepare({ effort: 'ultra', permissionMode: 'read-only' })).rejects.toThrow('effort is unavailable');
+        state.metadata.currentThoughtLevelCode = 'ultra';
+        await expect(runtime.prepare({ permissionMode: 'read-only' })).rejects.toThrow('effort is unavailable');
+        expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('rejects an ambiguous native model label before applying any configuration', async () => {
+        catalog = [model(), model('gpt-other', 'Other Sol')];
+        const runtime = prepare(); runtime.ready();
+        await expect(runtime.prepare(request)).rejects.toThrow('ambiguous');
+        expect(apply).not.toHaveBeenCalled();
+    });
+
     it.each([
         ['thinking', true], ['pending', true], ['queueSize', 1], ['pendingUserInputs', true], ['activeRootTurnId', 'unrelated-root'], ['shouldExit', true],
     ] as const)('rejects configuration while %s is present', async (key, value) => {
@@ -73,6 +130,9 @@ describe('Codex delegated worker preparation', () => {
         catalog = [model()];
         await expect(runtime.prepare({ ...request, model: 'Invented model' })).rejects.toThrow('unavailable');
         await expect(runtime.prepare({ ...request, effort: 'ultra' })).rejects.toThrow('effort is unavailable');
+        catalog = [{ ...model(), supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }];
+        await expect(runtime.prepare({ ...request, effort: '!!!' })).rejects.toThrow('effort is unavailable');
+        catalog = [model()];
         await expect(runtime.prepare({ ...request, permissionMode: 'not-a-mode' })).rejects.toThrow();
         expect(apply).not.toHaveBeenCalled();
         expect(await runtime.prepare({ model: 'gpt-observed', permissionMode: 'read-only' })).toEqual({ model: 'gpt-observed', effort: 'medium' });

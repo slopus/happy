@@ -265,6 +265,24 @@ describe('ApiMachineClient socket reconnection', () => {
         } finally { client.shutdown(); }
     });
 
+    it('installs machine role CRUD independently of a live parent and advertises its separate capability', async () => {
+        const machine = makeMachine(), client = new ApiMachineClient('fake-token', machine);
+        const update = vi.spyOn(client, 'updateMachineMetadata').mockImplementation(async handler => { machine.metadata = handler(machine.metadata); });
+        vi.spyOn(client, 'updateDaemonState').mockResolvedValue(undefined);
+        client.connect();
+        try {
+            emitSocketEvent('connect'); expect(machine.metadata?.delegationRoles).toBeUndefined();
+            mockSocket.connected = true;
+            const delegationRoles = vi.fn(async () => ({ success: true, roles: [] }));
+            client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(), delegationRoles });
+            expect(machine.metadata?.delegationRoles).toBe(1); expect(machine.metadata?.delegation).toBeUndefined();
+            expect(await rpcHandlers.get('delegation-roles')!({ action: 'list' })).toEqual({ success: true, roles: [] });
+            expect(delegationRoles).toHaveBeenCalledExactlyOnceWith({ action: 'list' });
+            expect(() => rpcHandlers.get('delegation-roles')!({ action: 'list', parentSessionId: 'spoof' })).toThrow();
+            const writes = update.mock.calls.length; emitSocketEvent('connect'); expect(update).toHaveBeenCalledTimes(writes);
+        } finally { client.shutdown(); }
+    });
+
     it.each(['legacy', 'dataKey'] as const)('uses the existing relay with %s encryption and rejects unconfirmed worker replies', async variant => {
         const machine = makeMachine();
         const client = new ApiMachineClient('fake-token', machine);

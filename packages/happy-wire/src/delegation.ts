@@ -9,19 +9,47 @@ const context = z.string().max(100_000);
 
 export const DelegationAgentSchema = z.enum(['codex', 'antigravity']);
 export type DelegationAgent = z.infer<typeof DelegationAgentSchema>;
+const effortCode = z.string().trim().min(1).max(100);
+/** Omission means the target executor's observed native default, never the parent's route. */
+export const DelegationRouteSchema = z.object({
+    agent: DelegationAgentSchema,
+    model: modelCode.optional(),
+    effort: effortCode.optional(),
+}).strict();
+export type DelegationRoute = z.infer<typeof DelegationRouteSchema>;
+export const DelegationIntentSchema = z.enum(['explicit', 'automatic']);
 
 export const DelegationRoleInputSchema = z.object({
     id,
     name: z.string().trim().min(1).max(100),
     description: z.string().trim().min(1).max(10_000),
     agent: DelegationAgentSchema,
-    model: modelCode,
-    effort: z.string().trim().min(1).max(100).optional(),
+    model: modelCode.optional(),
+    effort: effortCode.optional(),
     autoDelegate: z.boolean(),
 }).strict();
 export type DelegationRoleInput = z.infer<typeof DelegationRoleInputSchema>;
 export const DelegationRoleSchema = DelegationRoleInputSchema.extend({ createdAt: timestamp, updatedAt: timestamp });
 export type DelegationRole = z.infer<typeof DelegationRoleSchema>;
+export const DelegationRoleCreateInputSchema = DelegationRoleInputSchema.extend({
+    id: id.optional(),
+    autoDelegate: z.boolean().default(false),
+});
+export type DelegationRoleCreateInput = z.input<typeof DelegationRoleCreateInputSchema>;
+export const DelegationRolePatchSchema = DelegationRoleInputSchema.omit({ id: true }).partial().extend({
+    model: modelCode.nullable().optional(),
+    effort: effortCode.nullable().optional(),
+}).strict().refine(value => Object.keys(value).length > 0, 'Supply at least one role field to update');
+export type DelegationRolePatch = z.infer<typeof DelegationRolePatchSchema>;
+
+/** Machine-scoped role configuration, authenticated by the machine RPC transport. It never dispatches work. */
+export const MachineDelegationRolesRequestSchema = z.discriminatedUnion('action', [
+    z.object({ action: z.literal('list') }).strict(),
+    z.object({ action: z.literal('create'), role: DelegationRoleCreateInputSchema }).strict(),
+    z.object({ action: z.literal('update'), roleId: id, patch: DelegationRolePatchSchema }).strict(),
+    z.object({ action: z.literal('delete'), roleId: id }).strict(),
+]);
+export type MachineDelegationRolesRequest = z.input<typeof MachineDelegationRolesRequestSchema>;
 
 export const DelegatedTaskStatusSchema = z.enum([
     'starting', 'running', 'waiting-for-input', 'completed', 'failed', 'cancelled', 'interrupted',
@@ -39,10 +67,10 @@ export const DelegatedTaskSummarySchema = z.object({
     parentSessionId: id,
     childSessionId: id.optional(),
     title: z.string().trim().min(1).max(200),
-    roleId: id,
+    roleId: id.optional(),
     roleName: z.string().trim().min(1).max(100),
     agent: DelegationAgentSchema,
-    model: modelCode,
+    model: modelCode.optional(),
     effort: z.string().trim().min(1).max(100).optional(),
     version: z.number().int().positive(),
     status: DelegatedTaskStatusSchema,
@@ -54,11 +82,21 @@ export const DelegatedTaskSummarySchema = z.object({
     cancelRequested: z.boolean().optional(),
 }).strict();
 export type DelegatedTaskSummary = z.infer<typeof DelegatedTaskSummarySchema>;
+/** Keep legacy metadata envelopes readable by clients whose known fields require these values. */
+export const DelegationRoleV1Schema = DelegationRoleSchema.extend({ model: modelCode });
+export const DelegatedTaskSummaryV1Schema = DelegatedTaskSummarySchema.extend({ roleId: id, model: modelCode });
+export const DelegationSnapshotV2Schema = z.object({
+    version: z.literal(2),
+    roles: z.array(DelegationRoleSchema).max(100),
+    tasks: z.array(DelegatedTaskSummarySchema).max(100),
+}).strict();
+export type DelegationSnapshotV2 = z.infer<typeof DelegationSnapshotV2Schema>;
 
 /** A version keeps its actual instruction and result; array position is never a version identifier. */
 export const DelegatedTaskVersionSchema = z.object({
     version: z.number().int().positive(),
     requestId: id.optional(),
+    intent: z.enum(['explicit', 'automatic', 'legacy-explicit']).optional(),
     prompt,
     context: context.optional(),
     status: DelegatedTaskStatusSchema,
@@ -80,6 +118,9 @@ export type DelegatedTask = z.infer<typeof DelegatedTaskSchema>;
 /** Public tool inputs intentionally omit parentSessionId; the authenticated session supplies it. */
 export const AgentRolesInputSchema = z.discriminatedUnion('action', [
     z.object({ action: z.literal('list') }).strict(),
+    z.object({ action: z.literal('create'), role: DelegationRoleCreateInputSchema }).strict(),
+    z.object({ action: z.literal('update'), roleId: id, patch: DelegationRolePatchSchema }).strict(),
+    // Compatibility only: new callers use create/update so an absent ID cannot silently become an upsert.
     z.object({ action: z.literal('save'), role: DelegationRoleInputSchema }).strict(),
     z.object({ action: z.literal('delete'), roleId: id }).strict(),
 ]);
@@ -89,22 +130,32 @@ export const DelegateTaskInputSchema = z.object({
     title: z.string().trim().min(1).max(200).optional(),
     roleId: id.optional(),
     taskId: id.optional(),
+    route: DelegationRouteSchema.optional(),
+    // Legacy API requests omit intent. New MCP tools require this classification explicitly.
+    intent: DelegationIntentSchema.optional(),
     prompt,
     context: context.optional(),
-}).strict().refine(value => Boolean(value.roleId) !== Boolean(value.taskId), {
-    message: 'Supply roleId for a new task, or taskId to revise the same task; never both',
+}).strict().refine(value => [value.roleId, value.taskId, value.route].filter(Boolean).length === 1, {
+    message: 'Supply exactly one of roleId, taskId, or a temporary route',
 });
 export type DelegateTaskInput = z.infer<typeof DelegateTaskInputSchema>;
+/** explicit is the caller's intent classification, not a claim of separately collected human approval. */
+export const DelegateTaskToolInputSchema = DelegateTaskInputSchema.safeExtend({ intent: DelegationIntentSchema })
+    .refine(value => value.intent !== 'automatic' || Boolean(value.roleId), 'Automatic delegation requires a saved role; temporary routes and revisions require explicit intent');
 export const DelegatedTaskTargetInputSchema = z.object({ taskId: id }).strict();
 export type DelegatedTaskTargetInput = z.infer<typeof DelegatedTaskTargetInputSchema>;
 
+/** Client response version is independent from a live worker's execution capabilities. Omission remains V1. */
+const delegationRequestScope = { parentSessionId: id, protocolVersion: z.literal(2).optional() };
 export const DelegationRequestSchema = z.discriminatedUnion('action', [
-    z.object({ action: z.literal('roles-list'), parentSessionId: id }).strict(),
-    z.object({ action: z.literal('roles-save'), parentSessionId: id, role: DelegationRoleInputSchema }).strict(),
-    z.object({ action: z.literal('roles-delete'), parentSessionId: id, roleId: id }).strict(),
-    DelegateTaskInputSchema.safeExtend({ action: z.literal('start'), parentSessionId: id, wait: z.boolean().optional() }),
-    z.object({ action: z.literal('read'), parentSessionId: id, taskId: id }).strict(),
-    z.object({ action: z.literal('cancel'), parentSessionId: id, taskId: id }).strict(),
+    z.object({ action: z.literal('roles-list'), ...delegationRequestScope }).strict(),
+    z.object({ action: z.literal('roles-create'), ...delegationRequestScope, role: DelegationRoleCreateInputSchema }).strict(),
+    z.object({ action: z.literal('roles-update'), ...delegationRequestScope, roleId: id, patch: DelegationRolePatchSchema }).strict(),
+    z.object({ action: z.literal('roles-save'), ...delegationRequestScope, role: DelegationRoleInputSchema }).strict(),
+    z.object({ action: z.literal('roles-delete'), ...delegationRequestScope, roleId: id }).strict(),
+    DelegateTaskInputSchema.safeExtend({ action: z.literal('start'), ...delegationRequestScope, wait: z.boolean().optional() }),
+    z.object({ action: z.literal('read'), ...delegationRequestScope, taskId: id }).strict(),
+    z.object({ action: z.literal('cancel'), ...delegationRequestScope, taskId: id }).strict(),
 ]);
 export type DelegationRequest = z.infer<typeof DelegationRequestSchema>;
 export type DelegationAction = DelegationRequest extends infer Request
@@ -120,6 +171,8 @@ export const DelegationResponseSchema = z.object({
     waitTimedOut: z.boolean().optional(),
 }).strict();
 export type DelegationResponse = z.infer<typeof DelegationResponseSchema>;
+export const MachineDelegationRolesResponseSchema = DelegationResponseSchema;
+export type MachineDelegationRolesResponse = DelegationResponse;
 
 /** Waiting for input is recoverable and returns control to the parent instead of keeping an MCP call open. */
 export function isDelegatedTaskSettled(status: DelegatedTaskStatus): boolean {

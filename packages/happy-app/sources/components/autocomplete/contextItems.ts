@@ -7,8 +7,8 @@ import { isRetiredSession } from '@/sync/retiredSessions';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { compareSessionActivity } from '@/utils/sessionActivity';
 
-export type ContextCategory = 'all' | 'files' | 'plugins' | 'sites' | 'sessions';
-export type ContextItem = { id: string; category: Exclude<ContextCategory, 'all'>; title: string; detail: string; text: string; icon: 'document-text-outline' | 'folder-outline' | 'extension-puzzle-outline' | 'globe-outline' | 'chatbubble-outline' | 'attach-outline'; reference?: ComposerReference; action?: 'upload' };
+export type ContextCategory = 'all' | 'files' | 'agents' | 'plugins' | 'sites' | 'sessions';
+export type ContextItem = { id: string; category: Exclude<ContextCategory, 'all'>; title: string; detail: string; text: string; icon: 'document-text-outline' | 'folder-outline' | 'extension-puzzle-outline' | 'globe-outline' | 'chatbubble-outline' | 'attach-outline' | 'git-branch-outline' | 'settings-outline'; reference?: ComposerReference; action?: 'upload' | 'manage-roles'; provider?: string };
 
 export function contextPlugins(plugins: readonly PluginCatalogItem[], label: (text: PluginCatalogItem['manifest']['title']) => string): ContextItem[] {
     return plugins.filter(p => p.status.installed).map(({ manifest }) => ({

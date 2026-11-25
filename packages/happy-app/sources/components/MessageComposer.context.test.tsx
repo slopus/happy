@@ -239,6 +239,21 @@ describe('MessageComposer unified context entry', () => {
         act(() => renderer.root.findByProps({ testID: 'composer-context-trigger' }).props.onPress());
         expect(menu()).toBeTruthy(); expect(pick).not.toHaveBeenCalled(); expect(mocks.write).not.toHaveBeenCalled();
     });
+    it('opens role settings without modifying or sending the existing draft', () => {
+        const manage = vi.fn(), send = vi.fn();
+        mount({ onManageDelegationRoles: manage, onSend: send }); type('Keep this @writer after', 17);
+        act(() => menu().props.onSelect({ action: 'manage-roles', text: '' }));
+        expect(manage).toHaveBeenCalledOnce();
+        expect(mocks.write).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+        expect(renderer.root.findAllByType('ComposerContextPicker')).toHaveLength(0);
+    });
+    it('inserts an explicit role request at the cursor and waits for user send', () => {
+        const send = vi.fn(); mount({ onSend: send }); type('Before @writer after', 14);
+        act(() => menu().props.onSelect({ category: 'agents', text: 'Call writer-role-1' }));
+        expect(mocks.write.mock.calls.at(-1)![0]).toBe('Before Call writer-role-1 after');
+        expect(send).not.toHaveBeenCalled();
+    });
     it('Escape closes and suppresses the same @ token, typing reopens', () => {
         mount(); type('@');
         act(() => { expect(input().props.onKeyPress({ key: 'Escape' })).toBe(true); });

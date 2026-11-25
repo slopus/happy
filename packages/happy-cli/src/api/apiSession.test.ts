@@ -9,6 +9,8 @@ import { createWorkerSessionStartupLifecycleFromEnvironment, WorkerSessionStartu
 import { decodeBase64, decrypt, decryptBlob, encodeBase64, encrypt } from './encryption';
 import type { Metadata, Session, Update } from './types';
 import { immediateCodexCommandEnvelopes } from '@/codex/codexImmediateCommand';
+import { z } from 'zod';
+import { DelegationRoleV1Schema, DelegatedTaskSummaryV1Schema, DelegationSnapshotV2Schema } from '@slopus/happy-wire';
 
 const {
     mockIo,
@@ -369,7 +371,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     it.each(['codex', 'antigravity'] as const)('repairs an old-schema writeback for a declared %s worker once and preserves normal edits', async flavor => {
-        const initial: Metadata = { ...session.metadata, hostPid: process.pid, flavor, capabilities: { delegation: 1, regenerateTitle: true } };
+        const initial: Metadata = { ...session.metadata, hostPid: process.pid, flavor, capabilities: { delegation: 1, delegationRoutes: 1, regenerateTitle: true } };
         session.metadata = initial;
         const client = new ApiSessionClient('fake-token', session);
         declareDelegation(client, flavor);
@@ -381,7 +383,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         receiveMetadata(projected, 1);
         await waitForCheck(() => expect(client.getMetadata()?.capabilities?.delegation).toBe(1));
         const restored = client.getMetadata()!;
-        expect(restored).toEqual({ ...projected, capabilities: { regenerateTitle: true, delegation: 1 } });
+        expect(restored).toEqual({ ...projected, capabilities: { regenerateTitle: true, delegation: 1, delegationRoutes: 1 } });
         expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
         expect(mockSocket.emitWithAck.mock.calls[0][1].expectedVersion).toBe(1);
         receiveMetadata(restored, 2);
@@ -401,11 +403,12 @@ describe('ApiSessionClient v3 messages API migration', () => {
         mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: 1, metadata: payload.metadata }));
         client.declareDelegationSupport('codex');
         await waitForCheck(() => expect(client.getMetadata()?.capabilities?.delegation).toBe(1));
+        expect(client.getMetadata()?.capabilities?.delegationRoutes).toBe(1);
         expect(mockSocket.emitWithAck).toHaveBeenCalledOnce();
     });
 
     it('coalesces old-client events while repairing and follows a newer write that overtakes its ACK', async () => {
-        session.metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex', capabilities: { delegation: 1 } };
+        session.metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex', capabilities: { delegation: 1, delegationRoutes: 1 } };
         const client = new ApiSessionClient('fake-token', session);
         declareDelegation(client);
         let acknowledge!: (response: unknown) => void;
@@ -422,7 +425,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     it('retains declared capabilities in an ordinary CAS retry after an old-client projection wins the race', async () => {
-        const initial: Metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex', capabilities: { delegation: 1 } };
+        const initial: Metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex', capabilities: { delegation: 1, delegationRoutes: 1 } };
         session.metadata = initial;
         const client = new ApiSessionClient('fake-token', session);
         declareDelegation(client);
@@ -431,7 +434,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
             .mockImplementationOnce(async (_event: string, payload: any) => ({ result: 'success', version: 3, metadata: payload.metadata }));
         await client.updateMetadataAndAwait(metadata => ({ ...metadata, name: 'local title' }));
         expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
-        expect(client.getMetadata()).toEqual({ ...remote, name: 'local title', capabilities: { codexSteer: true, delegation: 1 } });
+        expect(client.getMetadata()).toEqual({ ...remote, name: 'local title', capabilities: { codexSteer: true, delegation: 1, delegationRoutes: 1 } });
     });
 
     it.each(['codex', 'antigravity', 'claude', 'gemini'])('does not infer local delegation authority from remote %s metadata', async flavor => {
@@ -493,6 +496,28 @@ describe('ApiSessionClient v3 messages API migration', () => {
         receiveMetadata({ ...session.metadata, name: 'next edit' }, version);
         await waitForCheck(() => expect(client.getMetadata()?.delegationProtocol).toBe(1));
         expect(client.getMetadata()?.delegationRoles).toEqual([]);
+    });
+
+    it('publishes complete V2 data with truthful V1 projections that old metadata parsers can still read', async () => {
+        session.metadata = { ...session.metadata, hostPid: process.pid, flavor: 'codex' } as Metadata;
+        const client = new ApiSessionClient('fake-token', session); let metadataVersion = 0;
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: ++metadataVersion, metadata: payload.metadata }));
+        const publish = (client.rpcHandlerManager.registerHandler as any).mock.calls.find(([name]: [string]) => name === 'delegation-publish')[1];
+        const fullRole = { id: 'known', name: 'Known', description: 'Observed route', agent: 'codex', model: 'actual-code', autoDelegate: false, createdAt: 1, updatedAt: 1 };
+        const defaultRole = { ...fullRole, id: 'defaults', model: undefined };
+        const task = { id: 'known-task', parentSessionId: session.id, title: 'Known', roleId: 'known', roleName: 'Known', agent: 'codex', model: 'actual-code', version: 1, status: 'running', startedAt: 1, updatedAt: 1, resultAvailable: false };
+        const temporary = { ...task, id: 'one-off', roleId: undefined, model: undefined };
+        await publish({ roles: [fullRole, defaultRole], tasks: [task, temporary] });
+        const metadata = client.getMetadata()!;
+        const oldEnvelope = z.object({ delegationProtocol: z.literal(1), delegationRoles: z.array(DelegationRoleV1Schema), delegatedTasks: z.array(DelegatedTaskSummaryV1Schema) }).passthrough();
+        expect(oldEnvelope.parse(metadata).delegationRoles).toHaveLength(1);
+        expect(metadata.delegatedTasks).toHaveLength(1);
+        const full = DelegationSnapshotV2Schema.parse(metadata.delegationV2);
+        expect(full.roles).toHaveLength(2); expect(full.tasks).toHaveLength(2);
+        expect(full.roles[1].model).toBeUndefined(); expect(full.tasks[1].roleId).toBeUndefined(); expect(full.tasks[1].model).toBeUndefined();
+        receiveMetadata({ ...metadata, delegationV2: undefined, name: 'older client edit' }, ++metadataVersion);
+        await waitForCheck(() => expect(client.getMetadata()?.delegationV2).toEqual(full));
+        expect(oldEnvelope.safeParse(client.getMetadata()).success).toBe(true);
     });
 
     it('restores a child binding only from its local trusted delegated launch', async () => {

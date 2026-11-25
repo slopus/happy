@@ -1255,8 +1255,8 @@ export async function runAcp(opts: {
       return { agent: 'antigravity', ...effectiveDelegationContext(), hostPid: process.pid,
         lifecycleState: current.lifecycleState ?? 'running' };
     });
-    boundSession.rpcHandlerManager.registerHandler('delegation-prepare', async (request: { model: string; effort?: string; permissionMode: 'default' | 'bypassPermissions' }) => {
-      if (!request || typeof request.model !== 'string' || !request.model.trim()
+    boundSession.rpcHandlerManager.registerHandler('delegation-prepare', async (request: { model?: string; effort?: string; permissionMode: 'default' | 'bypassPermissions' }) => {
+      if (!request || (request.model !== undefined && (typeof request.model !== 'string' || !request.model.trim()))
         || (request.effort !== undefined && (typeof request.effort !== 'string' || !request.effort.trim()))
         || (request.permissionMode !== 'default' && request.permissionMode !== 'bypassPermissions')) throw new Error('Invalid delegation configuration');
       requireDelegatedOwner();
@@ -1276,7 +1276,8 @@ export async function runAcp(opts: {
         };
         requireIdle();
         if (!modelSelector) throw new Error('Native model configuration is unavailable');
-        const model = resolveDelegationCode(modelSelector.options, request.model, 'model');
+        const model = request.model === undefined ? modelSelector.currentCode : resolveDelegationCode(modelSelector.options, request.model, 'model');
+        if (!model || !modelSelector.options.some(option => option.code === model)) throw new Error('Current native model configuration is unavailable');
         await switchModelIfRequested(model);
         if (modelSelector?.currentCode !== model) throw new Error('Model change was not confirmed');
         const effort = request.effort === undefined ? undefined : resolveDelegationCode(effortSelector?.options ?? [], request.effort, 'reasoning effort');
@@ -1284,6 +1285,9 @@ export async function runAcp(opts: {
         if (effort && effortSelector?.currentCode !== effort) throw new Error('Reasoning effort change was not confirmed');
         requireIdle();
         const actualEffort = effortSelector?.currentCode;
+        if (effortSelector && (!actualEffort || !effortSelector.options.some(option => option.code === actualEffort))) {
+          throw new Error('Current native reasoning effort configuration is unavailable');
+        }
         const previousPolicy = permissionModeOverride;
         permissionModeOverride = request.permissionMode;
         let invalidated = false;

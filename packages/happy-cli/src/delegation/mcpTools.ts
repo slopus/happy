@@ -3,9 +3,10 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import {
     AgentRolesInputSchema,
-    DelegateTaskInputSchema,
+    DelegateTaskToolInputSchema,
     DelegatedTaskTargetInputSchema,
-    DelegationRoleInputSchema,
+    DelegationRoleCreateInputSchema,
+    DelegationRolePatchSchema,
     type DelegationResponse,
 } from '@slopus/happy-wire';
 
@@ -21,19 +22,20 @@ export function registerDelegationMcpTools(server: McpServer, invoke: Invoke): v
     // discriminated contract is also checked in the handler before dispatch.
     server.registerTool('agent_roles', {
         title: 'Manage Delegation Roles',
-        description: 'Before handling a user task that may benefit from delegation, list the configured roles reusable by this account on the current machine. Follow the user\'s explicit role/executor choice first. Without an explicit delegation request, you may select only an autoDelegate=true role whose description fits the task; autoDelegate=false requires an explicit user request. A role separates its name/description from executor, model, optional effort, and autoDelegate policy. Save/delete roles only when the user asks to create/change/remove a role: save needs a stable id; delete uses roleId. Tasks and their results remain scoped to the parent session. Prefer an observed native model code. When the user supplies a model label such as Neon, preserve that label for unique resolution against the target executor\'s actual native catalog at execution time; never invent an alias or silently substitute a default model. Never include credentials, shell commands, or environment variables. Executors use their own current accounts and independent quotas.',
+        description: 'List the configured roles reusable by this account on the current machine before choosing automatic delegation. Create/update/delete roles only when the user asks; creation never executes a task. create accepts an optional stable id (otherwise one is generated) and defaults autoDelegate=false; update requires the exact existing roleId and patch, and cannot change its ID; delete uses roleId. Never guess a role ID from its name. save is legacy upsert compatibility only; prefer create/update. Model and effort may be omitted to use the target native defaults, or supplied as native codes/uniquely advertised labels such as Neon and High. Never invent a model alias or silently substitute another model. Settings and these tools use the same role store. Never include credentials, shell commands or environment variables.',
         inputSchema: z.object({
-            action: z.enum(['list', 'save', 'delete']),
-            role: DelegationRoleInputSchema.optional(),
+            action: z.enum(['list', 'create', 'update', 'save', 'delete']),
+            role: DelegationRoleCreateInputSchema.optional(),
             roleId: DelegatedTaskTargetInputSchema.shape.taskId.optional(),
+            patch: DelegationRolePatchSchema.optional(),
         }).strict(),
     }, async args => invoke('agent_roles', AgentRolesInputSchema.parse(args)));
 
     server.registerTool('delegate_task', {
         title: 'Delegate a Linked Agent Task',
-        description: 'Delegate work to a saved role while keeping the current agent in control of this parent session. Supply roleId for a new task or taskId to revise that same task, never both. Include only the task requirements, verified facts, constraints, relevant source excerpts and expected output in prompt/context. Use a stable requestId for retries. The tool waits for a lifecycle outcome; progress remains visible in the parent session. If waiting times out or delivery is uncertain, retain the returned taskId and requestId: read the same task or retry the same requestId, never blindly create a replacement. A child uses a separate executor history and quota. Do not let concurrent agents write the same authoritative file; request draft text/patches and integrate them in the parent. A completed worker does not prove the parent reviewed or saved its output.',
-        inputSchema: DelegateTaskInputSchema,
-    }, async args => invoke('delegate_task', DelegateTaskInputSchema.parse(args)));
+        description: 'Keep the current agent in control and supply exactly one of roleId (saved role), taskId (revise the same live worker/history), or route {agent, model?, effort?} for a one-off task without saving a role. Always classify intent: automatic requires a saved role whose autoDelegate is true and whose description fits the work; explicit means the user actually requested this delegation. Intent is your classification, not proof of separately collected human approval. Never mark an automatic choice explicit to bypass the role policy. Temporary routes and revisions require explicit intent. Follow the user\'s current executor/model choice first. Omitted model/effort use the target native defaults, not this parent\'s model or reasoning effort. Include task requirements, verified facts, constraints, context and expected output. Use a stable requestId for retries. The tool waits for an outcome; retain taskId/requestId after uncertainty and never create a replacement blindly. Do not let concurrent agents write the same authoritative file; ask for drafts/patches and review before integrating. A worker finishing does not prove parent review or file save.',
+        inputSchema: DelegateTaskToolInputSchema,
+    }, async args => invoke('delegate_task', DelegateTaskToolInputSchema.parse(args)));
 
     server.registerTool('read_delegated_task', {
         title: 'Read a Linked Delegated Task',
@@ -58,7 +60,7 @@ export function delegationToolResponse(response: DelegationResponse): CallToolRe
             task: summary,
             ...(result ? { result } : {}),
             versions: history.map(version => ({
-                version: version.version, status: version.status, resultAvailable: Boolean(version.result),
+                version: version.version, status: version.status, intent: version.intent, resultAvailable: Boolean(version.result),
                 ...(version.finishedAt === undefined ? {} : { finishedAt: version.finishedAt }),
             })),
         };

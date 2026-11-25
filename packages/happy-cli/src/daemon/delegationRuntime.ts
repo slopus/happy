@@ -10,6 +10,7 @@ import type { TrackedSession } from './types';
 import { createDelegationService, DelegationDeliveryError } from './delegation/service';
 import { delegationLocalId, waitForDelegationReady } from './delegation/journal';
 import { delegationPermissionMode } from './delegationPermissions';
+import { projectDelegationSnapshotV1 } from '@/delegation/compatibility';
 
 const runtimeContextSchema = z.object({ agent: z.enum(['codex', 'antigravity']), permissionMode: z.string(),
     appendSystemPrompt: z.string().optional(), hostPid: z.number().int().positive(), lifecycleState: z.string().optional() });
@@ -95,6 +96,7 @@ export async function createDaemonDelegationRuntime(input: {
             return { id, agent: metadata.flavor as 'codex' | 'antigravity', directory: metadata.path, permissionMode: runtime?.permissionMode ?? 'read-only',
                 appendSystemPrompt: runtime?.appendSystemPrompt, accountProfileId: metadata.codexAccountProfileId,
                 application: metadata.application, sandbox: Boolean(metadata.sandbox?.enabled), delegated: Boolean(metadata.delegatedTask),
+                delegationRoutes: metadata.capabilities?.delegationRoutes === 1,
                 ...(options?.inspection ? { inspectionOnly: true } : {}) };
         },
         async spawn(parent, role, environment) {
@@ -191,8 +193,11 @@ export async function createDaemonDelegationRuntime(input: {
         },
         async publish(parentId, tasks, roles) {
             const parent = ownedSession(parentId);
-            if (parent.recovered) await nativeContext(parentId, parent, await input.fetchSnapshot(parentId, parent));
-            await input.machineClient.callSessionRpc(parentId, parent.encryption, 'delegation-publish', { tasks, roles });
+            const snapshot = await input.fetchSnapshot(parentId, parent);
+            const metadata = checkedSnapshot(parent, snapshot);
+            if (parent.recovered) await nativeContext(parentId, parent, snapshot);
+            const payload = metadata.capabilities?.delegationRoutes === 1 ? { tasks, roles } : projectDelegationSnapshotV1(roles, tasks);
+            await input.machineClient.callSessionRpc(parentId, parent.encryption, 'delegation-publish', payload);
         },
     } });
 }

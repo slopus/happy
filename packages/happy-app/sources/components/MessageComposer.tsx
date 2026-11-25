@@ -69,6 +69,8 @@ interface MessageComposerProps {
     onDismissPrediction?: () => void;
     onPredictionInputActivity?: () => void;
     sessionId?: string;
+    /** Navigation only: opening role settings never changes or sends the draft. */
+    onManageDelegationRoles?: () => void;
     onSend: () => void;
     /** Keyboard-only queue shortcut; the primary button also stages submissions. */
     onQueue?: () => void;
@@ -752,6 +754,12 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         if (restoreFocus) inputRef.current?.focus();
     }, [contextIdentity]);
     const selectContext = React.useCallback((item: ContextItem) => {
+        if (item.action === 'manage-roles') {
+            setContextFromButton(false);
+            setDismissedContext(contextIdentity);
+            props.onManageDelegationRoles?.();
+            return;
+        }
         const text = item.reference ? '' : item.text;
         if (item.reference && !referencesRef.current.some(r => r.kind === item.reference!.kind && r.id === item.reference!.id)) {
             if (referencesRef.current.length >= 8) { Modal.alert(t('composerContext.referenceLimit')); return; }
@@ -774,7 +782,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         input.setTextAndSelection(result, { start: cursor, end: cursor });
         input.focus();
         hapticsLight();
-    }, [inputState.selection]);
+    }, [inputState.selection, contextIdentity, props.onManageDelegationRoles]);
 
     const removeReference = React.useCallback((reference: ComposerReference) => {
         referencesRef.current = referencesRef.current.filter(r => r.kind !== reference.kind || r.id !== reference.id);
@@ -1226,6 +1234,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             ownerRef={composerContentRef}
                             query={mentionWord?.activeWord.slice(1) ?? ''}
                             sessionId={props.sessionId}
+                            canManageRoles={!!props.onManageDelegationRoles}
                             onSelect={selectContext}
                             onPickFiles={props.onPickImages}
                             onClose={closeContext}

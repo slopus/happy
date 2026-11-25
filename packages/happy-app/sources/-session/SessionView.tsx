@@ -110,7 +110,7 @@ import {
     useSubagentInspector,
 } from '@/components/subagent/SubagentInspectorContext';
 import { SubagentInspectorPanel } from '@/components/subagent/SubagentInspectorPanel';
-import { DelegationAssistantBar, DelegationInspectorPanel } from '@/components/delegation/DelegationPanel';
+import { DelegationInspectorPanel } from '@/components/delegation/DelegationPanel';
 import { findSessionTitleTagQuery, removeSessionTitleTagQuery } from '@/utils/sessionTitleTags';
 import { markSessionCriticalPathAppStage } from '@/sync/sessionCriticalPathProbeBridge';
 
@@ -2225,6 +2225,7 @@ function SessionViewLoaded({
             composerHandleRef={composerHandleRef}
             placeholder={t('session.inputPlaceholder')}
             sessionId={sessionId}
+            onManageDelegationRoles={() => router.push({ pathname: '/settings/delegation-roles', params: machineId ? { machineId } : {} })}
             predictionSource={{
                 turnId: session.agentState?.turnStatus?.turnId ?? '',
                 contextKey: JSON.stringify([session.metadata?.codexThreadId, session.metadata?.hostPid,
@@ -2364,7 +2365,6 @@ function SessionViewLoaded({
                     })(); }}
                 />
             </CenteredInputWidth>
-            <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}><DelegationAssistantBar sessionId={sessionId} /></CenteredInputWidth>
             {composer}
         </>
     );

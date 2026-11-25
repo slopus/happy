@@ -6,14 +6,14 @@ import { isRemoteCodexPermissionMode } from './executionPolicy';
 import { isReasoningEffort } from './reasoningEffort';
 
 const requestSchema = z.object({
-    model: z.string().trim().min(1).max(256),
-    effort: z.string().min(1).max(100).optional(),
+    model: z.string().trim().min(1).max(256).optional(),
+    effort: z.string().trim().min(1).max(100).optional(),
     permissionMode: z.string().refine(isRemoteCodexPermissionMode, 'Unsupported Codex permission mode'),
 }).strict();
 
 export type PreparedCodexDelegation = { model: string; effort?: ReasoningEffort; permissionMode: PermissionMode };
 export type CodexDelegationState = {
-    metadata: Pick<Metadata, 'delegatedTask' | 'application' | 'lifecycleState'> | null;
+    metadata: Pick<Metadata, 'delegatedTask' | 'application' | 'lifecycleState' | 'currentModelCode' | 'currentThoughtLevelCode'> | null;
     applicationBound: boolean;
     thinking: boolean;
     pending: boolean;
@@ -22,6 +22,18 @@ export type CodexDelegationState = {
     activeRootTurnId: string | null;
     shouldExit: boolean;
 };
+
+function resolveNativeEffort(requested: string, model: Model): ReasoningEffort {
+    const normalized = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const label = normalized(requested);
+    if (!label) throw new Error(`Reasoning effort is unavailable for this Codex model: ${requested}`);
+    const exact = model.supportedReasoningEfforts.filter(option => option.reasoningEffort === requested);
+    const matches = exact.length ? exact : model.supportedReasoningEfforts.filter(option =>
+        normalized(option.reasoningEffort) === label || normalized(option.description) === label);
+    const efforts = [...new Set(matches.map(option => option.reasoningEffort))];
+    if (efforts.length === 1 && isReasoningEffort(efforts[0])) return efforts[0];
+    throw new Error(efforts.length > 1 ? `Reasoning effort is ambiguous: ${requested}` : `Reasoning effort is unavailable for this Codex model: ${requested}`);
+}
 
 /** One startup event, never a status-query loop. Failure is observed even without callers. */
 export function createCodexDelegationPreparation(deps: {
@@ -60,12 +72,20 @@ export function createCodexDelegationPreparation(deps: {
                 assertIdle();
                 const models = deps.catalog()?.filter(model => !model.hidden) ?? [];
                 if (!models.length) throw new Error('The native Codex model catalog is unavailable');
-                const selected = resolveDelegationModel(request.model, models.map(model => ({
+                // Readiness follows native thread startup, which publishes these actual settings.
+                const current = deps.state().metadata;
+                const currentModel = current?.currentModelCode;
+                if (request.model === undefined && (!currentModel || !models.some(model => model.model === currentModel))) {
+                    throw new Error('The current native Codex model is unavailable');
+                }
+                const selected = resolveDelegationModel(request.model ?? currentModel!, models.map(model => ({
                     code: model.model, name: model.displayName || model.model,
                     efforts: model.supportedReasoningEfforts.map(option => option.reasoningEffort),
                 })));
                 const model = models.find(model => model.model === selected.code)!;
-                const effort = request.effort ?? model.defaultReasoningEffort;
+                const effort = request.effort === undefined
+                    ? (model.model === currentModel ? current?.currentThoughtLevelCode ?? model.defaultReasoningEffort : model.defaultReasoningEffort)
+                    : resolveNativeEffort(request.effort, model);
                 if (!isReasoningEffort(effort) || !model.supportedReasoningEfforts.some(option => option.reasoningEffort === effort)) {
                     throw new Error(`Reasoning effort is unavailable for this Codex model: ${effort}`);
                 }

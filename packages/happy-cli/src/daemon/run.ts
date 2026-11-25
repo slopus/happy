@@ -1470,6 +1470,7 @@ export async function startDaemon(): Promise<void> {
     // Set RPC handlers
     apiMachine.setRPCHandlers({
       delegation: request => delegationRuntime!.handle(request),
+      delegationRoles: request => delegationRuntime!.handleRoles(request),
       delegationConnected: () => delegationRuntime?.republish(),
       continueWithAgent,
       spawnSession,

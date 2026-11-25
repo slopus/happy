@@ -1258,6 +1258,55 @@ describe('runAcp', () => {
     } finally { await mocks.getKillHandler()!(); await run; }
   });
 
+  it('prepares the actual native current model and effort when overrides are omitted', async () => {
+    mocks.backendState.startSessionMessages = [delegationConfig('gemini-4-neon', 'high')];
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      expect(await mocks.sessionHandlers.get('delegation-prepare')!({ permissionMode: 'default' })).toEqual({ model: 'gemini-4-neon', effort: 'high' });
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+      expect(mocks.mockSession.getMetadata()).toMatchObject({ currentModelCode: 'gemini-4-neon', currentThoughtLevelCode: 'high' });
+      expect(mocks.backendState.prompts).toHaveLength(0);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('returns the refreshed native effort default after switching only the model', async () => {
+    mocks.backendState.startSessionMessages = [delegationConfig('gemini-4-argon', 'high')];
+    mocks.backendState.configResponse = (_id, value) => delegationConfig(value, 'medium');
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      expect(await mocks.sessionHandlers.get('delegation-prepare')!({ model: 'Neon', permissionMode: 'default' })).toEqual({ model: 'gemini-4-neon', effort: 'medium' });
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([{ configId: 'model', value: 'gemini-4-neon' }]);
+      expect(mocks.backendState.prompts).toHaveLength(0);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('returns no effort when the native current model advertises no effort configuration', async () => {
+    const config = delegationConfig();
+    config.payload.configOptions = config.payload.configOptions.filter(option => option.category !== 'thought_level');
+    mocks.backendState.startSessionMessages = [config];
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      const prepare = mocks.sessionHandlers.get('delegation-prepare')!;
+      expect(await prepare({ permissionMode: 'default' })).toEqual({ model: 'gemini-4-argon' });
+      await expect(prepare({ effort: 'high', permissionMode: 'default' })).rejects.toThrow('Unknown reasoning effort');
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it.each(['model', 'effort'])('rejects an unavailable native current %s instead of guessing a default', async missing => {
+    mocks.backendState.startSessionMessages = [delegationConfig(missing === 'model' ? 'unobserved' : 'gemini-4-argon', missing === 'effort' ? 'unobserved' : 'medium')];
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      await expect(mocks.sessionHandlers.get('delegation-prepare')!({ permissionMode: 'default' })).rejects.toThrow(/Current native .* configuration is unavailable/);
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+      expect(mocks.backendState.prompts).toHaveLength(0);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
   it('waits for native startup and the advertised catalog with one readiness promise', async () => {
     let start!: () => void;
     mocks.backendState.holdStartup = new Promise(resolve => { start = resolve; });
@@ -1265,7 +1314,7 @@ describe('runAcp', () => {
     try {
       await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
       let prepared = false;
-      const result = mocks.sessionHandlers.get('delegation-prepare')!({ model: 'Argon', permissionMode: 'default' }).then((value: unknown) => { prepared = true; return value; });
+      const result = mocks.sessionHandlers.get('delegation-prepare')!({ permissionMode: 'default' }).then((value: unknown) => { prepared = true; return value; });
       await Promise.resolve();
       expect(prepared).toBe(false);
       expect(mocks.backendState.setConfigOptionCalls).toEqual([]);

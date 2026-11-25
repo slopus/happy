@@ -1,5 +1,5 @@
 import type { CrossAgentRequest } from '@/continuation/coordinator';
-import { DelegationRequestSchema, type DelegationRequest, type DelegationResponse } from '@slopus/happy-wire';
+import { DelegationRequestSchema, MachineDelegationRolesRequestSchema, type DelegationRequest, type DelegationResponse, type MachineDelegationRolesRequest } from '@slopus/happy-wire';
 import { createCodingAgentService } from '@/environment/codingAgentService';
 import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges, artifactAccountScope } from '@/modules/artifacts/runtime';
 import { registerProjectGoalHandlers, type ProjectGoalDependencies } from '@/modules/goalBoard/projectService';
@@ -119,6 +119,7 @@ interface DaemonToServerEvents {
 
 type MachineRpcHandlers = {
     delegation?: (request: DelegationRequest) => Promise<DelegationResponse>;
+    delegationRoles?: (request: MachineDelegationRolesRequest) => Promise<DelegationResponse>;
     delegationConnected?: () => void;
     spawnSession: (options: TracedSpawnSessionOptions) => Promise<SpawnSessionResult>;
     continueWithAgent?: (request: CrossAgentRequest) => Promise<SpawnSessionResult>;
@@ -142,6 +143,7 @@ export class ApiMachineClient {
     setScheduledTaskRunner(runner: { wake(): Promise<void>; stop(): void }): void { this.scheduledRunner = runner; }
     private crossAgentContinuationAvailable = false;
     private delegationAvailable = false;
+    private delegationRolesAvailable = false;
     private delegationConnected?: () => void;
     private nativeSessionHooks?: NativeSessionHooks;
     setNativeSessionHooks(hooks: NativeSessionHooks): void { this.nativeSessionHooks = hooks; }
@@ -227,6 +229,7 @@ export class ApiMachineClient {
 
     setRPCHandlers({
         delegation,
+        delegationRoles,
         delegationConnected,
         spawnSession,
         continueWithAgent,
@@ -238,8 +241,10 @@ export class ApiMachineClient {
         projectGoals,
     }: MachineRpcHandlers) {
         this.delegationAvailable = !!delegation;
+        this.delegationRolesAvailable = !!delegationRoles;
         this.delegationConnected = delegationConnected;
         if (delegation) this.rpcHandlerManager.registerHandler('delegation', (input: unknown) => delegation(DelegationRequestSchema.parse(input)));
+        if (delegationRoles) this.rpcHandlerManager.registerHandler('delegation-roles', (input: unknown) => delegationRoles(MachineDelegationRolesRequestSchema.parse(input)));
         if (this.socket?.connected) {
             this.advertiseDelegation();
             this.delegationConnected?.();
@@ -620,8 +625,12 @@ export class ApiMachineClient {
     }
 
     private advertiseDelegation(): void {
-        if (this.delegationAvailable && this.machine.metadata?.delegation !== 1) {
-            void this.updateMachineMetadata(metadata => ({ ...(metadata ?? this.machine.metadata), delegation: 1 }))
+        if ((this.delegationAvailable && this.machine.metadata?.delegation !== 1)
+            || (this.delegationRolesAvailable && this.machine.metadata?.delegationRoles !== 1)) {
+            void this.updateMachineMetadata(metadata => ({ ...(metadata ?? this.machine.metadata),
+                ...(this.delegationAvailable ? { delegation: 1 as const } : {}),
+                ...(this.delegationRolesAvailable ? { delegationRoles: 1 as const } : {}),
+            }))
                 .catch(error => logger.debug('[API MACHINE] Failed to advertise delegation:', error));
         }
     }

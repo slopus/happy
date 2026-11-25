@@ -419,6 +419,13 @@ async function seedDisconnectedMessageRanges(cachedMax = 100) {
 async function seedLocalProjectionSession() {
     const storage = await useRealMessageComposition();
     storage.getState().applySessions([hydrated(snapshot('spawned-session'))]);
+    // Authenticated sends perform a fresh conversation-route read before
+    // queueing. Model that API boundary for this live fixture, without changing
+    // the suite's missing-session default or bypassing the production guard.
+    mocks.fetchSnapshot.mockImplementation(async (_credentials, sessionId: string) => {
+        const session = storage.getState().sessions[sessionId];
+        return sessionId === 'spawned-session' && session ? snapshot(sessionId, session.seq) : null;
+    });
     mocks.sessionEncryptions.set('spawned-session', new SessionEncryption('spawned-session', {
         encrypt: async (records) => records.map(record => new TextEncoder().encode(JSON.stringify(record))),
         decrypt: async (bytes) => bytes.map(value => value[0] === 123
@@ -1272,6 +1279,16 @@ describe('message visibility synchronization', () => {
         }
     });
 
+    it('rejects projection-fixture sends when the fresh conversation snapshot is unavailable', async () => {
+        await seedLocalProjectionSession();
+        mocks.fetchSnapshot.mockResolvedValueOnce(null);
+        await expect(sync.sendMessage('spawned-session', 'must not queue', { source: 'chat' }))
+            .rejects.toThrow('session.agentSwitchUnavailable');
+        expect(mocks.fetchSnapshot).toHaveBeenCalledWith(syncForTest.credentials, 'spawned-session');
+        expect(syncForTest.pendingOutbox.has('spawned-session')).toBe(false);
+        expect(syncForTest.sendSync.get('spawned-session').invalidate).not.toHaveBeenCalled();
+    });
+
     it.each([101, 102])('does not confuse ACK %s with a committed remote projection', async ackSeq => {
         Platform.OS = 'web';
         const storage = await seedLocalProjectionSession();
@@ -1280,6 +1297,7 @@ describe('message visibility synchronization', () => {
         await syncForTest.applyLatestMessagePage('spawned-session', { messages: [apiMessage(100)], hasMore: true },
             syncForTest.sessionMessageLoadGate.begin(lease));
         const receipt = await sync.sendMessage('spawned-session', 'local message', { source: 'chat' });
+        expect(mocks.fetchSnapshot).toHaveBeenCalledWith(syncForTest.credentials, 'spawned-session');
         mocks.apiRequest.mockResolvedValueOnce(response({ messages: [{ ...apiMessage(ackSeq), localId: receipt.localIds[0] }] }));
         await syncForTest.flushOutbox('spawned-session');
         const afterAck = storage.getState().sessionMessages['spawned-session'].latestAppliedSeq;

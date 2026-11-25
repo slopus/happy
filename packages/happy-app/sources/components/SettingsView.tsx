@@ -332,6 +332,8 @@ export const SettingsView = React.memo(function SettingsView() {
             <ItemGroup title={t('settings.general')}>
                 <Item testID="settings-coding-agents" title={t('settings.codingAgents')} subtitle={t('codingAgents.explanation')}
                     icon={<Ionicons name="code-slash-outline" size={29} color={theme.colors.accent} />} onPress={() => router.push('/settings/coding-agents')} />
+                <Item testID="settings-delegation-roles" title={t('delegation.settingsTitle')} subtitle={t('delegation.settingsSubtitle')}
+                    icon={<Ionicons name="git-branch-outline" size={29} color={theme.colors.accent} />} onPress={() => router.push('/settings/delegation-roles' as any)} />
                 <Item
                     title={t('sessionHistory.archiveTitle')}
                     icon={<Ionicons name="archive-outline" size={29} color={theme.colors.text} />}

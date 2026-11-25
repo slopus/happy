@@ -71,6 +71,7 @@ export default function RootLayout() {
             <Stack.Screen name="accounts" options={{ headerTitle: t('accounts.title') }} />
             <Stack.Screen name="settings/coding-agents" options={{ headerTitle: t('settings.codingAgents') }} />
             <Stack.Screen name="settings/agents" options={{ headerTitle: t('settings.agentDefaults') }} />
+            <Stack.Screen name="settings/delegation-roles" options={{ headerTitle: t('delegation.settingsTitle') }} />
             <Stack.Screen name="settings/appearance" options={{ headerTitle: t('settings.appearance') }} />
             <Stack.Screen name="settings/sound" options={{ headerTitle: getCurrentLanguage().startsWith('zh') ? '声音与通知' : 'Sound & notifications' }} />
             <Stack.Screen name="settings/connect/claude" options={{ headerTitle: t('connectClaude.title') }} />

@@ -17,6 +17,8 @@ export interface StoredDelegationTask {
     parentSessionId: string;
     title: string;
     role: DelegationRole;
+    /** This role-shaped route snapshot is task-local and is never saved in roles.json. */
+    temporaryRoute?: boolean;
     childSessionId?: string;
     nonce: string;
     createdAt: number;
@@ -63,7 +65,8 @@ export function delegationInputHash(value: unknown): string {
 }
 export function publicDelegationVersion(value: StoredDelegationVersion): DelegatedTaskVersion {
     return DelegatedTaskVersionSchema.parse({
-        version: value.version, requestId: value.requestId, prompt: value.prompt, context: value.context,
+        version: value.version, requestId: value.requestId,
+        ...(value.intent && value.intent !== 'legacy-explicit' ? { intent: value.intent } : {}), prompt: value.prompt, context: value.context,
         status: value.status, startedAt: value.startedAt, updatedAt: value.updatedAt,
         finishedAt: value.finishedAt, error: value.error, result: value.result,
     });

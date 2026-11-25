@@ -33,6 +33,7 @@ vi.mock('@/sync/apiDelegation', () => ({
 }));
 vi.mock('../RightSwipePanelHost', () => ({ useRightSwipePanel: () => null }));
 vi.mock('../codingAgents/CodingAgentIcon', () => ({ CodingAgentIcon: 'CodingAgentIcon' }));
+vi.mock('../subagent/SubagentActivityGroup', () => ({ SubagentActivityGroup: 'SubagentActivityGroup' }));
 vi.mock('../DesktopReadingWidth', () => ({ useDesktopReadingWidth: () => 960 }));
 
 const role: DelegationRole = { id: 'writer', name: 'Writer', description: 'Write clear documentation', agent: 'antigravity', model: 'recorded-model',

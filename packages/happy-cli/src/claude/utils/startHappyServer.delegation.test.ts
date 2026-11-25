@@ -39,9 +39,9 @@ describe('parent-bound delegation MCP tools', () => {
             for (const name of DELEGATION_MCP_TOOL_NAMES) {
                 expect(tools.find(tool => tool.name === name)?.inputSchema.properties).not.toHaveProperty('parentSessionId');
             }
-            const args = { requestId: 'write-request', roleId: 'writer', prompt: 'Write the README', context: 'Verified facts' };
+            const args = { requestId: 'write-request', roleId: 'writer', intent: 'explicit', prompt: 'Write the README', context: 'Verified facts' };
             const response = await client.callTool({ name: 'delegate_task', arguments: args });
-            expect(launchDelegationDaemonSession).toHaveBeenCalledWith('parent-one', { ...args, action: 'start', wait: true }, context);
+            expect(launchDelegationDaemonSession).toHaveBeenCalledWith('parent-one', { ...args, protocolVersion: 2, action: 'start', wait: true }, context);
             expect(response.isError).toBe(false);
             const text = JSON.stringify(response.content);
             expect(text).toContain('Actual revised draft');
@@ -65,11 +65,11 @@ describe('parent-bound delegation MCP tools', () => {
             await client.callTool({ name: 'agent_roles', arguments: { action: 'delete', roleId: 'writer' } });
             await client.callTool({ name: 'read_delegated_task', arguments: { taskId: 'task-one' } });
             await client.callTool({ name: 'cancel_delegated_task', arguments: { taskId: 'task-one' } });
-            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(1, 'parent-one', { action: 'roles-list' }, undefined);
-            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(2, 'parent-one', { action: 'roles-save', role: inputRole }, undefined);
-            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(3, 'parent-one', { action: 'roles-delete', roleId: 'writer' }, undefined);
-            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(4, 'parent-one', { action: 'read', taskId: 'task-one' }, undefined);
-            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(5, 'parent-one', { action: 'cancel', taskId: 'task-one' }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(1, 'parent-one', { protocolVersion: 2, action: 'roles-list' }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(2, 'parent-one', { protocolVersion: 2, action: 'roles-save', role: inputRole }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(3, 'parent-one', { protocolVersion: 2, action: 'roles-delete', roleId: 'writer' }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(4, 'parent-one', { protocolVersion: 2, action: 'read', taskId: 'task-one' }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(5, 'parent-one', { protocolVersion: 2, action: 'cancel', taskId: 'task-one' }, undefined);
             for (const input of [
                 { name: 'agent_roles', arguments: { action: 'list', parentSessionId: 'other-parent' } },
                 { name: 'agent_roles', arguments: { action: 'save', role: { ...inputRole, apiKey: 'forbidden' } } },
@@ -81,6 +81,27 @@ describe('parent-bound delegation MCP tools', () => {
             }
             expect(launchDelegationDaemonSession).toHaveBeenCalledTimes(5);
             expect(onDelegationWait).not.toHaveBeenCalled();
+        } finally { await client.close(); server.stop(); }
+    });
+
+    it('maps stable-ID create/update and temporary routes through the same parent tools with explicit intent', async () => {
+        vi.mocked(launchDelegationDaemonSession).mockResolvedValue({ success: true, roles: [role] });
+        const server = await startHappyServer({ sessionId: 'parent-one' } as ApiSessionClient);
+        const client = new Client({ name: 'delegation-contract-v2-test', version: '2' });
+        try {
+            await client.connect(new StreamableHTTPClientTransport(new URL(server.url)));
+            const draft = { name: 'New writer', description: 'Write supplied facts', agent: 'antigravity' };
+            expect((await client.callTool({ name: 'agent_roles', arguments: { action: 'create', role: draft } })).isError).toBe(false);
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(1, 'parent-one', { protocolVersion: 2, action: 'roles-create', role: { ...draft, autoDelegate: false } }, undefined);
+            await client.callTool({ name: 'agent_roles', arguments: { action: 'update', roleId: 'writer', patch: { name: 'Renamed', effort: null } } });
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(2, 'parent-one', { protocolVersion: 2, action: 'roles-update', roleId: 'writer', patch: { name: 'Renamed', effort: null } }, undefined);
+            const oneOff = { requestId: 'temporary-route', route: { agent: 'antigravity', model: 'Neon', effort: 'High' }, intent: 'explicit', prompt: 'Write once' };
+            await client.callTool({ name: 'delegate_task', arguments: oneOff });
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(3, 'parent-one', { ...oneOff, protocolVersion: 2, action: 'start', wait: true }, undefined);
+            expect((await client.callTool({ name: 'delegate_task', arguments: { requestId: 'no-intent', roleId: 'writer', prompt: 'Choose' } })).isError).toBe(true);
+            expect((await client.callTool({ name: 'delegate_task', arguments: { ...oneOff, intent: 'automatic' } })).isError).toBe(true);
+            expect((await client.callTool({ name: 'agent_roles', arguments: { action: 'update', roleId: 'writer', patch: { id: 'different' } } })).isError).toBe(true);
+            expect(launchDelegationDaemonSession).toHaveBeenCalledTimes(3);
         } finally { await client.close(); server.stop(); }
     });
 
@@ -96,7 +117,7 @@ describe('parent-bound delegation MCP tools', () => {
         const client = new Client({ name: 'delegation-budget-test', version: '1' });
         try {
             await client.connect(new StreamableHTTPClientTransport(new URL(server.url)));
-            const response = client.callTool({ name: 'delegate_task', arguments: { requestId: 'budget-request', roleId: 'writer', prompt: 'Write the draft' } });
+            const response = client.callTool({ name: 'delegate_task', arguments: { requestId: 'budget-request', roleId: 'writer', intent: 'explicit', prompt: 'Write the draft' } });
             await waiting;
             expect(onDelegationWait).toHaveBeenCalledOnce();
             expect(release).not.toHaveBeenCalled();
@@ -123,16 +144,16 @@ describe('parent-bound delegation MCP tools', () => {
             currentDelegationSessionId: () => currentParent, onDelegationWait,
         });
         const client = new Client({ name: 'delegation-swap-test', version: '1' });
-        const first = { requestId: 'before-swap', roleId: 'writer', prompt: 'First task' };
-        const second = { requestId: 'after-swap', roleId: 'writer', prompt: 'Second task' };
+        const first = { requestId: 'before-swap', roleId: 'writer', intent: 'explicit', prompt: 'First task' };
+        const second = { requestId: 'after-swap', roleId: 'writer', intent: 'explicit', prompt: 'Second task' };
         try {
             await client.connect(new StreamableHTTPClientTransport(new URL(server.url)));
             const pending = client.callTool({ name: 'delegate_task', arguments: first });
             await firstEntered;
             currentParent = 'parent-two';
             expect((await client.callTool({ name: 'delegate_task', arguments: second })).isError).toBe(false);
-            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(1, 'parent-one', { ...first, action: 'start', wait: true }, undefined);
-            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(2, 'parent-two', { ...second, action: 'start', wait: true }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(1, 'parent-one', { ...first, protocolVersion: 2, action: 'start', wait: true }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenNthCalledWith(2, 'parent-two', { ...second, protocolVersion: 2, action: 'start', wait: true }, undefined);
             expect(firstRelease).not.toHaveBeenCalled();
             expect(secondRelease).toHaveBeenCalledOnce();
             finish(completed);
@@ -154,7 +175,7 @@ describe('parent-bound delegation MCP tools', () => {
         const client = new Client({ name: 'delegation-budget-failure-test', version: '1' });
         try {
             await client.connect(new StreamableHTTPClientTransport(new URL(server.url)));
-            const response = await client.callTool({ name: 'delegate_task', arguments: { requestId: 'failed-budget-request', roleId: 'writer', prompt: 'Write the draft' } });
+            const response = await client.callTool({ name: 'delegate_task', arguments: { requestId: 'failed-budget-request', roleId: 'writer', intent: 'explicit', prompt: 'Write the draft' } });
             expect(response.isError).toBe(true);
             expect(onDelegationWait).toHaveBeenCalledOnce();
             expect(release).toHaveBeenCalledOnce();
@@ -169,9 +190,9 @@ describe('parent-bound delegation MCP tools', () => {
         const client = new Client({ name: 'delegation-wait-test', version: '1' });
         try {
             await client.connect(new StreamableHTTPClientTransport(new URL(server.url)));
-            const args = { requestId: 'same-revision-request', taskId: 'task-one', prompt: 'Shorten the introduction' };
+            const args = { requestId: 'same-revision-request', taskId: 'task-one', intent: 'explicit', prompt: 'Shorten the introduction' };
             const response = await client.callTool({ name: 'delegate_task', arguments: args });
-            expect(launchDelegationDaemonSession).toHaveBeenCalledWith('parent-one', { ...args, action: 'start', wait: true }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenCalledWith('parent-one', { ...args, protocolVersion: 2, action: 'start', wait: true }, undefined);
             expect(launchDelegationDaemonSession).toHaveBeenCalledTimes(1);
             const text = JSON.stringify(response.content);
             expect(text).toContain('waitTimedOut');
@@ -197,9 +218,9 @@ describe('parent-bound delegation MCP tools', () => {
             const tools = (await client.listTools()).tools;
             expect(tools).toHaveLength(15);
             expect(tools.map(tool => tool.name)).toEqual(server.toolNames);
-            const args = { requestId: 'stdio-request', roleId: 'writer', prompt: 'Write a grounded README' };
+            const args = { requestId: 'stdio-request', roleId: 'writer', intent: 'explicit', prompt: 'Write a grounded README' };
             const response = await client.callTool({ name: 'delegate_task', arguments: args });
-            expect(launchDelegationDaemonSession).toHaveBeenCalledWith('parent-one', { ...args, action: 'start', wait: true }, undefined);
+            expect(launchDelegationDaemonSession).toHaveBeenCalledWith('parent-one', { ...args, protocolVersion: 2, action: 'start', wait: true }, undefined);
             expect(JSON.stringify(response.content)).toContain('Actual revised draft');
         } finally { await client.close(); server.stop(); await rm(directory, { recursive: true, force: true }); }
     }, 20_000);

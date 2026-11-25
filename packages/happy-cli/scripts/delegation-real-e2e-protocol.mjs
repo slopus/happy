@@ -54,7 +54,7 @@ export function buildNativeParentPrompt({ roleId, requestId, childMarker, parent
     return [
         'This is an explicit request to delegate one synthetic acceptance task using the existing configured role. Do not modify any files.',
         'First call the Happy agent_roles tool with {"action":"list"} and confirm the existing role ID below. Do not save, change, or delete roles.',
-        `Then call the Happy delegate_task tool with exactly ${JSON.stringify({ requestId, roleId, prompt })}.`,
+        `Then call the Happy delegate_task tool with exactly ${JSON.stringify({ requestId, roleId, intent: 'explicit', prompt })}.`,
         'Create a new task using that roleId. Do not reuse any previous taskId, switch executor/model, or repeatedly query status. The tool waits for its outcome.',
         `Only after that tool succeeds and its child result contains ${childMarker}, reply exactly: ${parentMarker} ${childMarker}`,
         'If a tool or the child fails, report the actual failure and do not print the success markers.',

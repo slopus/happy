@@ -1,13 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { watch, type FSWatcher } from 'node:fs';
 import {
-    DelegationRequestSchema, DelegatedTaskSchema, isDelegatedTaskSettled,
+    DelegationRequestSchema, DelegatedTaskSchema, DelegationRoleSchema, MachineDelegationRolesRequestSchema, isDelegatedTaskSettled,
     type DelegationRequest, type DelegationResponse, type DelegationRole, type DelegatedTask,
-    type DelegatedTaskSummary,
+    type DelegatedTaskSummary, type AgentRolesInput, type MachineDelegationRolesRequest,
 } from '@slopus/happy-wire';
 import { createDelegationStore, delegationInputHash, publicDelegationVersion, type StoredDelegationTask, type StoredDelegationVersion } from './store';
 import { DELEGATION_REPORTER_ENV, DELEGATION_RESULT_TEXT_LIMIT, delegationLocalId, readDelegationReport, readDelegationReports, writeDelegationBinding,
     type DelegationJournalReport, type DelegationMessageBinding } from './journal';
+import { projectDelegationResponseV1 } from '@/delegation/compatibility';
 
 export interface DelegationParent {
     id: string;
@@ -21,12 +22,14 @@ export interface DelegationParent {
     delegated?: boolean;
     /** Local authorization result only; never accepted from wire requests. */
     inspectionOnly?: boolean;
+    /** Advertised by the live native worker only after V2 preparation RPCs are installed. */
+    delegationRoutes?: boolean;
 }
 export interface DelegationSendOptions {
     agent: 'codex' | 'antigravity';
     permissionMode: string;
     appendSystemPrompt?: string;
-    model: string;
+    model?: string;
     effort?: string;
     delegation: DelegationMessageBinding;
     /** Call after backend/model preparation, immediately before enqueuing input. */
@@ -78,7 +81,7 @@ export async function createDelegationService(options: { directory: string; deps
         const version = task.versions.find(item => item.version === versionNumber)!;
         return DelegatedTaskSchema.parse({
             id: task.id, parentSessionId: task.parentSessionId, childSessionId: task.childSessionId,
-            title: task.title, roleId: task.role.id, roleName: task.role.name, agent: task.role.agent,
+            title: task.title, roleId: task.temporaryRoute ? undefined : task.role.id, roleName: task.role.name, agent: task.role.agent,
             model: task.role.model, effort: task.role.effort, version: version.version,
             status: version.status, startedAt: version.startedAt, updatedAt: version.updatedAt,
             finishedAt: version.finishedAt, error: version.error, resultAvailable: Boolean(version.result),
@@ -102,6 +105,42 @@ export async function createDelegationService(options: { directory: string; deps
         publish(task.parentSessionId);
     }
     function save(task: StoredDelegationTask): void { store.saveTask(task); }
+    /** Both machine settings and authenticated session tools mutate this one account/machine store. */
+    async function roleAction(request: AgentRolesInput): Promise<DelegationResponse> {
+        return serialize(() => {
+            if (disposed) throw new Error('Delegation coordinator is stopping');
+            if (request.action === 'list') return { success: true, roles: [...roles.values()].map(clone) };
+            const next = new Map(roles);
+            let role: DelegationRole | undefined;
+            if (request.action === 'delete') next.delete(request.roleId);
+            else {
+                const roleId = request.action === 'create' ? request.role.id ?? randomUUID()
+                    : request.action === 'update' ? request.roleId : request.role.id;
+                const previous = roles.get(roleId);
+                if (request.action === 'create' && previous) throw new Error('Delegation role ID already exists');
+                if (request.action === 'update' && !previous) throw new Error('Delegation role was not found');
+                if (!previous && roles.size >= 100) throw new Error('Delegation role limit reached');
+                const now = Math.max(Date.now(), (previous?.updatedAt ?? 0) + 1);
+                if (request.action === 'update') {
+                    const value = { ...previous!, ...request.patch, id: roleId, updatedAt: now };
+                    if (request.patch.agent && request.patch.agent !== previous!.agent) {
+                        if (!Object.hasOwn(request.patch, 'model')) delete value.model;
+                        if (!Object.hasOwn(request.patch, 'effort')) delete value.effort;
+                    }
+                    if (value.model === null) delete value.model;
+                    if (value.effort === null) delete value.effort;
+                    role = DelegationRoleSchema.parse(value);
+                } else role = DelegationRoleSchema.parse({ ...request.role, id: roleId,
+                    createdAt: previous?.createdAt ?? now, updatedAt: now });
+                next.set(roleId, role);
+            }
+            // Do not acknowledge or alter the live map if the durable save failed.
+            store.saveRoles([...next.values()]);
+            roles.clear(); for (const [key, value] of next) roles.set(key, value);
+            for (const parentId of knownParents) publish(parentId);
+            return { success: true, ...(role ? { role: clone(role) } : {}), roles: [...roles.values()].map(clone) };
+        });
+    }
     function getTask(parentId: string, taskId: string): StoredDelegationTask {
         const task = tasks.get(taskId);
         if (!task || task.parentSessionId !== parentId) throw new Error('Delegated task is not available in this parent session');
@@ -258,17 +297,27 @@ export async function createDelegationService(options: { directory: string; deps
         }
     }
     async function start(request: StartRequest, parent: DelegationParent, context?: { appendSystemPrompt?: string }): Promise<{ task: StoredDelegationTask; version: number }> {
-        const inputHash = delegationInputHash({ roleId: request.roleId, taskId: request.taskId, title: request.title, prompt: request.prompt, context: request.context });
+        const inputHash = delegationInputHash({ roleId: request.roleId, taskId: request.taskId, title: request.title, prompt: request.prompt, context: request.context,
+            ...(request.route ? { route: request.route } : {}), ...(request.intent ? { intent: request.intent } : {}) });
         const prepared = await serialize(async () => {
             const key = JSON.stringify([parent.id, request.requestId]);
             const existing = requests.get(key);
             if (existing) {
                 if (existing.inputHash !== inputHash) throw new Error('requestId was already used for a different delegation');
-                return { task: getTask(parent.id, existing.taskId), version: existing.version, dispatch: false };
+                const task = getTask(parent.id, existing.taskId);
+                if (request.protocolVersion !== 2 && (task.temporaryRoute || !task.role.model)) throw new Error('This task requires delegation protocolVersion 2');
+                return { task, version: existing.version, dispatch: false };
             }
+            // Intent is the caller/model's explicit classification, not a separately collected human approval.
+            // Omission is retained only for legacy roleId/taskId requests; new MCP callers must provide it.
+            if (request.route && request.intent !== 'explicit') throw new Error('A temporary route requires explicit delegation intent');
+            if (request.intent === 'automatic' && !request.roleId) throw new Error('Automatic delegation requires a saved role');
+            if (request.route && request.protocolVersion !== 2) throw new Error('Temporary routes require delegation protocolVersion 2');
+            if (request.route && !parent.delegationRoutes) throw new Error('Temporary routes require an updated parent worker');
             let task: StoredDelegationTask;
             if (request.taskId) {
                 task = getTask(parent.id, request.taskId);
+                if (request.protocolVersion !== 2 && (task.temporaryRoute || !task.role.model)) throw new Error('This task requires delegation protocolVersion 2');
                 if (!final(latest(task).status)) throw new Error('Wait for this task to finish or confirm its cancellation before revising it');
                 const alive = task.childSessionId ? await deps.isChildAlive(task.childSessionId) : false;
                 if (alive === null) throw new Error('Original delegated worker identity is unconfirmed; reconnect and retry explicitly. History restoration was not attempted.');
@@ -277,16 +326,26 @@ export async function createDelegationService(options: { directory: string; deps
                 }
                 if (task.versions.length >= 100) throw new Error('Delegation revision limit reached');
             } else {
-                const role = roles.get(request.roleId!);
-                if (!role) throw new Error('Delegation role was not found');
+                const savedRole = request.roleId ? roles.get(request.roleId) : undefined;
+                if (request.roleId && !savedRole) throw new Error('Delegation role was not found');
+                if (savedRole && !savedRole.model && request.protocolVersion !== 2) throw new Error('Native-default roles require delegation protocolVersion 2');
+                if (savedRole && !savedRole.model && !parent.delegationRoutes) throw new Error('Native-default roles require an updated parent worker');
+                if (request.intent === 'automatic' && !savedRole?.autoDelegate) throw new Error('Automatic delegation is disabled for this role');
                 if (tasks.size >= 1000) throw new Error('Delegation task limit reached');
-                task = { id: randomUUID(), parentSessionId: parent.id, title: request.title ?? role.name,
-                    role: clone(role), nonce: randomBytes(32).toString('hex'), createdAt: Date.now(), versions: [] };
+                const taskId = randomUUID(), now = Date.now();
+                const role: DelegationRole = savedRole ? clone(savedRole) : {
+                    id: `temporary-${taskId}`, name: request.title?.slice(0, 100) ?? 'Temporary delegation',
+                    description: 'One-off task route. Follow only the supplied task requirements and context.',
+                    ...request.route!, autoDelegate: false, createdAt: now, updatedAt: now,
+                };
+                task = { id: taskId, parentSessionId: parent.id, title: request.title ?? role.name,
+                    role, ...(request.route ? { temporaryRoute: true } : {}), nonce: randomBytes(32).toString('hex'), createdAt: now, versions: [] };
                 tasks.set(task.id, task);
             }
             const now = Date.now();
             const version: StoredDelegationVersion = { version: task.versions.length + 1, requestId: request.requestId, inputHash,
-                prompt: request.prompt, context: request.context, status: 'starting', startedAt: now, updatedAt: now, phase: 'prepared', reportSequence: 0 };
+                intent: request.intent ?? 'legacy-explicit', prompt: request.prompt, context: request.context,
+                status: 'starting', startedAt: now, updatedAt: now, phase: 'prepared', reportSequence: 0 };
             task.versions.push(version); save(task); saveBinding(task, version);
             requests.set(key, { taskId: task.id, version: version.version, inputHash });
             notify(task, version);
@@ -351,6 +410,11 @@ export async function createDelegationService(options: { directory: string; deps
             void reconcileConnectedWorkers(cancellationEpoch);
         },
         workerExited,
+        /** Only exposed through the authenticated machine RPC transport; never resolves a parent or dispatches. */
+        async handleRoles(raw: MachineDelegationRolesRequest): Promise<DelegationResponse> {
+            try { return await roleAction(MachineDelegationRolesRequestSchema.parse(raw)); }
+            catch (error) { return { success: false, error: (error instanceof Error ? error.message : 'Role management failed').slice(0, 4000) }; }
+        },
         async handle(raw: DelegationRequest, context?: { appendSystemPrompt?: string }): Promise<DelegationResponse> {
             const deadline = Date.now() + waitTimeoutMs;
             try {
@@ -362,28 +426,25 @@ export async function createDelegationService(options: { directory: string; deps
                 if (parent.id !== request.parentSessionId || !['codex', 'antigravity'].includes(parent.agent)) throw new Error('Unsupported delegation parent');
                 if (parent.inspectionOnly && request.action !== 'read') throw new Error('Inspection authorization only permits reading this parent task');
                 if (parent.application || parent.sandbox) throw new Error('Delegation is unavailable for application-bound or sandboxed sessions');
-                if (parent.delegated && ['start', 'roles-save', 'roles-delete'].includes(request.action)) throw new Error('Recursive delegation is disabled for delegated workers');
+                if (parent.delegated && ['start', 'roles-create', 'roles-update', 'roles-save', 'roles-delete'].includes(request.action)) throw new Error('Recursive delegation is disabled for delegated workers');
                 knownParents.add(parent.id);
-                if (request.action === 'roles-list') { publish(parent.id); return { success: true, roles: [...roles.values()].map(clone) }; }
-                if (request.action === 'roles-save') return await serialize(() => {
-                    const now = Date.now(); const previous = roles.get(request.role.id);
-                    if (!previous && roles.size >= 100) throw new Error('Delegation role limit reached');
-                    const role: DelegationRole = { ...request.role, createdAt: previous?.createdAt ?? now, updatedAt: now };
-                    roles.set(role.id, role); store.saveRoles([...roles.values()]);
-                    for (const parentId of knownParents) publish(parentId);
-                    return { success: true, role: clone(role), roles: [...roles.values()].map(clone) };
-                });
-                if (request.action === 'roles-delete') return await serialize(() => {
-                    roles.delete(request.roleId); store.saveRoles([...roles.values()]);
-                    for (const parentId of knownParents) publish(parentId);
-                    return { success: true, roles: [...roles.values()].map(clone) };
-                });
+                const respond = (value: DelegationResponse) => request.protocolVersion === 2 ? value : projectDelegationResponseV1(value);
+                if (request.protocolVersion !== 2 && (request.action === 'roles-create' || request.action === 'roles-update'
+                    || (request.action === 'roles-save' && !request.role.model))) throw new Error('This role operation requires delegation protocolVersion 2 or machine role settings');
+                if (request.action === 'roles-list') { publish(parent.id); return respond(await roleAction({ action: 'list' })); }
+                if (request.action === 'roles-create') return respond(await roleAction({ action: 'create', role: request.role }));
+                if (request.action === 'roles-update') return respond(await roleAction({ action: 'update', roleId: request.roleId, patch: request.patch }));
+                if (request.action === 'roles-save') return respond(await roleAction({ action: 'save', role: request.role }));
+                if (request.action === 'roles-delete') return respond(await roleAction({ action: 'delete', roleId: request.roleId }));
                 if (request.action === 'start') {
                     const started = await start(request, parent, context);
                     const waitTimedOut = request.wait ? await wait(started.task, started.version, deadline) : false;
-                    return { success: true, taskId: started.task.id, task: view(started.task, started.version), ...(waitTimedOut ? { waitTimedOut: true } : {}) };
+                    return respond({ success: true, taskId: started.task.id, task: view(started.task, started.version), ...(waitTimedOut ? { waitTimedOut: true } : {}) });
                 }
                 const task = getTask(parent.id, request.taskId);
+                if (request.action === 'cancel' && request.protocolVersion !== 2 && (task.temporaryRoute || !task.role.model)) {
+                    throw new Error('This task requires delegation protocolVersion 2');
+                }
                 // An explicit read is a one-shot recovery path if a watcher event was lost.
                 // Inspection creates no execution intent and never waits for native authority.
                 // A newly observed protected receipt may still advance the lifecycle and
@@ -398,7 +459,7 @@ export async function createDelegationService(options: { directory: string; deps
                     await requestCancellation(task, version, true);
                 }
                 if (request.action === 'read' && !parent.inspectionOnly) publish(parent.id);
-                return { success: true, taskId: task.id, task: view(task) };
+                return respond({ success: true, taskId: task.id, task: view(task) });
             } catch (error) {
                 return { success: false, error: (error instanceof Error ? error.message : 'Delegation failed').slice(0, 4000) };
             }
