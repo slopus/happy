@@ -47,6 +47,8 @@ data class UsageData(
     val cacheReadInputTokens: Long? = null,
     val contextWindow: Double? = null,
     val serviceTier: String? = null,
+    /** The model that produced this usage, when the producer names it. */
+    val model: String? = null,
 ) {
     companion object {
         fun parse(value: JsonElement?): UsageData? {
@@ -58,6 +60,7 @@ data class UsageData(
                 cacheReadInputTokens = o["cache_read_input_tokens"].num?.toLong(),
                 contextWindow = o["context_window"].num,
                 serviceTier = o["service_tier"].str,
+                model = o["model"].str,
             )
         }
     }

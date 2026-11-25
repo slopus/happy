@@ -16,4 +16,13 @@
     <string name="usage_empty_detail">账号报告其套餐或使用 token 后，会显示在这里。</string>
     <string name="usage_grid_label">每日 token 用量</string>
     <string name="usage_strip_label">%1$s 每日 token 用量</string>
+    <!-- The context gauge popup under the composer. -->
+    <string name="usage_context_title">上下文窗口</string>
+    <string name="usage_context_window_unknown">窗口未知</string>
+    <string name="usage_context_tokens_only">%1$s 个 token</string>
+    <string name="usage_context_input">输入</string>
+    <string name="usage_context_cache_read">缓存读取</string>
+    <string name="usage_context_cache_write">缓存写入</string>
+    <string name="usage_context_output">输出</string>
+    <string name="usage_context_model">模型</string>
 </resources>

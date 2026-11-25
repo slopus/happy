@@ -57,6 +57,8 @@ data class ContextUsage(
     val cacheRead: Long,
     val contextSize: Long,
     val contextWindow: Long? = null,
+    /** The model that produced the usage, when the producer names it. */
+    val model: String? = null,
 )
 
 data class ReducerResult(
@@ -701,6 +703,7 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
                 cacheRead = cacheRead,
                 contextSize = cacheCreation + cacheRead + usage.inputTokens,
                 contextWindow = usage.contextWindow?.takeIf { it > 0 }?.toLong(),
+                model = usage.model,
             ),
             timestamp,
         )

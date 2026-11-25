@@ -25,20 +25,35 @@ private fun jsRound(value: Double): Long = Math.floor(value + 0.5).roundToLong()
 
 enum class ContextLevel { Normal, Warning, Critical }
 
-/** What the usage row shows for the context: the percent used, the exact counts, and how loud. */
-data class ContextStatus(val percent: Int, val used: String, val total: String, val level: ContextLevel)
+/**
+ * What the usage row shows for the context: the percent used (null when the
+ * window is unknown), the exact counts, and how loud.
+ */
+data class ContextStatus(
+    val percent: Int?,
+    val used: String,
+    /** Null when the producer did not report the model's context window. */
+    val total: String?,
+    val level: ContextLevel,
+)
 
 /**
- * AgentInput.tsx `getContextStatus`. Nothing until the session reports its
- * window (a guessed denominator would later "refill"). Critical at 5% or
- * less remaining, warning at 10% or less, otherwise only when
- * [alwaysShow] (in the secondary colour). A context size of 0 shows nothing.
+ * AgentInput.tsx `getContextStatus`. Nothing until the session reports
+ * usage; a session whose window is not known yet (the CLI only reports it
+ * on a turn's result) shows the used count alone when [alwaysShow], never a
+ * guessed denominator that would later "refill". Critical at 5% or less
+ * remaining, warning at 10% or less, otherwise only when [alwaysShow] (in
+ * the secondary colour). A context size of 0 shows nothing.
  */
 fun contextStatus(usage: ContextUsage?, alwaysShow: Boolean): ContextStatus? {
     usage ?: return null
     val size = usage.contextSize.toDouble()
-    val window = usage.contextWindow?.toDouble() ?: return null
-    if (size == 0.0 || window <= 0) return null
+    if (size <= 0.0) return null
+    val window = usage.contextWindow?.toDouble()
+    if (window == null || window <= 0) {
+        if (!alwaysShow) return null
+        return ContextStatus(percent = null, used = formatTokenCount(size), total = null, level = ContextLevel.Normal)
+    }
     val used = max(0.0, min(100.0, size / window * 100))
     val remaining = 100 - used
     val level = when {
