@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 import { SessionView } from './SessionView';
 vi.mock('@/components/goalBoard/SessionWorkspaceLink', () => ({ SessionWorkspaceLink: 'SessionWorkspaceLink' }));
+vi.mock('@/components/delegation/DelegationPanel', () => ({ DelegationAssistantBar: () => null, DelegationInspectorPanel: 'DelegationInspectorPanel' }));
 import { SessionRouteAbandonedError, SessionRouteCoordinationError, SessionRouteOwnership } from '@/sync/sessionRouteOwnership';
 
 const mocks = vi.hoisted(() => ({

@@ -19,6 +19,15 @@ function context() {
 }
 
 describe('standard ACP tool input', () => {
+  it.each(['agent_roles', 'delegate_task'])('preserves the native AGY title for %s while retaining its other kind', name => {
+    const { ctx, messages } = context();
+    handleToolCall({ sessionUpdate: 'tool_call', toolCallId: `native-${name}`, kind: 'other',
+      title: `Run mcp_happy_${name}`, rawInput: { toolSummary: 'Synthetic human summary' },
+    }, ctx);
+    expect(messages.find(message => message.type === 'tool-call')).toEqual({ type: 'tool-call', toolName: 'other',
+      title: `Run mcp_happy_${name}`, args: { toolSummary: 'Synthetic human summary' }, callId: `native-${name}` });
+  });
+
   it('retains agy rawInput and locations needed to identify an actual Skill document read', () => {
     const { ctx, messages } = context();
     handleToolCall({ sessionUpdate: 'tool_call', toolCallId: 'read-1', kind: 'read', status: 'in_progress',

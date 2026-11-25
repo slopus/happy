@@ -1,4 +1,5 @@
 import { ArtifactChangedSchema, ARTIFACT_PROTOCOL } from '@slopus/happy-wire';
+import type { DelegationRole, DelegatedTaskSummary } from '@slopus/happy-wire';
 import { z } from 'zod'
 import type { AsyncQuestionResponse, GoalBoardBinding, GoalBoardSnapshot, Update, UpdateMachineBody, SessionStreamEnvelope } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
@@ -130,6 +131,7 @@ export type Session = {
  * Machine metadata - static information (rarely changes)
  */
 export const MachineMetadataSchema = z.object({
+  delegation: z.literal(1).optional(),
   scheduledTasks: z.literal(1).optional(),
   host: z.string(),
   platform: z.string(),
@@ -252,6 +254,7 @@ export type Machine = {
  * Message metadata schema
  */
 export const MessageMetaSchema = z.object({
+  delegation: z.object({ taskId: z.string().min(1), parentSessionId: z.string().min(1), requestId: z.string().min(1), version: z.number().int().positive(), nonce: z.string().min(1) }).strict().optional(),
   scheduledRun: z.object({ taskId: z.string().uuid(), runId: z.string().uuid(), claimId: z.string().uuid(), notificationPolicy: z.enum(['all', 'important', 'none']) }).strict().optional(),
   sentFrom: z.string().optional(), // Source identifier
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
@@ -370,6 +373,10 @@ export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSche
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
+  delegationProtocol?: 1;
+  delegationRoles?: DelegationRole[];
+  delegatedTasks?: DelegatedTaskSummary[];
+  delegatedTask?: { taskId: string; parentSessionId: string };
   codexAsyncQuestionResponses?: Record<string, AsyncQuestionResponse>;
   goalBoard?: GoalBoardBinding;
   goalBoardSnapshot?: GoalBoardSnapshot;
@@ -398,6 +405,7 @@ export type Metadata = {
     updatedAt: number
   },
   capabilities?: {
+    delegation?: 1
     acpPermissionPolicy?: boolean
     regenerateTitle?: boolean
     codexCredentialRecovery?: boolean

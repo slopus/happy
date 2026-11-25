@@ -108,6 +108,7 @@ import {
     useSubagentInspector,
 } from '@/components/subagent/SubagentInspectorContext';
 import { SubagentInspectorPanel } from '@/components/subagent/SubagentInspectorPanel';
+import { DelegationAssistantBar, DelegationInspectorPanel } from '@/components/delegation/DelegationPanel';
 import { findSessionTitleTagQuery, removeSessionTitleTagQuery } from '@/utils/sessionTitleTags';
 import { markSessionCriticalPathAppStage } from '@/sync/sessionCriticalPathProbeBridge';
 
@@ -608,6 +609,16 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const hasOpenedSession = React.useRef(false);
     const subagentInspector = useSubagentInspector();
     const subagentSelection = subagentInspector?.selection ?? null;
+    const delegationSessionRef = React.useRef(sessionId);
+    delegationSessionRef.current = sessionId;
+    const composeDelegation = React.useCallback((text: string) => {
+        if (delegationSessionRef.current !== sessionId || storage.getState().sessions[sessionId]?.metadata?.capabilities?.delegation !== 1) return;
+        subagentInspector?.close({ restoreFocus: false });
+        const composer = sessionComposerHandleRef.current;
+        if (!composer) return;
+        const current = composer.getMessage();
+        composer.setMessage(current.trim() ? `${current}\n\n${text}` : text);
+    }, [sessionId, subagentInspector]);
 
     React.useEffect(() => {
         // Transparent desktop modals retain the conversation underneath. Only
@@ -1054,7 +1065,9 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     ) : undefined;
 
     const subagentPanelLabel = subagentSelection
-        ? t('toolGroup.subagentPanelLabel', { title: subagentSelection.title ?? subagentSelection.id })
+        ? subagentSelection.kind === 'agent-roles' ? t('delegation.rolesTitle')
+            : subagentSelection.kind === 'delegated-task' ? subagentSelection.title ?? t('delegation.task')
+                : t('toolGroup.subagentPanelLabel', { title: subagentSelection.title ?? subagentSelection.id })
         : null;
     const desktopPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
@@ -1324,16 +1337,22 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         </>
     );
 
-    if (props.embedded) return <View style={{ flex: 1, minWidth: 0, minHeight: 0 }} onLayout={event => setDesktopMainWidth(Math.round(event.nativeEvent.layout.width))}>{mainContent}</View>;
+    const inspectorPanel = subagentSelection
+        ? subagentSelection.kind === 'agent-roles' || subagentSelection.kind === 'delegated-task'
+            ? <DelegationInspectorPanel sessionId={sessionId} selection={subagentSelection} onBack={() => subagentInspector?.close()} onCompose={composeDelegation} />
+            : <SubagentInspectorPanel onBack={() => subagentInspector?.close()} selection={subagentSelection} sessionId={sessionId} />
+        : null;
+    if (props.embedded) {
+        const delegatedPanel = subagentSelection?.kind === 'agent-roles' || subagentSelection?.kind === 'delegated-task';
+        return <RightSwipePanelHost enabled={!!delegatedPanel} gestureEnabled={false} fullWidth
+            open={!!delegatedPanel} onOpenChange={open => { if (!open) subagentInspector?.close(); }} panelContent={inspectorPanel}
+            openAccessibilityLabel={t('delegation.assistants')} closeAccessibilityLabel={t('common.back')} panelAccessibilityLabel={compactPanelLabel}>
+            <View style={{ flex: 1, minWidth: 0, minHeight: 0 }} onLayout={event => setDesktopMainWidth(Math.round(event.nativeEvent.layout.width))}>{mainContent}</View>
+        </RightSwipePanelHost>;
+    }
 
     if (!desktopRightPanelAvailable) {
-        const rightPanel = subagentSelection ? (
-            <SubagentInspectorPanel
-                onBack={() => subagentInspector?.close()}
-                selection={subagentSelection}
-                sessionId={sessionId}
-            />
-        ) : (
+        const rightPanel = subagentSelection ? inspectorPanel : (
             <SessionRightPanelContent
                 composerHandleRef={sessionComposerHandleRef}
                 sessionId={sessionId}
@@ -1487,13 +1506,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                     ]}
                     testID="desktop-right-panel-motion"
                 >
-                    {subagentSelection ? (
-                        <SubagentInspectorPanel
-                            onBack={() => subagentInspector?.close()}
-                            selection={subagentSelection}
-                            sessionId={sessionId}
-                        />
-                    ) : <DesktopRightPanel
+                    {subagentSelection ? inspectorPanel : <DesktopRightPanel
                         activeTab={desktopPanelMode}
                         collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
                             panel: desktopPanelLabel,
@@ -2174,6 +2187,7 @@ function SessionViewLoaded({
                     })(); }}
                 />
             </CenteredInputWidth>
+            <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}><DelegationAssistantBar sessionId={sessionId} /></CenteredInputWidth>
             {composer}
         </>
     );

@@ -3,6 +3,10 @@ import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
 import { runArtifactTurn } from '@/modules/artifacts/turn';
 import { logger } from '@/ui/logger'
 import { createScheduledRunTracker } from './scheduledRun';
+import { createDelegationReporter } from '@/daemon/delegation/journal';
+import { delegationLaunchContext } from '@/daemon/delegationLaunchContext';
+import { DelegationRoleSchema, DelegatedTaskSummarySchema } from '@slopus/happy-wire';
+import { z } from 'zod';
 import { scheduleJournalDirectory } from '@/daemon/scheduledTasks/journal';
 import { EventEmitter } from 'node:events'
 import { readFile, stat, unlink } from 'node:fs/promises'
@@ -119,9 +123,12 @@ type V3PostSessionMessagesResponse = {
 };
 
 export class ApiSessionClient extends EventEmitter {
+    private readonly delegationReporter: ReturnType<typeof createDelegationReporter> | null;
     private readonly scheduledRunTracker: ReturnType<typeof createScheduledRunTracker>;
     private readonly pendingUserInputIds = new Set<string>();
+    private readonly acceptedDelegationInputs = new Set<string>();
     private activeRootTurnId: string | undefined;
+    private activeRootLocalIds: readonly string[] = [];
     private readonly startupLifecycle: WorkerSessionStartupLifecycle | undefined;
     private readonly token: string;
     readonly sessionId: string;
@@ -177,6 +184,8 @@ export class ApiSessionClient extends EventEmitter {
         this.startupLifecycle = startupLifecycle;
         this.token = token;
         this.sessionId = session.id;
+        const delegatedLaunch = delegationLaunchContext();
+        this.delegationReporter = delegatedLaunch ? createDelegationReporter({ descriptor: delegatedLaunch, sessionId: session.id }) : null;
         this.initialMessageSeq = session.seq;
         this.metadata = session.metadata;
         this.metadataVersion = session.metadataVersion;
@@ -201,6 +210,18 @@ export class ApiSessionClient extends EventEmitter {
             logger: (msg, data) => logger.debug(msg, data)
         });
         this.artifactRuntime = createArtifactRuntime(artifactIdentity, this.metadata.machineId);
+        this.rpcHandlerManager.registerHandler('delegation-publish', async (input: unknown) => {
+            const schema = z.object({ roles: z.array(DelegationRoleSchema).max(100), tasks: z.array(DelegatedTaskSummarySchema).max(100) }).strict();
+            const snapshot = schema.parse(input);
+            if (snapshot.tasks.some(task => task.parentSessionId !== this.sessionId)) throw new Error('Delegated task belongs to another parent session');
+            await this.updateMetadataAndAwait(metadata => ({ ...metadata, delegationProtocol: 1,
+                delegationRoles: snapshot.roles, delegatedTasks: snapshot.tasks }));
+            const saved = schema.safeParse({ roles: this.metadata?.delegationRoles, tasks: this.metadata?.delegatedTasks });
+            if (this.metadata?.delegationProtocol !== 1 || !saved.success || JSON.stringify(saved.data) !== JSON.stringify(snapshot)) {
+                throw new Error('Delegation publication was not acknowledged');
+            }
+            return { success: true };
+        });
         registerArtifactHandlers(this.rpcHandlerManager, this.artifactRuntime.getStore, this.metadata.path);
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path, this.artifactRuntime.supported && artifactIdentity && this.metadata.machineId ? this.artifactRuntime.getStore : undefined);
         this.goalBoardController = registerGoalBoardHandlers(this.rpcHandlerManager, this.metadata.path, {
@@ -358,10 +379,21 @@ export class ApiSessionClient extends EventEmitter {
         return this.startupLifecycle?.processorReady(this.sessionId, this.metadata?.machineId) ?? false;
     }
 
+    reportDelegationReady(): void {
+        this.delegationReporter?.ready();
+    }
+
     // Supplying both handlers installs them atomically before startup messages
     // replay, preserving file/text order and therefore attachment ownership.
     onUserMessage(callback: (data: UserMessage) => void, onFileEvent?: (data: FileEventMessage) => void) {
         this.pendingMessageCallback = message => {
+            if (message.meta?.delegation) {
+                if (!message.localId || !this.delegationReporter || this.acceptedDelegationInputs.has(message.localId)
+                    || !this.delegationReporter.acceptMessage(message)) return;
+                // Relay sequence deduplication and stable server localIds are
+                // additional fences; a bound input itself is enqueued once.
+                this.acceptedDelegationInputs.add(message.localId);
+            }
             if (message.meta?.scheduledRun && message.localId) {
                 if (this.scheduledRunTracker.hasMessage(message.localId)) return;
                 this.scheduledRunTracker.acceptMessage(message);
@@ -382,9 +414,20 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /** Release inputs deliberately removed by a local queue operation. */
+    acknowledgeCancelledUserInput(localId: string) {
+        // The delegation coordinator owns the durable cancelled receipt after
+        // the worker confirms exact queue removal. Do not emit a failed report.
+        this.pendingUserInputIds.delete(localId);
+    }
+
+    hasPendingUserInputs(): boolean {
+        return this.pendingUserInputIds.size > 0 || this.pendingInputMessages.length > 0;
+    }
+
     discardUserInputs(localIds: readonly string[]) {
         for (const localId of localIds) {
             this.pendingUserInputIds.delete(localId);
+            this.delegationReporter?.rejectMessage(localId);
             this.scheduledRunTracker.rejectMessage(localId);
         }
     }
@@ -824,15 +867,20 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private observeSessionProtocolEnvelope(envelope: SessionEnvelope) {
+        this.delegationReporter?.observe(envelope);
         this.scheduledRunTracker.observe(envelope);
         if (!envelope.subagent && envelope.role !== 'user') {
             if (envelope.ev.t === 'turn-start') {
                 this.activeRootTurnId = envelope.turn;
+                this.activeRootLocalIds = envelope.ev.localIds ?? [];
                 for (const localId of envelope.ev.localIds ?? []) this.pendingUserInputIds.delete(localId);
                 this.hasObservedRootTurnLifecycle = true;
                 this.persistTurnStatus('running', envelope.time, envelope.turn);
             } else if (envelope.ev.t === 'turn-end') {
-                if (this.activeRootTurnId === envelope.turn) this.activeRootTurnId = undefined;
+                if (this.activeRootTurnId === envelope.turn) {
+                    this.activeRootTurnId = undefined;
+                    this.activeRootLocalIds = [];
+                }
                 this.hasObservedRootTurnLifecycle = true;
                 this.persistTurnStatus(envelope.ev.status, envelope.time, envelope.turn);
             }
@@ -1059,6 +1107,15 @@ export class ApiSessionClient extends EventEmitter {
         return this.metadata;
     }
 
+    /** Synchronous protocol identity, including before its metadata ACK arrives. */
+    getCurrentRootTurnId(): string | undefined {
+        return this.activeRootTurnId;
+    }
+
+    isCurrentRootTurnInput(turnId: string, localId: string): boolean {
+        return this.activeRootTurnId === turnId && this.activeRootLocalIds.length === 1 && this.activeRootLocalIds[0] === localId;
+    }
+
     /**
      * Update session metadata
      * @param handler - Handler function that returns the updated metadata
@@ -1124,6 +1181,7 @@ export class ApiSessionClient extends EventEmitter {
                     this.agentStateVersion = answer.version;
                     logger.debug('Agent state updated', this.agentState);
                     this.scheduledRunTracker.waitingForInput(Object.keys(this.agentState?.requests ?? {}).length > 0, this.agentState?.turnStatus?.turnId);
+                    this.delegationReporter?.waitingForInput(Object.keys(this.agentState?.requests ?? {}).length > 0, this.activeRootTurnId);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version > this.agentStateVersion) {
                         this.agentStateVersion = answer.version;
@@ -1140,6 +1198,7 @@ export class ApiSessionClient extends EventEmitter {
 
     /** The processor stopped before ready; no scheduled input reached a root turn. */
     async failScheduledProcessorStartup(): Promise<void> {
+        this.delegationReporter?.processorStartupFailed();
         this.scheduledRunTracker.processorStartupFailed();
         await this.scheduledRunTracker.flush();
     }
@@ -1188,6 +1247,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     async close() {
+        this.delegationReporter?.processorStartupFailed();
         logger.debug('[API] socket.close() called');
         this.goalBoardClosed = true;
         this.goalBoardSnapshotSequence++;

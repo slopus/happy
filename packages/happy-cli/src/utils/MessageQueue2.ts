@@ -234,6 +234,14 @@ export class MessageQueue2<T> {
     /**
      * Reset the queue - clears all messages and resets to empty state
      */
+    /** Remove one still-queued input; the caller owns its cancellation receipt. */
+    removeByLocalId(localId: string): boolean {
+        const index = this.queue.findIndex(item => item.localId === localId);
+        if (index < 0) return false;
+        this.queue.splice(index, 1);
+        return true;
+    }
+
     reset(): void {
         logger.debug(`[MessageQueue2] reset() called. Clearing ${this.queue.length} messages`);
         this.onDiscardHandler?.(this.queue.flatMap(item => item.localId ? [item.localId] : []));

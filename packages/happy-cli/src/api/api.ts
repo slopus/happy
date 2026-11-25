@@ -315,7 +315,7 @@ export class ApiClient {
       // Never expose Axios config/body, provider text or unreviewed server errors.
       const code = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
       const safeCodes = ['invalid-request', 'credential-identity-mismatch', 'profile-not-found', 'machine-not-found',
-        'credential-version-conflict', 'grant-unavailable', 'launch-unavailable', 'session-unavailable',
+        'credential-version-conflict', 'grant-unavailable', 'launch-unavailable', 'session-unavailable', 'codex-account-unbound',
         'quota-attribution-mismatch', 'status-attribution-mismatch', 'invalid-quota-time'];
       throw new CodexAccountRequestError(safeCodes.includes(code) ? code : 'codex-account-request-failed');
     }

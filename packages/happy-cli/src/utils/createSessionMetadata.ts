@@ -112,6 +112,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         lifecycleStateSince: Date.now(),
         flavor: opts.flavor,
         capabilities: {
+            ...(['codex', 'antigravity'].includes(opts.flavor) ? { delegation: 1 as const } : {}),
             regenerateTitle: opts.flavor === 'claude' || opts.flavor === 'codex',
         },
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,

@@ -8,6 +8,7 @@ import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import type { CodexEffort } from '@/modules/common/registerCommonHandlers';
+import { DelegationRequestSchema, DelegationResponseSchema, type DelegationAction, type DelegationResponse } from '@slopus/happy-wire';
 
 export type SpawnDaemonSessionOptions = {
   directory: string;
@@ -302,4 +303,21 @@ async function waitForProcessDeath(pid: number, timeout: number): Promise<void> 
 
 export async function launchIndependentDaemonSession(parentSessionId: string, task: import('./independentSessions').IndependentTask, context?: import('./independentSessions').DelegationContext) {
   return daemonPost('/independent-session', { parentSessionId, ...task, context }, 150_000);
+}
+
+/** One parent-bound action. Waiting uses the daemon's event waiter, never repeated status reads. */
+export async function launchDelegationDaemonSession(
+  parentSessionId: string,
+  action: DelegationAction,
+  context?: import('./independentSessions').DelegationContext,
+): Promise<DelegationResponse> {
+  const request = DelegationRequestSchema.parse({ ...action, parentSessionId });
+  const response = await daemonPost('/delegation', { ...request, ...(context ? { delegationContext: context } : {}) }, 11 * 60_000);
+  const parsed = DelegationResponseSchema.safeParse(response);
+  if (parsed.success) return parsed.data;
+  return {
+    success: false,
+    error: typeof response?.error === 'string' ? response.error.slice(0, 4_000) : 'Invalid delegation response from daemon',
+    ...('taskId' in request ? { taskId: request.taskId } : {}),
+  };
 }

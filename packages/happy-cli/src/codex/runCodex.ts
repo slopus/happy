@@ -38,6 +38,7 @@ import { projectPath } from '@/projectPath';
 import { basename, join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { delegationLaunchContext } from '@/daemon/delegationLaunchContext';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
@@ -86,6 +87,8 @@ import { CodexAuthTurnRecovery, runTurnWithCredentialRecovery } from './codexAut
 import { createCodexMessageQueueStatus } from './codexMessageQueueStatus';
 import { createCodexAsyncQuestionHandler, deliverCodexAsyncQuestionAnswer, recoverAsyncQuestionResponses } from './codexAsyncQuestionRpc';
 import { CODEX_ACCOUNT_CONFIG_ERROR } from './codexAccountConfig';
+import { createCodexDelegationAbortHandler, createCodexDelegationPreparation } from './codexDelegationRpc';
+import { createDelegationPromptLifecycle } from '@/delegation/delegationPrompt';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -468,6 +471,11 @@ export async function runCodex(opts: {
         }
     }
     const hydratedMetadata = mergeReconnectMetadata(localMetadata, reconnectServerMetadata);
+    const delegatedLaunch = delegationLaunchContext();
+    if (delegatedLaunch) {
+        hydratedMetadata.parentSessionId = delegatedLaunch.parentSessionId;
+        hydratedMetadata.delegatedTask = { taskId: delegatedLaunch.taskId, parentSessionId: delegatedLaunch.parentSessionId };
+    }
     let codexPawsOriginToken = hydratedMetadata.codexPawsOriginToken ?? randomUUID();
     const metadata = {
         ...hydratedMetadata,
@@ -504,10 +512,13 @@ export async function runCodex(opts: {
     let permissionHandler: CodexPermissionHandler;
     let client!: CodexAppServerClient;
     let reasoningProcessor!: ReasoningProcessor;
-    let abortInProgress: Promise<void> | null = null;
+    let abortInProgress: Promise<boolean> | null = null;
     let asyncQuestionHandler: ReturnType<typeof createCodexAsyncQuestionHandler> | null = null;
     let refreshModelsHandler: (() => Promise<{ success: true }>) | null = null;
     let predictionHandlers: ReturnType<typeof createComposerPredictionHandlers> | null = null;
+    let delegationPreparation: ReturnType<typeof createCodexDelegationPreparation> | null = null;
+    let delegationAbortHandler: ReturnType<typeof createCodexDelegationAbortHandler> | null = null;
+    let delegationContextHandler: (() => Promise<Record<string, unknown>>) | null = null;
     const mcpAppBindingRegistry = new McpAppBindingRegistry();
     let mcpAppRpcHandlers: ReturnType<typeof registerMcpAppRpcHandlers> | null = null;
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
@@ -529,6 +540,9 @@ export async function runCodex(opts: {
             if (client) newSession.rpcHandlerManager.registerHandler<CodexSteerRequest, CodexSteerResponse>('steer', steerHandler);
             if (asyncQuestionHandler) newSession.rpcHandlerManager.registerHandler('codex-async-question', asyncQuestionHandler);
             if (refreshModelsHandler) newSession.rpcHandlerManager.registerHandler('refreshModels', refreshModelsHandler);
+            if (delegationPreparation) newSession.rpcHandlerManager.registerHandler('delegation-prepare', delegationPreparation.prepare);
+            if (delegationAbortHandler) newSession.rpcHandlerManager.registerHandler('delegation-abort', delegationAbortHandler);
+            if (delegationContextHandler) newSession.rpcHandlerManager.registerHandler('delegation-context', delegationContextHandler);
             if (predictionHandlers) {
                 newSession.rpcHandlerManager.registerHandler('composerPrediction', predictionHandlers.request);
                 newSession.rpcHandlerManager.registerHandler('composerPredictionCancel', predictionHandlers.cancel);
@@ -576,7 +590,7 @@ export async function runCodex(opts: {
             }
         }
     };
-    if (!deferForkReport && !expectMagpieConnection) await reportSessionStarted();
+    if (!deferForkReport && !expectMagpieConnection && !delegatedLaunch) await reportSessionStarted();
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
@@ -762,7 +776,7 @@ export async function runCodex(opts: {
             const enqueueResult = enqueueCodexUserText({
                 text: message.content.text,
                 localId: message.localId,
-                isolate: !!message.meta?.scheduledRun,
+                isolate: !!(message.meta?.scheduledRun || message.meta?.delegation),
                 mode: enhancedMode,
                 attachments: attachmentsForThisMessage,
                 queue: messageQueue,
@@ -775,6 +789,7 @@ export async function runCodex(opts: {
         });
     });
     let thinking = false;
+    let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[]; localIds?: string[] } | null = null;
     let acceptedLocalIds: string[] | undefined;
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
@@ -839,56 +854,62 @@ export async function runCodex(opts: {
      * This is the equivalent of Claude Code's abort - it stops what's currently
      * happening but keeps the session alive for new prompts.
      */
-    async function handleAbort() {
+    async function handleAbort(strict = false) {
         turnAbortGeneration++;
         credentialWaitAbort?.abort();
-        if (abortInProgress) {
-            await abortInProgress;
-            return;
-        }
-
-        logger.debug('[Codex] Abort requested - stopping current task');
-        abortInProgress = (async () => {
-            try {
-                // Resolve any pending permission requests as 'abort' first.
-                if (permissionHandler) {
-                    permissionHandler.abortAll();
-                }
-
-                // Request interruption, then force-restart Codex app-server if
-                // it doesn't settle quickly (long-running shell commands).
-                if (client) {
-                    const abortResult = await client.abortTurnWithFallback({
-                        gracePeriodMs: 3000,
-                        forceRestartOnTimeout: true,
-                    });
-                    if (abortResult.forcedRestart) {
-                        logger.warn('[Codex] Forced app-server restart after interrupt timeout');
-                        session.sendSessionEvent({
-                            type: 'message',
-                            message: abortResult.resumedThread
-                                ? 'Force-stopped active task after interrupt timeout. Codex backend was restarted and the previous thread was resumed.'
-                                : 'Force-stopped active task after interrupt timeout. Codex backend was restarted, but the previous thread could not be resumed.',
-                        });
+        if (!abortInProgress) {
+            logger.debug('[Codex] Abort requested - stopping current task');
+            abortInProgress = (async () => {
+                let nativeAbortConfirmed = false;
+                try {
+                    // Resolve any pending permission requests as 'abort' first.
+                    if (permissionHandler) {
+                        permissionHandler.abortAll();
                     }
-                }
 
-                if (reasoningProcessor) {
-                    reasoningProcessor.abort();
-                }
-                logger.debug('[Codex] Abort completed - session remains active');
-            } catch (error) {
-                logger.debug('[Codex] Error during abort:', error);
-            } finally {
-                resetCurrentModeDefaults();
-                // Wake up message queue wait if idle
-                abortController.abort();
-                abortController = new AbortController();
-            }
-        })();
+                    // Request interruption, then force-restart Codex app-server if
+                    // it doesn't settle quickly (long-running shell commands).
+                    if (client) {
+                        const abortResult = await client.abortTurnWithFallback({
+                            gracePeriodMs: 3000,
+                            forceRestartOnTimeout: true,
+                        });
+                        nativeAbortConfirmed = abortResult.aborted;
+                        if (abortResult.forcedRestart) {
+                            logger.warn('[Codex] Forced app-server restart after interrupt timeout');
+                            session.sendSessionEvent({
+                                type: 'message',
+                                message: abortResult.resumedThread
+                                    ? 'Force-stopped active task after interrupt timeout. Codex backend was restarted and the previous thread was resumed.'
+                                    : 'Force-stopped active task after interrupt timeout. Codex backend was restarted, but the previous thread could not be resumed.',
+                            });
+                        }
+                    }
 
-        await abortInProgress;
-        abortInProgress = null;
+                    if (reasoningProcessor) {
+                        reasoningProcessor.abort();
+                    }
+                    logger.debug('[Codex] Abort completed - session remains active');
+                    return nativeAbortConfirmed;
+                } finally {
+                    resetCurrentModeDefaults();
+                    // Wake up message queue wait if idle
+                    abortController.abort();
+                    abortController = new AbortController();
+                }
+            })();
+        }
+        const currentAbort = abortInProgress;
+        try {
+            const confirmed = await currentAbort;
+            if (strict && !confirmed) throw new Error('Native Codex did not confirm interruption of the delegated turn');
+        }
+        catch (error) {
+            logger.debug('[Codex] Error during abort:', error);
+            if (strict) throw error;
+        } finally {
+            if (abortInProgress === currentAbort) abortInProgress = null;
+        }
     }
 
     /**
@@ -945,7 +966,16 @@ export async function runCodex(opts: {
     };
 
     // Register abort handler
-    session.rpcHandlerManager.registerHandler('abort', handleAbort);
+    session.rpcHandlerManager.registerHandler('abort', async () => handleAbort());
+    delegationAbortHandler = createCodexDelegationAbortHandler({
+        binding: () => session.getMetadata()?.delegatedTask,
+        removeQueued: localId => messageQueue.removeByLocalId(localId),
+        acknowledgeQueued: localId => session.acknowledgeCancelledUserInput(localId),
+        currentRootTurnId: () => session.getCurrentRootTurnId() ?? null,
+        isCurrentRootTurnInput: (turnId, localId) => session.isCurrentRootTurnInput(turnId, localId),
+        abortStrict: () => handleAbort(true),
+    });
+    session.rpcHandlerManager.registerHandler('delegation-abort', delegationAbortHandler);
 
     registerSessionTitleWorker(session, 'codex');
     registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
@@ -1294,6 +1324,7 @@ export async function runCodex(opts: {
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
     const happyServer = await startHappyServer(session, {
+        currentDelegationSessionId: () => session.sessionId,
         delegationContext: () => ({ permissionMode: currentPermissionMode ?? 'read-only', appendSystemPrompt: currentAppendSystemPrompt }),
         archiveSession: async (reason?: string) => {
             setTimeout(() => {
@@ -1302,6 +1333,42 @@ export async function runCodex(opts: {
             return { success: true };
         },
     });
+    delegationContextHandler = async () => ({ agent: 'codex',
+        permissionMode: currentPermissionMode ?? 'read-only', appendSystemPrompt: currentAppendSystemPrompt, hostPid: process.pid,
+        lifecycleState: session.getMetadata()?.lifecycleState });
+    session.rpcHandlerManager.registerHandler('delegation-context', delegationContextHandler);
+    delegationPreparation = createCodexDelegationPreparation({
+        state: () => ({ metadata: session.getMetadata() ?? null, applicationBound: !!applicationPolicy,
+            thinking, pending: pending !== null, queueSize: messageQueue.size(), pendingUserInputs: session.hasPendingUserInputs(),
+            activeRootTurnId: session.getCurrentRootTurnId() ?? null, shouldExit }),
+        catalog: () => codexModelCatalog,
+        async apply(configuration, assertIdle) {
+            const targetSession = session;
+            let invalidated = false;
+            await targetSession.updateMetadataAndAwait(meta => {
+                // Metadata CAS retries must never turn a newly busy worker into
+                // a delayed configuration request after this RPC has timed out.
+                if (invalidated || session !== targetSession) { invalidated = true; return meta; }
+                try { assertIdle(); } catch { invalidated = true; return meta; }
+                return { ...mergeCodexSessionConfigIntoMetadata(meta, { models: codexModelCatalog, modelsUpdatedAt,
+                    currentModel: configuration.model, currentEffort: configuration.effort ?? null }),
+                    currentOperatingModeCode: configuration.permissionMode };
+            });
+            if (invalidated || session !== targetSession) throw new Error('Delegated worker changed or became busy while preparing its model');
+            assertIdle();
+            const acknowledged = targetSession.getMetadata();
+            if (acknowledged?.currentModelCode !== configuration.model || acknowledged.currentThoughtLevelCode !== configuration.effort
+                || acknowledged.currentOperatingModeCode !== configuration.permissionMode) throw new Error('Delegated model configuration was not acknowledged');
+            baselineModel = currentModel = configuration.model;
+            baselineEffort = currentEffort = configuration.effort;
+            currentPermissionMode = configuration.permissionMode;
+            permissionHandler.setPermissionMode(configuration.permissionMode);
+        },
+    });
+    session.rpcHandlerManager.registerHandler('delegation-prepare', delegationPreparation.prepare);
+    // A delegated caller prepares its model immediately after this webhook.
+    // Advertise the worker only after all three delegation RPCs are callable.
+    if (delegatedLaunch && !deferForkReport && !expectMagpieConnection) await reportSessionStarted();
     // Launch the bridge via `node <path>` (rather than relying on the .mjs shebang)
     // so it works on Windows, where Windows can't execute shebang scripts directly.
     // codex would otherwise fail to start the MCP server, the change_title tool would
@@ -1314,8 +1381,10 @@ export async function runCodex(opts: {
             // These first-party control-plane operations must remain callable
             // when the native filesystem sandbox is read-only / approval=never.
             // Keep approval scoped to these exact tools; do not relax sandbox policy.
-            tools: { start_session: { approval_mode: 'approve' }, change_title: { approval_mode: 'approve' } },
-            tool_timeout_sec: 150
+            tools: { start_session: { approval_mode: 'approve' }, change_title: { approval_mode: 'approve' },
+                agent_roles: { approval_mode: 'approve' }, delegate_task: { approval_mode: 'approve' },
+                read_delegated_task: { approval_mode: 'approve' }, cancel_delegated_task: { approval_mode: 'approve' } },
+            tool_timeout_sec: 720
         }
     } as const;
     let first = true;
@@ -1327,6 +1396,7 @@ export async function runCodex(opts: {
     let appendSystemPromptInjected = false;
     let browserStepPromptInjected = false;
     const skillPathResolutionInstruction = createCodexSkillPathResolutionPromptLifecycle();
+    const delegationInstruction = createDelegationPromptLifecycle({ delegatedChild: Boolean(delegatedLaunch || session.getMetadata()?.delegatedTask) });
 
     let processorStartupComplete = false;
     let processorStartupError: unknown;
@@ -1684,8 +1754,6 @@ export async function runCodex(opts: {
             ].join('\n');
         };
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[]; localIds?: string[] } | null = null;
-
         const sendImmediateCommandResponse = (responseText: string) => {
             // Local slash commands have their own Paws lifecycle, independent of
             // the native client's active turn. Complete it so staging can advance.
@@ -1735,7 +1803,8 @@ export async function runCodex(opts: {
                 const includeAppendSystemPrompt = Boolean(
                     opts.mode.appendSystemPrompt && !appendSystemPromptInjected,
                 );
-                const turnPrompt = applicationPolicy ? opts.prompt : buildCodexTurnPrompt({
+                const parentDelegationPrompt = applicationPolicy ? undefined : delegationInstruction.getPrompt();
+                const basePrompt = applicationPolicy ? opts.prompt : buildCodexTurnPrompt({
                     message: opts.prompt,
                     mode: opts.mode,
                     includeAppendSystemPrompt,
@@ -1744,6 +1813,9 @@ export async function runCodex(opts: {
                     includeSkillPathResolutionInstruction,
                     includeTitleInstruction: first,
                 });
+                const turnPrompt = parentDelegationPrompt
+                    ? `${basePrompt}\n\n<!-- happy:system-prompt:start -->\n${parentDelegationPrompt}\n<!-- happy:system-prompt:end -->`
+                    : basePrompt;
 
                 const turnPayload = buildCodexTurnPayload(
                     markPawsTurnOrigin(turnPrompt, codexPawsOriginToken),
@@ -1786,6 +1858,7 @@ export async function runCodex(opts: {
                 if (includeSkillPathResolutionInstruction) {
                     skillPathResolutionInstruction.markPromptSent();
                 }
+                if (parentDelegationPrompt) delegationInstruction.markPromptSent();
                 first = false;
                 browserStepPromptInjected = true;
                 if (includeAppendSystemPrompt) {
@@ -1835,6 +1908,8 @@ export async function runCodex(opts: {
             if (expectMagpieConnection) await session.updateMetadataAndAwait(publishModelConnection);
         }, expectMagpieConnection ? reportSessionStarted : undefined);
         processorStartupComplete = true;
+        delegationPreparation.ready();
+        session.reportDelegationReady();
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
@@ -2039,14 +2114,17 @@ export async function runCodex(opts: {
         }
 
     } catch (error) {
-        if (!processorStartupComplete) processorStartupError = error;
+        if (!processorStartupComplete) {
+            processorStartupError = error;
+            delegationPreparation.fail(error);
+        }
         throw error;
     } finally {
         // Clean up resources when main loop exits
         logger.debug('[codex]: Final cleanup start');
         messageQueue.close();
         if (abortInProgress) {
-            await abortInProgress;
+            await abortInProgress.catch(error => logger.debug('[Codex] Abort failed during shutdown:', error));
             abortInProgress = null;
         }
         permissionHandler.abortAll();

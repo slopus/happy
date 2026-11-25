@@ -22,6 +22,9 @@ import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { encodeBase64 } from '@/api/encryption';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { delegationLaunchContext } from '@/daemon/delegationLaunchContext';
+import { createDelegationPromptLifecycle } from '@/delegation/delegationPrompt';
+import { createPausableDeadline, type PausableDeadline } from './pausableDeadline';
 import { projectPath } from '@/projectPath';
 import { BasePermissionHandler, type PendingRequest, type PermissionResponse, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
@@ -293,6 +296,14 @@ type AcpConfigSelector = {
   options: AcpSelectableOption[];
 };
 
+type AcpRootTurn = {
+  localIds: string[];
+  turnId?: string;
+  cancelled: boolean;
+  promptStarted: boolean;
+  cancellation?: Promise<void>;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
 }
@@ -382,6 +393,21 @@ function resolveRequestedCode(options: AcpSelectableOption[], requested: string)
   return null;
 }
 
+/** Delegation must identify one advertised native value, never silently fall back. */
+function resolveDelegationCode(options: AcpSelectableOption[], requested: string, label: string): string {
+  const exact = options.filter(option => option.code === requested);
+  if (exact.length === 1) return exact[0].code;
+  const normalized = normalizeComparable(requested);
+  const labels = options.filter(option => normalizeComparable(option.code) === normalized || normalizeComparable(option.value) === normalized);
+  const matches = labels.length ? labels : options.filter(option => {
+    const tokens = normalizeComparable(option.value).split(/[^\p{L}\p{N}]+/u);
+    return normalized.length > 0 && tokens.includes(normalized);
+  });
+  const codes = [...new Set(matches.map(option => option.code))];
+  if (codes.length === 1) return codes[0];
+  throw new Error(codes.length ? `Ambiguous ${label}: ${requested}` : `Unknown ${label}: ${requested}`);
+}
+
 function resolveRequestedLegacyModeCode(modes: SessionModeState, requested: string): string | null {
   for (const mode of modes.availableModes) {
     if (mode.id === requested || mode.name === requested) {
@@ -426,6 +452,10 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
     'archive_session',
     'happy__archive_session',
     'mcp__happy__archive_session',
+    'agent_roles',
+    'delegate_task',
+    'read_delegated_task',
+    'cancel_delegated_task',
   ]);
   private static readonly ALWAYS_AUTO_APPROVE_ID_PREFIXES: readonly string[] = [
     'change_title',
@@ -509,7 +539,8 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
 type PendingTurn = {
   resolve: () => void;
   reject: (err: Error) => void;
-  timeout: NodeJS.Timeout;
+  deadline: PausableDeadline;
+  root: AcpRootTurn;
 };
 
 function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'antigravity' | 'acp' {
@@ -553,6 +584,11 @@ export async function runAcp(opts: {
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
   });
+  const delegatedLaunch = delegationLaunchContext();
+  if (delegatedLaunch) {
+    metadata.parentSessionId = delegatedLaunch.parentSessionId;
+    metadata.delegatedTask = { taskId: delegatedLaunch.taskId, parentSessionId: delegatedLaunch.parentSessionId };
+  }
   if (opts.agentName === 'antigravity') metadata.capabilities = { ...metadata.capabilities, acpPermissionPolicy: true };
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
@@ -563,6 +599,7 @@ export async function runAcp(opts: {
   let permissionHandler: GenericAcpPermissionHandler;
   let bindInputHandlers: (() => void) | undefined;
   let bindPermissionModeHandler: (() => void) | undefined;
+  let bindDelegationHandlers: (() => void) | undefined;
   let unbindPermissionMetadata: (() => void) | undefined;
   const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
     api,
@@ -577,11 +614,13 @@ export async function runAcp(opts: {
         permissionHandler.updateSession(newSession);
       }
       bindPermissionModeHandler?.();
+      bindDelegationHandlers?.();
     },
   });
   session = initialSession;
 
-  if (response) {
+  const reportSessionStarted = async () => {
+    if (!response) return;
     try {
       await notifyDaemonSessionStarted(response.id, metadata, {
         encryptionKey: encodeBase64(response.encryptionKey),
@@ -593,9 +632,11 @@ export async function runAcp(opts: {
     } catch (error) {
       logger.debug('[acp] Failed to report session to daemon:', error);
     }
-  }
+  };
+  if (!delegatedLaunch) await reportSessionStarted();
 
   const sessionManager = new AcpSessionManager();
+  const delegationPrompt = createDelegationPromptLifecycle({ delegatedChild: Boolean(delegatedLaunch) || opts.agentName !== 'antigravity' });
   permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName, id => sessionManager.getSessionCallId(id));
   // Drop any permission requests left in agent state from a previous CLI
   // process that died while a tool prompt was open — see the matching
@@ -604,6 +645,11 @@ export async function runAcp(opts: {
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
   let currentPermissionMode: string | undefined;
   let permissionModeOverride: 'default' | 'bypassPermissions' | null = null;
+  let currentAppendSystemPrompt: string | undefined;
+  const effectiveDelegationContext = () => ({
+    permissionMode: permissionModeOverride ?? (currentPermissionMode === 'bypassPermissions' ? 'bypassPermissions' as const : 'default' as const),
+    ...(currentAppendSystemPrompt !== undefined ? { appendSystemPrompt: currentAppendSystemPrompt } : {}),
+  });
   let currentModel: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;
   let modelSelector: AcpConfigSelector | null = null;
@@ -624,8 +670,12 @@ export async function runAcp(opts: {
   let sawModels = false;
   let archiveReason = 'Session ended';
   let archiveCurrentSession: ((reason?: string) => void) | null = null;
+  let pauseDelegationWait: () => (() => void) = () => () => {};
 
   const happyServer = await startHappyServer(session, {
+    delegationContext: effectiveDelegationContext,
+    currentDelegationSessionId: () => session.sessionId,
+    onDelegationWait: () => pauseDelegationWait(),
     archiveSession: async (reason?: string) => {
       if (!archiveCurrentSession) {
         return { success: false, error: 'Archive handler is not ready' };
@@ -660,12 +710,29 @@ export async function runAcp(opts: {
   let shouldExit = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
+  let activeRoot: AcpRootTurn | null = null;
+  let pendingInputCount = 0;
+  let resolveBackendReady!: () => void;
+  let rejectBackendReady!: (error: Error) => void;
+  const backendReady = new Promise<void>((resolve, reject) => {
+    resolveBackendReady = resolve;
+    rejectBackendReady = reject;
+  });
+  void backendReady.catch(() => {});
+  let backendReadinessReported = false;
+  const updateBackendReady = () => {
+    if (acpSessionId && (modelSelector?.options.length || legacyModels?.availableModels.length) && !backendReadinessReported) {
+      backendReadinessReported = true;
+      resolveBackendReady();
+      session.reportDelegationReady?.();
+    }
+  };
 
   const clearPendingTurn = (error?: Error) => {
     if (!pendingTurn) {
       return;
     }
-    clearTimeout(pendingTurn.timeout);
+    pendingTurn.deadline.cancel();
     const current = pendingTurn;
     pendingTurn = null;
     if (error) {
@@ -675,13 +742,30 @@ export async function runAcp(opts: {
     current.resolve();
   };
 
-  const waitForTurnEnd = () => new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
+  const waitForTurnEnd = (root: AcpRootTurn) => new Promise<void>((resolve, reject) => {
+    const current: PendingTurn = { resolve, reject, root, deadline: createPausableDeadline(TURN_TIMEOUT_MS, () => {
+      if (pendingTurn !== current) return;
       pendingTurn = null;
       reject(new Error(`Timed out waiting for ${opts.agentName} to finish the turn`));
-    }, TURN_TIMEOUT_MS);
-    pendingTurn = { resolve, reject, timeout };
+    }) };
+    pendingTurn = current;
   });
+  pauseDelegationWait = () => {
+    const current = pendingTurn;
+    const root = activeRoot;
+    const parentSessionId = session.sessionId;
+    if (opts.agentName !== 'antigravity' || delegatedLaunch || session.getMetadata?.()?.delegatedTask
+      || shouldExit || !current || !root || current.root !== root || root.cancelled
+      || !root.turnId || session.getCurrentRootTurnId?.() !== root.turnId) return () => {};
+    const release = current.deadline.pause();
+    return () => {
+      if (shouldExit || session.sessionId !== parentSessionId || pendingTurn !== current || activeRoot !== root || root.cancelled) {
+        current.deadline.cancel();
+        return;
+      }
+      release();
+    };
+  };
 
   const stopRunnerFromBackendStatus = (status: 'error' | 'stopped', detail?: string) => {
     const reason = detail
@@ -689,6 +773,7 @@ export async function runAcp(opts: {
       : `${opts.agentName} backend ${status}`;
     logger.debug(`[${opts.agentName}] ${reason}; stopping ACP runner`);
     shouldExit = true;
+    rejectBackendReady(new Error(reason));
     messageQueue.close();
     clearPendingTurn(new Error(reason));
   };
@@ -835,6 +920,11 @@ export async function runAcp(opts: {
       logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
     }
 
+    if (msg.type === 'event' && msg.name === 'prompt_cancelled' && activeRoot) {
+      activeRoot.cancelled = true;
+      clearPendingTurn();
+    }
+
     if (msg.type === 'event' && msg.name === 'available_commands') {
       const commands = msg.payload as { name: string; description?: string }[];
       const commandNames = commands.map((c) => c.name);
@@ -874,6 +964,7 @@ export async function runAcp(opts: {
         modelSelector = extractConfigSelector(configOptions, 'model');
         effortSelector = extractConfigSelector(configOptions, 'thought_level');
         configSnapshot = configOptions;
+        updateBackendReady();
         if (verbose) {
           if (modeSelector) {
             sawModes = true;
@@ -922,6 +1013,7 @@ export async function runAcp(opts: {
       const models = extractModelStateFromPayload(msg.payload);
       if (models) {
         legacyModels = models;
+        updateBackendReady();
         sawModels = true;
         if (verbose) {
           logAcp('muted', `Outgoing models from ${opts.agentName} (${models.availableModels.length}), current=${models.currentModelId}:`);
@@ -1026,16 +1118,24 @@ export async function runAcp(opts: {
       currentModel = message.meta.model ?? null;
       logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
     }
+    if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'appendSystemPrompt')) {
+      currentAppendSystemPrompt = typeof message.meta.appendSystemPrompt === 'string' ? message.meta.appendSystemPrompt : undefined;
+    }
     const mode: AcpSwitchMode = { permissionMode: currentPermissionMode, model: currentModel,
       ...(opts.agentName === 'antigravity' ? { effort: message.meta?.effort ?? null } : {}),
       ...(claimedImages.length ? { imageBatchId: randomUUID() } : {}) };
+    pendingInputCount += 1;
     void processUserMessage(async () => {
-      const results = await Promise.all(claimedImages);
-      if (shouldExit) return;
-      const failed = results.find((result): result is { error: string } => 'error' in result);
-      messageQueue.push(message.content.text || 'Please describe the attached image.',
-        failed ? { ...mode, attachmentError: failed.error } : mode,
-        failed ? [] : results.flatMap(result => 'image' in result ? [result.image] : []));
+      try {
+        const results = await Promise.all(claimedImages);
+        if (shouldExit) return;
+        const failed = results.find((result): result is { error: string } => 'error' in result);
+        messageQueue.push(message.content.text || 'Please describe the attached image.',
+          failed ? { ...mode, attachmentError: failed.error } : mode,
+          failed ? [] : results.flatMap(result => 'image' in result ? [result.image] : []), message.localId, Boolean(message.meta?.delegation));
+      } finally {
+        pendingInputCount -= 1;
+      }
     });
   };
   bindInputHandlers = () => {
@@ -1050,22 +1150,34 @@ export async function runAcp(opts: {
   }, 2000);
 
   async function handleAbort() {
-    try {
+    const root = activeRoot;
+    if (root?.cancellation) return root.cancellation;
+    const cancellation = (async () => {
       if (acpSessionId) {
         await backend.cancel(acpSessionId);
       }
+      // Once native work started, only its cancelled stop reason confirms a
+      // cancellation. A concurrent natural end_turn must stay completed.
+      if (root && activeRoot === root && !root.promptStarted) {
+        root.cancelled = true;
+        clearPendingTurn();
+      }
       permissionHandler.reset();
       abortController.abort();
-    } catch (error) {
-      logger.debug(`[${opts.agentName}] Abort failed:`, error);
-    } finally {
       abortController = new AbortController();
+    })();
+    if (root) root.cancellation = cancellation;
+    try {
+      await cancellation;
+    } finally {
+      if (root?.cancellation === cancellation) root.cancellation = undefined;
     }
   }
 
   async function requestSessionArchive(reason = 'User terminated') {
     archiveReason = reason;
     shouldExit = true;
+    rejectBackendReady(new Error('Session terminated'));
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
     await handleAbort();
@@ -1121,6 +1233,112 @@ export async function runAcp(opts: {
     return { configOptions: configSnapshot };
   }));
 
+  bindDelegationHandlers = () => {
+    if (opts.agentName !== 'antigravity') return;
+    const boundSession = session;
+    const requireWorker = () => {
+      const current = boundSession.getMetadata?.();
+      if (shouldExit || boundSession !== session || !current || !ownsPermissionMetadata(current)
+        || current.lifecycleState === 'archived' || current.lifecycleState === 'archiveRequested') throw new Error('Session worker changed or ended');
+      return current;
+    };
+    const requireDelegatedOwner = () => {
+      const current = requireWorker();
+      if (current.hostPid !== process.pid) throw new Error('Session worker changed or ended');
+      if (!delegatedLaunch || !current.delegatedTask || current.delegatedTask.taskId !== delegatedLaunch.taskId
+        || current.delegatedTask.parentSessionId !== delegatedLaunch.parentSessionId || current.parentSessionId !== delegatedLaunch.parentSessionId) throw new Error('Only the bound delegated task worker can prepare or cancel delegation');
+      if (current.application) throw new Error('Application-bound sessions cannot prepare delegation');
+      return current;
+    };
+    boundSession.rpcHandlerManager.registerHandler('delegation-context', async () => {
+      const current = requireWorker();
+      return { agent: 'antigravity', ...effectiveDelegationContext(), hostPid: process.pid,
+        lifecycleState: current.lifecycleState ?? 'running' };
+    });
+    boundSession.rpcHandlerManager.registerHandler('delegation-prepare', async (request: { model: string; effort?: string; permissionMode: 'default' | 'bypassPermissions' }) => {
+      if (!request || typeof request.model !== 'string' || !request.model.trim()
+        || (request.effort !== undefined && (typeof request.effort !== 'string' || !request.effort.trim()))
+        || (request.permissionMode !== 'default' && request.permissionMode !== 'bypassPermissions')) throw new Error('Invalid delegation configuration');
+      requireDelegatedOwner();
+      let timeout: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([backendReady, new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('Timed out waiting for ACP model catalog')), TURN_TIMEOUT_MS);
+        })]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+      return serializeConfig(async () => {
+        const requireIdle = () => {
+          requireDelegatedOwner();
+          if (shouldExit || !acpSessionId || thinking || pendingTurn || activeRoot || pendingInputCount || messageQueue.size() || session.hasPendingUserInputs?.() || session.getCurrentRootTurnId?.()
+          ) throw new Error('Session must be idle to prepare delegation');
+        };
+        requireIdle();
+        if (!modelSelector) throw new Error('Native model configuration is unavailable');
+        const model = resolveDelegationCode(modelSelector.options, request.model, 'model');
+        await switchModelIfRequested(model);
+        if (modelSelector?.currentCode !== model) throw new Error('Model change was not confirmed');
+        const effort = request.effort === undefined ? undefined : resolveDelegationCode(effortSelector?.options ?? [], request.effort, 'reasoning effort');
+        await switchEffortIfRequested(effort);
+        if (effort && effortSelector?.currentCode !== effort) throw new Error('Reasoning effort change was not confirmed');
+        requireIdle();
+        const actualEffort = effortSelector?.currentCode;
+        const previousPolicy = permissionModeOverride;
+        permissionModeOverride = request.permissionMode;
+        let invalidated = false;
+        try {
+          await boundSession.updateMetadataAndAwait(current => {
+            try { requireIdle(); } catch { invalidated = true; }
+            if (invalidated || current.hostPid !== process.pid || current.flavor !== 'antigravity'
+              || current.parentSessionId !== delegatedLaunch?.parentSessionId || current.delegatedTask?.taskId !== delegatedLaunch?.taskId
+              || current.delegatedTask?.parentSessionId !== delegatedLaunch?.parentSessionId || current.application
+              || current.lifecycleState === 'archived' || current.lifecycleState === 'archiveRequested') {
+              invalidated = true;
+              return current;
+            }
+            return { ...mergeAcpSessionConfigIntoMetadata(current, { configOptions: configSnapshot }),
+              capabilities: { ...current.capabilities, acpPermissionPolicy: true }, acpPermissionMode: request.permissionMode };
+          });
+          if (invalidated) throw new Error('Delegated worker changed or became busy while preparing configuration');
+          requireIdle();
+          const acknowledged = boundSession.getMetadata();
+          if (acknowledged?.currentModelCode !== model || acknowledged.currentThoughtLevelCode !== actualEffort
+            || acknowledged.acpPermissionMode !== request.permissionMode || modelSelector?.currentCode !== model || effortSelector?.currentCode !== actualEffort) throw new Error('Delegation configuration metadata was not acknowledged');
+        } catch (error) {
+          permissionModeOverride = previousPolicy;
+          publishPermissionPolicy();
+          throw error;
+        }
+        currentPermissionMode = request.permissionMode;
+        permissionHandler.setPermissionMode(request.permissionMode);
+        currentModel = model;
+        return { model, ...(actualEffort ? { effort: actualEffort } : {}) };
+      });
+    });
+    boundSession.rpcHandlerManager.registerHandler('delegation-abort', async (request: { expectedTurnId?: string; localId: string }) => {
+      if (!request || typeof request.localId !== 'string' || !request.localId
+        || (request.expectedTurnId !== undefined && (typeof request.expectedTurnId !== 'string' || !request.expectedTurnId))) throw new Error('Invalid delegation cancellation');
+      requireDelegatedOwner();
+      if (!request.localId.startsWith(`delegation:${delegatedLaunch!.taskId}:`)) throw new Error('Delegated task does not own this session input');
+      if (messageQueue.removeByLocalId(request.localId)) {
+        session.acknowledgeCancelledUserInput(request.localId);
+        return { queuedCancelled: true };
+      }
+      const root = activeRoot;
+      const actualTurnId = session.getCurrentRootTurnId?.();
+      if (!root || root.localIds.length !== 1 || root.localIds[0] !== request.localId || !root.turnId || actualTurnId !== root.turnId
+        || request.expectedTurnId !== root.turnId) throw new Error('Delegated turn does not match the current root turn');
+      await handleAbort();
+      return { cancelled: root.cancelled };
+    });
+  };
+  bindDelegationHandlers();
+
+  // A delegated child may receive its configuration as soon as this webhook
+  // resolves. Publish only after its ownership/configuration RPCs exist.
+  if (delegatedLaunch) await reportSessionStarted();
+
   registerSessionTitleWorker(session, 'acp');
 
   archiveCurrentSession = (reason?: string) => {
@@ -1134,6 +1352,7 @@ export async function runAcp(opts: {
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    updateBackendReady();
     session.processorReady?.();
     session.sendSessionEvent({ type: 'ready' });
     if (verbose) {
@@ -1166,14 +1385,19 @@ export async function runAcp(opts: {
       }
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
-      sendEnvelopes(sessionManager.startTurn());
+      const root: AcpRootTurn = { localIds: batch.localIds ?? [], cancelled: false, promptStarted: false };
+      activeRoot = root;
+      const startedEnvelopes = sessionManager.startTurn(batch.localIds);
+      root.turnId = startedEnvelopes.find(envelope => envelope.ev.t === 'turn-start')?.turn;
+      sendEnvelopes(startedEnvelopes);
       if (batch.mode.attachmentError) {
         sendEnvelopes(sessionManager.mapMessage({ type: 'model-output', textDelta: batch.mode.attachmentError }));
         sendEnvelopes(sessionManager.endTurn('failed'));
         session.sendSessionEvent({ type: 'ready' });
+        activeRoot = null;
         continue;
       }
-      const turnEnded = waitForTurnEnd();
+      const turnEnded = waitForTurnEnd(root);
       // Backend errors can settle the turn before sendPrompt rejects.
       void turnEnded.catch(() => {});
       let promptStarted = false;
@@ -1188,12 +1412,20 @@ export async function runAcp(opts: {
           }
           if (opts.agentName === 'antigravity') await switchEffortIfRequested(batch.mode.effort);
         });
-        promptStarted = true;
-        const images = (batch.attachments ?? []).filter((a): a is ImageAttachment => !isMediaAttachment(a));
-        if (images.length) await backend.sendPrompt(acpSessionId, batch.message, images);
-        else await backend.sendPrompt(acpSessionId, batch.message);
+        await root.cancellation?.catch(() => {});
+        if (!root.cancelled) {
+          promptStarted = true;
+          root.promptStarted = true;
+          const images = (batch.attachments ?? []).filter((a): a is ImageAttachment => !isMediaAttachment(a));
+          const discovery = delegationPrompt.getPrompt();
+          const prompt = discovery ? `${batch.message}\n\n<happy-delegation-discovery>\n${discovery}\n</happy-delegation-discovery>` : batch.message;
+          if (images.length) await backend.sendPrompt(acpSessionId, prompt, images);
+          else await backend.sendPrompt(acpSessionId, prompt);
+          delegationPrompt.markPromptSent();
+        }
         await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
+        await root.cancellation?.catch(() => {});
+        sendEnvelopes(sessionManager.endTurn(root.cancelled ? 'cancelled' : 'completed'));
         session.sendSessionEvent({ type: 'ready' });
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
@@ -1216,10 +1448,13 @@ export async function runAcp(opts: {
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
         throw error;
+      } finally {
+        if (activeRoot === root) activeRoot = null;
       }
     }
   } finally {
     shouldExit = true;
+    rejectBackendReady(new Error('ACP runner shutting down'));
     unbindPermissionMetadata?.();
     pendingImages = [];
     clearInterval(keepAliveInterval);

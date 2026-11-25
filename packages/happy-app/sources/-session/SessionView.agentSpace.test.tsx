@@ -23,6 +23,7 @@ import TestRenderer from 'react-test-renderer';
 vi.mock('@/components/ReadingWidthRail', () => ({ ReadingWidthRail: 'ReadingWidthRail' }));
 // Workspace identity/RPC fencing is exercised by SessionWorkspaceLink's own tests.
 vi.mock('@/components/goalBoard/SessionWorkspaceLink', () => ({ SessionWorkspaceLink: 'SessionWorkspaceLink' }));
+vi.mock('@/components/delegation/DelegationPanel', () => ({ DelegationAssistantBar: 'DelegationAssistantBar', DelegationInspectorPanel: 'DelegationInspectorPanel' }));
 
 const mocks = vi.hoisted(() => ({
     closePanel: vi.fn(),
@@ -101,6 +102,7 @@ const mocks = vi.hoisted(() => ({
         id: string;
         title: string | null;
         status: 'running' | 'completed' | 'failed' | 'cancelled';
+        kind?: 'delegated-task' | 'agent-roles';
     }) => void) | undefined,
     session: {
         id: 'session-1',
@@ -115,7 +117,7 @@ const mocks = vi.hoisted(() => ({
             host: 'mac',
             name: 'Mac mini',
             flavor: 'codex',
-            capabilities: undefined as undefined | { codexSteer: boolean },
+            capabilities: undefined as undefined | { codexSteer?: boolean; delegation?: 1 },
         },
         metadataVersion: 1,
         agentState: null as null | { turnStatus: { status: 'failed' | 'running' | 'completed'; updatedAt: number; turnId: string } },
@@ -393,7 +395,7 @@ vi.mock('@/sync/storage', () => ({
     storage: {
         setState: (updater: any) => mocks.previewLocalSettings(updater({ localSettings: { desktopReadingWidth: mocks.desktopReadingWidth } })),
         getState: () => ({
-            sessions: { 'session-1': { draft: '' } },
+            sessions: { 'session-1': { draft: '', metadata: mocks.session.metadata } },
             currentViewingSessionId: null,
             applyLocalSettings: vi.fn(),
             resetSessionAgentOverrides: vi.fn(),
@@ -1483,6 +1485,41 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByType('SubagentInspectorPanel')).toHaveLength(0);
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
 
+        act(() => renderer.unmount());
+    });
+
+    it('opens delegated task details in the compact drawer and prefills without sending', async () => {
+        mocks.isDataReady = true;
+        mocks.session.metadata.capabilities = { delegation: 1 };
+        mocks.sessionMessages = [{ kind: 'agent-text', id: 'message-one', localId: null, createdAt: 1, text: 'Visible message' }];
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        const input = { getText: () => 'Keep my draft', setTextAndSelection: vi.fn(), focus: vi.fn() };
+        renderer.root.findByType('MessageComposer').props.ref.current = input;
+        act(() => mocks.openSubagent?.({ kind: 'delegated-task', id: 'task-a', title: 'Write README', status: 'running' }));
+        expect(renderer.root.findByType('RightSwipePanelHost').props).toMatchObject({ fullWidth: true, open: true });
+        expect(renderer.root.findAllByType('SubagentInspectorPanel')).toHaveLength(0);
+        const external = renderer.root.findByType('DelegationInspectorPanel');
+        expect(external.props.selection.id).toBe('task-a');
+        act(() => external.props.onCompose('Append to task-a'));
+        expect(input.setTextAndSelection).toHaveBeenCalledWith('Keep my draft\n\nAppend to task-a', expect.any(Object));
+        expect(input.focus).toHaveBeenCalledOnce();
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        expect(renderer.root.findAllByType('DelegationInspectorPanel')).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps role management reachable in embedded task conversations', async () => {
+        mocks.isDataReady = true;
+        mocks.sessionMessages = [{ kind: 'agent-text', id: 'message-one', localId: null, createdAt: 1, text: 'Visible message' }];
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" embedded projectTaskContext />); });
+        act(() => mocks.openSubagent?.({ kind: 'agent-roles', id: 'agent-roles', title: 'Assistants', status: 'completed' }));
+        expect(renderer.root.findByType('RightSwipePanelHost').props).toMatchObject({ fullWidth: true, open: true });
+        const external = renderer.root.findByType('DelegationInspectorPanel');
+        expect(external.props.selection.kind).toBe('agent-roles');
+        act(() => external.props.onBack());
+        expect(renderer.root.findAllByType('DelegationInspectorPanel')).toHaveLength(0);
         act(() => renderer.unmount());
     });
 

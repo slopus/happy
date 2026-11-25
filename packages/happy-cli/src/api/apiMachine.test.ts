@@ -238,6 +238,55 @@ describe('ApiMachineClient socket reconnection', () => {
         vi.restoreAllMocks();
     });
 
+    it('advertises delegation only after its handler is installed on an existing machine', async () => {
+        const machine = makeMachine();
+        const client = new ApiMachineClient('fake-token', machine);
+        const update = vi.spyOn(client, 'updateMachineMetadata').mockImplementation(async handler => {
+            machine.metadata = handler(machine.metadata);
+        });
+        vi.spyOn(client, 'updateDaemonState').mockResolvedValue(undefined);
+        client.connect();
+        try {
+            emitSocketEvent('connect');
+            expect(update).not.toHaveBeenCalled();
+            mockSocket.connected = true;
+            const delegation = vi.fn(async () => ({ success: true, roles: [] }));
+            const delegationConnected = vi.fn();
+            client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(), delegation, delegationConnected });
+            expect(machine.metadata?.delegation).toBe(1);
+            expect(delegationConnected).toHaveBeenCalledTimes(1);
+            expect(machine.metadata?.host).toBe('localhost');
+            expect(await rpcHandlers.get('delegation')?.({ action: 'roles-list', parentSessionId: 'parent' })).toEqual({ success: true, roles: [] });
+            expect(delegation).toHaveBeenCalledExactlyOnceWith({ action: 'roles-list', parentSessionId: 'parent' });
+            expect(() => rpcHandlers.get('delegation')?.({ action: 'read', parentSessionId: 'parent' })).toThrow();
+            const writes = update.mock.calls.length;
+            emitSocketEvent('connect');
+            expect(update).toHaveBeenCalledTimes(writes);
+        } finally { client.shutdown(); }
+    });
+
+    it.each(['legacy', 'dataKey'] as const)('uses the existing relay with %s encryption and rejects unconfirmed worker replies', async variant => {
+        const machine = makeMachine();
+        const client = new ApiMachineClient('fake-token', machine);
+        const encryption = { encryptionKey: new Uint8Array(32).fill(7), encryptionVariant: variant };
+        client.connect();
+        mockSocket.connected = true;
+        mockSocket.timeout = vi.fn(() => mockSocket);
+        mockSocket.emitWithAck.mockResolvedValue({ ok: true, result: encodeBase64(encrypt(encryption.encryptionKey, variant, { model: 'observed' })) });
+        try {
+            expect(await client.callSessionRpc('child', encryption, 'delegation-prepare', { model: 'observed' }, 90_000)).toEqual({ model: 'observed' });
+            const [event, payload] = mockSocket.emitWithAck.mock.calls[0];
+            expect(event).toBe('rpc-call');
+            expect(payload.method).toBe('child:delegation-prepare');
+            expect(decrypt(encryption.encryptionKey, variant, decodeBase64(payload.params))).toEqual({ model: 'observed' });
+            expect(mockSocket.timeout).toHaveBeenCalledWith(90_000);
+            mockSocket.emitWithAck.mockResolvedValue({ ok: false, error: 'worker disconnected' });
+            await expect(client.callSessionRpc('child', encryption, 'delegation-prepare', {})).rejects.toThrow('worker disconnected');
+            mockSocket.emitWithAck.mockResolvedValue({ ok: true, result: encodeBase64(encrypt(encryption.encryptionKey, variant, { error: 'invalid native model' })) });
+            await expect(client.callSessionRpc('child', encryption, 'delegation-prepare', {})).rejects.toThrow('invalid native model');
+        } finally { client.shutdown(); }
+    });
+
     it('advertises scheduling on an existing machine immediately and preserves concurrent metadata edits', async () => {
         vi.useFakeTimers();
         const machine = makeMachine();

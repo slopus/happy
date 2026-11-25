@@ -26,11 +26,14 @@ import { PreviewWorkspaceRegistry } from "@/previews/previewWorkspace";
 import { startCloudflarePreview } from '@/previews/cloudflarePreview';
 import { SessionPreviewSlots, type SessionPreviewStatus } from '@/previews/sessionPreviewSlots';
 
-import { launchIndependentDaemonSession } from '@/daemon/controlClient';
+import { launchDelegationDaemonSession, launchIndependentDaemonSession } from '@/daemon/controlClient';
 import { independentTaskSchema, type DelegationContext, type IndependentTask, type IndependentTaskResult } from '@/daemon/independentSessions';
+import { AgentRolesInputSchema, DelegateTaskInputSchema, DelegatedTaskTargetInputSchema, type DelegationAction, type DelegationResponse } from '@slopus/happy-wire';
+import { DELEGATION_MCP_TOOL_NAMES, delegationToolResponse, registerDelegationMcpTools } from '@/delegation/mcpTools';
 
 type HappyMcpHandlers = {
     startSession: (task: IndependentTask) => Promise<IndependentTaskResult>;
+    delegation: (action: DelegationAction) => Promise<DelegationResponse>;
     browserSessionId: string;
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
     sendImage: (input: SendImageInput) => Promise<{ success: boolean; error?: string }>;
@@ -148,6 +151,21 @@ function createMcpServer(handlers: HappyMcpHandlers): McpServer {
         const result = await handlers.startSession(task);
         return { isError: !result.success, content: [{ type: 'text', text: JSON.stringify(result) +
             (result.sessionId ? '\n<happy-session>\n' + JSON.stringify({ sessionId: result.sessionId, title: result.title }) + '\n</happy-session>' : '') }] };
+    });
+
+    registerDelegationMcpTools(mcp, async (name, args) => {
+        let action: DelegationAction;
+        if (name === 'agent_roles') {
+            const input = AgentRolesInputSchema.parse(args);
+            action = input.action === 'list' ? { action: 'roles-list' }
+                : input.action === 'save' ? { action: 'roles-save', role: input.role }
+                    : { action: 'roles-delete', roleId: input.roleId };
+        } else if (name === 'delegate_task') {
+            action = { ...DelegateTaskInputSchema.parse(args), action: 'start', wait: true };
+        } else {
+            action = { ...DelegatedTaskTargetInputSchema.parse(args), action: name === 'read_delegated_task' ? 'read' : 'cancel' };
+        }
+        return delegationToolResponse(await handlers.delegation(action));
     });
 
     mcp.registerTool('change_title', {
@@ -367,6 +385,8 @@ export async function startHappyServer(
     client: ApiSessionClient,
     options?: {
         delegationContext?: () => DelegationContext;
+        currentDelegationSessionId?: () => string;
+        onDelegationWait?: () => (() => void);
         archiveSession?: (reason?: string) => Promise<{ success: boolean; error?: string }>;
     },
 ) {
@@ -385,6 +405,15 @@ export async function startHappyServer(
 
     const handlers: HappyMcpHandlers = {
         startSession: task => launchIndependentDaemonSession(client.sessionId, task, options?.delegationContext?.()),
+        delegation: async action => {
+            const parentSessionId = options?.currentDelegationSessionId?.() ?? client.sessionId;
+            const release = action.action === 'start' && action.wait === true ? options?.onDelegationWait?.() : undefined;
+            try {
+                return await launchDelegationDaemonSession(parentSessionId, action, options?.delegationContext?.());
+            } finally {
+                release?.();
+            }
+        },
         changeTitle: async (title: string) => {
             logger.debug('[happyMCP] Changing title to:', title);
             try {
@@ -550,6 +579,7 @@ export async function startHappyServer(
         url: baseUrl.toString(),
         toolNames: [
             'start_session',
+            ...DELEGATION_MCP_TOOL_NAMES,
             'change_title',
             'send_image',
             'send_file',

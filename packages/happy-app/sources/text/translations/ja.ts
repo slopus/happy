@@ -19,6 +19,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    delegation: { ...projectGoalsBase.delegation },
+
     thinkingMode: {
         "title": "思考モード",
         "settingDescription": "思考法を分類から選ぶか、回答の続きを質問できます。このブラウザーだけに保存され、初期設定はオフです。",

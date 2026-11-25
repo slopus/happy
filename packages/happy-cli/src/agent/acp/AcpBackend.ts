@@ -1035,6 +1035,8 @@ export class AcpBackend implements AgentBackend {
   // Promise resolver for waitForIdle - set when waiting for response to complete
   private idleResolver: (() => void) | null = null;
   private waitingForResponse = false;
+  /** Native prompt completion is the cancellation acknowledgement, not session/cancel's write. */
+  private activePrompt: Promise<unknown> | null = null;
 
   async sendPrompt(sessionId: SessionId, prompt: string, images: readonly ImageAttachment[] = []): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
@@ -1065,6 +1067,7 @@ export class AcpBackend implements AgentBackend {
     this.emit({ type: 'status', status: 'running' });
     this.waitingForResponse = true;
 
+    let nativePrompt: Promise<unknown> | null = null;
     try {
       logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
       logger.debug(`[AcpBackend] Full prompt: ${prompt}`);
@@ -1084,7 +1087,13 @@ export class AcpBackend implements AgentBackend {
       };
 
       logger.debug(`[AcpBackend] Prompt request: text length=${prompt.length}, images=${images.length}`);
-      await this.connection.prompt(promptRequest);
+      nativePrompt = this.connection.prompt(promptRequest);
+      this.activePrompt = nativePrompt;
+      const response = await nativePrompt;
+      if (response && typeof response === 'object' && 'stopReason' in response && response.stopReason === 'cancelled') {
+        this.emit({ type: 'event', name: 'prompt_cancelled', payload: {} });
+        this.emitIdleStatus();
+      }
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
       
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
@@ -1124,6 +1133,8 @@ export class AcpBackend implements AgentBackend {
         detail: errorDetail
       });
       throw error;
+    } finally {
+      if (this.activePrompt === nativePrompt) this.activePrompt = null;
     }
   }
 
@@ -1244,6 +1255,7 @@ export class AcpBackend implements AgentBackend {
    * Helper to emit idle status and resolve any waiting promises
    */
   private emitIdleStatus(): void {
+    this.waitingForResponse = false;
     this.emit({ type: 'status', status: 'idle' });
     // Resolve any waiting promises
     if (this.idleResolver) {
@@ -1253,16 +1265,16 @@ export class AcpBackend implements AgentBackend {
   }
 
   async cancel(sessionId: SessionId): Promise<void> {
-    if (!this.connection || !this.acpSessionId) {
-      return;
+    if (this.disposed || !this.connection || !this.acpSessionId) {
+      throw new Error('ACP session is not available for cancellation');
     }
-
-    try {
-      await this.connection.cancel({ sessionId: this.acpSessionId });
-      this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
-    } catch (error) {
-      // Log to file only, not console
-      logger.debug('[AcpBackend] Error cancelling:', error);
+    const prompt = this.activePrompt;
+    await this.connection.cancel({ sessionId: this.acpSessionId });
+    if (prompt) {
+      // A successful notification only requests cancellation. The worker remains
+      // busy until this exact prompt's native response settles.
+      await prompt;
+      if (this.waitingForResponse) this.emitIdleStatus();
     }
   }
 

@@ -1,12 +1,15 @@
 import { z } from "zod";
 import { messageOptionResponseSchema } from './messageOptionResponses';
-import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema, ARTIFACT_PROTOCOL, asyncQuestionResponseSchema } from "@slopus/happy-wire";
+import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema, ARTIFACT_PROTOCOL, asyncQuestionResponseSchema, DelegationRoleSchema, DelegatedTaskSummarySchema } from "@slopus/happy-wire";
 
 //
 // Agent states
 //
 
 export const MetadataSchema = z.object({
+    delegationProtocol: z.literal(1).optional(),
+    delegationRoles: z.array(DelegationRoleSchema).max(100).optional(),
+    delegatedTasks: z.array(DelegatedTaskSummarySchema).max(100).optional(),
     application: ApplicationSessionMetadataSchema.optional(),
     goalBoard: GoalBoardBindingSchema.optional(),
     goalBoardSnapshot: GoalBoardSnapshotSchema.optional(),
@@ -51,6 +54,7 @@ export const MetadataSchema = z.object({
         updatedAt: z.number()
     }).optional(),
     capabilities: z.object({
+        delegation: z.literal(1).optional(),
         acpPermissionPolicy: z.boolean().optional(),
         regenerateTitle: z.boolean().optional(),
         codexCredentialRecovery: z.boolean().optional(),
@@ -216,6 +220,7 @@ export interface DecryptedMessage {
 //
 
 export const MachineMetadataSchema = z.object({
+    delegation: z.literal(1).optional(),
     scheduledTasks: z.literal(1).optional(),
     host: z.string(),
     platform: z.string(),

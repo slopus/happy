@@ -27,3 +27,4 @@ export * from "./goalReview";
 
 export * from './codexMagpieCatalog';
 export * from './scheduledTasks';
+export * from './delegation';

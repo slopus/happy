@@ -3,6 +3,18 @@ import { MessageQueue2 } from './MessageQueue2';
 import { hashObject } from './deterministicJson';
 
 describe('MessageQueue2', () => {
+    it('cancels only an identified queued task without discarding adjacent user input', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        const discarded: string[][] = [];
+        queue.setOnDiscard(ids => discarded.push(ids));
+        queue.push('user-before', 'same', undefined, 'user-before');
+        queue.push('delegated', 'same', undefined, 'delegation:task:1:req', true);
+        queue.push('user-after', 'same', undefined, 'user-after');
+        expect(queue.removeByLocalId('unknown')).toBe(false);
+        expect(queue.removeByLocalId('delegation:task:1:req')).toBe(true);
+        expect(discarded).toEqual([]);
+        expect((await queue.waitForMessagesAndGetAsString())?.localIds).toEqual(['user-before', 'user-after']);
+    });
     it('releases only discarded pending input IDs when a local command replaces the queue', async () => {
         const queue = new MessageQueue2<string>(mode => mode);
         const discarded: string[][] = [];

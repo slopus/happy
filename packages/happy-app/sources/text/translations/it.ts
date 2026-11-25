@@ -16,6 +16,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    delegation: { ...projectGoalsBase.delegation },
+
     thinkingMode: {
         "title": "Modalità di pensiero",
         "settingDescription": "Scegli un metodo di ragionamento o approfondisci una risposta. L'impostazione è salvata solo in questo browser ed è disattivata per impostazione predefinita.",

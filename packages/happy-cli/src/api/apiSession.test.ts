@@ -1117,6 +1117,72 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(seen).toEqual(['file:a', 'text:a', 'file:b', 'text:b']);
     });
 
+    it('binds cancellation to the exact isolated root input and clears it at turn end', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        client.sendSessionProtocolMessage({ id: 'start-owned', time: 1, role: 'agent', turn: 'owned', ev: { t: 'turn-start', localIds: ['delegated-input'] } });
+        expect(client.isCurrentRootTurnInput('owned', 'delegated-input')).toBe(true);
+        expect(client.isCurrentRootTurnInput('owned', 'other-input')).toBe(false);
+        client.sendSessionProtocolMessage({ id: 'subagent-start', time: 2, role: 'agent', subagent: 'native-child', turn: 'other', ev: { t: 'turn-start', localIds: ['other-input'] } });
+        expect(client.isCurrentRootTurnInput('owned', 'delegated-input')).toBe(true);
+        client.sendSessionProtocolMessage({ id: 'end-owned', time: 3, role: 'agent', turn: 'owned', ev: { t: 'turn-end', status: 'cancelled' } });
+        expect(client.isCurrentRootTurnInput('owned', 'delegated-input')).toBe(false);
+        client.sendSessionProtocolMessage({ id: 'start-batched', time: 4, role: 'agent', turn: 'batch', ev: { t: 'turn-start', localIds: ['delegated-input', 'user-input'] } });
+        expect(client.isCurrentRootTurnInput('batch', 'delegated-input')).toBe(false);
+    });
+
+    it('acknowledges delegation publication only after its metadata is actually retained', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const handler = (client as any).rpcHandlerManager.registerHandler.mock.calls.find(([name]: [string]) => name === 'delegation-publish')[1];
+        const write = vi.spyOn(client, 'updateMetadataAndAwait').mockResolvedValue(undefined);
+        await expect(handler({ roles: [], tasks: [] })).rejects.toThrow('publication was not acknowledged');
+        write.mockImplementation(async update => { (client as any).metadata = update(client.getMetadata()!); });
+        await expect(handler({ roles: [], tasks: [] })).resolves.toEqual({ success: true });
+        expect(client.getMetadata()?.delegationProtocol).toBe(1);
+        await expect(handler({ roles: [], tasks: [{ id: 'task', parentSessionId: 'another-parent', title: 'Task', roleId: 'role', roleName: 'Writer',
+            agent: 'antigravity', model: 'observed-model', version: 1, status: 'running', startedAt: 1, updatedAt: 1, resultAvailable: false }] })).rejects.toThrow('another parent');
+        expect(client.getMetadata()?.delegatedTasks).toEqual([]);
+    });
+
+    it('enqueues a verified delegated input at most once across input handler rebinding', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const reporter = { acceptMessage: vi.fn(() => true) };
+        (client as any).delegationReporter = reporter;
+        const first = vi.fn(); client.onUserMessage(first);
+        const message = { role: 'user', content: { type: 'text', text: 'scoped task' }, localId: 'delegated-input', meta: { delegation: {} } };
+        (client as any).pendingMessageCallback(message);
+        (client as any).pendingMessageCallback(message);
+        expect(first).toHaveBeenCalledTimes(1);
+        const rebound = vi.fn(); client.onUserMessage(rebound);
+        (client as any).pendingMessageCallback(message);
+        expect(rebound).not.toHaveBeenCalled();
+        expect(reporter.acceptMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects delegated input without a bound reporter or with invalid provenance', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const callback = vi.fn(); client.onUserMessage(callback);
+        const message = { role: 'user', content: { type: 'text', text: 'not a verified task' }, localId: 'bad-input', meta: { delegation: {} } };
+        (client as any).pendingMessageCallback(message);
+        (client as any).delegationReporter = { acceptMessage: vi.fn(() => false) };
+        (client as any).pendingMessageCallback(message);
+        expect(callback).not.toHaveBeenCalled();
+        expect(client.hasPendingUserInputs()).toBe(false);
+    });
+
+    it('acknowledges only the removed queued input without reporting rejection', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const reject = vi.spyOn((client as any).scheduledRunTracker, 'rejectMessage').mockImplementation(() => {});
+        client.onUserMessage(vi.fn());
+        const receive = (client as any).pendingMessageCallback;
+        receive({ role: 'user', content: { type: 'text', text: 'first' }, localId: 'cancelled' });
+        receive({ role: 'user', content: { type: 'text', text: 'second' }, localId: 'preserved' });
+        client.acknowledgeCancelledUserInput('cancelled');
+        expect(client.hasPendingUserInputs()).toBe(true);
+        client.acknowledgeCancelledUserInput('preserved');
+        expect(client.hasPendingUserInputs()).toBe(false);
+        expect(reject).not.toHaveBeenCalled();
+    });
+
     it.each(['discarded input', 'local command', 'informational event'] as const)('admits a scheduled prompt after a %s has been consumed', async reason => {
         const client = new ApiSessionClient('fake-token', session);
         const tracker = (client as any).scheduledRunTracker;

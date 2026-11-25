@@ -10,7 +10,11 @@ const mocks = vi.hoisted(() => {
   const metadataListeners = new Set<(metadata: any) => void>();
   const connectedListeners = new Set<() => void>();
   const mockSession = {
+    sessionId: 'session-1',
     getMetadata: vi.fn(() => null as any),
+    getCurrentRootTurnId: vi.fn(() => undefined as string | undefined),
+    acknowledgeCancelledUserInput: vi.fn(),
+    hasPendingUserInputs: vi.fn(() => false),
     on: vi.fn((name: string, callback: any) => { if (name === 'metadata-updated') metadataListeners.add(callback); if (name === 'connected') connectedListeners.add(callback); }),
     off: vi.fn((name: string, callback: any) => { if (name === 'metadata-updated') metadataListeners.delete(callback); if (name === 'connected') connectedListeners.delete(callback); }),
     onFileEvent: vi.fn((handler: (message: any) => void) => { fileHandler = handler; }),
@@ -24,7 +28,9 @@ const mocks = vi.hoisted(() => {
     sendSessionEvent: vi.fn(),
     processorStarting: vi.fn(() => true),
     processorReady: vi.fn(() => true),
+    reportDelegationReady: vi.fn(),
     updateMetadata: vi.fn(),
+    updateMetadataAndAwait: vi.fn(async (_handler: (metadata: any) => any) => {}),
     sendSessionDeath: vi.fn(),
     flush: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
@@ -40,18 +46,25 @@ const mocks = vi.hoisted(() => {
 
   const backendState = {
     listeners: [] as Array<(message: any) => void>,
-    prompts: [] as Array<{ sessionId: string; prompt: string; images?: unknown[] }>,
+    prompts: [] as Array<{ sessionId: string; prompt: string; rawPrompt: string; images?: unknown[] }>,
     configResponse: null as null | ((id: string, value: string) => any),
     setConfigOptionCalls: [] as Array<{ configId: string; value: string }>,
     setModeCalls: [] as string[],
     setModelCalls: [] as string[],
     startSessionMessages: [] as any[],
     startSessionCalls: 0,
+    holdStartup: null as Promise<void> | null,
     promptError: null as Error | null,
     holdPrompt: null as Promise<void> | null,
+    holdConfig: null as Promise<void> | null,
+    promptRunning: false,
     cancelCalls: [] as string[],
+    cancelError: null as Error | null,
+    onCancel: null as (() => Promise<void>) | null,
+    cancelOutcome: 'cancelled' as 'cancelled' | 'end_turn',
     disposeCalls: 0,
     constructorArgs: null as any,
+    delegatedLaunch: null as null | { parentSessionId: string; taskId: string },
   };
 
   return {
@@ -114,6 +127,8 @@ vi.mock('@/daemon/controlClient', () => ({
   notifyDaemonSessionStarted: mocks.mockNotifyDaemonSessionStarted,
 }));
 
+vi.mock('@/daemon/delegationLaunchContext', () => ({ delegationLaunchContext: () => mocks.backendState.delegatedLaunch }));
+
 vi.mock('@/claude/registerKillSessionHandler', () => ({
   registerKillSessionHandler: mocks.mockKillRegister,
 }));
@@ -155,6 +170,7 @@ vi.mock('./AcpBackend', async (importOriginal) => ({
 
     async startSession() {
       mocks.backendState.startSessionCalls += 1;
+      if (mocks.backendState.holdStartup) await mocks.backendState.holdStartup;
       for (const message of mocks.backendState.startSessionMessages) {
         for (const listener of mocks.backendState.listeners) {
           listener(message);
@@ -165,8 +181,10 @@ vi.mock('./AcpBackend', async (importOriginal) => ({
 
     async sendPrompt(sessionId: string, prompt: string, images?: unknown[]) {
       if (images?.length && mocks.backendState.promptError) throw mocks.backendState.promptError;
-      mocks.backendState.prompts.push({ sessionId, prompt, ...(images?.length ? { images } : {}) });
-      if (prompt === 'busy') await mocks.backendState.holdPrompt;
+      const userPrompt = prompt.split('\n\n<happy-delegation-discovery>')[0];
+      mocks.backendState.prompts.push({ sessionId, prompt: userPrompt, rawPrompt: prompt, ...(images?.length ? { images } : {}) });
+      mocks.backendState.promptRunning = true;
+      if (userPrompt.startsWith('busy')) await mocks.backendState.holdPrompt;
       for (const listener of mocks.backendState.listeners) {
         listener({ type: 'status', status: 'running' });
         listener({ type: 'model-output', textDelta: 'hello' });
@@ -174,10 +192,12 @@ vi.mock('./AcpBackend', async (importOriginal) => ({
         listener({ type: 'tool-result', toolName: 'ReadFile', result: { ok: true }, callId: 'tool-1' });
         listener({ type: 'status', status: 'idle' });
       }
+      mocks.backendState.promptRunning = false;
     }
 
     async setSessionConfigOption(configId: string, value: string) {
       mocks.backendState.setConfigOptionCalls.push({ configId, value });
+      if (mocks.backendState.holdConfig) await mocks.backendState.holdConfig;
       const update = mocks.backendState.configResponse?.(configId, value);
       if (update) for (const listener of mocks.backendState.listeners) listener(update);
       return true;
@@ -195,8 +215,11 @@ vi.mock('./AcpBackend', async (importOriginal) => ({
 
     async cancel(sessionId: string) {
       mocks.backendState.cancelCalls.push(sessionId);
-      for (const listener of mocks.backendState.listeners) {
-        listener({ type: 'status', status: 'stopped' });
+      if (mocks.backendState.cancelError) throw mocks.backendState.cancelError;
+      const wasRunning = mocks.backendState.promptRunning;
+      await mocks.backendState.onCancel?.();
+      if (wasRunning && mocks.backendState.cancelOutcome === 'cancelled') {
+        for (const listener of mocks.backendState.listeners) listener({ type: 'event', name: 'prompt_cancelled', payload: {} });
       }
     }
 
@@ -224,6 +247,17 @@ describe('runAcp', () => {
     mocks.connectedListeners.clear();
     mocks.mockSession.updateMetadata.mockReset();
     mocks.mockSession.getMetadata.mockReset().mockReturnValue({ flavor: 'antigravity', hostPid: process.pid });
+    mocks.mockSession.updateMetadataAndAwait.mockReset().mockImplementation(async handler => {
+      mocks.mockSession.getMetadata.mockReturnValue(handler(mocks.mockSession.getMetadata()));
+    });
+    mocks.mockSession.getCurrentRootTurnId.mockReset().mockImplementation(() => {
+      let turnId: string | undefined;
+      for (const [envelope] of mocks.mockSession.sendSessionProtocolMessage.mock.calls as any[]) {
+        if (envelope.ev.t === 'turn-start') turnId = envelope.turn;
+        if (envelope.ev.t === 'turn-end') turnId = undefined;
+      }
+      return turnId;
+    });
     mocks.sessionHandlers.clear();
     mocks.mockSession.downloadAndDecryptAttachment.mockReset().mockResolvedValue(new Uint8Array([137, 80, 78, 71]));
     mocks.setUserMessageHandler(null);
@@ -236,11 +270,18 @@ describe('runAcp', () => {
     mocks.backendState.setModelCalls = [];
     mocks.backendState.startSessionMessages = [];
     mocks.backendState.startSessionCalls = 0;
+    mocks.backendState.holdStartup = null;
     mocks.backendState.promptError = null;
     mocks.backendState.holdPrompt = null;
+    mocks.backendState.holdConfig = null;
+    mocks.backendState.promptRunning = false;
     mocks.backendState.cancelCalls = [];
+    mocks.backendState.cancelError = null;
+    mocks.backendState.onCancel = null;
+    mocks.backendState.cancelOutcome = 'cancelled';
     mocks.backendState.disposeCalls = 0;
     mocks.backendState.constructorArgs = null;
+    mocks.backendState.delegatedLaunch = null;
 
     mocks.mockApiCreate.mockResolvedValue({
       getOrCreateMachine: mocks.mockGetOrCreateMachine,
@@ -593,6 +634,7 @@ describe('runAcp', () => {
     expect(mocks.backendState.prompts[0]).toEqual({
       sessionId: 'acp-session-1',
       prompt: 'Build a test plan',
+      rawPrompt: 'Build a test plan',
     });
 
     const envelopeTypes = mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([envelope]) => envelope.ev.t);
@@ -1070,5 +1112,434 @@ describe('runAcp', () => {
     expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
     expect(mocks.backendState.setModeCalls).toEqual([]);
     expect(mocks.backendState.setModelCalls).toEqual([]);
+  });
+
+  const delegationConfig = (model = 'gemini-4-argon', effort = 'medium', extraModels: Array<{ value: string; name: string }> = []) => ({
+    type: 'event', name: 'config_options_update', payload: { configOptions: [
+      { type: 'select', id: 'model', category: 'model', name: 'Model', currentValue: model, options: [
+        { value: 'gemini-4-argon', name: 'Gemini 4 Argon' }, { value: 'gemini-4-neon', name: 'Gemini 4 Neon' }, ...extraModels,
+      ] },
+      { type: 'select', id: 'thought_level', category: 'thought_level', name: 'Thinking', currentValue: effort, options: [
+        { value: 'medium', name: 'Medium' }, { value: 'high', name: 'High' },
+      ] },
+    ] },
+  });
+  const runDelegationWorker = (delegated = true) => {
+    mocks.backendState.delegatedLaunch = delegated ? { parentSessionId: 'parent', taskId: 'task' } : null;
+    mocks.mockSession.getMetadata.mockReturnValue({ flavor: 'antigravity', hostPid: process.pid,
+      ...(delegated ? { parentSessionId: 'parent', delegatedTask: { parentSessionId: 'parent', taskId: 'task' } } : {}) });
+    return runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'antigravity', command: '/test/agy', args: ['acp'],
+    });
+  };
+  const endStatuses = () => mocks.mockSession.sendSessionProtocolMessage.mock.calls
+    .map(([envelope]: any[]) => envelope.ev).filter(ev => ev.t === 'turn-end').map(ev => ev.status);
+  const emitBackend = (event: any) => { for (const listener of mocks.backendState.listeners) listener(event); };
+
+  it('suspends only the active root deadline during a real delegation wait and ignores its stale release after completion', async () => {
+    let finishNative!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { finishNative = resolve; });
+    const run = runDelegationWorker(false);
+    void run.catch(() => {});
+    let stopped = false;
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      const onDelegationWait = mocks.mockStartHappyServer.mock.calls[0][1].onDelegationWait;
+      onDelegationWait()(); // An idle request has no root budget to pause.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      mocks.getUserMessageHandler()!({ localId: 'parent-task', content: { text: 'busy' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      await vi.advanceTimersByTimeAsync(60_000);
+      const release = onDelegationWait();
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+      expect(endStatuses()).toEqual([]);
+      finishNative();
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed']));
+      release();
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+      expect(endStatuses()).toEqual(['completed']);
+      expect(mocks.backendState.disposeCalls).toBe(0);
+      await mocks.getKillHandler()!();
+      await run;
+      stopped = true;
+    } finally {
+      finishNative();
+      if (!stopped) { await mocks.getKillHandler()!(); await run.catch(() => {}); }
+      vi.clearAllTimers(); vi.useRealTimers();
+    }
+  });
+
+  it('keeps the ordinary five minute deadline for a delegated child even if it attempts another delegation', async () => {
+    let finishNative!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { finishNative = resolve; });
+    const run = runDelegationWorker();
+    void run.catch(() => {});
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:v1', content: { text: 'busy' }, meta: { delegation: {} } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      const release = mocks.mockStartHappyServer.mock.calls[0][1].onDelegationWait();
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+      finishNative();
+      await expect(run).rejects.toThrow('Timed out waiting for antigravity');
+      expect(endStatuses()).toEqual(['failed']);
+      release();
+    } finally {
+      finishNative();
+      await mocks.getKillHandler()!(); await run.catch(() => {});
+      vi.clearAllTimers(); vi.useRealTimers();
+    }
+  });
+
+  it.each([false, true])('injects role discovery once for a parent and never for a delegated child=%s', async delegatedChild => {
+    mocks.backendState.delegatedLaunch = delegatedChild ? { parentSessionId: 'parent', taskId: 'task' } : null;
+    if (delegatedChild) mocks.mockNotifyDaemonSessionStarted.mockImplementationOnce(async () => {
+      expect(mocks.sessionHandlers.has('delegation-context')).toBe(true);
+      expect(mocks.sessionHandlers.has('delegation-prepare')).toBe(true);
+      expect(mocks.sessionHandlers.has('delegation-abort')).toBe(true);
+      expect(mocks.backendState.startSessionCalls).toBe(0);
+      return { error: null };
+    });
+    const run = runDelegationWorker(delegatedChild);
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ content: { text: 'first task' } });
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed']));
+      expect(mocks.backendState.prompts[0].rawPrompt.includes('agent_roles with action="list"')).toBe(!delegatedChild);
+      mocks.getUserMessageHandler()!({ content: { text: 'second task' } });
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed', 'completed']));
+      expect(mocks.backendState.prompts[1].rawPrompt).toBe('second task');
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it.each(['agent_roles', 'delegate_task', 'read_delegated_task', 'cancel_delegated_task'])('auto-approves the exact Happy delegation tool %s', async name => {
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.constructorArgs).not.toBeNull());
+      const permission = mocks.backendState.constructorArgs.permissionHandler;
+      expect(await permission.handleToolCall(`call-${name}`, name, {})).toEqual({ decision: 'approved' });
+      expect(mocks.getAgentState().requests).toEqual({});
+      expect(Object.values(mocks.getAgentState().completedRequests)).toContainEqual(expect.objectContaining({ tool: name, status: 'approved' }));
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it.each(['gemini-4-neon', 'Gemini 4 Neon', 'gemini 4 neon', 'Neon'])('prepares the advertised native model for %s and confirms refreshed effort', async requested => {
+    mocks.backendState.startSessionMessages = [delegationConfig()];
+    let actualModel = 'gemini-4-argon';
+    let actualEffort = 'medium';
+    mocks.backendState.configResponse = (id, value) => {
+      if (id === 'model') actualModel = value;
+      if (id === 'thought_level') actualEffort = value;
+      return delegationConfig(actualModel, actualEffort);
+    };
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.sessionHandlers.has('delegation-prepare')).toBe(true));
+      const prepare = mocks.sessionHandlers.get('delegation-prepare')!;
+      expect(await prepare({ model: requested, effort: 'High', permissionMode: 'bypassPermissions' })).toEqual({ model: 'gemini-4-neon', effort: 'high' });
+      expect(await mocks.sessionHandlers.get('delegation-context')!({})).toMatchObject({ agent: 'antigravity', permissionMode: 'bypassPermissions', hostPid: process.pid, lifecycleState: 'running' });
+      await prepare({ model: requested, permissionMode: 'default' });
+      expect(await mocks.sessionHandlers.get('delegation-context')!({})).toMatchObject({ permissionMode: 'default' });
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([{ configId: 'model', value: 'gemini-4-neon' }, { configId: 'thought_level', value: 'high' }]);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('waits for native startup and the advertised catalog with one readiness promise', async () => {
+    let start!: () => void;
+    mocks.backendState.holdStartup = new Promise(resolve => { start = resolve; });
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+      let prepared = false;
+      const result = mocks.sessionHandlers.get('delegation-prepare')!({ model: 'Argon', permissionMode: 'default' }).then((value: unknown) => { prepared = true; return value; });
+      await Promise.resolve();
+      expect(prepared).toBe(false);
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+      expect(mocks.mockSession.reportDelegationReady).not.toHaveBeenCalled();
+      start();
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      expect(prepared).toBe(false);
+      expect(mocks.mockSession.reportDelegationReady).not.toHaveBeenCalled();
+      emitBackend(delegationConfig());
+      expect(await result).toEqual({ model: 'gemini-4-argon', effort: 'medium' });
+      expect(mocks.mockSession.reportDelegationReady).toHaveBeenCalledOnce();
+      emitBackend(delegationConfig());
+      expect(mocks.mockSession.reportDelegationReady).toHaveBeenCalledOnce();
+    } finally { start(); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it.each(['ordinary', 'application', 'other-worker', 'other-task'])('rejects %s session ownership before preparing configuration', async kind => {
+    mocks.backendState.startSessionMessages = [delegationConfig()];
+    const run = runDelegationWorker(kind !== 'ordinary');
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      const current = mocks.mockSession.getMetadata();
+      if (kind === 'application') current.application = { appId: 'app', bindingId: 'binding' };
+      if (kind === 'other-worker') current.hostPid = process.pid + 1;
+      if (kind === 'other-task') current.delegatedTask.taskId = 'unrelated';
+      await expect(mocks.sessionHandlers.get('delegation-prepare')!({ model: 'Argon', permissionMode: 'bypassPermissions' })).rejects.toThrow(/bound delegated|Application-bound|worker changed/);
+      expect(mocks.mockSession.updateMetadataAndAwait).not.toHaveBeenCalled();
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('waits for the metadata CAS acknowledgement and rejects a missing readback', async () => {
+    mocks.backendState.startSessionMessages = [delegationConfig()];
+    let acknowledge!: () => void;
+    const ack = new Promise<void>(resolve => { acknowledge = resolve; });
+    mocks.mockSession.updateMetadataAndAwait.mockImplementation(async handler => {
+      await ack;
+      mocks.mockSession.getMetadata.mockReturnValue(handler(mocks.mockSession.getMetadata()));
+    });
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      let confirmed = false;
+      const result = mocks.sessionHandlers.get('delegation-prepare')!({ model: 'Argon', permissionMode: 'bypassPermissions' }).then((value: unknown) => { confirmed = true; return value; });
+      await vi.waitFor(() => expect(mocks.mockSession.updateMetadataAndAwait).toHaveBeenCalled());
+      expect(confirmed).toBe(false);
+      acknowledge();
+      expect(await result).toEqual({ model: 'gemini-4-argon', effort: 'medium' });
+      expect(mocks.mockSession.getMetadata()).toMatchObject({ currentModelCode: 'gemini-4-argon', currentThoughtLevelCode: 'medium', acpPermissionMode: 'bypassPermissions' });
+      mocks.mockSession.updateMetadataAndAwait.mockImplementation(async () => {});
+      await expect(mocks.sessionHandlers.get('delegation-prepare')!({ model: 'Argon', permissionMode: 'default' })).rejects.toThrow('metadata was not acknowledged');
+    } finally { acknowledge(); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('refuses ownership changes while a metadata CAS is in flight', async () => {
+    mocks.backendState.startSessionMessages = [delegationConfig()];
+    let acknowledge!: () => void;
+    const ack = new Promise<void>(resolve => { acknowledge = resolve; });
+    mocks.mockSession.updateMetadataAndAwait.mockImplementation(async handler => { await ack; mocks.mockSession.getMetadata.mockReturnValue(handler(mocks.mockSession.getMetadata())); });
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      const result = mocks.sessionHandlers.get('delegation-prepare')!({ model: 'Argon', permissionMode: 'bypassPermissions' });
+      await vi.waitFor(() => expect(mocks.mockSession.updateMetadataAndAwait).toHaveBeenCalled());
+      mocks.mockSession.getMetadata().hostPid = process.pid + 1;
+      acknowledge();
+      await expect(result).rejects.toThrow('worker changed or became busy');
+      expect(mocks.mockSession.getMetadata().acpPermissionMode).toBeUndefined();
+    } finally { acknowledge(); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('rebinds all delegation RPCs to the replacement session and rejects stale handlers', async () => {
+    mocks.backendState.startSessionMessages = [delegationConfig()];
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      const staleContext = mocks.sessionHandlers.get('delegation-context')!;
+      const stalePrepare = mocks.sessionHandlers.get('delegation-prepare')!;
+      const freshHandlers = new Map<string, any>();
+      const replacement = { ...mocks.mockSession, sessionId: 'session-2', getMetadata: vi.fn(() => ({ ...mocks.mockSession.getMetadata() })),
+        rpcHandlerManager: { registerHandler: vi.fn((name: string, handler: any) => freshHandlers.set(name, handler)) },
+        updateMetadataAndAwait: vi.fn(async (handler: any) => { replacement.getMetadata.mockReturnValue(handler(replacement.getMetadata())); }) };
+      mocks.mockSetupOfflineReconnection.mock.calls[0][0].onSessionSwap(replacement);
+      expect(mocks.mockStartHappyServer.mock.calls[0][1].currentDelegationSessionId()).toBe('session-2');
+      expect([...freshHandlers.keys()]).toEqual(expect.arrayContaining(['delegation-context', 'delegation-prepare', 'delegation-abort']));
+      await expect(staleContext({})).rejects.toThrow('worker changed');
+      await expect(stalePrepare({ model: 'Argon', permissionMode: 'default' })).rejects.toThrow('worker changed');
+      expect(await freshHandlers.get('delegation-prepare')({ model: 'Argon', permissionMode: 'default' })).toEqual({ model: 'gemini-4-argon', effort: 'medium' });
+      expect(replacement.updateMetadataAndAwait).toHaveBeenCalledOnce();
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('rejects ambiguous, unknown, unsupported and unacknowledged native configuration', async () => {
+    mocks.backendState.startSessionMessages = [delegationConfig('gemini-4-argon', 'medium', [{ value: 'gemini-4-neon-pro', name: 'Gemini 4 Neon Pro' }])];
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      const prepare = mocks.sessionHandlers.get('delegation-prepare')!;
+      await expect(prepare({ model: 'Neon', permissionMode: 'default' })).rejects.toThrow('Ambiguous model');
+      await expect(prepare({ model: 'missing', permissionMode: 'default' })).rejects.toThrow('Unknown model');
+      await expect(prepare({ model: 'Argon', effort: 'xhigh', permissionMode: 'default' })).rejects.toThrow('Unknown reasoning effort');
+      await expect(prepare({ model: 'gemini-4-neon', permissionMode: 'default' })).rejects.toThrow('Model change was not confirmed');
+      await expect(prepare({ model: 'Argon', effort: 'high', permissionMode: 'default' })).rejects.toThrow('Failed to confirm reasoning effort');
+      mocks.mockSession.getCurrentRootTurnId.mockReturnValue('stale-root-turn');
+      await expect(prepare({ model: 'Argon', permissionMode: 'default' })).rejects.toThrow('Session must be idle');
+      expect(mocks.backendState.prompts).toHaveLength(0);
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('inherits and resets the effective appended task instructions for an ACP parent', async () => {
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ content: { text: 'task' }, meta: { appendSystemPrompt: 'Only edit the scoped worktree.' } });
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed']));
+      const context = mocks.mockStartHappyServer.mock.calls[0][1].delegationContext;
+      expect(context()).toMatchObject({ permissionMode: 'default', appendSystemPrompt: 'Only edit the scoped worktree.' });
+      expect(await mocks.sessionHandlers.get('delegation-context')!({})).toMatchObject({ appendSystemPrompt: 'Only edit the scoped worktree.' });
+      mocks.getUserMessageHandler()!({ content: { text: 'reset' }, meta: { appendSystemPrompt: null } });
+      await vi.waitFor(() => expect(endStatuses()).toHaveLength(2));
+      expect(context()).not.toHaveProperty('appendSystemPrompt');
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('cancels only the matching queued localId and leaves the current user turn and other input intact', async () => {
+    let release!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { release = resolve; });
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ localId: 'current-user', content: { text: 'busy' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:queued', content: { text: 'remove this' }, meta: { delegation: {} } });
+      mocks.getUserMessageHandler()!({ localId: 'queued-user', content: { text: 'keep this' } });
+      await new Promise(resolve => setImmediate(resolve));
+      const abort = mocks.sessionHandlers.get('delegation-abort')!;
+      expect(await abort({ localId: 'delegation:task:queued' })).toEqual({ queuedCancelled: true });
+      expect(mocks.mockSession.acknowledgeCancelledUserInput).toHaveBeenCalledExactlyOnceWith('delegation:task:queued');
+      await expect(abort({ localId: 'delegation:task:missing' })).rejects.toThrow('does not match');
+      expect(mocks.backendState.cancelCalls).toHaveLength(0);
+      release();
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed', 'completed']));
+      expect(mocks.backendState.prompts.map(prompt => prompt.prompt)).toEqual(['busy', 'keep this']);
+    } finally { release(); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('waits for exact current-turn cancellation and keeps the ACP worker usable for a revision', async () => {
+    let release!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { release = resolve; });
+    mocks.backendState.onCancel = async () => { await mocks.backendState.holdPrompt; };
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:v1', content: { text: 'busy' }, meta: { delegation: {} } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      const turnId = mocks.mockSession.getCurrentRootTurnId();
+      const abort = mocks.sessionHandlers.get('delegation-abort')!;
+      await expect(abort({ localId: 'delegation:task:other', expectedTurnId: turnId })).rejects.toThrow('does not match');
+      await expect(abort({ localId: 'delegation:task:v1', expectedTurnId: 'different' })).rejects.toThrow('does not match');
+      expect(mocks.backendState.cancelCalls).toHaveLength(0);
+      let cancelled = false;
+      const result = abort({ localId: 'delegation:task:v1', expectedTurnId: turnId }).then((value: unknown) => { cancelled = true; return value; });
+      await Promise.resolve();
+      expect(cancelled).toBe(false);
+      expect(endStatuses()).toEqual([]);
+      release();
+      expect(await result).toEqual({ cancelled: true });
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['cancelled']));
+      expect(mocks.backendState.disposeCalls).toBe(0);
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:v2', content: { text: 'revise the same task' }, meta: { delegation: {} } });
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['cancelled', 'completed']));
+    } finally { release(); mocks.backendState.onCancel = null; await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('propagates native cancellation failure without marking the current turn cancelled', async () => {
+    let release!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { release = resolve; });
+    mocks.backendState.cancelError = new Error('native cancel failed');
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:v1', content: { text: 'busy' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      await expect(mocks.sessionHandlers.get('delegation-abort')!({ localId: 'delegation:task:v1', expectedTurnId: mocks.mockSession.getCurrentRootTurnId() })).rejects.toThrow('native cancel failed');
+      expect(endStatuses()).toEqual([]);
+      release();
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed']));
+      expect(mocks.backendState.disposeCalls).toBe(0);
+    } finally { release(); mocks.backendState.cancelError = null; await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('preserves a natural completion racing with cancellation instead of reporting a false cancelled turn', async () => {
+    let release!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { release = resolve; });
+    mocks.backendState.onCancel = async () => { await mocks.backendState.holdPrompt; };
+    mocks.backendState.cancelOutcome = 'end_turn';
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:v1', content: { text: 'busy' }, meta: { delegation: {} } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      const result = mocks.sessionHandlers.get('delegation-abort')!({ localId: 'delegation:task:v1', expectedTurnId: mocks.mockSession.getCurrentRootTurnId() });
+      release();
+      expect(await result).toEqual({ cancelled: false });
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed']));
+      expect(mocks.backendState.disposeCalls).toBe(0);
+    } finally { release(); mocks.backendState.onCancel = null; await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('confirms cancellation before native prompting and never sends the cancelled input', async () => {
+    mocks.backendState.startSessionMessages = [delegationConfig()];
+    mocks.backendState.configResponse = (_id, value) => delegationConfig(value);
+    let configure!: () => void;
+    mocks.backendState.holdConfig = new Promise(resolve => { configure = resolve; });
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:v1', content: { text: 'must never run' }, meta: { model: 'gemini-4-neon', delegation: {} } });
+      await vi.waitFor(() => expect(mocks.backendState.setConfigOptionCalls).toHaveLength(1));
+      expect(await mocks.sessionHandlers.get('delegation-abort')!({ localId: 'delegation:task:v1', expectedTurnId: mocks.mockSession.getCurrentRootTurnId() })).toEqual({ cancelled: true });
+      configure();
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['cancelled']));
+      expect(mocks.backendState.prompts).toHaveLength(0);
+    } finally { configure(); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('rejects cancellation of a mixed root input batch or another delegated task', async () => {
+    let start!: () => void;
+    let release!: () => void;
+    mocks.backendState.holdStartup = new Promise(resolve => { start = resolve; });
+    mocks.backendState.holdPrompt = new Promise(resolve => { release = resolve; });
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:v1', content: { text: 'busy' } });
+      mocks.getUserMessageHandler()!({ localId: 'unrelated-user', content: { text: 'other input' } });
+      await new Promise(resolve => setImmediate(resolve));
+      start();
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      const abort = mocks.sessionHandlers.get('delegation-abort')!;
+      await expect(abort({ localId: 'delegation:other:v1', expectedTurnId: mocks.mockSession.getCurrentRootTurnId() })).rejects.toThrow('does not own');
+      await expect(abort({ localId: 'delegation:task:v1', expectedTurnId: mocks.mockSession.getCurrentRootTurnId() })).rejects.toThrow('does not match');
+      expect(mocks.backendState.cancelCalls).toHaveLength(0);
+      release();
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed']));
+    } finally { start(); release(); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('refuses to cancel a local input before its root identity is confirmed', async () => {
+    let release!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { release = resolve; });
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ localId: 'delegation:task:v1', content: { text: 'busy' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      mocks.mockSession.getCurrentRootTurnId.mockReturnValue(undefined);
+      await expect(mocks.sessionHandlers.get('delegation-abort')!({ localId: 'delegation:task:v1' })).rejects.toThrow('does not match');
+      expect(mocks.backendState.cancelCalls).toHaveLength(0);
+      release();
+      await vi.waitFor(() => expect(endStatuses()).toEqual(['completed']));
+    } finally { release(); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it.each(['stopped', 'error'])('preserves fatal lifecycle behavior for an ordinary backend %s', async status => {
+    const run = runDelegationWorker();
+    await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+    emitBackend({ type: 'status', status, detail: 'backend exited unexpectedly' });
+    await run;
+    expect(mocks.backendState.disposeCalls).toBe(1);
+    expect(mocks.mockSession.sendSessionDeath).toHaveBeenCalled();
+    await expect(mocks.sessionHandlers.get('delegation-prepare')!({ model: 'Neon', permissionMode: 'default' })).rejects.toThrow('worker changed or ended');
+  });
+
+  it.each(['stopped', 'error'])('fails the active root and exits when the native backend reports %s', async status => {
+    let release!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { release = resolve; });
+    const run = runDelegationWorker();
+    void run.catch(() => {});
+    await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+    mocks.getUserMessageHandler()!({ localId: 'active-user', content: { text: 'busy' } });
+    await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+    emitBackend({ type: 'status', status, detail: 'backend died during prompt' });
+    release();
+    await expect(run).rejects.toThrow('backend died during prompt');
+    expect(endStatuses()).toEqual(['failed']);
+    expect(mocks.backendState.disposeCalls).toBe(1);
   });
 });

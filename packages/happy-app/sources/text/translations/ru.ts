@@ -27,6 +27,8 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
+    delegation: { ...projectGoalsBase.delegation },
+
     thinkingMode: {
         "title": "Режим мышления",
         "settingDescription": "Выберите подход к размышлению или задайте вопрос по ответу. Настройка сохраняется только в этом браузере и по умолчанию выключена.",

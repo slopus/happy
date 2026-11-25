@@ -12,8 +12,9 @@ import { z } from 'zod';
 
 import { independentTaskSchema } from '@/daemon/independentSessions';
 import { BROWSER_STEP_TOOL_DESCRIPTION } from '@/browser/browserStepReportingPrompt';
+import { DELEGATION_MCP_TOOL_NAMES, DELEGATION_MCP_TIMEOUT_MS, registerDelegationMcpTools } from '@/delegation/mcpTools';
 
-export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['start_session', 'change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart', 'create_preview', 'publish_preview', 'list_previews', 'close_preview'] as const;
+export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['start_session', ...DELEGATION_MCP_TOOL_NAMES, 'change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart', 'create_preview', 'publish_preview', 'list_previews', 'close_preview'] as const;
 
 type HappyMcpBridgeToolName = typeof HAPPY_MCP_BRIDGE_TOOL_NAMES[number];
 
@@ -25,7 +26,9 @@ async function forwardHappyToolCall(
 ): Promise<CallToolResult> {
   try {
     const client = await ensureHttpClient();
-    return await client.callTool({ name, arguments: args }) as CallToolResult;
+    return await (name === 'delegate_task'
+      ? client.callTool({ name, arguments: args }, undefined, { timeout: DELEGATION_MCP_TIMEOUT_MS })
+      : client.callTool({ name, arguments: args })) as CallToolResult;
   } catch (error) {
     return {
       content: [
@@ -45,6 +48,9 @@ export function registerHappyBridgeTools(
     description: 'Start a real independent Paws session on this machine and send its initial task. Use once per task when the user asks for separate sessions; calls may run in parallel. Include the full task context in prompt. Supply a stable requestId for retries. Children share the filesystem; use separate worktrees for concurrent edits. Include the returned <happy-session> block in your reply so the user can open the child. Retry failures with the same requestId, never create a replacement task ID automatically.',
     inputSchema: independentTaskSchema.shape,
   }, async args => forwardHappyToolCall('start_session', args, ensureHttpClient, 'Failed to start independent session'));
+
+  registerDelegationMcpTools(server, (name, args) => forwardHappyToolCall(name, args, ensureHttpClient,
+    'Delegation request failed; keep the same taskId/requestId to recover instead of creating replacement work'));
 
   server.registerTool(
     'change_title',

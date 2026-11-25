@@ -13,6 +13,7 @@ import type { Session } from '@/sync/storageTypes';
 import { isSessionTurnActive } from '@/hooks/useGroupedMessages';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { ChatFooter } from './ChatFooter';
+import { DelegatedTaskGroup } from './delegation/DelegationPanel';
 import { ConversationTranscript } from './ConversationTranscript';
 import { getAvatarUrl } from '@/sync/profile';
 import type { TranscriptReadingAdapter } from './transcriptReading';
@@ -230,5 +231,5 @@ const ListHeader = React.memo(() => {
 
 const ListFooter = React.memo((props: { sessionId: string }) => {
     const session = useSession(props.sessionId)!;
-    return <ChatFooter controlledByUser={session.agentState?.controlledByUser || false} />;
+    return <><DelegatedTaskGroup sessionId={props.sessionId} /><ChatFooter controlledByUser={session.agentState?.controlledByUser || false} /></>;
 });

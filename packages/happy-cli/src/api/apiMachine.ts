@@ -1,4 +1,5 @@
 import type { CrossAgentRequest } from '@/continuation/coordinator';
+import { DelegationRequestSchema, type DelegationRequest, type DelegationResponse } from '@slopus/happy-wire';
 import { createCodingAgentService } from '@/environment/codingAgentService';
 import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges, artifactAccountScope } from '@/modules/artifacts/runtime';
 import { registerProjectGoalHandlers, type ProjectGoalDependencies } from '@/modules/goalBoard/projectService';
@@ -117,6 +118,8 @@ interface DaemonToServerEvents {
 }
 
 type MachineRpcHandlers = {
+    delegation?: (request: DelegationRequest) => Promise<DelegationResponse>;
+    delegationConnected?: () => void;
     spawnSession: (options: TracedSpawnSessionOptions) => Promise<SpawnSessionResult>;
     continueWithAgent?: (request: CrossAgentRequest) => Promise<SpawnSessionResult>;
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>;
@@ -138,6 +141,8 @@ export class ApiMachineClient {
     private scheduledRunner: { wake(): Promise<void>; stop(): void } | null = null;
     setScheduledTaskRunner(runner: { wake(): Promise<void>; stop(): void }): void { this.scheduledRunner = runner; }
     private crossAgentContinuationAvailable = false;
+    private delegationAvailable = false;
+    private delegationConnected?: () => void;
     private nativeSessionHooks?: NativeSessionHooks;
     setNativeSessionHooks(hooks: NativeSessionHooks): void { this.nativeSessionHooks = hooks; }
     private stopAppChatWorker: (() => void) | null = null;
@@ -221,6 +226,8 @@ export class ApiMachineClient {
     }
 
     setRPCHandlers({
+        delegation,
+        delegationConnected,
         spawnSession,
         continueWithAgent,
         resumeSession,
@@ -230,6 +237,13 @@ export class ApiMachineClient {
         refreshCodexAccountQuota,
         projectGoals,
     }: MachineRpcHandlers) {
+        this.delegationAvailable = !!delegation;
+        this.delegationConnected = delegationConnected;
+        if (delegation) this.rpcHandlerManager.registerHandler('delegation', (input: unknown) => delegation(DelegationRequestSchema.parse(input)));
+        if (this.socket?.connected) {
+            this.advertiseDelegation();
+            this.delegationConnected?.();
+        }
         this.resumeSessionHandler = resumeSession ?? null;
         this.crossAgentContinuationAvailable = !!continueWithAgent;
         if (continueWithAgent) this.rpcHandlerManager.registerHandler('continue-with-agent', async (params: any) => {
@@ -535,6 +549,19 @@ export class ApiMachineClient {
         }
     }
 
+    /** Call an already-owned session through the existing encrypted relay channel. */
+    async callSessionRpc<T>(sessionId: string, encryption: { encryptionKey: Uint8Array; encryptionVariant: 'legacy' | 'dataKey' }, method: string, input: unknown, timeoutMs = 30_000): Promise<T> {
+        if (!this.socket?.connected) throw new Error('Machine relay is disconnected');
+        const response = await this.socket.timeout(timeoutMs).emitWithAck('rpc-call', {
+            method: `${sessionId}:${method}`,
+            params: encodeBase64(encrypt(encryption.encryptionKey, encryption.encryptionVariant, input)),
+        });
+        if (!response.ok || typeof response.result !== 'string') throw new Error(response.error || 'Session RPC was not confirmed');
+        const result = decrypt(encryption.encryptionKey, encryption.encryptionVariant, decodeBase64(response.result));
+        if (result && typeof result === 'object' && 'error' in result && typeof result.error === 'string') throw new Error(result.error);
+        return result as T;
+    }
+
     /**
      * Update machine metadata
      * Currently unused, changes from the mobile client are more likely
@@ -592,6 +619,13 @@ export class ApiMachineClient {
         });
     }
 
+    private advertiseDelegation(): void {
+        if (this.delegationAvailable && this.machine.metadata?.delegation !== 1) {
+            void this.updateMachineMetadata(metadata => ({ ...(metadata ?? this.machine.metadata), delegation: 1 }))
+                .catch(error => logger.debug('[API MACHINE] Failed to advertise delegation:', error));
+        }
+    }
+
     connect() {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
@@ -610,6 +644,7 @@ export class ApiMachineClient {
 
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');
+            this.advertiseDelegation();
             // Existing-machine registration returns its saved metadata. Publish
             // newly installed capabilities on connection, preserving user edits.
             if (this.scheduledRunner && this.machine.metadata?.scheduledTasks !== 1) {
@@ -646,6 +681,7 @@ export class ApiMachineClient {
             }));
 
             this.rpcHandlerManager.onSocketConnect(this.socket);
+            this.delegationConnected?.();
             this.syncResumeSessionRpcRegistration();
             this.startKeepAlive();
         });

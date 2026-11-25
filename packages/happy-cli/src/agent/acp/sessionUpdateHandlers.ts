@@ -309,6 +309,7 @@ export function startToolCall(
   ctx.emit({
     type: 'tool-call',
     toolName: toolKindStr || 'unknown',
+    ...(typeof update.title === 'string' && update.title.trim() ? { title: update.title } : {}),
     args,
     callId: toolCallId,
   });

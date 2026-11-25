@@ -217,6 +217,13 @@ vi.mock('@/realtime/hooks/voiceHooks', () => ({
 }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: () => ({}) }));
 vi.mock('@/components/ChatFooter', () => ({ ChatFooter: 'ChatFooter' }));
+// This suite mounts the real transcript/sync boundary; delegation has dedicated
+// component/API tests and does not require its native inspector dependencies here.
+vi.mock('@/components/delegation/DelegationPanel', () => ({
+    DelegationAssistantBar: () => null,
+    DelegatedTaskGroup: () => null,
+    DelegationInspectorPanel: () => null,
+}));
 vi.mock('@/hooks/useGroupedMessages', () => ({
     useGroupedMessages: (messages: any[]) => messages.map(message => ({ type: 'message', id: message.id, message })),
     isSessionTurnActive: () => false,

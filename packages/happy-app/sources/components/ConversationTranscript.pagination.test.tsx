@@ -32,6 +32,9 @@ vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: () =>
 vi.mock('@/utils/responsive', () => ({ useHeaderHeight: () => 0 }));
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0 }) }));
 vi.mock('./ChatFooter', () => ({ ChatFooter: 'ChatFooter' }));
+// Delegation RPC/state behavior is covered by DelegationPanel's own suite.
+// Keep this transcript boundary independent of Expo/native inspector modules.
+vi.mock('./delegation/DelegationPanel', () => ({ DelegatedTaskGroup: () => null }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 800 } }));
 
 vi.mock('react-native', () => ({

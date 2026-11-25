@@ -8,6 +8,15 @@ function mapMany(mapper: AcpSessionManager, messages: AgentMessage[]) {
 }
 
 describe('AcpSessionManager turn lifecycle', () => {
+  it('binds delegated inputs only to their root turn, without carrying them into the next turn', () => {
+    const mapper = new AcpSessionManager();
+    const [first] = mapper.startTurn(['delegation:task:1:request']);
+    expect(first.ev).toEqual({ t: 'turn-start', localIds: ['delegation:task:1:request'] });
+    mapper.endTurn('completed');
+    const [second] = mapper.startTurn();
+    expect(second.ev).toEqual({ t: 'turn-start' });
+    expect(second.turn).not.toBe(first.turn);
+  });
   it('preserves a failed Skill read instead of marking it completed', () => {
     const mapper = new AcpSessionManager();
     mapper.startTurn();
@@ -175,6 +184,16 @@ describe('AcpSessionManager text mapping', () => {
 });
 
 describe('AcpSessionManager tool mapping', () => {
+  it('keeps explicit native tool titles in the existing protocol title without reinterpreting kind/name', () => {
+    const mapper = new AcpSessionManager();
+    const [root] = mapper.startTurn(['native-parent-input']);
+    const [started] = mapper.mapMessage({ type: 'tool-call', toolName: 'other', title: 'Run mcp_happy_delegate_task',
+      args: { requestId: 'synthetic-request', toolSummary: 'Delegate synthetic acceptance task' }, callId: 'native-call' });
+    expect(started.turn).toBe(root.turn);
+    expect(started.ev).toMatchObject({ t: 'tool-call-start', name: 'other', title: 'Run mcp_happy_delegate_task',
+      args: { requestId: 'synthetic-request', toolSummary: 'Delegate synthetic acceptance task' } });
+  });
+
   it('maps tool-call to tool-call-start with generated call id', () => {
     const mapper = new AcpSessionManager();
     const start = mapper.startTurn()[0];

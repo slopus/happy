@@ -13,12 +13,14 @@ import { TrackedSession, SessionEncryptionData } from './types';
 import type { CodexEffort, SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 
 import { independentTaskSchema, delegationContextSchema, type DelegationContext, type IndependentTask, type IndependentTaskResult } from './independentSessions';
+import { DelegationRequestSchema, type DelegationRequest, type DelegationResponse } from '@slopus/happy-wire';
 
 const codexEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
 export function startDaemonControlServer({
   getChildren,
   launchIndependentSession,
+  delegation,
   stopSession,
   spawnSession,
   requestShutdown,
@@ -26,6 +28,7 @@ export function startDaemonControlServer({
 }: {
   getChildren: () => TrackedSession[];
   launchIndependentSession?: (parentSessionId: string, task: IndependentTask, context?: DelegationContext) => Promise<IndependentTaskResult>;
+  delegation?: (request: DelegationRequest, context?: DelegationContext) => Promise<DelegationResponse>;
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
@@ -149,6 +152,17 @@ export function startDaemonControlServer({
     });
 
     // Spawn new session
+    typed.post('/delegation', async (request, reply) => {
+      if (!delegation) return reply.code(503).send({ success: false, error: 'Delegation is unavailable in this daemon' });
+      const body = request.body;
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return reply.code(400).send({ success: false, error: 'Invalid delegation request' });
+      const { delegationContext, ...input } = body as Record<string, unknown>;
+      const parsed = DelegationRequestSchema.safeParse(input);
+      const context = delegationContextSchema.safeParse(delegationContext);
+      if (!parsed.success || (delegationContext !== undefined && !context.success)) return reply.code(400).send({ success: false, error: 'Invalid delegation request' });
+      return delegation(parsed.data, context.success ? context.data : undefined);
+    });
+
     typed.post('/spawn-session', {
       schema: {
         body: z.object({

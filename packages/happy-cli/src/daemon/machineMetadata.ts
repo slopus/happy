@@ -12,6 +12,7 @@ import packageJson from '../../package.json';
 // share the same hostname and look identical).
 const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
 export const initialMachineMetadata: MachineMetadata = {
+  delegation: 1,
   scheduledTasks: 1,
   host: os.hostname() + hostSuffix,
   platform: os.platform(),
