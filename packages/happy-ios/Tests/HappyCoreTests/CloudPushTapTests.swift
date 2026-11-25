@@ -329,6 +329,51 @@ final class CloudPushTapTests: XCTestCase {
         XCTAssertTrue(manager.registersForPush(signedIn.id))
     }
 
+    /// The daemon's routes, with a pairing's own check held at `gate`
+    /// from its first request, once asked to.
+    actor HeldCheck: AgentTransport {
+        let inner: IdentityTransport
+        let gate: CloudPushTests.Gate
+        private var holding = false
+        init(_ inner: IdentityTransport, _ gate: CloudPushTests.Gate) { self.inner = inner; self.gate = gate }
+        func hold() { holding = true }
+        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+            if holding, path == "/v0/health" { holding = false; await gate.wait() }
+            return try await inner.request(method: method, path: path, credential: credential, body: body, headers: headers)
+        }
+        func close() {}
+    }
+
+    /// A pairing is checked on its own beside its engine (its name, its
+    /// picture). A check begun before the computer said whose the pairing
+    /// is, and landing after, unsays nothing: only the computer's
+    /// bootstrap says whose it is.
+    @MainActor
+    func testAPairingsOwnCheckNeverUnsaysWhoseItIs() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let daemon = IdentityTransport()
+        await daemon.report(instanceId: notice.instanceId)
+        let gate = CloudPushTests.Gate()
+        let held = HeldCheck(daemon, gate)
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: directory, makeTransport: { _ in held })
+        await manager.setForeground(false)
+        let paired = try await manager.add(pairing(), name: "Team Mac")
+        await held.hold()
+        await manager.setForeground(true)
+        try await gate.arrival()
+        await named(.string("member-one"), paired, in: manager)
+        XCTAssertEqual(manager.pushMember(for: paired.id), "member-one")
+        let before = await daemon.paths().count
+        await gate.open()
+        for _ in 0..<200 where await daemon.paths().count < before + 2 { try await Task.sleep(for: .milliseconds(10)) }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(manager.pushMember(for: paired.id), "member-one", "the pairing's own check unsaid whose it is")
+        XCTAssertEqual(chosen(notice, in: manager), paired.id)
+        await manager.setForeground(false)
+    }
+
     /// A server that calls its user `standalone` is still a server signed
     /// in to: a computer's own push never opens on it, whatever
     /// installation it says it is.
