@@ -1,6 +1,11 @@
 import { sessionReadFile, sessionListDirectory, sessionWorkspaceListDirectory, sessionWorkspaceReadFile, sessionWorkspaceWriteFile } from '@/sync/ops';
 import type { FileWorkspaceIO } from './controller';
 import { t } from '@/text';
+
+const imageMime = new Map([
+    ['png', 'image/png'], ['jpg', 'image/jpeg'], ['jpeg', 'image/jpeg'],
+    ['gif', 'image/gif'], ['webp', 'image/webp'], ['avif', 'image/avif'],
+]);
 export async function readWorkspaceBytes(sessionId: string, path: string, limit = 10 * 1024 * 1024, externalReadOnly = false): Promise<Uint8Array> {
     let response;
     try {
@@ -24,9 +29,10 @@ export async function readWorkspaceBytes(sessionId: string, path: string, limit 
     return bytes;
 }
 export async function readWorkspaceText(sessionId: string, path: string, externalReadOnly = false): ReturnType<FileWorkspaceIO['read']> {
+    const mime = imageMime.get(path.split('.').pop()?.toLowerCase() ?? '');
     let bytes: Uint8Array;
     try {
-        bytes = await readWorkspaceBytes(sessionId, path, 2 * 1024 * 1024, externalReadOnly);
+        bytes = await readWorkspaceBytes(sessionId, path, (mime ? 10 : 2) * 1024 * 1024, externalReadOnly);
     } catch (error) {
         // Current and older CLI sessions report directories differently. Confirm
         // with the existing listing RPC, retaining the original read's scope.
@@ -35,10 +41,10 @@ export async function readWorkspaceText(sessionId: string, path: string, externa
         if (!listing.success || !Array.isArray(listing.entries)) throw new Error(listing.error || t('fileWorkspace.readError'));
         return { content: '', hash: '', directory: listing.entries };
     }
-    if (bytes.includes(0)) throw new Error(t('fileWorkspace.binary'));
-    const content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    if (!mime && bytes.includes(0)) throw new Error(t('fileWorkspace.binary'));
+    const content = mime ? '' : new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource))).map(x => x.toString(16).padStart(2, '0')).join('');
-    return { content, hash };
+    return { content, hash, ...(mime ? { media: { bytes, mime } } : {}) };
 }
 export async function writeWorkspaceText(sessionId: string, path: string, content: string, expectedHash: string) {
     const bytes = new TextEncoder().encode(content);

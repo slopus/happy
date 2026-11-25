@@ -25,6 +25,7 @@ vi.mock('./VersionHistoryPanel', () => ({ VersionHistoryPanel: 'VersionHistoryPa
 vi.mock('./ArtifactPreview', () => ({ ArtifactPreview: 'ArtifactPreview' }));
 vi.mock('./HtmlFilePreview', () => ({ HtmlFilePreview: 'HtmlFilePreview' }));
 vi.mock('./WorkspaceDirectoryPreview', () => ({ WorkspaceDirectoryPreview: 'WorkspaceDirectoryPreview' }));
+vi.mock('./WorkspaceMediaPreview', () => ({ WorkspaceMediaPreview: 'WorkspaceMediaPreview' }));
 import { FileWorkspaceContext } from './context';
 import { FileWorkspace, FileWorkspaceResizeHandle } from './FileWorkspace';
 let controller: FileWorkspaceController;
@@ -43,6 +44,21 @@ beforeEach(async () => {
     controller = new FileWorkspaceController({ root: '/work', read: async () => ({ content: '# Base', hash: 'base' }), write: async () => ({ hash: 'saved' }) });
     await controller.open('a.md'); await controller.open('b.md'); await controller.open('c.md');
     maximized = false; expanded = true; state.reduced = false; state.skin = 'gingham'; state.alert.mockReset(); toggleTree.mockReset(); openReference.mockReset();
+});
+it('shows an image preview with refresh and original download, without a code editor or save action', async () => {
+    const media = { bytes: Uint8Array.from([255, 216, 0, 255, 217]), mime: 'image/jpeg' };
+    controller = new FileWorkspaceController({ root: '/work', read: async () => ({ content: '', hash: 'image-hash', media }), write: vi.fn() });
+    await controller.open('画面-0000.jpg');
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    expect(renderer.root.findByType('WorkspaceMediaPreview').props).toMatchObject({ media, name: '画面-0000.jpg' });
+    expect(renderer.root.findAllByType('CodeEditor')).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ label: 'fileWorkspace.code' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ label: 'fileWorkspace.preview' }).props.selected).toBe(true);
+    expect(renderer.root.findByProps({ testID: 'workspace-save' }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ label: 'fileWorkspace.download' }).props.disabled).toBe(false);
+    expect(renderer.root.findByProps({ label: 'fileWorkspace.refresh' }).props.disabled).toBe(false);
+    act(() => renderer.unmount());
 });
 it.each(['参考拆解', 'folder.md', 'folder.mp4'])('opens directory %s as a browsable list with file-only actions unavailable', async (name) => {
     const entries = [{ name: '中文 文件.md', type: 'file' as const }, { name: '子目录', type: 'directory' as const }];

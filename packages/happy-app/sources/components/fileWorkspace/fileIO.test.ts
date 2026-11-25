@@ -15,6 +15,33 @@ import { readWorkspaceText } from './fileIO';
 beforeEach(() => { read.mockReset(); externalRead.mockReset(); list.mockReset(); externalList.mockReset(); });
 
 describe('workspace file reads', () => {
+    it.each([
+        ['画面-0000.jpg', 'image/jpeg'], ['PHOTO.JPEG', 'image/jpeg'], ['透明.png', 'image/png'],
+        ['animated.gif', 'image/gif'], ['image.webp', 'image/webp'], ['image.avif', 'image/avif'],
+    ])('opens %s as original image bytes instead of decoding binary as text', async (name, mime) => {
+        const bytes = Uint8Array.from([255, 216, 255, 224, 0, 16, 74, 70, 73, 70]);
+        read.mockResolvedValue({ success: true, content: Buffer.from(bytes).toString('base64') });
+        const result = await readWorkspaceText('session', '/project/' + name);
+        expect(result).toMatchObject({ content: '', media: { bytes, mime } });
+        expect(result.hash).toBe(Buffer.from(await crypto.subtle.digest('SHA-256', bytes)).toString('hex'));
+        expect(externalRead).not.toHaveBeenCalled();
+    });
+    it('reads a large external image with the original read-only scope and a bounded image size', async () => {
+        const bytes = Buffer.alloc(2 * 1024 * 1024 + 1, 0);
+        externalRead.mockResolvedValueOnce({ success: true, content: bytes.toString('base64') });
+        const result = await readWorkspaceText('session', '/skills/画面.jpg', true);
+        expect(result.media?.bytes.byteLength).toBe(bytes.length);
+        expect(externalRead).toHaveBeenCalledExactlyOnceWith('session', '/skills/画面.jpg');
+        expect(read).not.toHaveBeenCalled();
+        externalRead.mockResolvedValueOnce({ success: true, content: 'A'.repeat(Math.ceil(10 * 1024 * 1024 / 3) * 4 + 5) });
+        await expect(readWorkspaceText('session', '/skills/画面.jpg', true)).rejects.toThrow('fileWorkspace.tooLarge');
+    });
+    it.each(['data.bin', 'data.constructor', 'data.__proto__'])('retains the text size limit and binary guard for %s', async name => {
+        read.mockResolvedValueOnce({ success: true, content: Buffer.alloc(2 * 1024 * 1024 + 1).toString('base64') });
+        await expect(readWorkspaceText('session', '/project/large.txt')).rejects.toThrow('fileWorkspace.tooLarge');
+        read.mockResolvedValueOnce({ success: true, content: Buffer.from([65, 0, 66]).toString('base64') });
+        await expect(readWorkspaceText('session', '/project/' + name)).rejects.toThrow('fileWorkspace.binary');
+    });
     it('decodes an empty or UTF-8 file and computes the content baseline', async () => {
         read.mockResolvedValueOnce({ success: true, content: '' });
         expect(await readWorkspaceText('session', '/project/empty.md')).toEqual({

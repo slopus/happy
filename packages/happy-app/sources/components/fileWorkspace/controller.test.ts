@@ -16,6 +16,23 @@ function setup() {
     return { controller, files, writes };
 }
 describe('file workspace real document state', () => {
+    it('keeps images noneditable and preserves a cached text draft without writing it into image bytes', async () => {
+        const writes: string[] = [];
+        const media = { bytes: Uint8Array.from([255, 216, 0, 255, 217]), mime: 'image/jpeg' };
+        const controller = new FileWorkspaceController({ root, read: async () => ({ content: '', hash: 'image-hash', media }), write: async path => { writes.push(path); return { hash: 'saved' }; } });
+        const path = root + '/画面.jpg';
+        await controller.open(path);
+        const saved = { draft: 'Only cached text copy', hash: 'old' };
+        controller.restoreDraft(path, saved);
+        controller.edit(path, 'overwrite');
+        await controller.refresh(path);
+        expect(controller.getSnapshot().documents[path]).toMatchObject({ phase: 'ready', media, draft: '', conflict: false });
+        expect(controller.exportDrafts()[path]).toEqual(saved);
+        expect(await controller.save(path)).toBe(false);
+        expect(writes).toEqual([]);
+        expect(controller.close(path)).toBe(false);
+        expect(controller.close(path, true)).toBe(true);
+    });
     it('keeps directories noneditable, refreshes their entries and clears the type if replaced by a file', async () => {
         let directory = true;
         let entries = [{ name: '文档.md', type: 'file' as const }];

@@ -19,7 +19,7 @@ export type FileWorkspaceIO = {
     write: (path: string, content: string, expectedHash: string) => Promise<{ hash: string; fileRevision?: string }>;
     isCurrent?: () => boolean;
 };
-export const documentDirty = (document: FileDocument) => !document.directory && document.phase === 'ready' && document.draft !== document.content;
+export const documentDirty = (document: FileDocument) => !document.directory && !document.media && document.phase === 'ready' && document.draft !== document.content;
 
 /** Owns loaded baselines and drafts, not versions. One instance per account/session/root. */
 export class FileWorkspaceController {
@@ -65,7 +65,7 @@ export class FileWorkspaceController {
     restoreDraft(path: string, saved: { draft: string; hash: string }) {
         const entry = this.snapshot.documents[path];
         if (!entry || entry.readOnly || documentDirty(entry)) return;
-        if (entry.phase !== 'ready' || entry.directory) { this.restoredDrafts.set(path, saved); this.commit({ ...this.snapshot }); return; }
+        if (entry.phase !== 'ready' || entry.directory || entry.media) { this.restoredDrafts.set(path, saved); this.commit({ ...this.snapshot }); return; }
         this.update(path, { draft: saved.draft, draftBaseHash: saved.hash, conflict: saved.hash !== entry.hash });
     }
     exportDrafts() {
@@ -113,8 +113,8 @@ export class FileWorkspaceController {
             if (!discardCurrentDraft && documentDirty(entry)) {
                 this.update(path, { revision: entry.revision + 1, conflict: value.hash !== (entry.draftBaseHash ?? entry.hash), error: null });
             } else {
-                const saved = discardCurrentDraft || value.directory ? undefined : this.restoredDrafts.get(path);
-                if (!value.directory || discardCurrentDraft) this.restoredDrafts.delete(path);
+                const saved = discardCurrentDraft || value.directory || value.media ? undefined : this.restoredDrafts.get(path);
+                if ((!value.directory && !value.media) || discardCurrentDraft) this.restoredDrafts.delete(path);
                 this.update(path, { revision: entry.revision + 1, phase: 'ready', content: value.content, draft: saved?.draft ?? value.content, hash: value.hash, draftBaseHash: saved?.hash ?? value.hash, conflict: !!saved && saved.hash !== value.hash, error: null, media: value.media, directory: value.directory, fileRevision: value.fileRevision });
             }
         } catch (error) {
@@ -125,7 +125,7 @@ export class FileWorkspaceController {
     }
     async save(path: string) {
         const entry = this.snapshot.documents[path];
-        if (!this.current() || !entry || entry.directory || entry.readOnly || entry.phase !== 'ready' || !entry.hash || entry.conflict || entry.saving) return false;
+        if (!this.current() || !entry || entry.directory || entry.media || entry.readOnly || entry.phase !== 'ready' || !entry.hash || entry.conflict || entry.saving) return false;
         if (!documentDirty(entry)) return true;
         const content = entry.draft, expectedHash = entry.hash;
         const token = {}; this.requests.set(path, token);

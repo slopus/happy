@@ -43,7 +43,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
     const document = path ? workspace?.snapshot.documents[path] : null;
     const locationRequest = workspace?.locationRequest;
     const isDirectory = document?.directory !== undefined;
-    const readOnly = workspace?.readOnly || document?.readOnly || isDirectory;
+    const readOnly = workspace?.readOnly || document?.readOnly || isDirectory || !!document?.media;
     const closeHistory = React.useCallback(() => {
         setHistoryPath(null);
         if (historyExpanded.current) { historyExpanded.current = false; workspace?.setMaximized(false); }
@@ -70,8 +70,8 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
             ...(currentArtifact.readRef.kind === 'version' ? { versionId: currentArtifact.readRef.versionId } : {}),
         } } : {}),
     } : null;
-    const previewable = !isDirectory && /\.(md|markdown|html?|svg)$/i.test(path);
-    const preview = previewable && modes[path] !== false;
+    const previewable = !isDirectory && (!!document?.media || /\.(md|markdown|html?|svg)$/i.test(path));
+    const preview = !!document?.media || (previewable && modes[path] !== false);
     const close = (files: string[]) => {
         if (controller.closeMany(files)) return;
         const current = controller.getSnapshot();
@@ -81,7 +81,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
         Modal.alert(t('fileWorkspace.unsavedTitle'), t('fileWorkspace.unsavedMessage') + '\n\n' + unsaved.map(file => file.startsWith(workspace.root + '/') ? file.slice(workspace.root.length + 1) : file).join('\n'), [
             { text: t('common.cancel'), style: 'cancel' },
             { text: t('fileWorkspace.discard'), style: 'destructive', onPress: () => { controller.closeMany(files, true); } },
-            ...(unsaved.every(file => current.documents[file]?.phase === 'ready' && !current.documents[file].directory && !current.documents[file].conflict) ? [{ text: t('fileWorkspace.save'), onPress: async () => {
+            ...(unsaved.every(file => current.documents[file]?.phase === 'ready' && !current.documents[file].directory && !current.documents[file].media && !current.documents[file].conflict) ? [{ text: t('fileWorkspace.save'), onPress: async () => {
                 for (const file of unsaved) if (!await controller.save(file)) return;
                 controller.closeMany(files);
             } }] : []),
@@ -125,7 +125,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
         <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4, backgroundColor: readingSurface === 'inherited' ? 'transparent' : photoSkin ? 'transparent' : theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider, flexWrap: 'wrap' }}>
             <Text numberOfLines={1} selectable style={{ flexGrow: 1, flexShrink: 1, fontSize: 12, color: theme.colors.textSecondary }}>{path.startsWith(workspace.root + '/') ? path.slice(workspace.root.length + 1).replaceAll('/', ' / ') : path}</Text>
             {previewable && <Button label={t('fileWorkspace.preview')} selected={preview} onPress={() => setModes(value => ({ ...value, [path]: true }))} />}
-            {!isDirectory && <Button label={t('fileWorkspace.code')} selected={!preview} onPress={() => setModes(value => ({ ...value, [path]: false }))} />}
+            {!isDirectory && !document?.media && <Button label={t('fileWorkspace.code')} selected={!preview} onPress={() => setModes(value => ({ ...value, [path]: false }))} />}
             {!isDirectory && !!sessionId && /\.(md|markdown)$/i.test(path) && <FileAnnotationControls sessionId={sessionId} enabled={preview && !!annotationFile} />}
             <Button label={t('fileWorkspace.refresh')} icon="refresh-outline" compact onPress={() => { void refresh(); }} disabled={document?.saving} />
             <Button label={t('fileWorkspace.mention')} icon="at-outline" compact disabled={document?.phase !== 'ready' || dirty || !document.hash} onPress={() => { if (document?.hash) workspace.setReference({ path, hash: document.hash, ...(quote ? { quote } : {}), ...(currentArtifact ? {artifact:{workspaceId:currentArtifact.artifact.workspaceId,artifactId:currentArtifact.artifact.id,expectedRevision:currentArtifact.workingRevision,...(currentArtifact.readRef.kind === 'version' ? {versionId:currentArtifact.readRef.versionId}: {})}} : {}) }); }} />
@@ -136,7 +136,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
         {workspace.draftCacheError && <Text accessibilityRole="alert" style={{ padding: 10, color: theme.colors.textDestructive }}>{t('fileWorkspace.draftCacheUnavailable')}</Text>}
         {document?.conflict && <View style={{ padding: 10, backgroundColor: theme.colors.surfaceSelected }}><Text accessibilityRole="alert" style={{ color: theme.colors.textDestructive }}>{t('fileWorkspace.conflict')}</Text><Button label={t('fileWorkspace.refresh')} onPress={() => { void refresh(); }} /></View>}
         {document?.error && <Text accessibilityRole="alert" style={{ padding: 12, color: theme.colors.textDestructive }}>{document.error}</Text>}
-        {(document?.phase === 'error' || isDirectory) && cachedDraft && <ScrollView contentContainerStyle={{ padding: 16 }}><Text style={{ color: theme.colors.textSecondary }}>{isDirectory ? t('fileWorkspace.directoryDraftKept') : t('fileWorkspace.cachedDraft')}</Text><Text selectable style={{ color: theme.colors.text }}>{cachedDraft.draft}</Text></ScrollView>}
+        {(document?.phase === 'error' || isDirectory || !!document?.media) && cachedDraft && <ScrollView contentContainerStyle={{ padding: 16 }}><Text style={{ color: theme.colors.textSecondary }}>{isDirectory ? t('fileWorkspace.directoryDraftKept') : t('fileWorkspace.cachedDraft')}</Text><Text selectable style={{ color: theme.colors.text }}>{cachedDraft.draft}</Text></ScrollView>}
         {!document || document.phase === 'loading' ? <ActivityIndicator style={{ padding: 30 }} color={theme.colors.textSecondary} /> : document.phase === 'ready' && document.directory ?
             <WorkspaceDirectoryPreview path={path} entries={document.directory} onOpen={child => { void workspace.openReference(child); }} /> : document.phase === 'ready' ? <>
             <View testID="workspace-annotation-layout" style={{ flex: 1, minHeight: 0, position: 'relative', flexDirection: 'row' }}>
