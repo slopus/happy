@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit
 /**
  * App wiring only. Relay capabilities live in memory; the ledger contains
  * encrypted identifiers, and beside a forgotten pairing's undelivered
- * farewell that pairing's own route to its daemon, until it is delivered.
+ * farewell that pairing's own route to its daemon (and, where it has to
+ * register once more first, the relay capability), until it is delivered.
  */
 class CloudPushRuntime(
     private val context: Context,
