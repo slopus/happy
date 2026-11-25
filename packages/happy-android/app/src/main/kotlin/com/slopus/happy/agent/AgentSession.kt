@@ -155,6 +155,15 @@ class AgentSession internal constructor(
     private var healthStopped = false
     private var healthClosed = false
     val phase: StateFlow<SyncPhase> = phaseState.asStateFlow()
+    private val drainingState = MutableStateFlow(false)
+    /**
+     * The daemon said it is draining to restart (its hello's `draining`, or
+     * `daemon.draining`): writes are refused until a new process says hello.
+     * Kept through the reconnect in between (iOS's `HomeSnapshot.draining`).
+     */
+    val draining: StateFlow<Boolean> = drainingState.asStateFlow()
+    /** The process the last hello came from: a `daemon.draining` replayed from the one before isn't this one's. */
+    @Volatile private var helloDaemon: String? = null
     /** Home's P0 only; later resource refreshes never keep its title updating. */
     val homeUpdating: StateFlow<Boolean> = phase.map { it == SyncPhase.P0Connecting || it == SyncPhase.P0Live }
         .stateIn(scope, SharingStarted.Eagerly, false)
@@ -1115,10 +1124,12 @@ class AgentSession internal constructor(
                         documents.streams.opened(event.data)
                         feedLibrary.hello()
                         val wasVerified = phaseState.value == SyncPhase.Verified
+                        val hello = AgentHello.of(event)
+                        helloDaemon = hello.daemonId
+                        drainingState.value = hello.draining
                         statusState.value = AgentLinkStatus.Connected
                         phaseState.value = SyncPhase.P0Live
                         snapshot.await()
-                        val hello = AgentHello.of(event)
                         if (hello.gap && (resumed || wasVerified)) readSnapshot()
                         resumeAllowed = true
                         phaseState.value = SyncPhase.Verified
@@ -1137,6 +1148,10 @@ class AgentSession internal constructor(
                         }
                         onConnected()
                     } else {
+                        if (event.type == "daemon.draining" && event.data["draining"]?.toString() != "false") {
+                            val from = event.data.string("daemonId")
+                            if (from == null || helloDaemon == null || from == helloDaemon) drainingState.value = true
+                        }
                         snapshot.await()
                         if (event.type == "config.updated") bootstrapConfig = null
                         if (event.type == "git.updated") {

@@ -177,7 +177,15 @@ a long press on back or forward lists that way's history. The title is the
 page's, with its host as the subtitle. Embedded in an artifact, the buttons go
 in the artifact's header and its title stays. The page runs the full height,
 under the header and the home indicator, and WebKit insets its content by the
-safe area, so nothing moves when the header appears. Until it paints, the
+safe area, so nothing moves when the header appears. WebKit is also told the
+header covers the page's top (`obscuredContentInsets`), as Safari tells it
+about its own bars: a page that asks for the whole screen
+(`viewport-fit=cover`) otherwise lays out from the screen's top edge, and its
+sticky or fixed bar sits behind the status bar and the header. With it, such a
+bar stops just under the header, WebKit carries the bar's colour up behind the
+glass, and `env(safe-area-inset-top)` is 0. The home indicator covers nothing,
+so it stays the page's safe area (`env(safe-area-inset-bottom)`). An app's
+page has no header and is told nothing. Until it paints, the
 screen's surface shows through (`isOpaque = false`). There is no pull to
 refresh (Steve, for both apps); the header's button reloads.
 

@@ -293,7 +293,7 @@ final class HostedHeaderSteadyTests: XCTestCase {
         XCTAssertEqual(Strings.HeaderStatus.text(.online, activity: nil, loaded: true), "online")
         XCTAssertEqual(Strings.HeaderStatus.text(.online, activity: Activity(phase: .awaitingAnswer, startedAt: nil), loaded: true), "Waiting for your answer")
         XCTAssertEqual(Set(Strings.HeaderStatus.translations.keys), Set(AppLanguage.supported.map(\.code)))
-        for text in Strings.HeaderStatus.translations.values { XCTAssertEqual(text.count, 7); XCTAssertTrue(text.allSatisfy { !$0.isEmpty }) }
+        for text in Strings.HeaderStatus.translations.values { XCTAssertEqual(text.count, 8); XCTAssertTrue(text.allSatisfy { !$0.isEmpty }) }
         var snapshot = HomeSnapshot()
         XCTAssertEqual(Session.headerState(snapshot: snapshot), .connecting)
         XCTAssertEqual(Session.headerState(snapshot: snapshot), .connecting, "connecting until the stream's hello")

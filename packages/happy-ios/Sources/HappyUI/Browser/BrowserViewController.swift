@@ -487,6 +487,8 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         super.viewDidLayoutSubviews()
         let layout = BrowserLayout(size: view.bounds.size, top: view.safeAreaInsets.top)
         web?.frame = layout.web
+        // An app has no header: its page runs under nothing.
+        if !isApp { web?.obscuredContentInsets = UIEdgeInsets(layout.obscured) }
         progressView.frame = layout.progress
         if isApp, let scrollView = web?.scrollView, !scrollView.isScrollEnabled {
             // WebKit gives the pinch back with each new page.

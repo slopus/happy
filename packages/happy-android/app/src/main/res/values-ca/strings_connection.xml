@@ -5,6 +5,7 @@
     <string name="connection_type">Tipus</string>
     <string name="connection_server">Servidor</string>
     <string name="connection_network">Xarxa disponible</string>
+    <string name="connection_last_error">Últim error</string>
     <string name="connection_open_flows">Fluxos oberts de l’app</string>
     <string name="connection_tunnels">Túnels Tailcat</string>
     <string name="connection_tunnel">Túnel %1$d</string>
