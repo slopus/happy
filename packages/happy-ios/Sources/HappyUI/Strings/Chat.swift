@@ -18,6 +18,9 @@ extension Strings {
     public enum Chat {
         /// common.retry (ChatList.tsx OlderEnd, EmptyMessages.tsx)
         public static var retry: String { localized("common.retry", "Retry") }
+        /// A conversation that could not be read at all, over the server's
+        /// own words for why (Android's `conversation_load_failed`).
+        public static let loadFailed = "Couldn’t load this conversation"
         /// common.loadMore (ChatList.tsx OlderEnd, EmptyMessages.tsx)
         public static var loadMore: String { localized("common.loadMore", "Load more") }
         /// pendingChatHandover.ts' fallback when the first message's error

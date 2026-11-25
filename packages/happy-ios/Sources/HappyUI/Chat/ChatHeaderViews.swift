@@ -444,6 +444,9 @@ final class ChatPlaceholderView: UIView {
         case empty(ChatEmptyState, ChatOlderPaging.EmptyStatus)
         case pendingChat(PendingChatPlaceholderModel)
         case deleted
+        /// A conversation its server doesn't have, with the server's own
+        /// words for it when it gave any (`ChatSnapshot.notFound`).
+        case notFound(String?)
     }
 
     /// Retry or Load more was pressed; which one is `content`.
