@@ -13,7 +13,7 @@ public final class AgentConnections {
     /// phone's push registration off, where it made one
     /// (`CloudPush.unregister`). The session's revocation and the
     /// connection's teardown wait for it, `farewellLimit` at most.
-    public var cloudFarewell: (@Sendable (_ id: String, _ client: AgentClient) async -> Void)?
+    public var cloudFarewell: (@Sendable (_ id: String, _ credentials: AgentConnectionCredentials, _ client: AgentClient) async -> Void)?
     static let farewellLimit: Duration = .seconds(5)
     private let storage: AgentConnectionStorage
     private var credentials: [String: AgentConnectionCredentials] = [:]
@@ -162,14 +162,27 @@ public final class AgentConnections {
 
     /// Who a push for the connection `id` names
     /// (`CloudPushNotification.userId`). A sign-in's is the member it was
-    /// signed in as, nil while it waits for its profile. A pairing's is
+    /// signed in as, nil while it waits for its profile, and never
+    /// `standalone`, whatever its server calls its user. A pairing's is
     /// the team user its daemon says it belongs to
     /// (`AgentConnection.member`), and `standalone` when it says none: a
-    /// computer of the person's own, whose daemon has no members.
+    /// computer of the person's own, whose daemon has no members. Until
+    /// its daemon has said (`AgentConnection.memberKnown`) it has none: a
+    /// team's daemon is never taken for a computer of the person's own.
     public func pushMember(for id: String) -> String? {
         guard let credential = credentials[id] else { return nil }
-        if let signIn = credential.signIn { return signIn.userId }
-        return accounts.first { $0.id == id }?.member ?? CloudPushNotification.standalone
+        if let signIn = credential.signIn { return signIn.userId == CloudPushNotification.standalone ? nil : signIn.userId }
+        guard let account = accounts.first(where: { $0.id == id }), account.memberKnown == true else { return nil }
+        return account.member ?? CloudPushNotification.standalone
+    }
+
+    /// Whether the connection `id` registers for push now. A sign-in
+    /// does: its server knows who asks. A pairing does once its computer
+    /// has said whose it is, so that nothing is registered as the one
+    /// person of a computer that turns out to be a team's.
+    public func registersForPush(_ id: String) -> Bool {
+        guard let credential = credentials[id] else { return false }
+        return credential.signIn != nil || accounts.first { $0.id == id }?.memberKnown == true
     }
 
     /// The origin of the signed-in server `id`.
@@ -224,12 +237,12 @@ public final class AgentConnections {
         case .verified(let computer):
             do {
                 var (updated, readsAvatar) = try AgentIdentity.take(computer, into: account)
-                await apply(updated, generation: generation)
+                await apply(updated, generation: generation, saysWhose: true)
                 if readsAvatar, let credential = credentials[id], let engine = engines[id], let transport = await runningTransport(id) {
                     // The picture's bytes wait for the chat on screen's read.
                     await engine.client.chatReads.landed()
                     updated = try await AgentIdentity.avatar(updated, transport: transport, token: credential.deviceToken)
-                    await apply(updated, generation: generation)
+                    await apply(updated, generation: generation, saysWhose: true)
                 }
             } catch {
                 var failed = account
@@ -415,8 +428,8 @@ public final class AgentConnections {
     /// `cloudFarewell` to a server about to be removed, on a client of its
     /// own while everything it needs is still in place.
     private func farewell(_ id: String) -> Task<Void, Never>? {
-        guard let say = cloudFarewell, !signedOut(id), let client = agentClient(for: id) else { return nil }
-        return Task { await waitAtMost(Self.farewellLimit) { await say(id, client) } }
+        guard let say = cloudFarewell, !signedOut(id), let credential = credential(for: id), let client = agentClient(for: id) else { return nil }
+        return Task { await waitAtMost(Self.farewellLimit) { await say(id, credential, client) } }
     }
 
     /// What `forget` took away, for its owner to stop off screen.
@@ -630,9 +643,14 @@ public final class AgentConnections {
 
     nonisolated static func retryDelay(_ attempt: Int) -> Int { min(30, 1 << max(0, min(5, attempt))) }
 
-    private func apply(_ account: AgentConnection, generation: UInt64, issue: (any Error)? = nil) async {
+    /// Whose a pairing is comes from its computer's bootstrap alone
+    /// (`saysWhose`, from `heard`). Every other caller holds a copy made
+    /// before its own read, and what was heard meanwhile stays.
+    private func apply(_ account: AgentConnection, generation: UInt64, issue: (any Error)? = nil, saysWhose: Bool = false) async {
         guard !Task.isCancelled, self.generation == generation,
               let index = accounts.firstIndex(where: { $0.id == account.id }) else { return }
+        var account = account
+        if !saysWhose { account.member = accounts[index].member; account.memberKnown = accounts[index].memberKnown }
         Happenings.post(.agentConnectionChanged(id: account.id, direct: account.server == nil,
                                                  down: account.status == .retrying || account.status == .revoked,
                                                  problem: issue.flatMap(Problem.init)))
@@ -645,7 +663,7 @@ public final class AgentConnections {
         // The installation and the member are what a tapped push that
         // launches the app is matched against, before anything is read.
         if previous.name != account.name || previous.avatar != account.avatar || previous.avatarETag != account.avatarETag || previous.thumbhash != account.thumbhash || previous.revoked != account.revoked
-            || previous.instanceId != account.instanceId || previous.member != account.member {
+            || previous.instanceId != account.instanceId || previous.member != account.member || previous.memberKnown != account.memberKnown {
             try? await storage.update(account)
         }
     }

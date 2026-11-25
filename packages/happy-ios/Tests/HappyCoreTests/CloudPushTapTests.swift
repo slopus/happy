@@ -189,6 +189,13 @@ final class CloudPushTapTests: XCTestCase {
                                            access: OAuthAccess(token: "a", expiresAt: nil), name: "Team", instanceId: instance)
     }
 
+    /// The pairing's daemon says whose it is, as its bootstrap does: a
+    /// team user, or null for a computer of the person's own.
+    @MainActor
+    private func named(_ owner: JSONValue, _ paired: AgentConnection, in manager: AgentConnections) async {
+        await manager.heard(.verified(SyncEngine.Computer(health: nil, node: nil, owner: owner)), from: paired.id)
+    }
+
     @MainActor
     private func chosen(_ push: CloudPushNotification, in manager: AgentConnections) -> String? {
         push.connection(in: manager.accounts, member: { manager.pushMember(for: $0) }, open: manager.activeID)
@@ -202,6 +209,7 @@ final class CloudPushTapTests: XCTestCase {
         let manager = try await registry().manager
         let paired = try await manager.add(pairing(), name: "Mac")
         XCTAssertEqual(paired.instanceId, notice.instanceId)
+        await named(.null, paired, in: manager)
         XCTAssertEqual(chosen(Self.standalone, in: manager), paired.id)
         XCTAssertNil(chosen(notice, in: manager), "a member's push opened on a pairing")
         var elsewhere = Self.standalone
@@ -225,6 +233,7 @@ final class CloudPushTapTests: XCTestCase {
         let signedIn = try await signIn(manager, as: "member-one")
         XCTAssertNil(chosen(Self.standalone, in: manager), "a standalone push opened on a member's sign-in")
         let paired = try await manager.add(pairing(), name: "Mac")
+        await named(.null, paired, in: manager)
         for open in [signedIn.id, paired.id] {
             manager.open(open)
             XCTAssertEqual(chosen(Self.standalone, in: manager), paired.id)
@@ -284,5 +293,122 @@ final class CloudPushTapTests: XCTestCase {
         await restored.setForeground(false)
         try await restored.restore()
         XCTAssertEqual(chosen(Self.standalone, in: restored), paired.id)
+    }
+    /// A pairing is nobody's until its computer has said whose it is. A
+    /// team's daemon read as a computer of the person's own would register
+    /// as `standalone` and take a `standalone` push before its first
+    /// bootstrap named its member. So: nothing registered, nothing opened,
+    /// until a bootstrap carries `profile.userId`, a member or null. An
+    /// older daemon's bootstrap has no such key and leaves it so.
+    @MainActor
+    func testAPairingWhoseComputerHasNotSaidWhoseItIsIsNobodys() async throws {
+        let (manager, store, directory) = try await registry()
+        let paired = try await manager.add(pairing(), name: "Team Mac")
+        XCTAssertNil(manager.pushMember(for: paired.id))
+        XCTAssertFalse(manager.registersForPush(paired.id))
+        XCTAssertNil(chosen(Self.standalone, in: manager), "a pairing whose member is unread took a standalone push")
+        XCTAssertNil(chosen(notice, in: manager))
+
+        await manager.heard(.verified(SyncEngine.Computer(health: nil, node: nil)), from: paired.id)
+        XCTAssertFalse(manager.registersForPush(paired.id), "a bootstrap that says nothing of it was read as a computer of the person's own")
+        XCTAssertNil(chosen(Self.standalone, in: manager))
+
+        await named(.null, paired, in: manager)
+        XCTAssertTrue(manager.registersForPush(paired.id))
+        XCTAssertEqual(chosen(Self.standalone, in: manager), paired.id)
+
+        // Kept: a tap that launches the app finds it before anything is read.
+        let restored = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in IdentityTransport() })
+        await restored.setForeground(false)
+        try await restored.restore()
+        XCTAssertTrue(restored.registersForPush(paired.id))
+        XCTAssertEqual(chosen(Self.standalone, in: restored), paired.id)
+
+        // A sign-in registers as it always did: its server knows who asks.
+        let signedIn = try await signIn(manager, as: nil)
+        XCTAssertTrue(manager.registersForPush(signedIn.id))
+    }
+
+    /// The daemon's routes, with a pairing's own check held at `gate`
+    /// from its first request, once asked to.
+    actor HeldCheck: AgentTransport {
+        let inner: IdentityTransport
+        let gate: CloudPushTests.Gate
+        private var holding = false
+        init(_ inner: IdentityTransport, _ gate: CloudPushTests.Gate) { self.inner = inner; self.gate = gate }
+        func hold() { holding = true }
+        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+            if holding, path == "/v0/health" { holding = false; await gate.wait() }
+            return try await inner.request(method: method, path: path, credential: credential, body: body, headers: headers)
+        }
+        func close() {}
+    }
+
+    /// A pairing is checked on its own beside its engine (its name, its
+    /// picture). A check begun before the computer said whose the pairing
+    /// is, and landing after, unsays nothing: only the computer's
+    /// bootstrap says whose it is.
+    @MainActor
+    func testAPairingsOwnCheckNeverUnsaysWhoseItIs() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let daemon = IdentityTransport()
+        await daemon.report(instanceId: notice.instanceId)
+        let gate = CloudPushTests.Gate()
+        let held = HeldCheck(daemon, gate)
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: directory, makeTransport: { _ in held })
+        await manager.setForeground(false)
+        let paired = try await manager.add(pairing(), name: "Team Mac")
+        await held.hold()
+        await manager.setForeground(true)
+        try await gate.arrival()
+        await named(.string("member-one"), paired, in: manager)
+        XCTAssertEqual(manager.pushMember(for: paired.id), "member-one")
+        let before = await daemon.paths().count
+        await gate.open()
+        for _ in 0..<200 where await daemon.paths().count < before + 2 { try await Task.sleep(for: .milliseconds(10)) }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(manager.pushMember(for: paired.id), "member-one", "the pairing's own check unsaid whose it is")
+        XCTAssertEqual(chosen(notice, in: manager), paired.id)
+        await manager.setForeground(false)
+    }
+
+    /// A server that calls its user `standalone` is still a server signed
+    /// in to: a computer's own push never opens on it, whatever
+    /// installation it says it is.
+    @MainActor
+    func testASignInNamedStandaloneIsNotAComputersOnePerson() async throws {
+        let manager = try await registry().manager
+        _ = try await signIn(manager, as: "standalone")
+        XCTAssertNil(chosen(Self.standalone, in: manager))
+    }
+
+    /// Nothing checks that a server is the installation it says it is, so
+    /// a server of one's own can claim a Happy Cloud server's installation
+    /// and member. It never wins that server's push: among the connections
+    /// a push matches, those to a Happy Cloud host come first, then the
+    /// open one, then the first listed.
+    func testAHappyCloudServerWinsItsPushOverAServerClaimingToBeIt() {
+        func server(_ id: String, _ origin: String, revoked: Bool = false) -> AgentConnection {
+            var value = connection(id, revoked: revoked)
+            value.server = origin
+            return value
+        }
+        let member: (String) -> String? = { _ in "member-one" }
+        let claiming = server("claiming", "https://happy.claims.example")
+        let cloud = server("cloud", HappyCloud.server(named: "acme"))
+        let other = server("other-cloud", HappyCloud.server(named: "globex"))
+        for list in [[claiming, cloud], [cloud, claiming]] {
+            XCTAssertEqual(notice.connection(in: list, member: member, open: "claiming"), "cloud")
+            XCTAssertEqual(notice.connection(in: list, member: member, open: nil), "cloud")
+        }
+        XCTAssertEqual(notice.connection(in: [claiming, connection("pairing"), cloud], member: member, open: "pairing"), "cloud")
+        // Among Happy Cloud servers, and among others, as before: the open one, else the first.
+        XCTAssertEqual(notice.connection(in: [claiming, cloud, other], member: member, open: "other-cloud"), "other-cloud")
+        XCTAssertEqual(notice.connection(in: [claiming, cloud, other], member: member, open: "claiming"), "cloud")
+        XCTAssertEqual(notice.connection(in: [claiming, connection("pairing")], member: member, open: "pairing"), "pairing")
+        // A Happy Cloud server signed out of matches nothing, as any does.
+        XCTAssertEqual(notice.connection(in: [claiming, server("cloud", HappyCloud.server(named: "acme"), revoked: true)], member: member, open: nil), "claiming")
     }
 }

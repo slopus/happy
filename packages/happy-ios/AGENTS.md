@@ -354,7 +354,16 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     first (`AgentConnections.cloudFarewell`). A server gives each
     registration it takes a new version and takes off only the latest, so
     one is sent per connection at a time and leaving waits for the one on
-    its way (`CloudPush.registering`). Every server gets the same
+    its way (`CloudPush.registering`). Once leaving a connection has
+    begun nothing registers on it again. A pairing's farewell is durable:
+    its credentials, the registration's id and its version are kept in a
+    Keychain item of their own (`happy-ios:cloud-push-unregister`) before
+    the computer is asked, and until it answers, a 401 included; a
+    computer off or out of reach is asked again while the app runs and at
+    each launch, for the registration's thirty days at most, and the app
+    left right after the tap holds background time for it. A sign-in's
+    credentials are never kept: its session ends with it. Every server
+    gets the same
     relay token and the relay takes a send from whoever holds it, so a
     push may name a connection its sender isn't: a tap only ever opens a
     chat that connection already has.
@@ -364,12 +373,22 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     rules). The tap opens that agent's chat
     (`AppCoordinator.openAgent(fromNotification:)`) on the connection to
     that installation as that member, switched to first, as an instance
-    link opens. A sign-in is the member it signed in as. A pairing is the
-    team user its daemon says it belongs to (the bootstrap's
-    `profile.userId`, kept as `AgentConnection.member`), and `standalone`
-    when the daemon names none: what a daemon outside a team sends
-    (`AgentConnections.pushMember`). Never another login because it shares the
-    server or is the one open; signed out or not here, nothing opens. A
+    link opens. A sign-in is the member it signed in as, never
+    `standalone`. A pairing is the team user its daemon says it belongs
+    to (the bootstrap's `profile.userId`, kept as
+    `AgentConnection.member`), and `standalone` when the daemon says
+    null: what a daemon outside a team sends
+    (`AgentConnections.pushMember`). Until a bootstrap has carried that
+    key (`AgentConnection.memberKnown`) a pairing is nobody's: it
+    registers nothing (`registersForPush`, `Session.renewPush` registers
+    when it turns) and no push opens on it, so a team's daemon is never
+    taken for a computer of one's own. Only the bootstrap writes the two
+    (`AgentConnections.heard`): every other change to a connection keeps
+    them, its own check's older copy included. Never another login because it
+    shares the server or is the one open; signed out or not here, nothing
+    opens. Nothing checks that a server is the installation it says it
+    is: when more than one connection matches, those to a Happy Cloud
+    host come first, then the open one, then the first listed. A
     cloud payload this app can't read (another version, an extra or
     missing field) opens nothing and is never read for a `sessionId`. A
     tap that launches the app waits for the stored connections. A switch

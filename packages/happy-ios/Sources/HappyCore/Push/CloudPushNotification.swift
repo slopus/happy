@@ -56,15 +56,24 @@ public struct CloudPushNotification: Equatable, Sendable {
     }
 
     /// The connection a tap opens on: one to that installation as that
-    /// member, and still usable; `open` when it is one of them. Never
-    /// another login because it shares the server or is the one open, and
-    /// nil when there is none. `member` is who a connection's pushes name
+    /// member, and still usable. Never another login because it shares
+    /// the server or is the one open, and nil when there is none.
+    /// `member` is who a connection's pushes name
     /// (`AgentConnections.pushMember(for:)`): a sign-in's member, nil while
     /// it waits for its profile, and for a pairing its team user or
-    /// `standalone`. So a daemon's `standalone` push opens only on a
-    /// pairing, and a member's never on another member's connection.
+    /// `standalone`, nil until its computer has said which. So a daemon's
+    /// `standalone` push opens only on a pairing, and a member's never on
+    /// another member's connection.
+    ///
+    /// Nothing checks that a server is the installation it says it is, so
+    /// more than one connection can match. Those to a Happy Cloud host
+    /// come first: a server of one's own that claims a Happy Cloud
+    /// server's installation and member never takes its push. Then `open`
+    /// when it is one of them, then the first listed.
     public func connection(in connections: [AgentConnection], member: (String) -> String?, open: String?) -> String? {
-        let matches = connections.filter { !$0.revoked && $0.instanceId == instanceId && member($0.id) == userId }
+        var matches = connections.filter { !$0.revoked && $0.instanceId == instanceId && member($0.id) == userId }
+        let cloud = matches.filter { HappyCloud.isCloud($0.server) }
+        if !cloud.isEmpty { matches = cloud }
         return (matches.first { $0.id == open } ?? matches.first)?.id
     }
 }

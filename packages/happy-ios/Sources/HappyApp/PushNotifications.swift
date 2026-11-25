@@ -75,7 +75,8 @@ final class PushNotifications: NSObject {
             transport: URLSessionTransport(),
             permission: { await Self.permission() },
             requestPermission: { await Self.requestPermission() },
-            apnsToken: { try await apns.token() }
+            apnsToken: { try await apns.token() },
+            leaving: KeychainCloudPushUnregisterStore(backend: SecurityKeychainBackend())
         ))
     }()
 
@@ -85,7 +86,17 @@ final class PushNotifications: NSObject {
         self.coordinator = coordinator
         // Signed out of a server, or its computer unpaired: its notifications stop now.
         let cloudPush = self.cloudPush
-        context.account.agentConnections.cloudFarewell = { id, client in try? await cloudPush.unregister(connection: id, client: client) }
+        context.account.agentConnections.cloudFarewell = { id, credentials, client in
+            // The app left right after the tap still gets to tell the computer.
+            let hold = await FarewellHold()
+            try? await cloudPush.unregister(connection: id, client: client, credentials: credentials)
+            Task {
+                await cloudPush.waitUntilSettled(limit: .seconds(20))
+                await hold.end()
+            }
+        }
+        // Computers an earlier launch could not tell are asked again.
+        Task { await cloudPush.resume() }
         accountsObservation = context.account.observeAccounts { [weak self] _ in
             self?.accountsChanged()
         }
@@ -252,6 +263,23 @@ private struct StandardDefaults: KeyValueStore {
         } else {
             UserDefaults.standard.removeObject(forKey: key)
         }
+    }
+}
+
+/// Background time for telling a computer it is unpaired, when the app is
+/// left as that starts. iOS ending the time first ends it here.
+@MainActor
+private final class FarewellHold {
+    private var task: UIBackgroundTaskIdentifier = .invalid
+
+    init() {
+        task = UIApplication.shared.beginBackgroundTask(withName: "happy.farewell") { [weak self] in self?.end() }
+    }
+
+    func end() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
     }
 }
 #endif

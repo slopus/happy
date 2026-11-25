@@ -90,6 +90,8 @@ final class Session {
     private(set) var following: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var connectionObservation: AccountsObservation?
+    /// `AgentConnections.registersForPush`, as last seen.
+    private var registersForPush = false
     private var connectionFollowing: Task<Void, Never>?
     /// What home lists for this computer (`SidebarRows`), as it last came.
     private(set) var home = HomeSnapshot()
@@ -224,8 +226,13 @@ final class Session {
                 else if back { Task { await engine.reconnect() } }
             }
         }
+        registersForPush = account.agentConnections.registersForPush(accountID)
         connectionObservation = account.observeAccounts { [weak self, weak account] _ in
             guard let self, let account else { return }
+            // A pairing registers for push once its computer has said
+            // whose it is, which can be after it came up.
+            let registers = account.agentConnections.registersForPush(accountID)
+            if registers, !registersForPush { registersForPush = true; renewPush() }
             computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? computerName
             instanceId = account.agentConnections.accounts.first { $0.id == accountID }?.instanceId
             warm.instanceId = instanceId
@@ -288,11 +295,12 @@ final class Session {
     }
 
     /// This phone's push registration on the server, where it takes one
-    /// (`CloudPush`): renewed quietly where notifications are allowed. On
+    /// (`CloudPush`): renewed quietly where notifications are allowed, and
+    /// for a pairing only once its computer has said whose it is. On
     /// a Happy Cloud server a new one completes onboarding's `mobileApp`
     /// gate, which is read again for it.
     private func renewPush() {
-        guard let push = SettingsHooks.cloudPush else { return }
+        guard registersForPush, let push = SettingsHooks.cloudPush else { return }
         let client = client
         let connection = accountID
         let cloud = isCloud

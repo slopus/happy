@@ -307,7 +307,8 @@ final class AgentConnectionsTests: XCTestCase {
     func testLeavingAServerSaysFarewellFirst() async throws {
         actor Farewells {
             var ids: [String] = []
-            func add(_ id: String) { ids.append(id) }
+            var credentials: [String: AgentConnectionCredentials] = [:]
+            func add(_ id: String, _ credential: AgentConnectionCredentials) { ids.append(id); credentials[id] = credential }
         }
         let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in IdentityTransport() })
         await manager.setForeground(false)
@@ -316,7 +317,7 @@ final class AgentConnectionsTests: XCTestCase {
         let record = ServerSignInRecord(method: method, grant: OAuthGrant(clientId: "happy"), userId: "u1")
         let access = OAuthAccess(token: "a", expiresAt: nil)
         let farewells = Farewells()
-        manager.cloudFarewell = { id, _ in await farewells.add(id) }
+        manager.cloudFarewell = { id, credentials, _ in await farewells.add(id, credentials) }
         let acme = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "acme")), signIn: record, access: access, name: "Acme")
         let globex = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "globex")), signIn: record, access: access, name: "Globex")
         let own = try await manager.addServer(try AgentOrigin("https://happy.acme.example"), signIn: record, access: access, name: "Own")
@@ -330,6 +331,11 @@ final class AgentConnectionsTests: XCTestCase {
         for _ in 0..<50 where await farewells.ids.count < 4 { try await Task.sleep(for: .milliseconds(20)) }
         let all = await farewells.ids
         XCTAssertEqual(all, [acme.id, own.id, paired.id, globex.id])
+        // With what the connection was reached by: a pairing's is what a
+        // later try needs once the pairing is gone.
+        let credentials = await farewells.credentials
+        XCTAssertEqual(credentials[paired.id], value())
+        XCTAssertNotNil(credentials[own.id]?.signIn)
     }
 
     /// Happy Cloud's list joins several servers before one is opened: one

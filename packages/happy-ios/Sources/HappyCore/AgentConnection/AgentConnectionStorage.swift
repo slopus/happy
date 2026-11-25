@@ -36,6 +36,10 @@ public struct AgentConnection: Codable, Equatable, Sendable, Identifiable {
     /// (`AgentConnections.pushMember`); a sign-in's member is in its
     /// credentials.
     public var member: String? = nil
+    /// A pairing's computer has said whose it is (its bootstrap carried
+    /// `profile.userId`, a team user or null). Until then the pairing has
+    /// no member: nothing is registered for it and no push opens on it.
+    public var memberKnown: Bool? = nil
 
     public init(id: String, name: String, addedAt: Date = Date()) {
         self.id = id; self.name = name; self.addedAt = addedAt
