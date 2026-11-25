@@ -2664,16 +2664,26 @@ API.md, "Viewers"; the same contract happy-cluster serves). `viewers/` is
 the wire and state, `ui/viewers/` the slot; words are
 `strings_viewers.xml` in every locale.
 
-- **Store** (`Viewers`, one per `AgentSession`): the hello's `streamId`
-  opens it, the stream's end closes it (and drops the lists). A screen
-  holds its target while resumed (`ViewersSlot` does it with
-  `repeatOnLifecycle(RESUMED)`), so background, lock and leaving all
-  unview it. What is viewed (newest first, at most 8) goes to `PUT
-  /v0/viewers/streams/:streamId` 300 ms after it settles, every 15 s while
-  anything is, and `[]` once nothing is. Each answer replaces the lists;
-  `viewers.updated` frames (routed beside the document frames, never to the
-  journal) land on top in arrival order. A 404 (standalone, older) hides
-  the slot and asks nothing more until the next stream.
+- **Store** (`Viewers`, one per `AgentSession`): one owner coroutine takes
+  every change in order (views, the hello's `streamId`, the stream's end,
+  frames, answers), so nothing shown comes from a stream or a send that is
+  over: a new stream or its end cancels the send that is out and drops its
+  answer. A screen holds its target while resumed (`ViewersSlot` does it
+  with `repeatOnLifecycle(RESUMED)`), so background, lock and leaving all
+  unview it; a target whose last screen leaves stays viewed 600 ms, so a
+  450 ms push to another screen of it (a vault's folders) never leaves it.
+  What is viewed (newest first, at most 8) goes to `PUT
+  /v0/viewers/streams/:streamId` 300 ms after the last change (trailing),
+  again 15 s after each send (from the send, not its answer), 3 s after a
+  failed one, and `[]` once nothing is and the stream may still hold
+  something: any non-empty send counts until an answered `[]` or a new
+  stream, so a lost answer still gets cleared. Each answer replaces the
+  lists; a target left for good loses its list. `viewers.updated` frames
+  (routed beside the document frames, never to the journal) land on top in
+  arrival order, those that overtook the answer included. Answers and
+  frames are read entry by entry, so a target type this build doesn't know
+  drops alone. A 404 (standalone, older) hides the slot and asks nothing
+  more until a hello with another `streamId`.
 - **Tiers** (`ViewerTier`): Here, Recent (gone at most 10 minutes) and
   Seen; the slot redraws at the next badge minute or tier change
   (`ViewerTier.nextChange`), never on a fixed tick.
@@ -2684,7 +2694,10 @@ the wire and state, `ui/viewers/` the slot; words are
   green dot, pops in on a spring and fades its ring as they go; faces move
   by translation alone. Recent shows its minutes, Seen is smaller and grey.
   A tap lists everyone: "here now", "4 minutes ago", "Nov 12". In a
-  document the slot stands in for the cursor-coloured peers once served.
+  document the slot is the one indicator once served (as on iOS): its list
+  marks who is editing in their cursor's colour, and adds editors the
+  viewers don't name (older clients). Right to left it mirrors; at large
+  text the minutes and `+N` grow past their cells over the faces.
 - **Where:** the chat's bar (`ConversationScreen(viewers)`) and every
   Surface's bar beside its menu (todo, document, calendar, system monitor,
   vault, references and the rest).

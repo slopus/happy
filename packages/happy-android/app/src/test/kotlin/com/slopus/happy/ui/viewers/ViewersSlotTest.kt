@@ -1,10 +1,13 @@
 package com.slopus.happy.ui.viewers
 
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -13,6 +16,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.TeamUser
@@ -104,5 +108,36 @@ class ViewersSlotTest {
         rule.onNodeWithText("Anna").assertExists()
         rule.onNodeWithText("4 minutes ago").assertExists()
         rule.onNodeWithText("Max").assertExists()
+    }
+
+    @Test
+    fun rightToLeftTheFacesRunFromTheOtherEnd() {
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) { ViewersRow(crowd(10), emptyMap(), clock = { now }) }
+        }
+        val slot = rule.node(ViewersTags.SLOT).bounds
+        val faces = faces()
+        assertEquals(4, faces.size)
+        assertDp("the first face at the slot's start, on the right", slot.right, faces[3].right)
+        assertDp("18 apart", 18.dp, faces[3].left - faces[2].left)
+        assertDp("the count at the slot's end, on the left", slot.left + 4.dp, rule.node(ViewersTags.MORE).bounds.left)
+    }
+
+    @Test
+    fun editorsAreMarkedInTheListAndOnesTheViewersDontNameAdded() {
+        val editors = listOf(ViewersEditor("Kirill", Color.Red), ViewersEditor("Old Client", Color.Blue))
+        rule.setHappyContent { ViewersRow(listOf(kirill, anna), people, editors = editors, clock = { now }) }
+        rule.node(ViewersTags.SLOT).performClick()
+        rule.onNodeWithText("here now · editing").assertExists()
+        rule.onNodeWithText("Old Client").assertExists()
+        rule.onNodeWithText("editing").assertExists()
+        rule.onAllNodesWithTag(ViewersTags.EDITOR, useUnmergedTree = true).assertCountEquals(2)
+    }
+
+    @Test
+    fun editorsAloneStillOpenTheList() {
+        rule.setHappyContent { ViewersRow(emptyList(), people, editors = listOf(ViewersEditor("Anna", Color.Red)), clock = { now }) }
+        rule.node(ViewersTags.SLOT).performClick()
+        rule.onNodeWithText("Anna").assertExists()
     }
 }
