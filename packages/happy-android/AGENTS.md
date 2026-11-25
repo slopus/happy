@@ -1705,10 +1705,14 @@ After unpair the daemon holds no registration for this phone. Forgetting a
 connection unregisters first (`beforeRemoval`), because a daemon keeps a
 phone it was never told to forget. A registration sent is never cancelled
 (the daemon gives every one a new version, and a removal naming an older
-one removes nothing). A farewell the daemon did not answer stays in the
+one removes nothing). One whose answer never came all the same (a timeout,
+a dead process) leaves the binding marked `unanswered`, written before the
+request: its farewell then registers once more first, the only way to hear
+the row's version, and removes with that (`putFirst`; a pairing's record
+keeps the relay token for it until it has the version). A farewell the daemon did not answer stays in the
 encrypted ledger: a pairing's with that pairing's own route to its daemon
-(`CloudPushFarewellRoute`, the only credential the ledger ever holds, and
-only until delivered), asked again at launch, on foreground, when the
+(`CloudPushFarewellRoute`, with that relay token the only capabilities the
+ledger ever holds, and only until delivered), asked again at launch, on foreground, when the
 network returns and on a backing-off timer, until the daemon answers or
 the registration would have expired; a sign-in's without any credential,
 until the same member signs in again.

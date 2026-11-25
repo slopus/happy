@@ -320,6 +320,6 @@ class CloudPushRegistrations(
         /** happy-agent keeps a registration 30 days from the PUT that made it: the bound for one whose answer was never heard. */
         const val REGISTRATION_LIFETIME = 30L * 24 * 60 * 60 * 1000
         /** Whether a registration sent is marked unanswered until its answer is kept. */
-        const val MARKS_UNANSWERED = false
+        const val MARKS_UNANSWERED = true
     }
 }
