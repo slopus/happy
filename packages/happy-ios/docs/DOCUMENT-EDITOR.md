@@ -193,7 +193,10 @@ tells it when the stream opens and closes.
   `{user: {name, color}, cursor: {anchor, head}}`, with relative
   positions. It is sent at most every 250 ms and repeated every 15 s so
   the daemon keeps it.
-- **The header.** It says Saved, Saving… or Waiting to sync.
+- **The header.** It says Saved, Saving… or Waiting to sync. On a team
+  server its viewers (`ViewersBar`) take the place of the other editors'
+  initials; their rings wear their cursors' hues, and the cursors stay
+  in the text.
 
 `DocumentLibrary` (one per account, on `SyncEngine.documents`) holds a
 sync while an editor has it open, and afterwards until everything made

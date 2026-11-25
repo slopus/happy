@@ -158,13 +158,17 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
     }
 
     private func setUpBar() {
-        guard mode == .list else { return }
+        let viewers = ViewersBar.item(session: session, target: .surface(surfaceId), ground: UIColor(Palette.groupedGround))
+        guard mode == .list else {
+            navigationItem.rightBarButtonItem = viewers
+            return
+        }
         let more = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: UIMenu(children: [
             UIAction(title: Strings.Todos.showDeleted, image: UIImage(systemName: "trash")) { [weak self] _ in self?.openDeleted() },
         ]))
         more.accessibilityLabel = Strings.Todos.more
         more.accessibilityIdentifier = "todo-more"
-        navigationItem.rightBarButtonItem = more
+        navigationItem.rightBarButtonItems = [more] + (viewers.map { [$0] } ?? [])
     }
 
     override func viewWillDisappear(_ animated: Bool) {

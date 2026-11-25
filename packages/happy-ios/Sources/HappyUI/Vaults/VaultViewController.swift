@@ -160,19 +160,23 @@ final class VaultViewController: UIViewController {
         navigationItem.titleMenuProvider = { [weak self] _ in self?.pathMenu() }
     }
 
-    /// "+" while the folder can change, and "…".
+    /// Who else looks at the vault, whichever of its folders.
+    private lazy var viewersItem = ViewersBar.item(session: session, target: .surface(surfaceId), ground: UIColor(Palette.groupedGround))
+
+    /// "+" while the folder can change, and "…", then the viewers.
     private func updateBarItems() {
+        let viewers = viewersItem.map { [$0] } ?? []
         let more = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in done(self?.moreItems() ?? []) }]))
         more.accessibilityLabel = Strings.Vaults.more
         more.accessibilityIdentifier = "vault-more"
         guard !state.inTrash, state.status != .missing, writable else {
-            navigationItem.rightBarButtonItems = [more]
+            navigationItem.rightBarButtonItems = [more] + viewers
             return
         }
         let add = UIBarButtonItem(image: .icon(.ionicons("add"), size: 26), menu: addMenu())
         add.accessibilityLabel = Strings.Vaults.add
         add.accessibilityIdentifier = "vault-add"
-        navigationItem.rightBarButtonItems = [more, add]
+        navigationItem.rightBarButtonItems = [more, add] + viewers
     }
 
     private func addMenu() -> UIMenu {
