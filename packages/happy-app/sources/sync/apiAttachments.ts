@@ -15,6 +15,7 @@ import { getServerUrl } from './serverConfig';
 import { appendFormFile } from './uploadFormFile';
 import type { AttachmentKind } from './attachmentTypes';
 import { captureAttachmentContext, subscribeAttachmentCache, type AttachmentContext } from './attachmentCacheContext';
+import { waitForAttachmentTransfer, withAttachmentDeadline } from './attachmentTransfer';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB — encrypted image lane
 export const MAX_MEDIA_FILE_SIZE = 500 * 1024 * 1024; // 500MB — plaintext audio/video lane
@@ -268,18 +269,22 @@ async function requestAttachmentDownloadSourceUncached(
     sessionId: string,
     ref: string,
 ): Promise<AttachmentDownloadSource> {
-    const requestRes = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-download`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ref }),
-    });
-    if (!requestRes.ok) {
-        throw new Error(`request-download failed: ${requestRes.status}`);
-    }
-    const { downloadUrl: rawDownloadUrl } = await requestRes.json() as { downloadUrl: string };
+    const rawDownloadUrl = await withAttachmentDeadline(async signal => {
+        const requestRes = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-download`, {
+            method: 'POST',
+            signal,
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ref }),
+        });
+        if (!requestRes.ok) {
+            throw new Error(`request-download failed: ${requestRes.status}`);
+        }
+        const { downloadUrl } = await requestRes.json() as { downloadUrl: string };
+        return downloadUrl;
+    }, 20_000);
     const downloadUrl = rewriteLoopbackHost(rawDownloadUrl, API_ENDPOINT);
 
     const isServerUrl = downloadUrl.startsWith(API_ENDPOINT);
@@ -294,9 +299,9 @@ export function requestAttachmentDownloadSource(
     credentials: AuthCredentials,
     sessionId: string,
     ref: string,
-    options: { forceRefresh?: boolean } = {},
+    options: { forceRefresh?: boolean; signal?: AbortSignal } = {},
 ): Promise<AttachmentDownloadSource> {
-    return requestDownloadSourceAt(captureAttachmentContext(credentials, sessionId), sessionId, ref, options.forceRefresh);
+    return waitForAttachmentTransfer(requestDownloadSourceAt(captureAttachmentContext(credentials, sessionId), sessionId, ref, options.forceRefresh), options.signal);
 }
 
 function requestDownloadSourceAt(context: AttachmentContext, sessionId: string, ref: string, forceRefresh = false) {

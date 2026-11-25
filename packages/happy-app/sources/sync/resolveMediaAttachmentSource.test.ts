@@ -53,8 +53,9 @@ describe('resolveMediaAttachmentSource native media staging', () => {
             { token: 'test-token' },
             'session-1',
             'sessions/session-1/attachments/object.enc',
+            undefined,
         );
-        expect(mocks.downloadMediaPlaybackSource).toHaveBeenCalledWith(remote, 'video/mp4');
+        expect(mocks.downloadMediaPlaybackSource).toHaveBeenCalledWith(remote, 'video/mp4', undefined, expect.objectContaining({ ref: 'sessions/session-1/attachments/object.enc' }));
         expect(result).toBe(local);
     });
 

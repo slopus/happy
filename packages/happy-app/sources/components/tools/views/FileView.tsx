@@ -28,6 +28,7 @@ import { MAX_PDF_FILE_SIZE } from '@/sync/attachmentLimits';
 import type { MotionPhotoMetadata } from '@/sync/attachmentTypes';
 import { downloadOriginalAttachment } from '@/sync/downloadOriginalAttachment';
 import { saveVideoAttachment } from '@/sync/saveVideoAttachment';
+import { AttachmentTransferTimeoutError, waitForAttachmentTransfer, type AttachmentTransferProgress } from '@/sync/attachmentTransfer';
 import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 
 const fileInputSchema = z.object({
@@ -206,15 +207,23 @@ function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, sou
 }) {
     const { theme } = useUnistyles();
     const generation = React.useSyncExternalStore(subscribeAttachmentCache, attachmentCacheGeneration, attachmentCacheGeneration);
-    const [resolved, setResolved] = React.useState<{ source: MediaPlaybackSource; generation: number } | null>(null);
-    const source = resolved?.generation === generation ? resolved.source : null;
+    const resolvedMimeType = mimeType ?? 'video/mp4';
+    const identity = JSON.stringify([sessionId, ref_, name, encrypted, resolvedMimeType, generation]);
+    const [resolved, setResolved] = React.useState<{ source: MediaPlaybackSource; generation: number; identity: string } | null>(null);
+    const source = resolved?.generation === generation && resolved.identity === identity ? resolved.source : null;
     const [error, setError] = React.useState(false);
     const sourceType = attachmentSource === 'generated' ? 'generated' : 'user';
-    const resolvedMimeType = mimeType ?? 'video/mp4';
     const directUri = directAttachmentUri(ref_, sessionId);
     const [saveState, setSaveState] = React.useState<'idle' | 'saving' | 'saved' | 'downloaded' | 'error'>('idle');
     const saveRequest = React.useRef(0);
     const saving = React.useRef(false);
+    const saveAbort = React.useRef<AbortController | null>(null);
+    const playbackRequest = React.useRef<{ identity: string; promise: Promise<MediaPlaybackSource> } | null>(null);
+    const [savePhase, setSavePhase] = React.useState<'connecting' | 'downloading' | 'saving' | 'sharing'>('connecting');
+    const savePhaseRef = React.useRef(savePhase);
+    savePhaseRef.current = savePhase;
+    const [progress, setProgress] = React.useState<AttachmentTransferProgress | null>(null);
+    const [timedOut, setTimedOut] = React.useState(false);
     const canSave = Boolean(sessionId || directUri);
     const sizeLabel = humanSize(size);
 
@@ -222,7 +231,8 @@ function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, sou
         saveRequest.current += 1;
         saving.current = false;
         setSaveState('idle');
-        return () => { saveRequest.current += 1; };
+        setProgress(null);
+        return () => { saveRequest.current += 1; saveAbort.current?.abort(); };
     }, [encrypted, generation, name, ref_, resolvedMimeType, sessionId]);
 
     const handleSave = React.useCallback(async () => {
@@ -230,24 +240,49 @@ function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, sou
         const request = ++saveRequest.current;
         saving.current = true;
         setSaveState('saving');
+        const reusePending = Platform.OS !== 'web' && playbackRequest.current?.identity === identity;
+        const reuseReady = Boolean(source?.retain);
+        if (!reusePending && !reuseReady) setProgress(null);
+        setSavePhase((reusePending || reuseReady) && progress ? 'downloading' : 'connecting');
+        setTimedOut(false);
+        const controller = new AbortController();
+        saveAbort.current = controller;
+        const onProgress = (value: AttachmentTransferProgress) => {
+            if (saveRequest.current !== request) return;
+            setProgress(value);
+            setSavePhase('downloading');
+        };
         let downloadSource: MediaPlaybackSource | null = null;
         try {
-            // Own this source separately: a scrolling/unmounted player may release
-            // its cache file while the OS is still saving or sharing the video.
-            downloadSource = directUri
+            // Native playback and export can hold separate leases on one file,
+            // including an in-flight download, instead of downloading twice.
+            if (source?.retain) {
+                downloadSource = source.retain();
+            } else if (Platform.OS !== 'web' && playbackRequest.current?.identity === identity) {
+                const prepared = await waitForAttachmentTransfer(playbackRequest.current.promise, controller.signal);
+                if (saveRequest.current !== request) return;
+                downloadSource = prepared.retain?.() ?? null;
+            }
+            downloadSource ??= directUri
                 ? { uri: directUri, headers: {} }
                 : await resolveMediaAttachmentSource({
                     sessionId: sessionId!, ref: ref_, mimeType: resolvedMimeType, fileName: name, encrypted,
+                    signal: controller.signal, onProgress,
                 });
             if (saveRequest.current !== request || attachmentCacheGeneration() !== generation) return;
             if (downloadSource.isCurrent && !downloadSource.isCurrent()) return;
-            const result = await saveVideoAttachment(downloadSource, name, resolvedMimeType);
+            const result = await saveVideoAttachment(downloadSource, name, resolvedMimeType, {
+                signal: controller.signal, onProgress,
+                onPhase: phase => { if (saveRequest.current === request) setSavePhase(phase); },
+            });
             if (saveRequest.current === request && attachmentCacheGeneration() === generation) {
                 setSaveState(result === 'shared' ? 'idle' : result);
             }
         } catch (cause) {
             if (saveRequest.current === request && attachmentCacheGeneration() === generation) {
-                console.warn(`[media-attachment] failed to save ${name}`, cause);
+                // Native errors can contain signed URLs. Keep diagnostics bounded.
+                console.warn('[media-attachment] video save failed', { phase: savePhaseRef.current, timeout: cause instanceof AttachmentTransferTimeoutError });
+                setTimedOut(cause instanceof AttachmentTransferTimeoutError);
                 setSaveState('error');
             }
         } finally {
@@ -258,11 +293,20 @@ function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, sou
             } finally {
                 if (saveRequest.current === request) {
                     saving.current = false;
+                    saveAbort.current = null;
                     setSaveState((state) => state === 'saving' ? 'idle' : state);
                 }
             }
         }
-    }, [canSave, directUri, encrypted, generation, name, ref_, resolvedMimeType, sessionId]);
+    }, [canSave, directUri, encrypted, generation, identity, name, progress, ref_, resolvedMimeType, savePhase, sessionId, source]);
+
+    const handleCancelSave = () => {
+        saveRequest.current += 1;
+        saveAbort.current?.abort();
+        saveAbort.current = null;
+        saving.current = false;
+        setSaveState('idle');
+    };
 
     React.useEffect(() => {
         // Invalidation also destroys active streaming DOM. Resolve with the new
@@ -270,31 +314,46 @@ function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, sou
         setResolved(null);
         setError(false);
         if (directUri) {
-            setResolved({ source: { uri: directUri, headers: {} }, generation });
+            setResolved({ source: { uri: directUri, headers: {} }, generation, identity });
             return;
         }
         if (!sessionId) return;
         let cancelled = false;
-        void resolveMediaAttachmentSource({
+        const controller = new AbortController();
+        const promise = resolveMediaAttachmentSource({
             sessionId,
             ref: ref_,
             mimeType: resolvedMimeType,
+            fileName: name,
             encrypted,
-        }).then((resolvedSource) => {
+            signal: controller.signal,
+            onProgress: value => {
+                if (cancelled || attachmentCacheGeneration() !== generation) return;
+                setProgress(value);
+                if (saving.current) setSavePhase('downloading');
+            },
+        });
+        const pending = { identity, promise };
+        playbackRequest.current = pending;
+        void promise.then((resolvedSource) => {
             if (cancelled || attachmentCacheGeneration() !== generation) {
                 void resolvedSource.release?.();
                 return;
             }
-            setResolved({ source: resolvedSource, generation });
+            setResolved({ source: resolvedSource, generation, identity });
         }).catch((cause: unknown) => {
             if (cancelled || attachmentCacheGeneration() !== generation) return;
-            console.warn(`[media-attachment] failed to open ${name}`, cause);
+            console.warn('[media-attachment] video load failed', { timeout: cause instanceof AttachmentTransferTimeoutError });
             setError(true);
+        }).finally(() => {
+            if (playbackRequest.current === pending) playbackRequest.current = null;
         });
         return () => {
             cancelled = true;
+            controller.abort();
+            if (playbackRequest.current === pending) playbackRequest.current = null;
         };
-    }, [directUri, encrypted, generation, name, ref_, resolvedMimeType, sessionId]);
+    }, [directUri, encrypted, generation, identity, name, ref_, resolvedMimeType, sessionId]);
 
     React.useEffect(() => () => {
         void source?.release?.();
@@ -341,10 +400,31 @@ function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, sou
                         ? <ActivityIndicator size="small" color={theme.colors.text} />
                         : <Ionicons name="download-outline" size={18} color={theme.colors.text} />}
                     <Text style={[styles.videoSaveLabel, { color: theme.colors.text }]}>
-                        {t(saveState === 'saving' ? 'imageUpload.mediaSaving' : 'imageUpload.mediaSaveVideo')}
+                        {saveState !== 'saving' ? t('imageUpload.mediaSaveVideo')
+                            : t(savePhase === 'connecting' ? 'imageUpload.mediaConnecting'
+                                : savePhase === 'downloading' ? 'imageUpload.mediaDownloading'
+                                    : savePhase === 'sharing' ? 'imageUpload.mediaSharing' : 'imageUpload.mediaSavingToLibrary')}
                     </Text>
                 </Pressable>
+                {saveState === 'saving' && (savePhase === 'connecting' || savePhase === 'downloading') ? (
+                    <Pressable
+                        testID="media-attachment-cancel-save"
+                        accessibilityRole="button"
+                        accessibilityLabel={t('common.cancel')}
+                        onPress={handleCancelSave}
+                        style={styles.videoCancelButton}
+                    >
+                        <Ionicons name="close-outline" size={22} color={theme.colors.textSecondary} />
+                    </Pressable>
+                ) : null}
             </View>
+            {saveState === 'saving' && savePhase === 'downloading' && progress ? (
+                <Text testID="media-attachment-save-progress" style={[styles.videoSaveStatus, { color: theme.colors.textSecondary }]}>
+                    {progress.totalBytes
+                        ? `${Math.min(100, Math.floor(progress.bytesWritten / progress.totalBytes * 100))}% · ${humanSize(progress.bytesWritten) ?? '0KB'} / ${humanSize(progress.totalBytes)}`
+                        : humanSize(progress.bytesWritten) ?? '0KB'}
+                </Text>
+            ) : null}
             {saveState === 'saved' || saveState === 'downloaded' || saveState === 'error' ? (
                 <Text
                     testID="media-attachment-save-status"
@@ -352,7 +432,8 @@ function InlineVideoFile({ ref_, sessionId, name, size, mimeType, encrypted, sou
                     style={[styles.videoSaveStatus, { color: saveState === 'error' ? theme.colors.textDestructive : theme.colors.textSecondary }]}
                 >
                     {t(saveState === 'saved' ? 'imageUpload.mediaSavedToLibrary'
-                        : saveState === 'downloaded' ? 'imageUpload.mediaDownloadStarted' : 'imageUpload.mediaSaveFailed')}
+                        : saveState === 'downloaded' ? 'imageUpload.mediaDownloadStarted'
+                            : timedOut ? 'imageUpload.mediaSaveTimedOut' : 'imageUpload.mediaSaveFailed')}
                 </Text>
             ) : null}
             {error ? (
@@ -697,6 +778,12 @@ const styles = StyleSheet.create(() => ({
     videoSaveLabel: {
         fontSize: 13,
         fontWeight: '500',
+    },
+    videoCancelButton: {
+        width: 48,
+        height: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     videoSaveStatus: {
         fontSize: 12,

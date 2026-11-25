@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     save: vi.fn(),
@@ -13,6 +13,7 @@ vi.mock('./createMediaPlaybackSource', () => ({ downloadMediaPlaybackSource: moc
 import { saveVideoAttachment } from './saveVideoAttachment';
 
 describe('native video saving', () => {
+    afterEach(() => vi.useRealTimers());
     beforeEach(() => {
         vi.resetAllMocks();
         mocks.save.mockResolvedValue(undefined);
@@ -43,7 +44,7 @@ describe('native video saving', () => {
         const source = { uri: 'https://media.test/clip', headers: { Authorization: 'test-only' } };
         const pending = saveVideoAttachment(source, 'clip.mp4', 'video/mp4');
         await vi.waitFor(() => expect(mocks.save).toHaveBeenCalled());
-        expect(mocks.stage).toHaveBeenCalledWith(source, 'video/mp4', 'clip.mp4');
+        expect(mocks.stage).toHaveBeenCalledWith(source, 'video/mp4', 'clip.mp4', {});
         expect(release).not.toHaveBeenCalled();
         finishSave();
         await expect(pending).resolves.toBe('saved');
@@ -57,5 +58,24 @@ describe('native video saving', () => {
         mocks.available.mockResolvedValue(false);
         await expect(saveVideoAttachment({ uri: 'https://media.test/clip', headers: {} }, 'clip.mp4', 'video/mp4')).rejects.toThrow('Cannot save video');
         expect(release).toHaveBeenCalledOnce();
+    });
+
+    it('opens sharing after a stalled gallery write and retains the file until native IO actually finishes', async () => {
+        vi.useFakeTimers();
+        let finishNative!: () => void;
+        mocks.save.mockImplementationOnce(() => new Promise<void>(resolve => { finishNative = resolve; }));
+        const release = vi.fn();
+        const onPhase = vi.fn();
+        const source = { uri: 'file:///cache/clip.mp4', headers: {}, retain: () => ({ uri: 'file:///cache/clip.mp4', headers: {}, release }) };
+        const pending = saveVideoAttachment(source, 'clip.mp4', 'video/mp4', { onPhase });
+        await vi.advanceTimersByTimeAsync(45_000);
+        await expect(pending).resolves.toBe('shared');
+        expect(mocks.share).toHaveBeenCalledOnce();
+        expect(onPhase.mock.calls.map(call => call[0])).toEqual(['saving', 'sharing']);
+        // One lease belongs to the completed share; the stalled gallery still holds another.
+        expect(release).toHaveBeenCalledTimes(1);
+        finishNative();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(release).toHaveBeenCalledTimes(2);
     });
 });

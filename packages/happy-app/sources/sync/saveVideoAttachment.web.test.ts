@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { saveVideoAttachment } from './saveVideoAttachment.web';
 
 describe('browser video saving', () => {
-    afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+    afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
     it('downloads authenticated video bytes as the original MP4 filename and revokes the temporary URL', async () => {
         const blob = new Blob(['mp4 bytes'], { type: 'video/mp4' });
@@ -19,7 +19,7 @@ describe('browser video saving', () => {
             expect(this.isConnected).toBe(true);
         });
         await expect(saveVideoAttachment({ uri: 'https://media.test/clip', headers: { Authorization: 'test-only' } }, '成片.mp4', 'video/mp4')).resolves.toBe('downloaded');
-        expect(fetch).toHaveBeenCalledWith('https://media.test/clip', { headers: { Authorization: 'test-only' } });
+        expect(fetch).toHaveBeenCalledWith('https://media.test/clip', expect.objectContaining({ headers: { Authorization: 'test-only' }, signal: expect.anything() }));
         expect(fileName).toBe('成片.mp4');
         expect(click).toHaveBeenCalledOnce();
         expect(createObjectURL).toHaveBeenCalledWith(blob);
@@ -40,5 +40,18 @@ describe('browser video saving', () => {
         const click = vi.spyOn(HTMLAnchorElement.prototype, 'click');
         await expect(saveVideoAttachment({ uri: 'https://media.test/clip', headers: {} }, 'clip.mp4', 'video/mp4')).rejects.toThrow('401');
         expect(click).not.toHaveBeenCalled();
+    });
+
+    it('times out a stalled browser fetch and aborts it instead of reporting a download', async () => {
+        vi.useFakeTimers();
+        const fetch = vi.fn().mockReturnValue(new Promise(() => {}));
+        vi.stubGlobal('fetch', fetch);
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click');
+        const pending = saveVideoAttachment({ uri: 'https://media.test/stall', headers: {} }, 'clip.mp4', 'video/mp4', { stallTimeoutMs: 1000 }).catch(error => error);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(await pending).toMatchObject({ name: 'AttachmentTransferTimeoutError' });
+        expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
+        expect(click).not.toHaveBeenCalled();
+        expect(fetch).toHaveBeenCalledOnce();
     });
 });

@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMediaPlaybackSource, downloadMediaPlaybackSource } from './createMediaPlaybackSource';
 
 const mocks = vi.hoisted(() => ({
-    deleteAsync: vi.fn(),
+    deleteAsync: vi.fn(async () => undefined),
     downloadAsync: vi.fn(),
+    createTask: vi.fn(),
+    cancelAsync: vi.fn(async () => undefined),
     makeDirectoryAsync: vi.fn(),
     writeAsStringAsync: vi.fn(),
     writeBytes: vi.fn(),
@@ -19,7 +21,10 @@ vi.mock('expo-file-system', () => ({
 vi.mock('expo-file-system/legacy', () => ({
     cacheDirectory: 'file:///cache/',
     deleteAsync: mocks.deleteAsync,
-    downloadAsync: mocks.downloadAsync,
+    createDownloadResumable: (source: string, target: string, options: unknown, progress: unknown) => {
+        mocks.createTask(source, target, options, progress);
+        return { downloadAsync: () => mocks.downloadAsync(source, target, options), cancelAsync: mocks.cancelAsync };
+    },
     EncodingType: { Base64: 'base64' },
     makeDirectoryAsync: mocks.makeDirectoryAsync,
     writeAsStringAsync: mocks.writeAsStringAsync,
@@ -27,6 +32,7 @@ vi.mock('expo-file-system/legacy', () => ({
 vi.mock('@/encryption/base64', () => ({ encodeBase64: vi.fn() }));
 
 describe('downloadMediaPlaybackSource', () => {
+    afterEach(() => vi.useRealTimers());
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -52,6 +58,7 @@ describe('downloadMediaPlaybackSource', () => {
             uri: target,
             headers: {},
             release: expect.any(Function),
+            retain: expect.any(Function),
         });
 
         await result.release?.();
@@ -95,6 +102,55 @@ describe('downloadMediaPlaybackSource', () => {
 
         await result.release?.();
         expect(mocks.deleteAsync).toHaveBeenCalledWith(directory, { idempotent: true });
+    });
+
+    it('reports received bytes and cancels a download that stops making progress', async () => {
+        vi.useFakeTimers();
+        let rejectDownload!: (reason: unknown) => void;
+        mocks.downloadAsync.mockImplementation(() => new Promise((_, reject) => { rejectDownload = reject; }));
+        mocks.cancelAsync.mockImplementationOnce(async () => { rejectDownload(new Error('Native download cancelled')); });
+        const onProgress = vi.fn();
+        const pending = downloadMediaPlaybackSource({ uri: 'https://media.test/slow', headers: {} }, 'video/mp4', 'clip.mp4', { onProgress, stallTimeoutMs: 1000 });
+        const failure = pending.catch(error => error);
+        await vi.advanceTimersByTimeAsync(900);
+        const progress = mocks.createTask.mock.calls[0][3] as (value: any) => void;
+        progress({ totalBytesWritten: 512, totalBytesExpectedToWrite: 1024 });
+        expect(onProgress).toHaveBeenCalledWith({ bytesWritten: 512, totalBytes: 1024 });
+        await vi.advanceTimersByTimeAsync(900);
+        expect(mocks.cancelAsync).not.toHaveBeenCalled();
+        progress({ totalBytesWritten: 512, totalBytesExpectedToWrite: 1024 });
+        await vi.advanceTimersByTimeAsync(100);
+        expect(await failure).toMatchObject({ name: 'AttachmentTransferTimeoutError' });
+        expect(mocks.cancelAsync).toHaveBeenCalledOnce();
+        expect(mocks.downloadAsync).toHaveBeenCalledOnce();
+        expect(mocks.deleteAsync).toHaveBeenCalledOnce();
+    });
+
+    it('keeps a borrowed playback file alive through saving and releases it exactly once', async () => {
+        mocks.downloadAsync.mockImplementation(async (_source, target) => ({ uri: target, status: 200 }));
+        const playing = await downloadMediaPlaybackSource({ uri: 'https://media.test/clip', headers: {} }, 'video/mp4');
+        const saving = playing.retain!();
+        await playing.release!();
+        expect(mocks.deleteAsync).not.toHaveBeenCalled();
+        await saving.release!();
+        await saving.release!();
+        expect(mocks.deleteAsync).toHaveBeenCalledOnce();
+    });
+
+    it('cancels waiting promptly but deletes the partial file only after native IO settles', async () => {
+        let finishNative!: (result: { uri: string; status: number }) => void;
+        mocks.downloadAsync.mockImplementationOnce(() => new Promise(resolve => { finishNative = resolve; }));
+        const controller = new AbortController();
+        const pending = downloadMediaPlaybackSource({ uri: 'https://media.test/clip', headers: {} }, 'video/mp4', undefined, { signal: controller.signal });
+        const failure = pending.catch(error => error);
+        controller.abort();
+        expect(await failure).toMatchObject({ name: 'AbortError' });
+        expect(mocks.cancelAsync).toHaveBeenCalledOnce();
+        expect(mocks.deleteAsync).not.toHaveBeenCalled();
+        const target = mocks.downloadAsync.mock.calls[0][1];
+        finishNative({ uri: target, status: 200 });
+        await Promise.resolve();
+        expect(mocks.deleteAsync).toHaveBeenCalledWith(target, { idempotent: true });
     });
 });
 

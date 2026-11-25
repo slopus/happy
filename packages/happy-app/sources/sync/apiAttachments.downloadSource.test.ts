@@ -57,6 +57,24 @@ describe('requestAttachmentDownloadSource', () => {
         ]);
     });
 
+    it('times out a stalled descriptor and permits an explicit retry without reusing the hung request', async () => {
+        vi.useFakeTimers();
+        const late = deferred<Response>();
+        const fetchMock = vi.fn<typeof fetch>()
+            .mockReturnValueOnce(late.promise)
+            .mockResolvedValueOnce(jsonResponse({ downloadUrl: 'https://objects.test/retry' }));
+        vi.stubGlobal('fetch', fetchMock);
+        const first = requestAttachmentDownloadSource(credentials, 'stalled', 'ref').catch(error => error);
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(await first).toMatchObject({ name: 'AttachmentTransferTimeoutError' });
+        expect(fetchMock).toHaveBeenCalledOnce();
+        await expect(requestAttachmentDownloadSource(credentials, 'stalled', 'ref')).resolves.toEqual({ uri: 'https://objects.test/retry', headers: {} });
+        late.resolve(jsonResponse({ downloadUrl: 'https://objects.test/stale' }));
+        await vi.advanceTimersByTimeAsync(0);
+        await expect(requestAttachmentDownloadSource(credentials, 'stalled', 'ref')).resolves.toEqual({ uri: 'https://objects.test/retry', headers: {} });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it('bypasses a cached descriptor when the media reports a playback error', async () => {
         const fetchMock = vi.fn<typeof fetch>()
             .mockResolvedValueOnce(jsonResponse({ downloadUrl: 'https://objects.test/old' }))

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Platform } from 'react-native';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileView } from './FileView';
@@ -120,6 +121,7 @@ describe('FileView media playback', () => {
     let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+        (Platform as any).OS = 'web';
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         mocks.release.mockClear();
         mocks.openDocument.mockClear();
@@ -140,6 +142,46 @@ describe('FileView media playback', () => {
 
     afterEach(() => consoleWarnSpy.mockRestore());
 
+    it('shares a native in-flight video download with saving, shows progress and keeps a separate file lease', async () => {
+        (Platform as any).OS = 'android';
+        let finishDownload!: (source: any) => void;
+        mocks.resolveSource.mockImplementationOnce(() => new Promise(resolve => { finishDownload = resolve; }));
+        const releaseSave = vi.fn();
+        const retain = vi.fn(() => ({ uri: 'file:///cache/acceptance.mp4', headers: {}, release: releaseSave }));
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<FileView tool={videoTool()} sessionId="s1" metadata={null} messages={[]} />); });
+        let pending!: Promise<void>;
+        await act(async () => {
+            pending = renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.onPress();
+            (mocks.resolveSource.mock.calls as any[][])[0][0].onProgress({ bytesWritten: 2048, totalBytes: 4096 });
+        });
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-progress' }).props.children).toBe('50% · 2KB / 4KB');
+        expect(mocks.resolveSource).toHaveBeenCalledOnce();
+        await act(async () => { finishDownload({ uri: 'file:///cache/acceptance.mp4', headers: {}, release: mocks.release, retain }); await pending; });
+        expect(mocks.resolveSource).toHaveBeenCalledOnce();
+        expect(retain).toHaveBeenCalledOnce();
+        expect(releaseSave).toHaveBeenCalledOnce();
+        expect(mocks.release).not.toHaveBeenCalled();
+        await act(async () => renderer.unmount());
+        expect(mocks.release).toHaveBeenCalledOnce();
+    });
+
+    it('cancels saving promptly while a shared playback download continues, then prevents a late export', async () => {
+        (Platform as any).OS = 'android';
+        let finishDownload!: (source: any) => void;
+        mocks.resolveSource.mockImplementationOnce(() => new Promise(resolve => { finishDownload = resolve; }));
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<FileView tool={videoTool()} sessionId="s1" metadata={null} messages={[]} />); });
+        let pending!: Promise<void>;
+        await act(async () => { pending = renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.onPress(); });
+        await act(async () => { renderer.root.findByProps({ testID: 'media-attachment-cancel-save' }).props.onPress(); await pending; });
+        expect(renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.disabled).toBe(false);
+        expect((mocks.resolveSource.mock.calls as any[][])[0][0].signal.aborted).toBe(false);
+        await act(async () => { finishDownload({ uri: 'file:///cache/acceptance.mp4', headers: {}, release: mocks.release, retain: vi.fn() }); });
+        expect(mocks.saveVideo).not.toHaveBeenCalled();
+        await act(async () => renderer.unmount());
+    });
+
     it('offers saving while playback is still loading and exports an independently owned original video', async () => {
         const releaseDownload = vi.fn();
         mocks.resolveSource.mockImplementationOnce(() => new Promise(() => {}));
@@ -152,8 +194,8 @@ describe('FileView media playback', () => {
         const button = renderer.root.findByProps({ testID: 'media-attachment-save-generated' });
         expect(button.props.disabled).toBe(false);
         await act(async () => { await button.props.onPress(); });
-        expect(mocks.resolveSource).toHaveBeenLastCalledWith({ sessionId: 's1', ref: 'sessions/s1/attachments/acceptance.mp4', mimeType: 'video/mp4', fileName: 'acceptance.mp4', encrypted: false });
-        expect(mocks.saveVideo).toHaveBeenCalledWith(expect.objectContaining({ uri: 'file:///cache/acceptance.mp4' }), 'acceptance.mp4', 'video/mp4');
+        expect(mocks.resolveSource).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 's1', ref: 'sessions/s1/attachments/acceptance.mp4', mimeType: 'video/mp4', fileName: 'acceptance.mp4', encrypted: false, signal: expect.anything(), onProgress: expect.any(Function) }));
+        expect(mocks.saveVideo).toHaveBeenCalledWith(expect.objectContaining({ uri: 'file:///cache/acceptance.mp4' }), 'acceptance.mp4', 'video/mp4', expect.objectContaining({ signal: expect.anything(), onProgress: expect.any(Function), onPhase: expect.any(Function) }));
         expect(renderer.root.findByProps({ testID: 'media-attachment-save-status' }).props.children).toBe('imageUpload.mediaSavedToLibrary:');
         expect(releaseDownload).toHaveBeenCalledOnce();
         await act(async () => renderer.unmount());
@@ -236,7 +278,7 @@ describe('FileView media playback', () => {
         await act(async () => { renderer = TestRenderer.create(<FileView tool={tool} metadata={null} messages={[]} />); });
         await act(async () => { await renderer.root.findByProps({ testID: 'media-attachment-save-user' }).props.onPress(); });
         expect(mocks.resolveSource).not.toHaveBeenCalled();
-        expect(mocks.saveVideo).toHaveBeenCalledWith({ uri: 'https://public.test/shared/video', headers: {} }, 'acceptance.mp4', 'video/mp4');
+        expect(mocks.saveVideo).toHaveBeenCalledWith({ uri: 'https://public.test/shared/video', headers: {} }, 'acceptance.mp4', 'video/mp4', expect.objectContaining({ signal: expect.anything(), onProgress: expect.any(Function), onPhase: expect.any(Function) }));
         expect(renderer.root.findByProps({ testID: 'media-attachment-save-status' }).props.children).toBe('imageUpload.mediaDownloadStarted:');
         await act(async () => renderer.unmount());
     });
