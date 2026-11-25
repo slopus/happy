@@ -21,6 +21,29 @@ public enum PushedAgent {
     public static let limit: Duration = .seconds(4)
 
     public static func ask(_ agentId: String, client: AgentClient, limit: Duration = limit) async -> Answer {
-        .unknown
+        let heard = Heard()
+        let request = Task {
+            do {
+                let found = try await client.decode(JSONValue.self, "GET", "/v0/agents/\(AgentClient.escape(agentId))")
+                heard.set(.there(title: found["agent"]?["title"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }))
+            } catch AgentClientError.status(404, _, _) {
+                heard.set(.gone)
+            } catch {}
+        }
+        // A tap that opened by its row meanwhile asks no further.
+        await withTaskCancellationHandler {
+            await waitAtMost(limit) { await request.value }
+        } onCancel: {
+            request.cancel()
+        }
+        request.cancel()
+        return heard.answer
     }
+}
+
+private final class Heard: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = PushedAgent.Answer.unknown // under `lock`
+    var answer: PushedAgent.Answer { lock.withLock { stored } }
+    func set(_ answer: PushedAgent.Answer) { lock.withLock { stored = answer } }
 }

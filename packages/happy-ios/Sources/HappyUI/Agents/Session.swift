@@ -440,6 +440,16 @@ final class Session {
         return Watch { [weak self] in self?.homeWatchers.removeValue(forKey: id) }
     }
 
+    /// Whether home has a row for `agentId`, folded away or not, a task
+    /// not joined included.
+    func lists(agent agentId: String) -> Bool {
+        snapshot.allRows.contains { $0.agentId == agentId } || home.allRows.contains { $0.agentId == agentId }
+            || home.unjoinedTasks.contains { $0.agentId == agentId }
+    }
+
+    /// Whether home's rows have been read, from this phone's copy or the server.
+    var homeRead: Bool { home.loaded || snapshot.availability == .available }
+
     /// A snapshot from the engine (or a test standing in for it).
     func receive(home snapshot: HomeSnapshot) {
         if snapshot.live, !home.live { images.retryFailed(); reconnected() }

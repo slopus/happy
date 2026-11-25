@@ -38,6 +38,10 @@ public final class AppCoordinator {
     /// What an instance link opens once its connection is home. `pushed`:
     /// a tapped push's agent rather than a link's.
     private var instanceTarget: (connection: String, link: HappyLink, pushed: Bool)?
+    /// A tapped push's agent that home doesn't list, being asked for on
+    /// its server (`openPushedAgent`).
+    private var pushedAgent: (round: Int, task: Task<Void, Never>, watches: [Watch])?
+    private var pushedAgentRounds = 0
     /// The session a tapped notification named, until a signed-in home can
     /// open it.
     private var notificationSessionID: String?
@@ -287,6 +291,7 @@ public final class AppCoordinator {
 
     /// `link` on the connection `id`, which becomes the one shown first.
     private func open(_ link: HappyLink, onConnection id: String, pushed: Bool = false) {
+        stopPushedAgent()
         instanceTarget = (id, link, pushed)
         if case .agentConnection(let shown) = context.account.state, shown.id == id { return openInstanceTarget() }
         let account = context.account
@@ -328,11 +333,75 @@ public final class AppCoordinator {
             artifact.pinned = reference.version != nil
             navigation.openArtifact(artifact, session: session, on: navigation)
         case .agent:
+            if target.pushed, !session.lists(agent: reference.id) {
+                return openPushedAgent(reference.id, session: session, connection: target.connection)
+            }
             let row = session.snapshot.allRows.first { ($0.kind == .space || $0.kind == .session) && $0.agentId == reference.id }
             navigation.pushViewController(ChatViewController(session: session, agentId: reference.id, title: row?.label ?? "", spaceId: row?.spaceId, intro: nil), animated: true)
         default:
             break
         }
+    }
+
+    /// A tapped push's agent that home doesn't list. A push is taken from
+    /// whoever holds the relay token, and one shown a while ago may name an
+    /// agent since gone, so its server is asked (`PushedAgent`). Its chat
+    /// opens once the server says it is there, or its row comes (home read
+    /// after the tap, from a closed app), or the server says neither in
+    /// time. It never opens once the server says it has no such agent and
+    /// home has been read without it: home stays as it is, with no
+    /// nameless empty chat over it.
+    private func openPushedAgent(_ agentId: String, session: Session, connection: String) {
+        stopPushedAgent()
+        pushedAgentRounds += 1
+        let round = pushedAgentRounds
+        var gone = false
+        let heard: (_ answer: PushedAgent.Answer?, _ last: Bool) -> Void = { [weak self, weak session] answer, last in
+            guard let self, let session, pushedAgent?.round == round else { return }
+            var title: String?
+            switch answer {
+            case .there(let name)?: title = name
+            case .unknown?: break
+            case .gone?, nil:
+                if answer == .gone { gone = true }
+                if !session.lists(agent: agentId) {
+                    // Said gone, and home read without it (or never read in time): nothing opens.
+                    if gone, last || session.homeRead { stopPushedAgent() }
+                    return
+                }
+            }
+            stopPushedAgent()
+            guard case .agentConnection(let shown) = context.account.state, shown.id == connection else { return }
+            // Opened by hand meanwhile.
+            if let chat = shell.topViewController as? ChatViewController, chat.shownAgentId == agentId, shell.presentedViewController == nil { return }
+            shell.presentedViewController?.dismiss(animated: false)
+            guard let navigation = shell.topViewController?.navigationController else { return }
+            let row = session.snapshot.allRows.first { ($0.kind == .space || $0.kind == .session) && $0.agentId == agentId }
+            navigation.pushViewController(ChatViewController(session: session, agentId: agentId, title: row?.label ?? title ?? "", spaceId: row?.spaceId, intro: nil), animated: true)
+        }
+        let client = session.client
+        let task = Task { @MainActor in
+            let started = ContinuousClock.now
+            let answer = await PushedAgent.ask(agentId, client: client)
+            guard !Task.isCancelled else { return }
+            heard(answer, false)
+            guard answer == .gone else { return }
+            // Home not read yet: its row may still come, for so long.
+            try? await Task.sleep(until: started + PushedAgent.limit)
+            guard !Task.isCancelled else { return }
+            heard(.gone, true)
+        }
+        pushedAgent = (round, task, [])
+        // Each calls back at once with what is there now: nothing is, or this was never reached.
+        let watches = [session.watchHome { _ in heard(nil, false) }, session.watch { _ in heard(nil, false) }]
+        if pushedAgent?.round == round { pushedAgent?.watches = watches } else { watches.forEach { $0.invalidate() } }
+    }
+
+    private func stopPushedAgent() {
+        guard let waiting = pushedAgent else { return }
+        pushedAgent = nil
+        waiting.task.cancel()
+        waiting.watches.forEach { $0.invalidate() }
     }
 
     private func openPendingLink() {
