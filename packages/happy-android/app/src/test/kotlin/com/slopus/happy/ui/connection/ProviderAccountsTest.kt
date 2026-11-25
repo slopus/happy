@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -37,7 +38,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** Settings › Provider accounts, an account's page, and its sign-in and token pages (happy-agent API.md, "Provider sign-in"). */
+/** Settings › Inference on a Happy Agent, an account's page, and its sign-in and token pages (happy-agent API.md, "Provider sign-in"). */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 class ProviderAccountsTest {
@@ -85,7 +86,8 @@ class ProviderAccountsTest {
     @Test
     fun eachRowSaysTheFirstThingThatApplies() {
         showAccounts(ProviderAccountsState.Loaded(listOf(codex, claude, grok, claudeHome, codexTeam, grokSide, claudeOld, legacy)))
-        rule.onNodeWithText("Provider accounts").assertExists()
+        rule.onNodeWithText("Inference").assertExists()
+        rule.onNodeWithText("ACCOUNTS").assertExists()
         // The account's own name, else its assistant's, with its plan.
         rule.onNodeWithText("Codex").assertExists()
         rule.onNodeWithText("Claude (work) · Max").assertExists()
@@ -94,8 +96,8 @@ class ProviderAccountsTest {
         // Signed out without a refresh error: no date to give.
         rule.onNodeWithText("Needs sign-in").assertExists()
         rule.onNodeWithText("Needs sign-in since Nov 20").assertExists()
-        // A failing refresh warns of a login that runs out within the day.
-        rule.onNodeWithText("Couldn't refresh · HTTP 503 · last tried 12m ago\nLogin expires in 3h").assertExists()
+        // A failing refresh warns of a login that runs out within the day, in place of when it was tried.
+        rule.onNodeWithText("Couldn't refresh · HTTP 503 · expires in 3h").assertExists()
         rule.onNodeWithText("Not used yet").assertExists()
         rule.onNodeWithText("Off").assertExists()
         // An older agent: only when usage last looked.
@@ -103,9 +105,22 @@ class ProviderAccountsTest {
         for (id in listOf("codex", "claude_work", "grok", "claude_home", "codex_team", "grok_side", "claude_old", "codex_old")) {
             rule.node(ProviderAccountsTags.dot(id)).assertExists()
         }
-        // Nothing to press on a row but the row.
+        // Nothing to press on a row but the row, and nothing under the card.
         rule.node(ProviderAccountsTags.signIn("codex")).assertDoesNotExist()
         rule.node(ProviderAccountsTags.token("claude_work")).assertDoesNotExist()
+        rule.onNodeWithText("Signing in here gives this account a login only Happy uses, so it stops using the system login.").assertDoesNotExist()
+    }
+
+    /** No state makes a row taller: two lines, the second cut short. */
+    @Test
+    fun everyRowIsTheSameHeightWhateverItSays() {
+        val long = codexTeam.copy(id = "long", login = AccountLogin(null, null, error(503, "a_very_long_vendor_error_code_that_would_otherwise_wrap", permanent = false)))
+        val all = listOf(codex, claude, grok, claudeHome, codexTeam, grokSide, claudeOld, legacy, long)
+        showAccounts(ProviderAccountsState.Loaded(all))
+        for (account in all) {
+            val row = rule.node(ProviderAccountsTags.account(account.id)).performScrollTo().bounds
+            assertDp("${account.id} height", 76, row.bottom - row.top)
+        }
     }
 
     @Test
@@ -158,15 +173,14 @@ class ProviderAccountsTest {
         var signingIn = 0
         var token = 0
         showAccount(claude, signIn(claude, email = "ada@example.com", plan = "Max"), onEnabled = { switched += it }, onSignIn = { signingIn++ }, onToken = { token++ })
-        // Name and plan, the vendor beside them.
-        rule.onNodeWithText("Max", useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("Claude", useUnmergedTree = true).assertExists()
+        // The vendor, plan and email under the name.
+        rule.onNodeWithText("Claude · Max · ada@example.com", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Source", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Signed in to Happy", useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("ada@example.com · Max", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("30m ago", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("In 7h", useUnmergedTree = true).assertExists()
-        rule.node(ProviderAccountsTags.REFRESH_ERROR).assertDoesNotExist()
+        // Never used, and no error: a dash, never a missing row.
+        assertEquals(2, rule.onAllNodes(androidx.compose.ui.test.hasText("—"), useUnmergedTree = true).fetchSemanticsNodes().size)
         rule.onNodeWithText("Signing in here gives this account a login only Happy uses, so it stops using the system login.", useUnmergedTree = true).assertExists()
         rule.node(ProviderAccountsTags.ENABLED).performClick()
         rule.node(ProviderAccountsTags.signIn("claude_work")).performScrollTo().performClick()
@@ -181,18 +195,39 @@ class ProviderAccountsTest {
         showAccount(claudeHome)
         rule.onNodeWithText("Last refresh error").assertExists()
         rule.onNodeWithText("invalid_grant · since Nov 20", useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("Never", useUnmergedTree = true).assertExists()
     }
 
     @Test
-    fun anOlderAgentSaysOnlyWhenItLastChecked() {
+    fun anOlderAgentsAccountHasTheSameRowsWithNothingKnown() {
         showAccount(legacy)
         rule.onNodeWithText("Using system login", useUnmergedTree = true).assertExists()
-        rule.node(ProviderAccountsTags.LAST_CHECKED).assertExists()
-        rule.onNodeWithText("5m ago", useUnmergedTree = true).assertExists()
-        rule.node(ProviderAccountsTags.LAST_REFRESH).assertDoesNotExist()
-        rule.node(ProviderAccountsTags.EXPIRES).assertDoesNotExist()
+        assertEquals(4, rule.onAllNodes(androidx.compose.ui.test.hasText("—"), useUnmergedTree = true).fetchSemanticsNodes().size)
         rule.node(ProviderAccountsTags.token("codex_old")).assertDoesNotExist()
+    }
+
+    /** Whatever the account's state, its page's rows stand where they stood. */
+    @Test
+    fun anAccountsRowsNeverMove() {
+        var account: ProviderAccount by mutableStateOf(codex)
+        var ownerOnly by mutableStateOf(false)
+        rule.setHappyContent { ProviderAccountScreen(account, null, ownerOnly, now) }
+        val tags = listOf(
+            ProviderAccountsTags.ENABLED, ProviderAccountsTags.source("codex"), ProviderAccountsTags.LAST_USED, ProviderAccountsTags.LAST_REFRESH,
+            ProviderAccountsTags.EXPIRES, ProviderAccountsTags.REFRESH_ERROR, ProviderAccountsTags.signIn("codex"),
+        )
+        fun where() = tags.map { rule.node(it).bounds }
+        val first = where()
+        for (state in listOf(
+            codex.copy(login = AccountLogin(null, null, error(400, "a_very_long_vendor_error_code_that_would_otherwise_wrap", permanent = true)), signIn = "signed_out"),
+            codex.copy(login = codexTeam.login),
+            codex.copy(enabled = false),
+            codex.copy(lastUsedAt = null, login = null, loginReported = false, checkedAt = now),
+        )) {
+            account = state
+            assertEquals(first, where())
+        }
+        ownerOnly = true
+        assertEquals(first, where())
     }
 
     @Test
@@ -230,6 +265,30 @@ class ProviderAccountsTest {
 
     private fun showSignIn(onOpen: (String) -> Unit = {}, onCode: (String) -> Unit = {}, onCancel: () -> Unit = {}, onRetry: () -> Unit = {}) =
         rule.setHappyContent { ProviderSignInScreen("Codex", "Codex", step, onOpen = onOpen, onCode = onCode, onCancel = onCancel, onRetry = onRetry) }
+
+    /** Every step shares one content area and one action row: nothing moves from step to step. */
+    @Test
+    fun noSignInStepMovesThePage() {
+        step = SignInStep.Starting
+        showSignIn()
+        val action = hasTestTag(ProviderAccountsTags.CANCEL) or hasTestTag(ProviderAccountsTags.RETRY) or hasTestTag(ProviderAccountsTags.ACTION)
+        fun where() = listOf(rule.node(ProviderAccountsTags.AREA).bounds, rule.onNode(action).fetchSemanticsNode().boundsInRoot.let { it.top to it.bottom })
+        val first = where()
+        for (next in listOf(
+            SignInStep.Device("https://auth.openai.com/codex/device", "K7QF-9WXM"),
+            SignInStep.PasteCode("https://claude.ai/oauth/authorize", checking = false),
+            SignInStep.PasteCode("https://claude.ai/oauth/authorize", checking = true),
+            SignInStep.OnComputer("http://localhost:1455/auth"),
+            SignInStep.Done("ada@example.com", "Pro"),
+            SignInStep.Failed(SignInFailure.Failed, "word ".repeat(200)),
+            SignInStep.Failed(SignInFailure.Expired, null),
+            SignInStep.Failed(SignInFailure.SaveFailed, null),
+            SignInStep.Failed(SignInFailure.OwnerOnly, null),
+        )) {
+            step = next
+            assertEquals(next.toString(), first, where())
+        }
+    }
 
     /** A device code as Happy Cloud's ChatGPT sign-in draws it: the code, Copy and Open centred in the card. */
     @Test
@@ -332,6 +391,8 @@ class ProviderAccountsTest {
         val ids = index.map { it.id }
         assertEquals(ids.indexOf(AgentAgentsTags.ROW) + 1, ids.indexOf(ProviderAccountsTags.ROW))
         assertEquals(ids.indexOf(ProviderAccountsTags.ROW) + 1, ids.indexOf(AgentUsageTags.ROW))
+        // Named as desktop names it.
+        rule.onNode(hasTestTag(ProviderAccountsTags.ROW) and androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasText("Inference")), useUnmergedTree = true).assertExists()
         rule.node(ProviderAccountsTags.ROW).performScrollTo().performClick()
         assertTrue(opened)
     }

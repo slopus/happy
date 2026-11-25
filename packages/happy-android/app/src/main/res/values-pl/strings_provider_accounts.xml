@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
-    <string name="provider_accounts_title">Konta dostawców</string>
+    <!-- Settings › Inference: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">Inferencja</string>
+    <string name="provider_accounts_section">Konta</string>
     <string name="provider_accounts_system">Używa logowania systemowego</string>
     <string name="provider_accounts_internal">Zalogowano w Happy</string>
     <string name="provider_accounts_configured">Skonfigurowano w pliku konfiguracyjnym</string>
@@ -19,25 +20,26 @@
     <string name="provider_accounts_needs_sign_in_bare">Wymaga logowania</string>
     <string name="provider_accounts_refresh_failed">Nie udało się odświeżyć · %1$s · ostatnia próba %2$s</string>
     <string name="provider_accounts_refresh_failed_bare">Nie udało się odświeżyć · ostatnia próba %1$s</string>
+    <string name="provider_accounts_refresh_failed_expires">Nie udało się odświeżyć · %1$s · wygasa za %2$s</string>
+    <string name="provider_accounts_refresh_failed_expires_bare">Nie udało się odświeżyć · wygasa za %1$s</string>
+    <string name="provider_accounts_refresh_failed_expired">Nie udało się odświeżyć · %1$s · logowanie wygasło</string>
+    <string name="provider_accounts_refresh_failed_expired_bare">Nie udało się odświeżyć · logowanie wygasło</string>
     <string name="provider_accounts_system_login">Logowanie systemowe</string>
     <string name="provider_accounts_used">Użyte %1$s</string>
     <string name="provider_accounts_not_used">Jeszcze nieużywane</string>
     <string name="provider_accounts_refreshed">odświeżone %1$s</string>
     <string name="provider_accounts_last_checked">Sprawdzone %1$s</string>
     <string name="provider_accounts_ago">%1$s temu</string>
-    <string name="provider_accounts_login_expires">Logowanie wygasa za %1$s</string>
-    <string name="provider_accounts_login_expired">Logowanie wygasło</string>
     <string name="provider_accounts_enabled">Włączone</string>
     <string name="provider_accounts_login">Logowanie</string>
+    <string name="provider_accounts_last_used">Ostatnie użycie</string>
     <string name="provider_accounts_last_refresh">Ostatnie odświeżenie</string>
     <string name="provider_accounts_token_expires">Token wygasa</string>
     <string name="provider_accounts_token_expired">Wygasł</string>
     <string name="provider_accounts_in">Za %1$s</string>
     <string name="provider_accounts_refresh_error">Ostatni błąd odświeżania</string>
     <string name="provider_accounts_since">od %1$s</string>
-    <string name="provider_accounts_last_checked_title">Ostatnio sprawdzone</string>
     <string name="provider_accounts_source">Źródło</string>
-    <string name="provider_accounts_never">Nigdy</string>
     <string name="provider_accounts_toggle_failed">Nie udało się zmienić konta</string>
     <string name="provider_sign_in_starting">Rozpoczynanie logowania…</string>
     <string name="provider_sign_in_enter_code">Wpisz ten kod na stronie logowania</string>

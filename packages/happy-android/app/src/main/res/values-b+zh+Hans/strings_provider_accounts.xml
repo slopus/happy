@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
-    <string name="provider_accounts_title">提供商账户</string>
+    <!-- Settings › Inference: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">推理</string>
+    <string name="provider_accounts_section">账户</string>
     <string name="provider_accounts_system">使用系统登录</string>
     <string name="provider_accounts_internal">已登录到 Happy</string>
     <string name="provider_accounts_configured">在配置文件中配置</string>
@@ -19,25 +20,26 @@
     <string name="provider_accounts_needs_sign_in_bare">需要登录</string>
     <string name="provider_accounts_refresh_failed">无法刷新 · %1$s · 上次尝试 %2$s</string>
     <string name="provider_accounts_refresh_failed_bare">无法刷新 · 上次尝试 %1$s</string>
+    <string name="provider_accounts_refresh_failed_expires">无法刷新 · %1$s · %2$s后过期</string>
+    <string name="provider_accounts_refresh_failed_expires_bare">无法刷新 · %1$s后过期</string>
+    <string name="provider_accounts_refresh_failed_expired">无法刷新 · %1$s · 登录已过期</string>
+    <string name="provider_accounts_refresh_failed_expired_bare">无法刷新 · 登录已过期</string>
     <string name="provider_accounts_system_login">系统登录</string>
     <string name="provider_accounts_used">%1$s使用</string>
     <string name="provider_accounts_not_used">尚未使用</string>
     <string name="provider_accounts_refreshed">%1$s刷新</string>
     <string name="provider_accounts_last_checked">%1$s检查</string>
     <string name="provider_accounts_ago">%1$s前</string>
-    <string name="provider_accounts_login_expires">登录将在 %1$s 后过期</string>
-    <string name="provider_accounts_login_expired">登录已过期</string>
     <string name="provider_accounts_enabled">已启用</string>
     <string name="provider_accounts_login">登录</string>
+    <string name="provider_accounts_last_used">上次使用</string>
     <string name="provider_accounts_last_refresh">上次刷新</string>
     <string name="provider_accounts_token_expires">令牌过期</string>
     <string name="provider_accounts_token_expired">已过期</string>
     <string name="provider_accounts_in">%1$s后</string>
     <string name="provider_accounts_refresh_error">上次刷新错误</string>
     <string name="provider_accounts_since">自 %1$s 起</string>
-    <string name="provider_accounts_last_checked_title">上次检查</string>
     <string name="provider_accounts_source">来源</string>
-    <string name="provider_accounts_never">从未</string>
     <string name="provider_accounts_toggle_failed">无法更改账户</string>
     <string name="provider_sign_in_starting">正在开始登录…</string>
     <string name="provider_sign_in_enter_code">在登录页面输入此代码</string>

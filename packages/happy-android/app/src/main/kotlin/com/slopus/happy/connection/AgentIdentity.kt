@@ -22,7 +22,7 @@ data class AgentInfo(
     val plugins: Boolean = false,
     /** Health's `capabilities.pipelines`: a Happy Cloud server with pipelines to list. */
     val pipelines: Boolean = false,
-    /** Health's `capabilities.providerSignIn`: accounts sign in to a credential the agent owns (Settings › Provider accounts). */
+    /** Health's `capabilities.providerSignIn`: accounts sign in to a credential the agent owns (Settings › Inference). */
     val providerSignIn: Boolean = false,
 )
 

@@ -185,7 +185,7 @@ class AgentHomeActions(
     /** Projects belong to self-hosted connections, never Cloud. */
     val projectsAvailable: Boolean = true,
     val notificationsAvailable: Boolean = false,
-    /** The agent signs provider accounts in (health's `capabilities.providerSignIn`), so search finds Provider accounts. */
+    /** The agent signs provider accounts in (health's `capabilities.providerSignIn`), so search finds Inference. */
     val providerAccountsAvailable: Boolean = false,
     /** Opens a team member's profile; null where there are none (any server but Happy Cloud's), and search finds no people. */
     val onOpenPerson: ((userId: String) -> Unit)? = null,

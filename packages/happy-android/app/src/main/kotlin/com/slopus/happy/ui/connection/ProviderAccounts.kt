@@ -2,6 +2,10 @@ package com.slopus.happy.ui.connection
 
 import android.content.ClipData
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.height
 import com.slopus.happy.ui.components.HappySwitch
 import com.slopus.happy.ui.chat.compactAgo
 import com.slopus.happy.agent.ProviderCredential
@@ -88,7 +92,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-/** Settings › Provider accounts of [connectionId]. */
+/** Settings › Inference of [connectionId]: its Codex, Claude and Grok accounts. */
 @Serializable data class ProviderAccountsRoute(val connectionId: String)
 
 /** One account's page: on or off, its login, and signing it in again. */
@@ -107,10 +111,12 @@ object ProviderAccountsTags {
     const val EMPTY = "providerAccounts.empty"
     const val FAILED = "providerAccounts.failed"
     const val ENABLED = "providerAccount.enabled"
+    const val LAST_USED = "providerAccount.lastUsed"
     const val LAST_REFRESH = "providerAccount.lastRefresh"
     const val EXPIRES = "providerAccount.expires"
     const val REFRESH_ERROR = "providerAccount.refreshError"
-    const val LAST_CHECKED = "providerAccount.lastChecked"
+    const val AREA = "providerSignIn.area"
+    const val ACTION = "providerSignIn.action"
     const val CODE = "providerSignIn.code"
     const val COPY = "providerSignIn.copy"
     const val OPEN = "providerSignIn.open"
@@ -262,9 +268,17 @@ internal fun AccountLine.text(now: Long): String {
         is AccountLine.NeedsSignIn ->
             if (since == null) stringResource(R.string.provider_accounts_needs_sign_in_bare)
             else stringResource(R.string.provider_accounts_needs_sign_in, shortDate(since))
-        is AccountLine.RefreshFailed ->
-            if (reason == null) stringResource(R.string.provider_accounts_refresh_failed_bare, ago(at, now))
-            else stringResource(R.string.provider_accounts_refresh_failed, reason, ago(at, now))
+        is AccountLine.RefreshFailed -> when {
+            // A login about to run out says so in place of when it was last tried.
+            expiresAt != null && expiresAt <= now ->
+                if (reason == null) stringResource(R.string.provider_accounts_refresh_failed_expired_bare)
+                else stringResource(R.string.provider_accounts_refresh_failed_expired, reason)
+            expiresAt != null ->
+                if (reason == null) stringResource(R.string.provider_accounts_refresh_failed_expires_bare, until(expiresAt, now))
+                else stringResource(R.string.provider_accounts_refresh_failed_expires, reason, until(expiresAt, now))
+            reason == null -> stringResource(R.string.provider_accounts_refresh_failed_bare, ago(at, now))
+            else -> stringResource(R.string.provider_accounts_refresh_failed, reason, ago(at, now))
+        }
         is AccountLine.Healthy -> listOfNotNull(
             stringResource(R.string.provider_accounts_system_login).takeIf { system },
             lastUsedAt?.let { stringResource(R.string.provider_accounts_used, ago(it, now)) } ?: stringResource(R.string.provider_accounts_not_used),
@@ -277,10 +291,8 @@ internal fun AccountLine.text(now: Long): String {
     }
 }
 
-/** "Login expires in 3h", or that it has. */
-@Composable
-private fun expiryWarning(at: Long, now: Long): String =
-    if (at <= now) stringResource(R.string.provider_accounts_login_expired) else stringResource(R.string.provider_accounts_login_expires, until(at, now))
+/** What a row on an account's page shows when nothing is known. */
+private const val UNKNOWN = "—"
 
 /** The vendor's mark in the row's 32 icon box, the account's [dot] on its corner ringed in the card's colour. */
 @Composable
@@ -298,16 +310,18 @@ private fun AccountIcon(type: String, dot: AccountDot?, tag: String) {
 }
 
 /**
- * Settings › Provider accounts (happy-agent API.md, "Provider sign-in"):
- * one settings card with a row per Codex, Claude and Grok account and
- * nothing to press but the row. Each row is the vendor's mark with a 12 dot
- * on its corner, the account's name and plan, a chevron, and under the
- * name the first that applies ([AccountStatus]): Off (grey); Needs
- * sign-in, since a date where known (red); Couldn't refresh, why and when it was last
- * tried (amber); else when it was used and its login refreshed, green when
- * signed in and grey when unknown, "System login" first for the machine's
- * own. A login that runs out within a day while its refresh fails adds a
- * second line. A row opens the account's page ([ProviderAccountScreen]).
+ * Settings › Inference on a Happy Agent (happy-agent API.md, "Provider
+ * sign-in"), as desktop names it: one Accounts card with a row per Codex, Claude and Grok account and
+ * nothing to press but the row. Every row is two lines whatever the
+ * account's state, so nothing moves as it changes: the vendor's mark with a
+ * 12 dot on its corner, the account's name and plan, a chevron, and one
+ * line, cut short rather than wrapped, the first that applies
+ * ([AccountStatus]): Off (grey); Needs sign-in, since a date where known
+ * (red); Couldn't refresh, why and when it was last tried, or when the
+ * login runs out where that is within a day (amber); else when it was used
+ * and its login refreshed, green when signed in and grey when unknown,
+ * "System login" first for the machine's own. A row opens the account's
+ * page ([ProviderAccountScreen]).
  */
 @Composable
 fun ProviderAccountsScreen(
@@ -333,7 +347,7 @@ fun ProviderAccountsScreen(
                     Item(stringResource(R.string.provider_accounts_empty), showChevron = false, titleLines = 0)
                 }
             } else {
-                ItemGroup(Modifier.testTag(ProviderAccountsTags.LIST), footer = stringResource(R.string.provider_accounts_footer)) {
+                ItemGroup(Modifier.testTag(ProviderAccountsTags.LIST), title = stringResource(R.string.provider_accounts_section)) {
                     for (account in state.accounts) {
                         val signIn = signIns[account.id]
                         val credential = account.credentialNow(signIn)
@@ -342,8 +356,8 @@ fun ProviderAccountsScreen(
                         val line = status.line.text(now).ifEmpty { credentialLabel(credential.source) }
                         Item(
                             title = listOfNotNull(account.shownName(), account.planNow(signIn)).joinToString(" · "),
-                            subtitle = listOfNotNull(line, status.expiresAt?.let { expiryWarning(it, now) }).joinToString("\n"),
-                            subtitleLines = 3,
+                            subtitle = line,
+                            subtitleLines = 1,
                             icon = { AccountIcon(account.type, status.dot, ProviderAccountsTags.dot(account.id)) },
                             onClick = { onOpen(account) },
                             modifier = Modifier.testTag(ProviderAccountsTags.account(account.id)),
@@ -400,13 +414,14 @@ private fun ProviderAccountPage(accounts: ProviderAccounts, nav: NavHostControll
 }
 
 /**
- * One provider account: its name and plan with its vendor, and Enabled
- * (`PATCH /v0/config`); then Login: its Source (with the email and plan of
- * Happy's own), its last refresh, when its token expires and the last
- * refresh error with its code and since when (an older agent says only
- * when usage last checked); then Sign in again ("In progress" while one
- * runs) and, for Claude, Update token, under them why they can't be done
- * here and what signing in does. Rows are [Item]s in [ItemGroup]s, as
+ * One provider account: its name, with its vendor, plan and email, and
+ * Enabled (`PATCH /v0/config`); then Login, the same five one-line rows
+ * whatever is known ("—" where nothing is): Source, Last used, Last
+ * refresh, Token expires and Last refresh error (its reason and since
+ * when, red when only a new sign-in mends it); then Sign in again ("In
+ * progress" while one runs) and, for Claude, Update token, under them why
+ * they can't be done here and what signing in does. No state of the
+ * account adds or removes a row. Rows are [Item]s in [ItemGroup]s, as
  * every settings page; the words are iOS's.
  */
 @Composable
@@ -425,12 +440,13 @@ fun ProviderAccountScreen(
     val blocked = blockedReason(account, signIn, ownerOnly)
     val running = signIn?.operation?.finished == false
     val enabledTitle = stringResource(R.string.provider_accounts_enabled)
+    val email = signIn?.email?.takeIf { credential.source == CredentialSource.Internal }
     AgentPage(account.shownName(), onBack) {
         ItemGroup {
             Item(
                 title = account.shownName(),
-                subtitle = account.planNow(signIn),
-                detail = ModeCatalog.providerName(account.type),
+                subtitle = listOfNotNull(ModeCatalog.providerName(account.type), account.planNow(signIn), email).joinToString(" · "),
+                subtitleLines = 1,
                 icon = { AccountIcon(account.type, null, "") },
                 showChevron = false,
             )
@@ -442,45 +458,42 @@ fun ProviderAccountScreen(
                 },
             )
         }
+        val login = account.login
+        val error = login?.refreshError
         ItemGroup(title = stringResource(R.string.provider_accounts_login)) {
             Item(
-                title = stringResource(R.string.provider_accounts_source),
-                subtitle = signIn?.takeIf { credential.source == CredentialSource.Internal }
-                    ?.let { listOfNotNull(it.email, it.plan).joinToString(" · ").ifEmpty { null } },
+                stringResource(R.string.provider_accounts_source),
                 detail = credentialLabel(credential.source),
                 showChevron = false,
                 modifier = Modifier.testTag(ProviderAccountsTags.source(account.id)),
             )
-            val login = account.login
-            if (account.loginReported) {
-                Item(
-                    stringResource(R.string.provider_accounts_last_refresh),
-                    detail = login?.refreshedAt?.let { ago(it, now) } ?: stringResource(R.string.provider_accounts_never),
-                    showChevron = false,
-                    modifier = Modifier.testTag(ProviderAccountsTags.LAST_REFRESH),
-                )
-                login?.expiresAt?.let {
-                    Item(
-                        stringResource(R.string.provider_accounts_token_expires),
-                        detail = if (it <= now) stringResource(R.string.provider_accounts_token_expired) else stringResource(R.string.provider_accounts_in, until(it, now)),
-                        showChevron = false,
-                        modifier = Modifier.testTag(ProviderAccountsTags.EXPIRES),
-                    )
-                }
-                login?.refreshError?.let { error ->
-                    Item(
-                        stringResource(R.string.provider_accounts_refresh_error),
-                        subtitle = listOfNotNull(error.reason, stringResource(R.string.provider_accounts_since, shortDate(error.since))).joinToString(" · "),
-                        titleColor = if (error.permanent) colors.textDestructive else Color.Unspecified,
-                        showChevron = false,
-                        modifier = Modifier.testTag(ProviderAccountsTags.REFRESH_ERROR),
-                    )
-                }
-            } else {
-                account.checkedAt?.let {
-                    Item(stringResource(R.string.provider_accounts_last_checked_title), detail = ago(it, now), showChevron = false, modifier = Modifier.testTag(ProviderAccountsTags.LAST_CHECKED))
-                }
-            }
+            Item(
+                stringResource(R.string.provider_accounts_last_used),
+                detail = account.lastUsedAt?.let { ago(it, now) } ?: UNKNOWN,
+                showChevron = false,
+                modifier = Modifier.testTag(ProviderAccountsTags.LAST_USED),
+            )
+            Item(
+                stringResource(R.string.provider_accounts_last_refresh),
+                detail = login?.refreshedAt?.let { ago(it, now) } ?: UNKNOWN,
+                showChevron = false,
+                modifier = Modifier.testTag(ProviderAccountsTags.LAST_REFRESH),
+            )
+            Item(
+                stringResource(R.string.provider_accounts_token_expires),
+                detail = login?.expiresAt?.let {
+                    if (it <= now) stringResource(R.string.provider_accounts_token_expired) else stringResource(R.string.provider_accounts_in, until(it, now))
+                } ?: UNKNOWN,
+                showChevron = false,
+                modifier = Modifier.testTag(ProviderAccountsTags.EXPIRES),
+            )
+            Item(
+                stringResource(R.string.provider_accounts_refresh_error),
+                detail = error?.let { listOfNotNull(it.reason, stringResource(R.string.provider_accounts_since, shortDate(it.since))).joinToString(" · ") } ?: UNKNOWN,
+                detailColor = if (error?.permanent == true) colors.textDestructive else Color.Unspecified,
+                showChevron = false,
+                modifier = Modifier.testTag(ProviderAccountsTags.REFRESH_ERROR),
+            )
         }
         ItemGroup(footer = listOfNotNull(blocked, stringResource(R.string.provider_accounts_footer)).joinToString("\n")) {
             Item(
@@ -554,17 +567,26 @@ private fun ProviderSignInPage(accounts: ProviderAccounts, nav: NavHostControlle
     )
 }
 
+/** The sign-in page's one content area: tall enough for a device code with Copy and Open, at every step. */
+private val SIGN_IN_AREA = 300.dp
+
+/** At most this many lines of the agent's words on a failure. */
+private const val SAID_LINES = 4
+
 /**
  * Signing one account in again, on a stack page titled "Sign in again" with
- * the account's name heading its card. A device code is the 30 sp monospace
- * code with Copy (inverted, "Copied" for 2 s) and Open sign-in page, as
- * Happy Cloud's ChatGPT sign-in draws it; Claude's page is opened and its
- * code pasted back (Continue, "Checking…" once sent). A browser sign-in
- * started elsewhere for Codex or Grok only waits, since it finishes on the
- * computer. Under an unfinished one, Cancel in its own card. It ends in
- * Signed in (the email and plan) with Done, or a failure: its title, the
- * agent's own words (else "The account keeps the login it had."), Try
- * again and Close.
+ * the account's name heading its card. Every step shares one content area
+ * of a fixed height ([SIGN_IN_AREA], grown with the font size), its content
+ * centred in it, and one action row under it, so nothing moves from step
+ * to step. A device code is the 30 sp monospace code with Copy (inverted,
+ * "Copied" for 2 s) and Open sign-in page, as Happy Cloud's ChatGPT sign-in
+ * draws it; Claude's page is opened and its code pasted back (Continue,
+ * "Checking…" once sent). A browser sign-in started elsewhere for Codex or
+ * Grok only waits, since it finishes on the computer. It ends in Signed in
+ * (the email and plan), or a failure: its title and the agent's own words
+ * (else "The account keeps the login it had."), cut to [SAID_LINES]. The
+ * action row is Cancel while unfinished, Done once signed in, Try again
+ * after a failure that may go better, else Close.
  */
 @Composable
 fun ProviderSignInScreen(
@@ -578,105 +600,112 @@ fun ProviderSignInScreen(
     onClose: () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
+    val area = SIGN_IN_AREA * LocalDensity.current.fontScale.coerceAtLeast(1f)
     Screen(header = { StackHeader(stringResource(R.string.provider_accounts_sign_in_again), onClose) }, avoidKeyboard = true) {
         ItemList {
-            when (step) {
-                SignInStep.Starting, SignInStep.Cancelled -> ItemGroup(Modifier.testTag(ProviderAccountsTags.STARTING), title = name) {
-                    Item(stringResource(R.string.provider_sign_in_starting), loading = true, showChevron = false)
-                }
-                is SignInStep.Device -> ItemGroup(title = name) {
-                    FlowColumn {
-                        Secondary(stringResource(R.string.provider_sign_in_enter_code))
-                        step.userCode?.let { code ->
-                            Text(
-                                code,
-                                style = happyTextStyle(fontSize = 30, lineHeight = 36, weight = FontWeight.SemiBold).copy(fontFamily = FontFamily.Monospace),
-                                color = colors.text,
-                                modifier = Modifier.testTag(ProviderAccountsTags.CODE),
-                            )
-                            CopyButton(code)
+            ItemGroup(title = name) {
+                Box(Modifier.fillMaxWidth().height(area).testTag(ProviderAccountsTags.AREA), contentAlignment = Alignment.Center) {
+                    when (step) {
+                        SignInStep.Starting, SignInStep.Cancelled -> Waiting(stringResource(R.string.provider_sign_in_starting), Modifier.testTag(ProviderAccountsTags.STARTING))
+                        is SignInStep.Device -> FlowColumn {
+                            Secondary(stringResource(R.string.provider_sign_in_enter_code))
+                            step.userCode?.let { code ->
+                                Text(
+                                    code,
+                                    style = happyTextStyle(fontSize = 30, lineHeight = 36, weight = FontWeight.SemiBold).copy(fontFamily = FontFamily.Monospace),
+                                    color = colors.text,
+                                    maxLines = 1,
+                                    modifier = Modifier.testTag(ProviderAccountsTags.CODE),
+                                )
+                                CopyButton(code)
+                            }
+                            RoundButton(title = stringResource(R.string.provider_sign_in_open), onClick = { onOpen(step.url) }, modifier = Modifier.testTag(ProviderAccountsTags.OPEN))
+                            Secondary(stringResource(R.string.cloud_providers_waiting))
                         }
-                        RoundButton(title = stringResource(R.string.provider_sign_in_open), onClick = { onOpen(step.url) }, modifier = Modifier.testTag(ProviderAccountsTags.OPEN))
-                        Secondary(stringResource(R.string.cloud_providers_waiting))
-                    }
-                }
-                is SignInStep.PasteCode -> ItemGroup(title = name) {
-                    // Held only while the page is up; never saved with its state.
-                    var code by remember { mutableStateOf("") }
-                    FlowColumn {
-                        Secondary(stringResource(R.string.provider_sign_in_paste_intro))
-                        RoundButton(
-                            title = stringResource(R.string.provider_sign_in_open),
-                            display = RoundButtonDisplay.Inverted,
-                            onClick = { onOpen(step.url) },
-                            modifier = Modifier.testTag(ProviderAccountsTags.OPEN),
+                        is SignInStep.PasteCode -> {
+                            // Held only while the page is up; never saved with its state.
+                            var code by remember { mutableStateOf("") }
+                            FlowColumn {
+                                Secondary(stringResource(R.string.provider_sign_in_paste_intro), lines = 2)
+                                RoundButton(
+                                    title = stringResource(R.string.provider_sign_in_open),
+                                    display = RoundButtonDisplay.Inverted,
+                                    onClick = { onOpen(step.url) },
+                                    modifier = Modifier.testTag(ProviderAccountsTags.OPEN),
+                                )
+                                CodeField(code, { code = it }, stringResource(R.string.provider_sign_in_paste_code), enabled = !step.checking, hidden = false, onDone = { onCode(code) })
+                                RoundButton(
+                                    title = stringResource(R.string.common_continue),
+                                    onClick = { onCode(code) },
+                                    enabled = code.isNotBlank(),
+                                    loading = step.checking,
+                                    loadingTitle = stringResource(R.string.provider_sign_in_checking),
+                                    modifier = Modifier.fillMaxWidth().testTag(ProviderAccountsTags.SUBMIT),
+                                )
+                            }
+                        }
+                        is SignInStep.OnComputer -> Waiting(stringResource(R.string.cloud_providers_waiting), said = stringResource(R.string.provider_sign_in_on_computer))
+                        is SignInStep.Done -> Outcome(
+                            stringResource(R.string.provider_sign_in_done),
+                            colors.text,
+                            listOfNotNull(step.email, step.plan).joinToString(" · ").ifEmpty { null },
+                            Modifier.testTag(ProviderAccountsTags.DONE),
                         )
-                        CodeField(code, { code = it }, stringResource(R.string.provider_sign_in_paste_code), enabled = !step.checking, hidden = false, onDone = { onCode(code) })
-                        RoundButton(
-                            title = stringResource(R.string.common_continue),
-                            onClick = { onCode(code) },
-                            enabled = code.isNotBlank(),
-                            loading = step.checking,
-                            loadingTitle = stringResource(R.string.provider_sign_in_checking),
-                            modifier = Modifier.fillMaxWidth().testTag(ProviderAccountsTags.SUBMIT),
-                        )
-                    }
-                }
-                is SignInStep.OnComputer -> ItemGroup(title = name, footer = stringResource(R.string.provider_sign_in_on_computer)) {
-                    Item(stringResource(R.string.cloud_providers_waiting), loading = true, showChevron = false)
-                }
-                is SignInStep.Done -> ItemGroup(
-                    modifier = Modifier.testTag(ProviderAccountsTags.DONE),
-                    title = name,
-                    footer = listOfNotNull(step.email, step.plan).joinToString(" · ").ifEmpty { null },
-                ) {
-                    Item(stringResource(R.string.provider_sign_in_done), showChevron = false)
-                    Item(stringResource(R.string.provider_sign_in_done_action), titleColor = colors.textLink, showChevron = false, onClick = onClose)
-                }
-                is SignInStep.Failed -> ItemGroup(
-                    modifier = Modifier.testTag(ProviderAccountsTags.FAILURE),
-                    title = name,
-                    footer = when (step.failure) {
-                        SignInFailure.OwnerOnly -> stringResource(R.string.provider_accounts_owner_only)
-                        SignInFailure.NotInstalled -> stringResource(R.string.provider_accounts_not_installed, program)
-                        else -> step.said ?: stringResource(R.string.provider_sign_in_kept)
-                    },
-                ) {
-                    Item(
-                        stringResource(
+                        is SignInStep.Failed -> Outcome(
+                            stringResource(
+                                when (step.failure) {
+                                    SignInFailure.Expired -> R.string.provider_sign_in_expired
+                                    SignInFailure.SaveFailed -> R.string.provider_sign_in_save_failed
+                                    else -> R.string.cloud_providers_failed
+                                },
+                            ),
+                            colors.textDestructive,
                             when (step.failure) {
-                                SignInFailure.Expired -> R.string.provider_sign_in_expired
-                                SignInFailure.SaveFailed -> R.string.provider_sign_in_save_failed
-                                else -> R.string.cloud_providers_failed
+                                SignInFailure.OwnerOnly -> stringResource(R.string.provider_accounts_owner_only)
+                                SignInFailure.NotInstalled -> stringResource(R.string.provider_accounts_not_installed, program)
+                                else -> step.said ?: stringResource(R.string.provider_sign_in_kept)
                             },
-                        ),
-                        titleColor = colors.textDestructive,
-                        showChevron = false,
-                    )
-                    if (step.failure != SignInFailure.OwnerOnly && step.failure != SignInFailure.NotInstalled) {
-                        Item(
-                            stringResource(R.string.cloud_providers_try_again),
-                            titleColor = colors.textLink,
-                            showChevron = false,
-                            onClick = onRetry,
-                            modifier = Modifier.testTag(ProviderAccountsTags.RETRY),
+                            Modifier.testTag(ProviderAccountsTags.FAILURE),
                         )
                     }
-                    Item(stringResource(R.string.provider_sign_in_close), titleColor = colors.textLink, showChevron = false, onClick = onClose)
                 }
             }
-            if (step.unfinished) {
-                ItemGroup {
-                    Item(
-                        stringResource(R.string.common_cancel),
-                        titleColor = colors.textDestructive,
-                        showChevron = false,
-                        onClick = onCancel,
-                        modifier = Modifier.testTag(ProviderAccountsTags.CANCEL),
-                    )
+            ItemGroup(footer = stringResource(R.string.provider_accounts_footer)) {
+                val (title, tag, action) = when {
+                    step.unfinished -> Triple(stringResource(R.string.common_cancel), ProviderAccountsTags.CANCEL, onCancel)
+                    step is SignInStep.Done -> Triple(stringResource(R.string.provider_sign_in_done_action), ProviderAccountsTags.ACTION, onClose)
+                    step is SignInStep.Failed && step.failure != SignInFailure.OwnerOnly && step.failure != SignInFailure.NotInstalled ->
+                        Triple(stringResource(R.string.cloud_providers_try_again), ProviderAccountsTags.RETRY, onRetry)
+                    else -> Triple(stringResource(R.string.provider_sign_in_close), ProviderAccountsTags.ACTION, onClose)
                 }
+                Item(
+                    title,
+                    titleColor = if (step.unfinished) colors.textDestructive else colors.textLink,
+                    showChevron = false,
+                    onClick = action,
+                    modifier = Modifier.testTag(tag),
+                )
             }
         }
+    }
+}
+
+/** A step that only waits: a spinner, what it waits for, and why where there's more to say. */
+@Composable
+private fun Waiting(text: String, modifier: Modifier = Modifier, said: String? = null) {
+    FlowColumn(modifier) {
+        CircularProgressIndicator(Modifier.size(24.dp), color = HappyTheme.colors.textSecondary, strokeWidth = 2.dp)
+        Secondary(text)
+        said?.let { Secondary(it, lines = SAID_LINES) }
+    }
+}
+
+/** How the sign-in ended: [title] in [color], and under it the account or the agent's words, cut to [SAID_LINES]. */
+@Composable
+private fun Outcome(title: String, color: Color, said: String?, modifier: Modifier = Modifier) {
+    FlowColumn(modifier) {
+        Text(title, style = happyTextStyle(fontSize = 17, lineHeight = 22, weight = FontWeight.SemiBold), color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        said?.let { Secondary(it, lines = SAID_LINES) }
     }
 }
 
@@ -702,17 +731,24 @@ private fun CopyButton(code: String) {
 }
 
 @Composable
-private fun FlowColumn(content: @Composable () -> Unit) {
+private fun FlowColumn(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
+        modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) { content() }
 }
 
 @Composable
-private fun Secondary(text: String) {
-    Text(text, style = happyTextStyle(fontSize = 15, lineHeight = 21), color = HappyTheme.colors.textSecondary, textAlign = TextAlign.Center)
+private fun Secondary(text: String, lines: Int = 2) {
+    Text(
+        text,
+        style = happyTextStyle(fontSize = 15, lineHeight = 21),
+        color = HappyTheme.colors.textSecondary,
+        textAlign = TextAlign.Center,
+        maxLines = lines,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @Composable

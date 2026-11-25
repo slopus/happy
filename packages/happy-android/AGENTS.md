@@ -424,37 +424,48 @@ win:
   put into words: no error text, and an account with no windows, no
   model tokens and no history is left out (`usageVendors`).
   `UsageFixtures` is the test and shot data (`UsageShots`).
-- **Settings › Provider accounts** (`ui/connection/ProviderAccounts.kt`,
-  `agent/ProviderSignIn.kt`, `agent/ProviderAccounts.kt`; iOS has the same
-  page and words) is happy-agent API.md's "Provider sign-in": a row after
-  Agents, only on a Happy Agent whose health says
-  `capabilities.providerSignIn` (kept per connection, never probed; Happy
-  Cloud keeps its AI providers). A minimal list, one row per `codex`,
-  `claude` and `grok` account of `GET /v0/config` carrying `credential`:
-  vendor mark with a status dot, name and plan, chevron, and one line, the
-  first that applies (`AccountStatus`): Off; Needs sign-in, since a date
-  where the error gives one (`signIn == "signed_out"` or a permanent
-  `login.refreshError`); Couldn't
-  refresh (a transient error, with "Login expires in" when under a day);
-  else Used/Not used yet and refreshed, "System login" first for the
-  machine's own. `lastUsedAt` and `login` come from `GET /v0/usage`; an
-  older agent without them gets "Last checked" from usage's `refreshedAt`.
-  A row opens the account: Enabled (`PATCH /v0/config`), then Login (its
-  source, last refresh, token expiry, last refresh error), Sign in again,
-  and Update token where `acceptsToken`. A phone signs in with `device`, or
-  Claude's `browser` page with its code pasted back; never Codex's or Grok's
-  browser, which finishes on the computer. The page started's operation is
-  followed through `provider_sign_in.updated` (the greater `version` wins)
-  and read again on resume and each reconnect; leaving it unfinished
-  cancels it. The agent says nothing of who owns a team until it refuses
-  (`403 forbidden`), so that refusal is remembered for the session and the
-  actions stay off with the reason. Codes and tokens are never kept,
-  logged or sent to analytics. Debug builds have
-  `ui.connection.ProviderAccountsFixturesActivity`: the real client over
-  `ProviderSignInDaemon`, the contract in memory (`--es
-  providerAccounts.scene normal|success|failure|owner|missing|states|legacy`,
-  `--es providerAccounts.account codex`, `--es providerAccounts.signIn
-  codex`, `--es providerAccounts.token claude_work`).
+- **Settings › Inference on a Happy Agent** (`ui/connection/ProviderAccounts.kt`,
+  `agent/ProviderSignIn.kt`, `agent/ProviderAccounts.kt`; named as desktop's
+  Settings › Inference, and iOS has the same pages and words; code keeps
+  the `ProviderAccounts` names) is happy-agent API.md's "Provider
+  sign-in": a row after Agents, only on a Happy Agent whose health says
+  `capabilities.providerSignIn` (kept per connection, never probed). Happy
+  Cloud's own Inference row (its AI providers) shows only on Cloud, so the
+  two never meet. Nothing on these pages moves with state: only what a
+  person typed or named may change a layout, and it is cut short, not
+  wrapped.
+  - The list is one Accounts card, a row per `codex`, `claude` and `grok`
+    account of `GET /v0/config` carrying `credential`, every row two lines:
+    vendor mark with a status dot, name and plan, chevron, and one line,
+    the first that applies (`AccountStatus`): Off; Needs sign-in, since a
+    date where the error gives one (`signIn == "signed_out"` or a permanent
+    `login.refreshError`); Couldn't refresh (a transient error; its tail is
+    "expires in" in place of "last tried" when the login runs out within a
+    day); else Used/Not used yet and refreshed, "System login" first for
+    the machine's own. `lastUsedAt` and `login` come from `GET /v0/usage`;
+    an older agent without them gets "Last checked" from usage's
+    `refreshedAt`.
+  - A row opens the account: Enabled (`PATCH /v0/config`), then Login,
+    always the same five rows with "—" for what isn't known (Source, Last
+    used, Last refresh, Token expires, Last refresh error), then Sign in
+    again and Update token where `acceptsToken`.
+  - Signing in again is one page whose steps share a fixed-height area
+    and one action row (Cancel, Done, Try again or Close). A phone signs
+    in with `device`, or Claude's `browser` page with its code pasted
+    back; never Codex's or Grok's browser, which finishes on the computer.
+    The page started's operation is followed through
+    `provider_sign_in.updated` (the greater `version` wins) and read again
+    on resume and each reconnect; leaving it unfinished cancels it.
+  - The agent says nothing of who owns a team until it refuses (`403
+    forbidden`), so that refusal is remembered for the session and the
+    actions stay off with the reason. Codes and tokens are never kept,
+    logged or sent to analytics.
+  - Debug builds have `ui.connection.ProviderAccountsFixturesActivity`: the
+    real client over `ProviderSignInDaemon`, the contract in memory (`--es
+    providerAccounts.scene
+    normal|success|failure|owner|missing|states|legacy`, `--es
+    providerAccounts.account codex`, `--es providerAccounts.signIn codex`,
+    `--es providerAccounts.token claude_work`).
 - **Agent home search** looks and moves as iOS's
   (`HappyCore/Agents/Search.swift`, `SearchShown.swift`,
   `ui/connection/AgentSearch.kt`) and lists what desktop's ⌘K palette

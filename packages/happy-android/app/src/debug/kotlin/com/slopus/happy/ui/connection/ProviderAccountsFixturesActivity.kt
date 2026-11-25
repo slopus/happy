@@ -30,7 +30,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.serialization.Serializable
 
 /**
- * Debug builds only: Settings › Provider accounts and its sign-in and token
+ * Debug builds only: Settings › Inference (a Happy Agent's accounts) and its sign-in and token
  * pages, the real client over [ProviderSignInDaemon] (the contract in
  * memory; no vendor is reached). Start it with
  * `adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.connection.ProviderAccountsFixturesActivity`

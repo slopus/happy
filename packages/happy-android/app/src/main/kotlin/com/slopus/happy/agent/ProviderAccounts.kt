@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** What Settings › Provider accounts shows. */
+/** What Settings › Inference shows on a Happy Agent. */
 @Immutable
 sealed interface ProviderAccountsState {
     data object Loading : ProviderAccountsState
@@ -185,8 +185,12 @@ sealed interface AccountLine {
     /** Signed out, or a refresh only a new sign-in mends; [since] when that failure began, null when unknown. */
     data class NeedsSignIn(val since: Long?) : AccountLine
 
-    /** A refresh that failed and will be tried again: the vendor's code, else "HTTP 503", and when it was last tried. */
-    data class RefreshFailed(val reason: String?, val at: Long) : AccountLine
+    /**
+     * A refresh that failed and will be tried again: the vendor's code, else
+     * "HTTP 503", and when it was last tried, or instead [expiresAt] when the
+     * login runs out within a day.
+     */
+    data class RefreshFailed(val reason: String?, val at: Long, val expiresAt: Long? = null) : AccountLine
 
     /** Working, or not known not to: when it was last used and its login last refreshed; [system] for the machine's own login. */
     data class Healthy(val system: Boolean, val lastUsedAt: Long?, val refreshedAt: Long?) : AccountLine
@@ -195,26 +199,21 @@ sealed interface AccountLine {
     data class Checked(val system: Boolean, val checkedAt: Long?) : AccountLine
 }
 
-/**
- * An account's row in Settings › Provider accounts: its [dot], its [line],
- * and [expiresAt] only as a warning, when a refresh failed and the login
- * runs out within a day.
- */
+/** An account's row in Settings › Inference: its [dot] and its one [line]. */
 @Immutable
-data class AccountStatus(val dot: AccountDot, val line: AccountLine, val expiresAt: Long? = null) {
+data class AccountStatus(val dot: AccountDot, val line: AccountLine) {
     companion object {
         private const val DAY = 24 * 60 * 60 * 1000L
 
         /** [account]'s status at [now]; [credential] is its newest (the sign-in object's, where newer than configuration). */
         fun of(account: ProviderAccount, credential: ProviderCredential, now: Long): AccountStatus {
             val error = account.login?.refreshError
-            val expiry = account.login?.expiresAt?.takeIf { error != null && it - now <= DAY }
             val system = credential.source == CredentialSource.System
             val working = if (account.signIn == "signed_in") AccountDot.Green else AccountDot.Grey
             return when {
                 !account.enabled -> AccountStatus(AccountDot.Grey, AccountLine.Off)
-                account.signedOut || error?.permanent == true -> AccountStatus(AccountDot.Red, AccountLine.NeedsSignIn(error?.since), expiry)
-                error != null -> AccountStatus(AccountDot.Amber, AccountLine.RefreshFailed(error.reason, error.at), expiry)
+                account.signedOut || error?.permanent == true -> AccountStatus(AccountDot.Red, AccountLine.NeedsSignIn(error?.since))
+                error != null -> AccountStatus(AccountDot.Amber, AccountLine.RefreshFailed(error.reason, error.at, account.login?.expiresAt?.takeIf { it - now <= DAY }))
                 !account.loginReported -> AccountStatus(working, AccountLine.Checked(system, account.checkedAt))
                 else -> AccountStatus(working, AccountLine.Healthy(system, account.lastUsedAt, account.login?.refreshedAt))
             }

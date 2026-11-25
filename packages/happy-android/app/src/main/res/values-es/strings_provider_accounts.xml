@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
-    <string name="provider_accounts_title">Cuentas de proveedores</string>
+    <!-- Settings › Inference: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">Inferencia</string>
+    <string name="provider_accounts_section">Cuentas</string>
     <string name="provider_accounts_system">Usa el inicio de sesión del sistema</string>
     <string name="provider_accounts_internal">Sesión iniciada en Happy</string>
     <string name="provider_accounts_configured">Configurado en el archivo de configuración</string>
@@ -19,25 +20,26 @@
     <string name="provider_accounts_needs_sign_in_bare">Requiere iniciar sesión</string>
     <string name="provider_accounts_refresh_failed">No se pudo renovar · %1$s · último intento %2$s</string>
     <string name="provider_accounts_refresh_failed_bare">No se pudo renovar · último intento %1$s</string>
+    <string name="provider_accounts_refresh_failed_expires">No se pudo renovar · %1$s · caduca en %2$s</string>
+    <string name="provider_accounts_refresh_failed_expires_bare">No se pudo renovar · caduca en %1$s</string>
+    <string name="provider_accounts_refresh_failed_expired">No se pudo renovar · %1$s · sesión caducada</string>
+    <string name="provider_accounts_refresh_failed_expired_bare">No se pudo renovar · sesión caducada</string>
     <string name="provider_accounts_system_login">Inicio de sesión del sistema</string>
     <string name="provider_accounts_used">Usada %1$s</string>
     <string name="provider_accounts_not_used">Aún sin usar</string>
     <string name="provider_accounts_refreshed">renovada %1$s</string>
     <string name="provider_accounts_last_checked">Comprobada %1$s</string>
     <string name="provider_accounts_ago">hace %1$s</string>
-    <string name="provider_accounts_login_expires">El inicio de sesión caduca en %1$s</string>
-    <string name="provider_accounts_login_expired">El inicio de sesión caducó</string>
     <string name="provider_accounts_enabled">Activada</string>
     <string name="provider_accounts_login">Inicio de sesión</string>
+    <string name="provider_accounts_last_used">Último uso</string>
     <string name="provider_accounts_last_refresh">Última renovación</string>
     <string name="provider_accounts_token_expires">El token caduca</string>
     <string name="provider_accounts_token_expired">Caducado</string>
     <string name="provider_accounts_in">En %1$s</string>
     <string name="provider_accounts_refresh_error">Último error de renovación</string>
     <string name="provider_accounts_since">desde %1$s</string>
-    <string name="provider_accounts_last_checked_title">Última comprobación</string>
     <string name="provider_accounts_source">Origen</string>
-    <string name="provider_accounts_never">Nunca</string>
     <string name="provider_accounts_toggle_failed">No se pudo cambiar la cuenta</string>
     <string name="provider_sign_in_starting">Iniciando sesión…</string>
     <string name="provider_sign_in_enter_code">Introduce este código en la página de inicio de sesión</string>

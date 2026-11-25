@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Settings › Provider accounts: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
-    <string name="provider_accounts_title">Account dei provider</string>
+    <!-- Settings › Inference: each Codex, Claude and Grok account's login, signing it in again, and Claude's setup token. -->
+    <string name="provider_accounts_title">Inferenza</string>
+    <string name="provider_accounts_section">Account</string>
     <string name="provider_accounts_system">Usa l\'accesso di sistema</string>
     <string name="provider_accounts_internal">Accesso effettuato in Happy</string>
     <string name="provider_accounts_configured">Configurato nel file di configurazione</string>
@@ -19,25 +20,26 @@
     <string name="provider_accounts_needs_sign_in_bare">Richiede l\'accesso</string>
     <string name="provider_accounts_refresh_failed">Impossibile aggiornare · %1$s · ultimo tentativo %2$s</string>
     <string name="provider_accounts_refresh_failed_bare">Impossibile aggiornare · ultimo tentativo %1$s</string>
+    <string name="provider_accounts_refresh_failed_expires">Impossibile aggiornare · %1$s · scade tra %2$s</string>
+    <string name="provider_accounts_refresh_failed_expires_bare">Impossibile aggiornare · scade tra %1$s</string>
+    <string name="provider_accounts_refresh_failed_expired">Impossibile aggiornare · %1$s · accesso scaduto</string>
+    <string name="provider_accounts_refresh_failed_expired_bare">Impossibile aggiornare · accesso scaduto</string>
     <string name="provider_accounts_system_login">Accesso di sistema</string>
     <string name="provider_accounts_used">Usato %1$s</string>
     <string name="provider_accounts_not_used">Non ancora usato</string>
     <string name="provider_accounts_refreshed">aggiornato %1$s</string>
     <string name="provider_accounts_last_checked">Controllato %1$s</string>
     <string name="provider_accounts_ago">%1$s fa</string>
-    <string name="provider_accounts_login_expires">L\'accesso scade tra %1$s</string>
-    <string name="provider_accounts_login_expired">Accesso scaduto</string>
     <string name="provider_accounts_enabled">Attivo</string>
     <string name="provider_accounts_login">Accesso</string>
+    <string name="provider_accounts_last_used">Ultimo utilizzo</string>
     <string name="provider_accounts_last_refresh">Ultimo aggiornamento</string>
     <string name="provider_accounts_token_expires">Il token scade</string>
     <string name="provider_accounts_token_expired">Scaduto</string>
     <string name="provider_accounts_in">Tra %1$s</string>
     <string name="provider_accounts_refresh_error">Ultimo errore di aggiornamento</string>
     <string name="provider_accounts_since">da %1$s</string>
-    <string name="provider_accounts_last_checked_title">Ultimo controllo</string>
     <string name="provider_accounts_source">Origine</string>
-    <string name="provider_accounts_never">Mai</string>
     <string name="provider_accounts_toggle_failed">Impossibile modificare l\'account</string>
     <string name="provider_sign_in_starting">Avvio dell\'accesso…</string>
     <string name="provider_sign_in_enter_code">Inserisci questo codice nella pagina di accesso</string>

@@ -232,12 +232,13 @@ class ProviderSignInTest {
         // A transient error: its code, else its HTTP status; the expiry only within a day.
         assertEquals(AccountStatus(AccountDot.Amber, AccountLine.RefreshFailed("HTTP 503", now - 5)), of(working.copy(login = AccountLogin(null, now + 30 * hour, transient()))))
         assertEquals(
-            AccountStatus(AccountDot.Amber, AccountLine.RefreshFailed("server_error", now - 5), expiresAt = now + 3 * hour),
+            AccountStatus(AccountDot.Amber, AccountLine.RefreshFailed("server_error", now - 5, expiresAt = now + 3 * hour)),
             of(working.copy(login = AccountLogin(null, now + 3 * hour, transient().copy(code = "server_error")))),
         )
         assertEquals(AccountLine.RefreshFailed(null, now - 5), of(working.copy(login = AccountLogin(null, null, transient().copy(status = null)))).line)
-        // A login running out with nothing failing is no warning.
-        assertNull(of(working.copy(login = AccountLogin(now - 2, now + hour, null))).expiresAt)
+        // A login running out with nothing failing is no warning, nor one that needs signing in anyway.
+        assertEquals(AccountLine.Healthy(false, now - 1, now - 2), of(working.copy(login = AccountLogin(now - 2, now + hour, null))).line)
+        assertEquals(AccountLine.NeedsSignIn(now - 50 * hour), of(working.copy(login = AccountLogin(null, now + hour, permanent))).line)
         // An older agent: when usage looked, and its signIn's dot.
         assertEquals(AccountStatus(AccountDot.Green, AccountLine.Checked(true, 77)), of(ProviderAccount("a", null, "codex", system, signIn = "signed_in", checkedAt = 77), system))
     }

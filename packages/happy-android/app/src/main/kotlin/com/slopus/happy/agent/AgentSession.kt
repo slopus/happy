@@ -372,11 +372,11 @@ class AgentSession internal constructor(
     private val pipelinesAvailability = keptCapability(PIPELINES_AVAILABLE)
     val pipelinesAvailable: StateFlow<Boolean> get() = pipelinesAvailability.available
 
-    /** Whether Settings lists Provider accounts: bootstrap health's `capabilities.providerSignIn`, never probed. */
+    /** Whether Settings lists Inference (the agent's accounts): bootstrap health's `capabilities.providerSignIn`, never probed. */
     private val providerSignInAvailability = keptCapability(PROVIDER_SIGN_IN_AVAILABLE)
     val providerSignInAvailable: StateFlow<Boolean> get() = providerSignInAvailability.available
 
-    /** The provider accounts' sign-ins (Settings › Provider accounts), made when a page first asks. */
+    /** The provider accounts' sign-ins (Settings › Inference), made when a page first asks. */
     val providerAccounts: ProviderAccounts by lazy { ProviderAccounts(AgentProviderSignIns(client), events, scope) }
 
     /** A capability kept in the connection's resources under [resource], so home's row doesn't come and go on each start. */

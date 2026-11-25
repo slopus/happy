@@ -192,7 +192,7 @@ class AgentSettingsActions(
     val onAgents: (() -> Unit)? = null,
     /** Members: who is on this Happy Cloud server, and leaving it; null for any other connection. */
     val onMembers: (() -> Unit)? = null,
-    /** Provider accounts: where each Codex, Claude and Grok account's login comes from, and signing it in again; null where the agent doesn't offer it. */
+    /** Inference on a Happy Agent: where each Codex, Claude and Grok account's login comes from, and signing it in again; null where the agent doesn't offer it. */
     val onProviderAccounts: (() -> Unit)? = null,
     /** AI providers: the Happy Cloud server's connections, and adding ChatGPT, Claude and API keys; null for any other connection. */
     val onProviders: (() -> Unit)? = null,
@@ -228,7 +228,7 @@ data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, va
  * desktop's Hide projects; the person's own Profile; Voice;
  * Data and Storage; Notifications, which is Sharing and on a Cloud server
  * its push settings too), Support Happy's boba row under it, Agents
- * (Agents, Provider accounts, Inference, Compute, Usage), Team (Members,
+ * (Agents, Inference: a Happy Agent's accounts or Cloud's providers, Compute, Usage), Team (Members,
  * on Cloud); Privacy;
  * the agent's version; About; Disconnect, after a
  * confirm. A device token can't reach
