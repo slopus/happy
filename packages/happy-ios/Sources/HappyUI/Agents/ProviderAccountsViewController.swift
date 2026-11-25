@@ -125,6 +125,13 @@ final class ProviderAccountsModel {
         load()
     }
 
+    /// `blocked`, said in a row's value.
+    func blockedLabel(_ account: ProviderAccount) -> String? {
+        if ownerOnly { return Strings.ProviderAccounts.ownerOnlyShort }
+        if signIns[account.id]?.installed == false { return Strings.ProviderAccounts.notInstalledShort }
+        return nil
+    }
+
     /// Why `account`'s sign-in changes are off, or nil when they are on.
     func blocked(_ account: ProviderAccount) -> String? {
         if ownerOnly { return Strings.ProviderAccounts.ownerOnly }
@@ -203,16 +210,17 @@ final class ProviderStatusDot: UIView {
     override func sizeThatFits(_ size: CGSize) -> CGSize { CGSize(width: Self.side, height: Self.side) }
 
     private func apply() {
-        backgroundColor = switch dot {
-        case .green: .systemGreen
-        case .amber: .systemOrange
-        case .red: .systemRed
-        case .grey: .systemGray3
+        let color: ColorToken = switch dot {
+        case .green: Palette.inferenceDotWorking
+        case .amber: Palette.inferenceDotRefreshFailed
+        case .red: Palette.inferenceDotNeedsSignIn
+        case .grey: Palette.inferenceDotOff
         }
+        backgroundColor = UIColor(color)
     }
 }
 
-/// Settings › Provider accounts (API.md "Provider sign-in"): a minimal
+/// Settings › Inference (API.md "Provider sign-in"): a minimal
 /// list of the computer's Codex, Claude and Grok accounts. Each row is
 /// its vendor's mark, its name and plan, a status dot, and one line on how
 /// its login is doing; a tap opens the account's own page.
@@ -251,7 +259,9 @@ final class ProviderAccountsViewController: SettingsPageViewController {
         guard !accounts.isEmpty else {
             return [[SettingsRow(id: "provider-accounts-empty", title: Text.empty, accessory: .none, dimmed: true)]]
         }
-        return [accounts.map(row).withFooter(Text.footer)]
+        var rows = accounts.map(row)
+        rows[0].header = Text.accountsHeader
+        return [rows]
     }
 
     private func row(_ account: ProviderAccount) -> SettingsRow {
@@ -261,11 +271,11 @@ final class ProviderAccountsViewController: SettingsPageViewController {
         let title = ([ProviderAccountsModel.name(account)] + [model.plan(account)].compactMap { $0 }).joined(separator: " · ")
         var row = SettingsRow(id: "provider-account-\(account.id)", title: title, action: { [weak self] in self?.open(account) })
         ProviderAccountMark.apply(account.type, to: &row)
-        let line = Text.status(status, source: model.credential(account).source, account: model.signIns[account.id]?.account, now: now)
-        var lines = [line]
-        if let expires = ProviderAccountStatus.expiryWarning(model.health[account.id], now: now) { lines.append(Text.expires(expires, now: now)) }
-        row.subtitle = lines.joined(separator: "\n")
-        row.subtitleLines = 0
+        let line = Text.status(status, source: model.credential(account).source, account: model.signIns[account.id]?.account,
+                               expires: ProviderAccountStatus.expiryWarning(model.health[account.id], now: now), now: now)
+        // Always two lines, whatever the state: a status never moves the list.
+        row.subtitle = line
+        row.subtitleCutsTail = true
         let dot = dots[account.id] ?? ProviderStatusDot()
         dots[account.id] = dot
         dot.dot = status.dot
@@ -319,65 +329,74 @@ final class ProviderAccountViewController: SettingsPageViewController {
         let health = model.health[account.id]
         let signIn = model.signIns[account.id]
 
-        var head = SettingsRow(id: "provider-detail-name", title: ProviderAccountsModel.name(account), value: ModelMenus.serviceName(account.type), accessory: .none)
+        // The same rows in every state, "—" for what isn't known: a state
+        // never moves the page.
+        var head = SettingsRow(id: "provider-detail-name", title: ProviderAccountsModel.name(account), accessory: .none)
         ProviderAccountMark.apply(account.type, to: &head)
-        head.subtitle = model.plan(account)
+        // One line, the vendor's name at least: "Claude · Max · ada@example.com".
+        head.subtitle = [ModelMenus.serviceName(account.type), model.plan(account), credential.source == .internal ? signIn?.account?.email : nil]
+            .compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
+        head.subtitleCutsTail = true
         var enabled = SettingsRow(id: "provider-detail-enabled", title: Text.enabled, accessory: .toggle, isOn: account.enabled,
                                   toggled: model.ownerOnly ? nil : { [weak self] on in self?.setEnabled(on) })
         enabled.dimmed = model.ownerOnly
         enabled.hint = model.ownerOnly ? Text.ownerOnly : nil
 
         var source = SettingsRow(id: "provider-detail-source", title: Text.source, value: Text.credential(credential.source, account: nil), accessory: .none)
-        if credential.source == .internal, let who = signIn?.account, who.email != nil || who.plan != nil {
-            source.subtitle = [who.email, who.plan].compactMap { $0 }.joined(separator: " · ")
+        source.header = Text.loginHeader
+        let used: String
+        switch health?.lastUsed {
+        case .never: used = Text.notUsedYet
+        case .at(let date): used = Text.ago(date, now: now)
+        case nil: used = Text.unknown
         }
-        var login = [source]
-        if let refreshed = health?.login?.refreshedAt {
-            login.append(SettingsRow(id: "provider-detail-refreshed", title: Text.lastRefresh, value: Text.ago(refreshed, now: now), accessory: .none))
-        } else if health?.login != nil {
-            login.append(SettingsRow(id: "provider-detail-refreshed", title: Text.lastRefresh, value: Text.never, accessory: .none))
-        } else if let checked = health?.checkedAt {
-            // An older daemon says only when it last read the account.
-            login.append(SettingsRow(id: "provider-detail-checked", title: Text.lastChecked, value: Text.ago(checked, now: now), accessory: .none))
-        }
-        if let expires = health?.login?.expiresAt {
-            login.append(SettingsRow(id: "provider-detail-expires", title: Text.tokenExpires, value: Text.expiry(expires, now: now), accessory: .none))
-        }
-        if let error = health?.login?.refreshError {
-            var row = SettingsRow(id: "provider-detail-error", title: Text.lastRefreshError, accessory: .none)
-            row.subtitle = Text.refreshError(error)
-            row.destructive = error.permanent
-            login.append(row)
-        }
-        login[0].header = Text.loginHeader
+        // No time is unknown, not never: a login in the keychain or a pasted
+        // token has no file to date.
+        let refreshed = health?.login?.refreshedAt.map { Text.ago($0, now: now) } ?? Text.unknown
+        let expires = health?.login?.expiresAt.map { Text.expiry($0, now: now) } ?? Text.unknown
+        var error = SettingsRow(id: "provider-detail-error", title: Text.lastRefreshError, accessory: .none)
+        error.subtitle = health?.login?.refreshError.map(Text.refreshError) ?? Text.unknown
+        error.subtitleCutsTail = true
+        error.destructive = health?.login?.refreshError?.permanent == true
+        let login = [
+            source,
+            SettingsRow(id: "provider-detail-used", title: Text.lastUsed, value: used, accessory: .none),
+            SettingsRow(id: "provider-detail-refreshed", title: Text.lastRefresh, value: refreshed, accessory: .none),
+            SettingsRow(id: "provider-detail-expires", title: Text.tokenExpires, value: expires, accessory: .none),
+            error,
+        ]
 
+        // A sign-in already going (started on another device) can be joined
+        // or cancelled even where this phone can't start one. What stops
+        // one is said in the row's value; a tap says it whole.
         let method = credential.phoneMethod(cli: account.type)
         let running = signIn?.operation.map { !$0.ended } ?? false
-        var actions: [SettingsRow] = []
-        // A sign-in already going (started on another device) can be joined
-        // or cancelled even where this phone can't start one.
-        if method != nil || running {
-            var again = SettingsRow(id: "provider-sign-in-\(account.id)", title: Text.signInAgain, value: running ? Text.inProgress : nil,
-                                    accessory: reason == nil ? .chevron : .none, action: reason == nil ? { [weak self] in self?.signIn() } : nil)
-            again.dimmed = reason != nil
-            again.hint = reason
-            actions.append(again)
-        }
+        let stopped = reason ?? (method == nil && !running ? Text.signsInOnComputer : nil)
+        var again = SettingsRow(id: "provider-sign-in-\(account.id)", title: Text.signInAgain,
+                                value: running ? Text.inProgress : model.blockedLabel(account) ?? (stopped == nil ? nil : Text.onComputerShort),
+                                accessory: stopped == nil ? .chevron : .none,
+                                action: { [weak self] in
+                                    if let stopped { self?.explain(stopped) } else { self?.signIn() }
+                                })
+        again.dimmed = stopped != nil
+        again.hint = stopped
+        var actions = [again]
         if credential.acceptsToken {
-            var token = SettingsRow(id: "provider-token-\(account.id)", title: Text.updateToken, accessory: .none,
-                                    action: reason == nil ? { [weak self] in self?.updateToken() } : nil)
+            var token = SettingsRow(id: "provider-token-\(account.id)", title: Text.updateToken, value: model.blockedLabel(account), accessory: .none,
+                                    action: { [weak self] in
+                                        if let reason { self?.explain(reason) } else { self?.updateToken() }
+                                    })
             token.dimmed = reason != nil
             token.hint = reason
             actions.append(token)
         }
-        let unavailable = method == nil && !running && !credential.acceptsToken ? Text.signsInOnComputer : nil
-        let notes = [reason ?? unavailable, Text.footer].compactMap { $0 }.joined(separator: " ")
-        guard !actions.isEmpty else {
-            login[login.count - 1].footer = notes
-            return [[head, enabled], login]
-        }
-        actions[actions.count - 1].footer = notes
+        actions[actions.count - 1].footer = Text.footer
         return [[head, enabled], login, actions]
+    }
+
+    /// Why an action is off, said whole.
+    private func explain(_ reason: String) {
+        Alerts.show(reason, nil, on: self)
     }
 
     // MARK: Actions
