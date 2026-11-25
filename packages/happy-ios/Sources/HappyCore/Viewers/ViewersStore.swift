@@ -48,6 +48,9 @@ public actor ViewersStore {
     private var failures = 0
     private var availability: [UUID: AsyncStream<Bool>.Continuation] = [:]
     private var pump: Task<Void, Never>?
+    /// The pump that speaks for the current stream; one retired with its
+    /// stream changes nothing after its awaits.
+    private var pumpID: UUID?
     private var nap: Task<Void, Never>?
     private var changed = false
 
@@ -111,6 +114,9 @@ public actor ViewersStore {
         said = []
         lastSaid = nil
         failures = 0
+        // A PUT still out on the old stream answers for nothing now: its
+        // pump is cancelled, request and all, and this one starts at once.
+        retire()
         // Another stream: nothing heard on the last one is live.
         if refused || lists.values.contains(where: \.live) {
             refused = false
@@ -125,9 +131,9 @@ public actor ViewersStore {
         streamId = nil
         said = []
         lastSaid = nil
+        retire()
         settleAll()
         publishAll()
-        wake()
     }
 
     public static func isViewersFrame(_ event: String) -> Bool { event == "viewers.updated" }
@@ -155,8 +161,7 @@ public actor ViewersStore {
     }
 
     public func stop() {
-        pump?.cancel(); pump = nil
-        nap?.cancel(); nap = nil
+        retire()
         streamId = nil
         for viewing in viewings { viewing.continuation.finish() }
         viewings = []
@@ -170,7 +175,14 @@ public actor ViewersStore {
         changed = true
         nap?.cancel()
         guard pump == nil else { return }
-        pump = Task { await self.run() }
+        let id = UUID()
+        pumpID = id
+        pump = Task { await self.run(id) }
+    }
+
+    private func retire() {
+        pump?.cancel(); pump = nil; pumpID = nil
+        nap?.cancel(); nap = nil
     }
 
     /// Says what is looked at whenever that changes, and again every
@@ -178,14 +190,20 @@ public actor ViewersStore {
     /// surely holds nothing. A PUT whose answer was lost may have been
     /// applied, so it counts as said until one is heard: leaving or going
     /// away after it still says `[]`. One PUT at a time, so the server
-    /// applies them in order. In the background this runs inside the
+    /// applies them in order, and none is cancelled while its stream
+    /// lasts: a cancelled body may still land after a later `[]`. A new or
+    /// closed stream retires the pump (`retire`): the server ended the old
+    /// stream's views with it, so its request is cancelled and its answer
+    /// ignored. In the background this runs inside the
     /// engine's hold (`SyncEngine.background`); without one, the stream
     /// closes, and the server ends what it looked at with it.
-    private func run() async {
-        while !Task.isCancelled {
+    private func run(_ id: UUID) async {
+        defer { if pumpID == id { pump = nil; pumpID = nil } }
+        while pumpID == id {
             if changed {
                 // A push is one screen leaving and another coming: said once.
                 try? await Task.sleep(for: settle)
+                guard pumpID == id else { return }
                 changed = false
             }
             guard let stream = streamId, !refused else { break }
@@ -196,7 +214,7 @@ public actor ViewersStore {
                 said = nil
                 do {
                     let answer = try await put(stream, targets)
-                    guard streamId == stream else { continue }
+                    guard pumpID == id, streamId == stream else { return }
                     said = targets
                     lastSaid = .now
                     failures = 0
@@ -207,13 +225,13 @@ public actor ViewersStore {
                         publish(target)
                     }
                 } catch let error as AgentClientError where error.status == 404 {
-                    guard streamId == stream else { continue }
+                    guard pumpID == id, streamId == stream else { return }
                     refused = true
                     said = []
                     publishAll()
                     break
                 } catch {
-                    guard streamId == stream else { continue }
+                    guard pumpID == id, streamId == stream else { return }
                     // It may have been applied: said again soon, `[]` included.
                     wait = min(heartbeat, retry * (1 << min(failures, 8)))
                     failures += 1
@@ -227,9 +245,9 @@ public actor ViewersStore {
             let nap = Task<Void, Never> { try? await Task.sleep(for: wait) }
             self.nap = nap
             await nap.value
+            guard pumpID == id else { return }
             if self.nap == nap { self.nap = nil }
         }
-        pump = nil
     }
 
     // MARK: Telling the headers

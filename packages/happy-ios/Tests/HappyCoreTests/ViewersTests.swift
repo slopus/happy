@@ -17,21 +17,25 @@ private actor FakeViewersServer {
     var people: [ViewerTarget: [Viewer]] = [:]
     var outcome = Outcome.answer
     var holding = false
-    private var waiting: [CheckedContinuation<Outcome, Never>] = []
+    private var waiting: [(stream: String, continuation: CheckedContinuation<Outcome, Never>)] = []
 
     func set(_ target: ViewerTarget, _ viewers: [Viewer]) { people[target] = viewers }
     func refuse(_ refusing: Bool) { outcome = refusing ? .refuse : .answer }
     func end(_ outcome: Outcome) { self.outcome = outcome }
     func hold(_ holding: Bool) { self.holding = holding }
 
-    /// Ends the oldest call held.
-    func release(_ outcome: Outcome) { waiting.removeFirst().resume(returning: outcome) }
+    /// Ends the oldest call held, or the oldest on `stream`.
+    func release(_ outcome: Outcome, stream: String? = nil) {
+        guard let index = waiting.firstIndex(where: { stream == nil || $0.stream == stream }) else { return }
+        waiting.remove(at: index).continuation.resume(returning: outcome)
+    }
     var held: Int { waiting.count }
+    func held(on stream: String) -> Int { waiting.filter { $0.stream == stream }.count }
 
     func put(_ stream: String, _ targets: [ViewerTarget]) async throws -> [(target: ViewerTarget, viewers: [Viewer])] {
         calls.append((stream, targets))
         var ending = outcome
-        if holding { ending = await withCheckedContinuation { waiting.append($0) } }
+        if holding { ending = await withCheckedContinuation { waiting.append((stream, $0)) } }
         switch ending {
         case .refuse:
             throw AgentClientError.status(404, code: "not_found", message: nil)
@@ -442,5 +446,42 @@ final class ViewersStoreTests: XCTestCase {
         XCTAssertEqual(back, true)
         let calls = await server.calls.count
         XCTAssertEqual(calls, 1, "watching availability says nothing to the server")
+    }
+
+    func testANewStreamSaysWhatIsShownWhileAPutOnTheOldOneIsStillOut() async {
+        let server = FakeViewersServer()
+        let anna = Viewer(userId: "anna", here: true, lastSeenAt: now)
+        await server.set(chat, [anna])
+        await server.hold(true)
+        let store = makeStore(server)
+        await store.opened(hello("s1"))
+        var states = await store.view(chat).makeAsyncIterator()
+        _ = await states.next()
+        await eventually("out on s1") { await server.held(on: "s1") == 1 }
+        // The stream is replaced while s1's PUT waits for an answer.
+        await store.opened(hello("s2"))
+        await eventually("said on s2 before s1 answers") { await server.held(on: "s2") == 1 }
+        guard await server.held(on: "s2") == 1 else {
+            await server.hold(false)
+            await server.release(.answer, stream: "s1")
+            return
+        }
+        let streams = await server.calls.map(\.stream)
+        XCTAssertEqual(streams, ["s1", "s2"])
+        await server.release(.answer, stream: "s2")
+        let live = await next(&states, "s2's answer") { $0 == .viewers([anna], live: true) }
+        XCTAssertNotNil(live)
+        // s1 answers late, with what was so then: it changes nothing.
+        await server.set(chat, [Viewer(userId: "max", here: true, lastSeenAt: now)])
+        await server.hold(false)
+        await server.release(.answer, stream: "s1")
+        try? await Task.sleep(for: .milliseconds(60))
+        let after = await server.calls.map(\.stream)
+        XCTAssertEqual(after, ["s1", "s2"], "the late answer neither re-asks nor un-says s2")
+        let watching = Task { for await _ in await store.view(todo) {} }
+        await eventually("the s2 pump still speaks") { await server.said.last == [chat, todo] }
+        let last = await server.calls.last?.stream
+        XCTAssertEqual(last, "s2")
+        watching.cancel()
     }
 }
