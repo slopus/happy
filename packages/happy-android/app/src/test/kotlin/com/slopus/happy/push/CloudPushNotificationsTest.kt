@@ -32,6 +32,10 @@ class CloudPushNotificationsTest {
     private val notice = CloudPushNotification("ipkr89pp9j4f4edhsw7rpz98", "member-one", "agent-one", "notification-one")
     private val account = AgentConnection("connection-one", "Team", addedAt = 1, server = "https://qa.${BuildConfig.HAPPY_CLOUD_BASE}", instanceId = notice.instanceId, userId = notice.userId)
     private val push get() = RemotePush("Exact agent title", "Exact agent body", notice.json(), "messages", "provider-message-id")
+    /** A local daemon this phone is paired with, and a push as that daemon sends one: for `standalone`, a title and no second line. */
+    private val paired = AgentConnection("connection-paired", "Studio", addedAt = 2, instanceId = "k3x9q2m7p0a4b8c1d5e6f7g2", pushRegistrations = true)
+    private val local = CloudPushNotification("k3x9q2m7p0a4b8c1d5e6f7g2", "standalone", "agent-local", "notification-local")
+    private val localPush get() = RemotePush("Scratch volume down to 16 GB free", null, local.json(), "messages", "provider-message-id")
 
     @Before fun prepare() {
         manager.cancelAll()
@@ -49,6 +53,14 @@ class CloudPushNotificationsTest {
             val credentials = AgentConnectionCredentials("qa.${BuildConfig.HAPPY_CLOUD_BASE}", 443, "", "", publicUrl = account.server, oauth = OAuthCredential("oauth", "app", userId = credentialUser))
             secrets.setItem(account.id, Json.encodeToString(credentials))
         }
+        return AgentConnections(secrets, registry)
+    }
+
+    private fun pairings(accounts: List<AgentConnection> = listOf(paired), deviceToken: Boolean = true): AgentConnections {
+        val registry = context.getSharedPreferences("cloud-push-test-registry", Context.MODE_PRIVATE)
+        registry.edit().putString("accounts", Json.encodeToString(accounts)).commit()
+        val secrets = ExpoSecureStore(context.getSharedPreferences("cloud-push-test-secrets", Context.MODE_PRIVATE), SoftwareKeys())
+        if (deviceToken) secrets.setItem(paired.id, Json.encodeToString(AgentConnectionCredentials("tcAddress", 24781, "device", "device-token")))
         return AgentConnections(secrets, registry)
     }
 
@@ -80,9 +92,51 @@ class CloudPushNotificationsTest {
         assertEquals(account, cloudPushConnection(accounts, notice.instanceId, notice.userId, open = other.id))
         assertNull(cloudPushConnection(accounts, notice.instanceId, "unknown", open = other.id))
         assertNull(cloudPushConnection(accounts, "iother89pp9j4f4edhsw7rpz98", notice.userId, open = account.id))
-        for (invalid in listOf(account.copy(signInRequired = true), account.copy(profileRequired = true), account.copy(revoked = true), account.copy(server = "https://local.example"))) {
+        for (invalid in listOf(account.copy(signInRequired = true), account.copy(profileRequired = true), account.copy(revoked = true), account.copy(userId = null))) {
             assertNull(cloudPushConnection(listOf(invalid), notice.instanceId, notice.userId))
         }
+        // A team's own server is matched as a Happy Cloud one is: by its installation and member, whatever its host.
+        val selfHosted = account.copy(server = "https://happy.team.example")
+        assertEquals(selfHosted, cloudPushConnection(listOf(selfHosted), notice.instanceId, notice.userId))
+    }
+
+    @Test fun aStandalonePushOpensOnlyOnAPairingOfThatInstallation() {
+        val signIn = account.copy(id = "sign-in", server = "https://happy.team.example", instanceId = local.instanceId)
+        assertEquals(paired, cloudPushConnection(listOf(signIn, paired), local.instanceId, "standalone", open = signIn.id))
+        assertNull(cloudPushConnection(listOf(signIn), local.instanceId, "standalone"))
+        assertNull(cloudPushConnection(listOf(signIn.copy(userId = null)), local.instanceId, "standalone"))
+        assertNull(cloudPushConnection(listOf(paired), "iother89pp9j4f4edhsw7rpz", "standalone"))
+        assertNull(cloudPushConnection(listOf(paired.copy(instanceId = null)), local.instanceId, "standalone"))
+        assertNull(cloudPushConnection(listOf(paired.copy(revoked = true)), local.instanceId, "standalone"))
+    }
+
+    @Test fun aMemberPushNeverOpensOnAStandalonePairingOrAnotherMembers() {
+        assertNull(cloudPushConnection(listOf(paired), local.instanceId, "member-one"))
+        // Paired with a team's daemon, the phone acts for the member that daemon names, and for nobody else.
+        val teamPairing = paired.copy(userId = "member-two")
+        assertEquals(teamPairing, cloudPushConnection(listOf(teamPairing), local.instanceId, "member-two"))
+        assertNull(cloudPushConnection(listOf(teamPairing), local.instanceId, "member-one"))
+        assertNull(cloudPushConnection(listOf(teamPairing), local.instanceId, "standalone"))
+    }
+
+    @Test fun aPairedDaemonsPushIsShownAndItsTapOpensThatAgentOnThePairing() = runBlocking<Unit> {
+        presentCloudPush(context, localPush, pairings())
+        val notification = shadowOf(manager).allNotifications.single()
+        assertEquals("Scratch volume down to 16 GB free", notification.extras.getString(Notification.EXTRA_TITLE))
+        assertNull(notification.extras.getCharSequence(Notification.EXTRA_TEXT))
+        assertTrue(DeepLinks.offer(shadowOf(notification.contentIntent).savedIntent))
+        assertEquals(DeepLink.Instance(local.instanceId, HappyLink.Reference(HappyReferenceKind.Agent, "agent-local"), "standalone"), DeepLinks.pending.value)
+    }
+
+    @Test fun aStandalonePushForAnotherInstallationOrAForgottenPairingNeverDisplays() = runBlocking<Unit> {
+        presentCloudPush(context, localPush.copy(body = local.copy(instanceId = "iother89pp9j4f4edhsw7rpz").json()), pairings())
+        presentCloudPush(context, localPush, pairings(deviceToken = false))
+        presentCloudPush(context, localPush, pairings(listOf(paired.copy(revoked = true))))
+        presentCloudPush(context, localPush, pairings(listOf(paired.copy(userId = "member-two"))))
+        presentCloudPush(context, localPush.copy(body = local.copy(userId = "member-one").json()), pairings())
+        // A sign-in to the same installation is another person's: the installation's one person is not them.
+        presentCloudPush(context, localPush, connections(listOf(account.copy(instanceId = local.instanceId)), credentialUser = "standalone"))
+        assertTrue(shadowOf(manager).allNotifications.isEmpty())
     }
 
     @Test fun realCredentialMatchDisplaysExactCopyAndTapPreservesMember() = runBlocking<Unit> {

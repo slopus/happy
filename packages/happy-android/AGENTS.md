@@ -392,7 +392,7 @@ win:
   row on every agent connection, after Data and Storage in the first card,
   a bell on a red tile (`AgentSharingTags.ROW`, which `CloudPushTags.ROW`
   names too). Its page (`AgentNotificationsPage`, `AgentSharing.kt`) has,
-  on a Happy Cloud server, the push settings first ("Notifications from
+  on a server that keeps phones (`servesPush`), the push settings first ("Notifications from
   this server", Device permission, Enable on this device, with their
   footer; `CloudPushGroups`), then on every connection the two "Join other
   people's…" switches with theirs. `AgentSharingRoute` (with `reveal`),
@@ -1685,6 +1685,19 @@ thread from registration (after the first frame) and in
   different Firebase project needs its key uploaded to Expo);
 - the device has Play services (otherwise unsupported, as FCM has no
   token there).
+
+**An agent connection's own pushes** (`CloudPush*`, apart from the Happy
+account's above): the FCM token goes to Happy's relay for a
+`HappyPushToken[…]` (`HappyPushRelay`), which is registered with the server
+(`PUT /v0/cloud/push/registrations/:id`, `CloudPushApi`). `cloudPushAccount`
+says which connections register: a Happy Cloud server always, any other
+server or paired Happy Agent only while its health says
+`capabilities.pushRegistrations` (kept on the connection). A push names an
+installation and a member, and is shown and opened only on a connection
+that is both (`cloudPushConnection`, the same rule as iOS's): a sign-in is
+its member, a pairing is the member its daemon names (`profile.userId`) and
+on a standalone daemon the literal `standalone`. Forgetting a connection
+unregisters first, because a daemon keeps a phone it was never told to forget.
 
 ## Time zone and language
 

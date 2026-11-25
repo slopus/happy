@@ -87,6 +87,37 @@ class AgentSessionTest {
         withTimeout(10_000) { while (!check(read())) kotlinx.coroutines.delay(20) }
     }
 
+    private fun pushingHealth() = buildJsonObject {
+        put("ready", true)
+        put("version", buildJsonObject { put("protocol", 30); put("daemon", "1.0") })
+        put("instanceId", "k3x9q2m7p0a4b8c1d5e6f7g2")
+        put("capabilities", buildJsonObject { put("pushRegistrations", true) })
+    }
+
+    @Test
+    fun aPairingLearnsFromItsDaemonWhetherItKeepsPhonesAndWhichMemberItActsFor() = runBlocking {
+        // Whoever the pairing was for before, the daemon's word now stands, and a pairing is never asked to sign in over it.
+        connections.update(id) { it.copy(userId = "earlier-member") }
+        agent.bootstrap = agent.bootstrap.with("health", pushingHealth())
+        sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ connections.accounts.value.single() }) { it.pushRegistrations }
+        val known = connections.accounts.value.single()
+        assertEquals("k3x9q2m7p0a4b8c1d5e6f7g2", known.instanceId)
+        assertEquals(Wire.USER, known.userId)
+        assertFalse(known.signInRequired)
+    }
+
+    @Test
+    fun aPairingWithAStandaloneDaemonActsForNoMember() = runBlocking {
+        connections.update(id) { it.copy(userId = "earlier-member") }
+        agent.bootstrap = agent.bootstrap.with("health", pushingHealth()).with("profile", buildJsonObject { put("userId", kotlinx.serialization.json.JsonNull) })
+        sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ connections.accounts.value.single() }) { it.pushRegistrations }
+        assertNull(connections.accounts.value.single().userId)
+    }
+
     /**
      * A daemon draining to restart says so on the stream: the headers say
      * restarting through the drop as the old process goes, and the new
@@ -749,6 +780,8 @@ class AgentSessionTest {
     fun theBackgroundStopsALinkWhoseReadsBlock() = runBlocking {
         val chunks = java.util.concurrent.LinkedBlockingQueue<String>()
         val streams = java.util.concurrent.atomic.AtomicInteger()
+        val waiting = java.util.concurrent.atomic.AtomicInteger()
+        val helloRead = java.util.concurrent.atomic.AtomicBoolean()
         val stopped = CompletableDeferred<Unit>()
         val session = sessions {
             object : Transport by agent {
@@ -758,7 +791,9 @@ class AgentSessionTest {
                     return TransportStream.open(object : ByteSource {
                         override suspend fun read(): ByteArray = try {
                             runInterruptible(Dispatchers.IO) {
-                                if (headSent) chunks.take().toByteArray().let { "${it.size.toString(16)}\r\n".toByteArray() + it + "\r\n".toByteArray() }
+                                // A read begun after the hello was handed over: the one the background has to stop.
+                                if (helloRead.get()) waiting.incrementAndGet()
+                                if (headSent) chunks.take().also { helloRead.set(true) }.toByteArray().let { "${it.size.toString(16)}\r\n".toByteArray() + it + "\r\n".toByteArray() }
                                 else "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n".toByteArray().also { headSent = true }
                             }
                         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -773,6 +808,8 @@ class AgentSessionTest {
         }.session(id)!!
         chunks.put(Wire.hello("c0"))
         eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        // Connected is said before the snapshot is read: only once the link is back in a read that blocks is that what the background stops.
+        eventually({ waiting.get() }) { it > 0 }
         foreground.value = false
         withTimeout(2_000) { stopped.await() }
         foreground.value = true

@@ -951,7 +951,8 @@ private fun SignedInAgentHome(
     val permissions by session.permissions.collectAsStateWithLifecycle()
     val canCompose = permissions.canWrite
     val canAskChief = permissions.allows(com.slopus.happy.agent.Permission.BOTS_MANAGE)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, onOpenPlugins, onOpenPipelines, voice, onOpenVaultItem, onOpenPerson, canCompose, canAskChief) {
+    val push = servesPush(graph, id)
+    val actions = remember(graph, session, push, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, onOpenPlugins, onOpenPipelines, voice, onOpenVaultItem, onOpenPerson, canCompose, canAskChief) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -974,7 +975,7 @@ private fun SignedInAgentHome(
             canCompose = canCompose,
             canAskChief = canAskChief,
             projectsAvailable = !session.client.cloud,
-            notificationsAvailable = session.client.cloud,
+            notificationsAvailable = push,
             onOpenPerson = onOpenPerson.takeIf { session.client.cloud },
         )
     }

@@ -31,7 +31,7 @@ object AgentSharingTags {
 
 /**
  * Agent connection [connectionId]'s Notifications, whichever route opened
- * it: on a Happy Cloud server its push settings first ([CloudPushGroups]),
+ * it: on a server that keeps phones its push settings first ([CloudPushGroups]),
  * then on every connection the join switches; [reveal] scrolls one of their
  * rows into view and flashes it.
  */
@@ -39,13 +39,13 @@ object AgentSharingTags {
 internal fun AgentNotificationsPage(graph: AppGraph, nav: NavHostController, connectionId: String, reveal: String? = null) {
     val session = remember(connectionId) { graph.agentSessions.session(connectionId) }
     val state = session?.sharing?.collectAsStateWithLifecycle()?.value ?: AgentSharingState.Loading
-    val cloud = session?.client?.cloud == true
+    val push = servesPush(graph, connectionId)
     ProvideRowReveal(reveal) {
         AgentNotificationsScreen(
             sharing = state,
             onAutoJoin = { kind, enabled -> session?.setAutoJoin(kind, enabled) },
             onBack = { nav.popBackStack() },
-            push = if (cloud) ({ CloudPushPanel(graph, connectionId) }) else null,
+            push = if (push) ({ CloudPushPanel(graph, connectionId) }) else null,
         )
     }
 }
@@ -58,7 +58,7 @@ fun AgentSharingScreen(state: AgentSharingState, onAutoJoin: (AutoJoinKind, Bool
 
 /**
  * Notifications, Steve's "Sharing is notifications": [push] first where the
- * connection is a Happy Cloud server (its switch, the device's permission,
+ * connection's server keeps phones (its switch, the device's permission,
  * enabling it here, with their footer), then joining other people's tasks
  * and docs, lists and calendars, with theirs. One page, one row in Settings.
  */

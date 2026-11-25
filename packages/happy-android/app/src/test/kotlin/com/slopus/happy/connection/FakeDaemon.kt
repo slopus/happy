@@ -65,6 +65,8 @@ class FakeDaemon(
     var avatar: ByteArray? = null
     /** Health's `instanceId` (edge SSO §7); none from an older daemon. */
     var instanceId: String? = null
+    /** Health's `capabilities.pushRegistrations`; no capabilities at all while false, as from an older daemon. */
+    var pushRegistrations = false
     var endpointAdvertisement: JsonElement? = null
 
     override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
@@ -122,6 +124,7 @@ class FakeDaemon(
                     put("ready", true)
                     putJsonObject("version") { put("protocol", 32); put("daemon", "0.4.109") }
                     instanceId?.let { put("instanceId", it) }
+                    if (pushRegistrations) putJsonObject("capabilities") { put("pushRegistrations", true) }
                 })
             }
             "/v0/config" -> paired {

@@ -476,8 +476,9 @@ internal fun statusText(status: AgentLinkStatus): String = stringResource(
 internal suspend fun removeAgentConnection(graph: AppGraph, id: String) = graph.whileSwitching {
     val open = graph.openAgentId.value == id
     val next = graph.usableAccount(excluding = id)
+    // While the connection can still ask: a daemon keeps a phone it was never told to forget, and would go on notifying it.
+    graph.cloudPush.beforeRemoval(id)
     if (HappyCloud.isServer(graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server)) {
-        graph.cloudPush.beforeRemoval(id)
         graph.agentConnections.credentials(id)?.oauth?.let { graph.cloudAccount?.revoke(it) }
     }
     graph.agentConnections.remove(id)
@@ -541,12 +542,13 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     val accounts = rememberAccountMenu(graph).shownAs(connectionId)
     val switcher = LocalAccountSwitcher.current
     val cloud = graph.cloudAccount != null && HappyCloud.isServer(agent.server)
+    val push = servesPush(graph, connectionId)
     // The Chief of Staff is an admin bot: asking it needs a role that manages bots.
     val permissions = session?.permissions?.collectAsStateWithLifecycle()?.value
     val askChief = permissions?.allows(Permission.BOTS_MANAGE) ?: true
     val compute = ComputeRole.of(cloud, permissions ?: com.slopus.happy.agent.ServerPermissions.Unknown) != ComputeRole.None
     val policy = cloud && permissions?.let(com.slopus.happy.agent.PolicyDocument::served) == true
-    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy) {
+    val actions = remember(graph, nav, connectionId, switcher, cloud, push, askChief, compute, policy) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
@@ -560,7 +562,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onPolicy = if (policy) ({ document -> nav.navigate(PolicyDocumentRoute(connectionId, document.id)) }) else null,
             onCompute = if (compute) ({ nav.navigate(CloudComputeRoute(connectionId)) }) else null,
             onUsage = { nav.navigate(AgentUsageRoute(connectionId)) },
-            onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
+            onNotifications = if (push) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
             onNotificationsRow = { reveal -> nav.navigate(AgentSharingRoute(connectionId, reveal = reveal)) },
             onPrivacy = { nav.navigate(PrivacyRoute) },
             onAskChief = if (askChief) ({ prefix -> nav.openChiefOfStaff(connectionId, prefix) }) else null,

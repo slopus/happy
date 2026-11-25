@@ -4,9 +4,7 @@ import android.content.Context
 import androidx.core.app.NotificationManagerCompat
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.auth.ExpoSecureStore
-import com.slopus.happy.connection.AgentConnection
 import com.slopus.happy.connection.AgentConnections
-import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.networkPath
 import com.slopus.happy.connection.returns
 import kotlinx.coroutines.CoroutineScope
@@ -34,14 +32,10 @@ class CloudPushRuntime(
     /** This installation's id, shared with the environment reports ([com.slopus.happy.agent.UserEnvironmentRuntime]). */
     private val installation: InstallationId = InstallationId(context),
 ) {
-    private fun account(value: AgentConnection): CloudPushAccount? = value.userId?.let { user ->
-        value.server?.takeIf { HappyCloud.isServer(it) && !value.revoked && !value.signInRequired && !value.profileRequired }
-            ?.let { CloudPushAccount(value.id, it, user) }
-    }
-    private val accounts = connections.accounts.map { it.mapNotNull(::account) }
-        .stateIn(scope, SharingStarted.Eagerly, connections.accounts.value.mapNotNull(::account))
+    private val accounts = connections.accounts.map { it.mapNotNull(::cloudPushAccount) }
+        .stateIn(scope, SharingStarted.Eagerly, connections.accounts.value.mapNotNull(::cloudPushAccount))
     private val registrations = CloudPushRegistrations(CloudPushLedger(store), { candidate ->
-        connections.accounts.value.any { account(it) == candidate }
+        connections.accounts.value.any { cloudPushAccount(it) == candidate }
     })
     private val relay = HappyPushRelay(OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(30, TimeUnit.SECONDS).build())
     private val registeredOn = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -57,7 +51,7 @@ class CloudPushRuntime(
     )
 
     private fun api(account: CloudPushAccount): CloudPushApi? =
-        if (connections.accounts.value.none { this.account(it) == account }) null else client(account.connectionId)?.takeIf { it.cloud }?.let(::CloudPushApi)
+        if (connections.accounts.value.none { cloudPushAccount(it) == account }) null else client(account.connectionId)?.let(::CloudPushApi)
 
     fun start() = sync.start(scope)
     fun refresh() = sync.refresh()
@@ -69,7 +63,7 @@ class CloudPushRuntime(
 
     /** Online disconnect must run this before Accounts revokes the credential. Offline failures remain queued. */
     suspend fun beforeRemoval(connectionId: String) = withContext(Dispatchers.IO) {
-        val account = connections.accounts.value.firstOrNull { it.id == connectionId }?.let(::account) ?: return@withContext
+        val account = connections.accounts.value.firstOrNull { it.id == connectionId }?.let(::cloudPushAccount) ?: return@withContext
         try { withTimeoutOrNull(3_000) { registrations.remove(account, api(account)) } }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (_: Exception) { /* Push storage failure must not prevent signing out. */ }
