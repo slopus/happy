@@ -449,7 +449,8 @@ final class GroupedHomeHarness {
 
     /// `-moveAndArchive`: on a phone whose UI tests can't take a finger, the
     /// list's own hold, carry and swipe steps, at a finger's pace: Quarterly
-    /// report held, then carried up above Landing page copy and set down;
+    /// report held, which lifts it, then carried up above Landing page copy
+    /// and set down;
     /// Onboarding emails swiped all the way across; Fix login crash swiped
     /// open on Archive, then put back.
     private func moveAndArchive() async {
@@ -462,8 +463,8 @@ final class GroupedHomeHarness {
         guard let report = list.view(for: "task:report"), let landing = list.view(for: "task:landing") else { return }
         let start = report.convert(CGPoint(x: report.box.midX, y: report.box.midY), to: list)
         let end = landing.convert(CGPoint(x: landing.box.midX, y: landing.box.minY + 6), to: list)
-        list.openHold(report)
-        await pause(0.8)
+        list.openHold(report, at: start)
+        await pause(0.6)
         for step in 1...40 {
             let t = CGFloat(step) / 40
             list.holdMoved(report, to: CGPoint(x: start.x, y: start.y + (end.y - start.y) * t), from: start)

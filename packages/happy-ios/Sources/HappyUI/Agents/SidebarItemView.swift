@@ -423,15 +423,17 @@ final class SidebarItemView: ListRowView, UIGestureRecognizerDelegate {
     /// it was then, in the list's view; nil while it isn't held.
     private var heldAt: CGPoint?
 
-    /// A hold opens the row's preview; a held finger that then moves
-    /// carries the row (`SidebarList.carry`), and lets it go where it lifts.
+    /// A hold opens the row's preview, or lifts a bot or task at once
+    /// (`SidebarList.holdCarries`); the held finger carries a lifted row,
+    /// and lets it go where it lifts.
     @objc private func held(_ gesture: UILongPressGestureRecognizer) {
         guard let owner = item.owner else { return }
         switch gesture.state {
         case .began:
             guard !stoppedGlide, reveal == 0 else { return }
-            heldAt = gesture.location(in: owner)
-            owner.openHold(self)
+            let point = gesture.location(in: owner)
+            heldAt = point
+            owner.openHold(self, at: point)
         case .changed:
             guard let heldAt else { return }
             owner.holdMoved(self, to: gesture.location(in: owner), from: heldAt)

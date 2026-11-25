@@ -20,10 +20,10 @@ import UltraView
 /// change above them, and at the very top new rows are seen arriving.
 ///
 /// Where home allows it, a bot's or task's row moves and archives as
-/// desktop's do: held and then moved, the row lifts out of the list and is
-/// carried among its peers (`SidebarReorder`, `SidebarCarryLayout`), and
-/// swiped toward its leading edge it uncovers Archive
-/// (`SidebarSwipeLayout`).
+/// desktop's do: held, the row lifts out of the list at once, instead of
+/// showing its preview (`holdCarries`), and is carried among its peers
+/// (`SidebarReorder`, `SidebarCarryLayout`); swiped toward its leading edge
+/// it uncovers Archive (`SidebarSwipeLayout`).
 ///
 /// UltraList is not a scroll view, so the screen's bar shades `edge`
 /// instead: a scroll view that never scrolls under a finger and follows the
@@ -660,10 +660,17 @@ final class SidebarList: UIView {
     /// Telegram's hold: the screen blurs, the row's conversation grows out
     /// of it with the menu under it, and a light tap is felt. A row with
     /// neither a menu nor a conversation shows nothing.
-    func openHold(_ view: SidebarItemView) {
+    ///
+    /// A bot or task that moves lifts at once instead (`holdCarries`),
+    /// under the finger at `point`, in this view.
+    func openHold(_ view: SidebarItemView, at point: CGPoint? = nil) {
         closeSwipe()
         guard hold == nil, carry == nil, let window else { return }
         let row = view.row
+        if Self.holdCarries, carries(row) {
+            lift(view, at: point ?? view.convert(CGPoint(x: view.box.midX, y: view.box.midY), to: self))
+            return
+        }
         let items = menu?(row) ?? []
         let preview = preview?(row)
         guard !items.isEmpty || preview != nil else { return }
@@ -782,13 +789,22 @@ final class SidebarList: UIView {
         }
     }
 
+    /// Whether a hold lifts a bot's or task's row at once, with no preview:
+    /// for now it does. false: the hold shows the preview, and the row
+    /// lifts once the held finger moves (`SidebarCarryLayout.liftDistance`).
+    static let holdCarries = true
+
+    /// Whether `row` is carried: a bot or task, on a list that moves them.
+    private func carries(_ row: Row) -> Bool {
+        onReorder != nil && SidebarReorder.movable(row) && landing == nil
+    }
+
     /// A held finger moved, from `start` to `point` in this view: far enough,
     /// on a bot or task where the list moves them, it lifts the row;
     /// carried, the row follows it.
     func holdMoved(_ view: SidebarItemView, to point: CGPoint, from start: CGPoint) {
         if carry == nil {
-            guard onReorder != nil, SidebarReorder.movable(view.row), landing == nil,
-                  hypot(point.x - start.x, point.y - start.y) >= SidebarCarryLayout.liftDistance else { return }
+            guard carries(view.row), hypot(point.x - start.x, point.y - start.y) >= SidebarCarryLayout.liftDistance else { return }
             lift(view, at: start)
         }
         guard let carry else { return }

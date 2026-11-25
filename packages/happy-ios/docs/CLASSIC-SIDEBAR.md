@@ -80,9 +80,11 @@ after any way back.
 
 A hold on a conversation's row shows its preview. There is no menu.
 
-Bots and tasks move as desktop moves them (`SidebarReorder`): a held row
-that then moves lifts out of the list (its preview, if open, goes) and is
-carried among its own kind only, a bot among the bots and a task among the
+Bots and tasks move as desktop moves them (`SidebarReorder`): for now a
+hold on one shows no preview but lifts the row out of the list at once,
+with the lift's tap (`SidebarList.holdCarries`; turned off, the hold shows
+the preview and the row lifts once the held finger moves), and the finger
+carries it among its own kind only, a bot among the bots and a task among the
 person's tasks, with its subtasks folded away until it is set down
 (`SidebarCarryLayout`; held near the list's top or bottom, the list
 scrolls). Set down, it is one `reorder` intent in the account's outbox,

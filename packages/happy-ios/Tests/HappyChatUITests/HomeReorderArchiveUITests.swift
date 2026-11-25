@@ -1,9 +1,10 @@
 import XCTest
 
 /// Home's bots and tasks under a real finger (`-screen groupedHome`, whose
-/// computer keeps moves and archives as the daemon does): a task held and
-/// then moved up past another lands there and stays once the computer has
-/// it, and a task swiped all the way across is archived.
+/// computer keeps moves and archives as the daemon does): a task held still
+/// lifts without a preview and goes back where it was, a task held and
+/// moved up past another lands there and stays once the computer has it,
+/// and a task swiped all the way across is archived.
 /// `HAPPY_RECORD_SECONDS` records what the window draws meanwhile
 /// (`-recordFrames`).
 @MainActor
@@ -41,8 +42,15 @@ final class HomeReorderArchiveUITests: XCTestCase {
         XCTAssertLessThan(landing.frame.minY, report.frame.minY)
         shot("1-before")
 
-        // Held long enough to open its preview, then moved: it lifts and is
-        // carried up past Landing page copy and Fix login crash.
+        // Held still and let go: it lifted rather than showing its preview,
+        // and is set down where it was.
+        report.press(forDuration: 0.8)
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertFalse(app.descendants(matching: .any)["hold-dismiss"].exists, "the hold showed the preview")
+        XCTAssertLessThan(landing.frame.minY, report.frame.minY, "a hold that didn't move moved the task")
+
+        // Held, which lifts it, then moved: it is carried up past Landing
+        // page copy and Fix login crash.
         let from = report.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let to = landing.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
         from.press(forDuration: 0.8, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.4)
