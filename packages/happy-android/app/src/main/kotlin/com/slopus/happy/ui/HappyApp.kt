@@ -217,6 +217,8 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                     // An account picked that can't be unlocked: its page, not a switch.
                     LaunchedEffect(graph, nav) { graph.unlockRequests.collect { nav.navigate(UnlockAccountRoute(it)) } }
                     com.slopus.happy.ui.gates.CloudOnboardingEffect(graph, nav, agent)
+                    // Happy Cloud asks for notifications in that onboarding; a paired agent or a server of one's own, here.
+                    com.slopus.happy.push.PushPermissionPromptEffect(graph, nav, agent)
                     SessionEndedEffect(graph, nav, agent)
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
