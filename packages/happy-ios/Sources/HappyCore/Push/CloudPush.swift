@@ -114,12 +114,29 @@ public struct CloudPushIDs: Sendable {
     /// The version the server gave the registration, for taking it off.
     public func version(for connection: String) -> String? { store.string(forKey: "cloudPush.version.\(connection)") }
 
-    public func registered(_ connection: String, version: String) { store.set(version, forKey: "cloudPush.version.\(connection)") }
+    public func registered(_ connection: String, version: String) {
+        store.set(version, forKey: "cloudPush.version.\(connection)")
+        settled(connection)
+    }
+
+    /// A registration was sent and nothing has settled it: no answer, or
+    /// one that leaves open whether the server took it. The server may
+    /// hold a version this phone was never given, and takes off only the
+    /// latest, so `version(for:)` may take nothing off. Kept across
+    /// launches: an app killed with the request on its way is one cause.
+    public func unsure(_ connection: String) -> Bool { store.string(forKey: "cloudPush.unsure.\(connection)") != nil }
+
+    /// Just before a registration is sent.
+    public func sending(_ connection: String) { store.set("1", forKey: "cloudPush.unsure.\(connection)") }
+
+    /// An answer that settles the one sent: taken, or refused.
+    public func settled(_ connection: String) { store.set(nil, forKey: "cloudPush.unsure.\(connection)") }
 
     /// Taken off: the next registration on this server is a new one.
     public func forget(_ connection: String) {
         store.set(nil, forKey: "cloudPush.version.\(connection)")
         store.set(nil, forKey: "cloudPush.registration.\(connection)")
+        settled(connection)
     }
 
     private func id(_ key: String) -> String {
@@ -374,8 +391,9 @@ public actor CloudPush {
     /// revoked there: nothing this phone can take off). 408, 429, a 5xx
     /// and no answer are asked again.
     private static func answered(_ pending: PendingCloudPushUnregister, by client: AgentClient) async -> Bool {
+        guard let version = pending.version else { return true }
         do {
-            try await client.unregisterCloudPush(pending.registration, version: pending.version)
+            try await client.unregisterCloudPush(pending.registration, version: version)
             return true
         } catch AgentClientError.revoked {
             return true
