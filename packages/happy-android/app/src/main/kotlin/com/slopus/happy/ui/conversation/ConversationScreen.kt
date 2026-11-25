@@ -256,6 +256,8 @@ fun ConversationScreen(
     roleCanCompose: Boolean = true,
     /** Where the reader left this conversation, to open there again; null keeps nothing. */
     place: TranscriptPlace? = null,
+    /** Who else is on the chat, at the head of the bar's actions ([com.slopus.happy.ui.viewers.ViewersSlot]). */
+    viewers: @Composable () -> Unit = {},
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -487,6 +489,7 @@ fun ConversationScreen(
                             }
                         },
                         actions = {
+                            if (state.created) viewers()
                             ConversationHeaderActions(state, actions, composes = roleCanCompose)
                         },
                         // On the content column, so back and the actions' glyphs sit on the messages' keyline.

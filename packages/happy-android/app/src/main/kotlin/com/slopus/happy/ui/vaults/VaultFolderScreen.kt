@@ -63,6 +63,7 @@ import com.slopus.happy.ui.surfaces.SeedlingEmpty
 import com.slopus.happy.ui.surfaces.SurfaceMenu
 import com.slopus.happy.ui.surfaces.surfaceTitle
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.viewers.ViewersSlot
 import com.slopus.happy.vaults.VaultItem
 import com.slopus.happy.vaults.VaultEvent
 import com.slopus.happy.vaults.VaultFolderFeed
@@ -77,6 +78,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.slopus.happy.viewers.ViewerTarget
 
 object VaultFolderTags {
     const val SCREEN = "vault.folder"
@@ -222,6 +224,7 @@ private fun VaultFolderPage(session: AgentSession, surfaceId: String, folderId: 
                 VaultItemMenuItems(folder, actions, close, inTrash = place?.inTrash == true)
             }
         }
+        ViewersSlot(session, ViewerTarget.surface(surfaceId))
         if (folderId == null) SurfaceMenu(session, surfaceId, onBack, open = open, extraItems = items)
         else MoreMenu(items)
     }) {

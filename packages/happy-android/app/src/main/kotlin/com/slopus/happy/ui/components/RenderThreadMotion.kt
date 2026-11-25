@@ -32,7 +32,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.slopus.happy.R
 
 /**
- * The shimmer and the pulse run by the RenderThread alone, as the platform's
+ * The shimmer, the pulse and a viewer's ring run by the RenderThread alone, as the platform's
  * indeterminate spinner does: each is an AnimatedVectorDrawable
  * (`res/drawable/shimmer_sweep.xml`, `status_dot_pulse.xml`, ShimmerSpec's
  * and StatusDot.tsx's numbers) drawn in a View of its own, which the
@@ -82,6 +82,13 @@ internal fun RenderThreadShimmerText(text: String, style: TextStyle, baseColor: 
 internal fun RenderThreadPulse(color: Color, modifier: Modifier, size: Dp) {
     val started = pageStarted()
     AndroidView(::PulseView, modifier.size(size), update = { it.running(started); it.tint(color.toArgb()) })
+}
+
+/** A viewer's breathing ring (`res/drawable/viewer_ring_breathe.xml`) on the RenderThread ([renderThreadMotion]). */
+@Composable
+internal fun RenderThreadBreath(color: Color, modifier: Modifier) {
+    val started = pageStarted()
+    AndroidView(::BreathView, modifier, update = { it.running(started); it.tint(color.toArgb()) })
 }
 
 /** An AnimatedVectorDrawable of [id], tinted SRC_IN, running from when its View is attached until it is detached. */
@@ -144,5 +151,9 @@ private class SweepView(context: Context) : VectorMotionView(context, R.drawable
 }
 
 private class PulseView(context: Context) : VectorMotionView(context, R.drawable.status_dot_pulse) {
+    override fun onDraw(canvas: Canvas) = motion.draw(canvas)
+}
+
+private class BreathView(context: Context) : VectorMotionView(context, R.drawable.viewer_ring_breathe) {
     override fun onDraw(canvas: Canvas) = motion.draw(canvas)
 }

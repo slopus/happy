@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="viewers_title">誰在這裡</string>
+    <string name="viewers_show">查看誰在這裡</string>
+    <string name="viewers_here_now">正在這裡</string>
+    <string name="viewers_minutes_short">%1$d分鐘</string>
+    <string name="viewers_someone">某人</string>
+</resources>

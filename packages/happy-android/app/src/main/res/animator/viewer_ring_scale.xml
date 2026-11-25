@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The ring of someone here breathes: out a little and back, 1.2 s each way, again and again. -->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="1200"
+    android:repeatCount="infinite"
+    android:repeatMode="reverse"
+    android:interpolator="@android:interpolator/fast_out_slow_in">
+    <propertyValuesHolder android:propertyName="scaleX" android:valueFrom="0.96" android:valueTo="1.03" android:valueType="floatType" />
+    <propertyValuesHolder android:propertyName="scaleY" android:valueFrom="0.96" android:valueTo="1.03" android:valueType="floatType" />
+</objectAnimator>

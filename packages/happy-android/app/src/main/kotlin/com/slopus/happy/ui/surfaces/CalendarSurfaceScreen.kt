@@ -33,6 +33,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
+import com.slopus.happy.ui.viewers.ViewersSlot
+import com.slopus.happy.viewers.ViewerTarget
 
 /** Desktop range reader on the app's shared Surface route; journal reads pause beneath another page. */
 @Composable
@@ -67,7 +69,10 @@ fun CalendarSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -
                 } catch (_: Exception) { failed = true }
                 finally { moving = false; model.feed.invalidate() }
             }
-        }) { SurfaceMenu(session, surfaceId, onBack, open = open) }
+        }) {
+        ViewersSlot(session, ViewerTarget.surface(surfaceId))
+        SurfaceMenu(session, surfaceId, onBack, open = open)
+    }
     date?.let { day -> CalendarEventEditor(session, surfaceId, selected, day, zone,
         onDismiss = { date = null; selected = null }, onChanged = { model.feed.invalidate() }) }
     if (failed) HappyAlert(Alert(stringResource(R.string.calendar_save_failed), buttons = listOf(AlertButton(stringResource(R.string.common_ok)))), { failed = false })
