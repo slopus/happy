@@ -19,6 +19,97 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    thinkingMode: {
+        "title": "思考モード",
+        "settingDescription": "思考法を分類から選ぶか、回答の続きを質問できます。このブラウザーだけに保存され、初期設定はオフです。",
+        "select": "思考法を選ぶ",
+        "intro": "目的に合わせて選んでください。解除するまで、この会話の以後のメッセージに適用されます。",
+        "clear": "思考法を解除",
+        "all": "すべての思考法",
+        "direct": "直接分析",
+        "guided": "一問ずつ対話",
+        "two_phase": "比較してから質問",
+        "learning": "継続学習",
+        "followUp": "続けて質問",
+        "followUpHint": "この回答について続けます。入力中の下書きや現在の思考法は変わりません。",
+        "draw": "図で見る",
+        "example": "例を挙げる",
+        "continue": "説明を続ける",
+        "reference": "引用元の回答",
+        "queued": "送信キューに追加しました",
+        "sending": "送信中…",
+        "failed": "送信できませんでした。もう一度お試しください。",
+        "source": "思考法の出典",
+        "original": "元のプロンプト全文を見る",
+        "adaptation": "Paws 向けの調整",
+        "localSaveFailed": "ブラウザーの設定を保存できません。空き容量や権限を確認してください。",
+        "methodHint": "思考法を選んでから質問を入力してください。",
+        "noMethod": "通常の会話",
+        "suggestions": "こんな質問もできます",
+        "suggestWhy": "どのような場合に、この結論は成り立たなくなりますか？",
+        "suggestAction": "次に試せる小さな実験は何ですか？",
+        "groups": {
+            "clarify": "問いを明確にする",
+            "learn": "学んで理解する",
+            "solve": "問題を解く",
+            "decide": "判断して行動する",
+            "life": "人生と自分"
+        },
+        "methods": {
+            "socratic": {
+                "name": "ソクラテス式問答",
+                "purpose": "何に困っているか曖昧なとき、一問ずつ本当の問いを探す"
+            },
+            "two-layer": {
+                "name": "二段階の説明",
+                "purpose": "身近な例で理解してから、専門的な仕組みを学ぶ"
+            },
+            "reverse-engineer": {
+                "name": "逆向きの分解",
+                "purpose": "優れた事例を分解し、応用できる方法を見つける"
+            },
+            "vertical-horizontal": {
+                "name": "縦と横の分析",
+                "purpose": "時間による変化をたどり、同じ基準で類似例と比べる"
+            },
+            "fact-check": {
+                "name": "ファクトチェック",
+                "purpose": "事実と出典を確認し、結論が成り立つかを検証する"
+            },
+            "expert-panel": {
+                "name": "専門家パネル",
+                "purpose": "補い合う視点で互いを検討し、本質的な意見の違いを探す"
+            },
+            "first-principles": {
+                "name": "第一原理",
+                "purpose": "慣習や思い込みを取り除き、事実と目的から考え直す"
+            },
+            "cross-domain": {
+                "name": "異分野から学ぶ",
+                "purpose": "離れた分野にある、構造の似た問題の解決策を探す"
+            },
+            "steelman": {
+                "name": "双方の最善の論拠",
+                "purpose": "両側を公平に論じてから、判断を変えうる問いを一つ出す"
+            },
+            "min-experiment": {
+                "name": "最小の実験",
+                "purpose": "迷いを、低コストで元に戻せる、終了条件のある実験に変える"
+            },
+            "hidden-talent": {
+                "name": "隠れた強み",
+                "purpose": "具体的な経験や活力の変化から、能力の手掛かりを探す"
+            },
+            "life-design": {
+                "name": "人生のデザイン",
+                "purpose": "現在地を理解し、複数の方向を探り、小さく試す"
+            },
+            "teach-me": {
+                "name": "Teach Me",
+                "purpose": "すでに知っていることを足場に、今のテーマを段階的に学ぶ"
+            }
+        }
+    },
     scheduledTasks: {
         executionSettings: "実行設定",
         selectMachine: "実行マシンを選択してください",

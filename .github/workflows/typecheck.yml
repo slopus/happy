@@ -47,6 +47,9 @@ jobs:
             - name: Verify Expo Camera scanner transition patch
               run: pnpm test:expo-camera-patch
 
+            - name: Verify thinking methods and reply context
+              run: pnpm --filter happy-app exec vitest run sources/thinking sources/components/thinking sources/sync/messageStagingQueueRuntime.test.ts sources/sync/composerReferences.test.ts
+
             - name: Verify Android build variant contract
               run: pnpm --filter happy-app exec vitest run sources/utils/otaRuntimeConfig.test.ts
 

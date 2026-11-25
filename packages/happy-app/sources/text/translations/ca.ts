@@ -16,6 +16,97 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const ca: TranslationStructure = {
+    thinkingMode: {
+        "title": "Mode de pensament",
+        "settingDescription": "Tria un mètode de pensament o aprofundeix en una resposta. Es desa només en aquest navegador i està desactivat per defecte.",
+        "select": "Tria un mètode de pensament",
+        "intro": "Tria segons el que vulguis fer. El mètode s'aplicarà als missatges següents d'aquesta conversa fins que el cancel·lis.",
+        "clear": "Treu el mètode",
+        "all": "Tots els mètodes",
+        "direct": "Anàlisi directa",
+        "guided": "Diàleg pas a pas",
+        "two_phase": "Comparar i després preguntar",
+        "learning": "Aprenentatge continu",
+        "followUp": "Continua preguntant",
+        "followUpHint": "Continua a partir d'aquesta resposta sense canviar l'esborrany ni el mètode actual.",
+        "draw": "Mostra-ho en un esquema",
+        "example": "Dona'n un exemple",
+        "continue": "Explica-ho més",
+        "reference": "Resposta original",
+        "queued": "Afegit a la cua d'enviament",
+        "sending": "S'està enviant…",
+        "failed": "No s'ha pogut enviar. Torna-ho a provar.",
+        "source": "Fonts dels mètodes",
+        "original": "Mostra el prompt original complet",
+        "adaptation": "Adaptació de Paws",
+        "localSaveFailed": "No s'ha pogut desar la configuració del navegador. Comprova l'espai disponible o els permisos.",
+        "methodHint": "Tria un mètode i escriu la pregunta.",
+        "noMethod": "Conversa normal",
+        "suggestions": "També pots preguntar",
+        "suggestWhy": "En quins casos deixaria de ser vàlida aquesta conclusió?",
+        "suggestAction": "Quin petit experiment puc provar a continuació?",
+        "groups": {
+            "clarify": "Aclarir la pregunta",
+            "learn": "Aprendre i comprendre",
+            "solve": "Resoldre un problema",
+            "decide": "Decidir i actuar",
+            "life": "Vida i autoconeixement"
+        },
+        "methods": {
+            "socratic": {
+                "name": "Preguntes socràtiques",
+                "purpose": "Troba la pregunta real pas a pas quan no saps què et bloqueja"
+            },
+            "two-layer": {
+                "name": "Explicació en dues capes",
+                "purpose": "Comença amb un exemple quotidià i després comprèn el mecanisme tècnic"
+            },
+            "reverse-engineer": {
+                "name": "Anàlisi inversa",
+                "purpose": "Descompon un bon exemple i troba pràctiques que puguis reutilitzar"
+            },
+            "vertical-horizontal": {
+                "name": "Anàlisi temporal i comparativa",
+                "purpose": "Segueix l'evolució en el temps i compara casos semblants amb els mateixos criteris"
+            },
+            "fact-check": {
+                "name": "Verificació de fets",
+                "purpose": "Comprova els fets i les fonts, i examina si la conclusió se sosté"
+            },
+            "expert-panel": {
+                "name": "Taula d'experts",
+                "purpose": "Contrasta perspectives complementàries per descobrir els desacords reals"
+            },
+            "first-principles": {
+                "name": "Primers principis",
+                "purpose": "Deixa de banda convencions i suposicions; raona des dels fets i els objectius"
+            },
+            "cross-domain": {
+                "name": "Pensament entre disciplines",
+                "purpose": "Busca solucions a problemes d'estructura semblant en camps llunyans"
+            },
+            "steelman": {
+                "name": "Els millors arguments de cada part",
+                "purpose": "Presenta totes dues parts amb rigor i planteja una pregunta que pugui canviar la decisió"
+            },
+            "min-experiment": {
+                "name": "Experiment mínim",
+                "purpose": "Converteix la incertesa en un experiment barat, reversible i amb criteris d'aturada"
+            },
+            "hidden-talent": {
+                "name": "Fortaleses ocultes",
+                "purpose": "Busca pistes de les teves capacitats en experiències concretes i canvis d'energia"
+            },
+            "life-design": {
+                "name": "Disseny de vida",
+                "purpose": "Comprèn on ets, explora camins diferents i fes petites proves"
+            },
+            "teach-me": {
+                "name": "Teach Me",
+                "purpose": "Parteix del que ja saps i aprèn pas a pas sobre el tema actual"
+            }
+        }
+    },
     scheduledTasks: {
         executionSettings: "Configuració d’execució",
         selectMachine: "Tria una màquina d’execució",

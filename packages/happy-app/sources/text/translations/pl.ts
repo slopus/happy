@@ -27,6 +27,97 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    thinkingMode: {
+        "title": "Tryb myślenia",
+        "settingDescription": "Wybierz metodę myślenia lub dopytaj o odpowiedź. Ustawienie jest zapisywane tylko w tej przeglądarce i domyślnie jest wyłączone.",
+        "select": "Wybierz metodę myślenia",
+        "intro": "Wybierz zgodnie z celem. Metoda będzie stosowana do kolejnych wiadomości w tej rozmowie, dopóki jej nie wyłączysz.",
+        "clear": "Wyłącz metodę",
+        "all": "Wszystkie metody",
+        "direct": "Bezpośrednia analiza",
+        "guided": "Dialog krok po kroku",
+        "two_phase": "Porównanie, potem pytanie",
+        "learning": "Ciągła nauka",
+        "followUp": "Dopytaj",
+        "followUpHint": "Kontynuuj tę odpowiedź bez zmieniania szkicu ani bieżącej metody.",
+        "draw": "Pokaż na schemacie",
+        "example": "Podaj przykład",
+        "continue": "Wyjaśnij szerzej",
+        "reference": "Oryginalna odpowiedź",
+        "queued": "Dodano do kolejki wysyłania",
+        "sending": "Wysyłanie…",
+        "failed": "Nie udało się wysłać. Spróbuj ponownie.",
+        "source": "Źródła metod",
+        "original": "Zobacz pełny oryginalny prompt",
+        "adaptation": "Adaptacja Paws",
+        "localSaveFailed": "Nie udało się zapisać ustawień przeglądarki. Sprawdź wolne miejsce lub uprawnienia.",
+        "methodHint": "Wybierz metodę i wpisz pytanie.",
+        "noMethod": "Zwykła rozmowa",
+        "suggestions": "Możesz też zapytać",
+        "suggestWhy": "W jakich sytuacjach ten wniosek przestaje być prawdziwy?",
+        "suggestAction": "Jaki mały eksperyment mogę wypróbować teraz?",
+        "groups": {
+            "clarify": "Doprecyzuj pytanie",
+            "learn": "Ucz się i rozumiej",
+            "solve": "Rozwiąż problem",
+            "decide": "Zdecyduj i działaj",
+            "life": "Życie i samopoznanie"
+        },
+        "methods": {
+            "socratic": {
+                "name": "Pytania sokratejskie",
+                "purpose": "Znajdź prawdziwe pytanie krok po kroku, gdy trudno nazwać problem"
+            },
+            "two-layer": {
+                "name": "Wyjaśnienie w dwóch warstwach",
+                "purpose": "Najpierw codzienny przykład, potem fachowe zrozumienie mechanizmu"
+            },
+            "reverse-engineer": {
+                "name": "Analiza od końca",
+                "purpose": "Rozłóż dobry przykład na części i znajdź praktyki do wykorzystania"
+            },
+            "vertical-horizontal": {
+                "name": "Analiza w czasie i porównanie",
+                "purpose": "Prześledź zmiany w czasie i porównaj podobne przypadki według tych samych kryteriów"
+            },
+            "fact-check": {
+                "name": "Weryfikacja faktów",
+                "purpose": "Sprawdź fakty i źródła, a następnie zasadność wniosku"
+            },
+            "expert-panel": {
+                "name": "Panel ekspertów",
+                "purpose": "Zestaw uzupełniające się perspektywy i odkryj rzeczywiste różnice zdań"
+            },
+            "first-principles": {
+                "name": "Pierwsze zasady",
+                "purpose": "Odrzuć zwyczaje i założenia, zacznij rozumowanie od faktów i celów"
+            },
+            "cross-domain": {
+                "name": "Myślenie między dziedzinami",
+                "purpose": "Szukaj rozwiązań problemów o podobnej strukturze w odległych dziedzinach"
+            },
+            "steelman": {
+                "name": "Najmocniejsze argumenty obu stron",
+                "purpose": "Uczciwie przedstaw obie strony, a potem zadaj pytanie mogące zmienić decyzję"
+            },
+            "min-experiment": {
+                "name": "Minimalny eksperyment",
+                "purpose": "Zamień niepewność w tani, odwracalny eksperyment z warunkami zakończenia"
+            },
+            "hidden-talent": {
+                "name": "Ukryte mocne strony",
+                "purpose": "Szukaj śladów zdolności w konkretnych doświadczeniach i zmianach energii"
+            },
+            "life-design": {
+                "name": "Projektowanie życia",
+                "purpose": "Zrozum obecną sytuację, poznaj różne kierunki i wypróbuj małe zmiany"
+            },
+            "teach-me": {
+                "name": "Teach Me",
+                "purpose": "Ucz się bieżącego tematu krok po kroku na podstawie tego, co już wiesz"
+            }
+        }
+    },
     scheduledTasks: {
         executionSettings: "Ustawienia wykonania",
         selectMachine: "Wybierz maszynę wykonawczą",

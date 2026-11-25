@@ -6,11 +6,12 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-export function DesktopDialogFrame({ children, headerActions, maxWidth = 520, onClose, testID, title, visible }: {
+export function DesktopDialogFrame({ children, headerActions, maxWidth = 520, onClose, onDismiss, testID, title, visible }: {
     children: React.ReactNode;
     headerActions?: React.ReactNode;
     maxWidth?: number;
     onClose: () => void;
+    onDismiss?: () => void;
     testID?: string;
     title: string;
     visible: boolean;
@@ -23,6 +24,7 @@ export function DesktopDialogFrame({ children, headerActions, maxWidth = 520, on
             accessibilityLabel={title}
             animationType="fade"
             onRequestClose={onClose}
+            onDismiss={onDismiss}
             onShow={() => {
                 // The fade can finish after a user has already opened a picker.
                 // Keep that focus so Escape still reaches the active child layer.

@@ -28,6 +28,7 @@ import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { getUserMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
 import { messageOptionKey, type MessageOptionResponse } from '@/sync/messageOptionResponses';
 import { getUserMessageDisplayText } from './messageDisplayText';
+import { ThinkingReplyActions } from './thinking/ThinkingMode';
 
 
 export const MessageView = React.memo((props: {
@@ -487,6 +488,11 @@ function AgentTextBlock(props: {
   }, []);
 
   const structuredSummary = React.useMemo(() => parseStructuredSummary(props.message.text), [props.message.text]);
+  const replyWireId = props.sessionId ? sync.getMessageWireId?.(props.sessionId, props.message.id) : null;
+  const replyBlockKey = props.sessionId ? sync.getMessageWireBlockKey?.(props.sessionId, props.message.id) : null;
+  const replyReferenceId = replyWireId
+    ? `${replyWireId}${replyBlockKey ? '#' + replyBlockKey : ''}`
+    : props.message.localId ?? props.message.id;
   const renderMarkdown = (markdown: string, viewOnly = false) => (
     <MarkdownView readOnly={restrictedContent || viewOnly} optionKey={optionKey} optionResponses={props.metadata?.messageOptionResponses} optionResponse={props.optionResponse} optionsInactive={viewOnly || props.optionsInactive || readOnly} onOptionDismiss={viewOnly ? undefined : handleOptionDismiss} markdown={markdown} onOptionPress={!viewOnly && !readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
   );
@@ -540,6 +546,11 @@ function AgentTextBlock(props: {
           ? <StructuredSummaryView key={props.message.id} sections={structuredSummary} renderMarkdown={text => renderMarkdown(text, true)} onCopy={copyMessage} copied={isCopied} />
           : renderMarkdown(props.message.text)}
       </AnnotatableMessage>}
+      {!readOnly && !restrictedContent && !props.optionsInactive && props.sessionId && !props.message.asyncQuestion && (
+        <ThinkingReplyActions sessionId={props.sessionId}
+          messageId={replyReferenceId}
+          text={props.message.text} />
+      )}
       {showActions && (
         <View
           testID={`message-agent-actions-${props.message.id}`}

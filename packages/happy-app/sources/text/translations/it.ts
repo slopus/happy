@@ -16,6 +16,97 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    thinkingMode: {
+        "title": "Modalità di pensiero",
+        "settingDescription": "Scegli un metodo di ragionamento o approfondisci una risposta. L'impostazione è salvata solo in questo browser ed è disattivata per impostazione predefinita.",
+        "select": "Scegli un metodo di ragionamento",
+        "intro": "Scegli in base al tuo obiettivo. Il metodo si applicherà ai messaggi successivi di questa conversazione finché non lo rimuovi.",
+        "clear": "Rimuovi metodo",
+        "all": "Tutti i metodi",
+        "direct": "Analisi diretta",
+        "guided": "Dialogo passo dopo passo",
+        "two_phase": "Confronto, poi domanda",
+        "learning": "Apprendimento continuo",
+        "followUp": "Approfondisci",
+        "followUpHint": "Continua da questa risposta senza modificare la bozza o il metodo attuale.",
+        "draw": "Mostra uno schema",
+        "example": "Fai un esempio",
+        "continue": "Spiega meglio",
+        "reference": "Risposta originale",
+        "queued": "Aggiunto alla coda di invio",
+        "sending": "Invio in corso…",
+        "failed": "Invio non riuscito. Riprova.",
+        "source": "Fonti dei metodi",
+        "original": "Visualizza il prompt originale completo",
+        "adaptation": "Adattamento Paws",
+        "localSaveFailed": "Impossibile salvare le impostazioni del browser. Controlla lo spazio disponibile o le autorizzazioni.",
+        "methodHint": "Scegli un metodo e inserisci la tua domanda.",
+        "noMethod": "Conversazione normale",
+        "suggestions": "Puoi anche chiedere",
+        "suggestWhy": "In quali casi questa conclusione non sarebbe più valida?",
+        "suggestAction": "Quale piccolo esperimento posso provare ora?",
+        "groups": {
+            "clarify": "Chiarire la domanda",
+            "learn": "Imparare e capire",
+            "solve": "Risolvere un problema",
+            "decide": "Decidere e agire",
+            "life": "Vita e conoscenza di sé"
+        },
+        "methods": {
+            "socratic": {
+                "name": "Domande socratiche",
+                "purpose": "Trova la vera domanda un passo alla volta quando non sai cosa ti blocca"
+            },
+            "two-layer": {
+                "name": "Spiegazione a due livelli",
+                "purpose": "Parti da un esempio quotidiano, poi comprendi il meccanismo tecnico"
+            },
+            "reverse-engineer": {
+                "name": "Analisi a ritroso",
+                "purpose": "Scomponi un buon esempio e trova pratiche riutilizzabili"
+            },
+            "vertical-horizontal": {
+                "name": "Analisi temporale e comparativa",
+                "purpose": "Segui l'evoluzione nel tempo e confronta casi simili con gli stessi criteri"
+            },
+            "fact-check": {
+                "name": "Verifica dei fatti",
+                "purpose": "Controlla fatti e fonti, poi valuta se la conclusione regge"
+            },
+            "expert-panel": {
+                "name": "Gruppo di esperti",
+                "purpose": "Metti a confronto prospettive complementari per trovare i veri punti di disaccordo"
+            },
+            "first-principles": {
+                "name": "Primi principi",
+                "purpose": "Metti da parte convenzioni e ipotesi; ragiona a partire da fatti e obiettivi"
+            },
+            "cross-domain": {
+                "name": "Pensiero tra discipline",
+                "purpose": "Cerca soluzioni a problemi dalla struttura simile in ambiti lontani"
+            },
+            "steelman": {
+                "name": "Le migliori ragioni di entrambe le parti",
+                "purpose": "Presenta equamente entrambe le posizioni e poni una domanda che possa cambiare la decisione"
+            },
+            "min-experiment": {
+                "name": "Esperimento minimo",
+                "purpose": "Trasforma l'incertezza in un esperimento economico, reversibile e con criteri di arresto"
+            },
+            "hidden-talent": {
+                "name": "Punti di forza nascosti",
+                "purpose": "Cerca indizi delle tue capacità nelle esperienze concrete e nei cambiamenti di energia"
+            },
+            "life-design": {
+                "name": "Progettare la vita",
+                "purpose": "Comprendi dove ti trovi, esplora direzioni diverse e fai piccole prove"
+            },
+            "teach-me": {
+                "name": "Teach Me",
+                "purpose": "Parti da ciò che sai e impara gradualmente all'interno del tema attuale"
+            }
+        }
+    },
     scheduledTasks: {
         executionSettings: "Impostazioni di esecuzione",
         selectMachine: "Scegli una macchina di esecuzione",

@@ -7,6 +7,7 @@ import { ItemList } from '@/components/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { Switch } from '@/components/Switch';
 import { t } from '@/text';
+import { ThinkingModeSetting } from '@/components/thinking/ThinkingMode';
 
 export default function FeaturesSettingsScreen() {
     const { theme } = useUnistyles();
@@ -26,6 +27,7 @@ export default function FeaturesSettingsScreen() {
                 title={t('featuresInterface.title')}
                 footer={t('featuresInterface.footer')}
             >
+                <ThinkingModeSetting />
                 <Item
                     title={`${t('session.forkAction')} / ${t('session.duplicateAction')}`}
                     icon={<Ionicons name="git-branch-outline" size={29} color={theme.colors.accent} />}

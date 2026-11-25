@@ -15,6 +15,97 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    thinkingMode: {
+        "title": "Thinking mode",
+        "settingDescription": "Choose a thinking method or follow up on a reply. Saved only in this browser; off by default.",
+        "select": "Choose a thinking method",
+        "intro": "Choose by what you want to do. Your method applies to later messages in this conversation until you cancel it.",
+        "clear": "Clear method",
+        "all": "All methods",
+        "direct": "Direct analysis",
+        "guided": "Guided conversation",
+        "two_phase": "Compare, then ask",
+        "learning": "Ongoing learning",
+        "followUp": "Follow up",
+        "followUpHint": "Continue from this reply without changing your draft or current method.",
+        "draw": "Show Me",
+        "example": "Give an example",
+        "continue": "Explain further",
+        "reference": "Original reply",
+        "queued": "Added to the send queue",
+        "sending": "Submitting…",
+        "failed": "Could not submit. Please retry.",
+        "source": "Method sources",
+        "original": "View the full original prompt",
+        "adaptation": "Paws adaptation",
+        "localSaveFailed": "Could not save browser settings. Check storage space or permissions.",
+        "methodHint": "Choose a method, then enter your question.",
+        "noMethod": "Regular conversation",
+        "suggestions": "You could also ask",
+        "suggestWhy": "When would this conclusion no longer hold?",
+        "suggestAction": "What small experiment could I try next?",
+        "groups": {
+            "clarify": "Clarify the question",
+            "learn": "Learn and understand",
+            "solve": "Solve a problem",
+            "decide": "Decide and act",
+            "life": "Life and self"
+        },
+        "methods": {
+            "socratic": {
+                "name": "Socratic questions",
+                "purpose": "Find the real question one step at a time when you cannot pinpoint what is wrong"
+            },
+            "two-layer": {
+                "name": "Two-layer explanation",
+                "purpose": "Start with an everyday example, then understand the technical mechanism"
+            },
+            "reverse-engineer": {
+                "name": "Reverse engineering",
+                "purpose": "Take apart a strong example and find practices you can reuse"
+            },
+            "vertical-horizontal": {
+                "name": "Vertical and horizontal analysis",
+                "purpose": "Trace change over time and compare peers using the same criteria"
+            },
+            "fact-check": {
+                "name": "Fact-checking",
+                "purpose": "Check facts and sources, then test whether the conclusion holds"
+            },
+            "expert-panel": {
+                "name": "Expert panel",
+                "purpose": "Let complementary perspectives challenge one another and reveal real disagreements"
+            },
+            "first-principles": {
+                "name": "First principles",
+                "purpose": "Set aside conventions and assumptions; reason from facts and goals"
+            },
+            "cross-domain": {
+                "name": "Cross-domain thinking",
+                "purpose": "Find solutions to structurally similar problems in distant fields"
+            },
+            "steelman": {
+                "name": "Steelman both sides",
+                "purpose": "Present each side fairly, then ask one question that could change the decision"
+            },
+            "min-experiment": {
+                "name": "Minimum experiment",
+                "purpose": "Turn uncertainty into a low-cost, reversible experiment with stop conditions"
+            },
+            "hidden-talent": {
+                "name": "Hidden strengths",
+                "purpose": "Look for ability clues in specific experiences and changes in energy"
+            },
+            "life-design": {
+                "name": "Life design",
+                "purpose": "Understand where you are, explore directions, and try small experiments"
+            },
+            "teach-me": {
+                "name": "Teach Me",
+                "purpose": "Build on what you know and learn step by step within the current topic"
+            }
+        }
+    },
     scheduledTasks: {
         executionSettings: "Execution settings",
         selectMachine: "Choose an execution machine",
@@ -3554,18 +3645,14 @@ export type Translations = typeof en;
  * Generic translation type that matches the structure of Translations
  * but allows different string values (for other languages)
  */
-export type TranslationStructure = {
-    readonly [K in keyof Translations]: {
-        readonly [P in keyof Translations[K]]: Translations[K][P] extends string 
-            ? string 
-            : Translations[K][P] extends (...args: any[]) => string 
-                ? Translations[K][P] 
-                : Translations[K][P] extends object
-                    ? {
-                        readonly [Q in keyof Translations[K][P]]: Translations[K][P][Q] extends string
-                            ? string
-                            : Translations[K][P][Q]
-                      }
-                    : Translations[K][P]
-    }
+type TranslatedValues<T> = {
+    readonly [K in keyof T]: T[K] extends string
+        ? string
+        : T[K] extends (...args: any[]) => string
+            ? T[K]
+            : T[K] extends object
+                ? TranslatedValues<T[K]>
+                : T[K];
 };
+
+export type TranslationStructure = TranslatedValues<Translations>;

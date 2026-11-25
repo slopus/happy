@@ -1,4 +1,5 @@
 import { ComposerAgentAction, getComposerAgentActionStyle } from './ComposerAgentAction';
+import { ThinkingModeControl } from './thinking/ThinkingMode';
 import { useWebPopoverDismiss } from '@/hooks/useWebPopoverDismiss';
 import { ComposerActionIcon } from './ComposerActionIcon';
 import { Ionicons } from '@expo/vector-icons';
@@ -1090,6 +1091,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 )}
 
 
+                                <ThinkingModeControl sessionId={isSession && !props.newSessionAgent ? props.sessionId : undefined} />
                                 {props.discussionMode && <DiscussionModeButton {...props.discussionMode} />}
 
                                 {!props.zenMode && isSession && !props.discussionMode?.active && props.permissionSelector && supportsDesktopComposerModeSelector({

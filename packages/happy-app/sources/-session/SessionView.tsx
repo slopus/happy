@@ -13,6 +13,8 @@ import { MessageComposer } from '@/components/MessageComposer';
 import { AnnotationComposer, useMessageAnnotations, prepareAnnotatedMessage, restoreAnnotatedMessage } from '@/components/annotations/MessageAnnotations';
 import { MessageStagingQueueView } from '@/components/MessageStagingQueueView';
 import { messageStagingQueue, stageSessionMessage } from '@/sync/messageStagingQueueRuntime';
+import { prepareThinkingMessage } from '@/sync/thinkingModeMessage';
+import { thinkingDisplayText } from '@/thinking/submission';
 import { availableStagedAttachments, expiredStagedAttachments, StagedAttachmentSaveError } from '@/sync/messageStagingQueue';
 import type { SessionComposerDirectorySelectorConfig } from '@/components/SessionComposerDirectorySelector';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
@@ -1856,6 +1858,7 @@ function SessionViewLoaded({
         const annotated = prepareAnnotatedMessage(sessionId, liveMessage);
         const submittedReference = fileWorkspace?.reference;
         const fileMessage = buildFileContextMessage(annotated.text, submittedReference ?? null);
+        const submittedText = prepareThinkingMessage(sessionId, fileMessage.text);
         if (annotated.text.trim() || selectedImages.length > 0) {
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
             sendInFlight.current = true;
@@ -1865,8 +1868,13 @@ function SessionViewLoaded({
                     // than inserted literally into the model's current turn.
                     try {
                         const stageDelivery = annotated.text.trimStart().startsWith('/') ? 'queue' : delivery;
-                        if (fileMessage.fileReference || annotated.annotations.length) await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery, { draftText: liveMessage, ...(annotated.annotations.length ? { displayText: annotated.displayText, annotations: annotated.annotations } : {}), fileReference: fileMessage.fileReference });
-                        else await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery);
+                        if (fileMessage.fileReference || annotated.annotations.length || submittedText !== fileMessage.text) await stageSessionMessage(sessionId, submittedText, attachments, stageDelivery, {
+                            draftText: liveMessage,
+                            ...(annotated.annotations.length ? { displayText: annotated.displayText, annotations: annotated.annotations } : {}),
+                            ...(submittedText !== fileMessage.text ? { displayText: thinkingDisplayText(liveMessage, annotated.displayText, fileMessage.fileReference?.path, t('messageQueue.attachments')) } : {}),
+                            fileReference: fileMessage.fileReference,
+                        });
+                        else await stageSessionMessage(sessionId, submittedText, attachments, stageDelivery);
                         if (fileMessage.fileReference) fileWorkspace?.setReference(current => current === submittedReference ? null : current);
                     } catch (error) {
                         Modal.alert(t('common.error'), error instanceof StagedAttachmentSaveError ? t('messageQueue.attachmentsSaveFailed') : t('common.retry'));

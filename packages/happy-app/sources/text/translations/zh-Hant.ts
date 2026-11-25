@@ -18,6 +18,97 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    thinkingMode: {
+        "title": "思維模式",
+        "settingDescription": "依分類選擇思考方法，或在回覆後繼續追問。僅儲存在目前瀏覽器，預設關閉。",
+        "select": "選擇思考方法",
+        "intro": "依你想做的事選擇。方法會用於此對話的後續訊息，隨時可以取消。",
+        "clear": "取消方法",
+        "all": "全部方法",
+        "direct": "直接分析",
+        "guided": "逐輪對話",
+        "two_phase": "比較後追問",
+        "learning": "持續學習",
+        "followUp": "繼續追問",
+        "followUpHint": "直接針對這則回覆繼續，不影響輸入草稿或目前方法。",
+        "draw": "畫出來",
+        "example": "舉個例子",
+        "continue": "繼續講解",
+        "reference": "引用的原回答",
+        "queued": "已加入傳送佇列",
+        "sending": "正在提交…",
+        "failed": "無法提交，請重試",
+        "source": "方法來源",
+        "original": "查看完整原文",
+        "adaptation": "Paws 調整",
+        "localSaveFailed": "無法儲存瀏覽器設定，請檢查儲存空間或權限。",
+        "methodHint": "選擇方法後，輸入你的問題即可。",
+        "noMethod": "一般對話",
+        "suggestions": "也可以這樣問",
+        "suggestWhy": "這個結論在什麼情況下不成立？",
+        "suggestAction": "下一步可以做什麼小嘗試？",
+        "groups": {
+            "clarify": "問清問題",
+            "learn": "學習與理解",
+            "solve": "解決問題",
+            "decide": "決策與行動",
+            "life": "人生與自我"
+        },
+        "methods": {
+            "socratic": {
+                "name": "蘇格拉底",
+                "purpose": "說不清卡在哪裡時，逐輪找到真正的問題"
+            },
+            "two-layer": {
+                "name": "雙層解釋",
+                "purpose": "先用生活例子講懂，再理解專業機制"
+            },
+            "reverse-engineer": {
+                "name": "反向拆解",
+                "purpose": "拆解一個好作品，找出能移用的做法"
+            },
+            "vertical-horizontal": {
+                "name": "縱橫分析",
+                "purpose": "沿時間看演變，以一致標準比較同類事物"
+            },
+            "fact-check": {
+                "name": "事實查核",
+                "purpose": "核對事實與來源，檢查結論能否成立"
+            },
+            "expert-panel": {
+                "name": "專家會診",
+                "purpose": "讓互補觀點互相質疑，找出真正的分歧"
+            },
+            "first-principles": {
+                "name": "第一性原理",
+                "purpose": "去除慣例與假設，從事實和目標重新推導"
+            },
+            "cross-domain": {
+                "name": "跨領域借解",
+                "purpose": "從相距較遠的領域，尋找同構問題的解法"
+            },
+            "steelman": {
+                "name": "雙向論證",
+                "purpose": "公平論證兩邊，再問一個影響決定的問題"
+            },
+            "min-experiment": {
+                "name": "最小實驗",
+                "purpose": "把猶豫變成低成本、可逆且有停止條件的實驗"
+            },
+            "hidden-talent": {
+                "name": "隱藏天賦",
+                "purpose": "從具體經歷與能量變化中，尋找能力線索"
+            },
+            "life-design": {
+                "name": "人生設計",
+                "purpose": "看清當下位置，探索不同方向並做小型嘗試"
+            },
+            "teach-me": {
+                "name": "Teach Me",
+                "purpose": "從已有經驗出發，在目前主題上循序講解"
+            }
+        }
+    },
     scheduledTasks: {
         executionSettings: "執行設定",
         selectMachine: "請選擇執行電腦",
