@@ -115,7 +115,7 @@ describe('bulkSessionActions', () => {
         root.metadata!.conversationSwitch = { id: 'switch', sourceSessionId: 'old', targetSessionId: 'current' };
         await expect(bulkDeleteSessions([root])).rejects.toThrow(t('session.agentSwitchPending'));
         sharedChat();
-        mocks.hydrate.mockImplementation(async id => {
+        mocks.refreshConversationSession.mockImplementation(async id => {
             if (id === 'current') mocks.sessions.root = { ...mocks.sessions.root, metadata: { ...mocks.sessions.root.metadata!, conversationActiveSessionId: 'elsewhere' } };
             return !!mocks.sessions[id];
         });
@@ -256,6 +256,76 @@ describe('bulkSessionActions', () => {
             await bulkArchiveSessions([cached]);
             expect(mocks.sessionRequestArchiveMetadata.mock.calls.map(([value]) => value.id)).toEqual(['current', 'root']);
         }
+    });
+
+    it.each([
+        ['current', 'archive'], ['old', 'archive'], ['current', 'delete'], ['old', 'delete'],
+    ] as const)('uses the committed root when legacy %s membership is missing during %s', async (sourceId, action) => {
+        const { root, old, current } = sharedChat();
+        mocks.sessions.old = { ...old, metadata: { ...old.metadata!, conversationRootSessionId: undefined } };
+        mocks.sessions.current = { ...current, metadata: { ...current.metadata!, conversationRootSessionId: undefined } };
+        const source = mocks.sessions[sourceId];
+        if (action === 'delete') {
+            await bulkDeleteSessions([source]);
+            expect(mocks.sessionDelete.mock.calls.map(([id]) => id)).toEqual(['old', 'current', root.id]);
+        } else {
+            await bulkArchiveSessions([source]);
+            expect(mocks.sessionRequestArchiveMetadata.mock.calls.map(([value]) => value.id)).toEqual(['old', 'current', root.id]);
+        }
+        expect(mocks.refreshConversationSession).toHaveBeenCalledWith(root.id);
+    });
+
+    it('keeps an independent new-session continuation deletable after its predecessor is deleted', async () => {
+        const separate = session({ id: 'independent', metadata: { ...metadata, continuationOfSessionId: 'deleted-source' } });
+        await bulkDeleteSessions([separate]);
+        expect(mocks.sessionDelete).toHaveBeenCalledExactlyOnceWith(separate.id);
+        expect(mocks.refreshConversationSession).not.toHaveBeenCalledWith('deleted-source');
+    });
+
+    it('does not mistake a stripped committed member with missing history for an independent session', async () => {
+        const { current } = sharedChat();
+        mocks.sessions.current = { ...current, metadata: { ...current.metadata!, conversationRootSessionId: undefined } };
+        delete mocks.sessions.old;
+        await expect(bulkDeleteSessions([mocks.sessions.current])).rejects.toThrow(t('session.conversationActionUnavailable'));
+        expect(mocks.sessionDelete).not.toHaveBeenCalled();
+    });
+
+    it('refuses conflicting root claims instead of acting on a stripped child alone', async () => {
+        const { current } = sharedChat();
+        mocks.sessions.current = { ...current, metadata: { ...current.metadata!, conversationRootSessionId: undefined } };
+        session({ id: 'foreign-root', metadata: { ...metadata, conversationActiveSessionId: current.id } });
+        await expect(bulkArchiveSessions([mocks.sessions.current])).rejects.toThrow(t('session.conversationActionUnavailable'));
+        expect(mocks.sessionRequestArchiveMetadata).not.toHaveBeenCalled();
+    });
+
+    it('resumes a validated deletion plan when a surviving legacy member lost only its membership hint', async () => {
+        const { root, current } = sharedChat();
+        root.metadata!.conversationDeletePlan = { sessionIds: ['old', current.id, root.id], completedSessionIds: ['old'], activeSessionId: current.id };
+        delete mocks.sessions.old;
+        mocks.sessions.current = { ...current, metadata: { ...current.metadata!, conversationRootSessionId: undefined } };
+        await bulkDeleteSessions([root]);
+        expect(mocks.sessionDelete.mock.calls.map(([id]) => id)).toEqual([current.id, root.id]);
+    });
+
+    it('does not resume a deletion plan if a surviving member explicitly changed ownership', async () => {
+        const { root, current } = sharedChat();
+        root.metadata!.conversationDeletePlan = { sessionIds: ['old', current.id, root.id], completedSessionIds: ['old'], activeSessionId: current.id };
+        delete mocks.sessions.old;
+        mocks.sessions.current = { ...current, metadata: { ...current.metadata!, conversationRootSessionId: 'foreign-root' } };
+        await expect(bulkDeleteSessions([root])).rejects.toThrow(t('session.conversationDeletePlanInvalid'));
+        expect(mocks.sessionDelete).not.toHaveBeenCalled();
+    });
+
+    it('rejects a same-location legacy member reparented after a deletion plan was saved', async () => {
+        const { root, current } = sharedChat();
+        root.metadata!.conversationDeletePlan = { sessionIds: ['old', current.id, root.id], completedSessionIds: ['old'], activeSessionId: current.id };
+        delete mocks.sessions.old;
+        mocks.sessions.current = { ...current, metadata: { ...current.metadata!,
+            conversationRootSessionId: undefined, continuationOfSessionId: 'different-predecessor',
+        } };
+        await expect(bulkDeleteSessions([root])).rejects.toThrow(t('session.conversationDeletePlanInvalid'));
+        expect(mocks.sessionDelete).not.toHaveBeenCalled();
+        expect(mocks.sessionUpdateMetadata).not.toHaveBeenCalled();
     });
 
 });

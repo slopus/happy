@@ -1,5 +1,5 @@
-import { resolveConversationSessionId } from '@/sync/conversationSession';
-import { recoverConversationSwitch } from '@/sync/conversationSwitch';
+import { getConversationSessionChain, hasConversationClaim, resolveConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
+import { recoverConversationSwitch, repairCommittedConversationMembership } from '@/sync/conversationSwitch';
 import { useAgyConfig } from '@/hooks/useAgyConfig';
 import { useSessionAttachmentDraft } from '@/hooks/useSessionAttachmentDraft';
 import { useSessionAgentComposer } from '@/hooks/useSessionAgentComposer';
@@ -558,32 +558,127 @@ function ConversationDeleteRecovery({ session }: { session: Session }) {
     </Pressable>;
 }
 
+/** Candidate ownership is used only to load/validate; never to route an executor. */
+function conversationOwnerCandidates(sessions: Readonly<Record<string, Session>>, routeId: string): string[] {
+    const candidates: string[] = [];
+    for (const root of Object.values(sessions)) {
+        if (!root.metadata?.conversationActiveSessionId) continue;
+        const seen = new Set<string>();
+        let id: string | undefined = root.metadata.conversationActiveSessionId;
+        for (let count = 0; id && count < 1000 && !seen.has(id); count++) {
+            if (id === routeId) { candidates.push(root.id); break; }
+            seen.add(id);
+            if (id === root.id) break;
+            id = sessions[id]?.metadata?.continuationOfSessionId;
+        }
+    }
+    return candidates;
+}
+
+function conversationViewRevision(routeId: string): string {
+    const sessions = storage.getState().sessions;
+    const requested = sessions[routeId];
+    const hint = requested?.metadata?.conversationRootSessionId;
+    const ownsRoot = requested?.metadata?.conversationActiveSessionId !== undefined;
+    const needsInference = !hint && !ownsRoot && !!requested;
+    const inferred = needsInference ? resolveConversationRootSessionId(sessions, routeId) : null;
+    const directOwners = needsInference && !inferred
+        ? conversationOwnerCandidates(sessions, routeId) : [];
+    const rootId = hint ?? (ownsRoot ? routeId : inferred) ?? (directOwners.length === 1 ? directOwners[0] : routeId);
+    const root = sessions[rootId];
+    const parts: unknown[] = [routeId, rootId, directOwners, root?.metadataVersion,
+        root?.metadata?.conversationActiveSessionId, root?.metadata?.conversationSwitch?.id, !!root?.metadata?.conversationDeletePlan];
+    const seen = new Set<string>();
+    let id: string | undefined = root?.metadata?.conversationActiveSessionId ?? rootId;
+    for (let count = 0; id && count < 1000 && !seen.has(id); count++) {
+        seen.add(id);
+        const member: Session | undefined = sessions[id];
+        parts.push([id, member?.metadataVersion, member?.metadata?.conversationRootSessionId,
+            member?.metadata?.conversationActiveSessionId, member?.metadata?.continuationOfSessionId,
+            member?.metadata?.machineId, member?.metadata?.path]);
+        if (id === rootId) break;
+        id = member?.metadata?.continuationOfSessionId;
+    }
+    return JSON.stringify(parts);
+}
+
 export const SessionView = React.memo((props: SessionViewProps) => {
+    // Subscribe to this conversation's ownership revisions, including historical
+    // members. The snapshot is a stable primitive, not a new account-wide map.
+    const subscribe = React.useCallback((notify: () => void) => storage.subscribe?.(notify) ?? (() => {}), []);
+    const snapshot = React.useCallback(() => conversationViewRevision(props.id), [props.id]);
+    const revision = React.useSyncExternalStore(subscribe, snapshot, snapshot);
     const session = useSession(props.id);
-    const rootId = session?.metadata?.conversationRootSessionId ?? props.id;
+    const stored = storage.getState().sessions;
+    const requestedMap = session && stored[session.id] !== session ? { ...stored, [session.id]: session } : stored;
+    const hint = session?.metadata?.conversationRootSessionId;
+    const ownsRoot = session?.metadata?.conversationActiveSessionId !== undefined;
+    const inferredRootId = !hint && !ownsRoot ? resolveConversationRootSessionId(requestedMap, props.id) : null;
+    const directOwners = !hint && !ownsRoot && !inferredRootId
+        ? conversationOwnerCandidates(requestedMap, props.id) : [];
+    const rootId = hint ?? (ownsRoot ? props.id : inferredRootId) ?? (directOwners.length === 1 ? directOwners[0] : props.id);
     const root = useSession(rootId);
     const targetId = root?.metadata?.conversationActiveSessionId ?? rootId;
     const target = useSession(targetId);
+    let sessions = requestedMap;
+    if (root && sessions[root.id] !== root) sessions = { ...sessions, [root.id]: root };
+    if (target && sessions[target.id] !== target) sessions = { ...sessions, [target.id]: target };
+    const currentId = resolveConversationSessionId(sessions, props.id);
+    const committed = !!root?.metadata?.conversationActiveSessionId && targetId !== rootId;
+    const chain = committed ? getConversationSessionChain(sessions, rootId) : null;
+    const needsRepair = committed && (!currentId || target?.metadata?.conversationRootSessionId !== rootId
+        || !!chain?.some(id => id !== rootId && sessions[id]?.metadata?.conversationRootSessionId !== rootId));
+    const guardedConversation = committed || !!session?.metadata?.conversationRootSessionId || directOwners.length > 0
+        || (!currentId && session?.id === props.id && hasConversationClaim(sessions, props.id));
     const [failed, setFailed] = React.useState(false);
     const [retry, setRetry] = React.useState(0);
     const [recovering, setRecovering] = React.useState(false);
+    const [validation, setValidation] = React.useState<{ rootId: string; loading: boolean }>({ rootId: '', loading: false });
+    const inFlight = React.useRef<string | null>(null);
+    const generation = React.useRef(0);
+    const handledRetry = React.useRef(0);
     const { theme } = useUnistyles();
-    const currentId = resolveConversationSessionId({
-        ...(session ? { [session.id]: session } : {}),
-        ...(root ? { [root.id]: root } : {}),
-        ...(target ? { [target.id]: target } : {}),
-    }, props.id);
+    React.useEffect(() => () => { generation.current++; inFlight.current = null; }, [props.id]);
     React.useEffect(() => {
-        let current = true;
-        setFailed(false);
+        const explicitRetry = handledRetry.current !== retry;
         const missing = [...new Set([!session ? props.id : '', !root ? rootId : '', !target ? targetId : ''])].filter(Boolean);
+        if ((!needsRepair && missing.length === 0 && !explicitRetry) || inFlight.current === rootId) return;
+        handledRetry.current = retry;
+        const owner = ++generation.current;
+        inFlight.current = rootId;
+        setFailed(false);
+        if (guardedConversation) setValidation({ rootId, loading: true });
         void (async () => {
-            for (const id of missing) {
-                if (!await sync.ensureSessionHydrated(id)) throw new Error('missing-conversation-session');
+            if (committed && (needsRepair || explicitRetry)) {
+                await repairCommittedConversationMembership(rootId);
+            } else {
+                const ids = explicitRetry ? [...new Set([props.id, rootId, targetId])] : missing;
+                for (const id of ids) {
+                    const loaded = explicitRetry ? await sync.refreshConversationSession(id) : await sync.ensureSessionHydrated(id);
+                    if (!loaded) throw new Error('missing-conversation-session');
+                }
+                const loadedRoot = storage.getState().sessions[rootId]?.metadata;
+                if (loadedRoot?.conversationActiveSessionId && loadedRoot.conversationActiveSessionId !== rootId
+                    && !loadedRoot.conversationSwitch) await repairCommittedConversationMembership(rootId);
             }
-        })().catch(() => { if (current) setFailed(true); });
-        return () => { current = false; };
-    }, [props.id, rootId, targetId, Boolean(session), Boolean(root), Boolean(target), retry]);
+        })().catch(() => { if (generation.current === owner) setFailed(true); }).finally(() => {
+            if (generation.current === owner) {
+                const finalSessions = storage.getState().sessions;
+                const finalActive = finalSessions[rootId]?.metadata?.conversationActiveSessionId;
+                if (finalActive && finalActive !== rootId) {
+                    const finalChain = getConversationSessionChain(finalSessions, rootId);
+                    if (!resolveConversationSessionId(finalSessions, props.id) || !finalChain
+                        || finalChain.some(id => id !== rootId && finalSessions[id]?.metadata?.conversationRootSessionId !== rootId)) setFailed(true);
+                }
+                // A real metadata event that invalidates the graph mid-flight
+                // becomes an explicit Retry state, never an automatic query loop.
+                inFlight.current = null;
+                setValidation({ rootId, loading: false });
+            }
+        });
+        // Own writes can change revision while the verification is in flight.
+        // Keep that one operation alive; only route/unmount generation revokes it.
+    }, [props.id, rootId, targetId, revision, needsRepair, committed, guardedConversation, Boolean(session), Boolean(root), Boolean(target), retry]);
     if (session && isRetiredSession(session)) return <Redirect href="/bots" />;
     const pending = root?.metadata?.conversationSwitch;
     const retrySwitch = async () => {
@@ -592,11 +687,12 @@ export const SessionView = React.memo((props: SessionViewProps) => {
         catch (error) { Modal.alert(t('common.error'), error instanceof Error ? error.message : t('common.retry')); }
         finally { setRecovering(false); }
     };
-    if (!currentId && (session?.metadata?.conversationRootSessionId || root?.metadata?.conversationActiveSessionId)) return (
-        <View testID="conversation-unavailable" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
-            {!failed && !target ? <ActivityIndicator /> : <Text style={{ color: theme.colors.text }}>{t('session.agentSwitchUnavailable')}</Text>}
+    const validating = validation.rootId === rootId && validation.loading;
+    if (guardedConversation && (needsRepair || validating || !currentId)) return (
+        <View testID={validating || (needsRepair && !failed) ? 'conversation-validating' : 'conversation-unavailable'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
+            {validating || (needsRepair && !failed) ? <ActivityIndicator /> : <Text style={{ color: theme.colors.text }}>{t('session.agentSwitchUnavailable')}</Text>}
             {root?.metadata?.conversationDeletePlan && <ConversationDeleteRecovery session={root} />}
-            <Pressable accessibilityRole="button" accessibilityLabel={t('common.retry')} onPress={() => setRetry(value => value + 1)}>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('common.retry')} disabled={validating} onPress={() => setRetry(value => value + 1)}>
                 <Text style={{ color: theme.colors.text }}>{t('common.retry')}</Text>
             </Pressable>
         </View>
@@ -615,7 +711,6 @@ export const SessionView = React.memo((props: SessionViewProps) => {
         </SubagentInspectorProvider>
     </View>;
 });
-
 
 const SessionViewContent = React.memo((props: SessionViewProps) => {
     const sessionId = props.id;

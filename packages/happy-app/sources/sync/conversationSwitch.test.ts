@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Session } from './storageTypes';
+import { MetadataSchema, type Session } from './storageTypes';
 import { projectConversationSessions } from './conversationSession';
 const mock = vi.hoisted(() => ({ sessions: {} as Record<string, Session>, refresh: vi.fn(), update: vi.fn(), delivery: vi.fn(), hydrate: vi.fn(), assert: vi.fn() }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
@@ -7,7 +7,7 @@ vi.mock('@/auth/accountRuntime', () => ({ assertAccountRuntime: mock.assert }));
 vi.mock('./storage', () => ({ storage: { getState: () => ({ sessions: mock.sessions, applySessions: (sessions: Session[]) => { for (const session of sessions) mock.sessions[session.id] = session; } }) } }));
 vi.mock('./sync', () => ({ sync: { refreshConversationSession: mock.refresh, hasConversationHandoffDelivery: mock.delivery, ensureSessionHydrated: mock.hydrate } }));
 vi.mock('./ops', () => ({ sessionUpdateMetadata: mock.update }));
-import { assertConversationSourceIdle, assertConversationSendAllowed, prepareConversationSwitch, claimConversationSwitch, commitConversationSwitch, releaseConversationSwitch, recoverConversationSwitch } from './conversationSwitch';
+import { assertConversationSourceIdle, assertConversationSendAllowed, prepareConversationSwitch, claimConversationSwitch, commitConversationSwitch, releaseConversationSwitch, recoverConversationSwitch, repairCommittedConversationMembership } from './conversationSwitch';
 const session = (id: string, metadata: object = {}): Session => ({ id, metadata: { path: '/project', host: 'mac', machineId: 'm', ...metadata }, metadataVersion: 1, thinking: false, agentState: null } as Session);
 const record = { rootId: 'root', sourceId: 'root', targetId: 'target', requestId: 'switch-1' };
 beforeEach(() => {
@@ -201,5 +201,114 @@ describe('conversation handoff transaction', () => {
         await claimConversationSwitch(record); mock.sessions.target.metadata!.conversationRootSessionId = 'unrelated';
         await expect(recoverConversationSwitch('root')).rejects.toThrow('session.agentSwitchChanged');
         expect(mock.delivery).not.toHaveBeenCalled();
+    });
+});
+
+
+describe('committed conversation membership recovery', () => {
+    function stripWithOldReader(id: string) {
+        const current = mock.sessions[id];
+        // A deployed pre-conversation reader strips new fields, then writes its
+        // ordinary first-message clock with the latest metadata version.
+        const oldReader = MetadataSchema.omit({ conversationRootSessionId: true,
+            conversationActiveSessionId: true, conversationSwitch: true, conversationDeletePlan: true }).strip();
+        mock.sessions[id] = { ...current, metadata: { ...oldReader.parse(current.metadata), lastUserMessageAt: 20 }, metadataVersion: current.metadataVersion + 1 };
+    }
+    it('revalidates and restores a reservation stripped by the first-message clock before publishing active', async () => {
+        await claimConversationSwitch(record);
+        stripWithOldReader('target');
+        expect(mock.sessions.target.metadata).not.toHaveProperty('conversationRootSessionId');
+        mock.update.mockImplementation(async (id, metadata, version, apply) => {
+            const next = apply(metadata);
+            if (id === 'root' && next.conversationActiveSessionId === 'target') {
+                expect(mock.sessions.target.metadata!.conversationRootSessionId).toBe('root');
+            }
+            return { metadata: next, version: version + 1 };
+        });
+        await commitConversationSwitch(record);
+        expect(mock.sessions.target.metadata).toMatchObject({ conversationRootSessionId: 'root', continuationOfSessionId: 'root', lastUserMessageAt: 20 });
+        expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBe('target');
+    });
+    it('repairs a committed missing hint through fresh authority without replaying delivery', async () => {
+        await claimConversationSwitch(record); await commitConversationSwitch(record);
+        stripWithOldReader('target'); mock.refresh.mockClear(); mock.update.mockClear(); mock.delivery.mockClear();
+        expect(await repairCommittedConversationMembership('root')).toBe(true);
+        expect(mock.refresh.mock.calls).toEqual([['root'], ['target']]);
+        expect(mock.update.mock.calls.map(call => call[0])).toEqual(['target']);
+        expect(mock.sessions.target.metadata!.conversationRootSessionId).toBe('root');
+        expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBe('target');
+        expect(mock.delivery).not.toHaveBeenCalled();
+    });
+    it('recovers a later handoff after an old reader strips the committed source hint', async () => {
+        await claimConversationSwitch(record); await commitConversationSwitch(record);
+        mock.sessions.third = session('third', { continuationOfSessionId: 'target' });
+        const next = { rootId: 'root', sourceId: 'target', targetId: 'third', requestId: 'switch-2' };
+        await claimConversationSwitch(next);
+        stripWithOldReader('target');
+        expect(await recoverConversationSwitch('root')).toBe(true);
+        expect(mock.sessions.target.metadata!.conversationRootSessionId).toBe('root');
+        expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBe('third');
+        expect(mock.sessions.root.metadata).not.toHaveProperty('conversationSwitch');
+    });
+    it('refuses a later handoff when its committed source has an explicit foreign binding', async () => {
+        await claimConversationSwitch(record); await commitConversationSwitch(record);
+        mock.sessions.third = session('third', { continuationOfSessionId: 'target' });
+        await claimConversationSwitch({ rootId: 'root', sourceId: 'target', targetId: 'third', requestId: 'switch-2' });
+        mock.sessions.target.metadata!.conversationRootSessionId = 'foreign';
+        await expect(recoverConversationSwitch('root')).rejects.toThrow('session.agentSwitchChanged');
+        expect(mock.sessions.root.metadata!.conversationActiveSessionId).toBe('target');
+    });
+    it('repairs all missing hints only after loading the full predecessor chain', async () => {
+        mock.sessions.root.metadata!.conversationActiveSessionId = 'third';
+        mock.sessions.target.metadata!.continuationOfSessionId = 'root';
+        mock.sessions.third = session('third', { continuationOfSessionId: 'target' });
+        const reads: string[] = [];
+        mock.refresh.mockImplementation(async (id: string) => { reads.push(id); return true; });
+        mock.update.mockImplementation(async (_id, metadata, version, apply) => {
+            expect(reads).toEqual(['root', 'third', 'target']);
+            return { metadata: apply(metadata), version: version + 1 };
+        });
+        expect(await recoverConversationSwitch('root')).toBe(true);
+        expect(mock.sessions.target.metadata!.conversationRootSessionId).toBe('root');
+        expect(mock.sessions.third.metadata!.conversationRootSessionId).toBe('root');
+    });
+    it.each([
+        { conversationRootSessionId: 'foreign' }, { conversationActiveSessionId: 'other' },
+        { machineId: 'different-machine' }, { path: '/different' },
+    ])('fails closed before any write when a predecessor conflicts: %j', conflict => {
+        mock.sessions.root.metadata!.conversationActiveSessionId = 'third';
+        mock.sessions.third = session('third', { continuationOfSessionId: 'target' });
+        mock.sessions.target.metadata = { ...mock.sessions.target.metadata!, ...conflict };
+        return expect(repairCommittedConversationMembership('root')).rejects.toThrow('session.agentSwitchChanged').then(() => {
+            expect(mock.update).not.toHaveBeenCalled();
+            expect(mock.sessions.third.metadata).not.toHaveProperty('conversationRootSessionId');
+        });
+    });
+    it('rejects a cycle or missing predecessor without partially repairing the visible target', async () => {
+        mock.sessions.root.metadata!.conversationActiveSessionId = 'third';
+        mock.sessions.third = session('third', { continuationOfSessionId: 'target' });
+        mock.sessions.target.metadata!.continuationOfSessionId = 'third';
+        await expect(repairCommittedConversationMembership('root')).rejects.toThrow('session.agentSwitchChanged');
+        expect(mock.update).not.toHaveBeenCalled();
+        mock.sessions.target.metadata!.continuationOfSessionId = 'missing';
+        await expect(repairCommittedConversationMembership('root')).rejects.toThrow('session.agentSwitchUnavailable');
+        expect(mock.update).not.toHaveBeenCalled();
+    });
+    it('refuses two authoritative roots claiming the same missing-hint target before any repair', async () => {
+        mock.sessions.root.metadata!.conversationActiveSessionId = 'target';
+        mock.sessions.otherRoot = session('otherRoot', { conversationActiveSessionId: 'target' });
+        await expect(repairCommittedConversationMembership('root')).rejects.toThrow('session.agentSwitchChanged');
+        expect(mock.update).not.toHaveBeenCalled();
+        expect(mock.sessions.target.metadata).not.toHaveProperty('conversationRootSessionId');
+    });
+    it('does not repair an old chain after its root changes while predecessor reads are pending', async () => {
+        mock.sessions.root.metadata!.conversationActiveSessionId = 'third';
+        mock.sessions.third = session('third', { continuationOfSessionId: 'target' });
+        mock.refresh.mockImplementation(async (id: string) => {
+            if (id === 'target') mock.sessions.root.metadata!.conversationActiveSessionId = 'newer';
+            return true;
+        });
+        await expect(repairCommittedConversationMembership('root')).rejects.toThrow('session.agentSwitchChanged');
+        expect(mock.update).not.toHaveBeenCalled();
     });
 });

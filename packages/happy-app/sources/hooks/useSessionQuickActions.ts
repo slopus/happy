@@ -32,8 +32,8 @@ import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { buildDirectMessageForkOptions, resolveCodexMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
 import { describeSpawnSessionError } from '@/utils/spawnSessionError';
 import { resolveSessionResumeAvailability } from '@/utils/sessionResumeAvailability';
-import { getConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
-import { BulkSessionActionError, bulkArchiveSessions, bulkDeleteSessions, resolveSessionsForBulkAction } from './bulkSessionActions';
+import { getConversationRootSessionId, resolveConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
+import { BulkSessionActionError, bulkArchiveSessions, bulkDeleteSessions, refreshConversationActionAuthority, resolveSessionsForBulkAction } from './bulkSessionActions';
 
 export interface SessionActionItem {
     id: string;
@@ -154,17 +154,22 @@ export function useSessionQuickActions(
     } = options;
     const router = useRouter();
     const navigateToSession = useNavigateToSession();
-    const rootId = getConversationRootSessionId(providedSession);
+    const renderSessions = storage.getState().sessions;
+    const raw = renderSessions[providedSession.id] ?? providedSession;
+    const needsRootResolution = Boolean(raw.metadata?.conversationRootSessionId || raw.metadata?.conversationActiveSessionId
+        || raw.metadata?.conversationSwitch || raw.metadata?.conversationDeletePlan || raw.metadata?.continuationOfSessionId);
+    const confirmedRootId = needsRootResolution ? resolveConversationRootSessionId(renderSessions, providedSession.id) : raw.id;
+    const rootId = confirmedRootId ?? getConversationRootSessionId(providedSession);
     const rootSession = useSession(rootId);
-    const executionSessionId = resolveConversationSessionId(storage.getState().sessions, providedSession.id);
+    const executionSessionId = confirmedRootId ? renderSessions[confirmedRootId]?.metadata?.conversationActiveSessionId ?? confirmedRootId : null;
     const session = useSession(executionSessionId ?? providedSession.id) ?? providedSession;
     const canRetryConversationDelete = Boolean(rootSession?.metadata?.conversationDeletePlan);
     const executionReady = Boolean(executionSessionId && !canRetryConversationDelete && !rootSession?.metadata?.conversationSwitch);
-    const requireExecutionSession = React.useCallback(() => {
+    const requireExecutionSession = React.useCallback((actionRootId = rootId) => {
         const state = storage.getState();
-        const id = resolveConversationSessionId(state.sessions, rootId);
+        const id = resolveConversationSessionId(state.sessions, actionRootId);
         const current = id ? state.sessions[id] : undefined;
-        if (!current || state.sessions[rootId]?.metadata?.conversationSwitch || state.sessions[rootId]?.metadata?.conversationDeletePlan) {
+        if (!current || state.sessions[actionRootId]?.metadata?.conversationSwitch || state.sessions[actionRootId]?.metadata?.conversationDeletePlan) {
             throw new HappyError(t('session.agentSwitchUnavailable'), false);
         }
         return current;
@@ -173,45 +178,17 @@ export function useSessionQuickActions(
     const prepareLifecycleAction = React.useCallback(async (action: 'archive' | 'delete' | 'restore') => {
         setGroupActionFailure(null);
         try {
-            const refresh = async (id: string) => {
-                try {
-                    if (await sync.refreshConversationSession(id)) return;
-                } catch { /* An unreadable authority cannot authorize a lifecycle mutation. */ }
-                throw new HappyError(t('session.agentSwitchUnavailable'), false);
-            };
-            // The object used to open a menu may predate the first Agent switch.
-            // Resolve identity from a fresh user-triggered read before choosing a path.
-            await refresh(providedSession.id);
-            let state = storage.getState();
-            const source = state.sessions[providedSession.id];
-            if (!source?.metadata) throw new HappyError(t('session.agentSwitchUnavailable'), false);
-            if (getConversationRootSessionId(source) !== rootId) throw new HappyError(t('session.agentSwitchChanged'), false);
-            if (rootId !== source.id) await refresh(rootId);
-            state = storage.getState();
-            const root = state.sessions[rootId];
-            if (!root?.metadata || getConversationRootSessionId(root) !== rootId) throw new HappyError(t('session.agentSwitchUnavailable'), false);
-            if (root.metadata.conversationSwitch) throw new HappyError(t('session.agentSwitchPending'), false);
-            if (root.metadata.conversationDeletePlan) {
-                if (action !== 'delete') throw new HappyError(t('session.conversationDeletePending'), false);
-                return { root, current: null, grouped: true };
-            }
-            const activeId = root.metadata.conversationActiveSessionId ?? rootId;
-            if (activeId !== source.id && activeId !== rootId) await refresh(activeId);
-            state = storage.getState();
-            const currentId = resolveConversationSessionId(state.sessions, source.id);
-            if (!currentId || currentId !== activeId || state.sessions[rootId]?.metadata?.conversationSwitch
-                || state.sessions[rootId]?.metadata?.conversationDeletePlan) throw new HappyError(t('session.agentSwitchChanged'), false);
-            return { root: state.sessions[rootId], current: state.sessions[currentId],
-                grouped: Boolean(source.metadata.conversationRootSessionId || state.sessions[rootId].metadata?.conversationActiveSessionId) };
+            return await refreshConversationActionAuthority(providedSession, { allowDeletePlan: action === 'delete',
+                expectedRootId: confirmedRootId ?? providedSession.metadata?.conversationRootSessionId ?? null });
         } catch (error) {
             const message = error instanceof Error ? error.message : t('errors.unknownError');
             setGroupActionFailure({ action, message, completedIds: [], failedSessionId: null, pendingIds: [] });
             throw error instanceof HappyError ? error : new HappyError(message, false);
         }
-    }, [providedSession.id, rootId]);
-    const performConversationGroupAction = React.useCallback(async (action: 'archive' | 'delete') => {
+    }, [providedSession, confirmedRootId]);
+    const performConversationGroupAction = React.useCallback(async (action: 'archive' | 'delete', authorityRoot: Session) => {
         setGroupActionFailure(null);
-        const root = storage.getState().sessions[rootId];
+        const root = storage.getState().sessions[authorityRoot.id];
         try {
             if (!root) throw new Error(t('session.agentSwitchUnavailable'));
             if (action === 'archive') await bulkArchiveSessions([root]);
@@ -227,7 +204,7 @@ export function useSessionQuickActions(
             await sync.refreshSessions().catch(() => {});
             throw new HappyError(message, false);
         }
-    }, [rootId]);
+    }, []);
     const sessionStatus = useSessionStatus(session);
     const machineId = session.metadata?.machineId ?? '';
     const machine = useMachine(machineId);
@@ -295,12 +272,12 @@ export function useSessionQuickActions(
         sessionManagement.togglePinned(rootId);
     }, [rootId, sessionManagement]);
 
-    const resumeOriginalSession = React.useCallback(async () => {
+    const resumeOriginalSession = React.useCallback(async (actionRootId = rootId) => {
         // Restore awaits metadata and refresh first. Another device may have
         // reconnected the worker during that time; never restart it using the
         // availability captured when the action was rendered.
         const currentState = storage.getState();
-        const currentSession = requireExecutionSession();
+        const currentSession = requireExecutionSession(actionRootId);
         if (currentSession.presence === 'online' && !isArchivedLifecycleState(currentSession.metadata?.lifecycleState)) return;
         const currentMachineId = currentSession.metadata?.machineId ?? '';
         const availability = getResumeAvailability(currentSession, currentState.machines[currentMachineId], false);
@@ -335,7 +312,7 @@ export function useSessionQuickActions(
                     storage.getState().updateSessionEffortLevel(result.sessionId, currentSession.effortLevel);
                 }
 
-                navigateToSession(rootId);
+                navigateToSession(actionRootId);
                 return;
             }
             case 'requestToApproveDirectoryCreation':
@@ -370,7 +347,7 @@ export function useSessionQuickActions(
             await maybeCleanupWorktree(current.id, current.metadata?.path, current.metadata?.machineId);
         }
         // Shared lifecycle operations recheck authority after optional worktree UI.
-        await performConversationGroupAction('archive');
+        await performConversationGroupAction('archive', authority.root);
         await sync.refreshSessions();
         onAfterArchive?.();
     });
@@ -392,20 +369,20 @@ export function useSessionQuickActions(
         let group: Session[] | null = null;
         if (authority.grouped) {
             setGroupActionFailure(null);
-            try { group = await resolveSessionsForBulkAction([storage.getState().sessions[rootId] ?? providedSession]); }
+            try { group = await resolveSessionsForBulkAction([storage.getState().sessions[authority.root.id] ?? authority.root]); }
             catch (error) {
                 const message = error instanceof Error ? error.message : t('errors.unknownError');
                 setGroupActionFailure({ action: 'restore', message, completedIds: [], failedSessionId: null, pendingIds: [] });
                 throw new HappyError(message, false);
             }
         }
-        const current = requireExecutionSession();
+        const current = requireExecutionSession(authority.root.id);
         if (current.id !== authority.current?.id) throw new HappyError(t('session.agentSwitchChanged'), false);
         const currentMachineId = current.metadata?.machineId ?? '';
         const connected = current.presence === 'online' && !isArchivedLifecycleState(current.metadata?.lifecycleState);
         const availability = getResumeAvailability(current, storage.getState().machines[currentMachineId], connected);
         if (resumeAtStart || availability.canResume) {
-            await resumeOriginalSession();
+            await resumeOriginalSession(authority.root.id);
         }
         // Resume refreshes the worker metadata. Do not write the object from
         // the archived render back over its new PID, capabilities or cursor.
@@ -426,7 +403,7 @@ export function useSessionQuickActions(
                 }
             }
         } else {
-            const currentSession = requireExecutionSession();
+            const currentSession = requireExecutionSession(authority.root.id);
             await sessionRestoreMetadata(currentSession);
         }
         await sync.refreshSessions();
@@ -546,7 +523,7 @@ export function useSessionQuickActions(
             const current = authority.current!;
             await maybeCleanupWorktree(current.id, current.metadata?.path, current.metadata?.machineId);
         }
-        await performConversationGroupAction('delete');
+        await performConversationGroupAction('delete', authority.root);
         onAfterDelete?.();
     });
 

@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
     leaveSessionRoute: vi.fn(),
     setCurrentViewingSession: vi.fn(),
     ensureSessionHydrated: vi.fn(),
+    refreshConversationSession: vi.fn(),
+    repairMembership: vi.fn(),
     fetchNextHistoryPage: vi.fn(),
     openSession: vi.fn(),
     session: null as any,
@@ -106,7 +108,7 @@ vi.mock('@react-navigation/native', async () => {
 });
 
 vi.mock('@/sync/storage', () => ({
-    storage: { getState: () => ({ sessions: mocks.conversationSessions ?? (mocks.session ? { [mocks.session.id]: mocks.session } : {}), currentViewingSessionId: mocks.currentViewingSessionId, setCurrentViewingSession: mocks.setCurrentViewingSession }) },
+    storage: { subscribe: (listener: () => void) => { mocks.sessionListeners.add(listener); return () => { mocks.sessionListeners.delete(listener); }; }, getState: () => ({ sessions: mocks.conversationSessions ?? (mocks.session ? { [mocks.session.id]: mocks.session } : {}), currentViewingSessionId: mocks.currentViewingSessionId, setCurrentViewingSession: mocks.setCurrentViewingSession }) },
     useIsDataReady: () => true,
     useSocketStatus: () => ({ status: 'connected' }),
     useLocalSetting: (key: string) => key === 'sidebarOrganization' ? { lists: [], tags: [], sessions: {} } : false,
@@ -126,6 +128,7 @@ vi.mock('@/sync/storage', () => ({
     useSetting: (key: string) => key === 'sidebarOrganization' ? { lists: [], tags: [], sessions: {} } : false,
     useSettingUpdater: () => vi.fn(),
 }));
+vi.mock('@/sync/conversationSwitch', () => ({ repairCommittedConversationMembership: mocks.repairMembership, recoverConversationSwitch: vi.fn() }));
 vi.mock('@/sync/sync', () => ({
     sync: {
         abandonSessionRoute: mocks.abandonSessionRoute,
@@ -134,6 +137,7 @@ vi.mock('@/sync/sync', () => ({
         promoteSessionRoute: mocks.promoteSessionRoute,
         leaveSessionRoute: mocks.leaveSessionRoute,
         ensureSessionHydrated: mocks.ensureSessionHydrated,
+        refreshConversationSession: mocks.refreshConversationSession,
         loadNextSessionHistoryPage: mocks.fetchNextHistoryPage,
         onSessionVisible: vi.fn(),
         openSession: mocks.openSession,
@@ -320,6 +324,8 @@ describe('SessionView deep-link hydration', () => {
         mocks.promoteSessionRoute.mockImplementation((owner) => owners.promote(owner));
         mocks.leaveSessionRoute.mockImplementation((owner) => owners.leave(owner));
         mocks.ensureSessionHydrated.mockResolvedValue(true);
+        mocks.refreshConversationSession.mockReset().mockResolvedValue(true);
+        mocks.repairMembership.mockReset().mockRejectedValue(new Error('unavailable-conversation'));
         mocks.openSession.mockImplementation(async (id: string, owner: any) => {
             if (!await mocks.ensureSessionHydrated(id)) return 'not-found';
             owners.opened(owner);
@@ -1052,6 +1058,123 @@ describe('SessionView deep-link hydration', () => {
             await act(async () => { await vi.advanceTimersByTimeAsync(20); });
             expect(renderer.root.findByType('MessageComposer').props.sessionId).toBe('agent-c');
             expect(mocks.openSession.mock.calls.some(call => call[0] === 'root')).toBe(false);
+        } finally { act(() => renderer?.unmount()); }
+    });
+    function strippedConversation() {
+        const base = { seq: 1, active: true, activeAt: 10, createdAt: 1, updatedAt: 10, metadataVersion: 1, agentState: null, agentStateVersion: 0, thinking: false, thinkingAt: 0 };
+        return {
+            root: { ...base, id: 'root', metadata: { path: '/test', machineId: 'machine', host: 'test', conversationActiveSessionId: 'current' } },
+            history: { ...base, id: 'history', metadata: { path: '/test', machineId: 'machine', host: 'test', continuationOfSessionId: 'root' } },
+            current: { ...base, id: 'current', metadata: { path: '/test', machineId: 'machine', host: 'test', continuationOfSessionId: 'history' } },
+        };
+    }
+    function restoreMembership() {
+        const current = mocks.conversationSessions!;
+        mocks.conversationSessions = { ...current,
+            history: { ...current.history, metadata: { ...current.history.metadata, conversationRootSessionId: 'root' }, metadataVersion: 2 },
+            current: { ...current.current, metadata: { ...current.current.metadata, conversationRootSessionId: 'root' }, metadataVersion: 2 },
+        };
+        mocks.sessionListeners.forEach(listener => listener());
+    }
+    it.each(['root', 'history', 'current'])('validates the full loaded graph before exposing a stripped %s route', async routeId => {
+        mocks.messagesLoaded = true;
+        mocks.conversationSessions = strippedConversation();
+        const repair = deferred<boolean>(); mocks.repairMembership.mockReturnValueOnce(repair.promise);
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionView id={routeId} />); });
+            expect(mocks.repairMembership).toHaveBeenCalledExactlyOnceWith('root');
+            expect(renderer.root.findAllByProps({ testID: 'conversation-validating' }).length).toBeGreaterThan(0);
+            expect(renderer.root.findAllByType('MessageComposer')).toHaveLength(0);
+            expect(mocks.openSession).not.toHaveBeenCalled();
+            await act(async () => { restoreMembership(); repair.resolve(true); await repair.promise; });
+            await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+            expect(renderer.root.findByType('MessageComposer').props.sessionId).toBe('current');
+            expect(mocks.openSession.mock.calls.every(call => call[0] === 'current')).toBe(true);
+            expect(mocks.repairMembership).toHaveBeenCalledOnce();
+        } finally { act(() => renderer?.unmount()); }
+    });
+    it('keeps an incomplete stripped historical claim unavailable instead of mounting its old worker', async () => {
+        mocks.conversationSessions = strippedConversation();
+        mocks.conversationSessions!.history = { ...mocks.conversationSessions!.history,
+            metadata: { ...mocks.conversationSessions!.history.metadata, continuationOfSessionId: 'missing' } };
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionView id="history" />); });
+            expect(renderer.root.findAllByType('MessageComposer')).toHaveLength(0);
+            expect(mocks.openSession).not.toHaveBeenCalled();
+            expect(renderer.root.findAllByProps({ testID: 'conversation-unavailable' }).length).toBeGreaterThan(0);
+            expect(mocks.repairMembership).toHaveBeenCalledExactlyOnceWith('root');
+            await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+            expect(mocks.repairMembership).toHaveBeenCalledOnce();
+        } finally { act(() => renderer?.unmount()); }
+    });
+    it('does not treat a claimed historical member with no predecessor as an ordinary independent session', async () => {
+        mocks.conversationSessions = strippedConversation();
+        const history = mocks.conversationSessions!.history;
+        mocks.conversationSessions!.history = { ...history, metadata: { path: '/test', machineId: 'machine', host: 'test' } };
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionView id="history" />); });
+            expect(renderer.root.findAllByType('MessageComposer')).toHaveLength(0);
+            expect(mocks.openSession).not.toHaveBeenCalled();
+            expect(renderer.root.findAllByProps({ testID: 'conversation-unavailable' }).length).toBeGreaterThan(0);
+        } finally { act(() => renderer?.unmount()); }
+    });
+    it('observes a new root claim for a previously ordinary row without reopening that old worker', async () => {
+        const graph = strippedConversation();
+        mocks.messagesLoaded = true;
+        mocks.conversationSessions = { history: { ...graph.history, metadata: { path: '/test', machineId: 'machine', host: 'test' } } };
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionView id="history" />); });
+            await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+            expect(renderer.root.findByType('MessageComposer').props.sessionId).toBe('history');
+            const previousOpens = mocks.openSession.mock.calls.length;
+            await act(async () => {
+                mocks.conversationSessions = { ...mocks.conversationSessions!, root: graph.root,
+                    current: { ...graph.current, metadata: { ...graph.current.metadata, conversationRootSessionId: 'root' } } };
+                mocks.sessionListeners.forEach(listener => listener());
+            });
+            expect(renderer.root.findAllByType('MessageComposer')).toHaveLength(0);
+            expect(renderer.root.findAllByProps({ testID: 'conversation-unavailable' }).length).toBeGreaterThan(0);
+            expect(mocks.openSession.mock.calls.length).toBe(previousOpens);
+            expect(mocks.repairMembership).toHaveBeenCalledExactlyOnceWith('root');
+        } finally { act(() => renderer?.unmount()); }
+    });
+    it('retries a loaded broken membership through fresh verification rather than a cached hydrate-only check', async () => {
+        mocks.conversationSessions = strippedConversation(); mocks.messagesLoaded = true;
+        mocks.repairMembership.mockRejectedValueOnce(new Error('network-unavailable'));
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionView id="root" />); });
+            expect(renderer.root.findAllByProps({ testID: 'conversation-unavailable' }).length).toBeGreaterThan(0);
+            mocks.repairMembership.mockImplementationOnce(async () => { restoreMembership(); return true; });
+            const retryButton = renderer.root.findAllByType('Pressable').find((button: any) => button.props.accessibilityLabel === 'common.retry');
+            await act(async () => { retryButton.props.onPress(); });
+            await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+            expect(mocks.repairMembership).toHaveBeenCalledTimes(2);
+            expect(renderer.root.findByType('MessageComposer').props.sessionId).toBe('current');
+        } finally { act(() => renderer?.unmount()); }
+    });
+    it('ends a mid-flight ownership revision in explicit Retry instead of a permanent spinner or query loop', async () => {
+        mocks.conversationSessions = strippedConversation();
+        const repair = deferred<boolean>(); mocks.repairMembership.mockReturnValueOnce(repair.promise);
+        let renderer: any;
+        try {
+            await act(async () => { renderer = TestRenderer.create(<SessionView id="root" />); });
+            await act(async () => {
+                // A writer strips the hint again while the one-shot recovery is finishing.
+                const sessions = mocks.conversationSessions!;
+                mocks.conversationSessions = { ...sessions, current: { ...sessions.current, metadataVersion: 3 } };
+                mocks.sessionListeners.forEach(listener => listener());
+                repair.resolve(true); await repair.promise;
+            });
+            expect(renderer.root.findAllByProps({ testID: 'conversation-unavailable' }).length).toBeGreaterThan(0);
+            expect(renderer.root.findAllByProps({ testID: 'conversation-validating' })).toHaveLength(0);
+            expect(renderer.root.findAllByType('MessageComposer')).toHaveLength(0);
+            await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+            expect(mocks.repairMembership).toHaveBeenCalledOnce();
         } finally { act(() => renderer?.unmount()); }
     });
     it('does not expose the old worker when its active conversation target is unavailable', async () => {

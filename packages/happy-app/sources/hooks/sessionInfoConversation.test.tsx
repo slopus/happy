@@ -8,7 +8,7 @@ import SessionInfo from '../app/(app)/session/[id]/info';
 
 const mocks = vi.hoisted(() => ({
     routeId: 'conversation-root', sessions: {} as Record<string, Session>, ready: true,
-    back: vi.fn(), push: vi.fn(), hydrate: vi.fn(), quickActions: vi.fn(), status: vi.fn(),
+    back: vi.fn(), push: vi.fn(), hydrate: vi.fn(), refresh: vi.fn(), repair: vi.fn(), quickActions: vi.fn(), status: vi.fn(),
     archive: vi.fn(), delete: vi.fn(), retryDelete: vi.fn(), copy: vi.fn(), alert: vi.fn(),
 }));
 vi.mock('expo-router', () => ({
@@ -32,8 +32,10 @@ vi.mock('@/components/CodeView', () => ({ CodeView: 'CodeView' }));
 vi.mock('@/components/layout', () => ({ layout: { maxWidth: 800 } }));
 vi.mock('@/sync/storage', () => ({
     useSession: (id: string) => mocks.sessions[id], useIsDataReady: () => mocks.ready,
+    useAllSessions: () => Object.values(mocks.sessions),
 }));
-vi.mock('@/sync/sync', () => ({ sync: { ensureSessionHydrated: mocks.hydrate } }));
+vi.mock('@/sync/sync', () => ({ sync: { ensureSessionHydrated: mocks.hydrate, refreshConversationSession: mocks.refresh } }));
+vi.mock('@/sync/conversationSwitch', () => ({ repairCommittedConversationMembership: mocks.repair }));
 vi.mock('@/sync/retiredSessions', () => ({ isHiddenRetiredSession: () => false }));
 vi.mock('@/utils/sessionUtils', () => ({
     getSessionName: (source: Session) => source.metadata?.summary?.text ?? source.id,
@@ -74,6 +76,7 @@ describe('session info conversation identity and destructive actions', () => {
         vi.clearAllMocks();
         mocks.routeId = 'conversation-root'; mocks.ready = true;
         mocks.hydrate.mockResolvedValue(false);
+        mocks.refresh.mockResolvedValue(true); mocks.repair.mockResolvedValue(false);
         mocks.copy.mockResolvedValue(undefined);
         mocks.quickActions.mockReturnValue({ archiveSession: mocks.archive, deleteSession: mocks.delete,
             confirmDeleteSession: mocks.retryDelete, archivingSession: false, deletingSession: false });
@@ -95,6 +98,31 @@ describe('session info conversation identity and destructive actions', () => {
         expect(mocks.quickActions).toHaveBeenCalledWith(active, expect.any(Object));
         await act(async () => item('sessionInfo.happySessionId').props.onPress());
         expect(mocks.copy).toHaveBeenCalledExactlyOnceWith(root.id);
+    });
+
+    it('resolves stripped membership across the complete chain from a child details URL', async () => {
+        const { root, active } = fixture();
+        const middle = { ...active, id: 'middle-segment', metadata: { ...active.metadata!,
+            conversationRootSessionId: undefined, continuationOfSessionId: root.id } };
+        mocks.sessions[middle.id] = middle;
+        mocks.sessions[active.id] = { ...active, metadata: { ...active.metadata!,
+            conversationRootSessionId: undefined, continuationOfSessionId: middle.id } };
+        mocks.routeId = middle.id;
+        await mount();
+        expect(text()).toContain('Shared chat title');
+        expect(mocks.quickActions).toHaveBeenCalledWith(mocks.sessions[active.id], expect.any(Object));
+        await act(async () => item('sessionInfo.happySessionId').props.onPress());
+        expect(mocks.copy).toHaveBeenCalledWith(root.id);
+    });
+
+    it('refreshes loaded invalid authority on explicit retry', async () => {
+        const { root, active } = fixture();
+        mocks.sessions[active.id] = { ...active, metadata: { ...active.metadata!, conversationRootSessionId: 'another-root' } };
+        await mount();
+        await act(async () => item('common.retry').props.onPress());
+        expect(mocks.refresh).toHaveBeenCalledWith(root.id);
+        expect(mocks.refresh).toHaveBeenCalledWith(active.id);
+        expect(mocks.quickActions).not.toHaveBeenCalled();
     });
 
     it('delegates archive to the shared action and navigates only after its success callback', async () => {
@@ -149,6 +177,22 @@ describe('session info conversation identity and destructive actions', () => {
         act(() => renderer.root.findByProps({ testID: 'session-info-delete-retry' }).props.onPress());
         expect(mocks.retryDelete).toHaveBeenCalledOnce();
         expect(mocks.back).not.toHaveBeenCalled();
+    });
+
+    it('finds a saved deletion plan from a stripped historical child details URL', async () => {
+        const { root, active } = fixture();
+        const historical = { ...active, id: 'historical-segment', metadata: { ...active.metadata!,
+            conversationRootSessionId: undefined, continuationOfSessionId: root.id } };
+        mocks.sessions[root.id] = { ...root, metadata: { ...root.metadata!, conversationDeletePlan: {
+            sessionIds: [historical.id, active.id, root.id], completedSessionIds: [active.id], activeSessionId: active.id,
+        } } };
+        mocks.sessions[historical.id] = historical;
+        delete mocks.sessions[active.id];
+        mocks.routeId = historical.id;
+        await mount();
+        expect(renderer.root.findByProps({ testID: 'session-info-delete-recovery' })).toBeTruthy();
+        expect(mocks.quickActions).toHaveBeenCalledWith(mocks.sessions[root.id], expect.any(Object));
+        expect(mocks.status).not.toHaveBeenCalled();
     });
 
     it('rejects a current segment that belongs to another conversation', async () => {

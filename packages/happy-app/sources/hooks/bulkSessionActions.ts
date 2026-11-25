@@ -4,51 +4,108 @@ import type { Metadata, Session } from '@/sync/storageTypes';
 import { assertAccountRuntime } from '@/auth/accountRuntime';
 import { storage } from '@/sync/storage';
 import { ensureSessionHydratedWithRetry } from '@/sync/ensureSessionHydratedWithRetry';
-import { getConversationRootSessionId, getConversationSessionChain } from '@/sync/conversationSession';
+import { getConversationRootSessionId, getConversationSessionChain, resolveConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
 import { t } from '@/text';
+
+const actionUnavailable = () => new Error(t('session.conversationActionUnavailable'));
+const sameLocation = (a: Session, b: Session) => a.metadata?.machineId === b.metadata?.machineId && a.metadata?.path === b.metadata?.path;
+
+/** A user-triggered authority read. Missing legacy membership is never standalone authority. */
+export async function refreshConversationActionAuthority(requested: Session, options: {
+    allowDeletePlan?: boolean;
+    expectedRootId?: string | null;
+} = {}): Promise<{ source: Session; root: Session; current: Session | null; grouped: boolean }> {
+    const before = storage.getState().sessions;
+    const expectedRootId = options.expectedRootId !== undefined ? options.expectedRootId
+        : requested.metadata?.conversationRootSessionId ?? resolveConversationRootSessionId(before, requested.id);
+    const refreshed = new Set<string>();
+    const fresh = async (id: string): Promise<Session> => {
+        if (!refreshed.has(id)) {
+            if (!storage.getState().sessions[id] && !await ensureSessionHydratedWithRetry(id)) throw actionUnavailable();
+            if (!await sync.refreshConversationSession(id)) throw actionUnavailable();
+            assertAccountRuntime();
+            refreshed.add(id);
+        }
+        const value = storage.getState().sessions[id];
+        if (!value || value.id !== id) throw actionUnavailable();
+        return value;
+    };
+    const source = await fresh(requested.id);
+    if (source.metadata?.conversationRootSessionId && expectedRootId
+        && source.metadata.conversationRootSessionId !== expectedRootId) throw new Error(t('session.agentSwitchChanged'));
+    const inferred = resolveConversationRootSessionId(storage.getState().sessions, source.id);
+    const planRoots = Object.values(storage.getState().sessions).filter(candidate =>
+        candidate.metadata?.conversationDeletePlan?.sessionIds.includes(source.id));
+    if (planRoots.length > 1) throw actionUnavailable();
+    let candidateId: string | null = source.metadata?.conversationRootSessionId
+        ?? (inferred && inferred !== source.id ? inferred : null)
+        ?? planRoots[0]?.id
+        ?? (source.metadata?.conversationActiveSessionId || source.metadata?.conversationSwitch ? source.id : null);
+    // A legacy child still retains continuationOfSessionId. Follow distinct
+    // predecessors only to discover an authority; this never polls status.
+    let ancestor = source;
+    const ancestors = new Set([source.id]);
+    for (let count = 0; !candidateId && ancestor.metadata?.continuationOfSessionId; count++) {
+        const previousId = ancestor.metadata.continuationOfSessionId;
+        if (count >= 1000 || ancestors.has(previousId)) throw actionUnavailable();
+        ancestors.add(previousId);
+        // A separately created continuation does not own its predecessor.
+        // With no root claim, a deleted predecessor must not prevent its cleanup.
+        if (!storage.getState().sessions[previousId] && inferred === source.id
+            && !source.metadata?.conversationRootSessionId && planRoots.length === 0) break;
+        const previous = await fresh(previousId);
+        if (!sameLocation(source, previous)) break;
+        candidateId = previous.metadata?.conversationRootSessionId
+            ?? (previous.metadata?.conversationActiveSessionId || previous.metadata?.conversationSwitch || previous.metadata?.conversationDeletePlan ? previous.id : null);
+        ancestor = previous;
+    }
+    const candidate = await fresh(candidateId ?? source.id);
+    if (getConversationRootSessionId(candidate) !== candidate.id || !sameLocation(candidate, source)) throw actionUnavailable();
+    if (candidate.metadata?.conversationSwitch) throw new Error(t('session.agentSwitchPending'));
+    const savedPlan = candidate.metadata?.conversationDeletePlan;
+    if (savedPlan) {
+        if (!options.allowDeletePlan) throw new Error(t('session.conversationDeletePending'));
+        if (!savedPlan.sessionIds.includes(source.id) || expectedRootId && candidate.id !== expectedRootId) throw actionUnavailable();
+        return { source, root: candidate, current: null, grouped: true };
+    }
+    const activeId = candidate.metadata?.conversationActiveSessionId ?? candidate.id;
+    let id = activeId;
+    const seen = new Set<string>();
+    for (let count = 0; ; count++) {
+        if (count >= 1000 || seen.has(id)) throw actionUnavailable();
+        seen.add(id);
+        const segment = await fresh(id);
+        if (!sameLocation(candidate, segment)) throw actionUnavailable();
+        if (id === candidate.id) break;
+        if (segment.metadata?.conversationRootSessionId && segment.metadata.conversationRootSessionId !== candidate.id
+            || segment.metadata?.conversationActiveSessionId !== undefined || !segment.metadata?.continuationOfSessionId) throw actionUnavailable();
+        id = segment.metadata.continuationOfSessionId;
+    }
+    const sessions = storage.getState().sessions;
+    const liveRoot = sessions[candidate.id];
+    if ((liveRoot?.metadata?.conversationActiveSessionId ?? candidate.id) !== activeId
+        || liveRoot?.metadata?.conversationSwitch || liveRoot?.metadata?.conversationDeletePlan) throw actionUnavailable();
+    const rootId = resolveConversationRootSessionId(sessions, source.id);
+    const currentId = resolveConversationSessionId(sessions, source.id);
+    if (!rootId || !currentId || !refreshed.has(rootId) || expectedRootId && rootId !== expectedRootId) throw actionUnavailable();
+    const root = sessions[rootId];
+    return { source, root, current: sessions[currentId], grouped: rootId !== source.id || Boolean(root.metadata?.conversationActiveSessionId) };
+}
 
 /** Validate every segment before a destructive action so a missing target cannot delete only the root. */
 export async function resolveSessionsForBulkAction(selected: Session[]): Promise<Session[]> {
     const result = new Map<string, Session>();
     const roots = new Set<string>();
     for (const requestedSession of selected) {
-        if (!await sync.refreshConversationSession(requestedSession.id)) throw new Error(t('session.conversationActionUnavailable'));
-        assertAccountRuntime();
-        const selectedSession = storage.getState().sessions[requestedSession.id];
-        if (!selectedSession) throw new Error(t('session.conversationActionUnavailable'));
-        if (!selectedSession.metadata?.conversationRootSessionId && !selectedSession.metadata?.conversationActiveSessionId
-            && !selectedSession.metadata?.conversationSwitch && !selectedSession.metadata?.conversationDeletePlan) {
-            result.set(selectedSession.id, selectedSession);
+        const authority = await refreshConversationActionAuthority(requestedSession);
+        if (!authority.grouped) {
+            result.set(authority.source.id, authority.source);
             continue;
         }
-        const rootId = getConversationRootSessionId(selectedSession);
+        const rootId = authority.root.id;
         if (roots.has(rootId)) continue;
-        if (!await sync.refreshConversationSession(rootId)) throw new Error(t('session.conversationActionUnavailable'));
-        const root = storage.getState().sessions[rootId];
-        if (!root?.metadata) throw new Error(t('session.conversationActionUnavailable'));
-        if (root.metadata.conversationDeletePlan) throw new Error(t('session.conversationDeletePending'));
-        const activeId = root.metadata.conversationActiveSessionId ?? root.id;
-        const pending = root.metadata.conversationSwitch;
-        if (pending) throw new Error(t('session.agentSwitchPending'));
-        let id = activeId;
-        const seen = new Set<string>();
-        let complete = false;
-        // Each iteration follows a different stored predecessor; this is bounded history loading, not status polling.
-        for (let count = 0; count < 1000; count++) {
-            if (seen.has(id) || !await ensureSessionHydratedWithRetry(id)) break;
-            seen.add(id);
-            const segment = storage.getState().sessions[id];
-            if (!segment) break;
-            if (id === rootId) { complete = true; break; }
-            if (segment.metadata?.conversationRootSessionId !== rootId || !segment.metadata.continuationOfSessionId) break;
-            id = segment.metadata.continuationOfSessionId;
-        }
+        const activeId = authority.current!.id;
         const latest = storage.getState().sessions;
-        const currentRoot = latest[rootId];
-        if (!complete || currentRoot?.metadata?.conversationActiveSessionId !== root.metadata.conversationActiveSessionId
-            || currentRoot?.metadata?.conversationSwitch !== undefined || currentRoot?.metadata?.conversationDeletePlan !== undefined) {
-            throw new Error(t('session.conversationActionUnavailable'));
-        }
         const chain = getConversationSessionChain(latest, rootId);
         if (!chain) throw new Error(t('session.conversationActionUnavailable'));
         // Retain the active worker and stable root if an earlier segment fails.
@@ -69,9 +126,10 @@ function sameDeletePlan(a: DeletePlan, b: DeletePlan): boolean {
 
 function validateDeletePlan(root: Session, plan: DeletePlan): void {
     const ids = plan.sessionIds;
-    if (!root.metadata || getConversationRootSessionId(root) !== root.id || root.metadata.conversationSwitch
+    if (!root.metadata?.machineId || !root.metadata.path || getConversationRootSessionId(root) !== root.id || root.metadata.conversationSwitch
         || !Array.isArray(ids) || !ids.length || ids.length > 1000 || new Set(ids).size !== ids.length
         || ids.at(-1) !== root.id || !ids.includes(plan.activeSessionId)
+        || (ids.length > 1 ? ids.at(-2) !== plan.activeSessionId : plan.activeSessionId !== root.id)
         || (root.metadata.conversationActiveSessionId ?? root.id) !== plan.activeSessionId
         || !Array.isArray(plan.completedSessionIds) || new Set(plan.completedSessionIds).size !== plan.completedSessionIds.length
         || plan.completedSessionIds.some(id => !ids.includes(id) || id === root.id)) {
@@ -80,11 +138,14 @@ function validateDeletePlan(root: Session, plan: DeletePlan): void {
     // Existing objects must still belong to this exact chat. Missing objects are
     // retryable only because their IDs were saved in this validated plan.
     const sessions = storage.getState().sessions;
-    for (const id of ids) {
+    for (const [index, id] of ids.entries()) {
         const segment = sessions[id];
         if (!segment || id === root.id) continue;
-        if (segment.metadata?.conversationRootSessionId !== root.id
-            || segment.metadata.machineId !== root.metadata.machineId || segment.metadata.path !== root.metadata.path) {
+        const expectedPrevious = index === 0 ? root.id : ids[index - 1];
+        if (segment.metadata?.conversationRootSessionId && segment.metadata.conversationRootSessionId !== root.id
+            || segment.metadata?.conversationActiveSessionId !== undefined
+            || segment.metadata?.continuationOfSessionId !== expectedPrevious
+            || segment.metadata?.machineId !== root.metadata.machineId || segment.metadata?.path !== root.metadata.path) {
             throw new Error(t('session.conversationDeletePlanInvalid'));
         }
     }
@@ -123,19 +184,13 @@ async function prepareDeleteBatches(selected: Session[]): Promise<DeleteBatch[]>
     const represented = new Set<string>();
     for (const requested of selected) {
         assertAccountRuntime();
-        if (!await sync.refreshConversationSession(requested.id)) throw new Error(t('session.conversationDeleteStateUnavailable'));
-        assertAccountRuntime();
-        const session = storage.getState().sessions[requested.id];
-        if (!session) throw new Error(t('session.conversationDeleteStateUnavailable'));
-        const isConversation = !!(session.metadata?.conversationRootSessionId || session.metadata?.conversationActiveSessionId
-            || session.metadata?.conversationSwitch || session.metadata?.conversationDeletePlan);
-        const rootId = isConversation ? getConversationRootSessionId(session) : session.id;
+        const authority = await refreshConversationActionAuthority(requested, { allowDeletePlan: true });
+        const session = authority.source;
+        const rootId = authority.root.id;
         if (represented.has(rootId)) continue;
         represented.add(rootId);
-        if (!isConversation) { batches.push({ sessionIds: [session.id] }); continue; }
-        if (!await sync.refreshConversationSession(rootId)) throw new Error(t('session.conversationDeleteStateUnavailable'));
-        assertAccountRuntime();
-        let root = storage.getState().sessions[rootId];
+        if (!authority.grouped) { batches.push({ sessionIds: [session.id] }); continue; }
+        let root = authority.root;
         if (!root?.metadata) throw new Error(t('session.conversationDeleteStateUnavailable'));
         let plan = root.metadata.conversationDeletePlan;
         if (!plan) {

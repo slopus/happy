@@ -8,7 +8,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady } from '@/sync/storage';
+import { useSession, useAllSessions, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -21,7 +21,8 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
-import { getConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
+import { resolveConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
+import { repairCommittedConversationMembership } from '@/sync/conversationSwitch';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -586,7 +587,11 @@ export default React.memo(() => {
     const { theme } = useUnistyles();
     const { id } = useLocalSearchParams<{ id: string }>();
     const session = useSession(id);
-    const rootId = session ? getConversationRootSessionId(session) : id;
+    const allSessions = useAllSessions();
+    const sessions = React.useMemo(() => Object.fromEntries(allSessions.map(value => [value.id, value])), [allSessions]);
+    const deleteOwners = allSessions.filter(value => value.metadata?.conversationDeletePlan?.sessionIds.includes(id));
+    const rootId = session?.metadata?.conversationRootSessionId
+        ?? (deleteOwners.length === 1 ? deleteOwners[0].id : resolveConversationRootSessionId(sessions, id)) ?? id;
     const root = useSession(rootId);
     const activeId = root?.metadata?.conversationActiveSessionId ?? rootId;
     const active = useSession(activeId);
@@ -594,7 +599,7 @@ export default React.memo(() => {
     const [lookupFailed, setLookupFailed] = React.useState(false);
     const [retry, setRetry] = React.useState(0);
     const deletingConversation = Boolean(root?.metadata?.conversationDeletePlan);
-    const currentId = resolveConversationSessionId({
+    const currentId = resolveConversationSessionId({ ...sessions,
         ...(session ? { [session.id]: session } : {}),
         ...(root ? { [root.id]: root } : {}),
         ...(active ? { [active.id]: active } : {}),
@@ -605,12 +610,20 @@ export default React.memo(() => {
         if (!isDataReady || deletingConversation) return () => { current = false; };
         const missing = [...new Set([!session ? id : '', !root ? rootId : '', !active ? activeId : ''])].filter(Boolean);
         void (async () => {
+            if (retry > 0) {
+                for (const refreshId of new Set([id, rootId, activeId])) {
+                    if (!await sync.refreshConversationSession(refreshId)) throw new Error('missing-conversation-session');
+                }
+            }
             for (const missingId of missing) {
                 if (!await sync.ensureSessionHydrated(missingId)) throw new Error('missing-conversation-session');
             }
+            if (!currentId && root?.metadata?.conversationActiveSessionId && active) {
+                await repairCommittedConversationMembership(rootId);
+            }
         })().catch(() => { if (current) setLookupFailed(true); });
         return () => { current = false; };
-    }, [isDataReady, id, rootId, activeId, Boolean(session), Boolean(root), Boolean(active), deletingConversation, retry]);
+    }, [isDataReady, id, rootId, activeId, Boolean(session), Boolean(root), Boolean(active), Boolean(currentId), deletingConversation, retry]);
     if (session && isRetiredSession(session)) return <Redirect href="/bots" />;
 
     // Handle three states: loading, deleted, and exists
@@ -635,8 +648,8 @@ export default React.memo(() => {
         );
     }
 
-    if (deletingConversation && root) return <SessionInfoDeleteRecovery session={root} />;
-    if (!root || !active || !currentId) return <View testID="session-info-unavailable" style={{ flex: 1, padding: 24 }}>
+    if (deletingConversation && root && deleteOwners.length < 2) return <SessionInfoDeleteRecovery session={root} />;
+    if (!root || !active || !currentId || deleteOwners.length > 1) return <View testID="session-info-unavailable" style={{ flex: 1, padding: 24 }}>
         <Text style={{ color: theme.colors.text }}>{t('session.agentSwitchUnavailable')}</Text>
         <Item title={t('common.retry')} onPress={() => setRetry(value => value + 1)} />
     </View>;

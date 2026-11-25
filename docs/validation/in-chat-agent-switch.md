@@ -1,6 +1,6 @@
 # 同聊天切换 Agent 与独立新建入口
 
-Base: `dd5fce94c1fc2926ec795e0f89bd7d90b4ec4c35`。对应研究：外盘 `t3code-context-handoff-research/2026-11-25-followup.md`。
+初版 PR #907 已合并为 `e3ca0cf5d5e3b4efdfb31b9c94bfad4dd2b2b8f8`；本轮继续修复正式验收发现的旧 schema 写回问题。对应研究：外盘 `t3code-context-handoff-research/2026-11-25-followup.md`。
 
 用户契约：选择 Agent/model 只暂存；点击普通发送箭头/Enter 才在当前逻辑聊天接手。保留旁边明确的新建会话按钮，继续创建独立会话。内部执行会话保留独立身份和加密历史；本次先复用现有有界历史接续，不宣称实现 T3 全量原文回查或旧原生线程增量恢复。
 
@@ -25,7 +25,7 @@ Ego组件验收已通过：两入口与Enter分流、Tab不建新会话、busy�
 - 选择与两动作、键盘、草稿清理：实组件和 hook 回归。
 - 稳定 root、原始加密 session 与执行归属分离；展示投影不改 raw store。
 - root CAS 占用、服务端交付证据、失败保留同一请求，以及旧页面的单次权威读取。
-- 本轮没有启动 T3、修改后台 CLI、发布/合并正式 Web。
+- 初版已正常合并并通过正式 Web/preview/production 的制品校验；真实验收发现下述归属恢复缺陷，修复前不称完整交付。未修改后台 CLI。
 
 ## 能力边界
 
@@ -34,3 +34,11 @@ Ego组件验收已通过：两入口与Enter分流、Tab不建新会话、busy�
 ## 独立评审
 
 最终独立代码评审通过，无未修P0/P1或阻断P2；旧页面生命周期旁路和root CAS未知导致隐藏候选两项均已修并复审。source输入框PC组件独立评审通过，focus与reduced-motion反馈已补修后Ego复验。真实完整App/模型、双设备及原生设备需在正式发布后分别验收；不能用此结论扩大验证范围。
+
+## 正式模型验收与兼容恢复
+
+在正式 Web、Mac mini、专属合成聊天中，源 Codex 记住三项随机事实。选择 Antigravity 只暂存、取消保留原草稿；实际普通箭头发送后同一 root URL 保持，Gemini 4 Neon 准确答出三项事实并完成。但旧 schema 客户端的消息时钟写回可能删掉新成员归属字段；root.active 仍指向目标，严格路由因字段遗失显示 unavailable，列表拆为两条。Retry 与完整刷新都未恢复。该轮只证明模型接续，不能作为同聊天通过。
+
+修复要求：依权威 root.active、完整 predecessor 链、机器和目录确认缺失归属；冲突、歧义、循环或缺段仍拒绝；提交前重新核对保留位与目标，恢复不重发已交付消息。普通独立新建没有 root.active claim，不因 continuation 血缘被折叠。旧客户端仍运行旧代码时不能宣称服务端线性化防护；本次特定写入设备没有识别。
+
+精确发布、OTA、正式复验与清理状态唯一记录于本机 Release OPS 的 `local/projects/paws-in-chat-agent-switch-20261125.md`；该记录不包含凭据。

@@ -460,7 +460,7 @@ describe('restoring archived sessions', () => {
             expect(mocks.restore).not.toHaveBeenCalled();
             expect(mocks.resume).not.toHaveBeenCalled();
             expect(actions.groupActionFailure).toMatchObject({ action, completedIds: [], failedSessionId: null });
-            expect(mocks.alert).toHaveBeenCalledWith('common.error', 'session.agentSwitchUnavailable', expect.any(Array));
+            expect(mocks.alert).toHaveBeenCalledWith('common.error', 'session.conversationActionUnavailable', expect.any(Array));
         },
     );
 
@@ -473,5 +473,30 @@ describe('restoring archived sessions', () => {
         await act(async () => actions.confirmDeleteSession());
         expect(mocks.delete).not.toHaveBeenCalled();
         expect(mocks.alert).toHaveBeenCalledWith('common.error', 'session.agentSwitchChanged', expect.any(Array));
+    });
+
+    it.each([
+        ['active', 'archive'], ['history', 'archive'], ['active', 'delete'], ['history', 'delete'],
+        ['active', 'restore'], ['history', 'restore'],
+    ] as const)('keeps stripped %s membership bound to the committed root during %s', async (sourceKind, action) => {
+        const { root, history, active } = conversation();
+        mocks.extraSessions[history.id] = { ...history, metadata: { ...history.metadata!, conversationRootSessionId: undefined } };
+        mocks.extraSessions[active.id] = { ...active, metadata: { ...active.metadata!, conversationRootSessionId: undefined } };
+        const source = mocks.extraSessions[sourceKind === 'active' ? active.id : history.id];
+        mocks.resume.mockResolvedValue({ type: 'success', sessionId: active.id });
+        mount(source);
+        await act(async () => {
+            if (action === 'archive') actions.archiveSession();
+            else if (action === 'delete') actions.confirmDeleteSession();
+            else actions.restoreSession();
+        });
+        const expected = [history.id, active.id, root.id];
+        if (action === 'archive') expect(mocks.requestArchive.mock.calls.map(([member]) => member.id)).toEqual(expected);
+        else if (action === 'delete') expect(mocks.delete.mock.calls.map(([id]) => id)).toEqual(expected);
+        else {
+            expect(mocks.restore.mock.calls.map(([member]) => member.id)).toEqual(expected);
+            expect(mocks.resume).toHaveBeenCalledWith(expect.objectContaining({ sessionId: active.id }));
+            expect(mocks.navigate).toHaveBeenCalledWith(root.id);
+        }
     });
 });

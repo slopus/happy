@@ -162,6 +162,133 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('real session writer composition', () => {
+    it.each([undefined, 'wrong-request', 'reserved-request'])(
+        'admits a reserved candidate only with its matching handoff request (%s)', async requestId => {
+            await sync.ensureSessionHydrated('writer-session');
+            const candidate = storage.getState().sessions['writer-session'];
+            const rootId = 'conversation-root';
+            storage.getState().applySessions([
+                { ...candidate, id: rootId, metadata: { ...candidate.metadata!, conversationActiveSessionId: rootId,
+                    conversationSwitch: { id: 'reserved-request', sourceSessionId: rootId, targetSessionId: candidate.id } } },
+                { ...candidate, metadata: { ...candidate.metadata!, conversationRootSessionId: rootId, continuationOfSessionId: rootId } },
+            ]);
+            vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+            const sending = sync.sendMessage(candidate.id, 'First handoff input', { conversationSwitchRequestId: requestId });
+            if (requestId === 'reserved-request') {
+                expect((await sending).type).toBe('queued');
+                expect(subject.pendingOutbox.get(candidate.id)).toHaveLength(1);
+                expect(sync.refreshConversationSession).toHaveBeenCalledWith(rootId);
+            } else {
+                await expect(sending).rejects.toThrow();
+                expect(subject.pendingOutbox.size).toBe(0);
+            }
+        },
+    );
+
+    it('refreshes the committed root when an older client stripped a member hint', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const source = storage.getState().sessions['writer-session'];
+        const metadata = { ...source.metadata!, machineId: 'synthetic-machine' };
+        const rootId = 'conversation-root';
+        storage.getState().applySessions([
+            { ...source, id: rootId, metadata: { ...metadata, conversationActiveSessionId: source.id } },
+            { ...source, metadata: { ...metadata, continuationOfSessionId: rootId } },
+        ]);
+        vi.mocked(sync.refreshConversationSession).mockImplementation(async id => {
+            if (id === rootId) {
+                const root = storage.getState().sessions[rootId];
+                storage.getState().applySessions([{ ...root, metadata: { ...root.metadata!, conversationSwitch: {
+                    id: 'another-switch', sourceSessionId: source.id, targetSessionId: 'other-worker',
+                } } }]);
+            }
+            return true;
+        });
+        const encrypt = vi.spyOn(subject.encryption.getSessionEncryption(source.id), 'encryptRawRecord');
+        await expect(sync.sendMessage(source.id, 'Must wait for the other switch')).rejects.toThrow();
+        expect(sync.refreshConversationSession).toHaveBeenCalledWith(rootId);
+        expect(encrypt).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
+    it('does not send to a historical member whose hint was stripped by an older client', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const source = storage.getState().sessions['writer-session'];
+        const metadata = { ...source.metadata!, machineId: 'synthetic-machine' };
+        storage.getState().applySessions([
+            { ...source, id: 'conversation-root', metadata: { ...metadata, conversationActiveSessionId: 'current-worker' } },
+            { ...source, metadata: { ...metadata, continuationOfSessionId: 'conversation-root' } },
+            { ...source, id: 'current-worker', metadata: { ...metadata, continuationOfSessionId: source.id,
+                conversationRootSessionId: 'conversation-root' } },
+        ]);
+        const encrypt = vi.spyOn(subject.encryption.getSessionEncryption(source.id), 'encryptRawRecord');
+        await expect(sync.sendMessage(source.id, 'Must not reach the old member')).rejects.toThrow();
+        expect(sync.refreshConversationSession).toHaveBeenCalledWith('conversation-root');
+        expect(encrypt).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
+    it('rechecks the inferred root after preparing a stripped member attachment', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const source = storage.getState().sessions['writer-session'];
+        const metadata = { ...source.metadata!, machineId: 'synthetic-machine' };
+        const rootId = 'conversation-root';
+        storage.getState().applySessions([
+            { ...source, id: rootId, metadata: { ...metadata, conversationActiveSessionId: source.id } },
+            { ...source, metadata: { ...metadata, continuationOfSessionId: rootId } },
+        ]);
+        let rootReads = 0;
+        vi.mocked(sync.refreshConversationSession).mockImplementation(async id => {
+            if (id === rootId && ++rootReads === 2) {
+                const root = storage.getState().sessions[rootId];
+                storage.getState().applySessions([
+                    { ...root, metadata: { ...root.metadata!, conversationActiveSessionId: 'current-worker' } },
+                    { ...source, id: 'current-worker', metadata: { ...metadata, continuationOfSessionId: source.id,
+                        conversationRootSessionId: rootId } },
+                ]);
+            }
+            return true;
+        });
+        vi.spyOn(subject, 'uploadAttachmentsForSession').mockResolvedValue({ failed: 0,
+            uploaded: [{ ref: 'image-ref', name: 'image.png', size: 1, width: 1, height: 1 }] });
+        await expect(sync.sendMessage(source.id, 'Do not send to the old member', {
+            attachments: [{ id: 'image', kind: 'image' }] as any,
+        })).rejects.toThrow();
+        expect(rootReads).toBe(2);
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
+    it('refuses a changed conversation owner while an attachment is being prepared', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const source = storage.getState().sessions['writer-session'];
+        vi.spyOn(subject, 'uploadAttachmentsForSession').mockImplementation(async () => {
+            storage.getState().applySessions([
+                { ...source, metadata: { ...source.metadata!, conversationRootSessionId: 'different-root', continuationOfSessionId: 'different-root' } },
+                { ...source, id: 'different-root', metadata: { ...source.metadata!, conversationActiveSessionId: source.id } },
+            ]);
+            return { failed: 0, uploaded: [{ ref: 'image-ref', name: 'image.png', size: 1, width: 1, height: 1 }] };
+        });
+        await expect(sync.sendMessage(source.id, 'Prepared for the original chat', {
+            attachments: [{ id: 'image', kind: 'image' }] as any,
+        })).rejects.toThrow('switched elsewhere');
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
+    it('refuses an owner change arriving during the final authority read', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const source = storage.getState().sessions['writer-session'];
+        let reads = 0;
+        vi.mocked(sync.refreshConversationSession).mockImplementation(async () => {
+            if (++reads === 2) storage.getState().applySessions([
+                { ...source, metadata: { ...source.metadata!, conversationRootSessionId: 'different-root', continuationOfSessionId: 'different-root' } },
+                { ...source, id: 'different-root', metadata: { ...source.metadata!, conversationActiveSessionId: source.id } },
+            ]);
+            return true;
+        });
+        await expect(sync.sendMessage(source.id, 'Prepared for the original chat')).rejects.toThrow('switched elsewhere');
+        expect(reads).toBe(2);
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
     it('refreshes an ordinary stale source before sending after another device switches it', async () => {
         await sync.ensureSessionHydrated('writer-session');
         const source = storage.getState().sessions['writer-session'];

@@ -1,4 +1,5 @@
 import { assertConversationSendAllowed } from './conversationSwitch';
+import { resolveConversationRootSessionId } from './conversationSession';
 import { isAgyConfigPending } from './agyConfigPending';
 import { createScheduledTasksController } from './scheduledTasks';
 import { resolveComposerReferences, parseComposerDraft, composerReferenceDisplay, buildComposerReferenceExcerpt } from './composerReferences';
@@ -352,6 +353,12 @@ type SendMessageOptions = {
     /** Optional image attachments to send before the text message. */
     attachments?: AttachmentPreview[];
 };
+
+function getMessageConversationRootId(sessions: Readonly<Record<string, Session>>, sessionId: string): string | null {
+    const metadata = sessions[sessionId]?.metadata;
+    return metadata?.conversationRootSessionId
+        ?? (metadata?.conversationActiveSessionId !== undefined ? sessionId : resolveConversationRootSessionId(sessions, sessionId));
+}
 
 export type LocalMessageQueueReceipt = {
     type: 'queued';
@@ -1982,9 +1989,14 @@ class Sync {
         // A stale first-generation tab may not yet know that its session became
         // a logical root. Every authenticated send rechecks this one source.
         if (this.credentials && !await this.refreshConversationSession(sessionId)) throw new Error(t('session.agentSwitchUnavailable'));
-        const conversation = storage.getState().sessions[sessionId]?.metadata;
-        if (conversation?.conversationRootSessionId && this.credentials
-            && !await this.refreshConversationSession(conversation.conversationRootSessionId)) throw new Error(t('session.agentSwitchUnavailable'));
+        assertSendOwner();
+        const conversationState = storage.getState().sessions;
+        // Older schema clients can omit the member hint when persisting their
+        // message clock. A verified committed chain still identifies its root.
+        const rootId = getMessageConversationRootId(conversationState, sessionId);
+        if (!rootId) throw new Error(t('session.agentSwitchUnavailable'));
+        if (rootId !== sessionId && this.credentials
+            && !await this.refreshConversationSession(rootId)) throw new Error(t('session.agentSwitchUnavailable'));
         assertSendOwner();
         assertConversationSendAllowed(sessionId, options?.conversationSwitchRequestId);
         if (isAgyConfigPending(sessionId)) throw new Error('Wait for the model configuration to finish before sending');
@@ -2086,6 +2098,8 @@ class Sync {
         const encryption = encryptionOwner.getSessionEncryption(sessionId);
         const session = storage.getState().sessions[sessionId];
         if (!encryption || !session) throw new Error('local-message-session-unavailable');
+        const conversationRootAtStart = getMessageConversationRootId(storage.getState().sessions, sessionId);
+        if (!conversationRootAtStart) throw new Error(t('session.agentSwitchUnavailable'));
         const stagedOutbox: OutboxMessage[] = [];
         const stagedMessages: NormalizedMessage[] = [];
 
@@ -2253,7 +2267,13 @@ class Sync {
 
         // Recheck after uploads/encryption; a linked conversation may have
         // changed while the attachment was being prepared.
-        if (this.credentials && !await this.refreshConversationSession(session.metadata?.conversationRootSessionId ?? sessionId)) throw new Error(t('session.agentSwitchUnavailable'));
+        if (!isCurrent() || this.encryption !== encryptionOwner
+            || encryptionOwner.getSessionEncryption(sessionId) !== encryption
+            || !storage.getState().sessions[sessionId]) throw new Error('local-message-session-unavailable');
+        const finalRootId = getMessageConversationRootId(storage.getState().sessions, sessionId);
+        if (finalRootId !== conversationRootAtStart) throw new Error(t('session.agentSwitchChanged'));
+        if (!finalRootId || (this.credentials && !await this.refreshConversationSession(finalRootId))) throw new Error(t('session.agentSwitchUnavailable'));
+        if (getMessageConversationRootId(storage.getState().sessions, sessionId) !== conversationRootAtStart) throw new Error(t('session.agentSwitchChanged'));
         assertConversationSendAllowed(sessionId, options?.conversationSwitchRequestId);
         // No awaits between ownership validation and the complete outbox commit.
         // Nothing from a failed upload/encryption attempt becomes locally queued.

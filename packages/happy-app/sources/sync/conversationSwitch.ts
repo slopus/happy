@@ -4,6 +4,7 @@ import { storage } from './storage';
 import { sync } from './sync';
 import { sessionUpdateMetadata } from './ops';
 import type { Metadata, Session } from './storageTypes';
+import { getConversationSessionChain, resolveConversationRootSessionId } from './conversationSession';
 
 export type ConversationSwitch = { rootId: string; sourceId: string; targetId: string; requestId: string };
 const unavailable = () => new Error(t('session.agentSwitchUnavailable'));
@@ -37,12 +38,13 @@ export async function prepareConversationSwitch(sourceId: string): Promise<strin
     assertAccountRuntime();
     const source = storage.getState().sessions[sourceId];
     assertConversationSourceIdle(source);
-    const rootId = source.metadata!.conversationRootSessionId ?? sourceId;
+    const rootId = resolveConversationRootSessionId(storage.getState().sessions, sourceId) ?? source.metadata!.conversationRootSessionId ?? sourceId;
     if (rootId !== sourceId && !await sync.refreshConversationSession(rootId)) throw unavailable();
     assertAccountRuntime();
     const root = storage.getState().sessions[rootId];
     if (!root?.metadata || root.metadata.conversationDeletePlan) throw unavailable();
     if ((root.metadata.conversationActiveSessionId ?? rootId) !== sourceId) throw changed();
+    if (resolveConversationRootSessionId(storage.getState().sessions, sourceId) !== rootId) throw changed();
     if (root.metadata.conversationSwitch) throw new Error(t('session.agentSwitchPending'));
     return rootId;
 }
@@ -152,8 +154,94 @@ export async function claimConversationSwitch(record: ConversationSwitch): Promi
     }
 }
 
+async function repairCommittedMembershipFromFreshRoot(rootId: string, reservation?: ConversationSwitch): Promise<boolean> {
+    const root = storage.getState().sessions[rootId];
+    if (!root?.metadata || root.metadata.conversationDeletePlan || !root.metadata.machineId) throw unavailable();
+    if (root.metadata.conversationRootSessionId && root.metadata.conversationRootSessionId !== rootId) throw changed();
+    const matchesReservation = (metadata: Metadata) => !!reservation && metadata.conversationSwitch?.id === reservation.requestId
+        && metadata.conversationSwitch.sourceSessionId === reservation.sourceId
+        && metadata.conversationSwitch.targetSessionId === reservation.targetId;
+    if (root.metadata.conversationSwitch && !matchesReservation(root.metadata)) throw new Error(t('session.agentSwitchPending'));
+    const activeId = root.metadata.conversationActiveSessionId;
+    if (reservation && (activeId ?? rootId) !== reservation.sourceId) throw changed();
+    if (!activeId || activeId === rootId) return false;
+    const machineId = root.metadata.machineId;
+    const path = root.metadata.path;
+    const members: Session[] = [];
+    const seen = new Set<string>();
+    let id = activeId;
+    let complete = false;
+    // Each lookup follows a different stored predecessor, never a status-query loop.
+    for (let count = 0; count < 1000; count++) {
+        if (id === rootId) { complete = true; break; }
+        if (seen.has(id)) throw changed();
+        seen.add(id);
+        if (!await sync.refreshConversationSession(id)) throw unavailable();
+        assertAccountRuntime();
+        const member = storage.getState().sessions[id];
+        const metadata = member?.metadata;
+        if (!metadata) throw unavailable();
+        if (member.id !== id || metadata.machineId !== machineId || metadata.path !== path
+            || (metadata.conversationRootSessionId && metadata.conversationRootSessionId !== rootId)
+            || metadata.conversationActiveSessionId !== undefined || !metadata.continuationOfSessionId) throw changed();
+        members.push(member);
+        id = metadata.continuationOfSessionId;
+    }
+    if (!complete) throw changed();
+    const assertRoot = () => {
+        assertAccountRuntime();
+        const current = storage.getState().sessions[rootId]?.metadata;
+        if (!current || current.conversationDeletePlan || (reservation ? !matchesReservation(current) : !!current.conversationSwitch)
+            || current.conversationActiveSessionId !== activeId || current.machineId !== machineId || current.path !== path
+            || (current.conversationRootSessionId && current.conversationRootSessionId !== rootId)) throw changed();
+        const sessions = storage.getState().sessions;
+        const chain = getConversationSessionChain(sessions, rootId);
+        const expected = [...members.map(member => member.id), rootId];
+        if (resolveConversationRootSessionId(sessions, activeId) !== rootId || !chain
+            || chain.length !== expected.length || chain.some((memberId, index) => memberId !== expected[index])) throw changed();
+    };
+    assertRoot();
+    let repaired = false;
+    // Validate the whole chain before the first write. CAS callbacks validate
+    // identity again so a newer foreign binding or predecessor is never replaced.
+    for (const member of members) {
+        if (member.metadata!.conversationRootSessionId === rootId) continue;
+        const predecessor = member.metadata!.continuationOfSessionId;
+        await update(member.id, metadata => {
+            assertRoot();
+            if (metadata.machineId !== machineId || metadata.path !== path
+                || metadata.continuationOfSessionId !== predecessor || metadata.conversationActiveSessionId !== undefined
+                || (metadata.conversationRootSessionId && metadata.conversationRootSessionId !== rootId)) throw changed();
+            if (metadata.conversationRootSessionId === rootId) return metadata;
+            repaired = true;
+            return { ...metadata, conversationRootSessionId: rootId };
+        });
+    }
+    assertRoot();
+    return repaired;
+}
+
+/** Recover only a unique, fully verified committed execution chain; never replay input. */
+export async function repairCommittedConversationMembership(rootId: string): Promise<boolean> {
+    if (!await sync.refreshConversationSession(rootId)) throw unavailable();
+    assertAccountRuntime();
+    return repairCommittedMembershipFromFreshRoot(rootId);
+}
+
 /** Publish only after the first prompt has a confirmed server delivery receipt. */
 export async function commitConversationSwitch(record: ConversationSwitch): Promise<void> {
+    if (!await sync.refreshConversationSession(record.rootId)) throw unavailable();
+    assertAccountRuntime();
+    const root = storage.getState().sessions[record.rootId]?.metadata;
+    if (root?.conversationActiveSessionId === record.targetId && !root.conversationSwitch) {
+        await repairCommittedMembershipFromFreshRoot(record.rootId);
+        return;
+    }
+    if (!await sync.refreshConversationSession(record.targetId)) throw unavailable();
+    assertAccountRuntime();
+    // A first-message clock from an old reader may have stripped the target hint
+    // after claim. Restore the verified reservation before publishing its pointer.
+    await linkReservedCandidate(record);
     await update(record.rootId, metadata => {
         if (metadata.conversationActiveSessionId === record.targetId && !metadata.conversationSwitch) return metadata;
         const pending = metadata.conversationSwitch;
@@ -185,13 +273,14 @@ export async function recoverConversationSwitch(rootId: string): Promise<boolean
     if (!await sync.refreshConversationSession(rootId)) throw unavailable();
     assertAccountRuntime();
     const pending = storage.getState().sessions[rootId]?.metadata?.conversationSwitch;
-    if (!pending?.targetSessionId) return false;
+    if (!pending?.targetSessionId) return repairCommittedMembershipFromFreshRoot(rootId);
     if (!await sync.ensureSessionHydrated(pending.sourceSessionId)
         || !await sync.refreshConversationSession(pending.targetSessionId)) throw unavailable();
     assertAccountRuntime();
     const source = storage.getState().sessions[pending.sourceSessionId];
-    if (!source?.metadata || (pending.sourceSessionId !== rootId && source.metadata.conversationRootSessionId !== rootId)) throw changed();
+    if (!source?.metadata) throw changed();
     const record = { rootId, sourceId: pending.sourceSessionId, targetId: pending.targetSessionId, requestId: pending.id };
+    if (pending.sourceSessionId !== rootId) await repairCommittedMembershipFromFreshRoot(rootId, record);
     // A root reservation may have survived a lost ACK before target linkage.
     // Repair only its verified predecessor/ownership; never replay a prompt.
     await linkReservedCandidate(record);
@@ -207,7 +296,8 @@ export function assertConversationSendAllowed(sessionId: string, requestId?: str
     if (!session?.metadata) return; // Ordinary send retains its existing availability checks.
     // A reserved-but-unlinked candidate is not an independent send destination.
     const reservation = Object.values(sessions).find(candidate => candidate.metadata?.conversationSwitch?.targetSessionId === sessionId);
-    const rootId = session.metadata.conversationRootSessionId ?? reservation?.id ?? sessionId;
+    const inferredRootId = resolveConversationRootSessionId(sessions, sessionId);
+    const rootId = session.metadata.conversationRootSessionId ?? reservation?.id ?? inferredRootId ?? sessionId;
     if (reservation && reservation.id !== rootId) throw changed();
     const root = sessions[rootId];
     if (!root?.metadata) throw unavailable();
@@ -220,5 +310,5 @@ export function assertConversationSendAllowed(sessionId: string, requestId?: str
             && session.metadata.continuationOfSessionId === pending.sourceSessionId) return;
         throw new Error(t('session.agentSwitchPending'));
     }
-    if ((root.metadata.conversationActiveSessionId ?? rootId) !== sessionId) throw changed();
+    if ((root.metadata.conversationActiveSessionId ?? rootId) !== sessionId || !inferredRootId) throw changed();
 }
