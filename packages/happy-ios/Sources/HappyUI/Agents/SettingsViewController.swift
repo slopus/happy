@@ -104,6 +104,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private var prioritizing: Bool?
     private var connectionSettingsWatch: Task<Void, Never>?
     private var projectsHidden = false
+    /// Whether the shown computer serves provider sign-in; read from its
+    /// health each time it is shown.
+    private var providerSignIn = false
+    private var providerSignInRead: Task<Void, Never>?
     /// What the shown computer's new sessions start on, and its models
     /// followed while its page shows, for New Sessions.
     private var modelPreferences = ModelPreferences()
@@ -376,6 +380,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         watchProfile()
         connectionSettingsWatch?.cancel(); connectionSettingsWatch = nil
         projectsHidden = false
+        providerSignIn = false
+        providerSignInRead?.cancel(); providerSignInRead = nil
         modelPreferences = ModelPreferences()
         modelsWatch?.invalidate()
         modelsWatch = nil
@@ -412,6 +418,13 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         }
         modelsWatch = session.models.watch { [weak self] in self?.rebuild() }
         session.models.load()
+        if !session.isCloud {
+            providerSignInRead = Task { [weak self, client = session.client] in
+                guard (try? await client.servesProviderSignIn()) == true, !Task.isCancelled, let self else { return }
+                providerSignIn = true
+                rebuild()
+            }
+        }
         prioritizingWatch = session.watch { [weak self] snapshot in
             guard let self, prioritizing != snapshot.prioritizing else { return }
             prioritizing = snapshot.prioritizing
@@ -529,7 +542,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
                 [supportRow()],
-                ([Row(Index.agents, action: { [weak self] in self?.open(.agents) })] + providersRows(id) + computeRows + usageRows).withHeader(Strings.SettingsGroups.agents),
+                ([Row(Index.agents, action: { [weak self] in self?.open(.agents) })] + providersRows(id) + providerAccountRows(id) + computeRows + usageRows).withHeader(Strings.SettingsGroups.agents),
             ]
             return ([
                 accountRows(),
@@ -815,6 +828,16 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             })
         }
         return [providers] + documents
+    }
+
+    /// A computer's own Codex, Claude and Grok accounts, where its health
+    /// says it signs them in (`capabilities.providerSignIn`); never on Happy
+    /// Cloud, whose Inference has its own.
+    private func providerAccountRows(_ id: String) -> [SettingsRow] {
+        guard providerSignIn, let session = Session.session(for: id, context: context), !session.isCloud else { return [] }
+        return [SettingsRow(SettingsIndex.providerAccounts, action: { [weak self] in
+            self?.navigationController?.pushViewController(ProviderAccountsViewController(session: session), animated: true)
+        })]
     }
 
     /// The relay app's words, about keys kept on this phone, aren't true
