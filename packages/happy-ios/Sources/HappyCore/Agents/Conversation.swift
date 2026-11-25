@@ -837,6 +837,7 @@ public actor Conversation {
         reads += 1
         snapshot.synced = false
         snapshot.error = Store.describe(error)
+        snapshot.notFound = (error as? AgentClientError)?.status == 404
         Happenings.errorShown(.conversationLoad, error)
         snapshot.loaded = true
         let held = heldEvents ?? []
@@ -910,6 +911,7 @@ public actor Conversation {
         snapshot.synced = true
         snapshot.syncedAt = Date().timeIntervalSince1970 * 1000
         snapshot.error = nil
+        snapshot.notFound = false
         let held = heldEvents ?? []
         heldEvents = nil
         for event in held { receive(event, publishes: false) }
