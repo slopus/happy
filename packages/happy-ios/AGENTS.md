@@ -382,7 +382,9 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     key (`AgentConnection.memberKnown`) a pairing is nobody's: it
     registers nothing (`registersForPush`, `Session.renewPush` registers
     when it turns) and no push opens on it, so a team's daemon is never
-    taken for a computer of one's own. Never another login because it
+    taken for a computer of one's own. Only the bootstrap writes the two
+    (`AgentConnections.heard`): every other change to a connection keeps
+    them, its own check's older copy included. Never another login because it
     shares the server or is the one open; signed out or not here, nothing
     opens. Nothing checks that a server is the installation it says it
     is: when more than one connection matches, those to a Happy Cloud

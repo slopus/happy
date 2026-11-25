@@ -237,12 +237,12 @@ public final class AgentConnections {
         case .verified(let computer):
             do {
                 var (updated, readsAvatar) = try AgentIdentity.take(computer, into: account)
-                await apply(updated, generation: generation)
+                await apply(updated, generation: generation, saysWhose: true)
                 if readsAvatar, let credential = credentials[id], let engine = engines[id], let transport = await runningTransport(id) {
                     // The picture's bytes wait for the chat on screen's read.
                     await engine.client.chatReads.landed()
                     updated = try await AgentIdentity.avatar(updated, transport: transport, token: credential.deviceToken)
-                    await apply(updated, generation: generation)
+                    await apply(updated, generation: generation, saysWhose: true)
                 }
             } catch {
                 var failed = account
@@ -643,9 +643,14 @@ public final class AgentConnections {
 
     nonisolated static func retryDelay(_ attempt: Int) -> Int { min(30, 1 << max(0, min(5, attempt))) }
 
-    private func apply(_ account: AgentConnection, generation: UInt64, issue: (any Error)? = nil) async {
+    /// Whose a pairing is comes from its computer's bootstrap alone
+    /// (`saysWhose`, from `heard`). Every other caller holds a copy made
+    /// before its own read, and what was heard meanwhile stays.
+    private func apply(_ account: AgentConnection, generation: UInt64, issue: (any Error)? = nil, saysWhose: Bool = false) async {
         guard !Task.isCancelled, self.generation == generation,
               let index = accounts.firstIndex(where: { $0.id == account.id }) else { return }
+        var account = account
+        if !saysWhose { account.member = accounts[index].member; account.memberKnown = accounts[index].memberKnown }
         Happenings.post(.agentConnectionChanged(id: account.id, direct: account.server == nil,
                                                  down: account.status == .retrying || account.status == .revoked,
                                                  problem: issue.flatMap(Problem.init)))
