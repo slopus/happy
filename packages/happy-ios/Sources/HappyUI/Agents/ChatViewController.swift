@@ -970,8 +970,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// The row's name, or, while it has none ("New"), the conversation's
     /// own title once the daemon has written one, as desktop's header reads it.
     private func applyTitle() {
-        guard let rowName else { return }
-        let label = rowName.titled ? rowName.label : chat.title.flatMap { $0.isEmpty ? nil : $0 } ?? rowName.label
+        let own = chat.title.flatMap { $0.isEmpty ? nil : $0 }
+        // Opened with no name and on no row (an agent newer than the home
+        // this phone has read, from a push or a link): its own title.
+        guard let label = rowName.map({ $0.titled ? $0.label : own ?? $0.label }) ?? (unnamed ? own : nil) else { return }
         if title != label { title = label }
         if titleView.text != label { titleView.text = label; header.resize() }
         if previewing, previewTitle.text != label {
@@ -979,6 +981,33 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             previewPill.accessibilityLabel = label
             view.setNeedsLayout()
         }
+    }
+
+    /// In place of a conversation its server doesn't have
+    /// (`ChatSnapshot.notFound`: an agent since gone, or one a push or a
+    /// link made up): that it could not be loaded, over the server's own
+    /// words. Made the first time there is one to say it of.
+    private var missing: ChatPlaceholderView?
+
+    private func showMissing() {
+        guard chat.notFound, chat.items.isEmpty, !previewing else {
+            missing?.isHidden = true
+            return
+        }
+        let said = chat.error.flatMap { $0.isEmpty ? nil : $0 }
+        let placeholder = missing ?? {
+            let view = ChatPlaceholderView()
+            view.isUserInteractionEnabled = false
+            view.isAccessibilityElement = true
+            view.accessibilityIdentifier = "chat-not-found"
+            self.view.insertSubview(view, aboveSubview: ultra)
+            missing = view
+            return view
+        }()
+        placeholder.show(.notFound(said))
+        placeholder.accessibilityLabel = [Strings.Chat.loadFailed, said].compactMap { $0 }.joined(separator: ". ")
+        placeholder.isHidden = false
+        view.setNeedsLayout()
     }
 
     private func applyIntro() {
@@ -1049,6 +1078,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         updateHeaderStatus()
         if wasSettled != settled(snapshot), let intro { introView.configure(intro, settled: settled(snapshot)) }
         showIntro()
+        showMissing()
         if !snapshot.items.isEmpty { dismissNewWorkPanel() }
         updatePrimary()
         updateChips()
@@ -1571,6 +1601,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         ultra.followBudget = ChatFollow.budget(body: ChatTextStyles.text, scale: traitCollection.textEnvironment?.scale ?? .standard)
         ultra.setViewport(frame: screen.list, insets: UIEdgeInsets(top: view.safeAreaInsets.top, left: 0, bottom: screen.listBottom, right: 0),
                           keyboard: insetMotion)
+        // Centred in what the transcript shows of itself.
+        missing?.frame = screen.list.inset(by: UIEdgeInsets(top: view.safeAreaInsets.top, left: 0, bottom: screen.listBottom, right: 0))
         layoutTranscript()
         updateHeaderEdge()
         ultraKeyboard?.refresh()

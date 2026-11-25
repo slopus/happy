@@ -30,6 +30,37 @@ private struct Unreachable: AgentTransport {
     func close() async {}
 }
 
+/// A server out of reach but for an agent and its own conversation: the
+/// agent, its bootstrap and its messages, answered as `says` has it once `answer()`
+/// is called, and held until then. An agent `says` leaves out is not
+/// found (404, in the daemon's words).
+private actor AgentsOnly: AgentTransport {
+    private let says: [String: String]
+    private var held = true
+    /// Each agent's conversation read, as it arrived.
+    private(set) var asked: [String] = []
+    /// `says`: the agents it has, by id, and what it calls each.
+    init(_ says: [String: String]) { self.says = says }
+    func answer() { held = false }
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        let parts = path.split(separator: "?")[0].split(separator: "/").map(String.init)
+        // The agent itself too (`GET /v0/agents/:id`), as slow as the rest.
+        let what = parts.count == 3 ? "agent" : parts.last ?? ""
+        guard method == "GET", parts.count == 3 || parts.count == 4, parts[0] == "v0", parts[1] == "agents", ["agent", "bootstrap", "messages"].contains(what) else { throw URLError(.cannotConnectToHost) }
+        asked.append("\(parts[2])/\(what)")
+        while held { try await Task.sleep(for: .milliseconds(10)) }
+        guard let title = says[parts[2]] else { return HTTP1Response(status: 404, body: Data(#"{"code":"not_found","error":"The agent was not found."}"#.utf8)) }
+        let body = what == "messages" ? #"{"hasMore":false,"runs":[]}"#
+            : #"{"agent":{"id":"\#(parts[2])","workspaceId":"w","status":"idle","title":"\#(title)"},"pending":[]}"#
+        return HTTP1Response(status: 200, body: Data(body.utf8))
+    }
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
+        throw URLError(.cannotConnectToHost)
+    }
+    func reset() async {}
+    func close() async {}
+}
+
 /// A tapped Happy Cloud push for an agent of another server while a chat is
 /// open on this one: the app switches to that server and opens the agent's
 /// chat. The switch from a chat swaps the stack with an animation, and for
@@ -118,14 +149,14 @@ final class HostedPushTapSwitchTests: XCTestCase {
         XCTAssertTrue(navigation.viewControllers.first is AgentHomeViewController)
     }
     /// A server with one project's session on its home, and the push for it.
-    private func projectsSession() async throws -> (coordinator: AppCoordinator, navigation: UINavigationController, session: Session, home: HomeSnapshot, push: CloudPushNotification) {
+    private func projectsSession(transport: any AgentTransport = Unreachable()) async throws -> (coordinator: AppCoordinator, navigation: UINavigationController, session: Session, home: HomeSnapshot, push: CloudPushNotification) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: directory,
-            agentTransport: { _ in Unreachable() },
+            agentTransport: { _ in transport },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
             transport: NoNetwork(), connector: NoSockets())
         await account.agentConnections.setForeground(false)
@@ -184,6 +215,82 @@ final class HostedPushTapSwitchTests: XCTestCase {
         session.receive(home: home)
         _ = try await until(2) { navigation.topViewController?.title == "Preview 24" }
         XCTAssertEqual(navigation.topViewController?.title, "Preview 24")
+    }
+
+    /// What the chat on top says in place of a conversation it could not load.
+    private func notFound(_ navigation: UINavigationController) -> ChatPlaceholderView? {
+        var queue = [navigation.topViewController?.viewIfLoaded].compactMap { $0 }
+        while !queue.isEmpty {
+            let next = queue.removeFirst()
+            if let placeholder = next as? ChatPlaceholderView, !placeholder.isHidden { return placeholder }
+            queue += next.subviews
+        }
+        return nil
+    }
+
+    /// A push is taken from whoever holds the relay token, and one shown a
+    /// while ago may name an agent since gone. Its chat opens at once, as
+    /// any does, and once its server says it has no such agent the chat
+    /// says so, in the server's words: not an empty screen with no name
+    /// that looks as if it were still loading.
+    func testAPushForAnAgentItsServerDoesNotHaveOpensItsChatSayingSo() async throws {
+        let server = AgentsOnly([:])
+        let (coordinator, navigation, session, home, _) = try await projectsSession(transport: server)
+        session.receive(home: home)
+        coordinator.openAgent(fromNotification: try push("k3x9q2m7p0a4b8c1d5e6f7g2", agent: "ghost-agent"))
+        let opened = try await until(1.5) { (navigation.topViewController as? ChatViewController)?.shownAgentId == "ghost-agent" }
+        XCTAssertTrue(opened, "its chat waited for its server: \(navigation.viewControllers)")
+        XCTAssertNil(notFound(navigation), "said before its server did")
+        await server.answer()
+        let said = try await until { self.notFound(navigation)?.content == .notFound("The agent was not found.") }
+        XCTAssertTrue(said, "\(String(describing: notFound(navigation)?.content))")
+        XCTAssertEqual(notFound(navigation)?.accessibilityIdentifier, "chat-not-found")
+        XCTAssertEqual(notFound(navigation)?.accessibilityLabel, "Couldn’t load this conversation. The agent was not found.")
+    }
+
+    /// An agent newer than the home this phone last read is on no row: its
+    /// chat opens at once all the same, before its server has answered,
+    /// and takes the name the server gives it when it does.
+    func testAnAgentHomeDoesNotListOpensAtOnceAndIsNamedOnceItsServerAnswers() async throws {
+        let server = AgentsOnly(["new-agent": "Fresh one"])
+        let (coordinator, navigation, session, home, _) = try await projectsSession(transport: server)
+        session.receive(home: home)
+        coordinator.openAgent(fromNotification: try push("k3x9q2m7p0a4b8c1d5e6f7g2", agent: "new-agent"))
+        let opened = try await until(1.5) { (navigation.topViewController as? ChatViewController)?.shownAgentId == "new-agent" }
+        XCTAssertTrue(opened, "its chat waited for its server: \(navigation.viewControllers)")
+        await server.answer()
+        _ = try await until { navigation.topViewController?.title == "Fresh one" }
+        XCTAssertEqual(navigation.topViewController?.title, "Fresh one")
+        XCTAssertNil(notFound(navigation))
+    }
+
+    /// A conversation its server has is never said to be missing, and one
+    /// on home keeps the name home gives it.
+    func testAnAgentOnHomeOpensNamedAndSaysNothing() async throws {
+        let server = AgentsOnly(["build-agent": "Preview 24"])
+        let (coordinator, navigation, session, home, push) = try await projectsSession(transport: server)
+        session.receive(home: home)
+        await server.answer()
+        coordinator.openAgent(fromNotification: push)
+        let opened = try await until { (navigation.topViewController as? ChatViewController)?.shownAgentId == "build-agent" }
+        XCTAssertTrue(opened, "\(navigation.viewControllers)")
+        var read = false
+        for _ in 0..<150 where !read { read = await server.asked.contains("build-agent/bootstrap"); if !read { try await Task.sleep(for: .milliseconds(20)) } }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(navigation.topViewController?.title, "Preview 24")
+        XCTAssertNil(notFound(navigation))
+    }
+
+    /// A server out of reach is not a server that said no: the chat stays
+    /// as it was, to be read when the server is back.
+    func testAServerOutOfReachIsNotSaidToLackTheAgent() async throws {
+        let (coordinator, navigation, session, home, _) = try await projectsSession()
+        session.receive(home: home)
+        coordinator.openAgent(fromNotification: try push("k3x9q2m7p0a4b8c1d5e6f7g2", agent: "ghost-agent"))
+        let opened = try await until { (navigation.topViewController as? ChatViewController)?.shownAgentId == "ghost-agent" }
+        XCTAssertTrue(opened, "\(navigation.viewControllers)")
+        try await Task.sleep(for: .milliseconds(800))
+        XCTAssertNil(notFound(navigation))
     }
 }
 #endif

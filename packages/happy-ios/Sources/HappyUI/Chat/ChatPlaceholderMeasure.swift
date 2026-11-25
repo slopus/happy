@@ -98,6 +98,12 @@ struct ChatPlaceholderModel: Equatable, Sendable {
                 text: Strings.SessionDetail.sessionDeletedDescription, style: ChatTextStyles.deletedBody, color: Palette.textSecondary,
                 spacing: 8, padding: 32
             ))
+        case .notFound(let said):
+            icon = Glyph(icon: .ionicons("cloud-offline-outline"), size: 48)
+            lines.append(Line(text: Strings.Chat.loadFailed, style: ChatTextStyles.deletedTitle, color: Palette.text, spacing: 16, padding: 0))
+            if let said, !said.isEmpty {
+                lines.append(Line(text: said, style: ChatTextStyles.deletedBody, color: Palette.textSecondary, spacing: 8, padding: 32))
+            }
         }
     }
 }

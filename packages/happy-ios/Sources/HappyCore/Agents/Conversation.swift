@@ -315,6 +315,9 @@ public struct ChatSnapshot: Equatable, Sendable {
     public var subagentTitles: [String: String] = [:]
     /// Why the conversation could not be read.
     public var error: String?
+    /// The server said it has no such conversation (a 404 to its read):
+    /// an agent since gone, or one a push or a link made up.
+    public var notFound = false
     /// The conversation's own title, once the daemon has written one: what
     /// the header reads while its row has no name of its own.
     public var title: String?
@@ -834,6 +837,7 @@ public actor Conversation {
         reads += 1
         snapshot.synced = false
         snapshot.error = Store.describe(error)
+        snapshot.notFound = (error as? AgentClientError)?.status == 404
         Happenings.errorShown(.conversationLoad, error)
         snapshot.loaded = true
         let held = heldEvents ?? []
@@ -907,6 +911,7 @@ public actor Conversation {
         snapshot.synced = true
         snapshot.syncedAt = Date().timeIntervalSince1970 * 1000
         snapshot.error = nil
+        snapshot.notFound = false
         let held = heldEvents ?? []
         heldEvents = nil
         for event in held { receive(event, publishes: false) }

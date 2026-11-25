@@ -398,6 +398,13 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
     The link and the push name only the agent, so the chat opens with no
     name and takes its home row's, a project's session too, when home has
     it: after the chat is up, from a closed app (`ChatViewController.unnamed`).
+    A chat on no row yet (an agent newer than the home this phone has
+    read) takes the conversation's own title when its read lands. A push
+    may name an agent since gone, or one its sender made up: the chat
+    opens at once all the same, never waiting on its server, and when the
+    server answers its read 404 (`ChatSnapshot.notFound`) the chat says
+    it could not be loaded, over the server's own words
+    (`ChatPlaceholderView.Content.notFound`), in place of an empty screen.
   - **Deliberate differences from happy-app:**
     - happy-app's backoff retries the server calls forever. Here each sync
       makes one registration attempt, and the next session start or
