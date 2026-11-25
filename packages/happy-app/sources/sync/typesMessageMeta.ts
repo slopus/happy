@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AnnotationReviewSchema } from '@/components/annotations/annotationMessage';
 
 // Shared message metadata schema
 export const MessageMetaSchema = z.object({
@@ -15,6 +16,7 @@ export const MessageMetaSchema = z.object({
     disallowedTools: z.array(z.string()).nullable().optional(), // Disallowed tools for this message (null = reset)
     effort: z.string().nullable().optional(), // Reasoning / thinking effort for this message (null = reset)
     displayText: z.string().optional(), // Optional text to display in UI instead of actual message text
+    annotationReview: AnnotationReviewSchema.optional(), // Structured UI presentation, separate from the model prompt
     editedFromMessageId: z.string().optional() // User message superseded by this edited resend
 });
 

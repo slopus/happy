@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { fileAnnotationLabel, fileAnnotationSourceId, formatAnnotatedMessage, type MessageAnnotation, type AnnotationSelection } from './annotationDraft';
+import { createAnnotationReview } from './annotationMessage';
 import { annotationDraftStore, useMessageAnnotations } from './annotationRuntime';
 import { annotationRange, readAnnotationRange, readAnnotationSelection } from './annotationSelection';
 import type { AnnotationSourceProps, AnnotationComposerProps, FileAnnotationSourceProps } from './MessageAnnotations';
@@ -501,6 +502,7 @@ export function prepareAnnotatedMessage(sessionId: string, text: string) {
         text: formatAnnotatedMessage(text, snapshot, labels),
         displayText: formatAnnotatedMessage(text, snapshot, labels, false),
         annotations: snapshot,
+        annotationReview: createAnnotationReview(text, snapshot, labels),
         commit: () => annotationDraftStore.clearSubmitted(sessionId, snapshot),
     };
 }

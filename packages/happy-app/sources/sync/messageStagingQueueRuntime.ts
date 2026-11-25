@@ -35,12 +35,20 @@ export const messageStagingQueue = createMessageStagingQueue({
         if (!draft.references.length) return undefined;
         const credentials = sync.getCredentials();
         const prepared = await sync.prepareComposerMessage(message.text, () => accountRuntimeCurrent() && sync.getCredentials() === credentials);
-        return { ...prepared, ...(message.displayText !== undefined ? { displayText: composerReferenceDisplay(parseComposerDraft(message.displayText).text, draft.references) } : {}) };
+        return {
+            ...prepared,
+            ...(message.displayText !== undefined ? { displayText: composerReferenceDisplay(parseComposerDraft(message.displayText).text, draft.references) } : {}),
+            ...(message.annotationReview ? { annotationReview: {
+                ...message.annotationReview,
+                text: composerReferenceDisplay(parseComposerDraft(message.annotationReview.text).text, draft.references),
+            } } : {}),
+        };
     },
     async send(message) {
         const credentials = sync.getCredentials();
         return sync.sendMessage(message.sessionId, message.text, {
             source: 'chat', attachments: message.attachments, modeMeta: message.modeMeta,
+            ...(message.annotationReview ? { annotationReview: message.annotationReview } : {}),
             ...((message.displayText ?? message.draftText) !== undefined ? { displayText: message.displayText ?? (message.draftText || (message.fileReference ? '@ ' + message.fileReference.path.split('/').pop() : message.draftText)) } : {}),
             isCurrent: () => accountRuntimeCurrent() && sync.getCredentials() === credentials,
         });
@@ -94,7 +102,7 @@ export async function clearMessageStagingQueue() {
     await clearMessageStagingStorage();
 }
 
-export async function stageSessionMessage(sessionId: string, text: string, attachments?: AttachmentPreview[], delivery: 'queue' | 'steer' = 'queue', context?: Pick<StagedMessage, 'draftText' | 'displayText' | 'annotations' | 'fileReference'>) {
+export async function stageSessionMessage(sessionId: string, text: string, attachments?: AttachmentPreview[], delivery: 'queue' | 'steer' = 'queue', context?: Pick<StagedMessage, 'draftText' | 'displayText' | 'annotations' | 'annotationReview' | 'fileReference'>) {
     const state = storage.getState();
     const session = state.sessions[sessionId];
     if (!session || !accountRuntimeCurrent()) throw new Error('Session unavailable');
@@ -128,7 +136,7 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
         try {
             if (generation !== stagingGeneration || !accountRuntimeCurrent() || !storage.getState().sessions[sessionId]) throw new Error('Session unavailable');
             await messageStagingQueue.enqueue({
-                id, sessionId, text, draftText: context?.draftText, displayText: context?.displayText, annotations: context?.annotations, fileReference: context?.fileReference,
+                id, sessionId, text, draftText: context?.draftText, displayText: context?.displayText, annotations: context?.annotations, annotationReview: context?.annotationReview, fileReference: context?.fileReference,
                 attachments: persisted,
                 modeMeta,
             });

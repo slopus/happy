@@ -203,6 +203,10 @@ it('collects passages across files through capsules and previews them above the 
     const prepared = prepareAnnotatedMessage(sessionId, '一起修改');
     expect(prepared.text).toContain('baseline-a'); expect(prepared.text).toContain('baseline-b');
     expect(prepared.displayText).toContain('把这段写得更具体'); expect(prepared.displayText).not.toContain('baseline-');
+    expect(prepared.annotationReview).toMatchObject({ version: 1, text: '一起修改', items: [
+        { filePath: first.path, quote: '应用版本', comment: '把这段写得更具体' },
+        { filePath: second.path, quote: '应用版本', comment: '补充一个例子' },
+    ] });
     act(() => prepared.commit()); expect(annotationDraftStore.getSnapshot(sessionId)).toHaveLength(0);
     act(() => restoreAnnotatedMessage(sessionId, prepared.annotations));
     act(() => root.render(render(first))); expect(document.querySelectorAll('[data-testid=annotation-badge]')).toHaveLength(1);

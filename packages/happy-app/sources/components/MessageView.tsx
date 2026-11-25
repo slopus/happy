@@ -29,6 +29,8 @@ import { getUserMessageForkRewindPointId, type MessageForkTarget } from '@/utils
 import { messageOptionKey, type MessageOptionResponse } from '@/sync/messageOptionResponses';
 import { getUserMessageDisplayText } from './messageDisplayText';
 import { ThinkingReplyActions } from './thinking/ThinkingMode';
+import { AnnotationReviewMessage } from './annotations/AnnotationReviewMessage';
+import { parseLegacyAnnotationReview } from './annotations/parseLegacyAnnotationReview';
 
 
 export const MessageView = React.memo((props: {
@@ -221,6 +223,9 @@ function UserTextBlock(props: {
   const canFork = !readOnly && Boolean(props.onForkFromUserMessage) && Boolean(rewindPointId);
   const modeLabel = getMessageExecutionModeLabel(props.message.meta, props.metadata?.flavor, t);
   const visibleText = getUserMessageDisplayText(props.message.displayText || props.message.text);
+  const annotationReview = React.useMemo(() => Platform.OS === 'web'
+    ? props.message.meta?.annotationReview ?? parseLegacyAnnotationReview(visibleText)
+    : null, [props.message.meta?.annotationReview, visibleText]);
   const handleLongPress = React.useCallback(() => {
     if (!readOnly && props.onForkFromUserMessage) {
       props.onForkFromUserMessage(props.message.id, rewindPointId, visibleText, undefined, props.message.createdAt);
@@ -364,7 +369,9 @@ function UserTextBlock(props: {
           (modeLabel || showActions) && styles.userContentWithModeMeta,
         ]}
       >
-        <MarkdownView readOnly={restrictedContent} markdown={parsed.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+        {annotationReview
+          ? <AnnotationReviewMessage key={props.message.id} review={annotationReview} />
+          : <MarkdownView readOnly={restrictedContent} markdown={parsed.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />}
       </Pressable>
       {showActions && (
         <View style={[styles.userMessageActions, modeLabel && styles.userMessageActionsWithMode]}>

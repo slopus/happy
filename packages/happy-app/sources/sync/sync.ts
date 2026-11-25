@@ -344,6 +344,7 @@ type SendMessageOptions = {
     /** Fence a route-independent submission against logout or server changes. */
     isCurrent?: () => boolean;
     displayText?: string;
+    annotationReview?: import('@/components/annotations/annotationMessage').AnnotationReview;
     editedFromMessageId?: string;
     source?: MessageSentSource;
     /** Optional image attachments to send before the text message. */
@@ -2069,11 +2070,13 @@ class Sync {
         const modeMeta = options?.modeMeta ?? resolveMessageModeMeta(modeSessionSnapshot ?? session, modeSettingsSnapshot);
         const { editedFromMessageId, source = 'chat', attachments } = options ?? {};
         let displayText = options?.displayText;
+        let annotationReview = options?.annotationReview;
         if (parseComposerDraft(text).references.length) {
             const parsed = parseComposerDraft(text);
             const prepared = await this.prepareComposerMessage(text, () => isCurrent() && this.encryption === encryptionOwner);
             if (!isCurrent() || this.encryption !== encryptionOwner) throw new Error('local-message-session-unavailable');
             displayText = displayText ? composerReferenceDisplay(parseComposerDraft(displayText).text, parsed.references) : prepared.displayText;
+            if (annotationReview) annotationReview = { ...annotationReview, text: composerReferenceDisplay(parseComposerDraft(annotationReview.text).text, parsed.references) };
             text = prepared.text;
         }
         const contextSource = session.metadata?.continuationOfSessionId;
@@ -2208,6 +2211,7 @@ class Sync {
                 ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
                 ...(modeMeta.fast !== undefined ? { fast: modeMeta.fast } : {}),
                 ...(displayText && { displayText }), // Add displayText if provided
+                ...(annotationReview ? { annotationReview } : {}),
                 ...(editedFromMessageId && { editedFromMessageId })
             }
         };

@@ -1,5 +1,6 @@
 import { DISCUSSION_INSTRUCTIONS } from './discussionMode';
 import type { MessageAnnotation } from '@/components/annotations/annotationDraft';
+import type { AnnotationReview } from '@/components/annotations/annotationMessage';
 import type { AttachmentPreview } from './attachmentTypes';
 import type { MessageModeMeta } from './messageMeta';
 
@@ -16,6 +17,7 @@ export type StagedMessage = {
     /** Frozen before the first transport attempt, including ACK-loss retries. */
     preparedText?: string;
     annotations?: readonly MessageAnnotation[];
+    annotationReview?: AnnotationReview;
     fileReference?: { path: string; hash: string; quote?: string };
     attachments?: AttachmentPreview[];
     modeMeta: MessageModeMeta;
@@ -80,7 +82,7 @@ export function createMessageStagingQueue(deps: {
     load: () => StagingSnapshot;
     save: (snapshot: StagingSnapshot) => void | Promise<void>;
     session: (id: string) => StagingSession | undefined;
-    prepare?: (message: StagedMessage) => Promise<{ text: string; displayText?: string } | undefined>;
+    prepare?: (message: StagedMessage) => Promise<{ text: string; displayText?: string; annotationReview?: AnnotationReview } | undefined>;
     send: (message: StagedMessage) => Promise<unknown>;
     steer: (message: StagedMessage, expectedTurnId: string) => Promise<unknown>;
 }) {
@@ -143,8 +145,8 @@ export function createMessageStagingQueue(deps: {
                 const prepared = await deps.prepare(message);
                 if (owner !== generation) return;
                 if (prepared) {
-                    message = { ...message, preparedText: prepared.text, displayText: prepared.displayText ?? message.displayText };
-                    await commit(state => ({ ...state, messages: state.messages.map(m => m.id === message.id ? { ...m, preparedText: message.preparedText, displayText: message.displayText } : m) }));
+                    message = { ...message, preparedText: prepared.text, displayText: prepared.displayText ?? message.displayText, annotationReview: prepared.annotationReview ?? message.annotationReview };
+                    await commit(state => ({ ...state, messages: state.messages.map(m => m.id === message.id ? { ...m, preparedText: message.preparedText, displayText: message.displayText, annotationReview: message.annotationReview } : m) }));
                 }
             }
             const delivery = message.preparedText === undefined ? message : { ...message, text: message.preparedText };

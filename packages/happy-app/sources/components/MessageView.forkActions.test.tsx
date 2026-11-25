@@ -23,6 +23,7 @@ vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }));
 vi.mock('./DesktopDialogFrame', () => ({ DesktopDialogFrame: 'DesktopDialogFrame' }));
 vi.mock('./markdown/MarkdownView', () => ({ MarkdownView: 'MarkdownView' }));
+vi.mock('./annotations/AnnotationReviewMessage', () => ({ AnnotationReviewMessage: 'AnnotationReviewMessage' }));
 vi.mock('./tools/ToolView', () => ({ ToolView: 'ToolView' }));
 vi.mock('./ConversationActivityStrip', () => ({ ConversationActivityStrip: 'ConversationActivityStrip' }));
 vi.mock('./DesktopShortcutTooltip', () => ({ DesktopShortcutTooltip: 'DesktopShortcutTooltip' }));
@@ -74,6 +75,35 @@ function flattenStyle(style: unknown): Record<string, unknown> {
 }
 
 describe('MessageView fork action feedback', () => {
+    it('renders saved structured annotations while copying the full readable message', () => {
+        const review = { version: 1 as const, text: 'Also explain the daemon.', items: [
+            { id: 'a', messageId: 'source', quote: 'A long passage with complete context.', comment: 'What does this mean?' },
+        ] };
+        const message = { kind: 'user-text' as const, id: 'annotation-send', localId: null, createdAt: 1,
+            text: 'Full provider prompt', displayText: 'Full readable quote and comment', meta: { annotationReview: review } };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<MessageView message={message} metadata={null} showUserMessageActions />); });
+        expect(renderer.root.findByType('AnnotationReviewMessage').props.review).toEqual(review);
+        expect(renderer.root.findAllByType('MarkdownView')).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'message-user-copy-annotation-send' }).props.onPress());
+        expect(Clipboard.setStringAsync).toHaveBeenCalledWith(message.displayText);
+        act(() => renderer.unmount());
+    });
+
+    it('upgrades historical annotation templates and leaves ordinary quotes as Markdown', () => {
+        const message = { kind: 'user-text' as const, id: 'legacy-annotation', localId: null, createdAt: 1,
+            text: '请结合各条所选原文，逐条回答下面的批注。\n\n批注 1\n所选文本\n> 完整原文\n\n用户评论\n这是什么意思？\n\n补充说明\n请举例。' };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<MessageView message={message} metadata={null} />); });
+        expect(renderer.root.findByType('AnnotationReviewMessage').props.review).toMatchObject({
+            items: [{ quote: '完整原文', comment: '这是什么意思？' }], text: '请举例。',
+        });
+        act(() => renderer.update(<MessageView message={{ ...message, text: '> Ordinary quotation\n\nMy question' }} metadata={null} />));
+        expect(renderer.root.findAllByType('AnnotationReviewMessage')).toHaveLength(0);
+        expect(renderer.root.findByType('MarkdownView').props.markdown).toBe('> Ordinary quotation\n\nMy question');
+        act(() => renderer.unmount());
+    });
+
     it('places the user avatar after the message while keeping the Paws avatar before its reply', () => {
         const avatar = { id: 'jacky', imageUrl: null };
         const userMessage = { kind: 'user-text' as const, id: 'user-avatar', localId: null, createdAt: 1, text: 'Hello' };

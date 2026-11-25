@@ -123,6 +123,7 @@ it('uses the existing displayText contract so workspace hashes stay out of visib
 
 it('preserves editable file annotations in the queue and sends a clean display separately', async () => {
     const { fileAnnotationSourceId, createAnnotationDraftStore } = await import('@/components/annotations/annotationDraft');
+    const { createAnnotationReview } = await import('@/components/annotations/annotationMessage');
     const { stageSessionMessage } = await import('./messageStagingQueueRuntime');
     mocks.activeAccount = true; mocks.send.mockClear();
     mocks.state = { socketStatus: 'connected', applyPendingMessageSessions: () => {}, settings: {}, sessions: { annotated: { presence: 'online', metadata: {}, agentState: { turnStatus: { status: 'running', turnId: 'busy' } } } } };
@@ -130,17 +131,33 @@ it('preserves editable file annotations in the queue and sends a clean display s
     const store = createAnnotationDraftStore({ read: () => undefined, write: () => {}, newId: () => 'annotation' });
     const item = store.add('annotated', { messageId: fileAnnotationSourceId(file), file, quote: 'Original', anchorText: 'Original', start: 0, end: 8 });
     store.update('annotated', item.id, 'Make this concrete');
-    await stageSessionMessage('annotated', 'model payload baseline', undefined, 'queue', { draftText: '', displayText: 'doc.md: Original — Make this concrete', annotations: store.getSnapshot('annotated') });
+    const annotationReview = createAnnotationReview('', store.getSnapshot('annotated'), { explain: 'Explain' });
+    await stageSessionMessage('annotated', 'model payload baseline', undefined, 'queue', { draftText: '', displayText: 'doc.md: Original — Make this concrete', annotations: store.getSnapshot('annotated'), annotationReview });
     const queued = messageStagingQueue.getSnapshot().messages.find(m => m.sessionId === 'annotated')!;
     expect(queued.annotations?.[0]).toMatchObject({ file, comment: 'Make this concrete' });
     expect(queued.draftText).toBe('');
+    expect(queued.annotationReview).toEqual(annotationReview);
     mocks.state.sessions.annotated.agentState.turnStatus = { status: 'idle' };
     messageStagingQueue.refresh();
-    await vi.waitFor(() => expect(mocks.send).toHaveBeenCalledWith('annotated', 'model payload baseline', expect.objectContaining({ displayText: 'doc.md: Original — Make this concrete' })));
+    await vi.waitFor(() => expect(mocks.send).toHaveBeenCalledWith('annotated', 'model payload baseline', expect.objectContaining({ displayText: 'doc.md: Original — Make this concrete', annotationReview })));
 });
 
 
 describe('wired selected-reference delivery', () => {
+    it('keeps annotation details while replacing draft reference metadata in the supplemental text', async () => {
+        const { serializeComposerDraft } = await import('./composerReferences');
+        mocks.activeAccount = true; mocks.send.mockClear();
+        mocks.state = { socketStatus: 'connected', applyPendingMessageSessions: () => {}, settings: {}, sessions: { selected: { presence: 'online', metadata: {}, agentState: { turnStatus: { status: 'idle' } } } } };
+        messageStagingQueue.clear();
+        const raw = serializeComposerDraft('Apply together', [{ kind: 'session', id: 'source', title: 'Earlier' }]);
+        const annotationReview = { version: 1 as const, items: [{ id: 'a', messageId: 'reply', quote: 'Original', comment: 'Explain' }], text: raw };
+        mocks.prepare.mockResolvedValue({ text: 'ACTUAL SELECTED CONTEXT\nAnnotation prompt', displayText: '@Earlier\nAnnotation prompt' });
+        await stageSessionMessage('selected', serializeComposerDraft('Annotation prompt', [{ kind: 'session', id: 'source', title: 'Earlier' }]), undefined, 'queue', { annotationReview });
+        await vi.waitFor(() => expect(mocks.send).toHaveBeenCalled());
+        expect(mocks.send).toHaveBeenLastCalledWith('selected', 'ACTUAL SELECTED CONTEXT\nAnnotation prompt', expect.objectContaining({
+            annotationReview: { ...annotationReview, text: '@Earlier\nApply together' },
+        }));
+    });
     it('expands a queued reference before the real send boundary and keeps draft identity', async () => {
         const { serializeComposerDraft } = await import('./composerReferences');
         mocks.activeAccount = true; mocks.send.mockClear();

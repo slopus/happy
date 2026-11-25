@@ -2,6 +2,7 @@
 import type { FileReference } from '../fileWorkspace/context';
 import type { ReactNode } from 'react';
 import { EMPTY_ANNOTATIONS, type MessageAnnotation } from './annotationDraft';
+import type { AnnotationReview } from './annotationMessage';
 export type AnnotationSourceProps = { sessionId?: string; messageId: string; enabled: boolean; children: ReactNode };
 export type FileAnnotationSourceProps = { sessionId?: string; file: FileReference | null; children: ReactNode };
 export function AnnotatableFile({ children }: FileAnnotationSourceProps) { return <>{children}</>; }
@@ -9,7 +10,7 @@ export type AnnotationComposerProps = { sessionId: string };
 export function AnnotatableMessage({ children }: AnnotationSourceProps) { return <>{children}</>; }
 export function AnnotationComposer(_props: AnnotationComposerProps) { return null; }
 export function useMessageAnnotations(_sessionId: string) { return EMPTY_ANNOTATIONS; }
-export function prepareAnnotatedMessage(_sessionId: string, text: string) { return { text, displayText: text, annotations: EMPTY_ANNOTATIONS, commit: () => {} }; }
+export function prepareAnnotatedMessage(_sessionId: string, text: string) { return { text, displayText: text, annotations: EMPTY_ANNOTATIONS, annotationReview: undefined as AnnotationReview | undefined, commit: () => {} }; }
 
 export function restoreAnnotatedMessage(_sessionId: string, _annotations: readonly MessageAnnotation[]) {}
 

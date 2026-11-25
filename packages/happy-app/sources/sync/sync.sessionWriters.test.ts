@@ -608,6 +608,20 @@ describe('real session writer composition', () => {
         expect((encrypted.mock.calls.at(-1)![0] as any).content.text).toBe('Next');
     });
 
+    it('encrypts structured annotations without replacing the provider prompt or the older-client display', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const sessionEncryption = subject.encryption.getSessionEncryption('writer-session');
+        const encrypted = vi.spyOn(sessionEncryption, 'encryptRawRecord');
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        const annotationReview = { version: 1 as const, items: [{ id: 'a', messageId: 'source', quote: 'Full original\nSecond line', comment: 'Explain this' }], text: '' };
+        await sync.sendMessage('writer-session', 'Full provider annotation prompt', { displayText: 'Readable fallback', annotationReview });
+        const record = encrypted.mock.calls.at(-1)![0] as any;
+        expect(record.content.text).toBe('Full provider annotation prompt');
+        expect(record.meta).toMatchObject({ displayText: 'Readable fallback', annotationReview });
+        await sync.sendMessage('writer-session', 'Ordinary request');
+        expect((encrypted.mock.calls.at(-1)![0] as any).meta).not.toHaveProperty('annotationReview');
+    });
+
     async function continuationWriter() {
         await sync.ensureSessionHydrated('writer-session');
         const current = storage.getState().sessions['writer-session'];

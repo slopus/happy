@@ -1,4 +1,5 @@
 import { isAnnotation } from '@/components/annotations/annotationDraft';
+import { AnnotationReviewSchema } from '@/components/annotations/annotationMessage';
 import { MMKV, flushDeviceStorageWrites, listDeviceStorageIds, addDeviceStorageString } from '@/persistence/deviceStorage';
 import { v4 as uuid } from 'uuid';
 import { accountStorageId, getRuntimeAccountSelection } from '@/auth/accountRuntime';
@@ -79,6 +80,7 @@ export const messageStagingPersistence = {
                     && (m.displayText === undefined || typeof m.displayText === 'string')
                     && (m.expiredAttachmentIds === undefined || (Array.isArray(m.expiredAttachmentIds) && m.expiredAttachmentIds.every((id: unknown) => typeof id === 'string')))
                     && (m.annotations === undefined || (Array.isArray(m.annotations) && m.annotations.every(isAnnotation)))
+                    && (m.annotationReview === undefined || AnnotationReviewSchema.safeParse(m.annotationReview).success)
                     && (m.fileReference === undefined || (m.fileReference && typeof m.fileReference.path === 'string' && typeof m.fileReference.hash === 'string' && (m.fileReference.quote === undefined || typeof m.fileReference.quote === 'string')))
                     && m.modeMeta && typeof m.modeMeta === 'object'
                     && ['queued', 'sending', 'failed'].includes(m.status)

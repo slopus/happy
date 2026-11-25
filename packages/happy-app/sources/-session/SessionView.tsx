@@ -1870,7 +1870,7 @@ function SessionViewLoaded({
                         const stageDelivery = annotated.text.trimStart().startsWith('/') ? 'queue' : delivery;
                         if (fileMessage.fileReference || annotated.annotations.length || submittedText !== fileMessage.text) await stageSessionMessage(sessionId, submittedText, attachments, stageDelivery, {
                             draftText: liveMessage,
-                            ...(annotated.annotations.length ? { displayText: annotated.displayText, annotations: annotated.annotations } : {}),
+                            ...(annotated.annotations.length ? { displayText: annotated.displayText, annotations: annotated.annotations, annotationReview: annotated.annotationReview } : {}),
                             ...(submittedText !== fileMessage.text ? { displayText: thinkingDisplayText(liveMessage, annotated.displayText, fileMessage.fileReference?.path, t('messageQueue.attachments')) } : {}),
                             fileReference: fileMessage.fileReference,
                         });
