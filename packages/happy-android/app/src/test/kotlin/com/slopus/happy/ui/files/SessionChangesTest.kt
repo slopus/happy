@@ -239,9 +239,20 @@ class SessionChangesTest {
         assertEquals(FileLoad.Failed(Words.Said("gone")), ops.fileLoads(cache, "s", "/repo/b.kt", "/repo", "b.kt").toList().last())
         assertEquals("c\n", cache.file("s", "/repo/a.kt")?.content)
         // Binary by extension caches as binary; a deleted session's files go.
-        assertEquals(listOf(FileLoad.Binary), ops.fileLoads(cache, "s", "/repo/logo.png", "/repo", "logo.png").toList())
-        assertTrue(cache.file("s", "/repo/logo.png")!!.isBinary)
+        assertEquals(listOf(FileLoad.Binary), ops.fileLoads(cache, "s", "/repo/out.zip", "/repo", "out.zip").toList())
+        assertTrue(cache.file("s", "/repo/out.zip")!!.isBinary)
         cache.forgetSession("s")
         assertNull(cache.file("s", "/repo/a.kt"))
+    }
+
+    /** desktop FilePreview's `video` kind: a recording isn't binary by its name over the relay either; it is read whole, with no diff asked for. */
+    @Test
+    fun aRecordingIsReadRatherThanCalledBinary() = runTest {
+        val clip = "\u0000\u0000\u0000\u0018ftypmp42"
+        val ops = FakeOps().apply { files["/repo/clip.MOV"] = clip }
+        val video = ops.fileLoads(null, "s", "/repo/clip.MOV", "/repo", "clip.MOV").toList().single()
+        assertTrue(video is FileLoad.Video)
+        assertTrue((video as FileLoad.Video).bytes.contentEquals(clip.toByteArray()))
+        assertTrue(ops.commands.none { "git diff" in it })
     }
 }

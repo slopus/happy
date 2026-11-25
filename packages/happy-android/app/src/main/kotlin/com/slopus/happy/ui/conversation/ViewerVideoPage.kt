@@ -62,10 +62,12 @@ internal val PlayGlyph = Color.White
  * view ([active]) and paused when it isn't, with play/pause (48, on the
  * play fill), a scrubber and the time under it, above the navigation bar.
  * Dragged up or down it puts the viewer away as a picture does; it doesn't
- * zoom. One that can't be read says so.
+ * zoom. One that can't be read says so. Without a [motion] (a file's own
+ * screen, not the viewer) it stays put. It rests fitted to its page, on
+ * its first frame until it plays.
  */
 @Composable
-internal fun VideoPage(item: ViewerItem, source: ViewerSource, active: Boolean, current: Boolean, motion: ViewerMotion) {
+internal fun VideoPage(item: ViewerItem, source: ViewerSource, active: Boolean, current: Boolean, motion: ViewerMotion?) {
     val scope = rememberCoroutineScope()
     val video = remember(item.key) { source.video(item.key) }
     val player = remember(item.key) { MediaPlayer() }
@@ -109,6 +111,9 @@ internal fun VideoPage(item: ViewerItem, source: ViewerSource, active: Boolean, 
         } else if (player.isPlaying) {
             player.pause()
             playing = false
+        } else if (position == 0) {
+            // Waiting for play: its first frame rather than black.
+            runCatching { player.seekTo(0) }
         }
     }
     com.slopus.happy.ui.components.StartedEffect(playing) {
@@ -120,7 +125,7 @@ internal fun VideoPage(item: ViewerItem, source: ViewerSource, active: Boolean, 
     Box(
         Modifier
             .fillMaxSize()
-            .viewerGestures(motion, zoom = null, scope = scope, onTap = null)
+            .then(if (motion != null) Modifier.viewerGestures(motion, zoom = null, scope = scope, onTap = null) else Modifier)
             .then(if (current) Modifier.testTag(PictureViewerTags.VIDEO) else Modifier)
             .semantics { item.label?.let { contentDescription = it } },
         contentAlignment = Alignment.Center,
@@ -147,7 +152,7 @@ internal fun VideoPage(item: ViewerItem, source: ViewerSource, active: Boolean, 
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth().aspectRatio(ratio.takeIf { it > 0 && it.isFinite() } ?: (16f / 9f)),
+            modifier = Modifier.aspectRatio(ratio.takeIf { it > 0 && it.isFinite() } ?: (16f / 9f)),
         )
         if (!prepared && !failed) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
         if (failed) Text(stringResource(R.string.artifact_file_unavailable), color = Color.White, style = happyTextStyle(fontSize = 15, lineHeight = 20))

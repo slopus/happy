@@ -1901,6 +1901,14 @@ screen, by tap, back or a drag, and otherwise fades. Then it waits for the
 thumbnail to draw again (`ViewerOrigins.drawn`) before it goes, so there
 is no hole. A recording neither flies nor hides its tile.
 
+A file's own screen (`ui/files/FileScreen`: a workspace file, or a relay
+session's) shows desktop FilePreview's pictures and recordings itself, by
+extension (`isPicturePath`, `isVideoPath`), not as "Binary File". A picture
+rests fitted to the rest of the screen, never enlarged, and zooms in place
+(`PageZoom`, as a viewer page); a tap opens the viewer. A recording plays in
+`VideoPage` without the viewer's motion, on its first frame until played.
+Both are read whole: the agent's `file` route has no ranges to stream.
+
 A tap on a kept recording's play button plays it as soon as its first
 playable range is on the phone (iOS 42121e99e, `VideoOpening`). The
 retriever reads the header through the same ranged source the player
