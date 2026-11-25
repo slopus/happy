@@ -2161,6 +2161,17 @@ MCP-app-like tools, or a general Card/Button/Text/Column UI system. Historical
 widget and quick reply tool calls use generic tool rows; durable questions
 and permission options remain supported.
 
+**A relay chat's context divider.** The Happy CLI reports a finished `/clear`
+and `/compact` as completion events (claudeRemote.ts's "Context was reset"
+and "Compaction completed", through apiSession.ts's `sendSessionEvent`).
+`chat/ContextBoundary` names them; the reducer still empties the todos and
+usage it held above one. `ui/chat/ContextDivider` draws it instead of the
+CLI's words as a centred event line: a hairline each side of "Context
+cleared · 14:32" (or "Context compacted · 14:32"), 16 in from the column's
+sides and 8 above and below, the label 13/18 medium in agentEventText over
+the theme's divider colour; TalkBack reads the row as "Context cleared at
+14:32". A turn's work never folds it away (`WorkGroups`).
+
 ### Context meter and usage ring
 
 Under an agent connection's composer, `ui/conversation/ContextMeter` draws

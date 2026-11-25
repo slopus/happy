@@ -493,9 +493,25 @@ class ChatReducerTest {
     @Test fun `context reset clears todos and usage and still shows the event`() {
         state.reduce(agentMsg("a", 1000, text("x"), usage = UsageData(10, 5)))
         val result = state.reduce(eventMsg("reset", AgentEvent.Message("Context was reset"), 2000))
-        assertEquals(AgentEvent.Message("Context was reset"), (result.messages.single() as ChatMessage.Event).event)
+        val event = (result.messages.single() as ChatMessage.Event).event
+        assertEquals(AgentEvent.Message("Context was reset"), event)
+        assertEquals(ContextBoundary.Cleared, event.contextBoundary())
         assertEquals(emptyList<TodoItem>(), result.todos)
         assertEquals(ContextUsage(0, 0, 0, 0, 0), result.usage)
+    }
+
+    @Test fun `compaction clears usage and still shows the event`() {
+        state.reduce(agentMsg("a", 1000, text("x"), usage = UsageData(10, 5)))
+        val result = state.reduce(eventMsg("compacted", AgentEvent.Message("Compaction completed"), 2000))
+        assertEquals(ContextBoundary.Compacted, (result.messages.single() as ChatMessage.Event).event.contextBoundary())
+        assertEquals(ContextUsage(0, 0, 0, 0, 0), result.usage)
+    }
+
+    @Test fun `compaction started is not a context boundary`() {
+        state.reduce(agentMsg("a", 1000, text("x"), usage = UsageData(10, 5)))
+        val result = state.reduce(eventMsg("started", AgentEvent.Message("Compaction started"), 2000))
+        assertNull((result.messages.single() as ChatMessage.Event).event.contextBoundary())
+        assertEquals(10L, result.usage?.contextSize)
     }
 
     @Test fun `title changes and plan mode render as events`() {

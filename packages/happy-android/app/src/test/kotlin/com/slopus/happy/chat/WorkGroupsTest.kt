@@ -32,6 +32,9 @@ class WorkGroupsTest {
         ),
     )
 
+    private fun boundary(id: String, at: Long) =
+        ChatRow.Event(ChatMessage.Event(id, at, AgentEvent.Message("Context was reset")))
+
     private fun keys(items: List<ChatDisplayItem>) = items.map { it.key }
 
     // Newest first: answer a2 after tools t2/t3 for prompt u2; then the previous turn u1 → t1 → a1.
@@ -72,6 +75,13 @@ class WorkGroupsTest {
             tool("hidden", 25, name = "ToolSearch"), tool("t1", 20), user("u1", 0),
         )
         assertEquals(listOf("a1", "ask", "pic", "work-a1", "u1"), keys(groupChatRowsForDisplay(rows, true, true)))
+    }
+
+    @Test fun aContextBoundaryIsNeverFolded() {
+        val rows = listOf(text("a1", 40), boundary("reset", 30), tool("t1", 20), user("u1", 0))
+        val items = groupChatRowsForDisplay(rows, true, true)
+        assertEquals(listOf("a1", "reset", "work-a1", "u1"), keys(items))
+        assertEquals(listOf("t1"), (items[2] as ChatDisplayItem.WorkGroup).group.rows.map { it.key })
     }
 
     @Test fun turnIdsSplitAnswersWhosePromptNeverArrived() {

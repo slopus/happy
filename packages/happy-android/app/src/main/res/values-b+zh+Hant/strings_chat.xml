@@ -36,4 +36,8 @@
     <string name="link_status_waiting_for_network">等待網路…</string>
     <string name="link_status_restarting">Agent 重新啟動中…</string>
     <string name="message_select">選取</string>
+    <string name="message_context_cleared">上下文已清除 · %1$s</string>
+    <string name="message_context_compacted">上下文已壓縮 · %1$s</string>
+    <string name="message_context_cleared_spoken">上下文已清除，時間 %1$s</string>
+    <string name="message_context_compacted_spoken">上下文已壓縮，時間 %1$s</string>
 </resources>

@@ -36,4 +36,8 @@
     <string name="link_status_waiting_for_network">oczekiwanie na sieć…</string>
     <string name="link_status_restarting">restart agenta…</string>
     <string name="message_select">Zaznacz</string>
+    <string name="message_context_cleared">Kontekst wyczyszczony · %1$s</string>
+    <string name="message_context_compacted">Kontekst skompresowany · %1$s</string>
+    <string name="message_context_cleared_spoken">Kontekst wyczyszczony o %1$s</string>
+    <string name="message_context_compacted_spoken">Kontekst skompresowany o %1$s</string>
 </resources>

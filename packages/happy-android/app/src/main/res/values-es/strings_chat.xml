@@ -36,4 +36,8 @@
     <string name="link_status_waiting_for_network">esperando red…</string>
     <string name="link_status_restarting">reiniciando el agente…</string>
     <string name="message_select">Seleccionar</string>
+    <string name="message_context_cleared">Contexto borrado · %1$s</string>
+    <string name="message_context_compacted">Contexto compactado · %1$s</string>
+    <string name="message_context_cleared_spoken">Contexto borrado a las %1$s</string>
+    <string name="message_context_compacted_spoken">Contexto compactado a las %1$s</string>
 </resources>

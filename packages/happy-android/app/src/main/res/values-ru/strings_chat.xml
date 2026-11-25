@@ -36,4 +36,8 @@
     <string name="link_status_waiting_for_network">ожидание сети…</string>
     <string name="link_status_restarting">агент перезапускается…</string>
     <string name="message_select">Выбрать</string>
+    <string name="message_context_cleared">Контекст очищен · %1$s</string>
+    <string name="message_context_compacted">Контекст сжат · %1$s</string>
+    <string name="message_context_cleared_spoken">Контекст очищен в %1$s</string>
+    <string name="message_context_compacted_spoken">Контекст сжат в %1$s</string>
 </resources>

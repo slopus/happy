@@ -59,6 +59,7 @@ import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.PermissionStatus
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.UserDisplay
+import com.slopus.happy.chat.contextBoundary
 import com.slopus.happy.ui.attachments.FileMessageView
 import com.slopus.happy.ui.components.onSeen
 import com.slopus.happy.ui.components.Icon
@@ -87,6 +88,10 @@ object MessageTags {
     const val AGENT = "message.agent"
     const val AGENT_COPY = "message.agent.copy"
     const val EVENT = "message.event"
+    const val CONTEXT_DIVIDER = "message.event.context"
+    const val CONTEXT_DIVIDER_LABEL = "message.event.context.label"
+    const val CONTEXT_DIVIDER_LINE_START = "message.event.context.lineStart"
+    const val CONTEXT_DIVIDER_LINE_END = "message.event.context.lineEnd"
 }
 
 /** MessageView.tsx's stylesheet. */
@@ -166,7 +171,7 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
         when (row) {
             is ChatRow.User -> UserMessage(row, bubble, callbacks, content)
             is ChatRow.AgentText -> AgentMessage(row, callbacks, content, reveal)
-            is ChatRow.Event -> EventMessage(row.message.event, content)
+            is ChatRow.Event -> EventMessage(row.message, content)
             is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, content) else ToolView(row.message, callbacks, content)
         }
     }
@@ -537,12 +542,19 @@ private fun MessageCopyButton(text: String) {
 }
 
 /**
- * An agent event (`AgentEventBlock`). Spec: 8 side margins, 8 above and
+ * An agent event (`AgentEventBlock`), or a context boundary drawn as a
+ * [ContextDivider]. Spec for an ordinary event: 8 side margins, 8 above and
  * below, centred 14pt text in agentEventText: the mode switch, the agent's
  * message, the usage limit's end time, or "Unknown event".
  */
 @Composable
-fun EventMessage(event: AgentEvent, modifier: Modifier = Modifier) {
+fun EventMessage(message: ChatMessage.Event, modifier: Modifier = Modifier) {
+    val boundary = message.event.contextBoundary()
+    if (boundary != null) {
+        ContextDivider(boundary, message.createdAt, modifier)
+        return
+    }
+    val event = message.event
     val text = when (event) {
         is AgentEvent.Switch -> stringResource(R.string.message_switched_to_mode, event.mode)
         is AgentEvent.Message -> event.message

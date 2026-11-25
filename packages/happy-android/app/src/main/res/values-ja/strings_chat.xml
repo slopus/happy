@@ -36,4 +36,8 @@
     <string name="link_status_waiting_for_network">ネットワーク待機中…</string>
     <string name="link_status_restarting">エージェント再起動中…</string>
     <string name="message_select">選択</string>
+    <string name="message_context_cleared">コンテキストをクリアしました · %1$s</string>
+    <string name="message_context_compacted">コンテキストを圧縮しました · %1$s</string>
+    <string name="message_context_cleared_spoken">コンテキストをクリアしました %1$s</string>
+    <string name="message_context_compacted_spoken">コンテキストを圧縮しました %1$s</string>
 </resources>

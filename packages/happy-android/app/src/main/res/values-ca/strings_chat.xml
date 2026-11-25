@@ -36,4 +36,8 @@
     <string name="link_status_waiting_for_network">esperant la xarxa…</string>
     <string name="link_status_restarting">reiniciant l\'agent…</string>
     <string name="message_select">Selecciona</string>
+    <string name="message_context_cleared">Context esborrat · %1$s</string>
+    <string name="message_context_compacted">Context compactat · %1$s</string>
+    <string name="message_context_cleared_spoken">Context esborrat a les %1$s</string>
+    <string name="message_context_compacted_spoken">Context compactat a les %1$s</string>
 </resources>

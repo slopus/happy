@@ -36,4 +36,8 @@
     <string name="link_status_waiting_for_network">in attesa di rete…</string>
     <string name="link_status_restarting">riavvio dell\'agente…</string>
     <string name="message_select">Seleziona</string>
+    <string name="message_context_cleared">Contesto cancellato · %1$s</string>
+    <string name="message_context_compacted">Contesto compattato · %1$s</string>
+    <string name="message_context_cleared_spoken">Contesto cancellato alle %1$s</string>
+    <string name="message_context_compacted_spoken">Contesto compattato alle %1$s</string>
 </resources>

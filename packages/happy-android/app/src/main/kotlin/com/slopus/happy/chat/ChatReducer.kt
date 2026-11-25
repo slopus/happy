@@ -220,12 +220,15 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
                 messageIds[msg.id] = msg.id
                 continue
             }
-            if (event is AgentEvent.Message && event.message == "Context was reset") {
-                latestTodos = emptyList<TodoItem>() to msg.createdAt
-                latestUsage = TimedUsage(ContextUsage(0, 0, 0, 0, 0), msg.createdAt)
-            }
-            if (event is AgentEvent.Message && event.message == "Compaction completed") {
-                latestUsage = TimedUsage(ContextUsage(0, 0, 0, 0, 0), msg.createdAt)
+            // A context boundary also clears what it invalidates: the todos and
+            // usage the reducer held for the rows above it (iOS ChatReducer).
+            when (event?.contextBoundary()) {
+                ContextBoundary.Cleared -> {
+                    latestTodos = emptyList<TodoItem>() to msg.createdAt
+                    latestUsage = TimedUsage(ContextUsage(0, 0, 0, 0, 0), msg.createdAt)
+                }
+                ContextBoundary.Compacted -> latestUsage = TimedUsage(ContextUsage(0, 0, 0, 0, 0), msg.createdAt)
+                null -> Unit
             }
 
             val asEvent = parseMessageAsEvent(msg)

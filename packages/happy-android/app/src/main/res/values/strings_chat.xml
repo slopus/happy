@@ -40,4 +40,10 @@
     <string name="link_status_waiting_for_network">waiting for network…</string>
     <string name="link_status_restarting">agent restarting…</string>
     <string name="message_select">Select</string>
+    <!-- The divider /clear and /compact leave in a relay session's transcript; %1$s is the local time. -->
+    <string name="message_context_cleared">Context cleared · %1$s</string>
+    <string name="message_context_compacted">Context compacted · %1$s</string>
+    <!-- What TalkBack reads for that divider. -->
+    <string name="message_context_cleared_spoken">Context cleared at %1$s</string>
+    <string name="message_context_compacted_spoken">Context compacted at %1$s</string>
 </resources>
