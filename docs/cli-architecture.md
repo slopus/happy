@@ -190,6 +190,18 @@ The CLI encrypts client content before it leaves the machine using `src/api/encr
 - Session metadata, agent state, messages, machine state, artifacts, and KV values are encrypted client-side.
 - On-wire encoding is base64; see `encryption.md`.
 
+## When session data is sent
+
+A remote client does not have to be open. While the server is reachable, `happy` creates the session and uploads what the local agent does as it happens. Nothing waits for a phone to open the session.
+
+1. `ApiClient.getOrCreateSession` stores the encrypted session with `POST /v1/sessions` (`packages/happy-cli/src/api/api.ts`).
+2. `ApiSessionClient` encrypts each message and posts it to `POST /v3/sessions/:id/messages` (`enqueueMessage` / `flushOutbox` in `packages/happy-cli/src/api/apiSession.ts`). The server inserts those blobs into `SessionMessage` before it notifies connected clients (`packages/happy-server/sources/app/api/routes/v3SessionRoutes.ts`). Token usage is written to `UsageReport` from the `usage-report` socket event, also with no check that another client is connected (`packages/happy-server/sources/app/api/socket/usageHandler.ts`).
+3. A client that connects later, including after the session has ended, reads the stored messages. `session-end` and `POST /v1/sessions/:id/archive` only mark the session inactive.
+
+Deleting a session removes that record. The iOS and Android apps call `DELETE /v1/sessions/:id`, and `sessionDelete` removes the session, its messages, usage reports, access keys, and attachment blobs (`packages/happy-server/sources/app/session/sessionDelete.ts`). The apps refuse that delete for a bot or a task. Signing out of an app removes that device's copy only. There is no route that deletes an account.
+
+If the server cannot be reached when the session starts, the CLI runs the agent locally and uploads nothing until it reconnects. Claude's reconnect path can then read the local transcript and upload it, when the Claude session id is already known (`packages/happy-cli/src/claude/runClaude.ts`, `packages/happy-cli/src/claude/utils/sessionScanner.ts`). Codex, Gemini, and the other runners that use `setupOfflineReconnection` keep a no-op session stub until then, and messages produced while the stub is in place are not replayed (`packages/happy-cli/src/utils/offlineSessionStub.ts`).
+
 ## Daemon architecture
 
 ```mermaid
