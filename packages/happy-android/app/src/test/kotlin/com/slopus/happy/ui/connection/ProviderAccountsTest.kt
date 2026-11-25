@@ -12,7 +12,9 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.agent.AccountLogin
 import com.slopus.happy.agent.CredentialSource
+import com.slopus.happy.agent.LoginRefreshError
 import com.slopus.happy.agent.ProviderAccount
 import com.slopus.happy.agent.ProviderAccountsState
 import com.slopus.happy.agent.ProviderCredential
@@ -23,7 +25,6 @@ import com.slopus.happy.agent.SignInStep
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
-import com.slopus.happy.ui.components.ItemSpec
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.settings.AboutInfo
 import com.slopus.happy.ui.settings.SettingsFixtures
@@ -36,15 +37,39 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** Settings › Provider accounts and its sign-in and token pages (happy-agent API.md, "Provider sign-in"). */
+/** Settings › Provider accounts, an account's page, and its sign-in and token pages (happy-agent API.md, "Provider sign-in"). */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 class ProviderAccountsTest {
     @get:Rule val rule = createComposeRule()
 
-    private val codex = ProviderAccount("codex", null, "codex", ProviderCredential(CredentialSource.System, listOf("device", "browser"), acceptsToken = false))
-    private val claude = ProviderAccount("claude_work", "Claude (work)", "claude", ProviderCredential(CredentialSource.Internal, listOf("browser"), acceptsToken = true))
-    private val grok = ProviderAccount("grok", null, "grok", ProviderCredential(CredentialSource.Configured, listOf("device"), acceptsToken = false), signedOut = true)
+    private val now = 1_764_000_000_000L
+    private val minute = 60_000L
+    private val hour = 60 * minute
+
+    /** Noon UTC on Nov 20 2025: Nov 20 wherever the test runs. */
+    private val nov20 = 1_763_640_000_000L
+
+    private fun error(status: Int?, code: String?, permanent: Boolean, since: Long = nov20, at: Long = now - 12 * minute) =
+        LoginRefreshError(status, code, permanent, since, at)
+
+    private val codex = ProviderAccount(
+        "codex", null, "codex", ProviderCredential(CredentialSource.System, listOf("device", "browser"), acceptsToken = false),
+        signIn = "signed_in", lastUsedAt = now - 4 * minute, login = AccountLogin(now - 2 * hour, now + 8 * 24 * hour, null), loginReported = true,
+    )
+    private val claude = ProviderAccount(
+        "claude_work", "Claude (work)", "claude", ProviderCredential(CredentialSource.Internal, listOf("browser"), acceptsToken = true),
+        signIn = "signed_in", plan = "Max", login = AccountLogin(now - 30 * minute, now + 7 * hour, null), loginReported = true,
+    )
+    private val grok = ProviderAccount("grok", null, "grok", ProviderCredential(CredentialSource.Configured, listOf("device"), acceptsToken = false), signIn = "signed_out", loginReported = true)
+    private val claudeHome = claude.copy(id = "claude_home", name = "Claude (home)", plan = "Pro", signIn = "signed_out", login = AccountLogin(null, null, error(400, "invalid_grant", permanent = true)))
+    private val codexTeam = codex.copy(
+        id = "codex_team", name = "Codex (team)", credential = codex.credential.copy(source = CredentialSource.Internal), plan = "Team",
+        login = AccountLogin(now - 21 * hour, now + 3 * hour, error(503, null, permanent = false)),
+    )
+    private val grokSide = grok.copy(id = "grok_side", name = "Grok (side)", signIn = null)
+    private val claudeOld = claude.copy(id = "claude_old", name = "Claude (old)", plan = null, enabled = false)
+    private val legacy = codex.copy(id = "codex_old", name = "Codex (old)", lastUsedAt = null, login = null, loginReported = false, checkedAt = now - 5 * minute)
     private val accounts = ProviderAccountsState.Loaded(listOf(codex, claude, grok))
 
     private fun signIn(account: ProviderAccount, installed: Boolean = true, email: String? = null, plan: String? = null, operation: SignInOperation? = null) =
@@ -52,96 +77,153 @@ class ProviderAccountsTest {
 
     private fun showAccounts(
         state: ProviderAccountsState = accounts,
-        signIns: Map<String, ProviderSignIn> = mapOf("claude_work" to signIn(claude, email = "ada@example.com", plan = "Max")),
-        ownerOnly: Boolean = false,
-        onSignIn: (ProviderAccount) -> Unit = {},
-        onToken: (ProviderAccount) -> Unit = {},
-    ) = rule.setHappyContent { ProviderAccountsScreen(state, signIns, ownerOnly, onSignIn = onSignIn, onToken = onToken) }
+        signIns: Map<String, ProviderSignIn> = emptyMap(),
+        onOpen: (ProviderAccount) -> Unit = {},
+    ) = rule.setHappyContent { ProviderAccountsScreen(state, signIns, now, onOpen = onOpen) }
 
+    /** Every line a row can say, the first that applies, each account's dot on its icon. */
     @Test
-    fun eachAccountSaysWhereItsLoginComesFromAndHowToChangeIt() {
-        var signingIn: String? = null
-        var token: String? = null
-        showAccounts(onSignIn = { signingIn = it.id }, onToken = { token = it.id })
+    fun eachRowSaysTheFirstThingThatApplies() {
+        showAccounts(ProviderAccountsState.Loaded(listOf(codex, claude, grok, claudeHome, codexTeam, grokSide, claudeOld, legacy)))
         rule.onNodeWithText("Provider accounts").assertExists()
-        // Headed by the account's own name, else its assistant's.
-        rule.onNodeWithText("CODEX").assertExists()
-        rule.onNodeWithText("CLAUDE (WORK)").assertExists()
-        rule.onNodeWithText("GROK").assertExists()
-        rule.onNodeWithText("Using system login").assertExists()
-        rule.onNodeWithText("Signed in to Happy").assertExists()
-        rule.onNodeWithText("ada@example.com · Max").assertExists()
-        rule.onNodeWithText("Configured in config file").assertExists()
-        // Usage says Grok's doesn't work now.
-        rule.onNodeWithText("Signed out").assertExists()
-        // Every card says what signing in does.
-        assertEquals(3, rule.onAllNodes(androidx.compose.ui.test.hasText("Signing in here gives this account a login only Happy uses, so it stops using the system login."), useUnmergedTree = true).fetchSemanticsNodes().size)
-        // Only Claude takes a token.
-        rule.node(ProviderAccountsTags.token("claude_work")).assertExists()
-        rule.node(ProviderAccountsTags.token("codex")).assertDoesNotExist()
-        rule.node(ProviderAccountsTags.signIn("codex")).performClick()
-        rule.node(ProviderAccountsTags.token("claude_work")).performClick()
-        assertEquals("codex", signingIn)
-        assertEquals("claude_work", token)
+        // The account's own name, else its assistant's, with its plan.
+        rule.onNodeWithText("Codex").assertExists()
+        rule.onNodeWithText("Claude (work) · Max").assertExists()
+        rule.onNodeWithText("System login · Used 4m ago · refreshed 2h ago").assertExists()
+        rule.onNodeWithText("Not used yet · refreshed 30m ago").assertExists()
+        // Signed out without a refresh error: no date to give.
+        rule.onNodeWithText("Needs sign-in").assertExists()
+        rule.onNodeWithText("Needs sign-in since Nov 20").assertExists()
+        // A failing refresh warns of a login that runs out within the day.
+        rule.onNodeWithText("Couldn't refresh · HTTP 503 · last tried 12m ago\nLogin expires in 3h").assertExists()
+        rule.onNodeWithText("Not used yet").assertExists()
+        rule.onNodeWithText("Off").assertExists()
+        // An older agent: only when usage last looked.
+        rule.onNodeWithText("System login · Last checked 5m ago").assertExists()
+        for (id in listOf("codex", "claude_work", "grok", "claude_home", "codex_team", "grok_side", "claude_old", "codex_old")) {
+            rule.node(ProviderAccountsTags.dot(id)).assertExists()
+        }
+        // Nothing to press on a row but the row.
+        rule.node(ProviderAccountsTags.signIn("codex")).assertDoesNotExist()
+        rule.node(ProviderAccountsTags.token("claude_work")).assertDoesNotExist()
     }
 
-    /** The settings card's rows: 16 in from each edge inside its 1 px border, the source row as tall as its two lines, the action rows 56. */
+    @Test
+    fun aRowOpensItsAccount() {
+        var opened: String? = null
+        showAccounts(onOpen = { opened = it.id })
+        rule.node(ProviderAccountsTags.account("claude_work")).performClick()
+        assertEquals("claude_work", opened)
+    }
+
+    /** The settings card's rows: 16 in from each edge inside its 1 px border, as tall as their two lines. */
     @Test
     fun rowsAreSettingsRows() {
         showAccounts()
-        val source = rule.node(ProviderAccountsTags.source("claude_work")).bounds
-        val action = rule.node(ProviderAccountsTags.signIn("claude_work")).bounds
-        val token = rule.node(ProviderAccountsTags.token("claude_work")).bounds
-        assertDp("card left", (16 + 1 / 3f).dp, source.left)
-        assertDp("card width", (379 - 2 / 3f).dp, source.right - source.left)
+        val codexRow = rule.node(ProviderAccountsTags.account("codex")).bounds
+        val claudeRow = rule.node(ProviderAccountsTags.account("claude_work")).bounds
+        val dot = rule.node(ProviderAccountsTags.dot("codex")).bounds
+        assertDp("card left", (16 + 1 / 3f).dp, codexRow.left)
+        assertDp("card width", (379 - 2 / 3f).dp, codexRow.right - codexRow.left)
         // Title 24 and subtitle 20 inside 16 above and below.
-        assertDp("source height", 76, source.bottom - source.top)
-        assertDp("sign in height", ItemSpec.minHeight, action.bottom - action.top)
-        assertTrue("actions follow the source row", action.top >= source.bottom && token.top >= action.bottom)
-        assertDp("sign in left", (16 + 1 / 3f).dp, action.left)
-    }
-
-    @Test
-    fun aRunningSignInSaysSoOnItsRow() {
-        showAccounts(signIns = mapOf("codex" to signIn(codex, operation = SignInOperation("op1", SignInOperation.Status.Waiting, null))))
-        rule.onNodeWithText("In progress").assertExists()
-    }
-
-    @Test
-    fun aTeamMemberSeesWhyNothingCanChange() {
-        showAccounts(ownerOnly = true)
-        rule.node(ProviderAccountsTags.signIn("codex")).assertIsNotEnabled()
-        rule.node(ProviderAccountsTags.token("claude_work")).assertIsNotEnabled()
-        rule.onAllNodes(androidx.compose.ui.test.hasText("Only the team owner can change how accounts sign in."), useUnmergedTree = true)
-            .fetchSemanticsNodes().let { assertEquals(3, it.size) }
-    }
-
-    @Test
-    fun aMissingProgramOrABrowserOnlyAccountCantSignInFromThePhone() {
-        val browserOnly = codex.copy(credential = codex.credential.copy(methods = listOf("browser")))
-        showAccounts(
-            state = ProviderAccountsState.Loaded(listOf(browserOnly, claude, grok)),
-            signIns = mapOf("grok" to signIn(grok, installed = false), "claude_work" to signIn(claude, installed = false)),
-        )
-        rule.onNodeWithText("This account signs in on the computer, not from a phone.", useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("Install Grok on the computer to sign in.", useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("Install Claude Code on the computer to sign in.", useUnmergedTree = true).assertExists()
-        rule.node(ProviderAccountsTags.signIn("codex")).assertIsNotEnabled()
-        rule.node(ProviderAccountsTags.signIn("grok")).assertIsNotEnabled()
-        // A token needs no program.
-        rule.node(ProviderAccountsTags.token("claude_work")).assertIsEnabled()
+        assertDp("row height", 76, codexRow.bottom - codexRow.top)
+        assertTrue("rows follow each other", claudeRow.top >= codexRow.bottom)
+        assertDp("dot", 12, dot.right - dot.left)
     }
 
     @Test
     fun loadingEmptyAndFailedSayWhatTheyAre() {
         var state: ProviderAccountsState by mutableStateOf<ProviderAccountsState>(ProviderAccountsState.Loading)
-        rule.setHappyContent { ProviderAccountsScreen(state, emptyMap(), ownerOnly = false) }
+        rule.setHappyContent { ProviderAccountsScreen(state, emptyMap(), now) }
         rule.node(ProviderAccountsTags.LOADING).assertExists()
         state = ProviderAccountsState.Loaded(emptyList())
         rule.onNodeWithText("No accounts sign in with a subscription.").assertExists()
         state = ProviderAccountsState.Failed
         rule.onNodeWithText("Couldn't load the accounts.").assertExists()
         rule.onNodeWithText("Try again").assertExists()
+    }
+
+    private fun showAccount(
+        account: ProviderAccount,
+        signIn: ProviderSignIn? = null,
+        ownerOnly: Boolean = false,
+        onEnabled: (Boolean) -> Unit = {},
+        onSignIn: () -> Unit = {},
+        onToken: () -> Unit = {},
+    ) = rule.setHappyContent { ProviderAccountScreen(account, signIn, ownerOnly, now, onEnabled = onEnabled, onSignIn = onSignIn, onToken = onToken) }
+
+    @Test
+    fun anAccountsPageSaysWhereItsLoginComesFromAndHowItsRefreshGoes() {
+        val switched = mutableListOf<Boolean>()
+        var signingIn = 0
+        var token = 0
+        showAccount(claude, signIn(claude, email = "ada@example.com", plan = "Max"), onEnabled = { switched += it }, onSignIn = { signingIn++ }, onToken = { token++ })
+        // Name and plan, the vendor beside them.
+        rule.onNodeWithText("Max", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Claude", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Source", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Signed in to Happy", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("ada@example.com · Max", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("30m ago", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("In 7h", useUnmergedTree = true).assertExists()
+        rule.node(ProviderAccountsTags.REFRESH_ERROR).assertDoesNotExist()
+        rule.onNodeWithText("Signing in here gives this account a login only Happy uses, so it stops using the system login.", useUnmergedTree = true).assertExists()
+        rule.node(ProviderAccountsTags.ENABLED).performClick()
+        rule.node(ProviderAccountsTags.signIn("claude_work")).performScrollTo().performClick()
+        rule.node(ProviderAccountsTags.token("claude_work")).performScrollTo().performClick()
+        assertEquals(listOf(false), switched)
+        assertEquals(1, signingIn)
+        assertEquals(1, token)
+    }
+
+    @Test
+    fun aFailingRefreshShowsItsCodeAndSinceWhen() {
+        showAccount(claudeHome)
+        rule.onNodeWithText("Last refresh error").assertExists()
+        rule.onNodeWithText("invalid_grant · since Nov 20", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Never", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun anOlderAgentSaysOnlyWhenItLastChecked() {
+        showAccount(legacy)
+        rule.onNodeWithText("Using system login", useUnmergedTree = true).assertExists()
+        rule.node(ProviderAccountsTags.LAST_CHECKED).assertExists()
+        rule.onNodeWithText("5m ago", useUnmergedTree = true).assertExists()
+        rule.node(ProviderAccountsTags.LAST_REFRESH).assertDoesNotExist()
+        rule.node(ProviderAccountsTags.EXPIRES).assertDoesNotExist()
+        rule.node(ProviderAccountsTags.token("codex_old")).assertDoesNotExist()
+    }
+
+    @Test
+    fun aRunningSignInSaysSoOnItsRow() {
+        showAccount(codex, signIn(codex, operation = SignInOperation("op1", SignInOperation.Status.Waiting, null)))
+        rule.onNodeWithText("In progress", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun aTeamMemberSeesWhyNothingCanChange() {
+        showAccount(claude, ownerOnly = true)
+        rule.node(ProviderAccountsTags.ENABLED).assertIsNotEnabled()
+        rule.node(ProviderAccountsTags.signIn("claude_work")).assertIsNotEnabled()
+        rule.node(ProviderAccountsTags.token("claude_work")).assertIsNotEnabled()
+        rule.onNodeWithText("Only the team owner can change how accounts sign in.", substring = true, useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun aBrowserOnlyAccountCantSignInFromThePhone() {
+        val browserOnly = codex.copy(credential = codex.credential.copy(methods = listOf("browser")))
+        showAccount(browserOnly)
+        rule.onNodeWithText("This account signs in on the computer, not from a phone.", substring = true, useUnmergedTree = true).assertExists()
+        rule.node(ProviderAccountsTags.signIn("codex")).assertIsNotEnabled()
+    }
+
+    @Test
+    fun aMissingProgramSaysWhichButATokenNeedsNone() {
+        showAccount(claude, signIn(claude, installed = false))
+        rule.onNodeWithText("Install Claude Code on the computer to sign in.", substring = true, useUnmergedTree = true).assertExists()
+        rule.node(ProviderAccountsTags.signIn("claude_work")).assertIsNotEnabled()
+        rule.node(ProviderAccountsTags.token("claude_work")).assertIsEnabled()
     }
 
     private var step: SignInStep by mutableStateOf<SignInStep>(SignInStep.Starting)

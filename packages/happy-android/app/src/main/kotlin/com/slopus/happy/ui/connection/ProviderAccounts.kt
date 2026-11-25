@@ -2,6 +2,19 @@ package com.slopus.happy.ui.connection
 
 import android.content.ClipData
 import androidx.compose.foundation.layout.Arrangement
+import com.slopus.happy.ui.components.HappySwitch
+import com.slopus.happy.ui.chat.compactAgo
+import com.slopus.happy.agent.ProviderCredential
+import com.slopus.happy.agent.AccountStatus
+import com.slopus.happy.agent.AccountLine
+import com.slopus.happy.agent.AccountDot
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,6 +68,9 @@ import com.slopus.happy.agent.SignInFailure
 import com.slopus.happy.agent.SignInStep
 import com.slopus.happy.conversation.ModeCatalog
 import com.slopus.happy.model.providerIconKind
+import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.components.AlertButton
+import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.HappyTextField
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
@@ -75,6 +91,9 @@ import kotlinx.serialization.Serializable
 /** Settings › Provider accounts of [connectionId]. */
 @Serializable data class ProviderAccountsRoute(val connectionId: String)
 
+/** One account's page: on or off, its login, and signing it in again. */
+@Serializable data class ProviderAccountRoute(val connectionId: String, val providerId: String)
+
 /** Signing account [providerId] in again. */
 @Serializable data class ProviderSignInRoute(val connectionId: String, val providerId: String)
 
@@ -84,8 +103,14 @@ import kotlinx.serialization.Serializable
 object ProviderAccountsTags {
     const val ROW = "agentSettings.providerAccounts"
     const val LOADING = "providerAccounts.loading"
+    const val LIST = "providerAccounts.list"
     const val EMPTY = "providerAccounts.empty"
     const val FAILED = "providerAccounts.failed"
+    const val ENABLED = "providerAccount.enabled"
+    const val LAST_REFRESH = "providerAccount.lastRefresh"
+    const val EXPIRES = "providerAccount.expires"
+    const val REFRESH_ERROR = "providerAccount.refreshError"
+    const val LAST_CHECKED = "providerAccount.lastChecked"
     const val CODE = "providerSignIn.code"
     const val COPY = "providerSignIn.copy"
     const val OPEN = "providerSignIn.open"
@@ -97,6 +122,7 @@ object ProviderAccountsTags {
     const val RETRY = "providerSignIn.retry"
     const val STARTING = "providerSignIn.starting"
     fun account(id: String) = "providerAccounts.account.$id"
+    fun dot(id: String) = "providerAccounts.dot.$id"
     fun source(id: String) = "providerAccounts.source.$id"
     fun signIn(id: String) = "providerAccounts.signIn.$id"
     fun token(id: String) = "providerAccounts.token.$id"
@@ -111,8 +137,12 @@ fun NavGraphBuilder.providerAccountRoutes(nav: NavHostController, accounts: @Com
     page<ProviderAccountsRoute> { entry ->
         val connectionId = entry.toRoute<ProviderAccountsRoute>().connectionId
         val source = accounts(connectionId)
-        if (source == null) ProviderAccountsScreen(ProviderAccountsState.Failed, emptyMap(), ownerOnly = false, onBack = { nav.popBackStack() })
+        if (source == null) ProviderAccountsScreen(ProviderAccountsState.Failed, emptyMap(), now = 0, onBack = { nav.popBackStack() })
         else ProviderAccountsPage(source, nav, connectionId)
+    }
+    page<ProviderAccountRoute> { entry ->
+        val route = entry.toRoute<ProviderAccountRoute>()
+        accounts(route.connectionId)?.let { ProviderAccountPage(it, nav, route.connectionId, route.providerId) }
     }
     page<ProviderSignInRoute> { entry ->
         val route = entry.toRoute<ProviderSignInRoute>()
@@ -124,21 +154,38 @@ fun NavGraphBuilder.providerAccountRoutes(nav: NavHostController, accounts: @Com
     }
 }
 
+/** Reads [accounts] while the page shows. */
 @Composable
-private fun ProviderAccountsPage(accounts: ProviderAccounts, nav: NavHostController, connectionId: String) {
+private fun Follow(accounts: ProviderAccounts) {
     DisposableEffect(accounts) {
         val following = accounts.follow()
         onDispose { following.close() }
     }
+}
+
+/** The time now, a minute at a time, for "4m ago". */
+@Composable
+private fun rememberMinuteClock(): Long {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            now = System.currentTimeMillis()
+        }
+    }
+    return now
+}
+
+@Composable
+private fun ProviderAccountsPage(accounts: ProviderAccounts, nav: NavHostController, connectionId: String) {
+    Follow(accounts)
     val state by accounts.accounts.collectAsStateWithLifecycle()
     val signIns by accounts.signIns.collectAsStateWithLifecycle()
-    val ownerOnly by accounts.ownerOnly.collectAsStateWithLifecycle()
     ProviderAccountsScreen(
         state = state,
         signIns = signIns,
-        ownerOnly = ownerOnly,
-        onSignIn = { nav.navigate(ProviderSignInRoute(connectionId, it.id)) },
-        onToken = { nav.navigate(ProviderTokenRoute(connectionId, it.id)) },
+        now = rememberMinuteClock(),
+        onOpen = { nav.navigate(ProviderAccountRoute(connectionId, it.id)) },
         onRetry = accounts::refresh,
         onBack = { nav.popBackStack() },
     )
@@ -146,6 +193,12 @@ private fun ProviderAccountsPage(accounts: ProviderAccounts, nav: NavHostControl
 
 /** An account's name: its own, else its assistant's. */
 internal fun ProviderAccount.shownName(): String = name ?: ModeCatalog.providerName(type)
+
+/** Its credential as newest known: the sign-in object's, which a sign-in or a token changes before configuration is read again. */
+private fun ProviderAccount.credentialNow(signIn: ProviderSignIn?): ProviderCredential = signIn?.credential ?: credential
+
+/** Its plan: what usage read, else what the sign-in revealed. */
+private fun ProviderAccount.planNow(signIn: ProviderSignIn?): String? = plan ?: signIn?.plan
 
 /** The program that signs [cliId]'s accounts in, by its own name. */
 internal fun programName(cliId: String): String = when (cliId) {
@@ -164,33 +217,104 @@ private fun credentialLabel(source: CredentialSource): String = stringResource(
     },
 )
 
-/** Why an account can't sign in from here, in its card's footer; null when it can. */
+/** Why an account can't sign in from here, under its login; null when it can. */
 @Composable
 private fun blockedReason(account: ProviderAccount, signIn: ProviderSignIn?, ownerOnly: Boolean): String? = when {
     ownerOnly -> stringResource(R.string.provider_accounts_owner_only)
     signIn?.installed == false -> stringResource(R.string.provider_accounts_not_installed, programName(account.type))
-    ProviderSignIns.phoneMethod(account.type, account.credential) == null -> stringResource(R.string.provider_accounts_computer_only)
+    ProviderSignIns.phoneMethod(account.type, account.credentialNow(signIn)) == null -> stringResource(R.string.provider_accounts_computer_only)
     else -> null
+}
+
+/** "4m ago", or "just now" within the minute. */
+@Composable
+private fun ago(at: Long, now: Long): String =
+    if (now - at < 60_000) stringResource(R.string.time_just_now)
+    else stringResource(R.string.provider_accounts_ago, compactAgo(LocalResources.current, at, now))
+
+/** "3h" until [at]. */
+@Composable
+private fun until(at: Long, now: Long): String = compactAgo(LocalResources.current, now, at)
+
+/** "Nov 21" in the phone's language. */
+private fun shortDate(at: Long): String {
+    val locale = java.util.Locale.getDefault()
+    return java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, "MMMd"), locale).format(java.util.Date(at))
+}
+
+@Composable
+private fun AccountDot.color(): Color {
+    val colors = HappyTheme.colors
+    return when (this) {
+        AccountDot.Grey -> colors.status.disconnected
+        AccountDot.Red -> colors.status.error
+        AccountDot.Amber -> if (colors.dark) Color(0xFFFF9F0A) else Color(0xFFFF9500)
+        AccountDot.Green -> colors.status.connected
+    }
+}
+
+/** The line under an account's name, the first that applies. */
+@Composable
+internal fun AccountLine.text(now: Long): String {
+    val dot = " · "
+    return when (this) {
+        AccountLine.Off -> stringResource(R.string.provider_accounts_off)
+        is AccountLine.NeedsSignIn ->
+            if (since == null) stringResource(R.string.provider_accounts_needs_sign_in_bare)
+            else stringResource(R.string.provider_accounts_needs_sign_in, shortDate(since))
+        is AccountLine.RefreshFailed ->
+            if (reason == null) stringResource(R.string.provider_accounts_refresh_failed_bare, ago(at, now))
+            else stringResource(R.string.provider_accounts_refresh_failed, reason, ago(at, now))
+        is AccountLine.Healthy -> listOfNotNull(
+            stringResource(R.string.provider_accounts_system_login).takeIf { system },
+            lastUsedAt?.let { stringResource(R.string.provider_accounts_used, ago(it, now)) } ?: stringResource(R.string.provider_accounts_not_used),
+            refreshedAt?.let { stringResource(R.string.provider_accounts_refreshed, ago(it, now)) },
+        ).joinToString(dot)
+        is AccountLine.Checked -> listOfNotNull(
+            stringResource(R.string.provider_accounts_system_login).takeIf { system },
+            checkedAt?.let { stringResource(R.string.provider_accounts_last_checked, ago(it, now)) },
+        ).joinToString(dot)
+    }
+}
+
+/** "Login expires in 3h", or that it has. */
+@Composable
+private fun expiryWarning(at: Long, now: Long): String =
+    if (at <= now) stringResource(R.string.provider_accounts_login_expired) else stringResource(R.string.provider_accounts_login_expires, until(at, now))
+
+/** The vendor's mark in the row's 32 icon box, the account's [dot] on its corner ringed in the card's colour. */
+@Composable
+private fun AccountIcon(type: String, dot: AccountDot?, tag: String) {
+    val colors = HappyTheme.colors
+    Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+        ProviderIcon(providerIconKind(type), size = 24.dp)
+        if (dot != null) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).testTag(tag).size(12.dp).clip(CircleShape).background(colors.surface)
+                    .padding(2.dp).clip(CircleShape).background(dot.color()),
+            )
+        }
+    }
 }
 
 /**
  * Settings › Provider accounts (happy-agent API.md, "Provider sign-in"):
- * one settings card per Codex, Claude and Grok account, headed by its name.
- * The first row says where its login comes from (system, Happy's own with
- * the email and plan, or the config file), "Signed out" at its end where
- * usage says so; then Sign in again ("In progress" while one runs) and,
- * for Claude, Update token. The footer says what signing in here does, or
- * why the account can't: not the team owner (after the agent said so),
- * the program not installed, or a sign-in that finishes only on the
- * computer. Rows are [Item]s in [ItemGroup]s, as every settings page.
+ * one settings card with a row per Codex, Claude and Grok account and
+ * nothing to press but the row. Each row is the vendor's mark with a 12 dot
+ * on its corner, the account's name and plan, a chevron, and under the
+ * name the first that applies ([AccountStatus]): Off (grey); Needs
+ * sign-in, since a date where known (red); Couldn't refresh, why and when it was last
+ * tried (amber); else when it was used and its login refreshed, green when
+ * signed in and grey when unknown, "System login" first for the machine's
+ * own. A login that runs out within a day while its refresh fails adds a
+ * second line. A row opens the account's page ([ProviderAccountScreen]).
  */
 @Composable
 fun ProviderAccountsScreen(
     state: ProviderAccountsState,
     signIns: Map<String, ProviderSignIn>,
-    ownerOnly: Boolean,
-    onSignIn: (ProviderAccount) -> Unit = {},
-    onToken: (ProviderAccount) -> Unit = {},
+    now: Long,
+    onOpen: (ProviderAccount) -> Unit = {},
     onRetry: () -> Unit = {},
     onBack: () -> Unit = {},
 ) {
@@ -204,54 +328,179 @@ fun ProviderAccountsScreen(
                 Item(stringResource(R.string.provider_accounts_load_failed), showChevron = false, titleLines = 0)
                 Item(stringResource(R.string.cloud_providers_try_again), titleColor = colors.textLink, showChevron = false, onClick = onRetry)
             }
-            is ProviderAccountsState.Loaded -> {
-                if (state.accounts.isEmpty()) {
-                    ItemGroup(Modifier.testTag(ProviderAccountsTags.EMPTY)) {
-                        Item(stringResource(R.string.provider_accounts_empty), showChevron = false, titleLines = 0)
+            is ProviderAccountsState.Loaded -> if (state.accounts.isEmpty()) {
+                ItemGroup(Modifier.testTag(ProviderAccountsTags.EMPTY)) {
+                    Item(stringResource(R.string.provider_accounts_empty), showChevron = false, titleLines = 0)
+                }
+            } else {
+                ItemGroup(Modifier.testTag(ProviderAccountsTags.LIST), footer = stringResource(R.string.provider_accounts_footer)) {
+                    for (account in state.accounts) {
+                        val signIn = signIns[account.id]
+                        val credential = account.credentialNow(signIn)
+                        val status = AccountStatus.of(account, credential, now)
+                        // Nothing known of an older agent's account: where its login comes from.
+                        val line = status.line.text(now).ifEmpty { credentialLabel(credential.source) }
+                        Item(
+                            title = listOfNotNull(account.shownName(), account.planNow(signIn)).joinToString(" · "),
+                            subtitle = listOfNotNull(line, status.expiresAt?.let { expiryWarning(it, now) }).joinToString("\n"),
+                            subtitleLines = 3,
+                            icon = { AccountIcon(account.type, status.dot, ProviderAccountsTags.dot(account.id)) },
+                            onClick = { onOpen(account) },
+                            modifier = Modifier.testTag(ProviderAccountsTags.account(account.id)),
+                        )
                     }
                 }
-                for (account in state.accounts) {
-                    val signIn = signIns[account.id]
-                    // The object is newer than configuration once a sign-in or a token changed it.
-                    val credential = signIn?.credential ?: account.credential
-                    val blocked = blockedReason(account, signIn, ownerOnly)
-                    val running = signIn?.operation?.finished == false
-                    ItemGroup(
-                        modifier = Modifier.testTag(ProviderAccountsTags.account(account.id)),
-                        title = account.shownName(),
-                        footer = blocked ?: stringResource(R.string.provider_accounts_footer),
-                    ) {
-                        Item(
-                            title = credentialLabel(credential.source),
-                            subtitle = signIn?.takeIf { credential.source == CredentialSource.Internal }
-                                ?.let { listOfNotNull(it.email, it.plan).joinToString(" · ").ifEmpty { null } },
-                            detail = if (account.signedOut) stringResource(R.string.provider_accounts_signed_out) else null,
-                            detailColor = colors.textDestructive,
-                            icon = { ProviderIcon(providerIconKind(account.type), size = 24.dp) },
-                            showChevron = false,
-                            modifier = Modifier.testTag(ProviderAccountsTags.source(account.id)),
-                        )
-                        Item(
-                            title = stringResource(R.string.provider_accounts_sign_in_again),
-                            titleColor = colors.textLink,
-                            detail = if (running) stringResource(R.string.provider_accounts_in_progress) else null,
-                            showChevron = false,
-                            enabled = blocked == null,
-                            onClick = { onSignIn(account) },
-                            modifier = Modifier.testTag(ProviderAccountsTags.signIn(account.id)),
-                        )
-                        if (credential.acceptsToken) {
-                            Item(
-                                title = stringResource(R.string.provider_accounts_update_token),
-                                titleColor = colors.textLink,
-                                showChevron = false,
-                                enabled = !ownerOnly,
-                                onClick = { onToken(account) },
-                                modifier = Modifier.testTag(ProviderAccountsTags.token(account.id)),
-                            )
-                        }
-                    }
+            }
+        }
+    }
+}
+
+// ---- One account ----------------------------------------------------------------------------
+
+@Composable
+private fun ProviderAccountPage(accounts: ProviderAccounts, nav: NavHostController, connectionId: String, providerId: String) {
+    Follow(accounts)
+    val state by accounts.accounts.collectAsStateWithLifecycle()
+    val signIns by accounts.signIns.collectAsStateWithLifecycle()
+    val ownerOnly by accounts.ownerOnly.collectAsStateWithLifecycle()
+    val account = (state as? ProviderAccountsState.Loaded)?.accounts?.firstOrNull { it.id == providerId }
+    val scope = rememberCoroutineScope()
+    var toggleFailed by remember { mutableStateOf<String?>(null) }
+    val ownerOnlyText = stringResource(R.string.provider_accounts_owner_only)
+    if (account == null) {
+        // Still reading, or the account was removed from configuration.
+        ProviderAccountsScreen(state.takeIf { it !is ProviderAccountsState.Loaded } ?: ProviderAccountsState.Failed, emptyMap(), now = 0, onRetry = accounts::refresh, onBack = { nav.popBackStack() })
+        return
+    }
+    ProviderAccountScreen(
+        account = account,
+        signIn = signIns[providerId],
+        ownerOnly = ownerOnly,
+        now = rememberMinuteClock(),
+        onEnabled = { on ->
+            scope.launch {
+                try {
+                    accounts.setEnabled(providerId, on)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Shown as it was again, and why where the agent said it was the owner's.
+                    toggleFailed = if ((e as? ProviderSignInException)?.refusal == ProviderSignInRefusal.Forbidden) ownerOnlyText else ""
                 }
+            }
+        },
+        onSignIn = { nav.navigate(ProviderSignInRoute(connectionId, providerId)) },
+        onToken = { nav.navigate(ProviderTokenRoute(connectionId, providerId)) },
+        onBack = { nav.popBackStack() },
+    )
+    toggleFailed?.let { said ->
+        val alert = Alert(stringResource(R.string.provider_accounts_toggle_failed), said.ifEmpty { null }, listOf(AlertButton(stringResource(R.string.common_ok))))
+        HappyAlert(alert, onDismiss = { toggleFailed = null })
+    }
+}
+
+/**
+ * One provider account: its name and plan with its vendor, and Enabled
+ * (`PATCH /v0/config`); then Login: its Source (with the email and plan of
+ * Happy's own), its last refresh, when its token expires and the last
+ * refresh error with its code and since when (an older agent says only
+ * when usage last checked); then Sign in again ("In progress" while one
+ * runs) and, for Claude, Update token, under them why they can't be done
+ * here and what signing in does. Rows are [Item]s in [ItemGroup]s, as
+ * every settings page; the words are iOS's.
+ */
+@Composable
+fun ProviderAccountScreen(
+    account: ProviderAccount,
+    signIn: ProviderSignIn?,
+    ownerOnly: Boolean,
+    now: Long,
+    onEnabled: (Boolean) -> Unit = {},
+    onSignIn: () -> Unit = {},
+    onToken: () -> Unit = {},
+    onBack: () -> Unit = {},
+) {
+    val colors = HappyTheme.colors
+    val credential = account.credentialNow(signIn)
+    val blocked = blockedReason(account, signIn, ownerOnly)
+    val running = signIn?.operation?.finished == false
+    val enabledTitle = stringResource(R.string.provider_accounts_enabled)
+    AgentPage(account.shownName(), onBack) {
+        ItemGroup {
+            Item(
+                title = account.shownName(),
+                subtitle = account.planNow(signIn),
+                detail = ModeCatalog.providerName(account.type),
+                icon = { AccountIcon(account.type, null, "") },
+                showChevron = false,
+            )
+            Item(
+                title = enabledTitle,
+                showChevron = false,
+                rightElement = {
+                    HappySwitch(account.enabled, onEnabled, Modifier.testTag(ProviderAccountsTags.ENABLED), enabled = !ownerOnly, label = enabledTitle)
+                },
+            )
+        }
+        ItemGroup(title = stringResource(R.string.provider_accounts_login)) {
+            Item(
+                title = stringResource(R.string.provider_accounts_source),
+                subtitle = signIn?.takeIf { credential.source == CredentialSource.Internal }
+                    ?.let { listOfNotNull(it.email, it.plan).joinToString(" · ").ifEmpty { null } },
+                detail = credentialLabel(credential.source),
+                showChevron = false,
+                modifier = Modifier.testTag(ProviderAccountsTags.source(account.id)),
+            )
+            val login = account.login
+            if (account.loginReported) {
+                Item(
+                    stringResource(R.string.provider_accounts_last_refresh),
+                    detail = login?.refreshedAt?.let { ago(it, now) } ?: stringResource(R.string.provider_accounts_never),
+                    showChevron = false,
+                    modifier = Modifier.testTag(ProviderAccountsTags.LAST_REFRESH),
+                )
+                login?.expiresAt?.let {
+                    Item(
+                        stringResource(R.string.provider_accounts_token_expires),
+                        detail = if (it <= now) stringResource(R.string.provider_accounts_token_expired) else stringResource(R.string.provider_accounts_in, until(it, now)),
+                        showChevron = false,
+                        modifier = Modifier.testTag(ProviderAccountsTags.EXPIRES),
+                    )
+                }
+                login?.refreshError?.let { error ->
+                    Item(
+                        stringResource(R.string.provider_accounts_refresh_error),
+                        subtitle = listOfNotNull(error.reason, stringResource(R.string.provider_accounts_since, shortDate(error.since))).joinToString(" · "),
+                        titleColor = if (error.permanent) colors.textDestructive else Color.Unspecified,
+                        showChevron = false,
+                        modifier = Modifier.testTag(ProviderAccountsTags.REFRESH_ERROR),
+                    )
+                }
+            } else {
+                account.checkedAt?.let {
+                    Item(stringResource(R.string.provider_accounts_last_checked_title), detail = ago(it, now), showChevron = false, modifier = Modifier.testTag(ProviderAccountsTags.LAST_CHECKED))
+                }
+            }
+        }
+        ItemGroup(footer = listOfNotNull(blocked, stringResource(R.string.provider_accounts_footer)).joinToString("\n")) {
+            Item(
+                title = stringResource(R.string.provider_accounts_sign_in_again),
+                titleColor = colors.textLink,
+                detail = if (running) stringResource(R.string.provider_accounts_in_progress) else null,
+                showChevron = false,
+                enabled = blocked == null,
+                onClick = onSignIn,
+                modifier = Modifier.testTag(ProviderAccountsTags.signIn(account.id)),
+            )
+            if (credential.acceptsToken) {
+                Item(
+                    title = stringResource(R.string.provider_accounts_update_token),
+                    titleColor = colors.textLink,
+                    showChevron = false,
+                    enabled = !ownerOnly,
+                    onClick = onToken,
+                    modifier = Modifier.testTag(ProviderAccountsTags.token(account.id)),
+                )
             }
         }
     }
@@ -283,10 +532,7 @@ private fun ProviderSignInPage(accounts: ProviderAccounts, nav: NavHostControlle
     val signIn = accounts.signIns.collectAsStateWithLifecycle().value[providerId]
     val cliId = account?.type ?: signIn?.cliId.orEmpty()
     val credential = signIn?.credential ?: account?.credential
-    DisposableEffect(accounts) {
-        val following = accounts.follow()
-        onDispose { following.close() }
-    }
+    Follow(accounts)
     val holder = viewModel { SignInHolder(accounts, providerId) }
     // Never before the account's methods are known: left to itself the agent picks its first, a browser on the computer.
     LaunchedEffect(credential != null) { credential?.let { holder.startOnce(ProviderSignIns.phoneMethod(cliId, it)) } }
@@ -492,10 +738,7 @@ private fun CodeField(value: String, onChange: (String) -> Unit, placeholder: St
 
 @Composable
 private fun ProviderTokenPage(accounts: ProviderAccounts, nav: NavHostController, providerId: String) {
-    DisposableEffect(accounts) {
-        val following = accounts.follow()
-        onDispose { following.close() }
-    }
+    Follow(accounts)
     val loaded = accounts.accounts.collectAsStateWithLifecycle().value as? ProviderAccountsState.Loaded
     val account = loaded?.accounts?.firstOrNull { it.id == providerId }
     val scope = rememberCoroutineScope()

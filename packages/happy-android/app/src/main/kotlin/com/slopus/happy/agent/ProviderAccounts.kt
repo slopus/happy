@@ -29,9 +29,11 @@ sealed interface ProviderAccountsState {
 
 /**
  * One connection's provider accounts and their sign-ins, shared by the
- * accounts page and a sign-in page. The accounts are read while a page
- * follows them ([follow]): at once, on `config.updated` and on every
- * reconnect, each account's sign-in object with them. Every
+ * accounts list, an account's page and a sign-in page. The accounts are
+ * read while a page follows them ([follow]): at once, on `config.updated`
+ * and on every reconnect, each account's sign-in object with them; on
+ * `provider.usage.*` only the accounts (an object asks the vendor's
+ * program, which is too dear to run on every reading). Every
  * `provider_sign_in.updated` and every answer replaces an account's object
  * only with a greater version. A `403 forbidden` is remembered
  * ([ownerOnly]): the agent has no other way to say the person isn't the
@@ -55,17 +57,20 @@ class ProviderAccounts(
 
     private val lock = Any()
     private var followers = 0
-    /** At most one read waits while another runs. */
+    /** At most one read waits while another runs; it reads the objects too if any ask did. */
     private val asked = Channel<Unit>(Channel.CONFLATED)
+    private val objectsAsked = java.util.concurrent.atomic.AtomicBoolean(false)
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             events.collect { event ->
                 ProviderSignIns.updated(event)?.let(::keep)
-                if (ProviderSignIns.changes(event) && following()) refresh()
+                if (!following()) return@collect
+                if (ProviderSignIns.changes(event)) refresh()
+                else if (ProviderSignIns.usageChanges(event)) refresh(objects = false)
             }
         }
-        scope.launch { for (ask in asked) load() }
+        scope.launch { for (ask in asked) load(objectsAsked.getAndSet(false)) }
     }
 
     /** Reads now and on every change until the returned handle is closed. */
@@ -81,7 +86,9 @@ class ProviderAccounts(
         }
     }
 
-    fun refresh() {
+    /** Reads the accounts again, and with [objects] each one's sign-in object. */
+    fun refresh(objects: Boolean = true) {
+        if (objects) objectsAsked.set(true)
         asked.trySend(Unit)
     }
 
@@ -92,7 +99,7 @@ class ProviderAccounts(
         objects.update { held -> if (signIn.newerThan(held[signIn.providerId])) held + (signIn.providerId to signIn) else held }
     }
 
-    private suspend fun load() {
+    private suspend fun load(objects: Boolean) {
         val accounts = try {
             backend.accounts()
         } catch (e: CancellationException) {
@@ -102,6 +109,7 @@ class ProviderAccounts(
             return
         }
         accountsState.value = ProviderAccountsState.Loaded(accounts)
+        if (!objects) return
         // Each object asks the vendor's program which account is in (up to ten seconds): side by side, each kept as it comes.
         coroutineScope {
             accounts.map { account ->
@@ -135,12 +143,82 @@ class ProviderAccounts(
 
     suspend fun saveToken(providerId: String, token: String): ProviderSignIn = write { backend.saveToken(providerId, token) }
 
+    /**
+     * Switches [providerId] on or off: shown at once, then as the agent's
+     * configuration says; a refusal puts it back as it was and is thrown.
+     */
+    suspend fun setEnabled(providerId: String, enabled: Boolean) {
+        fun show(on: Boolean) = accountsState.update { state ->
+            if (state !is ProviderAccountsState.Loaded) state
+            else ProviderAccountsState.Loaded(state.accounts.map { if (it.id == providerId) it.copy(enabled = on) else it })
+        }
+        show(enabled)
+        try {
+            backend.setEnabled(providerId, enabled)
+        } catch (e: Exception) {
+            show(!enabled)
+            if ((e as? ProviderSignInException)?.refusal == ProviderSignInRefusal.Forbidden) ownerOnlyState.value = true
+            throw e
+        } finally {
+            refresh(objects = false)
+        }
+    }
+
     private suspend fun write(action: suspend () -> ProviderSignIn): ProviderSignIn = try {
         action().also(::keep)
     } catch (e: ProviderSignInException) {
         if (e.refusal == ProviderSignInRefusal.Forbidden) ownerOnlyState.value = true
         e.current?.let(::keep)
         throw e
+    }
+}
+
+/** The colour of an account's dot in the list. */
+enum class AccountDot { Grey, Red, Amber, Green }
+
+/** What an account's line in the list says, the first that applies. */
+@Immutable
+sealed interface AccountLine {
+    /** Switched off. */
+    data object Off : AccountLine
+
+    /** Signed out, or a refresh only a new sign-in mends; [since] when that failure began, null when unknown. */
+    data class NeedsSignIn(val since: Long?) : AccountLine
+
+    /** A refresh that failed and will be tried again: the vendor's code, else "HTTP 503", and when it was last tried. */
+    data class RefreshFailed(val reason: String?, val at: Long) : AccountLine
+
+    /** Working, or not known not to: when it was last used and its login last refreshed; [system] for the machine's own login. */
+    data class Healthy(val system: Boolean, val lastUsedAt: Long?, val refreshedAt: Long?) : AccountLine
+
+    /** An older agent, which says nothing of the login: when usage last looked at the account. */
+    data class Checked(val system: Boolean, val checkedAt: Long?) : AccountLine
+}
+
+/**
+ * An account's row in Settings › Provider accounts: its [dot], its [line],
+ * and [expiresAt] only as a warning, when a refresh failed and the login
+ * runs out within a day.
+ */
+@Immutable
+data class AccountStatus(val dot: AccountDot, val line: AccountLine, val expiresAt: Long? = null) {
+    companion object {
+        private const val DAY = 24 * 60 * 60 * 1000L
+
+        /** [account]'s status at [now]; [credential] is its newest (the sign-in object's, where newer than configuration). */
+        fun of(account: ProviderAccount, credential: ProviderCredential, now: Long): AccountStatus {
+            val error = account.login?.refreshError
+            val expiry = account.login?.expiresAt?.takeIf { error != null && it - now <= DAY }
+            val system = credential.source == CredentialSource.System
+            val working = if (account.signIn == "signed_in") AccountDot.Green else AccountDot.Grey
+            return when {
+                !account.enabled -> AccountStatus(AccountDot.Grey, AccountLine.Off)
+                account.signedOut || error?.permanent == true -> AccountStatus(AccountDot.Red, AccountLine.NeedsSignIn(error?.since), expiry)
+                error != null -> AccountStatus(AccountDot.Amber, AccountLine.RefreshFailed(error.reason, error.at), expiry)
+                !account.loginReported -> AccountStatus(working, AccountLine.Checked(system, account.checkedAt))
+                else -> AccountStatus(working, AccountLine.Healthy(system, account.lastUsedAt, account.login?.refreshedAt))
+            }
+        }
     }
 }
 

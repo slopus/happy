@@ -43,9 +43,28 @@ data class ProviderCredential(val source: CredentialSource, val methods: List<St
 }
 
 /**
+ * The last refresh of an account's login that failed (`GET /v0/usage`
+ * `login.refreshError`): the vendor's [status] and [code] where it gave
+ * them, [permanent] when only a new sign-in mends it, failing [since] and
+ * last tried [at].
+ */
+@Immutable
+data class LoginRefreshError(val status: Int?, val code: String?, val permanent: Boolean, val since: Long, val at: Long) {
+    /** What failed, as shown: the vendor's code, else "HTTP 503"; null when neither is known. */
+    val reason: String? get() = code ?: status?.let { "HTTP $it" }
+}
+
+/** How the agent keeps an account's login fresh (`GET /v0/usage` `login`). */
+@Immutable
+data class AccountLogin(val refreshedAt: Long?, val expiresAt: Long?, val refreshError: LoginRefreshError?)
+
+/**
  * One `codex`, `claude` or `grok` account of `GET /v0/config` that can sign
- * in, with [signedOut] from `GET /v0/usage`'s `signIn` (whether its
- * credential works now; `credential` says only where it comes from).
+ * in, with what `GET /v0/usage` says of it: [signIn] (whether its
+ * credential works now; `credential` says only where it comes from), its
+ * plan, when it was last used and how its login is kept. An older agent
+ * reports neither `lastUsedAt` nor `login` ([loginReported] false); then
+ * only the usage reading's [checkedAt] says when it was last looked at.
  */
 @Immutable
 data class ProviderAccount(
@@ -55,8 +74,17 @@ data class ProviderAccount(
     /** The assistant that signs it in: `codex`, `claude` or `grok`. */
     val type: String,
     val credential: ProviderCredential,
-    val signedOut: Boolean = false,
-)
+    val enabled: Boolean = true,
+    /** `signed_in`, `signed_out`, `unknown`, or null where usage doesn't list it. */
+    val signIn: String? = null,
+    val plan: String? = null,
+    val lastUsedAt: Long? = null,
+    val login: AccountLogin? = null,
+    val loginReported: Boolean = false,
+    val checkedAt: Long? = null,
+) {
+    val signedOut: Boolean get() = signIn == "signed_out"
+}
 
 /** The page a sign-in waits on: a device code to enter at [url], or ([acceptsCode]) a page whose code is pasted back. */
 @Immutable
@@ -184,6 +212,9 @@ interface ProviderSignInBackend {
 
     /** A Claude setup token, saved as the account's own credential; never kept here. */
     suspend fun saveToken(providerId: String, token: String): ProviderSignIn
+
+    /** Switches the account on or off (`PATCH /v0/config`), the person's override of the agent's scans. */
+    suspend fun setEnabled(providerId: String, enabled: Boolean)
 }
 
 /**
@@ -211,24 +242,48 @@ object ProviderSignIns {
         else -> null
     }
 
-    /** `GET /v0/config`'s accounts that can sign in, with `GET /v0/usage`'s word on which are signed out. */
+    /** `GET /v0/config`'s accounts that can sign in, with what `GET /v0/usage` says of each. */
     fun accounts(config: JsonObject, usage: JsonObject?): List<ProviderAccount> {
         val root = config["config"].obj ?: config
-        val signedOut = usage?.get("providers").arr.orEmpty().mapNotNull { it.obj }
-            .filter { it["signIn"].str == "signed_out" }.mapNotNull { it["providerId"].str }.toSet()
+        val entries = usage?.get("providers").arr.orEmpty().mapNotNull { it.obj }.associateBy { it["providerId"].str }
         return root["providers"].obj.orEmpty().mapNotNull { (id, value) ->
             val provider = value.obj ?: return@mapNotNull null
             val type = provider["type"].str?.takeIf { it in TYPES } ?: return@mapNotNull null
             val credential = ProviderCredential.parse(provider["credential"].obj) ?: return@mapNotNull null
-            ProviderAccount(id, provider["name"].str?.takeIf(String::isNotBlank), type, credential, id in signedOut)
+            val entry = entries[id]
+            ProviderAccount(
+                id = id,
+                name = provider["name"].str?.takeIf(String::isNotBlank),
+                type = type,
+                credential = credential,
+                enabled = provider["enabled"].bool != false,
+                signIn = entry?.get("signIn").str,
+                plan = entry?.get("usage").obj?.get("planName").str,
+                lastUsedAt = entry?.get("lastUsedAt").num?.toLong(),
+                login = entry?.get("login").obj?.let(::login),
+                loginReported = entry != null && ("login" in entry || "lastUsedAt" in entry),
+                checkedAt = entry?.get("refreshedAt").num?.toLong(),
+            )
         }
     }
+
+    private fun login(json: JsonObject) = AccountLogin(
+        refreshedAt = json["refreshedAt"].num?.toLong(),
+        expiresAt = json["expiresAt"].num?.toLong(),
+        refreshError = json["refreshError"].obj?.let { e ->
+            val since = e["since"].num?.toLong() ?: return@let null
+            LoginRefreshError(e["status"].num?.toInt(), e["code"].str, e["permanent"].bool == true, since, e["at"].num?.toLong() ?: since)
+        },
+    )
 
     /** The object an event carries, where it is a provider sign-in's. */
     fun updated(event: AgentEvent): ProviderSignIn? = if (event.type == UPDATED) ProviderSignIn.parse(event.data) else null
 
-    /** Events after which the accounts may have changed: configuration, and every reconnect. */
+    /** Events after which the accounts and their sign-ins may have changed: configuration, and every reconnect. */
     fun changes(event: AgentEvent): Boolean = event.type == AgentEvent.HELLO || event.type == "config.updated"
+
+    /** Events after which only what usage says of the accounts changed. */
+    fun usageChanges(event: AgentEvent): Boolean = event.type.startsWith("provider.usage.")
 }
 
 /** [ProviderSignInBackend] over an agent connection. */
@@ -265,6 +320,17 @@ class AgentProviderSignIns(private val client: AgentClient) : ProviderSignInBack
         put("token", token)
         put("mutationId", AgentClient.newId())
     })
+
+    override suspend fun setEnabled(providerId: String, enabled: Boolean) {
+        try {
+            client.send("PATCH", "/v0/config", buildJsonObject {
+                put("providers", buildJsonObject { put(providerId, buildJsonObject { put("enabled", enabled) }) })
+                put("mutationId", AgentClient.newId())
+            })
+        } catch (e: AgentApiException) {
+            throw refusal(e) ?: e
+        }
+    }
 
     private suspend fun call(method: String, providerId: String, route: String, body: JsonObject?): ProviderSignIn {
         val answer = try {

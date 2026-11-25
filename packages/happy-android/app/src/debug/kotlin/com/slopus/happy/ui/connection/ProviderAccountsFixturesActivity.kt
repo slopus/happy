@@ -34,8 +34,9 @@ import kotlinx.serialization.Serializable
  * pages, the real client over [ProviderSignInDaemon] (the contract in
  * memory; no vendor is reached). Start it with
  * `adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.connection.ProviderAccountsFixturesActivity`
- * and `--es providerAccounts.scene normal|success|failure|owner|missing`;
- * `--es providerAccounts.signIn codex` opens that account's sign-in, and
+ * and `--es providerAccounts.scene normal|success|failure|owner|missing|states|legacy`;
+ * `--es providerAccounts.account codex` opens that account,
+ * `--es providerAccounts.signIn codex` its sign-in, and
  * `--es providerAccounts.token claude_work` its token page.
  */
 class ProviderAccountsFixturesActivity : ComponentActivity() {
@@ -48,6 +49,7 @@ class ProviderAccountsFixturesActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val daemon = ProviderSignInDaemon(intent.getStringExtra("providerAccounts.scene") ?: "normal", scope)
         val accounts = ProviderAccounts(AgentProviderSignIns(AgentClient(daemon, "fixture")), daemon.events, scope)
+        val account = intent.getStringExtra("providerAccounts.account")
         val signIn = intent.getStringExtra("providerAccounts.signIn")
         val token = intent.getStringExtra("providerAccounts.token")
         setContent {
@@ -70,7 +72,8 @@ class ProviderAccountsFixturesActivity : ComponentActivity() {
                 }
                 LaunchedEffect(Unit) {
                     if (savedInstanceState != null) return@LaunchedEffect
-                    if (signIn != null || token != null) nav.navigate(ProviderAccountsRoute(FIXTURE))
+                    if (account != null || signIn != null || token != null) nav.navigate(ProviderAccountsRoute(FIXTURE))
+                    account?.let { nav.navigate(ProviderAccountRoute(FIXTURE, it)) }
                     signIn?.let { nav.navigate(ProviderSignInRoute(FIXTURE, it)) }
                     token?.let { nav.navigate(ProviderTokenRoute(FIXTURE, it)) }
                 }

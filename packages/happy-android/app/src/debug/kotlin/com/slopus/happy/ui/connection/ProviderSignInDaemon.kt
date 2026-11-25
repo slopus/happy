@@ -31,8 +31,12 @@ import kotlinx.serialization.json.putJsonObject
  * file, signed out). [scene] picks how they answer: `normal` waits on the
  * device code; `success` signs Codex in after 5 s; `failure` lets it expire
  * after 3 s; `owner` refuses every change as a team member's; `missing` has
- * Grok's program missing. Claude's pasted code `fail` fails; any other
- * signs in. A token must start `sk-ant-oat01-`.
+ * Grok's program missing; `states` adds an account for every other line the
+ * list shows (a login that needs signing in again, one whose refresh failed
+ * and runs out soon, one switched off, one whose state is unknown);
+ * `legacy` is an older agent, whose usage says nothing of the login.
+ * Claude's pasted code `fail` fails; any other signs in. A token must start
+ * `sk-ant-oat01-`. `PATCH /v0/config` switches accounts on and off.
  */
 class ProviderSignInDaemon(private val scene: String, private val scope: CoroutineScope) : Transport {
     private class Account(
@@ -45,15 +49,26 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
         val installed: Boolean = true,
         var email: String? = null,
         var plan: String? = null,
-        var signedOut: Boolean = false,
+        var enabled: Boolean = true,
+        var signIn: String? = "signed_in",
+        var lastUsedAt: Long? = null,
+        var refreshedAt: Long? = null,
+        var expiresAt: Long? = null,
+        var refreshError: JsonObject? = null,
         var operation: JsonObject? = null,
         var version: String = "",
     )
 
+    private val started = System.currentTimeMillis()
     private val accounts = listOf(
-        Account("codex", "codex", "Codex", "system", listOf("device", "browser"), acceptsToken = false),
-        Account("claude_work", "claude", "Claude (work)", "internal", listOf("browser"), acceptsToken = true, email = "ada@example.com", plan = "Max"),
-        Account("grok", "grok", "Grok", "configured", listOf("device"), acceptsToken = false, installed = scene != "missing", signedOut = true),
+        Account("codex", "codex", "Codex", "system", listOf("device", "browser"), acceptsToken = false, plan = "Plus", lastUsedAt = ago(4 * MINUTE), refreshedAt = ago(2 * HOUR), expiresAt = ago(-8 * DAY)),
+        Account("claude_work", "claude", "Claude (work)", "internal", listOf("browser"), acceptsToken = true, email = "ada@example.com", plan = "Max", refreshedAt = ago(30 * MINUTE), expiresAt = ago(-7 * HOUR)),
+        Account("grok", "grok", "Grok", "configured", listOf("device"), acceptsToken = false, installed = scene != "missing", signIn = "signed_out"),
+    ) + if (scene != "states") emptyList() else listOf(
+        Account("claude_home", "claude", "Claude (home)", "internal", listOf("browser"), acceptsToken = true, email = "ada@example.com", plan = "Pro", signIn = "signed_out", lastUsedAt = ago(5 * DAY), refreshError = refreshError(400, "invalid_grant", permanent = true, since = ago(5 * DAY), at = ago(20 * MINUTE))),
+        Account("codex_team", "codex", "Codex (team)", "internal", listOf("device", "browser"), acceptsToken = false, email = "ada@example.com", plan = "Team", lastUsedAt = ago(1 * HOUR), refreshedAt = ago(21 * HOUR), expiresAt = ago(-3 * HOUR), refreshError = refreshError(503, null, permanent = false, since = ago(2 * HOUR), at = ago(12 * MINUTE))),
+        Account("grok_side", "grok", "Grok (side)", "internal", listOf("device"), acceptsToken = false, plan = "SuperGrok", signIn = null),
+        Account("claude_old", "claude", "Claude (old)", "configured", listOf("browser"), acceptsToken = true, enabled = false, lastUsedAt = ago(40 * DAY)),
     )
     private var clock = 0L
     private var operations = 0
@@ -71,6 +86,7 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
         synchronized(this) {
             if (method == "GET" && path == "/v0/config") return ok(config())
             if (method == "GET" && path == "/v0/usage") return ok(usage())
+            if (method == "PATCH" && path == "/v0/config") return enable(json)
             val match = ROUTE.matchEntire(path) ?: return error(404, "not_found", "Not found")
             val account = accounts.firstOrNull { it.id == match.groupValues[1] } ?: return error(404, "not_found", "No such account")
             val route = match.groupValues[2]
@@ -115,7 +131,7 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
                         account.source = "internal"
                         account.email = "ada@example.com"
                         account.plan = "Pro"
-                        account.signedOut = false
+                        signedIn(account)
                         finish(account, "succeeded", null)
                     }
                     eventFlow.tryEmit(AgentEvent(null, "config.updated", JsonObject(emptyMap())))
@@ -147,6 +163,7 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
                     account.source = "internal"
                     account.email = "ada@example.com"
                     account.plan = "Max"
+                    signedIn(account)
                     finish(account, "succeeded", null)
                 }
             }
@@ -160,10 +177,40 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
         account.source = "internal"
         account.email = null
         account.plan = null
-        account.signedOut = false
+        signedIn(account)
         bump(account)
         eventFlow.tryEmit(AgentEvent(null, "config.updated", JsonObject(emptyMap())))
         return ok(answer(account))
+    }
+
+    private fun enable(json: JsonObject?): TransportResponse {
+        if (scene == "owner") return error(403, "forbidden", "Only the team owner can change the configuration.")
+        val changes = json?.get("providers") as? JsonObject ?: return error(400, "invalid_request", "Nothing to change.")
+        for ((id, change) in changes) {
+            val account = accounts.firstOrNull { it.id == id } ?: return error(400, "invalid_request", "No such account.")
+            (change as? JsonObject)?.get("enabled")?.jsonPrimitive?.content?.toBooleanStrictOrNull()?.let { account.enabled = it }
+        }
+        eventFlow.tryEmit(AgentEvent(null, "config.updated", JsonObject(emptyMap())))
+        return ok(config())
+    }
+
+    /** A new login of the account's own: working, just refreshed, no error. */
+    private fun signedIn(account: Account) {
+        val now = System.currentTimeMillis()
+        account.signIn = "signed_in"
+        account.refreshedAt = now
+        account.expiresAt = now + 8 * HOUR
+        account.refreshError = null
+    }
+
+    private fun ago(millis: Long) = started - millis
+
+    private fun refreshError(status: Int, code: String?, permanent: Boolean, since: Long, at: Long) = buildJsonObject {
+        put("status", status)
+        put("code", code)
+        put("permanent", permanent)
+        put("since", since)
+        put("at", at)
     }
 
     private fun finish(account: Account, status: String, error: Pair<String, String>?) {
@@ -212,7 +259,7 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
                 for (account in accounts) putJsonObject(account.id) {
                     put("type", account.type)
                     put("name", account.name)
-                    put("enabled", true)
+                    put("enabled", account.enabled)
                     put("models", buildJsonArray {})
                     put("credential", credential(account))
                 }
@@ -230,7 +277,21 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
         put("providers", buildJsonArray {
             for (account in accounts) add(buildJsonObject {
                 put("providerId", account.id)
-                put("signIn", if (account.signedOut) "signed_out" else "signed_in")
+                put("signIn", account.signIn)
+                put("refreshedAt", started - MINUTE)
+                putJsonObject("usage") { put("planName", account.plan) }
+                // An older agent says nothing of the login.
+                if (scene == "legacy") return@buildJsonObject
+                put("lastUsedAt", account.lastUsedAt)
+                if (account.refreshedAt == null && account.refreshError == null) {
+                    put("login", JsonNull)
+                } else {
+                    putJsonObject("login") {
+                        put("refreshedAt", account.refreshedAt)
+                        put("expiresAt", account.expiresAt)
+                        put("refreshError", account.refreshError ?: JsonNull)
+                    }
+                }
             })
         })
     }
@@ -269,5 +330,8 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
     private companion object {
         val ROUTE = Regex("^/v0/providers/([^/]+)(/sign-in|/sign-in/code|/sign-in/cancel|/token)$")
         val UNFINISHED = setOf("running", "waiting")
+        const val MINUTE = 60_000L
+        const val HOUR = 60 * MINUTE
+        const val DAY = 24 * HOUR
     }
 }

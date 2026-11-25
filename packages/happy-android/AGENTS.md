@@ -429,10 +429,18 @@ win:
   page and words) is happy-agent API.md's "Provider sign-in": a row after
   Agents, only on a Happy Agent whose health says
   `capabilities.providerSignIn` (kept per connection, never probed; Happy
-  Cloud keeps its AI providers). One card per `codex`, `claude` and `grok`
-  account of `GET /v0/config` carrying `credential`: where its login comes
-  from (an unknown `source` reads as the config file), its email and plan
-  from the sign-in object, "Signed out" from `GET /v0/usage`; Sign in again,
+  Cloud keeps its AI providers). A minimal list, one row per `codex`,
+  `claude` and `grok` account of `GET /v0/config` carrying `credential`:
+  vendor mark with a status dot, name and plan, chevron, and one line, the
+  first that applies (`AccountStatus`): Off; Needs sign-in, since a date
+  where the error gives one (`signIn == "signed_out"` or a permanent
+  `login.refreshError`); Couldn't
+  refresh (a transient error, with "Login expires in" when under a day);
+  else Used/Not used yet and refreshed, "System login" first for the
+  machine's own. `lastUsedAt` and `login` come from `GET /v0/usage`; an
+  older agent without them gets "Last checked" from usage's `refreshedAt`.
+  A row opens the account: Enabled (`PATCH /v0/config`), then Login (its
+  source, last refresh, token expiry, last refresh error), Sign in again,
   and Update token where `acceptsToken`. A phone signs in with `device`, or
   Claude's `browser` page with its code pasted back; never Codex's or Grok's
   browser, which finishes on the computer. The page started's operation is
@@ -444,9 +452,9 @@ win:
   logged or sent to analytics. Debug builds have
   `ui.connection.ProviderAccountsFixturesActivity`: the real client over
   `ProviderSignInDaemon`, the contract in memory (`--es
-  providerAccounts.scene normal|success|failure|owner|missing`, `--es
-  providerAccounts.signIn codex`, `--es providerAccounts.token
-  claude_work`).
+  providerAccounts.scene normal|success|failure|owner|missing|states|legacy`,
+  `--es providerAccounts.account codex`, `--es providerAccounts.signIn
+  codex`, `--es providerAccounts.token claude_work`).
 - **Agent home search** looks and moves as iOS's
   (`HappyCore/Agents/Search.swift`, `SearchShown.swift`,
   `ui/connection/AgentSearch.kt`) and lists what desktop's ⌘K palette
