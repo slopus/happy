@@ -32,7 +32,7 @@ class PushPermissionPromptTest {
     private val instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
     private val cloud = AgentConnection("cloud", "Acme", addedAt = 1, server = "https://acme.${BuildConfig.HAPPY_CLOUD_BASE}", instanceId = instance, userId = "member-one")
     private val team = AgentConnection("team", "Team", addedAt = 1, server = "https://happy.team.example", instanceId = instance, userId = "member-one", pushRegistrations = true)
-    private val paired = AgentConnection("paired", "Studio", addedAt = 1, instanceId = instance, pushRegistrations = true)
+    private val paired = AgentConnection("paired", "Studio", addedAt = 1, instanceId = instance, pushRegistrations = true, memberRead = true)
 
     @Test fun aPairedDaemonThatKeepsPhonesAsks() {
         assertTrue(asksForPushPermission(paired, happyAccount = false))
@@ -52,6 +52,8 @@ class PushPermissionPromptTest {
     @Test fun aConnectionThatCannotRegisterNeverAsks() {
         assertFalse(asksForPushPermission(paired.copy(revoked = true), happyAccount = false))
         assertFalse(asksForPushPermission(paired.copy(instanceId = null), happyAccount = false))
+        // A pairing whose daemon has not yet said whom it acts for registers nothing, so there is nothing to ask for yet.
+        assertFalse(asksForPushPermission(paired.copy(memberRead = false), happyAccount = false))
         assertFalse(asksForPushPermission(team.copy(signInRequired = true), happyAccount = false))
         assertFalse(asksForPushPermission(team.copy(userId = null), happyAccount = false))
     }

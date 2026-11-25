@@ -105,6 +105,7 @@ class AgentSessionTest {
         val known = connections.accounts.value.single()
         assertEquals("k3x9q2m7p0a4b8c1d5e6f7g2", known.instanceId)
         assertEquals(Wire.USER, known.userId)
+        assertTrue("its daemon said whom it acts for", known.memberRead)
         assertFalse(known.signInRequired)
     }
 
@@ -116,6 +117,20 @@ class AgentSessionTest {
         agent.frames.send(Wire.hello("c0"))
         eventually({ connections.accounts.value.single() }) { it.pushRegistrations }
         assertNull(connections.accounts.value.single().userId)
+        assertTrue("a standalone daemon says so: no member", connections.accounts.value.single().memberRead)
+    }
+
+    /** An older daemon's bootstrap has no `profile.userId` at all: nothing was said, so the pairing still has no member. */
+    @Test
+    fun aPairingWhoseDaemonDoesNotSayWhomItActsForStaysUnread() = runBlocking {
+        assertFalse(connections.accounts.value.single().memberRead)
+        agent.bootstrap = agent.bootstrap.with("health", pushingHealth()).with("profile", buildJsonObject { put("name", "Someone") })
+        sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ connections.accounts.value.single() }) { it.pushRegistrations }
+        val known = connections.accounts.value.single()
+        assertFalse(known.memberRead)
+        assertNull(com.slopus.happy.push.cloudPushAccount(known))
     }
 
     /**

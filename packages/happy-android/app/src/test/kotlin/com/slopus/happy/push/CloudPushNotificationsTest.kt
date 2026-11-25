@@ -33,7 +33,7 @@ class CloudPushNotificationsTest {
     private val account = AgentConnection("connection-one", "Team", addedAt = 1, server = "https://qa.${BuildConfig.HAPPY_CLOUD_BASE}", instanceId = notice.instanceId, userId = notice.userId)
     private val push get() = RemotePush("Exact agent title", "Exact agent body", notice.json(), "messages", "provider-message-id")
     /** A local daemon this phone is paired with, and a push as that daemon sends one: for `standalone`, a title and no second line. */
-    private val paired = AgentConnection("connection-paired", "Studio", addedAt = 2, instanceId = "k3x9q2m7p0a4b8c1d5e6f7g2", pushRegistrations = true)
+    private val paired = AgentConnection("connection-paired", "Studio", addedAt = 2, instanceId = "k3x9q2m7p0a4b8c1d5e6f7g2", pushRegistrations = true, memberRead = true)
     private val local = CloudPushNotification("k3x9q2m7p0a4b8c1d5e6f7g2", "standalone", "agent-local", "notification-local")
     private val localPush get() = RemotePush("Scratch volume down to 16 GB free", null, local.json(), "messages", "provider-message-id")
 
@@ -108,6 +108,41 @@ class CloudPushNotificationsTest {
         assertNull(cloudPushConnection(listOf(paired), "iother89pp9j4f4edhsw7rpz", "standalone"))
         assertNull(cloudPushConnection(listOf(paired.copy(instanceId = null)), local.instanceId, "standalone"))
         assertNull(cloudPushConnection(listOf(paired.copy(revoked = true)), local.instanceId, "standalone"))
+    }
+
+    @Test fun aPairingWhoseDaemonHasNotSaidWhomItActsForMatchesNothing() {
+        val unread = paired.copy(memberRead = false)
+        assertNull(cloudPushConnection(listOf(unread), local.instanceId, "standalone"))
+        assertNull(cloudPushConnection(listOf(unread.copy(userId = "member-two")), local.instanceId, "member-two"))
+        assertNull(cloudPushConnection(listOf(unread.copy(userId = "member-two")), local.instanceId, "standalone"))
+    }
+
+    /** Neither is Happy Cloud, so no tie-break parts them: a sign-in whose server calls its user `standalone` is still not the pairing's person. */
+    @Test fun aSignInNamedStandaloneNeverTakesAPairingsPush() {
+        val claimant = account.copy(id = "claimant", server = "https://elsewhere.example", instanceId = local.instanceId, userId = "standalone")
+        assertEquals(paired, cloudPushConnection(listOf(claimant, paired), local.instanceId, "standalone", open = claimant.id))
+        assertNull(cloudPushConnection(listOf(claimant), local.instanceId, "standalone", open = claimant.id))
+    }
+
+    /**
+     * With no host check, another server can claim a Happy Cloud server's
+     * installation and member. Among connections that match, Happy Cloud's
+     * wins over any that is not; only then the open one; then the first.
+     * (The first two cases are the verifier's probes.)
+     */
+    @Test fun amongMatchesHappyCloudWinsThenTheOpenOneThenTheFirst() {
+        val claimant = account.copy(id = "claimant", addedAt = 0, server = "https://elsewhere.example")
+        assertEquals(account.id, cloudPushConnection(listOf(claimant, account), notice.instanceId, notice.userId, open = claimant.id)?.id)
+        assertEquals(account.id, cloudPushConnection(listOf(claimant, account), notice.instanceId, notice.userId)?.id)
+        assertEquals(account.id, cloudPushConnection(listOf(account), notice.instanceId, notice.userId)?.id)
+        // Two Happy Cloud connections that both match: the open one, else the first.
+        val second = account.copy(id = "connection-two", server = "https://other.${BuildConfig.HAPPY_CLOUD_BASE}")
+        assertEquals(second.id, cloudPushConnection(listOf(claimant, account, second), notice.instanceId, notice.userId, open = second.id)?.id)
+        assertEquals(account.id, cloudPushConnection(listOf(claimant, account, second), notice.instanceId, notice.userId, open = claimant.id)?.id)
+        // None is Happy Cloud: the open one, else the first, as before.
+        val other = claimant.copy(id = "other", server = "https://third.example")
+        assertEquals(other.id, cloudPushConnection(listOf(claimant, other), notice.instanceId, notice.userId, open = other.id)?.id)
+        assertEquals(claimant.id, cloudPushConnection(listOf(claimant, other), notice.instanceId, notice.userId)?.id)
     }
 
     @Test fun aMemberPushNeverOpensOnAStandalonePairingOrAnotherMembers() {

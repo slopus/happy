@@ -5,6 +5,8 @@ import androidx.core.app.NotificationManagerCompat
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.connection.Transport
+import com.slopus.happy.connection.agentTransport
 import com.slopus.happy.connection.networkPath
 import com.slopus.happy.connection.returns
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +23,12 @@ import okhttp3.OkHttpClient
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-/** App wiring only. Relay capabilities live in memory; the ledger contains encrypted identifiers, not credentials. */
+/**
+ * App wiring only. Relay capabilities live in memory; the ledger contains
+ * encrypted identifiers, and beside a forgotten pairing's undelivered
+ * farewell that pairing's own route to its daemon (and, where it has to
+ * register once more first, the relay capability), until it is delivered.
+ */
 class CloudPushRuntime(
     private val context: Context,
     private val connections: AgentConnections,
@@ -31,6 +38,7 @@ class CloudPushRuntime(
     store: ExpoSecureStore,
     /** This installation's id, shared with the environment reports ([com.slopus.happy.agent.UserEnvironmentRuntime]). */
     private val installation: InstallationId = InstallationId(context),
+    private val makeTransport: (CloudPushFarewellRoute) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
 ) {
     private val accounts = connections.accounts.map { it.mapNotNull(::cloudPushAccount) }
         .stateIn(scope, SharingStarted.Eagerly, connections.accounts.value.mapNotNull(::cloudPushAccount))
@@ -48,7 +56,18 @@ class CloudPushRuntime(
         notificationsAllowed = { NotificationManagerCompat.from(context).areNotificationsEnabled() },
         appId = context.packageName, locale = ::locale,
         registered = { registeredOn.tryEmit(it.connectionId) },
+        farewell = ::farewell,
     )
+
+    /**
+     * A way to a forgotten pairing's daemon, made for one farewell from what
+     * the pairing kept ([route]): the phone forgot the daemon, the daemon
+     * still knows the phone's device token until the phone is removed there.
+     */
+    private fun farewell(route: CloudPushFarewellRoute): CloudPushFarewellLink {
+        val transport = makeTransport(route)
+        return CloudPushFarewellLink(CloudPushApi(AgentClient(transport, route.deviceToken))) { transport.close() }
+    }
 
     private fun api(account: CloudPushAccount): CloudPushApi? =
         if (connections.accounts.value.none { cloudPushAccount(it) == account }) null else client(account.connectionId)?.let(::CloudPushApi)
@@ -61,13 +80,27 @@ class CloudPushRuntime(
         sync.refresh(native = true)
     }
 
-    /** Online disconnect must run this before Accounts revokes the credential. Offline failures remain queued. */
+    /**
+     * Online disconnect must run this before Accounts revokes the credential
+     * or forgets the pairing. A farewell that isn't answered in time stays
+     * queued: a sign-in's until the same member signs in again, a pairing's
+     * with its own route, asked again until its daemon answers.
+     */
     suspend fun beforeRemoval(connectionId: String) = withContext(Dispatchers.IO) {
-        val account = connections.accounts.value.firstOrNull { it.id == connectionId }?.let(::cloudPushAccount) ?: return@withContext
-        try { withTimeoutOrNull(3_000) { registrations.remove(account, api(account)) } }
+        val connection = connections.accounts.value.firstOrNull { it.id == connectionId } ?: return@withContext
+        try {
+            val route = if (connection.server != null) null else connections.credentials(connectionId)?.takeIf { it.oauth == null }?.let {
+                CloudPushFarewellRoute(it.address, it.port, it.deviceToken, it.publicUrl, it.tailcatAvailable)
+            }
+            registrations.leaving(connectionId, route)
+            val account = cloudPushAccount(connection) ?: return@withContext
+            // What it would register with now, should the last registration have gone unanswered: what is at hand, or soon is.
+            withTimeoutOrNull(3_000) { registrations.remove(account, api(account)) { withTimeoutOrNull(1_500) { sync.renewal() } } }
+        }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (_: Exception) { /* Push storage failure must not prevent signing out. */ }
         // Registry reconciliation also retires bindings that were still waiting for their lock when time ran out.
+        finally { sync.retire() }
     }
 
     private fun locale() = Locale.getDefault().toLanguageTag().take(64)

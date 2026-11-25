@@ -1076,8 +1076,13 @@ class AgentSession internal constructor(
         if (known != null) {
             val hasNode = bootstrap.config?.get("node") is JsonObject
             // A pairing acts for whoever its daemon says, a team's member or (standalone) nobody; a sign-in for who signed in.
+            // Said only by a `profile.userId` that is there, a member or null: an older daemon's bootstrap has none, and says nothing.
+            val said = bootstrap.profile?.containsKey("userId") == true
             val member = bootstrap.profile?.string("userId")
-            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = if (hasNode) info.thumbhash else it.thumbhash, revoked = false, instanceId = info.instanceId ?: it.instanceId, userId = if (it.server == null) member else it.userId, daemonVersion = info.daemonVersion ?: it.daemonVersion, protocol = info.protocol ?: it.protocol, pushRegistrations = info.pushRegistrations ?: it.pushRegistrations) }
+            connections.update(connectionId, info.avatar) {
+                val pairing = it.server == null && said
+                it.copy(name = info.name, thumbhash = if (hasNode) info.thumbhash else it.thumbhash, revoked = false, instanceId = info.instanceId ?: it.instanceId, userId = if (pairing) member else it.userId, memberRead = it.memberRead || pairing, daemonVersion = info.daemonVersion ?: it.daemonVersion, protocol = info.protocol ?: it.protocol, pushRegistrations = info.pushRegistrations ?: it.pushRegistrations)
+            }
         }
     }
 

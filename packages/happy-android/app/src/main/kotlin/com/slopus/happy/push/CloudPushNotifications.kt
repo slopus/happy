@@ -8,6 +8,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.connection.AgentConnection
 import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.connection.HappyCloud
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -54,10 +55,17 @@ data class CloudPushNotification(val instanceId: String, val userId: String, val
     }
 }
 
-/** A push never chooses another login merely because it shares the server or is currently open. */
+/**
+ * A push never chooses another login merely because it shares the server or
+ * is currently open: the installation and the member both have to be the
+ * connection's. A server says its own installation id, so another can claim
+ * a Happy Cloud server's: among connections that match, Happy Cloud's win
+ * over any that is not, then the open one, then the first (iOS's rule too).
+ */
 fun cloudPushConnection(accounts: List<AgentConnection>, instanceId: String, userId: String, open: String? = null): AgentConnection? {
     val matching = accounts.filter { it.takesPushes && it.instanceId == instanceId && it.pushMember == userId }
-    return matching.firstOrNull { it.id == open } ?: matching.firstOrNull()
+    val candidates = matching.filter { HappyCloud.isServer(it.server) }.ifEmpty { matching }
+    return candidates.firstOrNull { it.id == open } ?: candidates.firstOrNull()
 }
 
 const val EXTRA_PUSH_CLOUD = "com.slopus.happy.push.cloud"

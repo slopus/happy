@@ -51,6 +51,12 @@ data class AgentConnection(
     val protocol: Int? = null,
     /** Health's `capabilities.pushRegistrations` when last read: the server keeps phones to notify (`/v0/cloud/push`). */
     val pushRegistrations: Boolean = false,
+    /**
+     * A pairing's daemon has said whom it acts for: a bootstrap was read
+     * whose `profile.userId` was there, a member or null ([userId]). Until
+     * then a pairing has no member at all, and takes no part in push.
+     */
+    val memberRead: Boolean = false,
 ) {
     /**
      * A team server's session ended (not just a name owed): the phone shows
@@ -194,6 +200,7 @@ class AgentConnections(
                     daemonVersion = agent?.daemonVersion ?: previous?.daemonVersion,
                     protocol = agent?.protocol ?: previous?.protocol,
                     pushRegistrations = agent?.pushRegistrations ?: previous?.pushRegistrations ?: false,
+                    memberRead = previous?.memberRead ?: false,
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
