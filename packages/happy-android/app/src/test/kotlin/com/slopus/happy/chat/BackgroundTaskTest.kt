@@ -375,4 +375,82 @@ class BackgroundTaskTest {
         val updated = state.backgroundTasks.single()
         assertEquals(BackgroundTaskStatus.Completed, updated.status)
     }
+
+    @Test
+    fun `two tasks with one command are ended each by its own tool use id`() {
+        val state = ReducerState()
+        val command = "until grep -q DONE /tmp/and-build-status 2>/dev/null; do sleep 10; done; cat /tmp/and-build-status"
+        val summary = "Background command \"$command\" completed (exit code 0)"
+        // No result text ever names either task's id: the CLI's tool-call-end carries none.
+        state.reduce(startCall(callId = "call-1", at = 100, input = """{"command":"$command","run_in_background":true}"""))
+        state.reduce(startCall(callId = "call-2", at = 110, input = """{"command":"$command","run_in_background":true}"""))
+        assertEquals(2, state.backgroundTasks.count { it.isRunning })
+
+        state.reduce(normalized("n1", 200, notification(
+            "completed", summary, id = "bl81y653t", extra = "<tool-use-id>call-1</tool-use-id>",
+        )))
+        state.reduce(normalized("n2", 210, notification(
+            "completed", summary, id = "bl81y653u", extra = "<tool-use-id>call-2</tool-use-id>",
+        )))
+
+        assertEquals(2, state.backgroundTasks.size)
+        assertEquals(0, state.backgroundTasks.count { it.isRunning })
+        val first = state.backgroundTasks.first { it.id == "call:call-1" }
+        val second = state.backgroundTasks.first { it.id == "call:call-2" }
+        assertEquals(BackgroundTaskStatus.Completed, first.status)
+        assertEquals(BackgroundTaskStatus.Completed, second.status)
+        assertEquals(200L, first.finishedAt)
+        assertEquals(210L, second.finishedAt)
+        assertEquals("bl81y653t", first.taskId)
+        assertEquals("bl81y653u", second.taskId)
+    }
+
+    @Test
+    fun `an escaped summary still joins its task by the quoted title`() {
+        val state = ReducerState()
+        val watched = "until grep -q DONE /tmp/and-build-status 2>/dev/null; do sleep 10; done"
+        state.reduce(startCall(callId = "call-1", at = 100, input = """{"command":"sleep 600","run_in_background":true}"""))
+        state.reduce(startCall(callId = "call-2", at = 110, input = """{"command":"$watched","run_in_background":true}"""))
+
+        // No tool-use-id and no task-id: only the quoted, escaped command can join it.
+        state.reduce(normalized("n", 200, notificationText(
+            "<status>completed</status>",
+            "<summary>Background command \"until grep -q DONE /tmp/and-build-status 2&gt;/dev/null; do sleep 10; done\" completed (exit code 0)</summary>",
+        )))
+
+        assertEquals(BackgroundTaskStatus.Completed, state.backgroundTasks.first { it.id == "call:call-2" }.status)
+        assertTrue(state.backgroundTasks.first { it.id == "call:call-1" }.isRunning)
+        assertEquals(2, state.backgroundTasks.size)
+    }
+
+    @Test
+    fun `a notification for an already ended task adds no row`() {
+        val state = ReducerState()
+        state.reduce(startCall(callId = "call-1", at = 100))
+        state.reduce(normalized("n1", 200, notification(
+            "completed", "Background command \"Build the app\" completed", id = "b1", extra = "<tool-use-id>call-1</tool-use-id>",
+        )))
+        // Another envelope naming the same call must not make a second, finished task.
+        state.reduce(normalized("n2", 210, notification(
+            "completed", "Background command \"Build the app\" completed", id = "b2", extra = "<tool-use-id>call-1</tool-use-id>",
+        )))
+
+        assertEquals(1, state.backgroundTasks.size)
+        val task = state.backgroundTasks.single()
+        assertEquals("call:call-1", task.id)
+        assertEquals(200L, task.finishedAt)
+    }
+
+    @Test
+    fun `parse keeps the tool use id and decodes xml entities`() {
+        val text = notificationText(
+            "<task-id>bl81y653t</task-id>",
+            "<tool-use-id>toolu_bdrk_01Pmx6aokGBJLQr7yhRvv48n</tool-use-id>",
+            "<status>completed</status>",
+            "<summary>Background command \"a &lt;b&gt; &amp;&amp; c &#39;d&#39; &apos;e&apos; 2&gt;/dev/null\" completed</summary>",
+        )
+        val parsed = takeLeadingTaskNotifications(text).first.single()
+        assertEquals("toolu_bdrk_01Pmx6aokGBJLQr7yhRvv48n", parsed.toolUseId)
+        assertEquals("Background command \"a <b> && c 'd' 'e' 2>/dev/null\" completed", parsed.summary)
+    }
 }

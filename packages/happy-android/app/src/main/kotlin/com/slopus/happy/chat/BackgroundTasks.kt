@@ -41,9 +41,9 @@ enum class BackgroundTaskStatus {
  * One background task of a session, as far as the protocol carries it. A task
  * started with `run_in_background` has its command and description from the
  * tool call; its id, status and summary come from the notification that ends
- * it, matched by the quoted description in that notification's summary. A task
- * only ever seen by its notification (a session opened after it started) has
- * no [startedAt] and no [command].
+ * it, matched by the tool use id the notification names, else by the quoted
+ * description in its summary. A task only ever seen by its notification (a
+ * session opened after it started) has no [startedAt] and no [command].
  */
 @Immutable
 data class BackgroundTask(
@@ -73,10 +73,14 @@ data class BackgroundTask(
  * conversation when a background task ends (happy-wire controlMessages.ts).
  * The fields are optional because the producer writes fewer of them for some
  * kinds (a command has no `<result>`, a subagent has no `<output-file>`).
+ * Field values are XML-escaped in the envelope (a command's `2>/dev/null`
+ * arrives as `2&gt;/dev/null`) and are kept decoded.
  */
 @Immutable
 data class BackgroundTaskNotification(
     val taskId: String? = null,
+    /** The `<tool-use-id>` of the call that started the task; the CLI sends it for every kind. */
+    val toolUseId: String? = null,
     val rawStatus: String? = null,
     val summary: String? = null,
     val result: String? = null,
@@ -91,13 +95,16 @@ data class BackgroundTaskNotification(
         get() = summary?.let { QUOTED.find(it) }?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
 
     companion object {
-        private val TAGS = listOf("task-id", "status", "summary", "result", "output-file", "subagent_tokens", "tool_uses")
+        private val TAGS = listOf(
+            "task-id", "tool-use-id", "status", "summary", "result", "output-file", "subagent_tokens", "tool_uses",
+        )
 
         /** One envelope's body (the tags between `<task-notification>` and its close). */
         fun parse(body: String): BackgroundTaskNotification? {
-            val fields = TAGS.associateWith { tag -> text(body, tag) }
+            val fields = TAGS.associateWith { tag -> text(body, tag)?.let(::decode) }
             val notification = BackgroundTaskNotification(
                 taskId = fields["task-id"],
+                toolUseId = fields["tool-use-id"],
                 rawStatus = fields["status"],
                 summary = fields["summary"],
                 result = fields["result"],
@@ -115,6 +122,15 @@ data class BackgroundTaskNotification(
             val match = Regex("<$tag>(.*?)</$tag>", RegexOption.DOT_MATCHES_ALL).find(body) ?: return null
             return match.groupValues[1].trim().takeIf { it.isNotEmpty() }
         }
+
+        /** The XML entities Claude Code escapes field values with; `&amp;` last, so none is decoded twice. */
+        private fun decode(text: String): String = text
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&")
     }
 }
 
@@ -161,10 +177,12 @@ private fun leadingTaskNotificationEnd(text: String): Int? {
 /**
  * The tasks of one session, kept as the reducer folds its records: a tool call
  * that asked to run in the background starts one, a task notification ends it.
- * A notification is joined to its call by the description its summary quotes;
- * when nothing quotes it and one task alone is still running, that one is taken
- * as its end. Feed records in order ([start] before [notify] for the same
- * record batch).
+ * A notification is joined to its call by the tool use id it names (the CLI's
+ * `tool-call-end` carries no result text, so its task id is never learned from
+ * the result); failing that, by the description its summary quotes; and when
+ * nothing quotes it and one task alone is still running, that one is taken as
+ * its end. Feed records in order ([start] before [notify] for the same record
+ * batch).
  */
 internal class BackgroundTaskTracker {
     private val tasks = LinkedHashMap<String, BackgroundTask>()
@@ -240,8 +258,23 @@ internal class BackgroundTaskTracker {
     fun notify(notification: BackgroundTaskNotification, at: Long) {
         val taskId = notification.taskId
         if (taskId != null) {
-            keyByTaskId[taskId]?.let { key -> tasks[key]?.let { tasks[key] = it.ended(notification, at) } ; return }
-        } else {
+            val known = keyByTaskId[taskId]
+            if (known != null) {
+                end(known, notification, at)
+                return
+            }
+        }
+        // The call that started the task names it exactly, even when no result
+        // carried Claude Code's task id and another task has the same command.
+        // A task already in the map, ended or not, is the one this ends: a
+        // repeat never adds a second row.
+        val callKey = notification.toolUseId?.let { "call:$it" }
+        if (callKey != null && callKey in tasks) {
+            end(callKey, notification, at)
+            if (taskId != null) keyByTaskId[taskId] = callKey
+            return
+        }
+        if (taskId == null) {
             val fingerprint = "${notification.rawStatus}|${notification.summary}|${notification.result}"
             if (!anonymous.add(fingerprint)) return
         }
@@ -255,6 +288,13 @@ internal class BackgroundTaskTracker {
         }
         tasks[key] = tasks.getValue(key).ended(notification, at)
         if (taskId != null) keyByTaskId[taskId] = key
+    }
+
+    /** Ends the task at [key] with [notification]; one that already finished keeps how it ended. */
+    private fun end(key: String, notification: BackgroundTaskNotification, at: Long) {
+        val task = tasks[key] ?: return
+        if (!task.isRunning) return
+        tasks[key] = task.ended(notification, at)
     }
 
     private fun fromNotification(notification: BackgroundTaskNotification, at: Long): BackgroundTask {
