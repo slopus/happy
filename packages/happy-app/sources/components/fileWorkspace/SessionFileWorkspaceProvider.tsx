@@ -75,6 +75,13 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, binding, children
     const [maximized, setMaximized] = React.useState(false);
     const [openRequestId, setOpenRequestId] = React.useState(0);
     const [locationRequest, setLocationRequest] = React.useState<FileWorkspaceContextValue['locationRequest']>();
+    const [motionRequest, setMotionRequest] = React.useState<FileWorkspaceContextValue['motionRequest']>();
+    const leaveGuard = React.useRef<(() => Promise<boolean>) | null>(null);
+    const registerMotionLeaveGuard = React.useCallback((guard: () => Promise<boolean>) => {
+        leaveGuard.current = guard;
+        return () => { if (leaveGuard.current === guard) leaveGuard.current = null; };
+    }, []);
+    const prepareLeave = React.useCallback(() => leaveGuard.current?.() ?? Promise.resolve(true), []);
     const restored = React.useRef(false);
     const restoration = React.useMemo(() => {
         let finish!: () => void;
@@ -180,5 +187,13 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, binding, children
         setOpenRequestId(value => value + 1);
         try { await controller.open(resolved.absolutePath); } catch (error) { Modal.alert(t('fileWorkspace.title'), error instanceof Error && error.message === 'FILE_WORKSPACE_TAB_LIMIT' ? t('fileWorkspace.tooManyTabs') : String(error)); }
     }, [controller, enabled, root, sessionId, restoration, binding]);
-    return <FileWorkspaceContext.Provider value={{ sessionId, readOnly: binding?.readOnly, readBytes: binding?.readBytes, openRequestId, locationRequest, versions, versionSnapshot, restoreVersion, draftCacheError: draftCacheError || referenceCacheError, enabled, root, controller, snapshot, reference, setReference, openReference, chatWidth, chatWidthCustomized, setChatWidth, maximized, setMaximized }}>{children}</FileWorkspaceContext.Provider>;
+    const openMotionProject = React.useCallback(async (projectPath: string) => {
+        if (!sessionId || binding?.readOnly) return;
+        const resolved = resolveSessionFilePath(projectPath.replace(/\/$/, '') + '/mh.json', root);
+        if (!resolved?.withinSessionRoot) throw new Error(t('fileWorkspace.rootUnavailable'));
+        await openReference(resolved.absolutePath);
+        if (!lifetime.current || transportSession.current !== sessionId || !accountRuntimeCurrent() || controller.getSnapshot().active !== resolved.absolutePath) return;
+        setMotionRequest(value => ({ id: (value?.id ?? 0) + 1, sessionId, path: resolved.absolutePath }));
+    }, [sessionId, binding?.readOnly, root, openReference, controller]);
+    return <FileWorkspaceContext.Provider value={{ sessionId, readOnly: binding?.readOnly, readBytes: binding?.readBytes, openRequestId, locationRequest, motionRequest, openMotionProject, registerMotionLeaveGuard, prepareLeave, versions, versionSnapshot, restoreVersion, draftCacheError: draftCacheError || referenceCacheError, enabled, root, controller, snapshot, reference, setReference, openReference, chatWidth, chatWidthCustomized, setChatWidth, maximized, setMaximized }}>{children}</FileWorkspaceContext.Provider>;
 }

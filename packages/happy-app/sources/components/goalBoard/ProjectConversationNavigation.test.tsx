@@ -13,6 +13,7 @@ const mock = vi.hoisted(() => ({
     deletionListeners: new Set<() => void>(),
     expansion: {} as Record<string, boolean>, expansionListeners: new Set<() => void>(),
     blur: undefined as (() => void) | undefined, canCreate: true, readOnly: false, maximized: false, width: 1600,
+    prepareLeave: vi.fn(async () => true), workspaceSessionId: 'global', workspaceController: {},
 }));
 vi.mock('expo-router', async () => {
     const React = await import('react');
@@ -56,7 +57,8 @@ vi.mock('@/sync/projectGoals', () => ({
 vi.mock('./GoalBoardButton', () => ({ GoalBoardButton: 'Button' }));
 vi.mock('@/components/fileWorkspace/WorkspaceButton', () => ({ WorkspaceButton: (props: any) => React.createElement('Button', props, props.compact ? null : props.label) }));
 vi.mock('@/components/fileWorkspace/WorkspaceTreeRow', () => ({ WorkspaceTreeRow: (props: any) => React.createElement('tree-row', props, props.title, props.badge, props.trailing) }));
-vi.mock('@/components/fileWorkspace/context',()=>({useFileWorkspace:()=>({setMaximized:(value:boolean)=>{mock.maximized=value;}})}));
+vi.mock('@/components/fileWorkspace/context',()=>({useFileWorkspace:()=>({setMaximized:(value:boolean)=>{mock.maximized=value;},prepareLeave:mock.prepareLeave,sessionId:mock.workspaceSessionId,root:'/projects/paws',controller:mock.workspaceController})}));
+vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('@/components/PanelTabs', () => ({ PanelTabs: 'PanelTabs' }));
 
 import { projectGoalRequest } from '@/sync/projectGoals';
@@ -138,7 +140,7 @@ beforeEach(() => {
     mock.owner = { key: 'account', generation: String(++generation), serverUrl: 'https://example.test', scope: 'test' };
     mock.sessions = {}; mock.unread = new Set(); mock.connected = true; mock.deleted.clear();
     mock.deletionRevision = 0; mock.deletionListeners.clear(); mock.blur = undefined;
-    mock.canCreate = true; mock.readOnly = false; mock.maximized = false; mock.width=1600;
+    mock.canCreate = true; mock.readOnly = false; mock.maximized = false; mock.width=1600; mock.prepareLeave.mockResolvedValue(true); mock.workspaceSessionId='global'; mock.workspaceController={};
     mock.expansion = rememberedScopes(); mock.expansionListeners.clear();
     currentProps = { project, machineId: 'machine', agent: 'codex', offline: false, selectedId: 'global', onSelect: select };
     vi.mocked(projectGoalRequest).mockResolvedValue(response());
@@ -329,7 +331,7 @@ describe('project conversation navigation integration', () => {
         await loadHistory();
         const pending = deferred<any>(); vi.mocked(machineStartGoalAuthor).mockReturnValue(pending.promise);
         const create = button(`project-conversations-new-${mobilePath}`).props.onPress;
-        act(() => { create(); create(); });
+        await act(async () => { create(); create(); });
         expect(machineStartGoalAuthor).toHaveBeenCalledTimes(1);
         expect(machineStartGoalAuthor).toHaveBeenCalledWith('machine', {
             scopePath: mobilePath, requestId: expect.stringMatching(/^goal-navigation-/), agent: 'codex',
@@ -344,7 +346,7 @@ describe('project conversation navigation integration', () => {
     it('queues refresh during creation and does not double count the returned new session', async () => {
         await loadHistory();
         const pending = deferred<any>(); vi.mocked(machineStartGoalAuthor).mockReturnValue(pending.promise);
-        act(() => { button(`project-conversations-new-${mobilePath}`).props.onPress(); });
+        await act(async () => { button(`project-conversations-new-${mobilePath}`).props.onPress(); });
         vi.mocked(projectGoalRequest).mockResolvedValue(response(groups().map(group => group.scopePath === mobilePath
             ? { ...group, total: 1, sessions: [history('new-mobile', mobilePath)] } : group)));
         await press('project-conversations-refresh');
@@ -357,7 +359,7 @@ describe('project conversation navigation integration', () => {
     it.each(['selection', 'blur', 'unmount', 'account'] as const)('does not navigate from a late creation after %s changes', async reason => {
         await loadHistory();
         const pending = deferred<any>(); vi.mocked(machineStartGoalAuthor).mockReturnValue(pending.promise);
-        act(() => { button(`project-conversations-new-${mobilePath}`).props.onPress(); });
+        await act(async () => { button(`project-conversations-new-${mobilePath}`).props.onPress(); });
         expect(machineStartGoalAuthor).toHaveBeenCalledTimes(1);
         if (reason === 'selection') await loadHistory({ selectedId: 'another-chat' });
         else if (reason === 'blur') act(() => { mock.blur?.(); });
@@ -450,7 +452,7 @@ describe('project conversation navigation integration', () => {
         await loadHistory();
         const tabs = () => renderer.root.findByType('PanelTabs');
         expect(tabs().props.activeTab).toBe('sessions');
-        expect(tabs().props.tabs.map((tab: any) => tab.key)).toEqual(['sessions', 'details', 'files']);
+        expect(tabs().props.tabs.map((tab: any) => tab.key)).toEqual(['sessions', 'details', 'artifacts', 'files']);
         await act(async () => { tabs().props.onTabChange('details'); });
         expect(tabs().props.activeTab).toBe('details');
         expect(allText()).toContain('Original details'); expect(allText()).toContain('Original footer');
@@ -674,4 +676,56 @@ it('does not increment a snapshot-counted ID when its creation callback arrives 
  expect(button('project-conversations-filter-all').props.label).toBe('全部 34');
  expect(button('project-conversations-session-counted-not-loaded')).toBeDefined();
  expect(select).toHaveBeenCalledExactlyOnceWith({scopePath:mobilePath,sessionId:'counted-not-loaded'});
+});
+
+
+describe('native editor protection in the actual project navigation controls', () => {
+    it('keeps the current conversation when a real session row cannot leave its unfinished editor input', async () => {
+        mock.sessions = { other: live('other') };
+        await setup();
+        const pending = deferred<boolean>();
+        mock.prepareLeave.mockReturnValueOnce(pending.promise);
+        await press('project-conversations-session-other');
+        expect(mock.prepareLeave).toHaveBeenCalledOnce();
+        expect(select).not.toHaveBeenCalled();
+        await act(async () => { pending.resolve(false); });
+        expect(select).not.toHaveBeenCalled();
+        expect(machineStartGoalAuthor).not.toHaveBeenCalled();
+        expect(onTab).not.toHaveBeenCalled();
+        await press('project-conversations-session-other');
+        expect(select).toHaveBeenCalledExactlyOnceWith({ scopePath: webPath, taskId: undefined, sessionId: 'other' });
+    });
+    it('does not create or select another project conversation when the editor refuses the trailing new action', async () => {
+        await setup();
+        mock.prepareLeave.mockResolvedValueOnce(false);
+        await press(`project-conversations-new-${mobilePath}`);
+        expect(mock.prepareLeave).toHaveBeenCalledOnce();
+        expect(machineStartGoalAuthor).not.toHaveBeenCalled();
+        expect(select).not.toHaveBeenCalled();
+        expect(onTab).not.toHaveBeenCalled();
+        await press(`project-conversations-new-${mobilePath}`);
+        expect(machineStartGoalAuthor).toHaveBeenCalledOnce();
+        expect(select).toHaveBeenCalledExactlyOnceWith({ scopePath: mobilePath, sessionId: 'new-chat' });
+    });
+});
+
+
+it('does not reveal or select from a native save that resolves after its real session row unmounts', async () => {
+    mock.sessions = { other: live('other') };
+    await setup();
+    const pending = deferred<boolean>(); mock.prepareLeave.mockReturnValueOnce(pending.promise);
+    await press('project-conversations-session-other');
+    await act(async () => renderer.unmount()); renderer = undefined;
+    await act(async () => { pending.resolve(true); });
+    expect(select).not.toHaveBeenCalled(); expect(onTab).not.toHaveBeenCalled();
+});
+it.each(['account', 'workspace'] as const)('ignores a native row-save completion after the %s owner changes', async kind => {
+    mock.sessions = { other: live('other') };
+    await setup();
+    const pending = deferred<boolean>(); mock.prepareLeave.mockReturnValueOnce(pending.promise);
+    await press('project-conversations-session-other');
+    if (kind === 'account') mock.owner = { ...mock.owner, generation: 'replacement' };
+    else { mock.workspaceSessionId='replacement'; mock.workspaceController={}; await setup(); }
+    await act(async () => { pending.resolve(true); });
+    expect(select).not.toHaveBeenCalled(); expect(onTab).not.toHaveBeenCalled();
 });

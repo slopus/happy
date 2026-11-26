@@ -16,6 +16,8 @@ import { isProjectSessionDeleted, subscribeProjectSessionDeletions, getProjectSe
 import { getCurrentLanguage, t } from '@/text';
 import { getSessionStateLabel, formatLastSeen } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
+import { useFileWorkspace } from '@/components/fileWorkspace/context';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { buildProjectConversationGroups, type ConversationGroup, type ConversationStatus } from './projectConversationModel';
 import type { ProjectConversationNavigationProps, ProjectConversationSelection } from './ProjectConversationNavigation.types';
@@ -24,25 +26,37 @@ const RevealContext = React.createContext<(() => void) | undefined>(undefined);
 export function ProjectConversationNavigationPane({ children, onReveal }: { children: React.ReactNode; onReveal: () => void }) {
     return <RevealContext.Provider value={onReveal}>{children}</RevealContext.Provider>;
 }
+function useGuardedReveal(reveal: boolean | undefined, onReveal: (() => void) | undefined, onPress: () => void) {
+    const workspace = useFileWorkspace();
+    const latestWorkspace = React.useRef(workspace); latestWorkspace.current = workspace;
+    const lifetime = React.useRef<object | null>(null);
+    React.useEffect(() => { const token = {}; lifetime.current = token; return () => { if (lifetime.current === token) lifetime.current = null; }; }, []);
+    return () => {
+        const finish = () => { if (reveal) onReveal?.(); onPress(); };
+        if (!reveal || !workspace?.prepareLeave) { finish(); return; }
+        const token = lifetime.current, controller = workspace.controller;
+        const identity = () => { const account = getRuntimeAccountSelection(); const owner = latestWorkspace.current;
+            return JSON.stringify([account?.key, account?.generation, account?.serverUrl, owner?.sessionId, owner?.root]); };
+        const scope = identity();
+        const current = () => !!token && lifetime.current === token && latestWorkspace.current?.controller === controller && identity() === scope;
+        void workspace.prepareLeave().then(ready => { if (ready && current()) finish(); })
+            .catch(error => { if (current()) Modal.alert(t('common.error'), String(error)); });
+    };
+}
 function ConversationButton({ reveal, ...props }: React.ComponentProps<typeof Button> & { reveal?: boolean }) {
     const onReveal = React.useContext(RevealContext);
-    return (
-        <Button
-            {...props}
-            onPress={() => {
-                if (reveal) onReveal?.();
-                props.onPress();
-            }}
-        />
-    );
+    const onPress = useGuardedReveal(reveal, onReveal, props.onPress);
+    return <Button {...props} onPress={onPress} />;
 }
 function ConversationTreeRow({ reveal, ...props }: React.ComponentProps<typeof WorkspaceTreeRow> & { reveal?: boolean }) {
     const onReveal = React.useContext(RevealContext);
-    return <WorkspaceTreeRow {...props} onPress={() => { if (reveal) onReveal?.(); props.onPress(); }} />;
+    const onPress = useGuardedReveal(reveal, onReveal, props.onPress);
+    return <WorkspaceTreeRow {...props} onPress={onPress} />;
 }
 function ConversationAction({ reveal, ...props }: React.ComponentProps<typeof WorkspaceButton> & { reveal?: boolean }) {
     const onReveal = React.useContext(RevealContext);
-    return <WorkspaceButton {...props} onPress={() => { if (reveal) onReveal?.(); props.onPress(); }} />;
+    const onPress = useGuardedReveal(reveal, onReveal, props.onPress);
+    return <WorkspaceButton {...props} onPress={onPress} />;
 }
 const Context = React.createContext<React.ReactNode>(null);
 export function useProjectConversationNavigation() {

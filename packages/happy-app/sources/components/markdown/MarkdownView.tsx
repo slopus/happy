@@ -1,5 +1,5 @@
 import { useFileWorkspace } from '@/components/fileWorkspace/context';
-import { splitSessionFileText, parseSessionFileLink } from '@/utils/sessionFileLinks';
+import { splitSessionFileText, parseSessionFileLink, decodeSessionFileHref } from '@/utils/sessionFileLinks';
 import { IndependentSessionCard } from '@/components/IndependentSessionCard';
 import { MarkdownSpan, parseMarkdown, parseReadOnlyMarkdown } from './parseMarkdown';
 import * as React from 'react';
@@ -94,12 +94,13 @@ export const MarkdownView = React.memo((props: {
     const fileLinksEnabled = !!workspace?.enabled && !!props.sessionId && (props.fileLinks ?? !props.readOnly);
 
     const handleLinkPress = React.useCallback((url: string) => {
-        const file = fileLinksEnabled && workspace ? parseSessionFileLink(url, { sessionRoot: workspace.root }) : null;
-        if (file?.withinSessionRoot && workspace) { void workspace.openReference(url); return; }
+        const fileHref = decodeSessionFileHref(url);
+        const file = fileLinksEnabled && workspace ? parseSessionFileLink(fileHref, { sessionRoot: workspace.root }) : null;
+        if (file?.withinSessionRoot && workspace) { void workspace.openReference(fileHref); return; }
         // Chat may reference Skill files or other projects. The desktop
         // workspace reads those through the existing read-only RPC; document
         // previews remain scoped to their workspace.
-        if (file && !props.readOnly) { openSessionFile(url); return; }
+        if (file && !props.readOnly) { openSessionFile(fileHref); return; }
         if (!isHttpMarkdownLink(url)) { return; }
 
         void openExternalUrl(url);

@@ -56,6 +56,10 @@ vi.mock('react-native-unistyles', () => {
     };
 });
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', Octicons: 'Octicons' }));
+// Provider artwork uses react-native-svg's Fabric/codegen modules, which load
+// native Flow outside the bare react-native mock. This transcript harness keeps
+// delegation grouping real, but does not mount native SVG or bundled PNG assets.
+vi.mock('@/components/codingAgents/CodingAgentIcon', () => ({ CodingAgentIcon: 'CodingAgentIcon' }));
 vi.mock('expo-application', () => ({ applicationId: 'build.paws.preview' }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }));
 vi.mock('expo-router', () => ({

@@ -382,6 +382,7 @@ export type Metadata = {
   codexAsyncQuestionResponses?: Record<string, AsyncQuestionResponse>;
   goalBoard?: GoalBoardBinding;
   goalBoardSnapshot?: GoalBoardSnapshot;
+  motionWorkbenchChanges?: Array<{ bindingId: string; sequence: number }>;
   goalBoardTaskSessions?: Record<string, string>;
   application?: { appId: string; bindingId: string };
   /**

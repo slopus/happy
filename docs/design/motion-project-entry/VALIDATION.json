@@ -1,0 +1,198 @@
+{
+  "date": "2026-11-26",
+  "status": "static-prototype-verified",
+  "sourceMethod": "visible DOM fragments and computed styles; outer static reconstruction",
+  "sourceScope": "Paws current ordinary session; private wallpaper and actual history excluded",
+  "baseline": {
+    "viewport": {
+      "width": 1680,
+      "height": 920
+    },
+    "header": {
+      "x": 481.5,
+      "y": 58,
+      "width": 800,
+      "height": 56
+    },
+    "composer": {
+      "x": 425,
+      "y": 800,
+      "width": 913,
+      "height": 94
+    },
+    "sidebar": {
+      "x": 60,
+      "y": 48,
+      "width": 343,
+      "height": 872
+    },
+    "panel": {
+      "x": 1360,
+      "y": 58,
+      "width": 310,
+      "height": 852
+    },
+    "input": {
+      "x": 442,
+      "y": 807,
+      "width": 883,
+      "height": 42
+    }
+  },
+  "branchChecks": [
+    "单工程直接打开",
+    "部分结果不自动跳过列表",
+    "离线入口禁用并有说明",
+    "启动失败后重新打开成功",
+    "取消准备返回对话",
+    "首次使用空列表",
+    "创建要求留在当前演示会话",
+    "创建后工程可从入口发现",
+    "目录范围错误可见",
+    "已有工程登记并打开",
+    "改名后列表同步",
+    "所有演练分支保留会话草稿"
+  ],
+  "themeAndViewportChecks": [
+    "Gingham 深色表面和 hover 来自当前主题",
+    "工程列表正反向 Tab 留在模态内",
+    "遮罩关闭且返回原入口",
+    "浅色主题表面正确",
+    "390px 工程列表和全部主操作在视口内",
+    "390px 工作台、标注和保存按钮可达",
+    "窄屏返回保留同一对话草稿"
+  ],
+  "saveAndReopen": {
+    "time": "6.5s",
+    "notePreserved": true,
+    "pinVisible": true,
+    "draftPreserved": true,
+    "saveButton": {
+      "top": 849,
+      "bottom": 885,
+      "viewport": 908
+    },
+    "noteParent": "editor-body"
+  },
+  "public": {
+    "url": "https://alleged-camera-partially-increasingly.trycloudflare.com/",
+    "mode": "tunnel",
+    "expiresAt": 1795784986303,
+    "expiresIso": "2026-11-27T13:09:46.303000+00:00",
+    "files": [
+      {
+        "file": "index.html",
+        "bytes": 740,
+        "sha256": "d1705e672f3f1b5039f216a7a9288d2e50de62ff286ec7091c5214b5eba5a04e",
+        "match": true
+      },
+      {
+        "file": "baseline.html",
+        "bytes": 645,
+        "sha256": "5d9a1ed651bc71f5ac4a40cea343099ceea6759e13241891828daa439b450977",
+        "match": true
+      },
+      {
+        "file": "base.css",
+        "bytes": 8960,
+        "sha256": "4bcfa09617eed4c01a3aafa9c5b413160c45c1f687431a49fb79c264e0fc47b7",
+        "match": true
+      },
+      {
+        "file": "base.js",
+        "bytes": 6433,
+        "sha256": "5d810ee6c6f8bcb79100175d198a5ca488f9f2324dcbaaa7b5400f8db6fdcd4a",
+        "match": true
+      },
+      {
+        "file": "flow.css",
+        "bytes": 13561,
+        "sha256": "4b7cd9bb6ec321faaaaaaeceb21008a752e546517c4d9620b318272b67fae173",
+        "match": true
+      },
+      {
+        "file": "flow.js",
+        "bytes": 22585,
+        "sha256": "f8e093b3f96ed87ea99f556d9387fd1c5a9343d19c686377e010fc4ea8fbacbc",
+        "match": true
+      },
+      {
+        "file": "source-fragments.js",
+        "bytes": 44452,
+        "sha256": "018287b465155e148d42913f6f443e615eb44bc11772bb48567e71a0c32932df",
+        "match": true
+      },
+      {
+        "file": "assets/icons.css",
+        "bytes": 686658,
+        "sha256": "9baba57f1af59219f374e6bc8c3a84d5266615da9271499a64bd3bc44647ec71",
+        "match": true
+      }
+    ],
+    "rootMatchesIndex": true,
+    "browserVerified": true,
+    "desktop": {
+      "title": "Paws 宣传片",
+      "time": "6.5s",
+      "viewport": [
+        1440,
+        900
+      ],
+      "editorReady": true,
+      "bodyWidth": 1440,
+      "entryColor": "rgb(240, 240, 240)"
+    },
+    "draftPreserved": true,
+    "narrow": {
+      "viewport": [
+        390,
+        844
+      ],
+      "buttons": [
+        {
+          "id": "close-editor",
+          "left": 343,
+          "right": 371,
+          "top": 91.5,
+          "bottom": 119.5
+        },
+        {
+          "id": "save-note",
+          "left": 184.21875,
+          "right": 255.234375,
+          "top": 787,
+          "bottom": 823
+        },
+        {
+          "id": "send-note",
+          "left": 261.234375,
+          "right": 369,
+          "top": 787,
+          "bottom": 823
+        }
+      ]
+    },
+    "previousSnapshotRetained": true
+  },
+  "limits": {
+    "realEngineStarted": false,
+    "realAIInvoked": false,
+    "productionProductChanged": false,
+    "physicalAirVerified": false,
+    "physicalPhoneVerified": false,
+    "fullLifetimeVerified": false,
+    "backendNetworkAllowedByCsp": false
+  },
+  "keyBrowserStepsReported": 7,
+  "cleanup": {
+    "localBaselineServerStopped": true,
+    "managedPublicSnapshotRetained": true,
+    "publicRootMatchesAfterSourceStop": true,
+    "rootMainCleanAndAligned": true
+  },
+  "knowledge": {
+    "egoOperationWritten": true,
+    "egoGlobalValidationUnrelatedErrors": 4,
+    "cloudflareStructureValidation": "pass"
+  }
+}

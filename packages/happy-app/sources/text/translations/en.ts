@@ -31,6 +31,27 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
+    motionWorkbench: {
+        ...projectGoalsBase.motionWorkbench,
+        title: "Motion workbench",
+        open: "Open motion workbench",
+        annotations: "AI annotations",
+        reviewChanged: "Project changed. Refresh annotations before sending.",
+        sourceChanged: "Source changed. Load the new version to continue.",
+        unavailable: "The motion editor is unavailable.",
+        closeBlocked: "Finish or save the current edit before closing.",
+        reviewMessage: "Revise these motion project annotations:",
+        queued: "Added to the current conversation",
+        send: "Send to AI",
+        empty: "No saved annotations. Add one in the editor.",
+        offline: "Offline. Editing and AI submission are paused.",
+        loading: "Loading editor and project assets…",
+        select: "Select",
+        selected: "Selected",
+        reopen: "Load new version",
+        license: "Licenses",
+        export: "Ask AI to export MP4",
+    },
     codexActivity: { ...projectGoalsBase.codexActivity },
 
     delegation: { ...projectGoalsBase.delegation },

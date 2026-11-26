@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type { VersionController, RestoreSelection } from './versionController';
 import type { FileWorkspaceController, FileWorkspaceSnapshot } from './controller';
-export type FileReference = { path: string; hash: string; quote?: string; artifact?: { workspaceId: string; artifactId: string; expectedRevision: string; versionId?: string } };
+export type FileReference = { path: string; hash: string; quote?: string; motion?: import('@slopus/happy-wire').MotionProjectReference; artifact?: { workspaceId: string; artifactId: string; expectedRevision: string; versionId?: string } };
 export type FileWorkspaceContextValue = {
     sessionId: string;
     readOnly?: boolean;
@@ -15,6 +15,10 @@ export type FileWorkspaceContextValue = {
     enabled: boolean; root: string; controller: FileWorkspaceController; snapshot: FileWorkspaceSnapshot;
     reference: FileReference | null; setReference: React.Dispatch<React.SetStateAction<FileReference | null>>;
     openReference: (path: string) => Promise<void>;
+    motionRequest?: { id: number; sessionId: string; path: string };
+    openMotionProject?: (projectPath: string) => Promise<void>;
+    registerMotionLeaveGuard?: (guard: () => Promise<boolean>) => () => void;
+    prepareLeave?: () => Promise<boolean>;
     chatWidth: number; chatWidthCustomized?: boolean; setChatWidth: (width: number) => void;
     maximized: boolean; setMaximized: (value: boolean) => void;
 };

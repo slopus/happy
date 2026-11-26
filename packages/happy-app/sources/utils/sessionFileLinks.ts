@@ -12,6 +12,12 @@ export type SessionFileTextSegment = {
     link: SessionFileLink | null;
 };
 
+/** Markdown hrefs are URI encoded; raw code/file-tree paths must remain literal.
+ * Decode once and preserve reserved separators so a filename cannot change route structure. */
+export function decodeSessionFileHref(href: string): string {
+    try { return decodeURI(href); } catch { return href; }
+}
+
 const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/;
 const POSIX_ABSOLUTE_PATH = /^\//;
 const URL_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;

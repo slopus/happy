@@ -18,6 +18,9 @@ import { ArtifactPreview } from './ArtifactPreview';
 import { HtmlFilePreview } from './HtmlFilePreview';
 import { WorkspaceMediaPreview } from './WorkspaceMediaPreview';
 import { WorkspaceDirectoryPreview } from './WorkspaceDirectoryPreview';
+import { MotionWorkbench } from '@/components/motionWorkbench/MotionWorkbench';
+import type { MotionWorkbenchHandle } from '@/components/motionWorkbench/types';
+import { MotionNavigationGuard } from '@/components/motionWorkbench/MotionNavigationGuard';
 import { WorkspaceButton as Button } from './WorkspaceButton';
 import { documentBodyStyle, documentScrollStyle, workspaceChatMinWidth, workspaceResizeWidth } from './documentPresentation';
 
@@ -34,6 +37,15 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
     const [modes, setModes] = React.useState<Record<string, boolean>>({});
     const [historyPath, setHistoryPath] = React.useState<string | null>(null);
     const [workspaceWidth, setWorkspaceWidth] = React.useState(0);
+    const [motionPath, setMotionPath] = React.useState<string | null>(null);
+    const [motionTitles, setMotionTitles] = React.useState<Record<string, string>>({});
+    const motionEditor = React.useRef<MotionWorkbenchHandle>(null);
+    React.useEffect(() => {
+        if (!motionPath || !workspace?.snapshot.open) return;
+        return workspace.registerMotionLeaveGuard?.(() => motionEditor.current?.prepareClose() ?? Promise.resolve(true));
+    }, [motionPath, workspace?.snapshot.open, workspace?.registerMotionLeaveGuard]);
+    const motionOpenSequence = React.useRef(0);
+    const handledMotionRequest = React.useRef(0);
     const historyExpanded = React.useRef(false);
     const [quote, setQuote] = React.useState('');
     const contentRef = React.useRef<any>(null);
@@ -44,10 +56,39 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
     const locationRequest = workspace?.locationRequest;
     const isDirectory = document?.directory !== undefined;
     const readOnly = workspace?.readOnly || document?.readOnly || isDirectory || !!document?.media;
+    const availableController = workspace?.controller;
+    const dirty = document ? documentDirty(document) : false;
     const closeHistory = React.useCallback(() => {
         setHistoryPath(null);
         if (historyExpanded.current) { historyExpanded.current = false; workspace?.setMaximized(false); }
     }, [workspace?.setMaximized]);
+    const openMotion = React.useCallback((config: string) => {
+        const controller = availableController;
+        if (!controller) return;
+        const sequence = ++motionOpenSequence.current;
+        const active = controller.getSnapshot().active;
+        const show = () => {
+            if (sequence !== motionOpenSequence.current || controller.getSnapshot().active !== active) return;
+            setMotionPath(config); setModes(value => ({ ...value, [config]: true })); closeHistory(); void controller.open(config);
+        };
+        if (motionPath && motionPath !== config) void (motionEditor.current?.prepareClose() ?? Promise.resolve(true)).then(ready => {
+            if (ready) show();
+            else if (sequence === motionOpenSequence.current && controller.getSnapshot().active === active) {
+                void controller.open(motionPath);
+                Modal.alert(t('motionWorkbench.title'), t('motionWorkbench.closeBlocked'));
+            }
+        });
+        else show();
+    }, [availableController, motionPath, closeHistory]);
+    React.useEffect(() => {
+        const request = workspace?.motionRequest;
+        const explicit = !!request && request.sessionId === sessionId && request.path === path && request.id !== handledMotionRequest.current;
+        if (Platform.OS === 'web' && sessionId && workspace?.enabled && workspace.snapshot.open && path && /(?:^|\/)mh\.json$/.test(path)
+            && document?.phase === 'ready' && !readOnly && !dirty && (modes[path] !== false || explicit) && (motionPath !== path || explicit) && (locationRequest?.path !== path || explicit)) {
+            if (explicit) handledMotionRequest.current = request.id;
+            openMotion(path);
+        }
+    }, [sessionId, workspace?.enabled, workspace?.snapshot.open, workspace?.motionRequest, path, document?.phase, readOnly, dirty, modes, motionPath, openMotion, locationRequest?.path]);
     React.useEffect(() => { if (path && locationRequest?.path === path) { setModes(value => ({ ...value, [path]: false })); closeHistory(); } }, [path, locationRequest, closeHistory]);
     React.useEffect(() => { const target = annotationUi.focus?.path; if (target) { setModes(value => ({ ...value, [target]: true })); closeHistory(); } }, [annotationUi.focus, closeHistory]);
     React.useEffect(() => {
@@ -61,7 +102,6 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
     const { controller, snapshot } = workspace;
     const currentArtifact = workspace.versions.currentForHash(path, document?.error ? null : document?.hash ?? null);
     const cachedDraft = controller.exportDrafts()[path];
-    const dirty = document ? documentDirty(document) : false;
     const annotationFile = !!sessionId && historyPath !== path && document?.phase === 'ready' && document.hash && !dirty ? {
         path, hash: document.hash,
         ...(currentArtifact ? { artifact: {
@@ -72,7 +112,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
     } : null;
     const previewable = !isDirectory && (!!document?.media || /\.(md|markdown|html?|svg)$/i.test(path));
     const preview = !!document?.media || (previewable && modes[path] !== false);
-    const close = (files: string[]) => {
+    const closeFiles = (files: string[]) => {
         if (controller.closeMany(files)) return;
         const current = controller.getSnapshot();
         if (files.some(file => current.documents[file]?.saving)) return;
@@ -87,6 +127,17 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
             } }] : []),
         ]);
     };
+    const close = (files: string[]) => {
+        if (motionPath && files.includes(motionPath)) {
+            void (motionEditor.current?.prepareClose() ?? Promise.resolve(true)).then(ready => { if (ready) { setMotionPath(null); closeFiles(files); } });
+        } else closeFiles(files);
+    };
+    const motionVisible = motionPath === path && historyPath !== path;
+    const motionLabel = (file: string) => `${motionTitles[file] || file.split('/').slice(-2, -1)[0] || t('motionWorkbench.title')} · ${t('motionWorkbench.title')}`;
+    const showCode = () => {
+        const show = () => { motionOpenSequence.current++; setMotionPath(null); setModes(value => ({ ...value, [path]: false })); };
+        if (motionVisible) void (motionEditor.current?.prepareClose() ?? Promise.resolve(true)).then(ready => { if (ready) show(); }); else show();
+    };
     const refresh = async () => {
         if (dirty && !await Modal.confirm(t('fileWorkspace.refresh'), t('fileWorkspace.reloadConfirm'))) return;
         await controller.refresh(path, dirty);
@@ -97,6 +148,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
         const anchor = globalThis.document.createElement('a'); anchor.href = url; anchor.download = path.split('/').pop() ?? 'file'; anchor.click(); URL.revokeObjectURL(url);
     };
     return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: readingSurface === 'inherited' ? 'transparent' : photoSkin ? (reducedTransparency ? theme.colors.desktopSkin.readingSolid : readingSurface === 'compact' ? theme.colors.desktopSkin.readingCompact : theme.colors.desktopSkin.readingWide) : theme.colors.surface, borderRadius: framed ? 13 : 20, borderWidth: framed ? StyleSheet.hairlineWidth : 0, borderColor: theme.colors.divider, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (readOnly || historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
+        <MotionNavigationGuard enabled={!!motionPath} prepareLeave={() => motionEditor.current?.prepareClose() ?? Promise.resolve(true)} />
         <View style={{flex:1,minHeight:0}} {...(historyPath === path ? {"aria-hidden":true,inert:true} : {}) as any}>
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: framed ? 48 : 46, backgroundColor: readingSurface === 'inherited' ? 'transparent' : photoSkin ? 'transparent' : theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
             <ScrollView horizontal style={{ flex: 1, minWidth: 0 }} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 6 }}>
@@ -113,32 +165,38 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
                         setTabMenu({ path: file, x: rect.left, y: rect.bottom, trigger: event.currentTarget });
                     },
                 } : {}) as any} testID={`workspace-tab:${file}`} style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 7, backgroundColor: file === path ? theme.colors.surfaceSelected : 'transparent' }}>
-                    <Button label={(file.split('/').pop() ?? file) + (documentDirty(snapshot.documents[file]) ? ' •' : '')} onPress={() => { void controller.open(file); }} selected={file === path} />
+                    <Button label={(Platform.OS === 'web' && sessionId && /(?:^|\/)mh\.json$/.test(file) && modes[file] !== false && !workspace.readOnly && !snapshot.documents[file]?.readOnly ? motionLabel(file) : file.split('/').pop() ?? file) + (documentDirty(snapshot.documents[file]) ? ' •' : '')} onPress={() => { void controller.open(file); }} selected={file === path} />
                     <Button label={`${t('fileWorkspace.closeTab')}: ${file}`} icon="close-outline" compact disabled={snapshot.documents[file]?.saving} onPress={() => close([file])} />
                 </View>)}
             </ScrollView>
+            {motionVisible && <Button label={t('fileWorkspace.code')} onPress={showCode} />}
             {!readOnly && /\.(md|markdown|html?)$/i.test(path) && <Button label={t('fileWorkspace.history')} icon="time-outline" compact={workspaceWidth > 0 && workspaceWidth < 400} testID="workspace-history-open" onPress={() => setHistoryPath(path)} />}
             {onToggleFileTree && <Button label={fileTreeExpanded ? t('fileWorkspace.hideFileTree') : t('fileWorkspace.showFileTree')} icon={fileTreeExpanded ? 'chevron-forward-outline' : 'folder-open-outline'} compact testID="workspace-toggle-file-tree" onPress={onToggleFileTree} />}
             <Button label={workspace.maximized ? t('fileWorkspace.restore') : t('fileWorkspace.maximize')} icon={workspace.maximized ? 'contract-outline' : 'expand-outline'} compact onPress={() => workspace.setMaximized(!workspace.maximized)} />
-            <Button label={t('fileWorkspace.close')} icon="close-outline" compact onPress={() => controller.setOpen(false)} />
+            <Button label={t('fileWorkspace.close')} icon="close-outline" compact onPress={() => { void (motionEditor.current?.prepareClose() ?? Promise.resolve(true)).then(ready => { if (ready) controller.setOpen(false); }); }} />
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4, backgroundColor: readingSurface === 'inherited' ? 'transparent' : photoSkin ? 'transparent' : theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider, flexWrap: 'wrap' }}>
-            <Text numberOfLines={1} selectable style={{ flexGrow: 1, flexShrink: 1, fontSize: 12, color: theme.colors.textSecondary }}>{path.startsWith(workspace.root + '/') ? path.slice(workspace.root.length + 1).replaceAll('/', ' / ') : path}</Text>
+        {!motionVisible && <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4, backgroundColor: readingSurface === 'inherited' ? 'transparent' : photoSkin ? 'transparent' : theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider, flexWrap: 'wrap' }}>
+            <Text numberOfLines={1} selectable style={{ flexGrow: 1, flexShrink: 1, fontSize: 12, color: theme.colors.textSecondary }}>{motionVisible ? motionLabel(path) : path.startsWith(workspace.root + '/') ? path.slice(workspace.root.length + 1).replaceAll('/', ' / ') : path}</Text>
             {previewable && <Button label={t('fileWorkspace.preview')} selected={preview} onPress={() => setModes(value => ({ ...value, [path]: true }))} />}
-            {!isDirectory && !document?.media && <Button label={t('fileWorkspace.code')} selected={!preview} onPress={() => setModes(value => ({ ...value, [path]: false }))} />}
+            {Platform.OS === 'web' && !!sessionId && !readOnly && /(?:^|\/)mh\.json$/.test(path) && <Button label={t('motionWorkbench.open')} icon="film-outline" selected={motionVisible} disabled={dirty || document?.phase !== 'ready'} testID="workspace-open-motion" onPress={() => openMotion(path)} />}
+            {!isDirectory && !document?.media && <Button label={t('fileWorkspace.code')} selected={!preview} onPress={showCode} />}
             {!isDirectory && !!sessionId && /\.(md|markdown)$/i.test(path) && <FileAnnotationControls sessionId={sessionId} enabled={preview && !!annotationFile} />}
             <Button label={t('fileWorkspace.refresh')} icon="refresh-outline" compact onPress={() => { void refresh(); }} disabled={document?.saving} />
             <Button label={t('fileWorkspace.mention')} icon="at-outline" compact disabled={document?.phase !== 'ready' || dirty || !document.hash} onPress={() => { if (document?.hash) workspace.setReference({ path, hash: document.hash, ...(quote ? { quote } : {}), ...(currentArtifact ? {artifact:{workspaceId:currentArtifact.artifact.workspaceId,artifactId:currentArtifact.artifact.id,expectedRevision:currentArtifact.workingRevision,...(currentArtifact.readRef.kind === 'version' ? {versionId:currentArtifact.readRef.versionId}: {})}} : {}) }); }} />
             <Button label={t('fileWorkspace.download')} icon="download-outline" compact onPress={download} disabled={(isDirectory || document?.phase !== 'ready') && !cachedDraft} />
             <Button label={document?.saving ? t('common.loading') : t('fileWorkspace.save')} icon="save-outline" testID="workspace-save" onPress={() => { void controller.save(path); }} disabled={readOnly || !dirty || document?.saving || document?.conflict} />
-        </View>
+        </View>}
         {!!sessionId && preview && /\.(md|markdown)$/i.test(path) && <FileAnnotationHint sessionId={sessionId} />}
         {workspace.draftCacheError && <Text accessibilityRole="alert" style={{ padding: 10, color: theme.colors.textDestructive }}>{t('fileWorkspace.draftCacheUnavailable')}</Text>}
         {document?.conflict && <View style={{ padding: 10, backgroundColor: theme.colors.surfaceSelected }}><Text accessibilityRole="alert" style={{ color: theme.colors.textDestructive }}>{t('fileWorkspace.conflict')}</Text><Button label={t('fileWorkspace.refresh')} onPress={() => { void refresh(); }} /></View>}
         {document?.error && <Text accessibilityRole="alert" style={{ padding: 12, color: theme.colors.textDestructive }}>{document.error}</Text>}
         {(document?.phase === 'error' || isDirectory || !!document?.media) && cachedDraft && <ScrollView contentContainerStyle={{ padding: 16 }}><Text style={{ color: theme.colors.textSecondary }}>{isDirectory ? t('fileWorkspace.directoryDraftKept') : t('fileWorkspace.cachedDraft')}</Text><Text selectable style={{ color: theme.colors.text }}>{cachedDraft.draft}</Text></ScrollView>}
+        {motionPath && <MotionWorkbench ref={motionEditor} sessionId={sessionId} projectPath={motionPath.replace(/\/mh\.json$/, '')} visible={motionVisible}
+            onProjectTitleChange={title => setMotionTitles(value => value[motionPath] === title ? value : { ...value, [motionPath]: title })}
+            onClose={() => { motionOpenSequence.current++; setModes(value => ({ ...value, [motionPath]: false })); setMotionPath(null); }} />}
+        <View style={{ flex: 1, minHeight: 0, display: motionVisible ? 'none' : 'flex' }}>
         {!document || document.phase === 'loading' ? <ActivityIndicator style={{ padding: 30 }} color={theme.colors.textSecondary} /> : document.phase === 'ready' && document.directory ?
-            <WorkspaceDirectoryPreview path={path} entries={document.directory} onOpen={child => { void workspace.openReference(child); }} /> : document.phase === 'ready' ? <>
+            <WorkspaceDirectoryPreview path={path} entries={document.directory} onOpen={child => { void workspace.openReference(child); }} onMotionProject={Platform.OS === 'web' && !!sessionId && !workspace.readOnly && !document.readOnly ? () => openMotion(path.replace(/\/$/, '') + '/mh.json') : undefined} /> : document.phase === 'ready' ? <>
             <View testID="workspace-annotation-layout" style={{ flex: 1, minHeight: 0, position: 'relative', flexDirection: 'row' }}>
             <View testID="workspace-reading-pane" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
             {document.media ? <WorkspaceMediaPreview media={document.media} name={path.split('/').pop() ?? path} /> : preview && currentArtifact && !dirty ? <ArtifactPreview sessionId={sessionId} versions={workspace.versions} value={currentArtifact} annotationFile={annotationFile}/> : preview && /\.(html?|svg)$/i.test(path) ? <HtmlFilePreview key={path} sessionId={sessionId} path={path} content={document.draft} root={workspace.root} revision={document.revision} readBytes={workspace.readBytes} /> :
@@ -158,6 +216,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
             </View>
             <Text style={{ fontSize: 11, padding: 7, color: theme.colors.textSecondary, borderTopWidth: 1, borderColor: theme.colors.divider }}>{dirty ? t('fileWorkspace.dirty') : t('fileWorkspace.saved')}</Text>
         </> : null}
+        </View>
         </View>
         <FileTabContextMenu anchor={tabMenu} tabs={snapshot.tabs} saving={snapshot.tabs.filter(file => snapshot.documents[file]?.saving)} onClose={dismissTabMenu} onAction={close} />
         {historyPath === path && <VersionHistoryPanel key={path} path={path} sessionId={sessionId} onClose={() => {closeHistory(); queueMicrotask(() => globalThis.document?.querySelector<HTMLElement>('[data-testid="workspace-history-open"]')?.focus());}}/>}

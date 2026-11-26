@@ -742,6 +742,7 @@ export async function sessionUpdateMetadata(
     expectedVersion: number,
     update: (metadata: Metadata) => Metadata,
     maxRetries: number = 3,
+    assertCurrent: () => void = () => {},
 ): Promise<{ version: number; metadata: Metadata }> {
     const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
     if (!sessionEncryption) {
@@ -754,6 +755,7 @@ export async function sessionUpdateMetadata(
         sessionEncryption,
         update,
         maxRetries,
+        assertCurrent,
     );
 }
 

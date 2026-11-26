@@ -16,6 +16,27 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const pt: TranslationStructure = {
+    motionWorkbench: {
+        ...projectGoalsBase.motionWorkbench,
+        title: "Editor de vídeo",
+        open: "Abrir editor de vídeo",
+        annotations: "Anotações de IA",
+        reviewChanged: "O projeto mudou. Atualize as anotações antes de enviá-las.",
+        sourceChanged: "O código mudou. Carregue a nova versão para continuar.",
+        unavailable: "O editor de vídeo está indisponível.",
+        closeBlocked: "Conclua ou salve a edição antes de fechar.",
+        reviewMessage: "Altere estas anotações do vídeo:",
+        queued: "Adicionado à conversa atual",
+        send: "Enviar à IA",
+        empty: "Nenhuma anotação salva. Adicione uma no editor.",
+        offline: "Sem conexão. A edição e o envio à IA estão pausados.",
+        loading: "Carregando editor e recursos…",
+        select: "Selecionar",
+        selected: "Selecionado",
+        reopen: "Carregar nova versão",
+        license: "Licenças",
+        export: "Pedir à IA para exportar MP4",
+    },
     codexActivity: { ...projectGoalsBase.codexActivity },
 
     delegation: {

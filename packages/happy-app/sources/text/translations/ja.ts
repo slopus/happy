@@ -19,6 +19,27 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    motionWorkbench: {
+        ...projectGoalsBase.motionWorkbench,
+        title: "動画ワークベンチ",
+        open: "動画ワークベンチを開く",
+        annotations: "AI 注釈",
+        reviewChanged: "プロジェクトが更新されました。注釈を再読み込みしてから送信してください。",
+        sourceChanged: "ソースが更新されました。新しい版を読み込んでください。",
+        unavailable: "動画エディターを利用できません。",
+        closeBlocked: "編集を完了または保存してから閉じてください。",
+        reviewMessage: "動画の注釈に沿って修正してください：",
+        queued: "現在の会話に追加しました",
+        send: "AI に修正を依頼",
+        empty: "保存された注釈はありません。エディターで追加してください。",
+        offline: "オフラインです。編集と AI への送信を一時停止しています。",
+        loading: "エディターと素材を読み込み中…",
+        select: "選択",
+        selected: "選択済み",
+        reopen: "新しい版を読み込む",
+        license: "ライセンス",
+        export: "AI に MP4 書き出しを依頼",
+    },
     codexActivity: { ...projectGoalsBase.codexActivity },
 
     delegation: {

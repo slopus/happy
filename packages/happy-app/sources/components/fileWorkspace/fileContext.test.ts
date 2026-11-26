@@ -14,3 +14,15 @@ describe('file context sent to model', () => {
         expect(buildFileContextMessage('hello', null)).toEqual({ text: 'hello' });
     });
 });
+
+it('freezes a named native project version without treating its snapshot hash as a file hash', () => {
+    const motion = { projectId: 'a'.repeat(64), projectPath: '/work/film', title: 'Brand film', documentRevision: 12, buildId: 'build-12', markerVersion: 'markers-3', snapshotHash: 'b'.repeat(64) };
+    const reference = { path: '/work/film/mh.json', hash: motion.snapshotHash, motion };
+    const queued = buildFileContextMessage('Make the opening faster', reference);
+    motion.buildId = 'new-build';
+    expect(queued.fileReference?.motion?.buildId).toBe('build-12');
+    expect(queued.text).toContain('Motion project modification target');
+    expect(queued.text).toContain('build-12');
+    expect(queued.text).toContain('stop and report');
+    expect(queued.text).not.toContain('[Workspace file context]');
+});

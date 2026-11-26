@@ -27,6 +27,27 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    motionWorkbench: {
+        ...projectGoalsBase.motionWorkbench,
+        title: "Edytor wideo",
+        open: "Otwórz edytor wideo",
+        annotations: "Adnotacje AI",
+        reviewChanged: "Projekt się zmienił. Odśwież adnotacje przed wysłaniem.",
+        sourceChanged: "Kod się zmienił. Wczytaj nową wersję, aby kontynuować.",
+        unavailable: "Edytor wideo jest niedostępny.",
+        closeBlocked: "Zakończ lub zapisz edycję przed zamknięciem.",
+        reviewMessage: "Popraw te adnotacje projektu wideo:",
+        queued: "Dodano do bieżącej rozmowy",
+        send: "Przekaż do AI",
+        empty: "Brak zapisanych adnotacji. Dodaj je w edytorze.",
+        offline: "Brak połączenia. Edycja i wysyłanie do AI są wstrzymane.",
+        loading: "Wczytywanie edytora i zasobów…",
+        select: "Wybierz",
+        selected: "Wybrano",
+        reopen: "Wczytaj nową wersję",
+        license: "Licencje",
+        export: "Poproś AI o eksport MP4",
+    },
     codexActivity: { ...projectGoalsBase.codexActivity },
 
     delegation: {

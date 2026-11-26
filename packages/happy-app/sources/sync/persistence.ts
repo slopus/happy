@@ -1,4 +1,4 @@
-import { ArtifactRequests } from '@slopus/happy-wire';
+import { ArtifactRequests, MotionProjectReferenceSchema } from '@slopus/happy-wire';
 import { MMKV } from '@/persistence/deviceStorage';
 import { accountStorageId } from '@/auth/accountRuntime';
 import { clearComposeDraft } from './composeDraft';
@@ -629,7 +629,9 @@ export function loadFileWorkspaceReference(scope: string): import('@/components/
             || (value.quote !== undefined && (typeof value.quote !== 'string' || value.quote.length > 4000))) return null;
         const a = value.artifact;
         const artifact = a && /^[a-zA-Z0-9_-]{1,128}$/.test(a.workspaceId) && /^[a-zA-Z0-9_-]{1,128}$/.test(a.artifactId) && /^[a-f0-9]{64}$/.test(a.expectedRevision) ? {workspaceId:a.workspaceId,artifactId:a.artifactId,expectedRevision:a.expectedRevision,...(typeof a.versionId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(a.versionId) ? {versionId:a.versionId} : {})} : undefined;
-        return { path: value.path, hash: value.hash, ...(value.quote === undefined ? {} : { quote: value.quote }), ...(artifact ? {artifact} : {}) };
+        const motion = value.motion === undefined ? undefined : MotionProjectReferenceSchema.safeParse(value.motion);
+        if (motion && (!motion.success || value.hash !== motion.data.snapshotHash || value.path !== motion.data.projectPath.replace(/\/$/, '') + '/mh.json')) return null;
+        return { path: value.path, hash: value.hash, ...(value.quote === undefined ? {} : { quote: value.quote }), ...(artifact ? {artifact} : {}), ...(motion?.success ? {motion:motion.data} : {}) };
     } catch { return null; }
 }
 export function saveFileWorkspaceReference(scope: string, reference: import('@/components/fileWorkspace/context').FileReference | null) {

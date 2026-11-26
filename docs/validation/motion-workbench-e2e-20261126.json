@@ -1,0 +1,282 @@
+{
+  "date": "2026-11-26",
+  "status": "partial-current-device-unverified",
+  "scope": {
+    "executionDevice": "Mac mini",
+    "browser": "Ego Chromium",
+    "app": "full development App",
+    "server": "isolated PGlite",
+    "transport": "real encrypted session RPC",
+    "worker": "real branch daemon / spawned Paws Codex / native app-server",
+    "model": "gpt-6.1-sol high",
+    "currentUserDevice": "MacBook Air",
+    "airVerified": false,
+    "airBlocker": "Earlier check was offline; this follow-up did not validate Air",
+    "productionDeployed": false
+  },
+  "rounds": [
+    {
+      "verifiedAt": "2026-11-26T09:52:18.979Z",
+      "savedTitle": "Paws 内嵌回改验收",
+      "revision": 34,
+      "changedDocumentFields": [
+        "revision",
+        "markerSequence",
+        "markerTypes",
+        "title"
+      ],
+      "instancesPreserved": 46,
+      "settingsPreserved": true,
+      "authoredFilesPreserved": 58,
+      "originalPreserved": true,
+      "previewBytesEqual": true,
+      "marker": {
+        "time": 1.6,
+        "requestVersion": 32,
+        "onResolve": "delete",
+        "requestRemoved": true,
+        "nativeConfirmation": "Agent 确认 AI 标记"
+      },
+      "encryptedSessionRpc": true,
+      "audio": {
+        "audioPcmEqual": true,
+        "duration": 8.5,
+        "sampleRate": 48000,
+        "channels": 2,
+        "pcmSha256": "01afa507344f84a0d4b260389943442e967e5e34eb888c42b4252480def8037e"
+      }
+    },
+    {
+      "verifiedAt": "2026-11-26T10:03:21.703Z",
+      "savedTitle": "Paws 内嵌回改复验",
+      "revision": 39,
+      "changedDocumentFields": [
+        "revision",
+        "markerSequence",
+        "markerTypes",
+        "title"
+      ],
+      "instancesPreserved": 46,
+      "settingsPreserved": true,
+      "authoredFilesPreserved": 58,
+      "originalPreserved": true,
+      "previewBytesEqual": true,
+      "marker": {
+        "time": 1.6,
+        "requestVersion": 37,
+        "onResolve": "delete",
+        "requestRemoved": true,
+        "nativeConfirmation": "Agent 确认 AI 标记"
+      },
+      "encryptedSessionRpc": true,
+      "audio": {
+        "audioPcmEqual": true,
+        "duration": 8.5,
+        "sampleRate": 48000,
+        "channels": 2,
+        "pcmSha256": "01afa507344f84a0d4b260389943442e967e5e34eb888c42b4252480def8037e"
+      }
+    }
+  ],
+  "closeGuard": {
+    "unsavedCloseBlocked": true,
+    "draftPreserved": true,
+    "clearThenClose": true,
+    "reopenSavedTitle": true
+  },
+  "refresh": {
+    "sameSession": true,
+    "savedTitleRestored": true,
+    "nativeMarkersNotRevived": true,
+    "reopenAfterReload": true
+  },
+  "theme": {
+    "theme": "ginghamDark",
+    "normal": {
+      "background": "rgb(26, 35, 48)",
+      "button": "rgba(0, 0, 0, 0)",
+      "selected": "rgb(40, 53, 68)"
+    },
+    "hover": "rgb(31, 42, 56)",
+    "selectedMatchesTheme": true
+  },
+  "boundaries": {
+    "staleReviewRejected": "STALE_REVIEW",
+    "outsideRootRejected": "PROJECT_NOT_ALLOWED",
+    "foreignBindingRejected": "BINDING_NOT_FOUND",
+    "encryptedSessionRpc": true
+  },
+  "media": {
+    "localPath": "deliverables/paws-motion-workbench-acceptance-20261126.mp4",
+    "delivery": "sent",
+    "codec": "h264",
+    "pixelFormat": "yuv420p",
+    "width": 1680,
+    "height": 920,
+    "encodedFps": 30,
+    "durationSeconds": 60.066667,
+    "bytes": 1758942,
+    "capturedFrames": 160,
+    "captureSpanSeconds": 58.94821400000155,
+    "maxCaptureGapMs": 2158.295834004879,
+    "fullDecode": "pass",
+    "visualSamplesSeconds": [
+      0,
+      4,
+      8,
+      22,
+      40,
+      59
+    ],
+    "recordingError": null,
+    "description": "Actual sampled browser replay; encoded 30fps does not describe capture rate"
+  },
+  "cleanup": {
+    "cleanedAt": "2026-11-26T10:19:15.893Z",
+    "testServerStopped": true,
+    "testWebStopped": true,
+    "testControllerStopped": true,
+    "testCliHomeRemoved": true,
+    "testCodexHomeRemoved": true,
+    "testMovieRemoved": true,
+    "privateAuthUrlRemoved": true,
+    "originalHashUnchanged": true,
+    "videoRetained": true
+  },
+  "contentRoundtrip": {
+    "status": "pass-mini-isolated",
+    "entry": "saved project title; native editor opens directly; configuration code is explicit",
+    "standard": {
+      "verifiedAt": "2026-11-26T11:09:08.646Z",
+      "case": "M2-content-and-motion",
+      "uiText": "Paws keeps you moving.",
+      "aiValues": {
+        "tail": "Review. Refine. Release.",
+        "statementSize": 68,
+        "tailSize": 76,
+        "endDrift": 1.035
+      },
+      "settingsPreserved": true,
+      "instances": 46,
+      "authoredFilesPreserved": 55,
+      "originalPreserved": true,
+      "requestVersion": 42,
+      "onResolve": "delete",
+      "documentRevision": 44,
+      "nativeBuildChanged": true,
+      "passed": true,
+      "reopened": true,
+      "autoReloadHealthy": true
+    },
+    "replay": {
+      "verifiedAt": "2026-11-26T11:17:24.198Z",
+      "case": "M2-content-and-motion",
+      "uiText": "Paws keeps you moving.",
+      "aiValues": {
+        "tail": "Review. Refine. Release.",
+        "statementSize": 68,
+        "tailSize": 76,
+        "endDrift": 1.035
+      },
+      "settingsPreserved": true,
+      "instances": 46,
+      "authoredFilesPreserved": 55,
+      "originalPreserved": true,
+      "requestVersion": 60,
+      "onResolve": "delete",
+      "documentRevision": 62,
+      "nativeBuildChanged": true,
+      "newBindingLoaded": true,
+      "reopened": true,
+      "nativeConfirmation": "Agent 确认 AI 标记"
+    },
+    "tests": {
+      "files": 4,
+      "passed": 43,
+      "appTypecheck": "pass"
+    },
+    "media": {
+      "localPath": "deliverables/paws-motion-content-ai-roundtrip-20261126.mp4",
+      "delivery": "sent",
+      "codec": "h264",
+      "pixelFormat": "yuv420p",
+      "width": 1680,
+      "height": 920,
+      "encodedFps": 30,
+      "durationSeconds": 89.066667,
+      "bytes": 2181282,
+      "capturedFrames": 262,
+      "captureSpanSeconds": 87.07105195900797,
+      "maxCaptureGapMs": 3653.0648750066757,
+      "actualCaptureFps": 2.997551931758855,
+      "fullDecode": "pass",
+      "visualSamplesSeconds": [
+        0,
+        3,
+        7,
+        35,
+        76,
+        81,
+        88
+      ],
+      "description": "Sampled browser recording; 30fps is encoding rate"
+    },
+    "cleanup": {
+      "cleanedAt": "2026-11-26T11:22:00.546Z",
+      "testServerStopped": true,
+      "testWebStopped": true,
+      "testControllerStopped": true,
+      "testHomesRemoved": true,
+      "testMovieRemoved": true,
+      "privateAuthUrlRemoved": true,
+      "originalHashUnchanged": true,
+      "videoRetained": true,
+      "browserTaskFinished": true
+    }
+  },
+  "projectLibrarySupplement": {
+    "date": "2026-11-26",
+    "status": "implemented-automated-and-native-verified-browser-unverified",
+    "entry": "Fixed Editing button in PC Web ordinary and project conversation toolbars",
+    "scope": "Current session workspace only; no whole-machine or sibling-directory discovery",
+    "behavior": {
+      "singleCompleteResultOpensDirectly": true,
+      "multipleOrPartialResultsRequireChoice": true,
+      "titleFromNativeDocument": true,
+      "indexStoresPathsAndLastOpenedTimeOnly": true,
+      "openingPreparesOrReusesInstalledEngine": true,
+      "discoveryDoesNotStartEngine": true,
+      "newProjectsDiscoveredOnLibraryOpenOrAgentCompletion": true,
+      "polling": false
+    },
+    "verification": {
+      "appComponentAndRegressionTests": {
+        "passed": 138,
+        "files": 10
+      },
+      "wireTests": {
+        "passed": 11
+      },
+      "cliTests": {
+        "passed": 22,
+        "files": 4,
+        "installedEngineTestsIncluded": 2
+      },
+      "appTypecheck": "pass",
+      "cliBuildIncludingTypecheck": "pass",
+      "installedEngineVersion": "0.1.8",
+      "nativeOpenRegistersAndRenameRefreshesList": true,
+      "sourceDocumentPreserved": true,
+      "newToolbarRealBrowser": "not-run",
+      "newRealAgentProjectCreation": "not-run",
+      "currentDevice": "not-verified",
+      "productionDeployed": false
+    },
+    "cleanup": {
+      "nativeTestsUseDisposableProjectsAndIndexStorage": true,
+      "testProjectsClosedAndTemporaryRootsRemoved": true,
+      "newIsolatedWebEnvironmentStarted": false,
+      "globalCliRelinkedOrProductionDaemonRestarted": false
+    }
+  }
+}

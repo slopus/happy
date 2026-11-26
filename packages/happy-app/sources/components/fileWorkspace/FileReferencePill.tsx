@@ -10,7 +10,7 @@ export function FileReferencePill() {
     const { theme } = useUnistyles();
     if (!workspace?.reference) return null;
     return <View style={{ flexDirection: 'row', alignItems: 'center', padding: 5 }}>
-        <Button label={'@ ' + workspace.reference.path.split('/').pop()} icon="document-text-outline" onPress={() => { if (workspace.reference) void workspace.openReference(workspace.reference.path); }} selected />
+        <Button label={workspace.reference.motion ? '@ ' + workspace.reference.motion.title : '@ ' + workspace.reference.path.split('/').pop()} icon={workspace.reference.motion ? 'film-outline' : 'document-text-outline'} onPress={() => { if (workspace.reference?.motion) void workspace.openMotionProject?.(workspace.reference.motion.projectPath); else if (workspace.reference) void workspace.openReference(workspace.reference.path); }} selected />
         {workspace.reference.quote && <Text numberOfLines={1} style={{ flex: 1, maxWidth: 180, fontSize: 12, color: theme.colors.textSecondary }}>“{workspace.reference.quote}”</Text>}
         <Button label={t('fileWorkspace.removeReference')} icon="close-outline" compact onPress={() => workspace.setReference(null)} />
     </View>;

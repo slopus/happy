@@ -5,7 +5,7 @@ import TestRenderer from 'react-test-renderer';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { AnnotatableFile, FileAnnotationControls, FileAnnotationPanel, FileAnnotationHint } from '@/components/annotations/MessageAnnotations';
 import { FileWorkspaceController } from './controller';
-const state = vi.hoisted(() => ({ skin: 'gingham', reduced: false, alert: vi.fn() }));
+const state = vi.hoisted(() => ({ skin: 'gingham', reduced: false, alert: vi.fn(), prepareMotionClose: vi.fn() }));
 const theme = vi.hoisted(() => ({ dark: true, colors: {
     surface: '#101820', surfaceSelected: '#354550', surfacePressed: '#283640', divider: '#445566', text: '#ffffff', textSecondary: '#aabbcc', textLink: '#77aaff',
     desktopSkin: { readingSolid: '#151a21', readingCompact: 'rgba(21,26,33,0.70)', readingWide: 'rgba(21,26,33,0.51)' },
@@ -26,6 +26,13 @@ vi.mock('./ArtifactPreview', () => ({ ArtifactPreview: 'ArtifactPreview' }));
 vi.mock('./HtmlFilePreview', () => ({ HtmlFilePreview: 'HtmlFilePreview' }));
 vi.mock('./WorkspaceDirectoryPreview', () => ({ WorkspaceDirectoryPreview: 'WorkspaceDirectoryPreview' }));
 vi.mock('./WorkspaceMediaPreview', () => ({ WorkspaceMediaPreview: 'WorkspaceMediaPreview' }));
+vi.mock('@/components/motionWorkbench/MotionWorkbench', async () => {
+    const React = await import('react');
+    return { MotionWorkbench: React.forwardRef((props: any, ref) => {
+        React.useImperativeHandle(ref, () => ({ prepareClose: state.prepareMotionClose }));
+        return React.createElement('MotionWorkbench', props);
+    }) };
+});
 import { FileWorkspaceContext } from './context';
 import { FileWorkspace, FileWorkspaceResizeHandle } from './FileWorkspace';
 let controller: FileWorkspaceController;
@@ -33,9 +40,9 @@ let maximized = false;
 let expanded = true;
 const toggleTree = vi.fn();
 const openReference = vi.fn();
-function Harness({ sessionId = 's', readOnly = false, readingSurface, locationRequest }: { sessionId?: string; readOnly?: boolean; readingSurface?: 'wide' | 'compact' | 'inherited'; locationRequest?: { path: string; line: number; column: number | null } }) {
+function Harness({ sessionId = 's', readOnly = false, readingSurface, locationRequest, motionRequest }: { sessionId?: string; readOnly?: boolean; readingSurface?: 'wide' | 'compact' | 'inherited'; locationRequest?: { path: string; line: number; column: number | null }; motionRequest?: { id: number; sessionId: string; path: string } }) {
     const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-    const value = { enabled: true, readOnly, locationRequest, root: '/work', snapshot, controller, maximized, setMaximized: vi.fn(),
+    const value = { enabled: true, readOnly, locationRequest, motionRequest, root: '/work', snapshot, controller, maximized, setMaximized: vi.fn(),
         versions: { currentForHash: () => null }, setReference: vi.fn(), openReference } as any;
     return <FileWorkspaceContext.Provider value={value}><FileWorkspace sessionId={sessionId} readingSurface={readingSurface} fileTreeExpanded={expanded} onToggleFileTree={toggleTree} /></FileWorkspaceContext.Provider>;
 }
@@ -43,7 +50,73 @@ beforeEach(async () => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     controller = new FileWorkspaceController({ root: '/work', read: async () => ({ content: '# Base', hash: 'base' }), write: async () => ({ hash: 'saved' }) });
     await controller.open('a.md'); await controller.open('b.md'); await controller.open('c.md');
-    maximized = false; expanded = true; state.reduced = false; state.skin = 'gingham'; state.alert.mockReset(); toggleTree.mockReset(); openReference.mockReset();
+    maximized = false; expanded = true; state.reduced = false; state.skin = 'gingham'; state.alert.mockReset(); state.prepareMotionClose.mockReset().mockResolvedValue(true); toggleTree.mockReset(); openReference.mockReset();
+});
+it('opens a movie directly, follows its saved title, and keeps configuration code an explicit choice', async () => {
+    await controller.open('movie/mh.json');
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<Harness />); });
+    const movie = () => renderer.root.findByType('MotionWorkbench');
+    expect(movie().props).toMatchObject({ sessionId: 's', projectPath: '/work/movie', visible: true });
+    act(() => movie().props.onProjectTitleChange('Paws 宣传片'));
+    const tab = () => renderer.root.findByProps({ testID: 'workspace-tab:/work/movie/mh.json' });
+    expect(tab().findAllByType('WorkspaceButton')[0].props.label).toBe('Paws 宣传片 · motionWorkbench.title');
+    expect(renderer.root.findAllByProps({ testID: 'workspace-save' })).toHaveLength(0);
+    await act(async () => renderer.root.findByProps({ label: 'fileWorkspace.code' }).props.onPress());
+    expect(state.prepareMotionClose).toHaveBeenCalledOnce();
+    expect(renderer.root.findAllByType('MotionWorkbench')).toHaveLength(0);
+    expect(tab().findAllByType('WorkspaceButton')[0].props.label).toBe('mh.json');
+    await act(async () => controller.refresh('/work/movie/mh.json'));
+    expect(renderer.root.findAllByType('MotionWorkbench')).toHaveLength(0);
+    await act(async () => renderer.root.findByProps({ testID: 'workspace-open-motion' }).props.onPress());
+    expect(movie().props.visible).toBe(true);
+    act(() => renderer.unmount());
+});
+it('keeps the first movie and its unsaved editor input when another movie cannot be opened', async () => {
+    await controller.open('one/mh.json');
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<Harness />); });
+    state.prepareMotionClose.mockResolvedValue(false);
+    await act(async () => controller.open('two/mh.json'));
+    expect(renderer.root.findByType('MotionWorkbench').props).toMatchObject({ projectPath: '/work/one', visible: true });
+    expect(controller.getSnapshot().active).toBe('/work/one/mh.json');
+    expect(state.alert).toHaveBeenCalledWith('motionWorkbench.title', 'motionWorkbench.closeBlocked');
+    expect(renderer.root.findByType('MotionWorkbench').props.visible).toBe(true);
+    act(() => renderer.unmount());
+});
+it('reopens an active configuration in the editor on an explicit library request, once and only for its owner', async () => {
+    await controller.open('movie/mh.json');
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<Harness />); });
+    await act(async () => renderer.root.findByProps({ label: 'fileWorkspace.code' }).props.onPress());
+    const request = { id: 1, sessionId: 'another-session', path: '/work/movie/mh.json' };
+    await act(async () => renderer.update(<Harness motionRequest={request} />));
+    expect(renderer.root.findAllByType('MotionWorkbench')).toHaveLength(0);
+    request.sessionId = 's';
+    await act(async () => renderer.update(<Harness motionRequest={{ ...request }} />));
+    expect(renderer.root.findByType('MotionWorkbench').props.visible).toBe(true);
+    await act(async () => renderer.root.findByProps({ label: 'fileWorkspace.code' }).props.onPress());
+    expect(renderer.root.findAllByType('MotionWorkbench')).toHaveLength(0);
+    await act(async () => renderer.update(<Harness motionRequest={{ ...request, id: 2 }} />));
+    expect(renderer.root.findByType('MotionWorkbench').props.visible).toBe(true);
+    act(() => renderer.unmount());
+});
+it.each([true, false])('does not auto-open a movie with read-only scope or unsaved configuration (readOnly: %s)', async readOnly => {
+    await controller.open('movie/mh.json');
+    if (!readOnly) controller.edit('/work/movie/mh.json', 'unsaved config');
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<Harness readOnly={readOnly} />); });
+    expect(renderer.root.findAllByType('MotionWorkbench')).toHaveLength(0);
+    act(() => renderer.unmount());
+});
+it('opens a positioned configuration reference in code without automatically starting the editor', async () => {
+    await controller.open('movie/mh.json');
+    const locationRequest = { path: '/work/movie/mh.json', line: 3, column: 2 };
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<Harness locationRequest={locationRequest} />); });
+    expect(renderer.root.findAllByType('MotionWorkbench')).toHaveLength(0);
+    expect(renderer.root.findByType('CodeEditor').props.location).toEqual(locationRequest);
+    act(() => renderer.unmount());
 });
 it('shows an image preview with refresh and original download, without a code editor or save action', async () => {
     const media = { bytes: Uint8Array.from([255, 216, 0, 255, 217]), mime: 'image/jpeg' };

@@ -18,7 +18,7 @@ export type StagedMessage = {
     preparedText?: string;
     annotations?: readonly MessageAnnotation[];
     annotationReview?: AnnotationReview;
-    fileReference?: { path: string; hash: string; quote?: string };
+    fileReference?: import('@/components/fileWorkspace/context').FileReference;
     attachments?: AttachmentPreview[];
     modeMeta: MessageModeMeta;
     status: 'queued' | 'sending' | 'failed';

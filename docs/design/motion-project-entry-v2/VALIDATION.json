@@ -1,0 +1,190 @@
+{
+  "date": "2026-11-26",
+  "kind": "static-interaction-prototype",
+  "status": "verified-awaiting-user-review",
+  "preview": {
+    "url": "https://ordering-spam-florence-created.trycloudflare.com/",
+    "mode": "tunnel",
+    "expiresAt": 1795787917115,
+    "lifetime": "session, at most 24 hours",
+    "existingPreviewsPreserved": true
+  },
+  "checks": [
+    {
+      "case": "contextual_entry",
+      "result": "passed"
+    },
+    {
+      "case": "explicit_association",
+      "result": "passed"
+    },
+    {
+      "case": "shared_artifact_independent_drafts",
+      "result": "passed"
+    },
+    {
+      "case": "project_entry_existing_and_new_conversation",
+      "result": "passed"
+    },
+    {
+      "case": "export_vs_editable_source",
+      "result": "passed"
+    },
+    {
+      "case": "saved_annotation_reopen",
+      "result": "passed"
+    },
+    {
+      "case": "unsaved_annotation_guard",
+      "result": "passed"
+    },
+    {
+      "case": "frozen_artifact_version_and_time",
+      "result": "passed"
+    },
+    {
+      "case": "composer_send",
+      "result": "passed"
+    },
+    {
+      "case": "keyboard_focus_cycle",
+      "result": "passed"
+    },
+    {
+      "case": "desktop_and_narrow_layout",
+      "result": "passed"
+    },
+    {
+      "case": "three_themes",
+      "result": "passed"
+    },
+    {
+      "case": "public_byte_readback",
+      "result": "passed"
+    },
+    {
+      "case": "privacy_and_no_business_requests",
+      "result": "passed"
+    }
+  ],
+  "viewports": [
+    [
+      1680,
+      920
+    ],
+    [
+      1440,
+      900
+    ],
+    [
+      1280,
+      800
+    ],
+    [
+      390,
+      844
+    ],
+    [
+      320,
+      780
+    ]
+  ],
+  "publicFiles": [
+    {
+      "path": "/",
+      "status": 200,
+      "bytes": 771,
+      "match": true,
+      "sha256": "c9d7538097e790d10a07d6efb4c3d2bbd1f8438f075fe58b8e934be557247423"
+    },
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 771,
+      "match": true,
+      "sha256": "c9d7538097e790d10a07d6efb4c3d2bbd1f8438f075fe58b8e934be557247423"
+    },
+    {
+      "path": "baseline.html",
+      "status": 200,
+      "bytes": 645,
+      "match": true,
+      "sha256": "5d9a1ed651bc71f5ac4a40cea343099ceea6759e13241891828daa439b450977"
+    },
+    {
+      "path": "artifacts.js",
+      "status": 200,
+      "bytes": 33118,
+      "match": true,
+      "sha256": "8cb076218fa05e2d46e84bb66d4ba4ba41669a76777e3a55fe0429a0d5cb27ca"
+    },
+    {
+      "path": "flow.css",
+      "status": 200,
+      "bytes": 13561,
+      "match": true,
+      "sha256": "4b7cd9bb6ec321faaaaaaeceb21008a752e546517c4d9620b318272b67fae173"
+    },
+    {
+      "path": "source-fragments.js",
+      "status": 200,
+      "bytes": 44452,
+      "match": true,
+      "sha256": "018287b465155e148d42913f6f443e615eb44bc11772bb48567e71a0c32932df"
+    },
+    {
+      "path": "base.js",
+      "status": 200,
+      "bytes": 6433,
+      "match": true,
+      "sha256": "5d810ee6c6f8bcb79100175d198a5ca488f9f2324dcbaaa7b5400f8db6fdcd4a"
+    },
+    {
+      "path": "workspace.css",
+      "status": 200,
+      "bytes": 15504,
+      "match": true,
+      "sha256": "8e7e36cd99b56e1c44c497f48f2f72eee8763681bfd566aff03ee324cbe14161"
+    },
+    {
+      "path": "base.css",
+      "status": 200,
+      "bytes": 8960,
+      "match": true,
+      "sha256": "4bcfa09617eed4c01a3aafa9c5b413160c45c1f687431a49fb79c264e0fc47b7"
+    },
+    {
+      "path": "assets/icons.css",
+      "status": 200,
+      "bytes": 686658,
+      "match": true,
+      "sha256": "9baba57f1af59219f374e6bc8c3a84d5266615da9271499a64bd3bc44647ec71"
+    }
+  ],
+  "publicRoundtrip": {
+    "artifact": "film-1",
+    "version": "v12",
+    "annotationTime": 2.5,
+    "playheadWhenSent": 6.5,
+    "retainedAfterClearingTarget": true
+  },
+  "limitations": [
+    "Static synthetic data and localStorage only",
+    "No real model or MotionHarness engine invocation",
+    "No formal Paws, CLI or original film change",
+    "No physical Air/phone, full accessibility or 24-hour longevity validation",
+    "No business state polling; host/Cloudflare internals not re-audited",
+    "One representative annotation editor"
+  ],
+  "publicationIncidents": [
+    "Two tunnel startup exits, followed by hosted HTTP404 connection check",
+    "Later same workspace tunnel succeeded",
+    "Public navigation committed then load timed out; same page completed and flows were verified"
+  ],
+  "knowledgeMaintenance": {
+    "egoOperation": "ego-ops/references/sites/paws/operations/review-motion-project-entry-prototype.md",
+    "egoValidation": "4 existing unrelated errors: Bilibili index/auth-pattern and role-management index/placeholder",
+    "cloudflareOperation": "cloudflare-ops/references/capabilities/tunnel/operations/publish-managed-static-snapshot.md",
+    "cloudflareValidation": "passed: 7 capabilities, 24 operations, 36 public docs"
+  }
+}

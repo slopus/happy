@@ -35,6 +35,12 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
+      # Codex usage tests exercise the real ripgrep parser as well as its fallback.
+      - name: Install workspace test system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ripgrep
+          rg --version
       - run: pnpm install --frozen-lockfile
       # Workspace consumers typecheck against the SDK's generated public declarations.
       - run: pnpm --filter @wangjs-jacky/paws-agent build

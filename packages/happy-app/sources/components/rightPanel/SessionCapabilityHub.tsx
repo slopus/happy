@@ -20,6 +20,7 @@ import { SessionFolderBrowserView } from './SessionFolderBrowserView';
 import { useFolderRootCount } from './useFolderRootCount';
 import { useSessionCapabilityHub } from './useSessionCapabilityHub';
 import { usePluginSurfaceViews } from '../plugins/usePluginSurfaceViews';
+import { MotionArtifactPanel } from '@/components/motionWorkbench/MotionArtifactPanel';
 
 type CapabilityPanelKey = CapabilityKey | 'sessionActions' | 'folderBrowser';
 
@@ -215,6 +216,7 @@ const SessionCapabilityHubLoaded = React.memo(function SessionCapabilityHubLoade
                 </Text>
             </View>
 
+            <MotionArtifactPanel sessionId={sessionId} />
             <View style={styles.grid}>
                 {BLOCK_ORDER.map((key) => {
                     if (key === 'images' && !generatedImagesViewAvailable) return null;

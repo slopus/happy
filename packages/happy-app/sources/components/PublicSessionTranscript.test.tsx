@@ -39,6 +39,10 @@ vi.mock('react-native-reanimated', () => ({
     FadeIn: { duration: () => undefined },
     FadeOut: { duration: () => undefined },
 }));
+// Public snapshots have no authenticated session or live delegation authority.
+// Keep the shared transcript real while isolating this optional private-session
+// child, whose storage imports would otherwise bootstrap native Expo services.
+vi.mock('./delegation/DelegatedTaskGroup', () => ({ DelegatedTaskGroup: () => null }));
 vi.mock('./MessageView', () => ({ MessageView: 'MessageView' }));
 vi.mock('./ToolGroupView', () => ({ AgentWorkGroupView: 'AgentWorkGroupView', ToolGroupView: 'ToolGroupView' }));
 vi.mock('./AttachmentGalleryView', () => ({ AttachmentGalleryView: 'AttachmentGalleryView' }));

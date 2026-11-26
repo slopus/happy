@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { parseSessionFileLink, resolveSessionFilePath, splitSessionFileText } from './sessionFileLinks';
+import { decodeSessionFileHref, parseSessionFileLink, resolveSessionFilePath, splitSessionFileText } from './sessionFileLinks';
 
 describe('sessionFileLinks', () => {
     const sessionRoot = '/Users/kirilldubovitskiy/projects/happy';
+
+    it('decodes Markdown hrefs once while preserving literal paths and location suffixes', () => {
+        const root = '/Volumes/Studio Disk/影片';
+        const href = '/Volumes/Studio%20Disk/%E5%BD%B1%E7%89%87/movie/mh.json:12:4';
+        expect(parseSessionFileLink(decodeSessionFileHref(href), { sessionRoot: root })).toMatchObject({
+            absolutePath: root + '/movie/mh.json', withinSessionRoot: true, line: 12, column: 4,
+        });
+        expect(resolveSessionFilePath('literal%20name.json', root)?.absolutePath).toBe(root + '/literal%20name.json');
+        expect(decodeSessionFileHref('./literal%2520name.json')).toBe('./literal%20name.json');
+    });
+
+    it('retains reserved href separators and still checks decoded traversal against the session root', () => {
+        expect(decodeSessionFileHref('./file%2Fname%23part.md')).toBe('./file%2Fname%23part.md');
+        expect(decodeSessionFileHref('./literal%not-encoding.md')).toBe('./literal%not-encoding.md');
+        expect(parseSessionFileLink(decodeSessionFileHref('%2e%2e/private.md'), { sessionRoot })?.withinSessionRoot).toBe(false);
+        expect(parseSessionFileLink(decodeSessionFileHref('https://example.com/a%20b.md'), { sessionRoot })).toBeNull();
+    });
 
     it('parses absolute file refs with line numbers', () => {
         const result = parseSessionFileLink('/Users/kirilldubovitskiy/projects/happy/packages/happy-cli/src/codex/runCodex.ts:594', {

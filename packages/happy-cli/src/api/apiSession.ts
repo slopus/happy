@@ -1,5 +1,7 @@
 import { createArtifactRuntime } from '@/modules/artifacts/runtime';
 import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
+import { registerMotionWorkbenchHandlers } from '@/modules/motionWorkbench/bridge';
+import { registerMotionEditorHandlers } from '@/modules/motionWorkbench/editor';
 import { runArtifactTurn } from '@/modules/artifacts/turn';
 import { logger } from '@/ui/logger'
 import { createScheduledRunTracker } from './scheduledRun';
@@ -178,6 +180,7 @@ export class ApiSessionClient extends EventEmitter {
         activeSubagents: new Set<string>(),
     };
     private goalBoardController: { dispose(): void };
+    private motionEditor: { dispose(): void };
     private goalBoardSnapshotSequence = 0;
     private goalBoardClosed = false;
     private lastSeq = 0;
@@ -237,6 +240,12 @@ export class ApiSessionClient extends EventEmitter {
         });
         registerArtifactHandlers(this.rpcHandlerManager, this.artifactRuntime.getStore, this.metadata.path);
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path, this.artifactRuntime.supported && artifactIdentity && this.metadata.machineId ? this.artifactRuntime.getStore : undefined);
+        registerMotionWorkbenchHandlers(this.rpcHandlerManager, this.metadata.path);
+        this.motionEditor = registerMotionEditorHandlers(this.rpcHandlerManager, this.metadata.path, {
+            onChange: (bindingId, sequence) => this.updateMetadata(metadata => ({ ...metadata,
+                motionWorkbenchChanges: [...(metadata.motionWorkbenchChanges ?? []).filter(change => change.bindingId !== bindingId), { bindingId, sequence }].slice(-2),
+            })),
+        });
         this.goalBoardController = registerGoalBoardHandlers(this.rpcHandlerManager, this.metadata.path, {
             homeDirectory: this.metadata.homeDir,
             initialFeaturePath: this.metadata.goalBoard?.featurePath,
@@ -1322,6 +1331,7 @@ export class ApiSessionClient extends EventEmitter {
         this.goalBoardClosed = true;
         this.goalBoardSnapshotSequence++;
         this.goalBoardController.dispose();
+        this.motionEditor.dispose();
         if (this.listenerCount('before-close') > 0) {
             try {
                 this.emit('before-close');

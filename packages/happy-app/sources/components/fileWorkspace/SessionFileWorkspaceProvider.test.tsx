@@ -338,3 +338,35 @@ it('preserves positions on repeated file opens without creating colon-suffixed t
     expect(value.locationRequest).toBeUndefined();
     await act(async () => { renderer.unmount(); });
 });
+
+it('opens named movie projects in the file workspace and rejects directories outside its root', async () => {
+    mocks.socket = 'connected'; let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(node()); await tick(); });
+    try {
+        await expect(value.openMotionProject!('/elsewhere/private')).rejects.toThrow('fileWorkspace.rootUnavailable');
+        expect(value.motionRequest).toBeUndefined();
+        expect(mocks.reads).not.toHaveBeenCalledWith('session', '/elsewhere/private/mh.json', expect.anything());
+        await act(async () => { await value.openMotionProject!('/work/影片/'); });
+        expect(value.snapshot.active).toBe('/work/影片/mh.json');
+        expect(value.motionRequest).toEqual({ id: 1, sessionId: 'session', path: '/work/影片/mh.json' });
+        await act(async () => { await value.openMotionProject!('/work/影片'); });
+        expect(value.motionRequest?.id).toBe(2);
+    } finally { await act(async () => { renderer.unmount(); }); }
+});
+
+it('does not hand an outstanding movie open to a different conversation in the same bound project', async () => {
+    mocks.socket = 'connected'; mocks.uiTabs = [];
+    let finish!: (value: { content: string; hash: string }) => void;
+    const binding = { root: '/work', scope: 'shared-project', machineId: 'machine', readBytes: vi.fn(),
+        readText: vi.fn(() => new Promise<{ content: string; hash: string }>(resolve => { finish = resolve; })), writeText: vi.fn() };
+    const render = (id: string) => <SessionFileWorkspaceProvider sessionId={id} binding={binding}><Probe /></SessionFileWorkspaceProvider>;
+    let renderer: any, pending!: Promise<void>;
+    await act(async () => { renderer = TestRenderer.create(render('one')); await tick(); });
+    try {
+        await act(async () => { pending = value.openMotionProject!('/work/movie'); await tick(); });
+        await act(async () => { renderer.update(render('two')); await tick(); });
+        await act(async () => { finish({ content: '{}', hash: 'movie' }); await pending; });
+        expect(value.sessionId).toBe('two');
+        expect(value.motionRequest).toBeUndefined();
+    } finally { await act(async () => { renderer.unmount(); }); }
+});

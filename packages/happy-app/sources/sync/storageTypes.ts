@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MotionWorkbenchChangeSchema, MotionProjectLinkSchema } from '@slopus/happy-wire';
 import { messageOptionResponseSchema } from './messageOptionResponses';
 import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema, ARTIFACT_PROTOCOL, asyncQuestionResponseSchema, DelegationRoleV1Schema, DelegatedTaskSummaryV1Schema, DelegationSnapshotV2Schema } from "@slopus/happy-wire";
 
@@ -16,6 +17,8 @@ export const MetadataSchema = z.object({
     application: ApplicationSessionMetadataSchema.optional(),
     goalBoard: GoalBoardBindingSchema.optional(),
     goalBoardSnapshot: GoalBoardSnapshotSchema.optional(),
+    motionWorkbenchChanges: z.array(MotionWorkbenchChangeSchema).max(2).optional(),
+    motionProjectLinks: z.array(MotionProjectLinkSchema).max(20).optional(),
     codexAsyncQuestionResponses: z.record(z.string(), asyncQuestionResponseSchema).optional(),
     messageOptionResponses: z.record(z.string(), messageOptionResponseSchema).optional(),
     goalBoardTaskSessions: z.record(z.string().max(65536), z.string().max(256)).optional(),

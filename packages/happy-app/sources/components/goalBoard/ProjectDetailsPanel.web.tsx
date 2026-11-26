@@ -1,10 +1,13 @@
 import * as React from 'react';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
+import { WorkspaceButton } from '@/components/fileWorkspace/WorkspaceButton';
+import { useUnistyles } from 'react-native-unistyles';
 import { PanelTabs } from '@/components/PanelTabs';
 import { t, getCurrentLanguage } from '@/text';
 import { useFileWorkspace } from '@/components/fileWorkspace/context';
 import { ProjectConversationNavigationPane, useProjectConversationNavigation } from './ProjectConversationNavigation.web';
+import { MotionArtifactPanel } from '@/components/motionWorkbench/MotionArtifactPanel';
 
 /** Scope and Task share the same right-column frame and file-tab semantics. */
 export function ProjectDetailsPanel({
@@ -26,6 +29,7 @@ export function ProjectDetailsPanel({
     style?: any;
     showTabs?: boolean;
 }) {
+    const { theme } = useUnistyles();
     const conversations = useProjectConversationNavigation();
     const workspace = useFileWorkspace();
     const [showConversations, setShowConversations] = React.useState(true);
@@ -55,6 +59,7 @@ export function ProjectDetailsPanel({
                                   ]
                                 : []),
                             { key: 'details', label: t('projectGoals.details'), icon: 'document-text-outline' },
+                            { key: 'artifacts', label: getCurrentLanguage().startsWith('zh') ? '产物' : 'Artifacts', icon: 'albums-outline' },
                             { key: 'files', label: t('projectGoals.files'), icon: 'folder-outline' },
                         ]}
                     />
@@ -64,6 +69,8 @@ export function ProjectDetailsPanel({
                 <ProjectConversationNavigationPane onReveal={() => selectTab('sessions')}>
                     {conversations}
                 </ProjectConversationNavigationPane>
+            ) : activeTab === 'artifacts' ? (
+                <View style={{ padding: 12, gap: 10 }}>{workspace?.sessionId && !workspace.readOnly ? <MotionArtifactPanel sessionId={workspace.sessionId} mode="library" /> : <><Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{getCurrentLanguage().startsWith('zh') ? '先从项目会话列表选择一个在线执行会话，再查看此目录的产物。打开工程不会自动向 AI 发送要求。' : 'Select a connected project conversation to access this workspace. Opening a project does not send an AI request.'}</Text><WorkspaceButton label={getCurrentLanguage().startsWith('zh') ? '选择项目会话' : 'Choose project conversation'} icon="chatbubbles-outline" onPress={() => selectTab('sessions')} /></>}</View>
             ) : (
                 children
             )}

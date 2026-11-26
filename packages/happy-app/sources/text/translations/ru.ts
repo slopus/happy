@@ -27,6 +27,27 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
+    motionWorkbench: {
+        ...projectGoalsBase.motionWorkbench,
+        title: "Видеоредактор",
+        open: "Открыть видеоредактор",
+        annotations: "Аннотации ИИ",
+        reviewChanged: "Проект изменён. Обновите аннотации перед отправкой.",
+        sourceChanged: "Исходный код изменён. Загрузите новую версию.",
+        unavailable: "Видеоредактор недоступен.",
+        closeBlocked: "Завершите или сохраните правку перед закрытием.",
+        reviewMessage: "Внесите правки по этим аннотациям видео:",
+        queued: "Добавлено в текущий разговор",
+        send: "Передать ИИ",
+        empty: "Нет сохранённых аннотаций. Добавьте их в редакторе.",
+        offline: "Нет соединения. Редактирование и отправка ИИ приостановлены.",
+        loading: "Загрузка редактора и ресурсов…",
+        select: "Выбрать",
+        selected: "Выбрано",
+        reopen: "Загрузить новую версию",
+        license: "Лицензии",
+        export: "Поручить ИИ экспорт MP4",
+    },
     codexActivity: { ...projectGoalsBase.codexActivity },
 
     delegation: {
