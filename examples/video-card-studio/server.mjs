@@ -31,6 +31,28 @@ export async function createStudio(options) {
   await mkdir(join(dataDir, 'assets'), { recursive: true, mode: 0o700 });
   const store = new StudioStore(join(dataDir, 'jobs.sqlite'), options);
   const clients = new Set(), budgets = new Map();
+  let eventHeartbeat;
+  const stopEventHeartbeat = () => {
+    clearInterval(eventHeartbeat);
+    eventHeartbeat = undefined;
+  };
+  const addEventClient = res => {
+    clients.add(res);
+    if (!eventHeartbeat) {
+      // Transport only: a comment prevents a quiet proxy from closing SSE.
+      // Do not read jobs or wake the dispatcher on a heartbeat.
+      eventHeartbeat = setInterval(() => {
+        for (const client of clients) {
+          if (!client.writableEnded && !client.writableNeedDrain) client.write(': keepalive\n\n');
+        }
+      }, options.eventHeartbeatMs ?? 20_000);
+      eventHeartbeat.unref();
+    }
+    res.once('close', () => {
+      clients.delete(res);
+      if (clients.size === 0) stopEventHeartbeat();
+    });
+  };
   const mutations = new Map();
   let downloads = 0, privateRequests = 0;
   const locked = async (id, action) => {
@@ -64,8 +86,9 @@ export async function createStudio(options) {
       }
       if (req.method === 'GET' && path === '/api/events') {
         if (clients.size >= 100) throw new StudioError('too-many-connections', 429);
-        res.writeHead(200, { 'content-type': 'text/event-stream', 'x-accel-buffering': 'no' }); clients.add(res);
-        res.once('close', () => clients.delete(res)); res.write(`event: state\ndata: ${JSON.stringify(state())}\n\n`); return;
+        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store, no-transform', 'x-accel-buffering': 'no' });
+        addEventClient(res);
+        res.write(`event: state\ndata: ${JSON.stringify(state())}\n\n`); return;
       }
       if (req.method === 'POST' && path === '/api/jobs') {
         const input = await jsonBody(req); shape(input, ['requestId', 'url']);
@@ -168,6 +191,6 @@ export async function createStudio(options) {
   server.requestTimeout = 120000; server.headersTimeout = 15000;
   return { server, store, dispatcher,
     async listen(port = 0, host = '127.0.0.1') { await new Promise(ok => server.listen(port, host, ok)); origin ??= `http://127.0.0.1:${server.address().port}`; void dispatcher.connect(); return origin; },
-    async close() { await dispatcher.stop(); for (const res of clients) res.end(); await new Promise(ok => server.close(ok)); store.close(); },
+    async close() { stopEventHeartbeat(); await dispatcher.stop(); for (const res of clients) res.end(); await new Promise(ok => server.close(ok)); store.close(); },
   };
 }

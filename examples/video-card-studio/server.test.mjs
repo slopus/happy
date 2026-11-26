@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, readdir, writeFile, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, writeFile, stat, rm } from 'node:fs/promises';
 import { get } from 'node:http';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -52,6 +52,32 @@ test('real HTTP application enforces input, private result binding, immutable PN
     assert.equal(studio.store.next().id, second);
     const html = await (await fetch(origin)).text(); assert(!html.includes(workerToken));
   } finally { eventAbort.abort(); await studio.close(); }
+});
+
+test('quiet SSE connections receive transport comments without rereading jobs or waking the dispatcher', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'card-stream-'));
+  let listReads = 0;
+  const studio = await createStudio({ dataDir, workerToken: randomBytes(32).toString('hex'), taskId: randomUUID(), eventHeartbeatMs: 20,
+    createDispatcher: () => ({ connect() {}, wake() { assert.fail('heartbeat must not wake dispatcher'); }, stop() {}, connectionState: () => 'connected' }) });
+  const list = studio.store.list.bind(studio.store);
+  studio.store.list = () => { listReads++; return list(); };
+  const origin = await studio.listen(), controller = new AbortController();
+  try {
+    const response = await fetch(origin + '/api/events', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)]) });
+    assert.equal(response.headers.get('cache-control'), 'no-store, no-transform');
+    let frames = '';
+    for await (const part of response.body) {
+      frames += Buffer.from(part).toString();
+      if (frames.includes(': keepalive\n\n')) break;
+    }
+    assert.match(frames, /^event: state\n/);
+    assert.match(frames, /\n\n: keepalive\n\n/);
+    assert.equal(listReads, 1);
+  } finally {
+    controller.abort();
+    await studio.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
 });
 
 test('dispatcher uses task events to drain two inputs, survives lost acceptance response, and never retries uncertainty', async () => {
