@@ -50,6 +50,7 @@ import {
 import { resolveComposerPrimaryAction } from './composerPrimaryAction';
 import { useComposerAbortConfirmation } from '@/hooks/useComposerAbortConfirmation';
 import { DiscussionModeButton, type DiscussionModeButtonProps } from './DiscussionModeButton';
+import { useComposerSurface } from '@/hooks/useComposerSurface';
 
 interface MessageComposerProps {
     // Drives layout differences between the home compose box and the in-session
@@ -534,6 +535,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         || directoryInvalid
         || Boolean(props.directorySelector?.switching);
     const isSession = props.mode === 'session';
+    const composerSurface = useComposerSurface(theme.colors.input.background, theme.colors.divider, isSession, theme.dark);
     const autocompletePrefixes = React.useMemo(() => props.autocompletePrefixes
         ? Array.from(new Set(['@', ...props.autocompletePrefixes])) : EMPTY_AUTOCOMPLETE_PREFIXES, [props.autocompletePrefixes]);
     const autocompleteSuggestions = props.autocompleteSuggestions ?? EMPTY_AUTOCOMPLETE_SUGGESTIONS;
@@ -1032,7 +1034,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
                 <View style={styles.composerPanelContainer}>
-                <View ref={composerPanelRef} style={styles.unifiedPanel} testID="composer-input-panel">
+                <View ref={composerPanelRef} style={[styles.unifiedPanel, composerSurface]} testID="composer-input-panel">
                     {props.contextContent}
                     {/* Attachment preview strip */}
                     {props.selectedImages && props.selectedImages.length > 0 && (
