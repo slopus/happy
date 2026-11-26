@@ -47,7 +47,8 @@ import kotlinx.coroutines.launch
  *
  * `adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.viewers.ViewersFixturesActivity
  * --es viewers.screen chat|todo --es viewers.scene tiers|none|ten|live`. Each
- * heartbeat is logged under `ViewersFixture`.
+ * heartbeat is logged under `ViewersFixture`. The chat's composer mentions
+ * the same people after an `@`.
  */
 class ViewersFixturesActivity : ComponentActivity() {
     private val now get() = System.currentTimeMillis()
@@ -95,7 +96,10 @@ class ViewersFixturesActivity : ComponentActivity() {
                 HappyTheme {
                     ProvideWindowLayout {
                         val state by conversation.state.collectAsState()
-                        ConversationScreen(state, remember { ConversationScreenActions() }, viewers = slot)
+                        val people by users.collectAsState()
+                        // The same people are the team an "@" mentions, and a send goes to the in-memory computer.
+                        val actions = remember { ConversationScreenActions(onSend = { words, attachments -> conversation.send(words, attachments) }) }
+                        ConversationScreen(state, actions, viewers = slot, people = people.values.toList())
                     }
                 }
             }

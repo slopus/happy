@@ -260,6 +260,9 @@ fun ConversationScreen(
     place: TranscriptPlace? = null,
     /** Who else is on the chat, at the head of the bar's actions ([com.slopus.happy.ui.viewers.ViewersSlot]). */
     viewers: @Composable () -> Unit = {},
+    /** The team, in name order, whom an `@` in the composer can mention; [self], the reader, is never offered. */
+    people: List<com.slopus.happy.agent.TeamUser> = emptyList(),
+    self: String? = null,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -280,7 +283,12 @@ fun ConversationScreen(
     // "/" opens the agent's commands over the composer, as desktop's palette does; a new chat's, the computer's skills.
     val commands by rememberUpdatedState(state.commands)
     val onCommand by rememberUpdatedState(actions.onCommand)
-    val commandSource = remember(state.agent?.id) { ConversationCommands(state.agent?.id, { commands }) { command -> onCommand(command.name, null) } }
+    // "@" offers the team, as desktop's mention list does, in a new chat as in one under way.
+    val team by rememberUpdatedState(people)
+    val reader by rememberUpdatedState(self)
+    val commandSource = remember(state.agent?.id) {
+        ConversationCommands(state.agent?.id, { commands }, { team }, { reader }) { command -> onCommand(command.name, null) }
+    }
     val autocomplete = com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete(
         text,
         onTextChange = {

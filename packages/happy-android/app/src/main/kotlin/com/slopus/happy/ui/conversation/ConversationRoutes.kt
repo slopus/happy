@@ -510,6 +510,9 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         session.catalog.map { ChatAddress.of(it, conversation.agentId).chiefOfStaff }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(false)
     val roleCanSend = permissions.allows(if (chief) Permission.BOTS_MANAGE else Permission.CONTENT_WRITE)
+    // Whom "@" can mention: the bootstrap's teammates (Happy Agent in team mode, Happy Cloud), kept offline.
+    val people by remember(session) { session.team.users.map { it.values.toList() } }.collectAsStateWithLifecycle(session.team.users.value.values.toList())
+    val self by remember(session) { session.catalog.map { it.userId }.distinctUntilChanged() }.collectAsStateWithLifecycle(session.catalog.value.userId)
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) { com.slopus.happy.ui.references.ProvideBusyLinks(references, session.references) {
         ConversationScreen(
@@ -519,6 +522,8 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             roleCanCompose = permissions.canWrite,
             place = remember(conversation) { TranscriptPlace(session.scrollPlaces, conversation.agentId) },
             viewers = { ViewersSlot(session, ViewerTarget.agent(conversation.agentId)) },
+            people = people,
+            self = self,
             link = link,
             usage = usage,
             onRefreshUsage = session.usage::refresh,

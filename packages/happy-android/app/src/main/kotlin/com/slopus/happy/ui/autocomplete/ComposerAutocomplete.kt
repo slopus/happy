@@ -74,6 +74,7 @@ import com.slopus.happy.autocomplete.applySuggestion
 import com.slopus.happy.conversation.SlashCommand
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.ui.connection.AgentPicture
+import com.slopus.happy.ui.connection.PersonMark
 import com.slopus.happy.ui.chat.ChatTheme
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
@@ -334,6 +335,7 @@ private fun SuggestionCard(suggestions: List<Suggestion>, selected: Int, onSelec
                     is Suggestion.Command -> CommandSuggestion(suggestion)
                     is Suggestion.AgentCommand -> AgentCommandSuggestion(suggestion)
                     is Suggestion.FileMention -> FileMentionSuggestion(suggestion)
+                    is Suggestion.Person -> PersonSuggestion(suggestion)
                 }
             }
         }
@@ -429,6 +431,47 @@ private fun RowScope.FileMentionSuggestion(suggestion: Suggestion.FileMention) {
         color = colors.textSecondary,
         modifier = Modifier.padding(start = AutocompleteSpec.labelGap).testTag(AutocompleteTags.LABEL),
     )
+}
+
+/**
+ * Someone on the team, as desktop's mention list offers them: their face
+ * (picture over its ThumbHash, else their placeholder) in the 32 circle,
+ * 12 before the name (14 semibold, one line), then what they do (13
+ * secondary, one line), 12 after.
+ */
+@Composable
+private fun RowScope.PersonSuggestion(suggestion: Suggestion.Person) {
+    val colors = HappyTheme.colors
+    val user = suggestion.user
+    Box(
+        modifier = Modifier
+            .padding(end = AutocompleteSpec.iconGap)
+            .testTag(AutocompleteTags.ICON)
+            .requiredSize(AutocompleteSpec.iconCircle)
+            .clip(CircleShape)
+            .background(colors.surfaceHigh),
+        contentAlignment = Alignment.Center,
+    ) {
+        PersonMark(user.id, user.photo, AutocompleteSpec.iconCircle)
+    }
+    Text(
+        user.name,
+        style = AutocompleteSpec.command,
+        color = colors.text,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(end = if (user.role != null) AutocompleteSpec.commandGap else 0.dp).weight(1f, fill = user.role == null),
+    )
+    user.role?.let { role ->
+        Text(
+            role,
+            style = AutocompleteSpec.description,
+            color = colors.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).testTag(AutocompleteTags.LABEL),
+        )
+    }
 }
 
 /**

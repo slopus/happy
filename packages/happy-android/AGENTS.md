@@ -2921,3 +2921,16 @@ the task or bot's first message once it is made. The new agent's catalog (its
 bootstrap) decides: without that name, or with attachments, the words go as
 plain text. A failure leaves the message failed with Retry, as a first send's
 does. Other commands wait for an agent.
+
+Happy Agent chats, new work included, mention teammates from the same list
+(desktop's happyAgentMentionPlaces.ts): an `@` word at the cursor offers the
+bootstrap's `teammates` (`session.team`, kept offline; Happy Agent in team
+mode and Happy Cloud send it, standalone doesn't, so nobody is offered there),
+the reader left out, those whose name holds the word, five at most
+(`searchPeople`). A pick writes `[Name](happy://users/<id>)` (`mentionMarkdown`),
+which is what is sent and saved; in a task's chat the computer brings the
+person in (API.md "Mentioning from a message"). The field shows each such
+link as "@Name" in the strong face through an `OutputTransformation`
+(`ui/autocomplete/ComposerMentions`, desktop's composer mention): the caret
+steps over it and a delete into it takes it whole, keyboard or IME. Debug
+builds' `ViewersFixturesActivity` chat offers its people.

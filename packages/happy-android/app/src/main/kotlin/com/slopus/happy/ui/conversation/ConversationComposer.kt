@@ -243,7 +243,15 @@ internal fun ConversationComposer(
     }
     // The field's own words and selection; text set from outside puts the cursor at its end, or where focus asks.
     // Saved, so a rotation or a return from process death keeps the caret where it was.
-    val (field, typed) = rememberHoistedTextFieldState(text, onTextChange)
+    // A person picked from the list leaves the caret after their mention ([ComposerCursor.placement]); typing lets that go.
+    val (field, typed) = rememberHoistedTextFieldState(
+        text,
+        onTextChange = { next ->
+            cursor?.placement = null
+            onTextChange(next)
+        },
+        placed = { words -> cursor?.placement?.takeIf { it.text == words }?.selection },
+    )
     val focus = remember { FocusRequester() }
     LaunchedEffect(field, cursor) { androidx.compose.runtime.snapshotFlow { field.selection }.collect { cursor?.selection = it } }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -346,7 +354,7 @@ internal fun ConversationComposer(
         val words = field.text
         val width = fullWidth.intValue
         val expands = onExpand != null && width > 0 && words.isNotEmpty() &&
-            remember(words, width, bodyStyle) { measurer.measure(words.toString(), bodyStyle, constraints = Constraints(maxWidth = width)).lineCount } > shownLines
+            remember(words, width, bodyStyle) { measurer.measure(com.slopus.happy.autocomplete.shownDraft(words.toString()), bodyStyle, constraints = Constraints(maxWidth = width)).lineCount } > shownLines
         val showCount = compact && attached.isNotEmpty()
         val moreLabel = stringResource(R.string.conversation_composer_more) + if (showCount) ", " + pluralResource(R.plurals.conversation_attached_picture_count, attached.size, attached.size) else ""
         Column(
@@ -378,6 +386,7 @@ internal fun ConversationComposer(
                 BasicTextField(
                     state = field,
                     inputTransformation = typed,
+                    outputTransformation = com.slopus.happy.ui.autocomplete.ComposerMentions,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.text),
                     cursorBrush = SolidColor(colors.text),
                     lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = ConversationComposerSpec.MAX_LINES),
