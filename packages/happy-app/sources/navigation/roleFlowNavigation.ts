@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type Entry = { owner: object; back: () => void; close: () => void };
+type Entry = { owner: object; back: () => void; close?: () => void };
 /** Only the focused role surface owns this small local navigation override. */
 export const useRoleFlowNavigationStore = create<{ entry: Entry | null }>(() => ({ entry: null }));
 export function registerRoleFlowNavigation(entry: Entry) {
@@ -14,6 +14,6 @@ export function runRoleFlowNavigationBack() {
 }
 export function runRoleFlowNavigationClose() {
     const entry = useRoleFlowNavigationStore.getState().entry;
-    if (!entry) return false;
+    if (!entry?.close) return false;
     entry.close(); return true;
 }

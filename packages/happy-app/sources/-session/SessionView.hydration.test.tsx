@@ -1,3 +1,4 @@
+vi.mock('@/components/delegation/RoleDetailPanel', () => ({ RoleDetailPanel: 'RoleDetailPanel' }));
 vi.mock('@/sync/roleConfigurationHandoff', () => ({ prepareRoleConfigurationSessionMessage: () => null, recordRoleConfigurationSavedResult: () => false }));
 vi.mock('@/hooks/useRoleConfigurationReturn', () => ({ useRoleConfigurationReturn: () => null }));
 import * as React from 'react';

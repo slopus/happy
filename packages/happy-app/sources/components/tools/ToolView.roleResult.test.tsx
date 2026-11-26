@@ -1,3 +1,4 @@
+import { setFirstSubmissionScope, getFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 vi.mock('@/sync/roleConfigurationHandoff', () => ({ recordRoleConfigurationSavedResult: vi.fn() }));
 import * as React from 'react';
 import { act } from 'react';
@@ -5,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
 
-const mocks = vi.hoisted(() => ({ push: vi.fn(), header: vi.fn(), themes: null as any, theme: null as any }));
+const mocks = vi.hoisted(() => ({ push: vi.fn(), header: vi.fn(), open: vi.fn(), inspectorAvailable: true, themes: null as any, theme: null as any }));
 vi.mock('react-native', () => ({
     ActivityIndicator: 'ActivityIndicator',
     Platform: { OS: 'web', select: (values: Record<string, unknown>) => values.web ?? values.default },
@@ -19,6 +20,7 @@ vi.mock('react-native-unistyles', async () => {
     }) }, useUnistyles: () => ({ theme: mocks.theme }) };
 });
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', Octicons: 'Octicons' }));
+vi.mock('@/components/subagent/SubagentInspectorContext', () => ({ useSubagentInspector: () => mocks.inspectorAvailable ? { open: mocks.open } : null }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/components/codingAgents/CodingAgentIcon', () => ({ CodingAgentIcon: 'CodingAgentIcon' }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
@@ -52,7 +54,7 @@ const baseTool: ToolCall = { name: 'mcp__happy__agent_roles', state: 'completed'
 describe('ToolView saved-role receipt', () => {
     beforeEach(() => {
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-        vi.clearAllMocks(); mocks.theme = mocks.themes.caramelLight;
+        vi.clearAllMocks(); setFirstSubmissionScope('owner-a', 'https://test'); mocks.inspectorAvailable = true; mocks.theme = mocks.themes.caramelLight;
     });
 
     it('shows the compact actual role under an otherwise minimal MCP call and opens its precise machine/ID', () => {
@@ -67,7 +69,8 @@ describe('ToolView saved-role receipt', () => {
         act(() => renderer.root.findByProps({ testID: 'agent-role-view' }).props.onPress({ stopPropagation }));
         expect(stopPropagation).toHaveBeenCalledOnce();
         expect(mocks.header).not.toHaveBeenCalled();
-        expect(mocks.push).toHaveBeenCalledWith({ pathname: '/settings/delegation-roles', params: { machineId: 'actual-machine', roleId: 'writer-id' } });
+        expect(mocks.push).not.toHaveBeenCalled();
+        expect(mocks.open).toHaveBeenCalledExactlyOnceWith({ kind: 'role-detail', id: 'role:writer-id', title: role.name, status: 'completed', machineId: 'actual-machine', roleId: 'writer-id', savedRole: role, roleOwner: getFirstSubmissionScope() });
         act(() => renderer.unmount());
     });
 
@@ -82,6 +85,25 @@ describe('ToolView saved-role receipt', () => {
             expect(mocks.push).not.toHaveBeenCalled();
             act(() => renderer.unmount());
         }
+    });
+
+    it('rejects a saved-card handler after account ownership changes before its click is dispatched', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ToolView metadata={{ machineId: 'actual-machine' } as any} tool={baseTool} />); });
+        const staleClick = renderer.root.findByProps({ testID: 'agent-role-view' }).props.onPress;
+        act(() => { setFirstSubmissionScope('owner-b', 'https://test'); setFirstSubmissionScope('owner-a', 'https://test'); });
+        act(() => staleClick({ stopPropagation: vi.fn() }));
+        expect(mocks.open).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('does not navigate away when the transcript has no conversation inspector owner', () => {
+        mocks.inspectorAvailable = false;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ToolView metadata={{ machineId: 'actual-machine' } as any} tool={baseTool} />); });
+        expect(renderer.root.findAllByProps({ testID: 'agent-role-view' })).toHaveLength(0);
+        expect(mocks.push).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
     });
 
     it.each([

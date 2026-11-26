@@ -1,3 +1,4 @@
+import { setFirstSubmissionScope, getFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 vi.mock('@/sync/roleConfigurationHandoff', () => ({ recordRoleConfigurationSavedResult: vi.fn() }));
 import * as React from 'react';
 import { act } from 'react';
@@ -8,6 +9,7 @@ import { ConversationTranscript } from './ConversationTranscript';
 import { normalizeRawMessage, type NormalizedMessage } from '@/sync/typesRaw';
 import { createReducer, reducer } from '@/sync/reducer/reducer';
 import type { Message } from '@/sync/typesMessage';
+import { SubagentInspectorProvider, useSubagentInspector, type SubagentInspectorContextValue } from './subagent/SubagentInspectorContext';
 
 // Exercise normalization, reduction, both real grouping layers, MessageView,
 // ToolView and the actual saved-role result. Only platform/infrastructure and
@@ -78,19 +80,22 @@ function nativeConversation(): Message[] {
 
 describe('saved role result through the real transcript', () => {
     let renderer: any;
-    beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; vi.clearAllMocks(); });
+    let inspector: SubagentInspectorContextValue;
+    function Probe() { inspector = useSubagentInspector()!; return null; }
+    beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; vi.clearAllMocks(); setFirstSubmissionScope('owner-a', 'https://test'); });
     afterEach(() => { if (renderer) act(() => renderer.unmount()); renderer = undefined; });
     const byId = (testID: string) => renderer.root.find((node: any) => node.type === 'Pressable' && node.props.testID === testID);
 
     it.each([true, false])('shows the verified native save action without opening work/tool groups, grouping=%s', async groupToolCalls => {
-        await act(async () => { renderer = TestRenderer.create(<ConversationTranscript sessionId="config-session"
-            metadata={{ machineId: 'role-machine', flavor: 'codex' } as any} messages={nativeConversation()} groupToolCalls={groupToolCalls} />); });
+        await act(async () => { renderer = TestRenderer.create(<SubagentInspectorProvider sessionId="config-session"><Probe /><ConversationTranscript sessionId="config-session"
+            metadata={{ machineId: 'role-machine', flavor: 'codex' } as any} messages={nativeConversation()} groupToolCalls={groupToolCalls} /></SubagentInspectorProvider>); });
         expect(renderer.root.findAllByProps({ testID: 'agent-role-result' })).toHaveLength(1);
         expect(byId('agent-role-view').props.accessibilityLabel).toBe('delegation.viewRole');
         const stopPropagation = vi.fn();
         act(() => byId('agent-role-view').props.onPress({ stopPropagation }));
         expect(stopPropagation).toHaveBeenCalledTimes(1);
-        expect(mocks.push).toHaveBeenCalledExactlyOnceWith({ pathname: '/settings/delegation-roles', params: { machineId: 'role-machine', roleId: role.id } });
+        expect(mocks.push).not.toHaveBeenCalled();
+        expect(inspector!.selection).toMatchObject({ kind: 'role-detail', machineId: 'role-machine', roleId: role.id, savedRole: role });
         if (groupToolCalls) {
             expect(byId('conversation-agent-work-toggle').props.accessibilityState.expanded).toBe(false);
             act(() => byId('conversation-agent-work-toggle').props.onPress());

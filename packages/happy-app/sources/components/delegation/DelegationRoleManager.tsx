@@ -283,7 +283,7 @@ const RoleEditor = React.memo(function RoleEditor({ machine, caches, initialRole
         }
         changeView(view === 'edit' ? 'detail' : 'list');
     };
-    useRoleFlowNavigationBack({ enabled: focused && view !== 'list', onBack: () => back(), onClose: () => back(true) });
+    useRoleFlowNavigationBack({ enabled: focused && view !== 'list', interceptClose: editing, onBack: () => back(), onClose: () => back(true) });
     const validateBasics = () => {
         const missing = !draft.name.trim() ? 'name' : !draft.description.trim() ? 'description' : null;
         setFieldError(missing);

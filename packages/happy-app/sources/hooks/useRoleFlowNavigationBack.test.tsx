@@ -50,6 +50,22 @@ describe('focused local role navigation', () => {
         expect(runRoleFlowNavigationBack()).toBe(false);
     });
 
+    it('keeps readonly detail Back local while letting a real modal Close reach its host', async () => {
+        const onBack = vi.fn(); const onClose = vi.fn(); let renderer: any;
+        act(() => { renderer = TestRenderer.create(<Probe enabled interceptClose={false} onBack={onBack} onClose={onClose} />); });
+        expect(runRoleFlowNavigationClose()).toBe(false);
+        expect(onClose).not.toHaveBeenCalled();
+        const close = { data: { action: { type: 'CLOSE_DESKTOP_MODAL' } }, preventDefault: vi.fn() };
+        mock.beforeRemove?.(close); await flush();
+        expect(close.preventDefault).not.toHaveBeenCalled(); expect(onBack).not.toHaveBeenCalled();
+        expect(runRoleFlowNavigationBack()).toBe(true); await flush(); expect(onBack).toHaveBeenCalledOnce();
+        act(() => renderer.update(<Probe enabled interceptClose onBack={onBack} onClose={onClose} />));
+        expect(runRoleFlowNavigationClose()).toBe(true); await flush(); expect(onClose).toHaveBeenCalledOnce();
+        act(() => renderer.update(<Probe enabled interceptClose={false} onBack={onBack} onClose={onClose} />));
+        expect(runRoleFlowNavigationClose()).toBe(false);
+        act(() => renderer.unmount());
+    });
+
     it('deduplicates asynchronous draft confirmation and reads the latest handler', async () => {
         let release!: () => void;
         const onBack = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));

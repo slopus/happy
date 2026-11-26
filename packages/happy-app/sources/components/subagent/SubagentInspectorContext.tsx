@@ -1,5 +1,6 @@
 import * as React from 'react';
 import type { DelegationRole, DelegationRoleInput } from '@slopus/happy-wire';
+import type { getFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 import type {
     ConversationActivityStatus,
     SubagentConversationActivity,
@@ -7,8 +8,11 @@ import type {
 
 export type SubagentInspectorSelection = Pick<SubagentConversationActivity, 'id' | 'title'> & {
     status: ConversationActivityStatus;
-    kind?: 'native' | 'delegated-task' | 'agent-roles';
+    kind?: 'native' | 'delegated-task' | 'agent-roles' | 'role-detail';
     roleId?: string;
+    machineId?: string;
+    savedRole?: DelegationRole;
+    roleOwner?: ReturnType<typeof getFirstSubmissionScope>;
 };
 
 export type SubagentInspectorContextValue = {

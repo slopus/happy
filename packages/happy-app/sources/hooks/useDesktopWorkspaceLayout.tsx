@@ -1,3 +1,4 @@
+import { closeTemporaryConversationPanel } from '@/navigation/conversationPanelNavigation';
 import * as React from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { useDesktopWorkspacePathname } from './useDesktopWorkspacePathname';
@@ -216,6 +217,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
     }, [enabled, endPanelResize, leftCollapsed, resizingSide, setLeftCollapsed, setZenMode, zenMode, reveal.dismiss, projectWorkspace]);
     const toggleRightSidebar = React.useCallback(() => {
         if (!rightPanelAvailable) return;
+        if (closeTemporaryConversationPanel()) return;
         if (zenMode) {
             setZenMode(false);
             setRightCollapsed(false);

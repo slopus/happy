@@ -1,23 +1,25 @@
 import * as React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { StyleSheet } from 'react-native-unistyles';
 import { recordRoleConfigurationSavedResult } from '@/sync/roleConfigurationHandoff';
 import type { DelegationRole } from '@slopus/happy-wire';
 import { CodingAgentIcon } from '@/components/codingAgents/CodingAgentIcon';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { getFirstSubmissionScope, subscribeFirstSubmissionScope } from '@/sync/firstSubmissionScope';
+import { useSubagentInspector } from '@/components/subagent/SubagentInspectorContext';
 
 type Props = { role: DelegationRole; machineId?: string; sessionId?: string; toolCreatedAt?: number; readOnly: boolean };
 
 /** Compact receipt in the ordinary tool transcript; it never mutates a role. */
 export const AgentRoleResultView = React.memo(function AgentRoleResultView({ role, machineId, sessionId, toolCreatedAt, readOnly }: Props) {
-    const router = useRouter();
+    const inspector = useSubagentInspector();
+    const sourceOwner = React.useSyncExternalStore(subscribeFirstSubmissionScope, getFirstSubmissionScope, getFirstSubmissionScope);
     React.useEffect(() => {
         if (!readOnly && machineId && sessionId && toolCreatedAt !== undefined) recordRoleConfigurationSavedResult({ machineId, sessionId, role, toolCreatedAt });
     }, [readOnly, machineId, sessionId, role, toolCreatedAt]);
     const [focused, setFocused] = React.useState(false);
-    const canNavigate = !readOnly && typeof machineId === 'string' && machineId.trim().length > 0;
+    const canNavigate = !readOnly && !!sourceOwner && !!inspector && typeof machineId === 'string' && machineId.trim().length > 0;
     return <View style={styles.result} testID="agent-role-result">
         <View style={styles.heading}>
             <CodingAgentIcon agent={role.agent} size={24} />
@@ -35,7 +37,9 @@ export const AgentRoleResultView = React.memo(function AgentRoleResultView({ rol
             onBlur={() => setFocused(false)}
             onPress={event => {
                 event.stopPropagation();
-                router.push({ pathname: '/settings/delegation-roles', params: { machineId, roleId: role.id } });
+                if (!sourceOwner || getFirstSubmissionScope() !== sourceOwner) return;
+                inspector?.open({ kind: 'role-detail', id: `role:${role.id}`, title: role.name, status: 'completed',
+                    roleId: role.id, machineId, savedRole: role, roleOwner: sourceOwner });
             }}
             style={(state: { pressed: boolean; hovered?: boolean }) => [styles.action,
                 (state.pressed || state.hovered) && styles.pressed, focused && styles.focused]}

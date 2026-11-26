@@ -272,7 +272,7 @@ describe('role management workflow', () => {
     it('routes host back through the current step and protects a full close of the dirty wizard', async () => {
         await render(); expect(mocks.flowNavigation.enabled).toBe(false);
         await create(); edit('delegation-settings-name', 'Writer'); edit('delegation-settings-description', 'Write docs'); await press('delegation-settings-next');
-        expect(mocks.flowNavigation.enabled).toBe(true);
+        expect(mocks.flowNavigation.enabled).toBe(true); expect(mocks.flowNavigation.interceptClose).toBe(true);
         await act(async () => { await mocks.flowNavigation.onBack(); });
         expect(find('delegation-settings-name').props.value).toBe('Writer'); expect(mocks.back).not.toHaveBeenCalled();
         await press('delegation-settings-next'); mocks.confirm.mockResolvedValueOnce(false);
@@ -284,10 +284,28 @@ describe('role management workflow', () => {
     it('returns detail to the list without retaining a stale deep-link role ID', async () => {
         await render('machine-a', role.id);
         expect(find('delegation-flow-header').findAllByProps({ testID: 'delegation-settings-edit' }).length).toBeGreaterThan(0);
+        expect(mocks.flowNavigation.interceptClose).toBe(false);
         await act(async () => { await mocks.flowNavigation.onBack(); });
         expect(find('delegation-settings-search')).toBeDefined();
         expect(mocks.setParams).toHaveBeenLastCalledWith({ roleId: undefined, roleConfigurationReturn: undefined });
     });
+    it('releases host Close after saving or cancelling an editor, while dirty editing still requires confirmation', async () => {
+        await render('machine-a', role.id);
+        expect(mocks.flowNavigation.interceptClose).toBe(false);
+        await press('delegation-settings-edit'); edit('delegation-settings-name', 'Unsaved writer');
+        expect(mocks.flowNavigation.interceptClose).toBe(true);
+        mocks.confirm.mockResolvedValueOnce(false);
+        await act(async () => { await mocks.flowNavigation.onClose(); });
+        expect(find('delegation-settings-name').props.value).toBe('Unsaved writer');
+        expect(mocks.flowNavigation.interceptClose).toBe(true);
+        mocks.confirm.mockResolvedValueOnce(true);
+        await act(async () => { await mocks.flowNavigation.onClose(); });
+        expect(find('delegation-settings-edit')).toBeDefined(); expect(mocks.flowNavigation.interceptClose).toBe(false);
+        await press('delegation-settings-edit'); edit('delegation-settings-name', 'Saved writer');
+        await press('delegation-settings-save');
+        expect(find('delegation-settings-edit')).toBeDefined(); expect(mocks.flowNavigation.interceptClose).toBe(false);
+    });
+
     it('retains the same list scroll position when returning from a role detail', async () => {
         await render();
         act(() => find('delegation-flow-body').props.onScroll({ nativeEvent: { contentOffset: { y: 312 } } }));

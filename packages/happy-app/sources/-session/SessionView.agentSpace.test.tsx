@@ -1,3 +1,4 @@
+vi.mock('@/components/delegation/RoleDetailPanel', () => ({ RoleDetailPanel: 'RoleDetailPanel' }));
 vi.mock('@/hooks/useRoleConfigurationReturn', () => ({ useRoleConfigurationReturn: () => null }));
 import * as React from 'react';
 import { act } from 'react';
@@ -101,12 +102,7 @@ const mocks = vi.hoisted(() => ({
     suspendFileViewPanel: false,
     fileViewPanelSuspender: null as Promise<void> | null,
     sessionMessages: [] as Message[],
-    openSubagent: undefined as ((selection: {
-        id: string;
-        title: string | null;
-        status: 'running' | 'completed' | 'failed' | 'cancelled';
-        kind?: 'delegated-task' | 'agent-roles';
-    }) => void) | undefined,
+    openSubagent: undefined as ((selection: import('@/components/subagent/SubagentInspectorContext').SubagentInspectorSelection) => void) | undefined,
     session: {
         id: 'session-1',
         seq: 1,
@@ -1587,6 +1583,42 @@ describe('SessionView Agent-space boundary', () => {
         expect(input.focus).toHaveBeenCalledOnce();
         expect(mocks.sendMessage).not.toHaveBeenCalled();
         expect(renderer.root.findAllByType('DelegationInspectorPanel')).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it.each([false, true])('opens role details in the existing compact host and preserves the conversation (embedded=%s)', async embedded => {
+        mocks.isDataReady = true;
+        mocks.sessionMessages = [{ kind: 'agent-text', id: 'message-one', localId: null, createdAt: 1, text: 'Visible message' }];
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" embedded={embedded} />); });
+        const originalChat = renderer.root.findByType('ChatList');
+        mocks.routerPush.mockClear(); mocks.openSession.mockClear(); mocks.stageSessionMessage.mockClear();
+        const selection = { kind: 'role-detail' as const, id: 'role:writer', title: 'Writer', status: 'completed' as const, machineId: 'm1', roleId: 'writer' };
+        act(() => mocks.openSubagent?.(selection));
+        expect(renderer.root.findByType('RightSwipePanelHost').props).toMatchObject({ fullWidth: true, open: true });
+        expect(renderer.root.findByType('RoleDetailPanel').props.selection).toEqual(selection);
+        expect(renderer.root.findByType('ChatList')).toBe(originalChat);
+        expect(mocks.routerPush).not.toHaveBeenCalled(); expect(mocks.openSession).not.toHaveBeenCalled(); expect(mocks.stageSessionMessage).not.toHaveBeenCalled();
+        act(() => renderer.root.findByType('RoleDetailPanel').props.onClose());
+        expect(renderer.root.findAllByType('RoleDetailPanel')).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it.each([{ collapsed: false, zen: false }, { collapsed: true, zen: false }, { collapsed: true, zen: true }])('temporarily opens a role inspector without changing collapsed or zen preference ($collapsed/$zen)', async ({ collapsed, zen }) => {
+        mocks.isDataReady = true; mocks.windowWidth = 1400; mocks.isTablet = true; mocks.platformOS = 'web';
+        mocks.desktopRightPanelCollapsed = collapsed; mocks.zenMode = zen;
+        mocks.sessionMessages = [{ kind: 'agent-text', id: 'message-one', localId: null, createdAt: 1, text: 'Visible message' }];
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        mocks.setDesktopRightPanelCollapsed.mockClear(); mocks.toggleLayoutRightSidebar.mockClear();
+        act(() => mocks.openSubagent?.({ kind: 'role-detail', id: 'role:writer', title: 'Writer', status: 'completed' }));
+        expect(renderer.root.findByType('RoleDetailPanel')).toBeDefined();
+        const motion = renderer.root.findByProps({ testID: 'desktop-right-panel-motion' });
+        expect([motion.props.style].flat(Infinity).filter(Boolean).some((style: any) => style.display === 'none')).toBe(false);
+        expect(mocks.setDesktopRightPanelCollapsed).not.toHaveBeenCalled(); expect(mocks.toggleLayoutRightSidebar).not.toHaveBeenCalled();
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props.onPress());
+        expect([renderer.root.findByProps({ testID: 'desktop-right-panel-motion' }).props.style].flat(Infinity).filter(Boolean).some((style: any) => style.display === 'none')).toBe(collapsed || zen);
+        expect(mocks.setDesktopRightPanelCollapsed).not.toHaveBeenCalled(); expect(mocks.toggleLayoutRightSidebar).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 

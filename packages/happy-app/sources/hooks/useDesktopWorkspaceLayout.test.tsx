@@ -1,3 +1,4 @@
+import { registerConversationPanelClose } from '@/navigation/conversationPanelNavigation';
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -49,6 +50,20 @@ describe('desktop workspace sidebar integration', () => {
         act(() => renderer.unmount()); storage.pathname = pathname; mount();
         expect(layout.rightPanelAvailable).toBe(false);
         expect(fileAvailable).toBe(true);
+    });
+
+    it.each([
+        { collapsed: false, zen: false }, { collapsed: true, zen: false }, { collapsed: true, zen: true },
+    ])('lets a temporary conversation inspector consume the global right-panel toggle without writing preferences ($collapsed/$zen)', ({ collapsed, zen }) => {
+        act(() => { storage.setters.desktopRightPanelCollapsed(collapsed); storage.setters.zenMode(zen); });
+        storage.writes.mockClear();
+        const close = vi.fn(); const unregister = registerConversationPanelClose({}, close);
+        act(() => layout.toggleRightSidebar());
+        expect(close).toHaveBeenCalledOnce(); expect(storage.writes).not.toHaveBeenCalled();
+        expect(storage.values.desktopRightPanelCollapsed).toBe(collapsed); expect(storage.values.zenMode).toBe(zen);
+        unregister();
+        act(() => layout.toggleRightSidebar());
+        expect(storage.writes).toHaveBeenCalled();
     });
 
     it('does not hand narrow-screen file routes to the desktop workspace', () => {

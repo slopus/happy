@@ -1,3 +1,4 @@
+import { closeTemporaryConversationPanel } from '@/navigation/conversationPanelNavigation';
 import { useRoleConfigurationReturn } from '@/hooks/useRoleConfigurationReturn';
 import { RoleConfigurationReturnButton } from '@/components/delegation/RoleConfigurationReturnButton';
 import { getConversationSessionChain, hasConversationClaim, resolveConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
@@ -113,6 +114,7 @@ import {
 } from '@/components/subagent/SubagentInspectorContext';
 import { SubagentInspectorPanel } from '@/components/subagent/SubagentInspectorPanel';
 import { DelegationInspectorPanel } from '@/components/delegation/DelegationPanel';
+import { RoleDetailPanel } from '@/components/delegation/RoleDetailPanel';
 import { findSessionTitleTagQuery, removeSessionTitleTagQuery } from '@/utils/sessionTitleTags';
 import { markSessionCriticalPathAppStage } from '@/sync/sessionCriticalPathProbeBridge';
 
@@ -773,6 +775,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const hasOpenedSession = React.useRef(false);
     const subagentInspector = useSubagentInspector();
     const subagentSelection = subagentInspector?.selection ?? null;
+    const roleDetailOpen = subagentSelection?.kind === 'role-detail';
     const delegationSessionRef = React.useRef(sessionId);
     delegationSessionRef.current = sessionId;
     const composeDelegation = React.useCallback((text: string) => {
@@ -890,8 +893,8 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const canShowFilePanel = desktopRightPanelAvailable && (fileDiffsSidebarEnabled || !!fileWorkspace?.enabled);
     const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
         available: desktopRightPanelAvailable,
-        collapsed: desktopRightPanelCollapsed,
-        zenMode,
+        collapsed: roleDetailOpen ? false : desktopRightPanelCollapsed,
+        zenMode: roleDetailOpen ? false : zenMode,
     });
     const showDesktopRightPanel = !props.embedded && desktopRightPanelPresentation === 'expanded';
 
@@ -1115,17 +1118,24 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     // agent + machine + connection state. The dropdown keeps runtime identity
     // read-only while letting next-turn model, effort, and permissions update.
     const [infoPanelOpen, setInfoPanelOpen] = React.useState(false);
+    const closeRoleDetail = React.useCallback(() => {
+        subagentInspector?.close();
+        if (!desktopRightPanelAvailable) setRightDrawerOpen(false);
+    }, [subagentInspector, desktopRightPanelAvailable]);
     React.useEffect(() => {
         if (!subagentSelection || !isDataReady || !session) return;
         setInfoPanelOpen(false);
         if (desktopRightPanelAvailable) {
-            setDesktopRightPanelCollapsed(false);
+            // A read-only role view temporarily reveals the host without changing
+            // the user's collapsed/zen preference or the previous panel tab.
+            if (!roleDetailOpen) setDesktopRightPanelCollapsed(false);
         } else {
             setRightDrawerOpen(true);
         }
-    }, [desktopRightPanelAvailable, isDataReady, session, setDesktopRightPanelCollapsed, subagentSelection]);
+    }, [desktopRightPanelAvailable, isDataReady, session, setDesktopRightPanelCollapsed, subagentSelection, roleDetailOpen]);
     const toggleCompactRightDrawer = React.useCallback(() => {
         if (!compactRightDrawerAvailable) return;
+        if (roleDetailOpen && closeTemporaryConversationPanel()) return;
         if (rightDrawerOpen) {
             subagentInspector?.close();
             setRightDrawerOpen(false);
@@ -1137,7 +1147,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         if (hasVisibleWebDialog()) return;
         setInfoPanelOpen(false);
         setRightDrawerOpen(true);
-    }, [compactRightDrawerAvailable, rightDrawerOpen, subagentInspector]);
+    }, [compactRightDrawerAvailable, rightDrawerOpen, subagentInspector, roleDetailOpen]);
     useGlobalKeyboard(undefined, {
         onToggleRightSidebar: compactRightDrawerAvailable ? toggleCompactRightDrawer : undefined,
     });
@@ -1229,7 +1239,8 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     ) : undefined;
 
     const subagentPanelLabel = subagentSelection
-        ? subagentSelection.kind === 'agent-roles' ? t('delegation.rolesTitle')
+        ? subagentSelection.kind === 'role-detail' ? t('delegation.roleDetails')
+            : subagentSelection.kind === 'agent-roles' ? t('delegation.rolesTitle')
             : subagentSelection.kind === 'delegated-task' ? subagentSelection.title ?? t('delegation.task')
                 : t('toolGroup.subagentPanelLabel', { title: subagentSelection.title ?? subagentSelection.id })
         : null;
@@ -1250,6 +1261,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                 ? t('desktopWorkspace.hidePanel', { panel: rightPanelToggleLabel })
                 : t('desktopWorkspace.showPanel', { panel: rightPanelToggleLabel })}
             onPress={() => {
+                if (roleDetailOpen) { if (!closeTemporaryConversationPanel()) closeRoleDetail(); return; }
                 if (desktopRightPanelAvailable) {
                     if (showDesktopRightPanel) subagentInspector?.close();
                     setDesktopRightPanelCollapsed(showDesktopRightPanel);
@@ -1507,12 +1519,14 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     // The desktop frame owns its tint once; drawers keep their opaque theme surface.
     const inspectorSurfaceColor = desktopRightPanelAvailable && !props.embedded ? 'transparent' : undefined;
     const inspectorPanel = subagentSelection
-        ? subagentSelection.kind === 'agent-roles' || subagentSelection.kind === 'delegated-task'
+        ? subagentSelection.kind === 'role-detail'
+            ? <RoleDetailPanel key={`${sessionId}:${subagentSelection.machineId}:${subagentSelection.roleId}`} surfaceColor={inspectorSurfaceColor} selection={subagentSelection} onClose={closeRoleDetail} />
+            : subagentSelection.kind === 'agent-roles' || subagentSelection.kind === 'delegated-task'
             ? <DelegationInspectorPanel surfaceColor={inspectorSurfaceColor} sessionId={sessionId} selection={subagentSelection} onBack={() => subagentInspector?.close()} onCompose={composeDelegation} />
             : <SubagentInspectorPanel surfaceColor={inspectorSurfaceColor} onBack={() => subagentInspector?.close()} selection={subagentSelection} sessionId={sessionId} />
         : null;
     if (props.embedded) {
-        const delegatedPanel = subagentSelection?.kind === 'agent-roles' || subagentSelection?.kind === 'delegated-task';
+        const delegatedPanel = subagentSelection?.kind === 'role-detail' || subagentSelection?.kind === 'agent-roles' || subagentSelection?.kind === 'delegated-task';
         return <RightSwipePanelHost enabled={!!delegatedPanel} gestureEnabled={false} fullWidth
             open={!!delegatedPanel} onOpenChange={open => { if (!open) subagentInspector?.close(); }} panelContent={inspectorPanel}
             openAccessibilityLabel={t('delegation.assistants')} closeAccessibilityLabel={t('common.back')} panelAccessibilityLabel={compactPanelLabel}>
