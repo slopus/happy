@@ -86,6 +86,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     let card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
     /// The agent's slash commands over the card, while the draft is one.
     private lazy var slash = SlashPalette(images: session.images)
+    /// The teammates an `@` at the caret offers, over the card.
+    private lazy var mentions = MentionPalette(images: session.images)
+    /// The links of the mentions the composer shows, by their "@Name".
+    private var mentionLinks: [String: String] = [:]
     /// New work's `/` before its agent is made: the connection's enabled,
     /// ready global skills, read as the screen opens and again on each
     /// `skills.updated`.
@@ -378,6 +382,11 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         slash.onPick = { [weak self] command in self?.picked(command) }
         slash.onChange = { [weak self] in self?.placeSlash() }
         view.addSubview(slash.list)
+        mentions.onPick = { [weak self] person in self?.mentioned(person) }
+        mentions.onChange = { [weak self] in self?.placeMentions() }
+        mentions.onStart = { [weak self] in self?.readTeammates() }
+        view.addSubview(mentions.list)
+        readTeammates()
         meter.isHidden = true
         view.addSubview(meter)
         header.onOpen = { [weak self] in self?.openDetail() }
@@ -713,7 +722,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     }
 
     /// What rides the keyboard: placed from its top, so carried with it.
-    private var keyboardRiders: [UIView] { [card, meter, jump, composerScrim, slash.list] + (newWorkPanel.map { [$0] } ?? []) }
+    private var keyboardRiders: [UIView] { [card, meter, jump, composerScrim, slash.list, mentions.list] + (newWorkPanel.map { [$0] } ?? []) }
 
     /// The list's keyboard moved: the screen takes its new layout at once,
     /// the list's inset moving on `change`, and what rides the keyboard is
@@ -1566,6 +1575,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             readOnlyNote.frame = CGRect(x: inset.minX, y: screen.card.maxY - height - 12, width: inset.width, height: height)
         }
         placeSlash()
+        placeMentions()
         meter.isHidden = screen.meter == nil
         if let frame = screen.meter { meter.setLayoutFrame(frame) }
         layoutNewWorkPanel(above: screen.card)
@@ -1803,7 +1813,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     private func send() {
         guard !acceptingSend else { return }
-        let text = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typed = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The mentions shown as "@Name" go as their links.
+        let text = Mentions.markdown(typed, links: mentionLinks)
         // Pictures still being read go as their thumbnails, and the message
         // waits for them (`PreviewAttachment`).
         let ready = pictures.images.filter { !$0.preparing }
@@ -1870,7 +1882,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             if !accepted, !newWorkPanelGone { newWorkPanel?.isLocked = false }
             if accepted {
                 sent()
-                if card.text.trimmingCharacters(in: .whitespacesAndNewlines) == text {
+                if card.text.trimmingCharacters(in: .whitespacesAndNewlines) == typed {
                     card.setText("", selection: NSRange(location: 0, length: 0))
                 }
                 staged.removeSent(pickedIDs)
@@ -1893,6 +1905,36 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 present(alert, animated: true)
             }
         }
+    }
+
+    // MARK: Mentions
+
+    private func updateMentions() {
+        mentions.update(units: card.textUnits, selection: card.selectedRange)
+    }
+
+    /// The team as the computer's newest bootstrap named them; none
+    /// outside a team, where there is no one to mention.
+    private func readTeammates() {
+        let engine = session.engine
+        Task { [weak self] in
+            let teammates = await engine.teammates()
+            guard let self else { return }
+            mentions.update(teammates: Array(teammates.values), me: session.home.userId)
+        }
+    }
+
+    private func placeMentions() {
+        mentions.place(card: card.frame, top: view.safeAreaInsets.top + SlashPaletteLayout.gap, scale: traitCollection.displayScale)
+    }
+
+    /// A person picked for the `@` word at the caret: it shows as "@Name"
+    /// and is saved and sent as their link.
+    private func mentioned(_ person: ComposerSuggestion) {
+        let shown = Mentions.shown(person)
+        mentionLinks[shown.text] = shown.link
+        let result = Mentions.apply(person, to: card.text, selection: card.selectedRange)
+        card.setText(result.text, selection: NSRange(location: result.cursor, length: 0))
     }
 
     // MARK: Slash commands
@@ -2007,7 +2049,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// A draft from elsewhere (the computer, the person's other device,
     /// what this phone kept) in the composer, the caret at its end; never
     /// over a word being composed.
-    private func showDraft(_ text: String) {
+    private func showDraft(_ markdown: String) {
+        let draft = Mentions.shown(markdown)
+        mentionLinks.merge(draft.links) { _, new in new }
+        let text = draft.text
         if let editor, editor.presentingViewController != nil {
             editor.show(text)
         }
@@ -2207,6 +2252,7 @@ extension ChatViewController: AgentInputCardDelegate {
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
         updatePrimary()
         updateSlash()
+        updateMentions()
         guard !showingDraft else { return }
         draftEdited(card.text)
     }
@@ -2218,7 +2264,8 @@ extension ChatViewController: AgentInputCardDelegate {
         let at = max((Date().timeIntervalSince1970 * 1000).rounded(), lastDraftEdit + 1)
         lastDraftEdit = at
         let conversation = conversation
-        Task { await conversation.setDraft(text, at: at) }
+        let draft = Mentions.markdown(text, links: mentionLinks)
+        Task { await conversation.setDraft(draft, at: at) }
     }
 
     /// The text full screen, the caret where it was; collapsed, it comes
@@ -2268,8 +2315,10 @@ extension ChatViewController: AgentInputCardDelegate {
     func agentInputCardDidPressSend(_ card: AgentInputCardView) { send() }
 
     /// Return and a hardware keyboard's Tab pick from an open palette.
-    func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool { !slash.pickOnKey() }
-    func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool { !slash.pickOnKey() }
+    func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool { !slash.pickOnKey() && !mentions.pickOnKey() }
+    func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool { !slash.pickOnKey() && !mentions.pickOnKey() }
+
+    func agentInputCardDidChangeSelection(_ card: AgentInputCardView) { updateMentions() }
 
     /// The add button opens the "+" menu: the library, the camera and files.
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) {

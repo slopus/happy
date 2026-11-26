@@ -200,6 +200,8 @@ public struct ComposerSuggestion: Equatable, Sendable {
         /// A Happy Agent command: its picture (`imagePath`, shown on its
         /// thumbhash first) and its kind.
         case agentCommand(AgentWire.SlashCommand, imagePath: String)
+        /// A teammate to mention (`Mentions`).
+        case person(TeamUser)
     }
 
     public var key: String
