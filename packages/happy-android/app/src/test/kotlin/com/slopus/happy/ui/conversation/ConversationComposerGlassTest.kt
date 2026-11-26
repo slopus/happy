@@ -2,6 +2,9 @@ package com.slopus.happy.ui.conversation
 
 import android.provider.Settings
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.compositeOver
@@ -22,6 +25,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.conversation.AgentInfo
@@ -137,6 +141,32 @@ class ConversationComposerGlassTest {
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
                 .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
         }
+    }
+
+    @Test fun `a model name too long for the row is cut, and the effort keeps its width`() {
+        fun named(name: String) = ModeCatalog(
+            listOf(ModelChoice("claude", "Current CLI", "claude", "anthropic/opus-5", name, listOf("low", "medium", "high", "max"), "high", emptyList())),
+            mode,
+        )
+        var state by mutableStateOf(ConversationState(created = true, loaded = true, rows = rows, agent = agent, mode = mode, catalog = named("Opus 5 1M")))
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalGlassBlur provides null) { ConversationScreen(state, ConversationScreenActions()) }
+        }
+        rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)
+        rule.waitForIdle()
+        val short = rule.node(ConversationModeTags.EFFORT).bounds.width
+
+        // Claude Code's default, as the computer names it.
+        state = state.copy(catalog = named("Claude Code · Default (recommended)"))
+        rule.waitForIdle()
+        val more = rule.node(ConversationComposerTags.MORE).bounds
+        val model = rule.node(ConversationModeTags.MODEL).bounds
+        val effort = rule.node(ConversationModeTags.EFFORT).bounds
+        val primary = rule.node(ConversationComposerTags.PRIMARY).bounds
+        assertEquals("the effort as wide as beside a short name", short.value, effort.width.value, 0.5f)
+        assertTrue("effort just before send: $effort $primary", effort.right in (primary.left - 16.dp)..(primary.left + 8.dp))
+        assertTrue("the model cut before the effort: $model $effort", model.right <= effort.left + 0.5.dp)
+        assertTrue("and clear of +: $more $model", model.left >= more.right - 0.5.dp)
     }
 
     @Test fun `with Reduce Motion the pill opens at once`() {

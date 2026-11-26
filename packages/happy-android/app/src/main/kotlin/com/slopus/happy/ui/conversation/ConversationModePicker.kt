@@ -72,7 +72,9 @@ internal fun permissionName(key: String): String = permissionText[key]?.first?.l
  * runs low a ring before the model's name warns of it, and the chip reads
  * the warning out. Before
  * the computer's models are read it shows what the chat runs with and does
- * nothing; with none, "Models not configured".
+ * nothing; with none, "Models not configured". When the two don't fit, only
+ * the model gives way: its name is cut and the effort keeps its width, as
+ * iOS lays them out (`AgentInputCardLayout.middle`).
  */
 @Composable
 internal fun ConversationModelChips(
@@ -95,6 +97,8 @@ internal fun ConversationModelChips(
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier
+                // Measured after the effort, with what it leaves.
+                .weight(1f, fill = false)
                 .clip(MaterialTheme.shapes.small)
                 .clickable(enabled = menus != null && !menus.isEmpty, role = Role.Button) { onOpen(PickerList.Model) }
                 .semantics(mergeDescendants = true) { contentDescription = spoken }
