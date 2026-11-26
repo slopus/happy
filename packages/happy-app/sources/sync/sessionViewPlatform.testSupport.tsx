@@ -126,6 +126,7 @@ vi.mock('@/components/PublicSessionShareDialog', () => ({ PublicSessionShareDial
 vi.mock('@/components/SessionOrganizerDialog', () => ({ SessionOrganizerDialog: 'SessionOrganizerDialog' }));
 vi.mock('@/components/DesktopRightPanel', () => ({
     DesktopRightPanel: 'DesktopRightPanel',
+    DesktopRightPanelFrame: 'DesktopRightPanelFrame',
     DesktopRightPanelToggleButton: 'DesktopRightPanelToggleButton',
 }));
 vi.mock('@/components/DesktopPresenceTransition', () => ({ DesktopPresenceTransition: 'DesktopPresenceTransition' }));

@@ -1440,6 +1440,31 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
+    it.each([
+        ['dreamskin', false, 'rgba(21,26,33,0.51)'],
+        ['dreamskin', true, '#151A21'],
+        ['default', false, '#111111'],
+    ] as const)('keeps the %s pane surface behind both inspectors (reduced: %s)', async (skin, reduced, color) => {
+        mocks.isDataReady = true; mocks.fileDiffsSidebarEnabled = true;
+        mocks.windowWidth = 2048; mocks.isTablet = true; mocks.platformOS = 'web';
+        mocks.desktopSkinId = skin; mocks.reducedTransparency = reduced;
+        mocks.sessionMessages = [{ kind: 'agent-text', id: 'message-one', localId: null, createdAt: 1, text: 'Visible message' }];
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        const flatten = (style: any) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+        for (const kind of [undefined, 'delegated-task'] as const) {
+            act(() => mocks.openSubagent?.({ kind, id: 'agent-one', title: 'Long review task', status: 'completed' }));
+            const frame = renderer.root.findByProps({ testID: 'desktop-right-panel' });
+            expect(flatten(frame.props.style).backgroundColor).toBe(color);
+            expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-capabilities-tab' })).toHaveLength(0);
+            const inspector = renderer.root.findByType(kind ? 'DelegationInspectorPanel' : 'SubagentInspectorPanel');
+            expect(inspector.props.surfaceColor).toBe('transparent');
+            act(() => inspector.props.onBack());
+            expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-capabilities-tab' })).toHaveLength(1);
+        }
+        act(() => renderer.unmount());
+    });
+
     it('keeps the session header clear of navigation controls when the desktop file panel is open', () => {
         mocks.isDataReady = true;
         mocks.fileDiffsSidebarEnabled = true;
@@ -1607,7 +1632,8 @@ describe('SessionView Agent-space boundary', () => {
         }));
 
         expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(false);
-        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-files-tab' })).toHaveLength(0);
         expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(0);
         const inspectorPanel = renderer.root.findByType('SubagentInspectorPanel');
 

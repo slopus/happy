@@ -13,6 +13,38 @@ import { t } from '@/text';
 
 export type DesktopRightPanelTab = PanelTab;
 
+/** Shared desktop pane shell for the workspace tabs and their detail views. */
+export const DesktopRightPanelFrame = React.memo(function DesktopRightPanelFrame({
+    children,
+    panelLabel,
+    surfaceColor,
+    testID = 'desktop-right-panel',
+}: {
+    children: React.ReactNode;
+    panelLabel: string;
+    /** The parent owns the photo-skin tint; inner surfaces stay transparent. */
+    surfaceColor?: string;
+    testID?: string;
+}) {
+    const { enabled: resizable } = useDesktopWorkspaceLayout();
+
+    return (
+        <View
+            style={[styles.container, resizable && styles.containerResizable, surfaceColor && { backgroundColor: surfaceColor }]}
+            testID={testID}
+        >
+            {resizable && (
+                <DesktopPanelResizeHandle
+                    accessibilityLabel={t('desktopWorkspace.resizePanel', { panel: panelLabel })}
+                    offset={0}
+                    side="right"
+                />
+            )}
+            {children}
+        </View>
+    );
+});
+
 export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     activeTab,
     children,
@@ -36,23 +68,12 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     tabs: readonly DesktopRightPanelTab[];
 }) {
     const { theme } = useUnistyles();
-    const { enabled: resizable } = useDesktopWorkspaceLayout();
     const [tooltipVisible, setTooltipVisible] = React.useState(false);
     const shortcuts = getDesktopPanelShortcutPresentation();
     const activePanelLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? tabs[0]?.label ?? 'Panel';
 
     return (
-        <View
-            style={[styles.container, resizable && styles.containerResizable, surfaceColor && { backgroundColor: surfaceColor }]}
-            testID="desktop-right-panel"
-        >
-            {resizable && (
-                <DesktopPanelResizeHandle
-                    accessibilityLabel={t('desktopWorkspace.resizePanel', { panel: activePanelLabel })}
-                    offset={0}
-                    side="right"
-                />
-            )}
+        <DesktopRightPanelFrame panelLabel={activePanelLabel} surfaceColor={surfaceColor}>
             <View style={[styles.header, surfaceColor && { backgroundColor: 'transparent' }]}>
                 <PanelTabs activeTab={activeTab} tabs={tabs} onTabChange={onTabChange} testIDPrefix="desktop-right-panel" />
                 {showCollapseButton ? <View style={styles.collapseButtonWrapper}>
@@ -87,7 +108,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
             <View style={styles.content}>
                 {children}
             </View>
-        </View>
+        </DesktopRightPanelFrame>
     );
 });
 

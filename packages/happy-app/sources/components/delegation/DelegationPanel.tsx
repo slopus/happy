@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { randomUUID } from 'expo-crypto';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -11,7 +11,7 @@ import { useSession } from '@/sync/storage';
 import { listDelegationRoles, saveDelegationRole, deleteDelegationRole, readDelegatedTask, cancelDelegatedTask } from '@/sync/apiDelegation';
 import { useRightSwipePanel } from '../RightSwipePanelHost';
 import { useDesktopReadingWidth } from '../DesktopReadingWidth';
-import { CodingAgentIcon } from '../codingAgents/CodingAgentIcon';
+import { PanelTabs, type PanelTab } from '../PanelTabs';
 import { SubagentActivityGroup } from '../subagent/SubagentActivityGroup';
 import { delegatedActivity } from './delegatedActivity';
 import { useSubagentInspector, type SubagentInspectorSelection } from '../subagent/SubagentInspectorContext';
@@ -40,9 +40,10 @@ function Button({ label, onPress, disabled, selected, destructive, testID }: {
     label: string; onPress: () => void; disabled?: boolean; selected?: boolean; destructive?: boolean; testID?: string;
 }) {
     const [focused, setFocused] = React.useState(false);
+    const [hovered, setHovered] = React.useState(false);
     return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled, selected }} disabled={disabled}
-        testID={testID} onPress={onPress} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} hitSlop={5}
-        style={(state: { pressed: boolean; hovered?: boolean }) => [styles.button, (state.pressed || state.hovered) && styles.pressed, selected && styles.selected, focused && styles.focused, disabled && styles.disabled]}>
+        testID={testID} onPress={onPress} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} hitSlop={5}
+        style={(state: { pressed: boolean; hovered?: boolean }) => [styles.button, (state.pressed || hovered) && styles.pressed, selected && styles.selected, focused && styles.focused, disabled && styles.disabled]}>
         <Text style={[styles.buttonText, destructive && styles.error]}>{label}</Text>
     </Pressable>;
 }
@@ -64,8 +65,8 @@ export const DelegatedTaskGroup = React.memo(function DelegatedTaskGroup({ sessi
     </View>;
 });
 
-export function DelegationInspectorPanel({ sessionId, selection, onBack, onCompose }: {
-    sessionId: string; selection: SubagentInspectorSelection; onBack: () => void; onCompose: (text: string) => void;
+export function DelegationInspectorPanel({ sessionId, selection, onBack, onCompose, surfaceColor }: {
+    sessionId: string; selection: SubagentInspectorSelection; onBack: () => void; onCompose: (text: string) => void; surfaceColor?: string;
 }) {
     const panel = useRightSwipePanel();
     React.useEffect(() => panel?.registerBackHandler(() => { onBack(); return true; }), [panel, onBack]);
@@ -74,18 +75,21 @@ export function DelegationInspectorPanel({ sessionId, selection, onBack, onCompo
         else onCompose(text);
     };
     return selection.kind === 'agent-roles'
-        ? <AgentRolesPanel key={`${sessionId}:roles`} sessionId={sessionId} initialRoleId={selection.roleId} onBack={onBack} onCompose={compose} />
-        : <DelegatedTaskPanel key={`${sessionId}:${selection.id}`} sessionId={sessionId} taskId={selection.id} onBack={onBack} onCompose={compose} />;
+        ? <AgentRolesPanel key={`${sessionId}:roles`} sessionId={sessionId} initialRoleId={selection.roleId} surfaceColor={surfaceColor} onBack={onBack} onCompose={compose} />
+        : <DelegatedTaskPanel key={`${sessionId}:${selection.id}`} sessionId={sessionId} taskId={selection.id} surfaceColor={surfaceColor} onBack={onBack} onCompose={compose} />;
 }
 
 function Header({ title, subtitle, onBack }: { title: string; subtitle?: string; onBack: () => void }) {
     const { theme } = useUnistyles();
+    const [hovered, setHovered] = React.useState(false);
+    const [focused, setFocused] = React.useState(false);
     return <View style={styles.panelHeader}><Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={onBack}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]} hitSlop={8} testID="delegation-panel-back"><Ionicons name="arrow-back" size={20} color={theme.colors.text} /></Pressable>
+        onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        style={({ pressed }) => [styles.back, (pressed || hovered) && styles.pressed, focused && styles.focused]} hitSlop={8} testID="delegation-panel-back"><Ionicons name="arrow-back" size={20} color={theme.colors.text} /></Pressable>
         <View style={styles.rowCopy}><Text numberOfLines={2} style={styles.heading}>{title}</Text>{subtitle ? <Text numberOfLines={2} style={styles.caption}>{subtitle}</Text> : null}</View></View>;
 }
 
-function AgentRolesPanel({ sessionId, initialRoleId, onBack, onCompose }: { sessionId: string; initialRoleId?: string; onBack: () => void; onCompose: (text: string) => void }) {
+function AgentRolesPanel({ sessionId, initialRoleId, onBack, onCompose, surfaceColor }: { sessionId: string; initialRoleId?: string; onBack: () => void; onCompose: (text: string) => void; surfaceColor?: string }) {
     const session = useSession(sessionId);
     const inspector = useSubagentInspector();
     const { theme } = useUnistyles();
@@ -149,7 +153,7 @@ function AgentRolesPanel({ sessionId, initialRoleId, onBack, onCompose }: { sess
         } catch (failure) { if (alive.current) setError(errorMessage(failure)); }
         finally { if (alive.current) setBusy(false); }
     };
-    return <View style={styles.panel} testID="delegation-role-manager"><Header title={t('delegation.rolesTitle')} onBack={onBack} />
+    return <View style={[styles.panel, surfaceColor !== undefined && { backgroundColor: surfaceColor }]} testID="delegation-role-manager"><Header title={t('delegation.rolesTitle')} onBack={onBack} />
         <ScrollView contentContainerStyle={styles.panelBody} keyboardShouldPersistTaps="handled">
             <View style={styles.actions}>{roles.map(role => <Button key={role.id} label={role.name} onPress={() => choose(role.id)} selected={selectedId === role.id} disabled={busy} />)}<Button label={t('delegation.newRole')} onPress={() => choose('new')} selected={selectedId === 'new'} disabled={busy} /></View>
             <View style={styles.actions}>{loading ? <ActivityIndicator size="small" color={theme.colors.textLink} /> : null}<Button label={t('delegation.refresh')} onPress={() => { void load(); }} disabled={loading || busy || !canUseTools} testID="delegation-roles-refresh" /></View>
@@ -180,7 +184,7 @@ function Field({ label, children }: React.PropsWithChildren<{ label: string }>) 
     return <View style={styles.field}><Text style={styles.caption}>{label}</Text>{children}</View>;
 }
 
-function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionId: string; taskId: string; onBack: () => void; onCompose: (text: string) => void }) {
+function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose, surfaceColor }: { sessionId: string; taskId: string; onBack: () => void; onCompose: (text: string) => void; surfaceColor?: string }) {
     const session = useSession(sessionId);
     const inspector = useSubagentInspector();
     const { theme } = useUnistyles();
@@ -216,21 +220,30 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionI
         catch (failure) { if (alive.current) setError(errorMessage(failure)); }
         finally { if (alive.current) setCancelling(false); }
     };
-    const tabs = ['task', 'context', 'result'] as const;
-    return <View style={styles.panel} testID="delegation-task-inspector"><Header title={summary?.title ?? taskId} subtitle={summary ? `${summary.roleName} · ${agentLabel(summary.agent)} / ${summary.model || t('delegation.nativeDefault')} · v${summary.version}` : taskId} onBack={onBack} />
-        <View style={styles.tabs}>{tabs.map(value => <Button key={value} label={t(`delegation.${value}`)} selected={tab === value} onPress={() => { setTab(value); remember(value); }} testID={`delegation-tab-${value}`} />)}</View>
-        <ScrollView contentContainerStyle={styles.panelBody}>
-            <View style={styles.actions}>{loading ? <ActivityIndicator size="small" color={theme.colors.textLink} /> : null}<Button label={t('delegation.refresh')} onPress={() => { void load(); }} disabled={loading} testID="delegation-task-refresh" /></View>
+    const tabs: PanelTab[] = [
+        { key: 'task', label: t('delegation.task'), icon: 'document-text-outline' },
+        { key: 'context', label: t('delegation.context'), icon: 'layers-outline' },
+        { key: 'result', label: t('delegation.result'), icon: 'checkmark-circle-outline' },
+    ];
+    return <View style={[styles.panel, surfaceColor !== undefined && { backgroundColor: surfaceColor }]} testID="delegation-task-inspector"><Header title={summary?.title ?? taskId} subtitle={summary ? `${summary.roleName} · ${agentLabel(summary.agent)} / ${summary.model || t('delegation.nativeDefault')} · v${summary.version}` : taskId} onBack={onBack} />
+        <View style={styles.tabs}><PanelTabs activeTab={tab} tabs={tabs} testIDPrefix="delegation" touchTarget={Platform.OS !== 'web'} onTabChange={key => { const value = key as typeof tab; setTab(value); remember(value); }} /></View>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.panelBody}>
+            <View style={styles.toolbar}>
+                {currentSummary ? <View style={styles.statusPill}><Text style={styles.secondary} testID="delegation-task-status">{delegatedStatusLabel(currentSummary.status)}</Text></View> : null}
+                <View style={styles.actions}>{loading ? <ActivityIndicator size="small" color={theme.colors.textLink} /> : null}<Button label={t('delegation.refresh')} onPress={() => { void load(); }} disabled={loading} testID="delegation-task-refresh" /></View>
+            </View>
             {error ? <Text style={styles.error} accessibilityRole="alert" testID="delegation-task-error">{error}</Text> : null}
             {live && task && (live.updatedAt > task.updatedAt || live.version !== task.version) ? <Text style={styles.caption}>{t('delegation.updateAvailable')}</Text> : null}
-            {currentSummary ? <Text style={styles.body} testID="delegation-task-status">{delegatedStatusLabel(currentSummary.status)}</Text> : null}
             {tab === 'task' ? <>
-                <Field label={t('delegation.parent')}><Text selectable style={styles.body}>{sessionId}</Text></Field>
-                <Field label={t('delegation.task')}><Text selectable style={styles.body}>{taskId}</Text></Field>
-                {summary ? <>{summary.roleId ? <Field label={t('delegation.role')}><Text selectable style={styles.body}>{summary.roleName} · {summary.roleId}</Text></Field> : null}<Field label={t('delegation.route')}><Text selectable style={styles.body}>{agentLabel(summary.agent)} / {summary.model || t('delegation.nativeDefault')}{summary.effort ? ` · ${summary.effort}` : ''}</Text></Field></> : null}
-                <Text style={styles.caption}>{t('delegation.accountBoundary')}</Text>
-                {task ? <Field label={t('delegation.originalPrompt')}><Text selectable style={styles.body}>{task.prompt}</Text></Field> : null}
+                {task ? <View style={styles.taskBlock}><Field label={t('delegation.originalPrompt')}><Text selectable style={styles.body}>{task.prompt}</Text></Field></View> : null}
                 {live?.error || task?.error ? <Text selectable style={styles.error}>{live?.error ?? task?.error}</Text> : null}
+                <View style={styles.metadataCard} testID="delegation-task-metadata">
+                    {summary ? <><Field label={t('delegation.role')}><Text selectable style={styles.body}>{summary.roleName}</Text>{summary.roleId ? <Text selectable style={styles.identifier}>{summary.roleId}</Text> : null}</Field>
+                        <Field label={t('delegation.route')}><Text selectable style={styles.body}>{agentLabel(summary.agent)} / {summary.model || t('delegation.nativeDefault')}{summary.effort ? ` · ${summary.effort}` : ''}</Text></Field></> : null}
+                    <Field label={t('delegation.parent')}><Text selectable style={styles.identifier}>{sessionId}</Text></Field>
+                    <Field label={t('delegation.task')}><Text selectable style={styles.identifier}>{taskId}</Text></Field>
+                </View>
+                <Text style={styles.caption}>{t('delegation.accountBoundary')}</Text>
                 <Text style={styles.caption}>{t('delegation.snapshotHint')}</Text>
             </> : null}
             {tab === 'context' ? <><Field label={t('delegation.originalPrompt')}><Text selectable style={styles.body}>{selected?.prompt ?? task?.prompt ?? ''}</Text></Field><Field label={t('delegation.context')}><Text selectable style={styles.body}>{(selected ? selected.context : task?.context) ?? t('delegation.noContext')}</Text></Field></> : null}
@@ -249,17 +262,23 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose }: { sessionI
 
 const styles = StyleSheet.create(theme => ({
     panel: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface },
-    panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.divider, padding: 14 },
-    back: { width: 32, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },
+    panelHeader: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider, paddingHorizontal: 8, paddingVertical: 12 },
+    back: { width: 40, height: 40, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
     panelBody: { padding: 16, gap: 14, paddingBottom: 28 },
-    heading: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 21, color: theme.colors.text, ...Typography.default('semiBold') },
+    heading: { minWidth: 0, fontSize: 14, lineHeight: 21, color: theme.colors.text, ...Typography.default('semiBold') },
     body: { fontSize: 13, lineHeight: 21, color: theme.colors.text, ...Typography.default() },
     secondary: { fontSize: 12, lineHeight: 18, color: theme.colors.textSecondary, ...Typography.default() },
     caption: { fontSize: 11, lineHeight: 18, color: theme.colors.textSecondary, ...Typography.default() },
     result: { fontSize: 13, lineHeight: 22, color: theme.colors.text, ...Typography.default() },
     error: { fontSize: 12, lineHeight: 19, color: theme.colors.textDestructive, ...Typography.default() },
     actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
-    tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, padding: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.divider },
+    tabs: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
+    scroll: { flex: 1, minHeight: 0 },
+    toolbar: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    statusPill: { borderRadius: 8, backgroundColor: theme.colors.surfaceHigh, paddingHorizontal: 8, paddingVertical: 5 },
+    taskBlock: { paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
+    metadataCard: { gap: 14, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, padding: 12 },
+    identifier: { fontSize: 11, lineHeight: 18, color: theme.colors.textSecondary, ...Typography.mono(), ...(Platform.OS === 'web' ? { overflowWrap: 'anywhere' as const } : {}) },
     field: { gap: 6 },
     input: { minHeight: 39, borderWidth: 1, borderColor: theme.colors.divider, borderRadius: 7, backgroundColor: theme.colors.surfacePressed, color: theme.colors.text, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, ...Typography.default() },
     multiline: { minHeight: 80, textAlignVertical: 'top' },

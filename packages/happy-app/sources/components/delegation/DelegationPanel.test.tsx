@@ -18,9 +18,9 @@ vi.mock('react-native', () => ({
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => 'new-role-id' }));
 vi.mock('react-native-unistyles', () => ({
-    StyleSheet: { create: (factory: any) => factory({ colors: {
+    StyleSheet: { hairlineWidth: 1, create: (factory: any) => factory({ colors: {
         divider: 'divider', text: 'text', textLink: 'link', textSecondary: 'secondary', textDestructive: 'error',
-        surface: 'surface', surfacePressed: 'pressed', surfaceSelected: 'selected',
+        surfaceHigh: 'high', surface: 'surface', surfacePressed: 'pressed', surfaceSelected: 'selected',
     } }) },
     useUnistyles: () => ({ theme: { colors: { text: 'text', textLink: 'link', textSecondary: 'secondary' } } }),
 }));
@@ -93,7 +93,7 @@ describe('real delegation panels', () => {
 
     it('uses real version numbers and appends through the composer without executing a task', async () => {
         await render(taskSelection);
-        await press('delegation-tab-result');
+        await press('delegation-result-tab');
         expect(button('delegation-version-1')).toBeDefined();
         expect(button('delegation-version-3')).toBeDefined();
         expect(button('delegation-version-2')).toBeUndefined();
@@ -125,20 +125,20 @@ describe('real delegation panels', () => {
         mocks.session.metadata.delegatedTasks = [versionedTask];
         mocks.read.mockResolvedValueOnce(versionedTask);
         await render(taskSelection);
-        await press('delegation-tab-result');
+        await press('delegation-result-tab');
         await press('delegation-version-1');
-        await press('delegation-tab-context');
+        await press('delegation-context-tab');
         expect(textContent()).toContain('Write a README');
         expect(textContent()).toContain('delegation.noContext');
         expect(textContent()).not.toContain('Fourth handoff');
-        await press('delegation-tab-result');
+        await press('delegation-result-tab');
         await press('delegation-version-2');
-        await press('delegation-tab-context');
+        await press('delegation-context-tab');
         expect(textContent()).toContain('Second handoff');
         expect(textContent()).not.toContain('Fourth handoff');
-        await press('delegation-tab-result');
+        await press('delegation-result-tab');
         await press('delegation-version-4');
-        await press('delegation-tab-context');
+        await press('delegation-context-tab');
         expect(textContent()).toContain('Fourth handoff');
     });
 
@@ -158,7 +158,7 @@ describe('real delegation panels', () => {
         expect(mocks.remove).not.toHaveBeenCalled();
         await act(async () => renderer.update(element(taskSelection)));
         expect(button('delegation-task-append').props.disabled).toBe(true);
-        await press('delegation-tab-result');
+        await press('delegation-result-tab');
         expect(renderer.root.findByProps({ testID: 'delegation-result-text' }).children.join('')).toBe('Third result');
         expect(mocks.compose).not.toHaveBeenCalled();
     });
@@ -168,7 +168,7 @@ describe('real delegation panels', () => {
         mocks.session.metadata = { ...mocks.session.metadata, capabilities: {}, delegationProtocol: 1, delegatedTasks: [running] };
         mocks.read.mockResolvedValueOnce(running);
         await render(taskSelection);
-        await press('delegation-tab-result');
+        await press('delegation-result-tab');
         expect(renderer.root.findByProps({ testID: 'delegation-result-text' }).children.join('')).toBe('Third result');
         expect(button('delegation-task-append').props.disabled).toBe(true);
         expect(button('delegation-task-cancel').props.disabled).toBe(true);

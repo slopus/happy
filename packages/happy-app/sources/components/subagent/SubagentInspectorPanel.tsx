@@ -21,10 +21,12 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
     onBack,
     selection,
     sessionId,
+    surfaceColor,
 }: {
     onBack: () => void;
     selection: SubagentInspectorSelection;
     sessionId: string;
+    surfaceColor?: string;
 }) {
     const { theme } = useUnistyles();
     const session = useSession(sessionId);
@@ -70,7 +72,7 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
     const hasTranscriptContent = taskPrompt.length > 0 || transcriptMessages.length > 0;
 
     return (
-        <View style={styles.container} testID="subagent-inspector-panel">
+        <View style={[styles.container, surfaceColor !== undefined && { backgroundColor: surfaceColor }]} testID="subagent-inspector-panel">
             <View style={styles.header}>
                 <Pressable
                     accessibilityLabel={t('common.back')}

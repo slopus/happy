@@ -33,7 +33,7 @@ import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
 import { PublicSessionShareDialog } from '@/components/PublicSessionShareDialog';
 import { SessionOrganizerDialog } from '@/components/SessionOrganizerDialog';
-import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
+import { DesktopRightPanel, DesktopRightPanelFrame, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
 import { DesktopPresenceTransition } from '@/components/DesktopPresenceTransition';
 import type { DesktopTransitionDirection } from '@/components/DesktopPresenceTransition.types';
 import { RightSwipePanelHost } from '@/components/RightSwipePanelHost';
@@ -1498,10 +1498,12 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         </>
     );
 
+    // The desktop frame owns its tint once; drawers keep their opaque theme surface.
+    const inspectorSurfaceColor = desktopRightPanelAvailable && !props.embedded ? 'transparent' : undefined;
     const inspectorPanel = subagentSelection
         ? subagentSelection.kind === 'agent-roles' || subagentSelection.kind === 'delegated-task'
-            ? <DelegationInspectorPanel sessionId={sessionId} selection={subagentSelection} onBack={() => subagentInspector?.close()} onCompose={composeDelegation} />
-            : <SubagentInspectorPanel onBack={() => subagentInspector?.close()} selection={subagentSelection} sessionId={sessionId} />
+            ? <DelegationInspectorPanel surfaceColor={inspectorSurfaceColor} sessionId={sessionId} selection={subagentSelection} onBack={() => subagentInspector?.close()} onCompose={composeDelegation} />
+            : <SubagentInspectorPanel surfaceColor={inspectorSurfaceColor} onBack={() => subagentInspector?.close()} selection={subagentSelection} sessionId={sessionId} />
         : null;
     if (props.embedded) {
         const delegatedPanel = subagentSelection?.kind === 'agent-roles' || subagentSelection?.kind === 'delegated-task';
@@ -1667,7 +1669,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                     ]}
                     testID="desktop-right-panel-motion"
                 >
-                    {subagentSelection ? inspectorPanel : <DesktopRightPanel
+                    {subagentSelection ? <DesktopRightPanelFrame surfaceColor={desktopPaneSurface} panelLabel={compactPanelLabel}>{inspectorPanel}</DesktopRightPanelFrame> : <DesktopRightPanel
                         activeTab={desktopPanelMode}
                         collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
                             panel: desktopPanelLabel,
