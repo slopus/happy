@@ -99,6 +99,7 @@ data class KeptConversation(
             message.failure?.let { put("failure", it) }
             message.error?.let { put("error", it) }
             message.undisplayable?.let { put("undisplayable", it) }
+            if (message.localId) put("localId", true)
         }
 
         private fun blockJson(block: Block): JsonObject = when (block) {

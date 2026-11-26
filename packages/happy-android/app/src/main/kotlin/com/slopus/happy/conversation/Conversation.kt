@@ -500,12 +500,14 @@ class Conversation(
     /**
      * The last message of the newest run that has finished, where a catch-up
      * starts (API.md `after`). The newest run may still be going, so it is
-     * read whole again unless it is known to have finished.
+     * read whole again unless it is known to have finished. Only an ID the
+     * computer knows ([Message.serverId]) anchors: past a placeholder it sent
+     * with none, the last one before it; with none at all, a whole read.
      */
     private fun anchor(): String? {
         val going = lastTurn()?.takeIf { running || runInfo[it]?.status == "running" }
         val finished = if (going != null) runs.subList(0, runs.indexOfFirst { it.first == going }) else runs
-        return finished.lastOrNull { it.second.isNotEmpty() }?.second?.last()
+        return finished.asReversed().firstNotNullOfOrNull { run -> run.second.asReversed().firstNotNullOfOrNull { messages[it]?.serverId } }
     }
 
     private suspend fun readHistory(): HistoryRead {
@@ -523,7 +525,7 @@ class Conversation(
             // A daemon that ignored `after` sent the newest page, anchor and all: that is a whole read.
             if (page.runs.any { run -> run.messages.any { it.id == anchor } }) return HistoryRead(page.runs, page.hasMore, null)
             runs += page.runs
-            val last = page.runs.lastOrNull { it.messages.isNotEmpty() }?.messages?.last()?.id
+            val last = page.runs.asReversed().firstNotNullOfOrNull { run -> run.messages.asReversed().firstNotNullOfOrNull { it.serverId } }
             if (!page.hasMore || last == null) return HistoryRead(runs, snapshot.hasMore, anchor)
             after = last
         }

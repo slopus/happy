@@ -420,8 +420,16 @@ data class Message(
      * it isn't: it is drawn as one placeholder row, and nothing else of it is kept.
      */
     val undisplayable: String? = null,
+    /**
+     * [id] is this phone's own, given a placeholder the computer sent with no
+     * ID (`<runId>:<index>`): a row's identity, never asked of the computer.
+     */
+    val localId: Boolean = false,
 ) {
     val text: String get() = content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
+
+    /** The ID the computer knows this message by; null for one it sent without. */
+    val serverId: String? get() = id.takeUnless { localId }
 
 
     companion object {
@@ -436,8 +444,10 @@ data class Message(
                 ?: parse(value)?.let { return it.copy(undisplayable = null) }
                 ?: "message: unreadable"
             val o = value.obj
+            val id = o?.get("id").str
             return Message(
-                id = o?.get("id").str ?: fallbackId,
+                id = id ?: fallbackId,
+                localId = id == null,
                 role = o?.get("role").str ?: "agent",
                 createdAt = o?.get("createdAt").long ?: 0,
                 content = emptyList(),
@@ -464,6 +474,7 @@ data class Message(
                 failure = o["failure"].obj,
                 error = o["error"].obj,
                 undisplayable = o["undisplayable"].str,
+                localId = o["localId"].bool == true,
             )
         }
     }

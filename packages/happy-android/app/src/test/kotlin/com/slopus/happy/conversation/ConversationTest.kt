@@ -1992,6 +1992,29 @@ class ConversationTest {
         assertEquals(listOf("r1", "r2", "r3"), KeptConversation.parse(keeper.value)!!.runs.map { it.id })
     }
 
+    @Test fun `a chat whose last entry came without an ID reopens catching up from the last real one`() = runTest {
+        val agent = FakeAgent()
+        // The run's last entry has no ID: its placeholder is "r1:2" on this phone alone.
+        agent.page = """{"runs":[${run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello"), """{"role":"agent","createdAt":2,"content":[],"metadata":{}}""")}],"hasMore":false}"""
+        val keeper = MemoryKeeper()
+        conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        val kept = KeptConversation.parse(keeper.value)!!.runs.single().messages
+        assertEquals(listOf("m1", "m2", "r1:2"), kept.map { it.id })
+        assertEquals(listOf("m1", "m2", null), kept.map { it.serverId })
+
+        agent.requests.clear()
+        agent.afterPage = """{"runs":[${run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello"), """{"role":"agent","createdAt":2,"content":[],"metadata":{}}""")}, ${run("r2", "completed", message("m3", "user", "More"))}],"hasMore":false}"""
+        val reopened = conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        val reads = agent.requests.map { it.second }.filter { "/messages" in it }
+        assertEquals(reads.toString(), 1, reads.size)
+        assertTrue(reads.single(), "after=m2" in reads.single())
+        assertTrue(reads.none { "r1" in it })
+        assertNull(reopened.state.value.error)
+        assertEquals(listOf("m3:user", "r1:2:undisplayable", "m2:0", "m1:user"), reopened.state.value.rows.filter { it !is ConversationRow.TurnEnd && it !is ConversationRow.Trace }.map { it.key })
+    }
+
     @Test fun `a newest run that was still going is read again whole`() = runTest {
         val agent = FakeAgent()
         agent.afterPage = """{"runs":[${run("r2", "completed", message("m3", "user", "Fix it"), message("m4", "agent", "Fixed"))}],"hasMore":false}"""
