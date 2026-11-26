@@ -118,10 +118,16 @@ class FakeAgent(var bootstrap: JsonObject = Wire.bootstrap(), var name: String =
     var frames = Channel<String>(Channel.UNLIMITED)
     var revoked = false
     var resources = mutableMapOf<String, JsonObject>()
+    /** Each request that carried a body: `"POST /path"` and the body's text. */
+    val bodies = java.util.concurrent.CopyOnWriteArrayList<Pair<String, String>>()
+    /** Paths that answer 503 the next time they are asked, once. */
+    val failOnce: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
         calls += "$method $path"
+        body?.let { bodies += "$method $path" to it.decodeToString() }
         if (revoked) return TransportResponse(401, body = "{\"code\":\"unauthorized\"}".toByteArray())
+        if (failOnce.remove(path)) return TransportResponse(503, body = "{\"error\":\"Unavailable.\",\"code\":\"unavailable\"}".toByteArray())
         fun ok(text: String) = TransportResponse(200, mapOf("content-type" to "application/json"), text.toByteArray())
         return when (path) {
             "/v0/health" -> ok("{\"ready\":true,\"version\":{\"protocol\":30,\"daemon\":\"1.0\"}}")

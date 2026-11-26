@@ -325,8 +325,11 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     val projectAt = rows.size
                     rows += AgentFeedRow.Folder(id, project.string("name").orEmpty(), 0, FolderMark.of(id, project), lineChanges = git[id]?.takeIf { it.visible })
                     fun series(owner: JsonObject, depth: Int) {
-                        (owner["agents"] as? JsonArray).orEmpty().forEach { embedded ->
-                            val agentId = (embedded as? JsonObject)?.string("id") ?: return@forEach
+                        val listed = (owner["agents"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+                        // A chat moved here stands where it was put until the computer has moved it.
+                        val ownerId = owner.string("id")
+                        intents.moves.filter { it.owner == ownerId }.fold(listed, ::moved).forEach { embedded ->
+                            val agentId = embedded.string("id") ?: return@forEach
                             // A workspace-bound subtask shows under the work that made it.
                             if (catalog.agents[agentId]?.get("subtask")?.toString() == "true") return@forEach
                             agentRows(agentId, null, ConversationKind.Project, depth)
@@ -349,6 +352,19 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
         }
 
         private val byOrderKey = compareBy<JsonObject>({ it.string("orderKey") ?: "\uFFFF" }, { it.string("id") ?: it.string("taskId") })
+
+        /**
+         * An owner's [series] with [move]'s chat after its anchor, or first, as
+         * the computer will put it (`POST /v0/agents/:agentId/reorder`). The
+         * same move made twice changes nothing more; a move whose chat or
+         * anchor the list no longer holds leaves it as it is.
+         */
+        internal fun moved(series: List<JsonObject>, move: IntentOverlay.Move): List<JsonObject> {
+            val agent = series.firstOrNull { it.string("id") == move.agentId } ?: return series
+            val rest = series.filter { it !== agent }
+            val at = if (move.afterId == null) 0 else rest.indexOfFirst { it.string("id") == move.afterId }.takeIf { it >= 0 }?.plus(1) ?: return series
+            return rest.subList(0, at) + agent + rest.subList(at, rest.size)
+        }
 
         /** [next] with every row equal to one in [previous] kept as that instance, so Compose skips it. */
         fun reuse(previous: AgentFeed?, next: AgentFeed): AgentFeed {

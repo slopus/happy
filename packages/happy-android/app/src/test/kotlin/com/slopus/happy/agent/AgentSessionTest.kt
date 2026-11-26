@@ -1675,4 +1675,52 @@ class AgentSessionTest {
         }))
         eventually({ session.sharing.value }) { it == AgentSharingState.Ready(true, false) }
     }
+
+    /**
+     * A chat moved in its project's list on home stands there at once, and
+     * the computer is asked to put it after the chat now before it; its
+     * answer keeps it there before the project's own update comes. A move
+     * never overtakes an earlier one of the same list that is waiting out a
+     * failure, since each is placed against the ones made before it.
+     */
+    @Test
+    fun aMovedChatStandsWhereItWasPutAndMovesReachTheComputerInTheOrderMade(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(
+            projects = listOf(Wire.project("p1", "rig", listOf(
+                Wire.agent("a", workspaceId = "p1", title = "A", orderKey = "1"),
+                Wire.agent("b", workspaceId = "p1", title = "B", orderKey = "2"),
+                Wire.agent("c", workspaceId = "p1", title = "C", orderKey = "3"),
+            ))),
+        )
+        // The computer's answers: each chat at its new key.
+        agent.resources["/v0/agents/c/reorder"] = buildJsonObject { put("agent", Wire.agent("c", workspaceId = "p1", title = "C", version = "02", orderKey = "0")) }
+        agent.resources["/v0/agents/a/reorder"] = buildJsonObject { put("agent", Wire.agent("a", workspaceId = "p1", title = "A", version = "02", orderKey = "25")) }
+        agent.failOnce += "/v0/agents/c/reorder"
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        val order = { session.feed.value.conversations.map { it.agentId } }
+        eventually(order) { it == listOf("a", "b", "c") }
+
+        session.reorder("c", null, "p1")
+        session.reorder("a", "b", "p1")
+        // Both stand at once, the second placed against the first.
+        eventually(order) { it == listOf("c", "b", "a") }
+        // The first fails once and waits its time; the clock moves it on.
+        withTimeout(10_000) {
+            while (session.intents.pending.value.isNotEmpty()) {
+                time.addAndGet(5_000)
+                session.intents.kick()
+                kotlinx.coroutines.delay(50)
+            }
+        }
+        assertEquals(
+            listOf("POST /v0/agents/c/reorder", "POST /v0/agents/c/reorder", "POST /v0/agents/a/reorder"),
+            agent.calls.filter { it.endsWith("/reorder") },
+        )
+        val asked = agent.bodies.filter { it.first.endsWith("/reorder") }.map { Json.parseToJsonElement(it.second).jsonObject }
+        assertEquals(listOf("null", "null", "\"b\""), asked.map { it["afterId"].toString() })
+        assertTrue(asked.all { it["mutationId"] != null })
+        // The computer's answers keep them there with nothing left to lay over them.
+        assertEquals(listOf("c", "b", "a"), order())
+    }
 }

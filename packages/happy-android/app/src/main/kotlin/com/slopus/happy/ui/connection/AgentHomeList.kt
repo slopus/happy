@@ -59,8 +59,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -379,7 +381,12 @@ fun LazyListScope.agentHomeRows(
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
+    /** The chat carried to another place in its list, where one is ([HomeChatDrag]); null carries none. */
+    drag: HomeChatDrag? = null,
+    /** A screen reader's Move up or Move down: the chat, after the chat named, or first; null offers neither. */
+    onMove: ((agentId: String, afterId: String?) -> Unit)? = null,
 ) {
+    val moves = if (onMove == null) emptyMap() else homeRowMoves(items)
     items(items, key = { it.key }, contentType = { (it as? AgentHomeItem.Row)?.row?.let { row -> row::class } ?: it::class }) { item ->
         val motion = if (reduceMotion) Modifier else Modifier.animateItem(
             fadeInSpec = tween(180),
@@ -395,8 +402,13 @@ fun LazyListScope.agentHomeRows(
             )
             // Drawn from what its line shows: a change to nothing on it composes nothing.
             is AgentHomeItem.Row -> AgentHomeCardRow(
-                item.drawn(), motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
+                item.drawn(),
+                // Only the row in hand, or being set down, is drawn apart from its place.
+                if (drag?.holds(item.key) == true) motion.then(drag.row(item.key)) else motion,
+                selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
                 onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines,
+                moves = (item.row as? AgentFeedRow.Conversation)?.let { moves[it.agentId] },
+                onMove = onMove,
             )
         }
     }
@@ -422,6 +434,9 @@ internal fun AgentHomeCardRow(
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
+    /** Where a screen reader's Move up and Move down put this chat ([homeRowMoves]); null offers neither. */
+    moves: HomeRowMoves? = null,
+    onMove: ((agentId: String, afterId: String?) -> Unit)? = null,
 ) {
     HomeCardRow(
         place = HomeCardPlace(item.first, item.last),
@@ -432,7 +447,7 @@ internal fun AgentHomeCardRow(
         selected = selected,
     ) {
         when (val row = item.row) {
-            is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
+            is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold, moves?.takeIf { onMove != null }, onMove)
             is AgentFeedRow.Folder -> FolderRow(row)
             AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), { TileMark(Ionicon.DocumentTextOutline, RowTile.Purple) }, onOpenArtifacts)
             AgentFeedRow.Plugins -> PlaceRow(stringResource(R.string.plugins_title), { TileMark(Ionicon.ExtensionPuzzleOutline, RowTile.Orange) }, onOpenPlugins)
@@ -531,7 +546,13 @@ private fun titleStart(row: AgentFeedRow): Dp {
  * row opens it.
  */
 @Composable
-private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> Unit, onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null) {
+private fun ConversationRow(
+    row: AgentFeedRow.Conversation,
+    onOpen: (String) -> Unit,
+    onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
+    moves: HomeRowMoves? = null,
+    onMove: ((agentId: String, afterId: String?) -> Unit)? = null,
+) {
     LocalHomeRowObserver.current?.let { observe -> SideEffect { observe(row.agentId) } }
     val colors = HappyTheme.colors
     val haptics = LocalHapticFeedback.current
@@ -540,6 +561,8 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
     val marked = AgentHomeSpec.hasMark(row.kind)
     val title = row.title ?: stringResource(R.string.session_new_chat)
     val working = stringResource(R.string.agent_home_working)
+    val upLabel = stringResource(R.string.todo_move_up)
+    val downLabel = stringResource(R.string.todo_move_down)
     // The call's press of this row ([VoiceTouch]): its light in the card's shape, which clips it, and the ripple.
     val voice = rememberVoiceTouchSource()
     Row(
@@ -560,6 +583,15 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
                 },
             ) { onOpen(row.agentId) }
             .then(if (row.working) Modifier.semantics { stateDescription = working } else Modifier)
+            // A screen reader moves the chat a place at a time, where a finger carries it (the Todos' Move up and Move down).
+            .then(
+                if (moves == null || onMove == null) Modifier else Modifier.semantics {
+                    customActions = buildList {
+                        if (moves.up) add(CustomAccessibilityAction(upLabel) { onMove(row.agentId, moves.upAfter); true })
+                        if (moves.down) add(CustomAccessibilityAction(downLabel) { onMove(row.agentId, moves.downAfter); true })
+                    }
+                },
+            )
             .padding(start = AgentHomeSpec.markInset + AgentHomeSpec.indent * row.depth, end = AgentHomeSpec.paddingEnd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -770,6 +802,14 @@ fun AgentHomeList(
     onOpenTodos: () -> Unit = {},
     onOpenPlugins: () -> Unit = {},
     onOpenPipelines: () -> Unit = {},
+    /**
+     * A project's chat carried to another place in its list ([HomeChatDrag]),
+     * or moved a place by a screen reader: after the chat named, or first.
+     * Null offers neither.
+     */
+    onReorder: ((AgentFeedRow.Conversation, afterId: String?) -> Unit)? = null,
+    /** A held row lifting to be carried: whatever its hold opened (its preview) closes. */
+    onLift: () -> Unit = {},
 ) {
     val reduceMotion = rememberReduceMotion()
     // The call brings a conversation's row on screen here before it presses it ([VoiceTouch.rows]).
@@ -783,13 +823,37 @@ fun AgentHomeList(
         VoiceTouch.rows = reveal
         onDispose { if (VoiceTouch.rows === reveal) VoiceTouch.rows = null }
     }
+    val drag = rememberHomeChatDrag(state, items, reduceMotion, onReorder, onLift)
+    // A chat's long press opens its preview and holds its row to be carried ([HomeChatDrag.hold]).
+    val preview by rememberUpdatedState(onHold)
+    val hold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = if (onHold == null || onReorder == null) onHold else remember(drag) {
+        { row: AgentFeedRow.Conversation, source: Rect -> drag.hold(row.agentId); preview?.invoke(row, source) }
+    }
+    // The list as it stands while a chat is carried, and until the feed lists the move.
+    val shown = drag.arrange(items)
+    // One callback for every row, so a row that moved nowhere composes nothing new.
+    val reorder by rememberUpdatedState(onReorder)
+    val move: ((String, String?) -> Unit)? = if (onReorder == null) null else remember {
+        { agentId: String, afterId: String? ->
+            currentItems.firstNotNullOfOrNull { ((it as? AgentHomeItem.Row)?.row as? AgentFeedRow.Conversation)?.takeIf { chat -> chat.agentId == agentId } }
+                ?.let { chat -> reorder?.invoke(chat, afterId) }
+            Unit
+        }
+    }
     LazyColumn(
         state = state,
-        modifier = modifier.fillMaxSize().background(HappyTheme.colors.surface).testTag(AgentHomeTags.LIST),
+        modifier = modifier.fillMaxSize().background(HappyTheme.colors.surface).testTag(AgentHomeTags.LIST)
+            .then(if (onReorder != null) drag.input() else Modifier),
         contentPadding = contentPadding,
+        // A held row keeps the list still; carried, it moves the list at its edges itself.
+        userScrollEnabled = !drag.holding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines)
+        agentHomeRows(
+            shown, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, hold, selected, onOpenFeed, onOpenTodos, onOpenPlugins, onOpenPipelines,
+            drag = drag.takeIf { onReorder != null },
+            onMove = move,
+        )
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }

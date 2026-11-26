@@ -44,6 +44,26 @@ class IntentOutboxTest {
         withTimeout(5_000) { while (!check(read())) delay(10) }
     }
 
+    /**
+     * A move is a step taken from the list the moves before it made, and a
+     * later move may be placed against an earlier one: none replaces
+     * another, a later move of the same chat included, and home replays
+     * them in the order they were made.
+     */
+    @Test
+    fun movesNeverReplaceOneAnotherAndHomeReplaysThemInOrder(): Unit = runBlocking {
+        val box = outbox()
+        fun move(after: String?) = buildJsonObject { put("kind", "agent"); put("owner", "p1"); put("afterId", after) }
+        box.enqueue(Intent.REORDER, "c", move(null))
+        box.enqueue(Intent.REORDER, "d", move("c"))
+        box.enqueue(Intent.REORDER, "c", move("b"))
+        assertEquals(listOf("c", "d", "c"), box.pending.value.map { it.target })
+        assertEquals(
+            listOf(IntentOverlay.Move("c", null, "p1"), IntentOverlay.Move("d", "c", "p1"), IntentOverlay.Move("c", "b", "p1")),
+            IntentOverlay.of(box.pending.value).moves,
+        )
+    }
+
     @Test
     fun aLaterIntentReplacesOneWaitingInItsSlotAndUnarchiveSharesArchives(): Unit = runBlocking {
         val box = outbox()
@@ -163,6 +183,36 @@ class IntentOutboxTest {
         box.kick()
         eventually({ box.pending.value }) { it.isEmpty() }
         assertEquals(listOf("b", "a"), sent.toList())
+    }
+
+    /**
+     * A move goes after the moves made before it in its list: while one of
+     * those waits out a failure the next waits with it, no failure counted,
+     * and goes right after it. A move in another list goes meanwhile.
+     */
+    @Test
+    fun aMoveWaitsUncountedForTheEarlierMovesOfItsList(): Unit = runBlocking {
+        val box = outbox()
+        val failing = java.util.concurrent.atomic.AtomicBoolean(true)
+        box.handle(setOf(Intent.REORDER)) {
+            if (failing.get() && it.target == "c") error("unreachable")
+            sent += it.target
+        }
+        fun move(owner: String, after: String?) = buildJsonObject { put("kind", "agent"); put("owner", owner); put("afterId", after) }
+        box.setOnline(true)
+        val first = box.enqueue(Intent.REORDER, "c", move("p1", null))
+        eventually({ box.pending.value.firstOrNull { it.id == first.id }?.attempts }) { it == 1 }
+        box.enqueue(Intent.REORDER, "a", move("p1", "b"))
+        box.enqueue(Intent.REORDER, "x", move("p2", null))
+        eventually({ sent.toList() }) { it == listOf("x") }
+        delay(100)
+        assertEquals(listOf("x"), sent.toList())
+        assertEquals(0, box.pending.value.single { it.target == "a" }.attempts)
+        failing.set(false)
+        clock.addAndGet(1_000)
+        box.kick()
+        eventually({ box.pending.value }) { it.isEmpty() }
+        assertEquals(listOf("x", "c", "a"), sent.toList())
     }
 
     @Test
