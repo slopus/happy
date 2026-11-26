@@ -171,6 +171,50 @@ class BackgroundTaskTest {
     }
 
     @Test
+    fun `a TaskStop call ends the task it names`() {
+        val state = ReducerState()
+        state.reduce(startCall(callId = "call-1", at = 100))
+        state.reduce(startCall(callId = "call-2", at = 110, input = """{"command":"sleep 600","run_in_background":true}"""))
+        state.reduce(agentMsg("r1", 120, toolResult("call-1", "Command running in background with ID: bi08ajid4.")))
+        state.reduce(agentMsg("r2", 130, toolResult("call-2", "Command running in background with ID: bn1k57g03.")))
+        state.reduce(agentMsg("s1", 300, toolUse("stop-1", "TaskStop", """{"task_id":"bi08ajid4"}""")))
+
+        val stopped = state.backgroundTasks.first { it.id == "call:call-1" }
+        assertEquals(BackgroundTaskStatus.Cancelled, stopped.status)
+        assertEquals(300L, stopped.finishedAt)
+        assertTrue(state.backgroundTasks.first { it.id == "call:call-2" }.isRunning)
+    }
+
+    @Test
+    fun `a stop in the same history batch as its result still ends the task`() {
+        val state = ReducerState()
+        // A replay reduces every tool call before any result, so the stop is seen first.
+        state.reduce(listOf(
+            startCall(callId = "call-1", at = 100),
+            agentMsg("r1", 120, toolResult("call-1", "Command running in background with ID: bi08ajid4.")),
+            agentMsg("s1", 300, toolUse("stop-1", "TaskStop", """{"task_id":"bi08ajid4"}""")),
+        ))
+
+        val task = state.backgroundTasks.single()
+        assertEquals(BackgroundTaskStatus.Cancelled, task.status)
+        assertEquals(300L, task.finishedAt)
+    }
+
+    @Test
+    fun `stopping an unknown or already finished task changes nothing`() {
+        val state = ReducerState()
+        state.reduce(startCall(callId = "call-1", at = 100))
+        state.reduce(agentMsg("r1", 120, toolResult("call-1", "Command running in background with ID: bi08ajid4.")))
+        state.reduce(listOf(normalized("n", 200, notification("completed", "Background command \"Build the app\" completed", id = "bi08ajid4"))))
+        state.reduce(agentMsg("s1", 300, toolUse("stop-1", "TaskStop", """{"task_id":"bi08ajid4"}""")))
+        state.reduce(agentMsg("s2", 310, toolUse("stop-2", "TaskStop", """{"task_id":"nosuch"}""")))
+
+        val task = state.backgroundTasks.single()
+        assertEquals(BackgroundTaskStatus.Completed, task.status)
+        assertEquals(200L, task.finishedAt)
+    }
+
+    @Test
     fun `a repeated notification adds no second task`() {
         val state = ReducerState()
         state.reduce(startCall())

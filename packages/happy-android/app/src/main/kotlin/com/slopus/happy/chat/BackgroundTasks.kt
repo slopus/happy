@@ -170,6 +170,7 @@ internal class BackgroundTaskTracker {
     private val tasks = LinkedHashMap<String, BackgroundTask>()
     /** Notification task ids already applied, so a repeated envelope updates nothing twice. */
     private val keyByTaskId = HashMap<String, String>()
+    private val pendingStops = HashMap<String, Long>()
     /** Notifications without a task id, by their content, so a repeat adds no second row. */
     private val anonymous = HashSet<String>()
     private var nextAnonymous = 0L
@@ -179,6 +180,13 @@ internal class BackgroundTaskTracker {
     fun start(callId: String, name: String, input: JsonElement?, at: Long) {
         val args = input.obj ?: return
         val normalizedName = name.trim().lowercase()
+        // Claude Code sends no <task-notification> for a task it stops, so the
+        // stop call itself ends the task it names.
+        if (normalizedName in STOP_TOOLS) {
+            val stoppedId = (args["task_id"].str ?: args["shell_id"].str)?.trim()?.takeIf { it.isNotEmpty() } ?: return
+            stop(stoppedId, at)
+            return
+        }
         // Monitor tool always runs in background, no flag needed
         val isMonitor = normalizedName == "monitor"
         val runsInBackground = args["run_in_background"].bool == true || isMonitor
@@ -190,6 +198,16 @@ internal class BackgroundTaskTracker {
         val prompt = args["prompt"].str?.trim()?.takeIf { it.isNotEmpty() }
         val title = description ?: prompt ?: command?.substringBefore('\n')?.trim()?.take(TITLE_LIMIT) ?: name
         tasks[key] = BackgroundTask(id = key, kind = kindOf(name), title = title, command = command, startedAt = at)
+    }
+
+    /** Ends the running task Claude Code knows as [taskId], if it is one we track. */
+    fun stop(taskId: String, at: Long) {
+        // A history replay reduces every tool call before any result, so the
+        // stop can come before the result that names its task: hold it.
+        val key = keyByTaskId[taskId] ?: run { pendingStops[taskId] = at; return }
+        val task = tasks[key] ?: return
+        if (!task.isRunning) return
+        tasks[key] = task.copy(status = BackgroundTaskStatus.Cancelled, finishedAt = at)
     }
 
     fun result(callId: String, resultText: String?) {
@@ -209,6 +227,7 @@ internal class BackgroundTaskTracker {
         if (taskId != null) {
             keyByTaskId[taskId] = key
             tasks[key] = task.copy(taskId = taskId)
+            pendingStops.remove(taskId)?.let { stoppedAt -> stop(taskId, stoppedAt) }
         }
         // Extract output file for Bash commands
         val outputFileMatch = OUTPUT_FILE.find(resultText)
@@ -276,6 +295,8 @@ internal class BackgroundTaskTracker {
 
         // Regexes to extract task IDs from Claude Code's tool result text.
         // Bash: "Command running in background with ID: b6h0hc9m1."
+        /** Claude Code's tools that stop a background task by id (TaskStop; KillShell/KillBash before it). */
+        private val STOP_TOOLS = setOf("taskstop", "killshell", "killbash")
         private val BASH_TASK_ID = Regex("""Command running in background with ID:\s*([a-z0-9]+)\.""")
         // Agent: "agentId: a5a83112e6d5e344f"
         private val AGENT_ID = Regex("""agentId:\s*([a-z0-9]+)""")
