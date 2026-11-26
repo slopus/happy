@@ -20,7 +20,7 @@ private struct AgentToolsSockets: WebSocketConnector {
 private struct AgentToolsComputer: AgentTransport {
     private static let run = #"""
     {"id":"r1","status":"completed","startedAt":1000,"endedAt":95000,"reason":"completed","messages":[
-     {"id":"u1","role":"user","createdAt":1,"metadata":{},"content":[{"type":"text","text":"The cache test is flaky. Find out why, fix it and file an issue for the follow-up."}]},
+     {"id":"u1","role":"user","createdAt":1,"metadata":{},"status":"accepted","delivery":"queue","runId":"r1","mode":{"providerId":"claude","modelId":"opus","effort":"medium","serviceTier":null,"permissionMode":"auto"},"content":[{"type":"text","text":"The cache test is flaky. Find out why, fix it and file an issue for the follow-up."}]},
      {"id":"m1","role":"agent","createdAt":2,"metadata":{},"content":[
       {"type":"text","text":"Let me look at the cache and its test first."},
       {"type":"tool_call","id":"t-explore","name":"exec_command","status":"completed","presentation":{"type":"exploration","operations":[

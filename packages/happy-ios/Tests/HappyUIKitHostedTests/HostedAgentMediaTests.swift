@@ -432,7 +432,7 @@ final class HostedAgentMediaTests: XCTestCase {
 /// Wire messages, as the computer sends them.
 enum TurnsMessages {
     static func message(_ id: String, role: String, _ content: [JSONValue]) -> JSONValue {
-        .object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)])
+        MessageSchema.withUserFields(.object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)]))
     }
 }
 #endif

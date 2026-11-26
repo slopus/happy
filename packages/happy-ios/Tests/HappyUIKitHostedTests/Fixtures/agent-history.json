@@ -31,7 +31,10 @@
        "effort": "high",
        "serviceTier": null,
        "permissionMode": "auto"
-      }
+      },
+      "status": "accepted",
+      "delivery": "queue",
+      "runId": "run-1"
      },
      {
       "id": "agent-1",
@@ -101,7 +104,10 @@
        "effort": "high",
        "serviceTier": null,
        "permissionMode": "auto"
-      }
+      },
+      "status": "accepted",
+      "delivery": "queue",
+      "runId": "run-2"
      },
      {
       "id": "agent-2",
@@ -151,7 +157,10 @@
        "effort": "high",
        "serviceTier": null,
        "permissionMode": "auto"
-      }
+      },
+      "status": "accepted",
+      "delivery": "queue",
+      "runId": "run-3"
      },
      {
       "id": "agent-3",
@@ -202,7 +211,10 @@
        "effort": "high",
        "serviceTier": null,
        "permissionMode": "auto"
-      }
+      },
+      "status": "accepted",
+      "delivery": "queue",
+      "runId": "run-4"
      },
      {
       "id": "agent-4",
@@ -251,7 +263,10 @@
        "effort": "high",
        "serviceTier": null,
        "permissionMode": "auto"
-      }
+      },
+      "status": "accepted",
+      "delivery": "queue",
+      "runId": "run-5"
      },
      {
       "id": "agent-5",

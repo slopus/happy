@@ -1,0 +1,819 @@
+{
+ "comment": "Happy Agent messages checked against happy-agent-client sources/protocol/messages.ts. `problem` is what MessageSchema says an invalid one fails with. The shared cross-client set is ../ProtocolMessages.",
+ "valid": [
+  {
+   "name": "user text, accepted",
+   "message": {
+    "id": "u1",
+    "role": "user",
+    "createdAt": 1764000000000,
+    "metadata": {
+     "userId": "ada"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "Review the PR"
+     }
+    ],
+    "status": "accepted",
+    "delivery": "queue",
+    "runId": "r1",
+    "profile": null,
+    "mode": {
+     "providerId": "claude",
+     "modelId": "opus",
+     "effort": "high",
+     "serviceTier": null,
+     "permissionMode": "auto"
+    }
+   }
+  },
+  {
+   "name": "user, pending, with a file and a skill request",
+   "message": {
+    "id": "u2",
+    "role": "user",
+    "createdAt": 1764000000001,
+    "metadata": {},
+    "content": [
+     {
+      "type": "file",
+      "attachment": "a1",
+      "name": "shot.png",
+      "mimeType": "image/png",
+      "size": 2048,
+      "kind": "image",
+      "width": 640,
+      "height": 480,
+      "thumbhash": "abc"
+     },
+     {
+      "type": "tool_call_request",
+      "name": "read_skill",
+      "arguments": {
+       "name": "review"
+      }
+     },
+     {
+      "type": "text",
+      "text": "Look"
+     }
+    ],
+    "status": "pending",
+    "delivery": "steer",
+    "runId": null,
+    "mode": {
+     "providerId": "codex",
+     "modelId": "gpt",
+     "effort": "medium",
+     "serviceTier": "fast",
+     "permissionMode": "workspace_write"
+    }
+   }
+  },
+  {
+   "name": "agent text, reasoning and an exec_command call",
+   "message": {
+    "id": "a1",
+    "role": "agent",
+    "createdAt": 1764000000002,
+    "metadata": {
+     "providerId": "claude",
+     "modelId": "opus"
+    },
+    "content": [
+     {
+      "type": "reasoning",
+      "text": "Thinking"
+     },
+     {
+      "type": "text",
+      "text": "Running tests"
+     },
+     {
+      "type": "tool_call",
+      "id": "c1",
+      "name": "exec_command",
+      "status": "completed",
+      "arguments": {
+       "cmd": "pnpm test"
+      },
+      "result": {
+       "output": "42 passed"
+      },
+      "elevated": true,
+      "review": {
+       "outcome": "allowed",
+       "reason": "Asked for",
+       "risk": "high",
+       "userAuthorization": "high"
+      },
+      "presentation": {
+       "type": "exec_command",
+       "command": "pnpm test",
+       "output": "42 passed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "answered request_user_input, as the cluster sends it (empty header)",
+   "message": {
+    "id": "a2",
+    "role": "agent",
+    "createdAt": 1764000000003,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c2",
+      "name": "request_user_input",
+      "status": "completed",
+      "arguments": {
+       "context": "Pick one",
+       "questions": [
+        {
+         "id": "reviewer",
+         "question": "Who reviews?"
+        }
+       ]
+      },
+      "result": {
+       "requestId": "q1",
+       "status": "answered",
+       "answers": {
+        "reviewer": [
+         "Kirill"
+        ]
+       }
+      },
+      "presentation": {
+       "type": "user_input",
+       "questions": [
+        {
+         "id": "reviewer",
+         "header": "",
+         "question": "Who reviews?",
+         "multiSelect": false,
+         "options": [
+          {
+           "label": "Kirill",
+           "description": ""
+          },
+          {
+           "label": "Steve",
+           "description": "Owner"
+          }
+         ]
+        }
+       ],
+       "answers": {
+        "reviewer": [
+         "Kirill"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "running call with result null, and an unproven review",
+   "message": {
+    "id": "a3",
+    "role": "agent",
+    "createdAt": 1764000000004,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c3",
+      "name": "write_file",
+      "status": "running",
+      "arguments": {},
+      "result": null,
+      "elevated": false,
+      "review": {
+       "outcome": "unproven",
+       "kind": "timed_out",
+       "reason": "No answer"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "presentations: file_diff, search, media, artifact, page, agent_spawn, exploration",
+   "message": {
+    "id": "a4",
+    "role": "agent",
+    "createdAt": 1764000000005,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c4",
+      "name": "apply_patch",
+      "status": "completed",
+      "presentation": {
+       "type": "file_diff",
+       "files": [
+        {
+         "added": 1,
+         "deleted": 0,
+         "kind": "add",
+         "path": "a.txt",
+         "hunks": [
+          {
+           "oldStart": 0,
+           "newStart": 1,
+           "lines": [
+            {
+             "kind": "add",
+             "text": "hi"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "type": "tool_call",
+      "id": "c5",
+      "name": "web_search",
+      "status": "completed",
+      "presentation": {
+       "type": "search",
+       "query": "happy",
+       "target": "web",
+       "sources": [
+        {
+         "title": "Happy",
+         "url": "https://happy.engineering"
+        }
+       ]
+      }
+     },
+     {
+      "type": "tool_call",
+      "id": "c6",
+      "name": "present_files",
+      "status": "completed",
+      "presentation": {
+       "type": "media",
+       "items": [
+        {
+         "kind": "image",
+         "name": "a.png",
+         "mimeType": "image/png",
+         "size": 10,
+         "width": 2,
+         "height": 2,
+         "thumbhash": "x",
+         "scale": 2
+        },
+        {
+         "kind": "video",
+         "name": "b.mp4",
+         "mimeType": "video/mp4",
+         "size": 20
+        }
+       ],
+       "layout": {
+        "type": "columns",
+        "columns": 2
+       }
+      }
+     },
+     {
+      "type": "tool_call",
+      "id": "c7",
+      "name": "create_artifact",
+      "status": "completed",
+      "presentation": {
+       "type": "artifact",
+       "artifactId": "art1",
+       "version": 1,
+       "artifactType": "markdown",
+       "title": "Notes",
+       "shows": "something-new"
+      }
+     },
+     {
+      "type": "tool_call",
+      "id": "c8",
+      "name": "show_page",
+      "status": "completed",
+      "presentation": {
+       "type": "page",
+       "url": "https://example.com",
+       "title": "Example",
+       "display": null
+      }
+     },
+     {
+      "type": "tool_call",
+      "id": "c9",
+      "name": "create_agent",
+      "status": "running",
+      "presentation": {
+       "type": "agent_spawn"
+      }
+     },
+     {
+      "type": "tool_call",
+      "id": "c10",
+      "name": "read_file",
+      "status": "running",
+      "presentation": {
+       "type": "exploration",
+       "operations": [
+        {
+         "kind": "read",
+         "name": "a.txt"
+        },
+        {
+         "kind": "search",
+         "command": "rg x"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "a presentation type this app does not know, and retired blocks",
+   "message": {
+    "id": "a5",
+    "role": "agent",
+    "createdAt": 1764000000006,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c11",
+      "name": "plan",
+      "status": "completed",
+      "presentation": {
+       "type": "plan",
+       "steps": []
+      }
+     },
+     {
+      "type": "ui",
+      "ui": {
+       "anything": true
+      }
+     },
+     {
+      "type": "image",
+      "mimeType": "image/png"
+     }
+    ]
+   }
+  },
+  {
+   "name": "service compaction and failure",
+   "message": {
+    "id": "s1",
+    "role": "service",
+    "createdAt": 1764000000008,
+    "metadata": {},
+    "content": [
+     {
+      "type": "compaction",
+      "trigger": "automatic",
+      "status": "completed",
+      "tokensBefore": 201000,
+      "tokensAfter": null,
+      "failureReason": null,
+      "startedAt": 1764000000000,
+      "completedAt": 1764000000500
+     }
+    ],
+    "failure": {
+     "kind": "usage_limit",
+     "message": "Out of usage",
+     "fallbackProviders": []
+    }
+   }
+  }
+ ],
+ "invalid": [
+  {
+   "name": "request_user_input cancelled by a chat reply, as the cluster sent it",
+   "problem": "/content/0/presentation/answers: is null",
+   "message": {
+    "id": "bad1",
+    "role": "agent",
+    "createdAt": 1764000000010,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c20",
+      "name": "request_user_input",
+      "status": "completed",
+      "arguments": {
+       "context": "Who?",
+       "questions": [
+        {
+         "id": "reviewer",
+         "question": "Who reviews?"
+        }
+       ]
+      },
+      "result": {
+       "requestId": "q2",
+       "status": "canceled",
+       "answers": null
+      },
+      "presentation": {
+       "type": "user_input",
+       "questions": [
+        {
+         "id": "reviewer",
+         "header": "",
+         "question": "Who reviews?",
+         "multiSelect": false,
+         "options": []
+        }
+       ],
+       "status": "canceled",
+       "answers": null
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "user_input answers that are not lists of strings",
+   "problem": "/content/0/presentation/answers/reviewer: is not a list of strings",
+   "message": {
+    "id": "bad2",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c21",
+      "name": "request_user_input",
+      "status": "completed",
+      "presentation": {
+       "type": "user_input",
+       "questions": [
+        {
+         "id": "reviewer",
+         "header": "Who",
+         "question": "Who?",
+         "multiSelect": true,
+         "options": []
+        }
+       ],
+       "answers": {
+        "reviewer": "Kirill"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "user_input question without multiSelect",
+   "problem": "/content/0/presentation/questions/0/multiSelect: is missing",
+   "message": {
+    "id": "bad3",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c22",
+      "name": "request_user_input",
+      "status": "completed",
+      "presentation": {
+       "type": "user_input",
+       "questions": [
+        {
+         "id": "reviewer",
+         "header": "Who",
+         "question": "Who?",
+         "options": []
+        }
+       ],
+       "answers": {}
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "tool status outside the schema",
+   "problem": "/content/0/status: \"done\" is not one of completed, failed, running",
+   "message": {
+    "id": "bad4",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c23",
+      "name": "exec_command",
+      "status": "done"
+     }
+    ]
+   }
+  },
+  {
+   "name": "no id",
+   "problem": "/id: is missing",
+   "message": {
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": []
+   }
+  },
+  {
+   "name": "createdAt as a string",
+   "problem": "/createdAt: is not a number",
+   "message": {
+    "id": "bad6",
+    "role": "agent",
+    "createdAt": "yesterday",
+    "metadata": {},
+    "content": []
+   }
+  },
+  {
+   "name": "content is not a list",
+   "problem": "/content: is not a list",
+   "message": {
+    "id": "bad7",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": {
+     "type": "text",
+     "text": "hi"
+    }
+   }
+  },
+  {
+   "name": "no metadata",
+   "problem": "/metadata: is missing",
+   "message": {
+    "id": "bad8",
+    "role": "agent",
+    "createdAt": 1,
+    "content": []
+   }
+  },
+  {
+   "name": "user message without its mode",
+   "problem": "/mode: is missing",
+   "message": {
+    "id": "bad9",
+    "role": "user",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "text",
+      "text": "hi"
+     }
+    ],
+    "status": "accepted",
+    "delivery": "queue",
+    "runId": "r1"
+   }
+  },
+  {
+   "name": "review without elevated",
+   "problem": "/content/0/review: comes without elevated",
+   "message": {
+    "id": "bad10",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c24",
+      "name": "exec_command",
+      "status": "completed",
+      "review": {
+       "outcome": "denied",
+       "reason": "No",
+       "risk": "low",
+       "userAuthorization": "unknown"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "text that is a number",
+   "problem": "/content/0/text: is not a string",
+   "message": {
+    "id": "bad11",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "text",
+      "text": 42
+     }
+    ]
+   }
+  },
+  {
+   "name": "tool_call_request with a field it may not have",
+   "problem": "/content/0/id: is not allowed",
+   "message": {
+    "id": "bad12",
+    "role": "user",
+    "createdAt": 1,
+    "metadata": {},
+    "status": "pending",
+    "delivery": "queue",
+    "runId": null,
+    "mode": {
+     "providerId": "p",
+     "modelId": "m",
+     "effort": "low",
+     "serviceTier": null,
+     "permissionMode": "read_only"
+    },
+    "content": [
+     {
+      "type": "tool_call_request",
+      "name": "read_skill",
+      "id": "x"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a diff line of a kind the schema doesn't have",
+   "problem": "/content/0/presentation/files/0/hunks/0/lines/0/kind: \"changed\" is not one of add, context, delete",
+   "message": {
+    "id": "bad13",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c25",
+      "name": "apply_patch",
+      "status": "completed",
+      "presentation": {
+       "type": "file_diff",
+       "files": [
+        {
+         "added": 1,
+         "deleted": 0,
+         "kind": "update",
+         "path": "a",
+         "hunks": [
+          {
+           "oldStart": 1,
+           "newStart": 1,
+           "lines": [
+            {
+             "kind": "changed",
+             "text": "x"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "a running compaction with a completion time",
+   "problem": "/content/0/completedAt: is not null while running",
+   "message": {
+    "id": "bad14",
+    "role": "service",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "compaction",
+      "trigger": "manual",
+      "status": "running",
+      "tokensBefore": null,
+      "tokensAfter": null,
+      "failureReason": null,
+      "startedAt": 1,
+      "completedAt": 2
+     }
+    ]
+   }
+  },
+  {
+   "name": "permission mode outside the schema",
+   "problem": "/mode/permissionMode: \"yolo\" is not one of auto, full_access, read_only, workspace_write",
+   "message": {
+    "id": "bad15",
+    "role": "user",
+    "createdAt": 1,
+    "metadata": {},
+    "status": "accepted",
+    "delivery": "queue",
+    "runId": "r",
+    "mode": {
+     "providerId": "p",
+     "modelId": "m",
+     "effort": "low",
+     "serviceTier": null,
+     "permissionMode": "yolo"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "hi"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an image media item without its size",
+   "problem": "/content/0/presentation/items/0/width: is missing",
+   "message": {
+    "id": "bad16",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c26",
+      "name": "present_files",
+      "status": "completed",
+      "presentation": {
+       "type": "media",
+       "items": [
+        {
+         "kind": "image",
+         "name": "a.png",
+         "mimeType": "image/png",
+         "size": 1,
+         "height": 1,
+         "thumbhash": "x"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "not an object",
+   "problem": "is not an object",
+   "message": "hello"
+  },
+  {
+   "name": "unknown role",
+   "message": {
+    "id": "x1",
+    "role": "narrator",
+    "createdAt": 1764000000007,
+    "content": [],
+    "metadata": {}
+   },
+   "problem": "/role: \"narrator\" is not one of agent, service, system, user"
+  },
+  {
+   "name": "a block type the protocol does not have",
+   "problem": "/content/0/type: \"hologram\" is not a block type",
+   "message": {
+    "id": "bad17",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "hologram",
+      "beam": 3
+     }
+    ]
+   }
+  }
+ ]
+}

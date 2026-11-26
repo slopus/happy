@@ -31,6 +31,21 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         /// A run of tool calls drawn as one line (Group tool calls),
         /// placed by `ToolSections`.
         case section(Section)
+        /// A message that doesn't match the protocol schema
+        /// (`AgentWire.Message.unreadable`): one line saying so, and a way
+        /// to report it.
+        case unreadable(Unreadable)
+    }
+
+    /// The message that failed and why, for its bug report.
+    public struct Unreadable: Equatable, Sendable {
+        public var messageId: String
+        public var problem: String
+
+        public init(messageId: String, problem: String) {
+            self.messageId = messageId
+            self.problem = problem
+        }
     }
 
     public enum Delivery: Equatable, Sendable {
@@ -2317,6 +2332,10 @@ public actor Conversation {
     /// word arriving makes again only the row it lands in.
     private func items(_ message: AgentWire.Message, old: MadeMessage?, made: inout MadeMessage, shown: inout [String: Media]) {
         let turn = made.turn
+        if let problem = message.unreadable {
+            made.items = [ChatItem(id: message.id, role: .unreadable(ChatItem.Unreadable(messageId: message.id, problem: problem)), pieces: [], delivery: .sent, turn: turn).stamped()]
+            return
+        }
         if message.role == "service" {
             // A compaction is a step of its run, as desktop's projection
             // makes it a `compact` call.

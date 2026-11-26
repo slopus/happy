@@ -1,0 +1,28 @@
+{
+    "description": "Input typed into a background terminal.",
+    "message": {
+        "id": "msgbackgroundterm000000001",
+        "role": "agent",
+        "createdAt": 1764100000006,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolbackgroundterm00000001",
+                "name": "write_stdin",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "background_terminal_interaction",
+                    "command": "pnpm dev",
+                    "input": "q\n",
+                    "terminalId": "terminal000000000000000001"
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

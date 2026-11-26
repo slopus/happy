@@ -180,7 +180,8 @@ private actor ViewersServer: AgentTransport {
 
     static let transcript: String = {
         func message(_ id: String, _ role: String, _ text: String) -> String {
-            #"{"id":"\#(id)","role":"\#(role)","createdAt":1,"metadata":{},"content":[{"type":"text","text":"\#(text)"}]}"#
+            let person = role == "user" ? #""status":"accepted","delivery":"queue","runId":"r","mode":{"providerId":"claude","modelId":"opus","effort":"medium","serviceTier":null,"permissionMode":"auto"},"# : ""
+            return #"{"id":"\#(id)","role":"\#(role)","createdAt":1,"metadata":{},\#(person)"content":[{"type":"text","text":"\#(text)"}]}"#
         }
         let turns = [
             ("What's left before Monday's launch?", "Three things: the changelog, the store screenshots, and a note to support. The release branch is frozen."),

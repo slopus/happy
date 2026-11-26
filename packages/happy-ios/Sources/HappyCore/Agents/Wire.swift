@@ -538,7 +538,12 @@ extension AgentWire {
             case "tool_call":
                 let name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
                 let asks = name == Question.toolName
-                let presentation = try? container.decodeIfPresent(Presentation.self, forKey: .presentation)
+                var presentation = try? container.decodeIfPresent(Presentation.self, forKey: .presentation)
+                // A newer server's presentation is none here: a plain tool call.
+                if let type = presentation?.type, !MessageSchema.knownPresentations.contains(type) {
+                    MessageSchema.report(unknownPresentation: type)
+                    presentation = nil
+                }
                 let keepsRaw = ToolRaw.keeps(name: name, presentation: presentation?.type)
                 let result = asks ? try? container.nestedContainer(keyedBy: ResultKeys.self, forKey: .result) : nil
                 let rawArguments = asks || keepsRaw
@@ -695,7 +700,11 @@ extension AgentWire {
         /// failure (`failure`), kept as sent; `Failure` reads them.
         public var error: JSONValue?
         public var failure: JSONValue?
-        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil) {
+        /// Why a message that doesn't match the protocol schema
+        /// (`MessageSchema`) can't be shown; it then has no content and is
+        /// one placeholder row. The payload itself is never kept.
+        public var unreadable: String?
+        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil, unreadable: String? = nil) {
             self.id = id
             self.role = role
             self.createdAt = createdAt
@@ -705,6 +714,45 @@ extension AgentWire {
             self.metadata = metadata
             self.error = error
             self.failure = failure
+            self.unreadable = unreadable
+        }
+
+        enum CodingKeys: String, CodingKey { case id, role, createdAt, content, status, runId, metadata, error, failure }
+
+        /// Never throws: a message that fails the schema, or can't be read,
+        /// is a placeholder in its place, so a page or an event never loses
+        /// the messages beside it.
+        public init(from decoder: Decoder) throws {
+            do {
+                try MessageSchema.check(decoder)
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                id = try container.decode(String.self, forKey: .id)
+                role = try container.decode(String.self, forKey: .role)
+                createdAt = try container.decode(Double.self, forKey: .createdAt)
+                unreadable = nil
+                content = try container.decode([Block].self, forKey: .content)
+                status = try container.decodeIfPresent(String.self, forKey: .status)
+                runId = try container.decodeIfPresent(String.self, forKey: .runId)
+                metadata = try container.decodeIfPresent(MessageMetadata.self, forKey: .metadata)
+                error = try container.decodeIfPresent(JSONValue.self, forKey: .error)
+                failure = try container.decodeIfPresent(JSONValue.self, forKey: .failure)
+            } catch {
+                let container = try? decoder.container(keyedBy: CodingKeys.self)
+                // Named by its place when it has no ID of its own.
+                let place = decoder.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: "/")
+                id = ((try? container?.decodeIfPresent(String.self, forKey: .id)) ?? nil) ?? "unreadable/\(place)"
+                let role = ((try? container?.decodeIfPresent(String.self, forKey: .role)) ?? nil) ?? "agent"
+                self.role = MessageSchema.roles.contains(role) ? role : "agent"
+                createdAt = ((try? container?.decodeIfPresent(Double.self, forKey: .createdAt)) ?? nil) ?? 0
+                content = []
+                status = nil
+                runId = nil
+                metadata = nil
+                self.error = nil
+                failure = nil
+                unreadable = MessageSchema.describe(error, under: decoder.codingPath.count)
+                MessageSchema.report(messageId: id, problem: unreadable ?? "")
+            }
         }
     }
 

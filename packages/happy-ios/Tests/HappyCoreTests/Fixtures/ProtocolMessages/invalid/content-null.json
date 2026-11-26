@@ -1,0 +1,14 @@
+{
+    "description": "A message whose content is null.",
+    "invalidAt": ["/content"],
+    "message": {
+        "id": "msgcontentnull0000000001",
+        "role": "agent",
+        "createdAt": 1764100000000,
+        "content": null,
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

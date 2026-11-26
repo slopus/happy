@@ -53,7 +53,7 @@ private actor TurnsComputer: AgentTransport {
     }
 
     static func message(_ id: String, role: String, _ content: [JSONValue]) -> JSONValue {
-        .object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)])
+        MessageSchema.withUserFields(.object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)]))
     }
 
     /// A run: the person's words, then the agent's blocks; ended `took`
@@ -75,7 +75,7 @@ private actor TurnsComputer: AgentTransport {
             call("\(id)-1", "exec_command", ["type": .string("exec_command"), "command": .string("pnpm test --filter happy-ios")]),
             call("\(id)-2", "Read", ["type": .string("exploration"), "operations": .array([.object(["kind": .string("read"), "name": .string("sources/cache/Cache.swift")])])]),
             call("\(id)-3", "Edit", status: running ? "running" : "completed", running ? nil : ["type": .string("file_diff"), "files": .array([
-                .object(["path": .string("sources/cache/Cache.swift"), "kind": .string("update"), "added": .number(3), "deleted": .number(1)]),
+                .object(["path": .string("sources/cache/Cache.swift"), "kind": .string("update"), "added": .number(3), "deleted": .number(1), "hunks": .array([])]),
             ])]),
         ]
         if let answer { blocks.append(text(answer)) }

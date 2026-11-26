@@ -1,0 +1,28 @@
+{
+    "description": "A shell command presentation with output and a background terminal.",
+    "message": {
+        "id": "msgexeccommand000000000001",
+        "role": "agent",
+        "createdAt": 1764100000005,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolexeccommand00000000001",
+                "name": "exec_command",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "exec_command",
+                    "command": "pnpm test",
+                    "output": "ok",
+                    "terminalId": null
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

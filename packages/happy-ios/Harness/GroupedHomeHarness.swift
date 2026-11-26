@@ -172,7 +172,7 @@ private actor GroupedHomeTransport: AgentTransport {
         let reply = "Ask [](\(page)/happy-agent?as=bot) about the tone, and read [the crash](\(page)/crash-agent?as=task) first. "
             + "Theirs: https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task"
         let run: [String: Any] = ["id": "r1", "status": "completed", "startedAt": now - 60_000, "endedAt": now - 50_000, "reason": "completed", "messages": [
-            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "Who should I ask about the headlines?"]]],
+            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "status": "accepted", "delivery": "queue", "runId": "r1", "mode": ["providerId": "claude", "modelId": "opus", "effort": "medium", "serviceTier": NSNull(), "permissionMode": "auto"], "content": [["type": "text", "text": "Who should I ask about the headlines?"]]],
             ["id": "m1", "role": "agent", "createdAt": now - 55_000, "metadata": [:], "content": [["type": "text", "text": reply]]],
         ]]
         return (try? JSONSerialization.data(withJSONObject: ["runs": [run], "hasMore": false])) ?? Data()
@@ -198,7 +198,7 @@ private actor GroupedHomeTransport: AgentTransport {
             + "- Bare: \(page)/report-agent?as=task\n"
             + "- Theirs: [](https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task)"
         let run: [String: Any] = ["id": "r1", "status": "completed", "startedAt": now - 60_000, "endedAt": now - 50_000, "reason": "completed", "messages": [
-            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "How is [](\(page)/crash-agent?as=task) going?"]]],
+            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "status": "accepted", "delivery": "queue", "runId": "r1", "mode": ["providerId": "claude", "modelId": "opus", "effort": "medium", "serviceTier": NSNull(), "permissionMode": "auto"], "content": [["type": "text", "text": "How is [](\(page)/crash-agent?as=task) going?"]]],
             ["id": "m1", "role": "agent", "createdAt": now - 55_000, "metadata": [:], "content": [["type": "text", "text": reply]]],
         ]]
         return (try? JSONSerialization.data(withJSONObject: ["runs": [run], "hasMore": false])) ?? Data()

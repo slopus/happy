@@ -23,7 +23,7 @@ private actor MotionComputer: AgentTransport {
     static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
     static func message(_ id: String, role: String, _ content: [JSONValue]) -> JSONValue {
-        .object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)])
+        MessageSchema.withUserFields(.object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)]))
     }
 
     static let runs: [JSONValue] = (0..<40).map { index in

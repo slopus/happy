@@ -1,0 +1,19 @@
+{
+    "description": "A text block whose text is a number.",
+    "invalidAt": ["/content/0/text"],
+    "message": {
+        "id": "msgtextnumber00000000001",
+        "role": "agent",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "text",
+                "text": 42
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

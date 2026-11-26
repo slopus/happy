@@ -1,0 +1,58 @@
+{
+    "description": "Tool calls without a presentation: running, failed, and two reviewed calls (allowed and unproven).",
+    "message": {
+        "id": "msgagenttools0000000000001",
+        "role": "agent",
+        "createdAt": 1764100000003,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolrunning000000000000001",
+                "name": "exec_command",
+                "status": "running",
+                "arguments": {}
+            },
+            {
+                "type": "tool_call",
+                "id": "toolfailed0000000000000001",
+                "name": "write_file",
+                "status": "failed",
+                "arguments": {},
+                "result": {}
+            },
+            {
+                "type": "tool_call",
+                "id": "toolreviewed00000000000001",
+                "name": "exec_command",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "elevated": true,
+                "review": {
+                    "outcome": "allowed",
+                    "reason": "The person asked for it.",
+                    "risk": "medium",
+                    "userAuthorization": "high"
+                }
+            },
+            {
+                "type": "tool_call",
+                "id": "toolunproven00000000000001",
+                "name": "exec_command",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "elevated": false,
+                "review": {
+                    "outcome": "unproven",
+                    "kind": "timed_out",
+                    "reason": "The reviewer did not answer."
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

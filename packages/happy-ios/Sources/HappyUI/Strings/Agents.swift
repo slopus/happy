@@ -149,6 +149,22 @@ extension Strings {
     public static let handled = "Handled"
     public static func switchAndContinue(_ target: String) -> String { "Switch to \(target) and continue" }
     public static func switched(_ target: String) -> String { "Switched to \(target)" }
+    /// A message that doesn't match the protocol schema, in its place.
+    public static let messageFailedToDisplay = "Hey, this message failed to display."
+    public static let reportBug = "Report bug"
+    /// Its bug report on GitHub, filled in: where it was and why it
+    /// failed, never what it said.
+    public static func messageFailedReport(server: String?, agentId: String?, messageId: String, problem: String) -> (title: String, body: String) {
+        let body = """
+        A message in a conversation failed to display on iOS.
+
+        - Server: \(server ?? "unknown")
+        - Agent: \(agentId ?? "unknown")
+        - Message: \(messageId)
+        - Problem: \(problem)
+        """
+        return ("iOS: a message failed to display", body)
+    }
     /// Under a long message cut to its first lines, and opened (desktop's).
     public static let showFull = "Show full"
     public static let showLess = "Show less"

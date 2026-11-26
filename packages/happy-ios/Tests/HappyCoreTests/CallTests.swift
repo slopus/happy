@@ -1336,7 +1336,7 @@ final class CallContextTests: XCTestCase {
     }
 
     func testMessagesCarryTheirAuthorFromTheWire() throws {
-        let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"}],"metadata":{"userId":"ada"}}"#
+        let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"}],"metadata":{"userId":"ada"},"status":"accepted","delivery":"queue","runId":"r","mode":{"providerId":"p","modelId":"m","effort":"low","serviceTier":null,"permissionMode":"auto"}}"#
         let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
         XCTAssertEqual(message.metadata?.userId, "ada")
     }

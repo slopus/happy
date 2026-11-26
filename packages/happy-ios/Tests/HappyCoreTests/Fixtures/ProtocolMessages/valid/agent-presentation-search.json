@@ -1,0 +1,33 @@
+{
+    "description": "A web search presentation with sources.",
+    "message": {
+        "id": "msgsearch00000000000000001",
+        "role": "agent",
+        "createdAt": 1764100000008,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolsearch0000000000000001",
+                "name": "web_search",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "search",
+                    "query": "typebox value check",
+                    "target": "web",
+                    "sources": [
+                        {
+                            "title": "TypeBox",
+                            "url": "https://github.com/sinclairzx81/typebox"
+                        }
+                    ]
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

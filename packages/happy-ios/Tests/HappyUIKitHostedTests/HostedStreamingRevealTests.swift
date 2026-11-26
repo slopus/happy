@@ -38,7 +38,7 @@ private actor RevealComputer: AgentTransport {
     static func message(_ id: String, role: String, _ content: [JSONValue], status: String? = nil) -> JSONValue {
         var message: [String: JSONValue] = ["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)]
         if let status { message["status"] = .string(status) }
-        return .object(message)
+        return MessageSchema.withUserFields(.object(message))
     }
 
     static let runs: [JSONValue] = (0..<12).map { index in

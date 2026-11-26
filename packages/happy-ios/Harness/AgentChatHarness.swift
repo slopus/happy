@@ -15,14 +15,35 @@ private struct AgentChatSockets: WebSocketConnector {
 
 /// One agent, `harness`, with forty turns of a question and a few lines of
 /// answer, and nothing streaming. With `slash`, it offers slash commands
-/// (one with a picture), and its last turn is a `/compact`.
+/// (one with a picture), and its last turn is a `/compact`. With
+/// `unreadable`, its last turn holds the cluster's cancelled question card
+/// (`answers: null`) between the question and the answer.
 private struct AgentChatComputer: AgentTransport {
     var slash = false
+    var unreadable = false
+
+    private static let cancelledCard: JSONValue = .object([
+        "id": .string("cancelled-card"), "role": .string("agent"), "createdAt": .number(1), "metadata": .object([:]),
+        "content": .array([.object([
+            "type": .string("tool_call"), "id": .string("question"), "name": .string("request_user_input"), "status": .string("completed"),
+            "presentation": .object([
+                "type": .string("user_input"), "status": .string("canceled"), "answers": .null,
+                "questions": .array([.object(["id": .string("reviewer"), "header": .string(""), "question": .string("Who reviews?"), "multiSelect": .bool(false), "options": .array([])])]),
+            ]),
+        ])]),
+    ])
+
+    private var history: [JSONValue] {
+        guard unreadable, case .object(var last)? = Self.runs.last, case .array(var messages)? = last["messages"] else { return Self.runs }
+        messages.insert(Self.cancelledCard, at: 1)
+        last["messages"] = .array(messages)
+        return Self.runs.dropLast() + [.object(last)]
+    }
 
     private static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
     private static func message(_ id: String, role: String, _ content: [JSONValue]) -> JSONValue {
-        .object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)])
+        MessageSchema.withUserFields(.object(["id": .string(id), "role": .string(role), "createdAt": .number(1), "metadata": .object([:]), "content": .array(content)]))
     }
 
     private static let runs: [JSONValue] = (0..<40).map { index in
@@ -74,7 +95,7 @@ private struct AgentChatComputer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/agents/harness/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []))])
+            value = .object(["hasMore": .bool(false), "runs": .array(history + (slash ? [Self.compaction] : []))])
         } else if path.hasSuffix("/agents/harness/bootstrap") {
             value = .object(["agent": .object(["id": .string("harness"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([]),
                              "slashCommands": .array(slash ? Self.commands : [])])
@@ -97,7 +118,8 @@ private struct AgentChatComputer: AgentTransport {
 /// The agents' chat for the keyboard's UI tests (`-screen agentChat`): an
 /// offline computer's home with a long conversation pushed over it, and
 /// the same probe the sessions' chat has (`ChatScrollProbe`).
-/// `-hideKeyboardButton` and `-keyboard` work as they do there.
+/// `-hideKeyboardButton` and `-keyboard` work as they do there;
+/// `-unreadable` puts a message that fails the schema in the last turn.
 @MainActor
 final class AgentChatHarness {
     private var account: AccountController?
@@ -111,7 +133,7 @@ final class AgentChatHarness {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/agent-chat",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash")) },
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash"), unreadable: arguments.contains("-unreadable")) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: AgentChatHTTP(), connector: AgentChatSockets()
         )
         self.account = account

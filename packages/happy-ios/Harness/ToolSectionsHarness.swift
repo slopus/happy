@@ -49,7 +49,7 @@ private enum ToolSectionsScript {
     ])
 
     static func message(_ id: String, at: Double, _ content: [JSONValue], role: String = "agent", status: String = "completed") -> JSONValue {
-        .object(["id": .string(id), "role": .string(role), "createdAt": .number(at), "metadata": .object([:]), "status": .string(status), "content": .array(content)])
+        MessageSchema.withUserFields(.object(["id": .string(id), "role": .string(role), "createdAt": .number(at), "metadata": .object([:]), "status": .string(status), "content": .array(content)]))
     }
 }
 

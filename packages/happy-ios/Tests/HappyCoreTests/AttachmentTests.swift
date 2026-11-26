@@ -69,7 +69,8 @@ private actor AttachmentServer: AgentTransport {
         }
         if method == "POST", path.hasSuffix("/send"), let id = value?["id"]?.stringValue {
             accepted[id] = .object([
-                "id": .string(id), "role": .string("user"), "createdAt": .number(1), "status": .string("pending"),
+                "id": .string(id), "role": .string("user"), "createdAt": .number(1), "status": .string("pending"), "metadata": .object([:]),
+                "delivery": .string("queue"), "runId": .null, "mode": TurnServer.userFields["mode"]!,
                 "content": .array([.object(["type": .string("text"), "text": value?["text"] ?? .string("")])]),
             ])
         }

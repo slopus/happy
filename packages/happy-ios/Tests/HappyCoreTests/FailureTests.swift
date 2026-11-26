@@ -64,20 +64,20 @@ final class FailureTests: XCTestCase {
     }
 
     func testAnUnknownKindOrAnUntypedErrorReadsItsOwnWords() throws {
-        let unknown: JSONValue = .object(["id": .string("s"), "role": .string("service"), "createdAt": .number(1), "content": .array([]),
+        let unknown: JSONValue = .object(["id": .string("s"), "role": .string("service"), "createdAt": .number(1), "metadata": .object([:]), "content": .array([]),
             "failure": .object(["kind": .string("brand_new"), "message": .string("Something new broke."), "fallbackProviders": .array([])])])
         XCTAssertEqual(try Failure.of(decode(unknown))?.reason, "Something new broke.")
-        let untyped: JSONValue = .object(["id": .string("s"), "role": .string("service"), "createdAt": .number(1),
+        let untyped: JSONValue = .object(["id": .string("s"), "role": .string("service"), "createdAt": .number(1), "metadata": .object([:]),
             "content": .array([.object(["type": .string("text"), "text": .string("The provider refused.")])]),
             "error": .object(["code": .string("x"), "mode": .null, "credentialSource": .null, "recovery": .object(["steps": .array([]), "actions": .array([])])])])
         XCTAssertEqual(try Failure.of(decode(untyped))?.reason, "The provider refused.")
-        let tooLong: JSONValue = .object(["id": .string("s"), "role": .string("service"), "createdAt": .number(1), "content": .array([]),
+        let tooLong: JSONValue = .object(["id": .string("s"), "role": .string("service"), "createdAt": .number(1), "metadata": .object([:]), "content": .array([]),
             "failure": .object(["kind": .string("context_too_long"), "modelId": .string("sonnet"), "message": .string("Too long."), "fallbackProviders": .array([])])])
         XCTAssertEqual(try Failure.of(decode(tooLong))?.retryable, false)
     }
 
     func testHousekeepingIsNoFailure() throws {
-        let notice: JSONValue = .object(["id": .string("s"), "role": .string("service"), "createdAt": .number(1),
+        let notice: JSONValue = .object(["id": .string("s"), "role": .string("service"), "createdAt": .number(1), "metadata": .object([:]),
             "content": .array([.object(["type": .string("text"), "text": .string("Context was reset.")])])])
         XCTAssertNil(try Failure.of(decode(notice)))
     }
@@ -150,7 +150,7 @@ private actor FailedTurnServer: AgentTransport {
         } else if path.contains("/messages?") {
             value = .object(["hasMore": .bool(false), "runs": .array([
                 .object(["id": .string("r1"), "status": .string("failed"), "startedAt": .number(1), "messages": .array([
-                    .object(["id": .string("u1"), "role": .string("user"), "createdAt": .number(1), "metadata": .object([:]),
+                    .object(["id": .string("u1"), "role": .string("user"), "createdAt": .number(1), "metadata": .object([:]), "status": .string("accepted"), "delivery": .string("queue"), "runId": .string("r"), "mode": TurnServer.userFields["mode"]!, 
                              "content": .array([.object(["type": .string("text"), "text": .string("In ~/code/sproutsense-dashboard, fix the DST bug")])])]),
                     resolved ?? FailureTests.usageLimit(resetsAt: 0),
                 ])]),
