@@ -14,6 +14,7 @@
     <string name="provider_accounts_not_installed">Instale %1$s no computador para entrar.</string>
     <string name="provider_accounts_computer_only">Esta conta entra pelo computador, não pelo celular.</string>
     <string name="provider_accounts_empty">Nenhuma conta entra com uma assinatura.</string>
+    <string name="provider_accounts_all_off">Todas as contas deste Happy Agent estão desativadas.</string>
     <string name="provider_accounts_load_failed">Não foi possível carregar as contas.</string>
     <string name="provider_accounts_off">Desativada</string>
     <string name="provider_accounts_needs_sign_in">Precisa entrar desde %1$s</string>

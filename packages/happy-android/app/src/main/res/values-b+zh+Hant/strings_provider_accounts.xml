@@ -14,6 +14,7 @@
     <string name="provider_accounts_not_installed">請在電腦上安裝 %1$s 以登入。</string>
     <string name="provider_accounts_computer_only">此帳戶需要在電腦上登入，而非在手機上。</string>
     <string name="provider_accounts_empty">沒有透過訂閱登入的帳戶。</string>
+    <string name="provider_accounts_all_off">此 Happy Agent 上的所有帳戶皆已關閉。</string>
     <string name="provider_accounts_load_failed">無法載入帳戶。</string>
     <string name="provider_accounts_off">已關閉</string>
     <string name="provider_accounts_needs_sign_in">自 %1$s 起需要登入</string>

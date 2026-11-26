@@ -14,6 +14,7 @@
     <string name="provider_accounts_not_installed">Instal·la %1$s a l\'ordinador per iniciar la sessió.</string>
     <string name="provider_accounts_computer_only">Aquest compte inicia la sessió a l\'ordinador, no des d\'un telèfon.</string>
     <string name="provider_accounts_empty">Cap compte inicia la sessió amb una subscripció.</string>
+    <string name="provider_accounts_all_off">Tots els comptes d\'aquest Happy Agent estan desactivats.</string>
     <string name="provider_accounts_load_failed">No s\'han pogut carregar els comptes.</string>
     <string name="provider_accounts_off">Desactivat</string>
     <string name="provider_accounts_needs_sign_in">Cal iniciar la sessió des de %1$s</string>

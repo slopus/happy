@@ -437,7 +437,7 @@ win:
   - The list is one Accounts card, a row per `codex`, `claude` and `grok`
     account of `GET /v0/config` carrying `credential`, every row two lines:
     vendor mark with a status dot, name and plan, chevron, and one line,
-    the first that applies (`AccountStatus`): Off; Needs sign-in, since a
+    the first that applies (`AccountStatus`): Needs sign-in, since a
     date where the error gives one (`signIn == "signed_out"` or a permanent
     `login.refreshError`); Couldn't refresh (a transient error; its tail is
     "expires in" in place of "last tried" when the login runs out within a
@@ -445,6 +445,10 @@ win:
     the machine's own. `lastUsedAt` and `login` come from `GET /v0/usage`;
     an older agent without them gets "Last checked" from usage's
     `refreshedAt`.
+  - Accounts switched off are left out of the list altogether, with no
+    way to show them (Steve); with every account off it is the empty
+    state, "Every account on this Happy Agent is switched off." (desktop's). An account switched off stays on
+    its page until it is left, so it can be switched back on there.
   - A row opens the account: Enabled (`PATCH /v0/config`), then Login,
     always the same five rows with "—" for what isn't known (Source, Last
     used, Last refresh, Token expires, Last refresh error), then Sign in
@@ -463,7 +467,7 @@ win:
   - Debug builds have `ui.connection.ProviderAccountsFixturesActivity`: the
     real client over `ProviderSignInDaemon`, the contract in memory (`--es
     providerAccounts.scene
-    normal|success|failure|owner|missing|states|legacy`, `--es
+    normal|success|failure|owner|missing|states|legacy|off`, `--es
     providerAccounts.account codex`, `--es providerAccounts.signIn codex`,
     `--es providerAccounts.token claude_work`).
 - **Agent home search** looks and moves as iOS's

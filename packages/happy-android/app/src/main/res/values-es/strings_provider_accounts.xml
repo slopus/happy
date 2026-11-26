@@ -14,6 +14,7 @@
     <string name="provider_accounts_not_installed">Instala %1$s en el ordenador para iniciar sesión.</string>
     <string name="provider_accounts_computer_only">Esta cuenta inicia sesión en el ordenador, no desde un teléfono.</string>
     <string name="provider_accounts_empty">Ninguna cuenta inicia sesión con una suscripción.</string>
+    <string name="provider_accounts_all_off">Todas las cuentas de este Happy Agent están desactivadas.</string>
     <string name="provider_accounts_load_failed">No se pudieron cargar las cuentas.</string>
     <string name="provider_accounts_off">Desactivada</string>
     <string name="provider_accounts_needs_sign_in">Requiere iniciar sesión desde %1$s</string>

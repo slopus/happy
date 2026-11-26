@@ -33,8 +33,9 @@ import kotlinx.serialization.json.putJsonObject
  * after 3 s; `owner` refuses every change as a team member's; `missing` has
  * Grok's program missing; `states` adds an account for every other line the
  * list shows (a login that needs signing in again, one whose refresh failed
- * and runs out soon, one switched off, one whose state is unknown);
- * `legacy` is an older agent, whose usage says nothing of the login.
+ * and runs out soon, one switched off that the list leaves out, one whose
+ * state is unknown); `legacy` is an older agent, whose usage says nothing
+ * of the login; `off` has every account switched off.
  * Claude's pasted code `fail` fails; any other signs in. A token must start
  * `sk-ant-oat01-`. `PATCH /v0/config` switches accounts on and off.
  */
@@ -78,6 +79,7 @@ class ProviderSignInDaemon(private val scene: String, private val scope: Corouti
     val events: SharedFlow<AgentEvent> = eventFlow
 
     init {
+        if (scene == "off") accounts.forEach { it.enabled = false }
         accounts.forEach(::bump)
     }
 

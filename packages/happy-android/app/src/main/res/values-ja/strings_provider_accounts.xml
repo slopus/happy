@@ -14,6 +14,7 @@
     <string name="provider_accounts_not_installed">サインインするには、コンピューターに %1$s をインストールしてください。</string>
     <string name="provider_accounts_computer_only">このアカウントは電話ではなくコンピューターでサインインします。</string>
     <string name="provider_accounts_empty">サブスクリプションでサインインするアカウントはありません。</string>
+    <string name="provider_accounts_all_off">この Happy Agent のアカウントはすべてオフです。</string>
     <string name="provider_accounts_load_failed">アカウントを読み込めませんでした。</string>
     <string name="provider_accounts_off">オフ</string>
     <string name="provider_accounts_needs_sign_in">サインインが必要（%1$s〜）</string>

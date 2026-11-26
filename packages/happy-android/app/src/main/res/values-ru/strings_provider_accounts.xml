@@ -14,6 +14,7 @@
     <string name="provider_accounts_not_installed">Установите %1$s на компьютер, чтобы войти.</string>
     <string name="provider_accounts_computer_only">Этот аккаунт входит на компьютере, а не с телефона.</string>
     <string name="provider_accounts_empty">Нет аккаунтов, которые входят по подписке.</string>
+    <string name="provider_accounts_all_off">Все аккаунты на этом Happy Agent выключены.</string>
     <string name="provider_accounts_load_failed">Не удалось загрузить аккаунты.</string>
     <string name="provider_accounts_off">Выкл.</string>
     <string name="provider_accounts_needs_sign_in">Нужен вход с %1$s</string>

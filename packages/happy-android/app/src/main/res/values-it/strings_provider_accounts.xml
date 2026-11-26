@@ -14,6 +14,7 @@
     <string name="provider_accounts_not_installed">Installa %1$s sul computer per accedere.</string>
     <string name="provider_accounts_computer_only">Questo account accede dal computer, non da un telefono.</string>
     <string name="provider_accounts_empty">Nessun account accede con un abbonamento.</string>
+    <string name="provider_accounts_all_off">Tutti gli account di questo Happy Agent sono disattivati.</string>
     <string name="provider_accounts_load_failed">Impossibile caricare gli account.</string>
     <string name="provider_accounts_off">Disattivato</string>
     <string name="provider_accounts_needs_sign_in">Richiede l\'accesso da %1$s</string>

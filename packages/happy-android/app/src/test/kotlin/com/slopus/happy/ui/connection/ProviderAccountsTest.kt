@@ -89,7 +89,7 @@ class ProviderAccountsTest {
     /** Every line a row can say, the first that applies, each account's dot on its icon. */
     @Test
     fun eachRowSaysTheFirstThingThatApplies() {
-        showAccounts(ProviderAccountsState.Loaded(listOf(codex, claude, grok, codexHome, codexTeam, grokSide, claudeOld, legacy)))
+        showAccounts(ProviderAccountsState.Loaded(listOf(codex, claude, grok, codexHome, codexTeam, grokSide, legacy)))
         rule.onNodeWithText("Inference").assertExists()
         rule.onNodeWithText("ACCOUNTS").assertExists()
         // The account's own name, else its assistant's, with its plan.
@@ -103,10 +103,9 @@ class ProviderAccountsTest {
         // A failing refresh warns of a login that runs out within the day, in place of when it was tried.
         rule.onNodeWithText("Couldn't refresh · HTTP 503 · expires in 3h").assertExists()
         rule.onNodeWithText("Not used yet").assertExists()
-        rule.onNodeWithText("Off").assertExists()
         // An older agent: only when usage last looked.
         rule.onNodeWithText("System login · Last checked 5m ago").assertExists()
-        for (id in listOf("codex", "claude_work", "grok", "codex_home", "codex_team", "grok_side", "claude_old", "codex_old")) {
+        for (id in listOf("codex", "claude_work", "grok", "codex_home", "codex_team", "grok_side", "codex_old")) {
             rule.node(ProviderAccountsTags.dot(id)).assertExists()
         }
         // Nothing to press on a row but the row, and nothing under the card.
@@ -119,7 +118,7 @@ class ProviderAccountsTest {
     @Test
     fun everyRowIsTheSameHeightWhateverItSays() {
         val long = codexTeam.copy(id = "long", login = AccountLogin(null, null, error(503, "a_very_long_vendor_error_code_that_would_otherwise_wrap", permanent = false)))
-        val all = listOf(codex, claude, grok, codexHome, codexTeam, grokSide, claudeOld, legacy, long)
+        val all = listOf(codex, claude, grok, codexHome, codexTeam, grokSide, legacy, long)
         showAccounts(ProviderAccountsState.Loaded(all))
         for (account in all) {
             val row = rule.node(ProviderAccountsTags.account(account.id)).performScrollTo().bounds
@@ -148,6 +147,42 @@ class ProviderAccountsTest {
         assertDp("row height", 76, codexRow.bottom - codexRow.top)
         assertTrue("rows follow each other", claudeRow.top >= codexRow.bottom)
         assertDp("dot", 12, dot.right - dot.left)
+    }
+
+    /** An account switched off is left out: the rest keep their order, nothing in its place. */
+    @Test
+    fun aDisabledAccountIsLeftOut() {
+        showAccounts(ProviderAccountsState.Loaded(listOf(codex, claudeOld, claude, grok)))
+        rule.node(ProviderAccountsTags.account("claude_old")).assertDoesNotExist()
+        rule.onNodeWithText("Off").assertDoesNotExist()
+        val codexRow = rule.node(ProviderAccountsTags.account("codex")).bounds
+        val claudeRow = rule.node(ProviderAccountsTags.account("claude_work")).bounds
+        val grokRow = rule.node(ProviderAccountsTags.account("grok")).bounds
+        assertDp("Claude follows Codex", 0, claudeRow.top - codexRow.bottom)
+        assertDp("Grok follows Claude", 0, grokRow.top - claudeRow.bottom)
+    }
+
+    /** Every account off is the empty state, saying they are off. */
+    @Test
+    fun everyAccountOffIsTheEmptyState() {
+        showAccounts(ProviderAccountsState.Loaded(listOf(codex, claude, grok).map { it.copy(enabled = false) }))
+        rule.node(ProviderAccountsTags.LIST).assertDoesNotExist()
+        rule.node(ProviderAccountsTags.EMPTY).assertExists()
+        rule.onNodeWithText("Every account on this Happy Agent is switched off.").assertExists()
+        rule.onNodeWithText("No accounts sign in with a subscription.").assertDoesNotExist()
+    }
+
+    /** Switched off on its page, an account is gone from the list on return; switched on, it is back in its place. */
+    @Test
+    fun switchingAnAccountTakesItOutAndPutsItBack() {
+        var state: ProviderAccountsState by mutableStateOf<ProviderAccountsState>(accounts)
+        rule.setHappyContent { ProviderAccountsScreen(state, emptyMap(), now) }
+        state = ProviderAccountsState.Loaded(listOf(codex, claude.copy(enabled = false), grok))
+        rule.node(ProviderAccountsTags.account("claude_work")).assertDoesNotExist()
+        state = accounts
+        val back = rule.node(ProviderAccountsTags.account("claude_work")).bounds
+        assertDp("after Codex", 0, back.top - rule.node(ProviderAccountsTags.account("codex")).bounds.bottom)
+        assertDp("before Grok", 0, rule.node(ProviderAccountsTags.account("grok")).bounds.top - back.bottom)
     }
 
     @Test

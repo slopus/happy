@@ -311,12 +311,15 @@ private fun AccountIcon(type: String, dot: AccountDot?, tag: String) {
 
 /**
  * Settings › Inference on a Happy Agent (happy-agent API.md, "Provider
- * sign-in"), as desktop names it: one Accounts card with a row per Codex, Claude and Grok account and
- * nothing to press but the row. Every row is two lines whatever the
+ * sign-in"), as desktop names it: one Accounts card with a row per enabled
+ * Codex, Claude and Grok account and nothing to press but the row; an
+ * account switched off is left out, and with none on the card is the empty
+ * state, "Every account on this Happy Agent is switched off." where there
+ * are accounts. Every row is two lines whatever the
  * account's state, so nothing moves as it changes: the vendor's mark with a
  * 12 dot on its corner, the account's name and plan, a chevron, and one
  * line, cut short rather than wrapped, the first that applies
- * ([AccountStatus]): Off (grey); Needs sign-in, since a date where known
+ * ([AccountStatus]): Needs sign-in, since a date where known
  * (red); Couldn't refresh, why and when it was last tried, or when the
  * login runs out where that is within a day (amber); else when it was used
  * and its login refreshed, green when signed in and grey when unknown,
@@ -342,26 +345,31 @@ fun ProviderAccountsScreen(
                 Item(stringResource(R.string.provider_accounts_load_failed), showChevron = false, titleLines = 0)
                 Item(stringResource(R.string.cloud_providers_try_again), titleColor = colors.textLink, showChevron = false, onClick = onRetry)
             }
-            is ProviderAccountsState.Loaded -> if (state.accounts.isEmpty()) {
-                ItemGroup(Modifier.testTag(ProviderAccountsTags.EMPTY)) {
-                    Item(stringResource(R.string.provider_accounts_empty), showChevron = false, titleLines = 0)
-                }
-            } else {
-                ItemGroup(Modifier.testTag(ProviderAccountsTags.LIST), title = stringResource(R.string.provider_accounts_section)) {
-                    for (account in state.accounts) {
-                        val signIn = signIns[account.id]
-                        val credential = account.credentialNow(signIn)
-                        val status = AccountStatus.of(account, credential, now)
-                        // Nothing known of an older agent's account: where its login comes from.
-                        val line = status.line.text(now).ifEmpty { credentialLabel(credential.source) }
-                        Item(
-                            title = listOfNotNull(account.shownName(), account.planNow(signIn)).joinToString(" · "),
-                            subtitle = line,
-                            subtitleLines = 1,
-                            icon = { AccountIcon(account.type, status.dot, ProviderAccountsTags.dot(account.id)) },
-                            onClick = { onOpen(account) },
-                            modifier = Modifier.testTag(ProviderAccountsTags.account(account.id)),
-                        )
+            is ProviderAccountsState.Loaded -> {
+                val enabled = state.accounts.filter { it.enabled }
+                if (enabled.isEmpty()) {
+                    // With accounts that are all off, the empty state says so (desktop's words).
+                    val empty = if (state.accounts.isEmpty()) R.string.provider_accounts_empty else R.string.provider_accounts_all_off
+                    ItemGroup(Modifier.testTag(ProviderAccountsTags.EMPTY)) {
+                        Item(stringResource(empty), showChevron = false, titleLines = 0)
+                    }
+                } else {
+                    ItemGroup(Modifier.testTag(ProviderAccountsTags.LIST), title = stringResource(R.string.provider_accounts_section)) {
+                        for (account in enabled) {
+                            val signIn = signIns[account.id]
+                            val credential = account.credentialNow(signIn)
+                            val status = AccountStatus.of(account, credential, now)
+                            // Nothing known of an older agent's account: where its login comes from.
+                            val line = status.line.text(now).ifEmpty { credentialLabel(credential.source) }
+                            Item(
+                                title = listOfNotNull(account.shownName(), account.planNow(signIn)).joinToString(" · "),
+                                subtitle = line,
+                                subtitleLines = 1,
+                                icon = { AccountIcon(account.type, status.dot, ProviderAccountsTags.dot(account.id)) },
+                                onClick = { onOpen(account) },
+                                modifier = Modifier.testTag(ProviderAccountsTags.account(account.id)),
+                            )
+                        }
                     }
                 }
             }
