@@ -359,7 +359,10 @@ class SessionInfoScreenTest {
         assertDp("pencil width", 20, pencil.width)
         assertDp("pencil height", 20, pencil.height)
         assertTrue("pencil inside the name line", pencil.top >= name.top && pencil.bottom <= name.bottom)
-        assertDp("pencil at the row's end", name.right - 24.dp, pencil.right)
+        // The name and pencil are one centred group: the pencil follows the name, inside its box.
+        val title = rule.onNode(hasText("Fix the build") and hasAnyAncestor(hasTestTag(ProfileHeaderTags.NAME)), useUnmergedTree = true).bounds
+        assertDp("pencil after the name", title.right + 6.dp, pencil.left)
+        assertDp("name and pencil centred", title.left - name.left, name.right - pencil.right)
         rule.node(ProfileHeaderTags.SUBTITLE).assert(hasText("online"))
         val tiles = rule.onAllNodesWithTag(ProfileHeaderTags.TILE, useUnmergedTree = true)
         tiles.assertCountEquals(2)
