@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import axios from 'axios';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ApiMachineClient } from '@/api/apiMachine';
 import type { Metadata } from '@/api/types';
 import { decodeBase64, decrypt } from '@/api/encryption';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
-import type { DelegationRole } from '@slopus/happy-wire';
+import { createEnvelope, type DelegationRole } from '@slopus/happy-wire';
 import { createDaemonDelegationRuntime } from './delegationRuntime';
 import { createDelegationService, DelegationDeliveryError, type DelegationSendOptions } from './delegation/service';
-import { delegationLocalId } from './delegation/journal';
+import { createDelegationReporter, DELEGATION_REPORTER_ENV, delegationLocalId, parseDelegationReporterDescriptor } from './delegation/journal';
 import type { TrackedSession } from './types';
 import { createDelegationStore } from './delegation/store';
 
@@ -24,9 +24,13 @@ vi.mock('./delegation/journal', async importOriginal => ({
     waitForDelegationReady: mocks.waitForReady,
 }));
 vi.mock('axios', () => ({ default: { post: vi.fn() } }));
+vi.mock('node:fs', async importOriginal => {
+    const actual = await importOriginal<typeof import('node:fs')>();
+    return { ...actual, renameSync: vi.fn(actual.renameSync) };
+});
 const directories: string[] = [];
 const disposers: Array<() => void> = [];
-afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); vi.restoreAllMocks(); mocks.createService.mockReset(); });
+afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); vi.restoreAllMocks(); vi.mocked(renameSync).mockReset(); mocks.createService.mockReset(); });
 
 const binding = { taskId: 'task-one', parentSessionId: 'parent', version: 1, requestId: 'request-one', nonce: 'a'.repeat(64) };
 const localId = delegationLocalId(binding);
@@ -65,7 +69,8 @@ async function fixture() {
     expect(runtime).toBe(coordinator);
     const deps = (mocks.createService.mock.calls.at(-1)![0] as Parameters<typeof createDelegationService>[0]).deps;
     const options: DelegationSendOptions = { agent: 'antigravity', permissionMode: 'yolo', model: 'Neon', effort: 'high',
-        appendSystemPrompt: context.appendSystemPrompt, delegation: binding, assertCurrent: vi.fn(async () => {}) };
+        appendSystemPrompt: context.appendSystemPrompt, delegation: binding,
+        persistPrepared: vi.fn(async () => {}), assertCurrent: vi.fn(async () => {}) };
     return { deps, sessions, parent, child, parentMetadata, childMetadata, context, prepare, rpc, grant, spawn, findSession, fetchSnapshot, options, isConnected, retainRecoveredSession,
         persist(id: 'parent' | 'child') {
             const value = sessions.get(id)!;
@@ -263,6 +268,117 @@ describe('daemon delegation runtime authorization and delivery', () => {
         await f.deps.publish('parent', [], [role]);
         expect(f.rpc).toHaveBeenCalledWith('parent', f.parent.encryption, 'delegation-publish', { tasks: [], roles: [role] });
         f.sessions.delete('child'); expect(await f.deps.isChildAlive('child')).toBeNull();
+    });
+});
+
+describe('native preparation durability before relay delivery', () => {
+    async function preparedRuntime() {
+        vi.mocked(axios.post).mockReset();
+        const actualService = await vi.importActual<typeof import('./delegation/service')>('./delegation/service');
+        const actualJournal = await vi.importActual<typeof import('./delegation/journal')>('./delegation/journal');
+        mocks.createService.mockImplementation(actualService.createDelegationService);
+        mocks.waitForReady.mockReset().mockImplementation(actualJournal.waitForDelegationReady);
+        const directory = mkdtempSync(join(tmpdir(), 'paws-delegation-ack-')); directories.push(directory);
+        const encryption = { encryptionKey: new Uint8Array(32).fill(7), encryptionVariant: 'legacy' as const,
+            seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+        const metadata = { path: '/project', flavor: 'antigravity', machineId: 'machine', hostPid: process.pid,
+            capabilities: { delegationRoutes: 1 } } as Metadata;
+        const sessions = new Map<string, TrackedSession>([['parent', { happySessionId: 'parent', pid: process.pid,
+            startedBy: 'daemon', encryption, happySessionMetadataFromLocalWebhook: metadata }]]);
+        const snapshots = new Map([['parent', { metadata, agentState: null }]]);
+        let reporter!: ReturnType<typeof createDelegationReporter>;
+        let beforePrepare: (() => void) | undefined;
+        const nativeDefault = { model: 'native-first', effort: 'high' };
+        const rpc = vi.fn(async (_id: string, _encryption: unknown, method: string, body: unknown) => {
+            if (method === 'delegation-context') return { agent: 'antigravity', permissionMode: 'default', hostPid: process.pid };
+            if (method === 'delegation-prepare') {
+                beforePrepare?.();
+                const request = body as { model?: string; effort?: string };
+                return { model: request.model ?? nativeDefault.model, effort: request.effort ?? nativeDefault.effort };
+            }
+            return { success: true };
+        });
+        const spawn = vi.fn(async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+            const descriptor = parseDelegationReporterDescriptor(options.environmentVariables![DELEGATION_REPORTER_ENV])!;
+            sessions.set('child', { happySessionId: 'child', pid: process.pid, startedBy: 'daemon', encryption });
+            snapshots.set('child', { metadata: { ...metadata, parentSessionId: 'parent',
+                delegatedTask: { taskId: descriptor.taskId, parentSessionId: 'parent' } }, agentState: null });
+            reporter = createDelegationReporter({ descriptor, sessionId: 'child' }); reporter.ready();
+            return { type: 'success', sessionId: 'child' };
+        });
+        const input: Parameters<typeof createDaemonDelegationRuntime>[0] = { directory, machineId: 'machine',
+            serverUrl: 'https://relay.test', token: 'test-token', api: { createCodexSessionGrant: vi.fn() },
+            machineClient: { isConnected: () => true, callSessionRpc: rpc as ApiMachineClient['callSessionRpc'] },
+            findSession: id => sessions.get(id), fetchSnapshot: async id => snapshots.get(id) ?? null, spawn, retainRecoveredSession: () => {} };
+        const taskFile = (id: string) => join(directory, 'tasks', `task-${id}.json`);
+        const saved = (id: string) => JSON.parse(readFileSync(taskFile(id), 'utf8'));
+        const delivered: Array<{ child: string; model: string; effort?: string; version: number }> = [];
+        vi.mocked(axios.post).mockImplementation(async (url, body) => {
+            const incoming = (body as { messages: Array<{ localId: string; content: string }> }).messages[0];
+            const message = decrypt(encryption.encryptionKey, 'legacy', decodeBase64(incoming.content)) as {
+                meta: { model: string; effort?: string; delegation: DelegationSendOptions['delegation'] } };
+            delivered.push({ child: String(url), model: message.meta.model, effort: message.meta.effort, version: message.meta.delegation.version });
+            expect(reporter.acceptMessage({ ...message, localId: incoming.localId })).toBe(true);
+            const turn = `turn-${message.meta.delegation.version}`;
+            reporter.observe(createEnvelope('agent', { t: 'turn-start', localIds: [incoming.localId] }, { turn }));
+            reporter.observe(createEnvelope('agent', { t: 'text', text: `Used ${message.meta.model}` }, { turn }));
+            reporter.observe(createEnvelope('agent', { t: 'turn-end', status: 'completed' }, { turn }));
+            throw new Error('HTTP ACK was lost after accepted input');
+        });
+        const create = async () => { const service = await createDaemonDelegationRuntime(input); disposers.push(service.dispose); return service; };
+        return { directory, create, saved, taskFile, nativeDefault, delivered, rpc, spawn,
+            beforePrepare(value: () => void) { beforePrepare = value; } };
+    }
+
+    it('saves the native ACK before HTTP and retains it after fast completion, restart and same-child revision', async () => {
+        const f = await preparedRuntime(); let service = await f.create();
+        const input = { protocolVersion: 2 as const, action: 'start' as const, parentSessionId: 'parent', requestId: 'native-first',
+            intent: 'explicit' as const, route: { agent: 'antigravity' as const }, prompt: 'Draft once' };
+        const post = vi.mocked(axios.post).getMockImplementation()!;
+        const savedAtDelivery: unknown[] = [];
+        vi.mocked(axios.post).mockImplementation(async (...args) => {
+            const message = (args[1] as { messages: Array<{ content: string }> }).messages[0];
+            const decrypted = decrypt(new Uint8Array(32).fill(7), 'legacy', decodeBase64(message.content)) as { meta: { delegation: { taskId: string } } };
+            savedAtDelivery.push(f.saved(decrypted.meta.delegation.taskId).role);
+            return post(...args);
+        });
+        const first = await service.handle(input);
+        await new Promise<void>(resolve => setImmediate(resolve));
+        const completed = await service.handle({ protocolVersion: 2, action: 'read', parentSessionId: 'parent', taskId: first.taskId! });
+        expect(completed.task).toMatchObject({ status: 'completed', model: 'native-first', effort: 'high', result: { text: 'Used native-first' } });
+        expect(savedAtDelivery[0]).toMatchObject({ model: 'native-first', effort: 'high' });
+        service.dispose(); service = await f.create();
+        expect((await service.handle(input)).task).toMatchObject({ status: 'completed', model: 'native-first', effort: 'high' });
+        expect(f.delivered).toHaveLength(1);
+        f.nativeDefault.model = 'native-later'; f.nativeDefault.effort = 'low';
+        await service.handle({ protocolVersion: 2, action: 'start', parentSessionId: 'parent', requestId: 'revision',
+            intent: 'explicit', taskId: first.taskId!, prompt: 'Shorten the draft' });
+        await new Promise<void>(resolve => setImmediate(resolve));
+        expect(f.delivered.map(({ model, effort, version }) => ({ model, effort, version }))).toEqual([
+            { model: 'native-first', effort: 'high', version: 1 }, { model: 'native-first', effort: 'high', version: 2 },
+        ]);
+        expect(f.spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not dispatch or expose an unpersisted native ACK when its task snapshot save fails', async () => {
+        const f = await preparedRuntime(); const service = await f.create();
+        const { renameSync: rename } = await vi.importActual<typeof import('node:fs')>('node:fs');
+        f.beforePrepare(() => {
+            let failed = false;
+            vi.mocked(renameSync).mockImplementation((source, target) => {
+                if (!failed && JSON.parse(readFileSync(source, 'utf8')).role?.model === 'native-first') {
+                    failed = true;
+                    throw Object.assign(new Error('Task snapshot disk write failed'), { code: 'EIO' });
+                }
+                return rename(source, target);
+            });
+        });
+        const response = await service.handle({ protocolVersion: 2, action: 'start', parentSessionId: 'parent', requestId: 'persist-failure',
+            route: { agent: 'antigravity' }, intent: 'explicit', prompt: 'Must remain unsent', wait: true });
+        expect(response.task).toMatchObject({ status: 'failed', error: expect.stringContaining('Task snapshot disk write failed') });
+        expect(response.task?.model).toBeUndefined(); expect(response.task?.effort).toBeUndefined();
+        expect(f.saved(response.taskId!).role.model).toBeUndefined();
+        expect(axios.post).not.toHaveBeenCalled();
     });
 });
 

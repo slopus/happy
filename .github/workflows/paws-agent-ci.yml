@@ -48,6 +48,11 @@ jobs:
       # and the integration root has no tests under apps/web/src/paws.
       # Keep package suites sequential so their own workers and subprocesses
       # do not contend with the App's timing-sensitive integration tests.
+      - name: Install ripgrep for native usage parser regressions
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ripgrep
+          rg --version
       - run: pnpm -r --filter '!{./packages/paws-bots/**}' --workspace-concurrency=1 --if-present test -- --run
 
   unit:

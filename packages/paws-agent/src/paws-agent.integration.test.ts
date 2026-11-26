@@ -475,7 +475,6 @@ async function writeAgentState(
     encryption: RecordEncryption,
     state: unknown,
 ): Promise<void> {
-    const raw = await fetchRawSession(serverUrl, credentials.token, sessionId);
     const socket = io(serverUrl, {
         auth: { token: credentials.token, clientType: 'user-scoped', happyClient: 'paws-agent-integration/0.1.0' },
         path: '/v1/updates',
@@ -486,12 +485,22 @@ async function writeAgentState(
             socket.once('connect', () => resolvePromise());
             socket.once('connect_error', rejectPromise);
         });
-        const result = await socket.timeout(5_000).emitWithAck('update-state', {
-            sid: sessionId,
-            expectedVersion: raw.agentStateVersion,
-            agentState: encodeBase64(encrypt(encryption.key, encryption.variant, state)),
-        }) as { result?: string };
-        if (result.result !== 'success') throw new Error(`Fixture state update failed: ${JSON.stringify(result)}`);
+        const raw = await fetchRawSession(serverUrl, credentials.token, sessionId);
+        const agentState = encodeBase64(encrypt(encryption.key, encryption.variant, state));
+        let expectedVersion = raw.agentStateVersion;
+        // A newly spawned worker may publish its initial state after its daemon
+        // notification. Retry only explicit CAS conflicts, using the server's
+        // returned version; transport/auth failures must still fail immediately.
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            const result = await socket.timeout(5_000).emitWithAck('update-state', {
+                sid: sessionId, expectedVersion, agentState,
+            }) as { result?: string; version?: number };
+            if (result.result === 'success') return;
+            if (result.result !== 'version-mismatch') throw new Error('Fixture state update failed without a version conflict');
+            if (typeof result.version !== 'number' || !Number.isSafeInteger(result.version) || result.version < 0) throw new Error('Fixture state update conflict did not include a valid version');
+            expectedVersion = result.version;
+        }
+        throw new Error('Fixture state update still conflicted after 3 attempts');
     } finally {
         socket.close();
     }

@@ -152,6 +152,9 @@ export async function createDaemonDelegationRuntime(input: {
                 prepared = preparedSchema.parse(await input.machineClient.callSessionRpc(childId, child.encryption, 'delegation-prepare',
                     { model: options.model, ...(options.effort ? { effort: options.effort } : {}), permissionMode: mode }, 30_000));
             } catch (error) { throw undelivered(error, 'Model configuration was not confirmed'); }
+            // The HTTP ACK can be lost even when the worker accepts and completes
+            // this input. Retain the native codes before crossing that boundary.
+            await options.persistPrepared(prepared);
             // Preserve the coordinator's cancellation/exit classification.
             await options.assertCurrent();
             let content: string;

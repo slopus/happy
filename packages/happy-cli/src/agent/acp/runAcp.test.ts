@@ -231,6 +231,8 @@ vi.mock('./AcpBackend', async (importOriginal) => ({
 }));
 
 import { runAcp } from './runAcp';
+import { normalizeAcpPermissionRequest } from './AcpBackend';
+import { DefaultTransport } from '@/agent/transport';
 import { AcpImagePromptError } from './imagePromptError';
 import { createOfflineSessionStub } from '@/utils/offlineSessionStub';
 
@@ -1320,12 +1322,76 @@ describe('runAcp', () => {
     } finally { await mocks.getKillHandler()!(); await run; }
   });
 
-  it.each(['agent_roles', 'delegate_task', 'read_delegated_task', 'cancel_delegated_task'])('auto-approves the exact Happy delegation tool %s', async name => {
+  it.each(['agent_roles', 'delegate_task', 'read_delegated_task', 'cancel_delegated_task'])('auto-approves native AGY Happy %s through normalization and transport with only the offered single-use grant', async name => {
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.constructorArgs).not.toBeNull());
+      const normalized = normalizeAcpPermissionRequest({
+        sessionId: 'native',
+        toolCall: { toolCallId: `native-${name}`, kind: 'other', title: `Run mcp_happy_${name}`, rawInput: { action: 'list' } },
+        options: [
+          { optionId: 'reject', kind: 'reject_once', name: '拒绝' },
+          { optionId: 'remember', kind: 'allow_always', name: '始终允许' },
+          { optionId: 'once', kind: 'allow_once', name: '允许本次' },
+        ],
+      });
+      const toolName = new DefaultTransport('antigravity').determineToolName(normalized.toolName, normalized.toolCallId, normalized.input,
+        { recentPromptHadChangeTitle: false, toolCallCountSincePrompt: 0 });
+      const result = mocks.backendState.constructorArgs.permissionHandler.handleToolCall(normalized.toolCallId, toolName, normalized.input, normalized.options);
+      const pendingIds = Object.keys(mocks.getAgentState().requests ?? {});
+      // Release a regression's pending request before asserting so cleanup cannot hang.
+      if (pendingIds[0]) await mocks.sessionHandlers.get('permission')!({ id: pendingIds[0], approved: false, decision: 'denied', optionId: 'reject' });
+      expect(pendingIds).toEqual([]);
+      await expect(result).resolves.toEqual({ decision: 'approved', optionId: 'once' });
+      expect(Object.values(mocks.getAgentState().completedRequests)).toContainEqual(expect.objectContaining({
+        tool: `mcp_happy_${name}`, arguments: { action: 'list' }, status: 'approved', optionId: 'once',
+      }));
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it.each([
+    { kind: 'other', title: 'Run mcp_other_delegate_task' },
+    { kind: 'other', title: 'Run mcp_happy_fake_delegate_task' },
+    { kind: 'other', title: 'Run mcp_happy_delegate_task_extra' },
+    { kind: 'other', title: 'Run mcp_happy_delete_file' },
+    { kind: 'other', title: 'Run mcp_happy_delegate_task\n' },
+    { kind: 'other', title: 'Run mcp_happy_delegate_task; rm -rf /' },
+    { kind: 'other', title: 'Please Run mcp_happy_delegate_task' },
+    { kind: 'execute', title: 'Run mcp_happy_delegate_task' },
+    { kind: 'read', title: 'Run mcp_happy_delegate_task' },
+    { kind: 'other', toolName: 'mcp__other__delegate_task', title: 'Run mcp_happy_delegate_task' },
+    { kind: 'other', toolName: 'mcp__happy__delegate_task_extra', title: 'Run mcp_happy_delegate_task' },
+    { kind: 'other', toolName: '', title: 'Run mcp_happy_delegate_task' },
+    { kind: 'other', title: 'run mcp_happy_delegate_task' },
+  ])('keeps an untrusted native identity pending: %j', async toolCall => {
+    const run = runDelegationWorker();
+    try {
+      await vi.waitFor(() => expect(mocks.backendState.constructorArgs).not.toBeNull());
+      const normalized = normalizeAcpPermissionRequest({ sessionId: 'native', toolCall: { toolCallId: 'native-unknown', ...toolCall, rawInput: {
+        CommandLine: 'rm -rf /', toolName: 'mcp_happy_delegate_task', title: 'Run mcp_happy_delegate_task',
+      } }, options: [{ optionId: 'reject', kind: 'reject_once', name: '拒绝' }, { optionId: 'once', kind: 'allow_once', name: '允许' }] } as any);
+      const toolName = new DefaultTransport('antigravity').determineToolName(normalized.toolName, normalized.toolCallId, normalized.input,
+        { recentPromptHadChangeTitle: false, toolCallCountSincePrompt: 0 });
+      const result = mocks.backendState.constructorArgs.permissionHandler.handleToolCall(normalized.toolCallId, toolName, normalized.input, normalized.options);
+      const pendingIds = Object.keys(mocks.getAgentState().requests ?? {});
+      expect(pendingIds).toHaveLength(1);
+      expect(mocks.getAgentState().completedRequests ?? {}).toEqual({});
+      await mocks.sessionHandlers.get('permission')!({ id: pendingIds[0], approved: false, decision: 'denied', optionId: 'reject' });
+      await expect(result).resolves.toEqual({ decision: 'denied', optionId: 'reject' });
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it.each(['agent_roles', 'delegate_task', 'read_delegated_task', 'cancel_delegated_task'].flatMap(name =>
+    [name, `happy__${name}`, `mcp__happy__${name}`, `mcp_happy_${name}`]))('auto-approves the exact Happy delegation tool %s', async name => {
     const run = runDelegationWorker();
     try {
       await vi.waitFor(() => expect(mocks.backendState.constructorArgs).not.toBeNull());
       const permission = mocks.backendState.constructorArgs.permissionHandler;
-      expect(await permission.handleToolCall(`call-${name}`, name, {})).toEqual({ decision: 'approved' });
+      const result = permission.handleToolCall(`call-${name}`, name, {});
+      const pendingIds = Object.keys(mocks.getAgentState().requests ?? {});
+      if (pendingIds[0]) await mocks.sessionHandlers.get('permission')!({ id: pendingIds[0], approved: false, decision: 'denied' });
+      expect(pendingIds).toEqual([]);
+      await expect(result).resolves.toEqual({ decision: 'approved' });
       expect(mocks.getAgentState().requests).toEqual({});
       expect(Object.values(mocks.getAgentState().completedRequests)).toContainEqual(expect.objectContaining({ tool: name, status: 'approved' }));
     } finally { await mocks.getKillHandler()!(); await run; }

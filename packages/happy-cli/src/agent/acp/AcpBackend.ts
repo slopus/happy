@@ -36,6 +36,7 @@ import type {
 import { logger } from '@/ui/logger';
 import { delay } from '@/utils/time';
 import packageJson from '../../../package.json';
+import type { DelegationMcpToolName } from '@/delegation/mcpTools';
 
 /**
  * Retry configuration for ACP operations
@@ -136,6 +137,30 @@ type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
   }>;
 };
 
+// Keep this permission allowlist bounded even if more MCP tools are registered.
+export const ACP_HAPPY_DELEGATION_TOOLS = [
+  'agent_roles', 'delegate_task', 'read_delegated_task', 'cancel_delegated_task',
+] as const satisfies readonly DelegationMcpToolName[];
+const nativeHappyPermissionTitles = new Map<string, string>(ACP_HAPPY_DELEGATION_TOOLS.map(name =>
+  [`Run mcp_happy_${name}`, `mcp_happy_${name}`] as const));
+const ACP_PERMISSION_TOOL_NAME_META = 'paws.acpPermissionToolName';
+
+function preservePermissionToolIdentity(params: unknown): unknown {
+  if (!params || typeof params !== 'object' || !('toolCall' in params)) return params;
+  const toolCall = params.toolCall;
+  if (!toolCall || typeof toolCall !== 'object' || Array.isArray(toolCall)) return params;
+  const call = toolCall as Record<string, unknown>;
+  // Leave malformed metadata for the SDK to reject rather than repairing it.
+  if (call._meta != null && (typeof call._meta !== 'object' || Array.isArray(call._meta))) return params;
+  const meta = { ...call._meta as Record<string, unknown> | undefined };
+  // This marker is local to this one RPC. The provider cannot supply its value.
+  delete meta[ACP_PERMISSION_TOOL_NAME_META];
+  if (Object.hasOwn(call, 'toolName')) {
+    meta[ACP_PERMISSION_TOOL_NAME_META] = typeof call.toolName === 'string' ? call.toolName : '';
+  }
+  return { ...params, toolCall: { ...call, _meta: meta } };
+}
+
 export function normalizeAcpPermissionRequest(
   params: RequestPermissionRequest,
   createFallbackId: () => string = randomUUID,
@@ -148,7 +173,18 @@ export function normalizeAcpPermissionRequest(
 } {
   const extendedParams = params as ExtendedRequestPermissionRequest;
   const toolCall = extendedParams.toolCall;
-  const toolName = toolCall?.kind || toolCall?.toolName || toolCall?.title || extendedParams.kind || 'Unknown tool';
+  const hasExplicitToolName = !!toolCall && (Object.hasOwn(toolCall, 'toolName')
+    || Object.hasOwn(toolCall._meta ?? {}, ACP_PERMISSION_TOOL_NAME_META));
+  const explicitToolName = toolCall && Object.hasOwn(toolCall, 'toolName')
+    ? toolCall.toolName : toolCall?._meta?.[ACP_PERMISSION_TOOL_NAME_META];
+  // AGY's adapter puts the server-qualified MCP identity in this exact title
+  // while `kind` remains the ACP category `other`. Never infer identity from
+  // arguments, partial titles, another category, or over an explicit toolName.
+  // These identities are asserted by the trusted ACP subprocess, not user input.
+  const nativeHappyToolName = toolCall?.kind === 'other' && !hasExplicitToolName
+    ? nativeHappyPermissionTitles.get(toolCall.title ?? '') : undefined;
+  const toolName = (typeof explicitToolName === 'string' && explicitToolName) || nativeHappyToolName
+    || toolCall?.kind || toolCall?.title || extendedParams.kind || 'Unknown tool';
   const toolCallId = toolCall?.id || toolCall?.toolCallId || createFallbackId();
   let input: Record<string, unknown> = {};
   if (toolCall) {
@@ -620,6 +656,15 @@ export class AcpBackend implements AgentBackend {
 
       // Create ndJSON stream for ACP
       const stream = ndJsonStream(writable, filteredReadable);
+      // The SDK strips the compatible nonstandard toolName field. Preserve only
+      // that identity within its own RPC before validation, using supported _meta.
+      // Clear any provider-supplied marker first; no identity survives across calls.
+      stream.readable = stream.readable.pipeThrough(new TransformStream({
+        transform(message, controller) {
+          controller.enqueue(message !== null && typeof message === 'object' && 'method' in message && message.method === 'session/request_permission'
+            ? { ...message, params: preservePermissionToolIdentity(message.params) } : message);
+        },
+      }));
 
       // Create Client implementation
       const client: Client = {

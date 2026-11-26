@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { DelegationRoleSchema, DelegatedTaskVersionSchema, type DelegationRole, type DelegatedTaskVersion } from '@slopus/happy-wire';
+import { z } from 'zod';
+import { DelegationRoleSchema, DelegatedTaskSummarySchema, DelegatedTaskVersionSchema, type DelegationRole, type DelegatedTaskVersion } from '@slopus/happy-wire';
+import { logger } from '@/ui/logger';
 
 export type DelegationPhase = 'prepared' | 'spawning' | 'sending' | 'sent';
 export interface StoredDelegationVersion extends DelegatedTaskVersion {
@@ -26,6 +28,30 @@ export interface StoredDelegationTask {
 }
 
 const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
+const storedVersionSchema = DelegatedTaskVersionSchema.extend({
+    requestId: z.string().regex(safeId),
+    inputHash: z.string().regex(/^[a-f0-9]{64}$/),
+    phase: z.enum(['prepared', 'spawning', 'sending', 'sent']),
+    reportSequence: z.number().int().nonnegative(),
+    turnId: z.string().min(1).max(256).optional(),
+    cancelRequested: z.boolean().optional(),
+});
+const storedTaskSchema = DelegatedTaskSummarySchema.pick({ id: true, parentSessionId: true, childSessionId: true, title: true }).extend({
+    id: DelegatedTaskSummarySchema.shape.id.regex(/^[a-f0-9-]{36}$/),
+    role: DelegationRoleSchema,
+    temporaryRoute: z.boolean().optional(),
+    nonce: z.string().regex(/^[a-f0-9]{64}$/),
+    createdAt: DelegationRoleSchema.shape.createdAt,
+    versions: z.array(storedVersionSchema).min(1).max(100),
+});
+/**
+ * Task histories have up to 100 revisions. Each revision permits 404,000 UTF-16
+ * units of prompt/context/result/error plus bounded IDs and internal metadata.
+ * JSON can use six bytes per unit (e.g. \u0000), so their worst-case strings use
+ * less than 244 MB. Structure and task/role metadata fit within another 1 MiB;
+ * 256 MiB leaves over 24 MiB of headroom without lifting journal read limits.
+ */
+const taskRecordMaxBytes = 256 * 1024 * 1024;
 export function assertDelegationId(value: string): string {
     if (!safeId.test(value)) throw new Error('Invalid delegation identifier');
     return value;
@@ -77,6 +103,7 @@ export function createDelegationStore(directory: string) {
     const journalDirectory = join(directory, 'journal');
     ensureDelegationDirectory(tasksDirectory);
     ensureDelegationDirectory(journalDirectory);
+    const unreadableTasks = new Set<string>();
     return {
         directory, journalDirectory,
         loadRoles(): DelegationRole[] {
@@ -86,24 +113,38 @@ export function createDelegationStore(directory: string) {
         },
         saveRoles(values: DelegationRole[]): void { writeDelegationJson(directory, 'roles.json', values.map(value => DelegationRoleSchema.parse(value))); },
         loadTasks(): StoredDelegationTask[] {
-            return readdirSync(tasksDirectory).filter(name => /^task-[a-f0-9-]{36}\.json$/.test(name)).map(name => {
-                const task = readDelegationJson<StoredDelegationTask>(tasksDirectory, name);
-                if (!task || name !== `task-${task.id}.json` || !/^[a-f0-9-]{36}$/.test(task.id)
-                    || !safeId.test(task.parentSessionId) || !/^[a-f0-9]{64}$/.test(task.nonce)
-                    || !Array.isArray(task.versions) || task.versions.length < 1 || task.versions.length > 100) throw new Error('Invalid delegation task');
-                task.role = DelegationRoleSchema.parse(task.role);
-                task.versions.forEach((version, index) => {
-                    publicDelegationVersion(version);
-                    if (version.version !== index + 1 || !safeId.test(version.requestId)
-                        || !/^[a-f0-9]{64}$/.test(version.inputHash) || !['prepared', 'spawning', 'sending', 'sent'].includes(version.phase)
-                        || !Number.isInteger(version.reportSequence) || version.reportSequence < 0) throw new Error('Invalid delegation revision');
-                });
-                return task;
+            const names = readdirSync(tasksDirectory).filter(name => /^task-[a-f0-9-]{36}\.json$/.test(name));
+            unreadableTasks.clear();
+            return names.flatMap(name => {
+                try {
+                    const task = readDelegationJson<StoredDelegationTask>(tasksDirectory, name, taskRecordMaxBytes);
+                    // Validate every stored field before allowing it into the live map.
+                    // Keep the original history strings rather than a normalized copy.
+                    storedTaskSchema.parse(task);
+                    if (!task || name !== `task-${task.id}.json`) throw new Error('Invalid delegation task');
+                    task.role = DelegationRoleSchema.parse(task.role);
+                    task.versions.forEach((version, index) => {
+                        if (version.version !== index + 1) throw new Error('Invalid delegation revision');
+                    });
+                    return [task];
+                } catch (error) {
+                    unreadableTasks.add(name);
+                    // JSON/Zod errors may contain instruction/result text. Log only a
+                    // fixed category and location, leaving the original record intact.
+                    const reason = error instanceof SyntaxError ? 'invalid-json'
+                        : error instanceof Error && error.name === 'ZodError' ? 'invalid-schema'
+                        : error instanceof Error && error.message === 'Unsafe delegation record' ? 'unsafe-record'
+                        : 'invalid-task';
+                    logger.warn('[DELEGATION] Skipped unreadable task record; original file retained', { path: join(tasksDirectory, name), reason });
+                    return [];
+                }
             });
         },
         saveTask(task: StoredDelegationTask): void {
             assertDelegationId(task.id);
-            writeDelegationJson(tasksDirectory, `task-${task.id}.json`, task);
+            const name = `task-${task.id}.json`;
+            if (unreadableTasks.has(name)) throw new Error(`Cannot overwrite unreadable delegation task record; repair or move the original file and reload tasks first: ${name}`);
+            writeDelegationJson(tasksDirectory, name, task);
         },
     };
 }

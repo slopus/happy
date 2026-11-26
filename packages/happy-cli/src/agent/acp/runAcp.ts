@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
-import { AcpBackend, normalizeAcpPermissionResult, type AcpPermissionHandler } from './AcpBackend';
+import { AcpBackend, ACP_HAPPY_DELEGATION_TOOLS, normalizeAcpPermissionResult, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
@@ -453,10 +453,7 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
     'archive_session',
     'happy__archive_session',
     'mcp__happy__archive_session',
-    'agent_roles',
-    'delegate_task',
-    'read_delegated_task',
-    'cancel_delegated_task',
+    ...ACP_HAPPY_DELEGATION_TOOLS.flatMap(name => [name, `happy__${name}`, `mcp__happy__${name}`, `mcp_happy_${name}`]),
   ]);
   private static readonly ALWAYS_AUTO_APPROVE_ID_PREFIXES: readonly string[] = [
     'change_title',

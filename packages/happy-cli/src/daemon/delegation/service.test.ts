@@ -317,6 +317,80 @@ describe('persistent delegation coordinator', () => {
         expect(f.deps.send).toHaveBeenCalledTimes(1);
     });
 
+    it('keeps the durable native configuration when a compatible sender returns a different late result', async () => {
+        const f = await fixture(); const send = vi.mocked(f.deps.send).getMockImplementation()!;
+        vi.mocked(f.deps.send).mockImplementationOnce(async (...args) => {
+            await args[3].persistPrepared({ model: 'gemini-neon-actual', effort: 'high' });
+            await send(...args); finish(f.sent[0]);
+            return { model: 'incorrect-late-result', effort: 'low' };
+        });
+        const response = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2,
+            requestId: 'persist-before-send', route: { agent: 'antigravity' }, intent: 'explicit', prompt: 'Write README.', wait: true });
+        await new Promise<void>(resolve => setImmediate(resolve));
+        const read = await f.service.handle({ action: 'read', parentSessionId: f.parent.id, protocolVersion: 2, taskId: response.taskId! });
+        expect(read.task).toMatchObject({ status: 'completed', model: 'gemini-neon-actual', effort: 'high' });
+        expect(JSON.parse(readFileSync(join(f.directory, 'tasks', `task-${response.taskId}.json`), 'utf8')).role)
+            .toMatchObject({ model: 'gemini-neon-actual', effort: 'high' });
+    });
+
+    it('rejects a late native ACK after queued cancellation without writing its configuration', async () => {
+        const f = await fixture(); const entered = deferred<void>(); const release = deferred<void>(); const completed = deferred<void>();
+        let lateAckError: unknown;
+        vi.mocked(f.deps.cancel).mockResolvedValue({ queuedCancelled: true });
+        vi.mocked(f.deps.send).mockImplementationOnce(async (_child, _prompt, _localId, options) => {
+            entered.resolve(); await release.promise;
+            try { await options.persistPrepared({ model: 'late-native', effort: 'high' }); }
+            catch (error) { lateAckError = error; throw error; }
+            finally { completed.resolve(); }
+        });
+        const response = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2,
+            requestId: 'late-native-ack', route: { agent: 'antigravity' }, intent: 'explicit', prompt: 'Do not dispatch' });
+        await entered.promise;
+        const cancelled = await f.service.handle({ action: 'cancel', parentSessionId: f.parent.id, protocolVersion: 2, taskId: response.taskId! });
+        expect(cancelled.task?.status).toBe('cancelled');
+        release.resolve(); await completed.promise;
+        expect(lateAckError).toBeInstanceOf(DelegationDeliveryError);
+        expect(lateAckError).toMatchObject({ notDispatched: true, message: expect.stringContaining('cancelled before') });
+        const read = await f.service.handle({ action: 'read', parentSessionId: f.parent.id, protocolVersion: 2, taskId: response.taskId! });
+        expect(read.task).toMatchObject({ status: 'cancelled' });
+        expect(read.task?.model).toBeUndefined();
+        expect(JSON.parse(readFileSync(join(f.directory, 'tasks', `task-${response.taskId}.json`), 'utf8')).role.model).toBeUndefined();
+    });
+
+    it('rejects an old revision native ACK after a new revision starts', async () => {
+        const f = await fixture();
+        const first = await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2,
+            requestId: 'first-revision', route: { agent: 'antigravity' }, intent: 'explicit', prompt: 'Write README.' });
+        const sent = await f.nextSent(); finish(sent);
+        await f.service.handle({ action: 'read', parentSessionId: f.parent.id, protocolVersion: 2, taskId: first.taskId! });
+        await f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2, requestId: 'next-revision',
+            taskId: first.taskId!, intent: 'explicit', prompt: 'Shorten README.' });
+        const next = await f.nextSent(1);
+        await expect(sent.options.persistPrepared({ model: 'stale-native', effort: 'low' })).rejects.toMatchObject({ notDispatched: true });
+        const read = await f.service.handle({ action: 'read', parentSessionId: f.parent.id, protocolVersion: 2, taskId: first.taskId! });
+        expect(read.task).toMatchObject({ version: 2, model: 'gemini-neon-actual', effort: 'high' });
+        expect(JSON.parse(readFileSync(join(f.directory, 'tasks', `task-${first.taskId}.json`), 'utf8')).role)
+            .toMatchObject({ model: 'gemini-neon-actual', effort: 'high' });
+        finish(next);
+    });
+
+    it('does not persist a native ACK after the parent permissions change during preparation', async () => {
+        const f = await fixture(); const entered = deferred<void>(); const release = deferred<void>();
+        const send = vi.mocked(f.deps.send).getMockImplementation()!;
+        vi.mocked(f.deps.send).mockImplementationOnce(async (...args) => {
+            entered.resolve(); await release.promise;
+            await args[3].persistPrepared({ model: 'unauthorized-native', effort: 'high' });
+            return send(...args);
+        });
+        const response = f.service.handle({ action: 'start', parentSessionId: f.parent.id, protocolVersion: 2,
+            requestId: 'changed-parent', route: { agent: 'antigravity' }, intent: 'explicit', prompt: 'Do not dispatch', wait: true });
+        await entered.promise; f.parent.permissionMode = 'default'; release.resolve();
+        const result = await response;
+        expect(result.task).toMatchObject({ status: 'failed', error: expect.stringContaining('permissions or ownership changed') });
+        expect(result.task?.model).toBeUndefined(); expect(f.sent).toHaveLength(0);
+        expect(JSON.parse(readFileSync(join(f.directory, 'tasks', `task-${result.taskId}.json`), 'utf8')).role.model).toBeUndefined();
+    });
+
     it('rejects unsupported owners and recursive delegation before spawning', async () => {
         const f = await fixture(); const input = { action: 'start' as const, parentSessionId: f.parent.id, roleId: role.id, requestId: 'request-one', prompt: 'Write README.' };
         f.parent.delegated = true; expect((await f.service.handle(input)).error).toContain('Recursive');

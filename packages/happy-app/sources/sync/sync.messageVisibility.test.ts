@@ -227,6 +227,7 @@ vi.mock('@/components/delegation/DelegationPanel', () => ({
     DelegatedTaskGroup: () => null,
     DelegationInspectorPanel: () => null,
 }));
+vi.mock('@/components/delegation/DelegatedTaskGroup', () => ({ DelegatedTaskGroup: () => null }));
 vi.mock('@/hooks/useGroupedMessages', () => ({
     useGroupedMessages: (messages: any[]) => messages.map(message => ({ type: 'message', id: message.id, message })),
     isSessionTurnActive: () => false,

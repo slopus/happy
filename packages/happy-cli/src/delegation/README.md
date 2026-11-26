@@ -42,6 +42,18 @@ a ready worker. Selecting a catalog default still goes through the ordinary
 configuration acknowledgement before task delivery and does not change global
 Codex settings or saved role configuration.
 
+The coordinator durably freezes the prepared native model/effort before posting
+the task input to the relay. A lost HTTP acknowledgement can leave delivery
+uncertain, but it must not erase the configuration used by the worker or change
+the resolved model on a later revision of the same task. A failed durable write
+prevents delivery.
+
+Task history files have a dedicated 256 MiB read bound covering the current
+100-revision schema, including worst-case JSON string escaping. The ordinary
+journal reader keeps its 32 MiB default. Individual unreadable task records are
+retained with a diagnostic and isolated from healthy records; they cannot be
+overwritten until repaired and successfully loaded again.
+
 New workers advertise `capabilities.delegationRoutes: 1` only after preparation
 RPCs are installed. Temporary/native-default tasks require that parent-worker
 capability. Response negotiation is independent: parent RPC callers send

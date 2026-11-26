@@ -32,6 +32,8 @@ export interface DelegationSendOptions {
     model?: string;
     effort?: string;
     delegation: DelegationMessageBinding;
+    /** Durably retain the native ACK before any task input can be enqueued. */
+    persistPrepared(configuration: { model: string; effort?: string }): Promise<void>;
     /** Call after backend/model preparation, immediately before enqueuing input. */
     assertCurrent(): Promise<void>;
 }
@@ -233,6 +235,7 @@ export async function createDelegationService(options: { directory: string; deps
     });
     for (const task of tasks.values()) void requestCancellation(task, latest(task));
     async function dispatch(task: StoredDelegationTask, version: StoredDelegationVersion, parent: DelegationParent, context?: { appendSystemPrompt?: string }): Promise<void> {
+        let preparedPersisted = false;
         const assertActive = () => {
             if (disposed) throw new DelegationDeliveryError('Delegation coordinator is stopping');
             if (task.childSessionId && exitedWorkers.has(task.childSessionId)) throw new Error('Delegated worker exited before completion was confirmed');
@@ -248,6 +251,20 @@ export async function createDelegationService(options: { directory: string; deps
                 throw new DelegationDeliveryError('Parent permissions or ownership changed before delegation was dispatched');
             }
             assertActive();
+        };
+        const persistPrepared: DelegationSendOptions['persistPrepared'] = async configuration => {
+            await assertCurrent();
+            await serialize(() => {
+                assertActive();
+                const role = DelegationRoleSchema.parse({ ...task.role, model: configuration.model, effort: configuration.effort });
+                try { save({ ...task, role }); }
+                catch (error) {
+                    throw new DelegationDeliveryError(error instanceof Error ? error.message : 'Native model configuration could not be persisted');
+                }
+                // A failed durable write must not leak a configuration into the live task.
+                task.role = role;
+                preparedPersisted = true;
+            });
         };
         try {
             if (!task.childSessionId) {
@@ -276,11 +293,13 @@ export async function createDelegationService(options: { directory: string; deps
                 agent: task.role.agent,
                 permissionMode: parent.permissionMode,
                 appendSystemPrompt: context?.appendSystemPrompt ?? parent.appendSystemPrompt,
-                model: task.role.model, effort: task.role.effort, delegation: requestBinding, assertCurrent,
+                model: task.role.model, effort: task.role.effort, delegation: requestBinding, persistPrepared, assertCurrent,
             });
             await serialize(() => {
                 if (disposed) return;
-                if (resolved?.model) { task.role.model = resolved.model; task.role.effort = resolved.effort; }
+                // Legacy dependency implementations may only return their ACK. The
+                // native runtime already persisted its ACK before HTTP delivery.
+                if (!preparedPersisted && latest(task) === version && resolved?.model) { task.role.model = resolved.model; task.role.effort = resolved.effort; }
                 version.phase = 'sent'; version.updatedAt = Date.now(); save(task); notify(task, version);
             });
         } catch (error) {
