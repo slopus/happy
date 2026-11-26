@@ -1,5 +1,6 @@
 import { assertConversationSendAllowed } from './conversationSwitch';
 import { resolveConversationRootSessionId } from './conversationSession';
+import { observeRoleConfigurationRealtimeMessage, observeRoleConfigurationSavedMessages } from './roleConfigurationSavedMessages';
 import { isAgyConfigPending } from './agyConfigPending';
 import { createScheduledTasksController } from './scheduledTasks';
 import { resolveComposerReferences, parseComposerDraft, composerReferenceDisplay, buildComposerReferenceExcerpt } from './composerReferences';
@@ -4939,6 +4940,9 @@ class Sync {
                         }])
                     }
 
+                    // A saved-role ACK belongs to the bound configuration
+                    // transaction even when history/gaps skip its UI projection.
+                    if (lastMessage) observeRoleConfigurationRealtimeMessage(updateData.body.sid, storage.getState().sessions, lastMessage);
                     const historyWindow = this.historyWindows.get(updateData.body.sid);
                     if (historyWindow && !historyWindow.isAtLatest) {
                         const sid = updateData.body.sid;
@@ -5539,6 +5543,7 @@ class Sync {
             }
         }
         if (m.length > 0) {
+            observeRoleConfigurationSavedMessages(sessionId, storage.getState().sessions, m);
             voiceHooks.onMessages(sessionId, m);
         }
         if (result.hasReadyEvent) {

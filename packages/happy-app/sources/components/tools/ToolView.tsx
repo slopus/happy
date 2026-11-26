@@ -265,7 +265,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             {(() => {
                 if (savedRole) {
                     return <View style={styles.content}>
-                        <AgentRoleResultView role={savedRole} machineId={props.metadata?.machineId} readOnly={readOnly} />
+                        <AgentRoleResultView role={savedRole} machineId={props.metadata?.machineId} sessionId={sessionId} toolCreatedAt={tool.createdAt} readOnly={readOnly} />
                     </View>;
                 }
                 if (tool.mcpApp && !readOnly) {

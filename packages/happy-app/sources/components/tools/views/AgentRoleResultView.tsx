@@ -2,16 +2,20 @@ import * as React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StyleSheet } from 'react-native-unistyles';
+import { recordRoleConfigurationSavedResult } from '@/sync/roleConfigurationHandoff';
 import type { DelegationRole } from '@slopus/happy-wire';
 import { CodingAgentIcon } from '@/components/codingAgents/CodingAgentIcon';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-type Props = { role: DelegationRole; machineId?: string; readOnly: boolean };
+type Props = { role: DelegationRole; machineId?: string; sessionId?: string; toolCreatedAt?: number; readOnly: boolean };
 
 /** Compact receipt in the ordinary tool transcript; it never mutates a role. */
-export const AgentRoleResultView = React.memo(function AgentRoleResultView({ role, machineId, readOnly }: Props) {
+export const AgentRoleResultView = React.memo(function AgentRoleResultView({ role, machineId, sessionId, toolCreatedAt, readOnly }: Props) {
     const router = useRouter();
+    React.useEffect(() => {
+        if (!readOnly && machineId && sessionId && toolCreatedAt !== undefined) recordRoleConfigurationSavedResult({ machineId, sessionId, role, toolCreatedAt });
+    }, [readOnly, machineId, sessionId, role, toolCreatedAt]);
     const [focused, setFocused] = React.useState(false);
     const canNavigate = !readOnly && typeof machineId === 'string' && machineId.trim().length > 0;
     return <View style={styles.result} testID="agent-role-result">

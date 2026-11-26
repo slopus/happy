@@ -7,7 +7,7 @@ import { ItemList } from '@/components/ItemList';
 import { ComposeDraftProvider } from '@/sync/composeDraft';
 import { NewSessionDraftProvider } from '@/hooks/useNewSessionDraft';
 import { getFirstSubmissionScope, subscribeFirstSubmissionScope } from '@/sync/firstSubmissionScope';
-import { readRoleConfiguration } from '@/sync/roleConfigurationHandoff';
+import { readRoleConfiguration, subscribeRoleConfigurationChanges, getRoleConfigurationVersion } from '@/sync/roleConfigurationHandoff';
 import { getRoleConfigurationDraftStores } from './roleConfigurationDrafts';
 import { t } from '@/text';
 
@@ -16,6 +16,7 @@ import { t } from '@/text';
 export const RoleConfigurationComposeScreen = React.memo(function RoleConfigurationComposeScreen({ reference }: { reference: string }) {
     const router = useRouter();
     const scope = React.useSyncExternalStore(subscribeFirstSubmissionScope, getFirstSubmissionScope, getFirstSubmissionScope);
+    React.useSyncExternalStore(subscribeRoleConfigurationChanges, getRoleConfigurationVersion, getRoleConfigurationVersion);
     const record = readRoleConfiguration(reference);
     const stores = record && scope ? getRoleConfigurationDraftStores(record, scope) : null;
     if (!stores) return <ItemList><ItemGroup><Item title={t('delegation.configurationUnavailable')} showChevron={false} />

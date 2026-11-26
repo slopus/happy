@@ -1,3 +1,5 @@
+vi.mock('@/sync/roleConfigurationHandoff', () => ({ prepareRoleConfigurationSessionMessage: () => null, recordRoleConfigurationSavedResult: () => false }));
+vi.mock('@/hooks/useRoleConfigurationReturn', () => ({ useRoleConfigurationReturn: () => null }));
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

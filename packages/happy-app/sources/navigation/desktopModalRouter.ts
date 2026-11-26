@@ -62,7 +62,12 @@ export function createDesktopModalRouter(options: StackRouterOptions, shouldPres
             const fileHandoff = action.type === 'NAVIGATE' && payload && 'name' in payload
                 && payload.name === 'session/[id]' && typeof params?.openFile === 'string'
                 && typeof params?.fileOpenRequest === 'string';
-            if (start >= 0 && fileHandoff) {
+            // Role configuration deliberately leaves settings for the ordinary
+            // workspace. The private reference is validated by its destination.
+            const roleHandoff = action.type === 'NAVIGATE' && payload && 'name' in payload
+                && ['new/index', 'session/[id]'].includes(String(payload.name))
+                && typeof params?.roleConfiguration === 'string' && /^rc-[a-zA-Z0-9_.-]+$/.test(params.roleConfiguration);
+            if (start >= 0 && (fileHandoff || roleHandoff)) {
                 state = { ...state, routes: state.routes.slice(0, start), index: start - 1, desktopModalBaseKey: undefined };
                 start = -1;
             }

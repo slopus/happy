@@ -17,6 +17,7 @@ import { isTauri } from '@/utils/isTauri';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { canRouteBack, canRouteForward, canUseRouteBack, getNavigatorCanGoBack } from '@/navigation/browserNavigation';
 import { useBrowserNavigationStore } from '@/navigation/browserNavigationStore';
+import { runRoleFlowNavigationBack, useRoleFlowNavigationStore } from '@/navigation/roleFlowNavigation';
 import { useSessionSelection } from '@/hooks/useSessionSelection';
 import {
     DesktopWorkspaceLayoutProvider,
@@ -271,6 +272,7 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
     const routeHistory = useBrowserNavigationStore((s) => s.routeHistory);
     const canGoForward = useBrowserNavigationStore((s) => s.routeHistory ? canRouteForward(s.routeHistory) : false);
     const overlayCanBack = useOverlayNav((s) => s.canBack);
+    const roleFlowCanBack = useRoleFlowNavigationStore(s => !!s.entry);
     const overlayCanForward = useOverlayNav((s) => s.canForward);
     const canGoBack = routeHistory
         ? Platform.OS === 'web'
@@ -285,6 +287,7 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
         // Intra-session overlay (file diff / file view) consumes back first,
         // so the chat → diff → file flow can be unwound without a close X.
         if (useOverlayNav.getState().back()) return;
+        if (runRoleFlowNavigationBack()) return;
         const nav = useBrowserNavigationStore.getState();
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
             if (!nav.routeHistory || !canRouteBack(nav.routeHistory)) return;
@@ -307,7 +310,7 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
         }
     }, []);
 
-    const canGoBackEffective = canGoBack || overlayCanBack;
+    const canGoBackEffective = canGoBack || overlayCanBack || roleFlowCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
     const sidebarToggleLabel = Platform.OS === 'web' && !projectWorkspace
         ? (sidebarPinned ? t('desktopWorkspace.unpinSessions') : t('desktopWorkspace.pinSessions'))

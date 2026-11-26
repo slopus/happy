@@ -73,3 +73,13 @@ it('replaces obsolete revisions and discards memory-only drafts across account s
     expect(getRoleConfigurationDraftStores(record(2), state.scope!)).not.toBe(revised);
     expect(getRoleConfigurationDraftStores(record(2), originalOwner)).toBeNull();
 });
+
+it('preserves attachments when only the settings return origin changes on the same handoff', () => {
+    const source: RoleConfigurationHandoff['draft'] = { name:'Writer',description:'Docs',agent:'antigravity',autoDelegate:false };
+    const first = getRoleConfigurationDraftStores({ ...record(), draft:source }, state.scope!)!;
+    first.compose.getState().setImages([{ id:'requirements',uri:'file://requirements' } as any]);
+    const next = getRoleConfigurationDraftStores({ ...record(2), draft:source }, state.scope!)!;
+    expect(next.compose.getState().images.map(value=>value.id)).toEqual(['requirements']);
+    next.compose.getState().setText('Still working');
+    expect(state.save).toHaveBeenLastCalledWith('rc-123',{input:'Still working',discussing:false},2);
+});

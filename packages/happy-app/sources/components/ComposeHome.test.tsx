@@ -1,3 +1,4 @@
+vi.mock('@/hooks/useRoleConfigurationReturn', () => ({ useRoleConfigurationReturn: () => null }));
 vi.mock('@/persistence/deviceStorage', async importOriginal => {
     const original = await importOriginal<typeof import('@/persistence/deviceStorage')>();
     class FixtureStore extends original.MMKV {

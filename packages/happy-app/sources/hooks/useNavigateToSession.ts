@@ -8,7 +8,7 @@ import { storage } from '@/sync/storage';
 import { trackSessionSwitched } from '@/track';
 import { getConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
 
-export function navigateToSession(router: Router, sessionId: string) {
+export function navigateToSession(router: Router, sessionId: string, options?: { roleConfigurationId?: string }) {
     const sessions = storage.getState().sessions;
     let session = sessions[sessionId];
     const executionId = resolveConversationSessionId(sessions, sessionId);
@@ -44,7 +44,8 @@ export function navigateToSession(router: Router, sessionId: string) {
     // the drawer purely via router.navigate(...) (their closeDrawer() call does
     // nothing). A plain router.push() left the drawer stuck open over the session.
     const projectRoute = (Platform.OS !== 'web' || Dimensions.get('window').width < 1100) ? projectSessionRoute(sessionId, session?.metadata) : null;
-    router.navigate(projectRoute ?? `/session/${encodeURIComponent(sessionId)}`);
+    if (options?.roleConfigurationId && !projectRoute) router.navigate({ pathname: '/session/[id]', params: { id: sessionId, roleConfiguration: options.roleConfigurationId } });
+    else router.navigate(projectRoute ?? `/session/${encodeURIComponent(sessionId)}`);
 }
 
 export function useNavigateToSession() {

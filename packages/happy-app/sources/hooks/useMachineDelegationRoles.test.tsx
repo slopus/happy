@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     status: 'connected',
     statusListeners: new Set<(status: string) => void>(),
     accountListeners: new Set<() => void>(),
+    savedListeners: new Set<(result: { machineId: string; roleId: string }) => void>(),
 }));
 vi.mock('@/sync/apiDelegation', () => ({ listMachineDelegationRoles: mocks.list }));
 vi.mock('@/sync/apiSocket', () => ({ apiSocket: { onStatusChange: (listener: (status: string) => void) => {
@@ -22,6 +23,9 @@ vi.mock('@/sync/firstSubmissionScope', () => ({ getFirstSubmissionScope: () => m
         mocks.accountListeners.add(listener); return () => mocks.accountListeners.delete(listener);
     } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
+vi.mock('@/sync/roleConfigurationHandoff', () => ({ subscribeRoleConfigurationSavedResults: (listener: (result: { machineId: string; roleId: string }) => void) => {
+    mocks.savedListeners.add(listener); return () => mocks.savedListeners.delete(listener);
+} }));
 
 describe('role settings refresh on navigation focus', () => {
     let renderer: any;
@@ -36,7 +40,7 @@ describe('role settings refresh on navigation focus', () => {
     const focus = async (focused: boolean) => { await act(async () => { renderer.update(<Probe focused={focused} />); }); };
     beforeEach(() => {
         (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-        vi.clearAllMocks(); mocks.statusListeners.clear(); mocks.accountListeners.clear(); mocks.status = 'connected';
+        vi.clearAllMocks(); mocks.statusListeners.clear(); mocks.accountListeners.clear(); mocks.savedListeners.clear(); mocks.status = 'connected';
         mocks.scope = { key: 'account-a', serverUrl: 'https://example.test' };
         mocks.list.mockResolvedValue([role('Original')]);
     });
@@ -86,5 +90,45 @@ describe('role settings refresh on navigation focus', () => {
         const reads = mocks.list.mock.calls.length;
         await focus(true);
         expect(mocks.list).toHaveBeenCalledTimes(reads);
+    });
+
+    it('refreshes once when AI saves after the user has already returned to settings', async () => {
+        await render();
+        mocks.list.mockResolvedValue([role('Saved after returning')]);
+        await act(async () => { mocks.savedListeners.forEach(listener => listener({ machineId: 'machine-a', roleId: 'writer-id' })); });
+        expect(mocks.list).toHaveBeenCalledTimes(2);
+        expect(result!.roles[0].name).toBe('Saved after returning');
+        await focus(true); expect(mocks.list).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores other machines and hidden screens, then refreshes through the existing focus event', async () => {
+        await render();
+        await act(async () => { mocks.savedListeners.forEach(listener => listener({ machineId: 'machine-b', roleId: 'writer-id' })); });
+        expect(mocks.list).toHaveBeenCalledTimes(1);
+        await focus(false);
+        await act(async () => { mocks.savedListeners.forEach(listener => listener({ machineId: 'machine-a', roleId: 'writer-id' })); });
+        expect(mocks.list).toHaveBeenCalledTimes(1);
+        await focus(true); expect(mocks.list).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not launch a saved-result refresh for an invalidated account owner', async () => {
+        await render(); const reads = mocks.list.mock.calls.length;
+        await act(async () => {
+            mocks.scope = { key: 'account-b', serverUrl: 'https://example.test' };
+            // The runtime changes before React necessarily observes logout.
+            mocks.savedListeners.forEach(listener => listener({ machineId: 'machine-a', roleId: 'writer-id' }));
+        });
+        expect(mocks.list).toHaveBeenCalledTimes(reads);
+    });
+
+    it('does not let an earlier catalog request overwrite the post-save refresh', async () => {
+        let finishOld!: (roles: unknown) => void;
+        mocks.list.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
+        await render();
+        mocks.list.mockResolvedValueOnce([role('Accepted AI save')]);
+        await act(async () => { mocks.savedListeners.forEach(listener => listener({ machineId: 'machine-a', roleId: 'writer-id' })); });
+        await act(async () => { finishOld([role('Old catalog')]); });
+        expect(result!.roles[0].name).toBe('Accepted AI save');
+        expect(mocks.list).toHaveBeenCalledTimes(2);
     });
 });

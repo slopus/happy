@@ -1,3 +1,4 @@
+import { prepareRoleConfigurationSessionMessage } from './roleConfigurationHandoff';
 import { discussionMessage, discussionModeMeta } from './discussionMode';
 import { parseComposerDraft, composerReferenceDisplay } from './composerReferences';
 import { v4 as uuid } from 'uuid';
@@ -106,6 +107,7 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
     const state = storage.getState();
     const session = state.sessions[sessionId];
     if (!session || !accountRuntimeCurrent()) throw new Error('Session unavailable');
+    const slashCommand = text.trimStart().startsWith('/');
     const discussing = state.localSettings?.sessionDiscussionModes?.[sessionId] === true;
     const resolvedModes = resolveMessageModeMeta(session, state.settings);
     const modeMeta = discussing ? discussionModeMeta(resolvedModes, session.metadata?.flavor) : resolvedModes;
@@ -126,6 +128,9 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
         await previous;
         await initializeMessageStagingQueue();
         if (generation !== stagingGeneration || !storage.getState().sessions[sessionId] || !accountRuntimeCurrent()) throw new Error('Session unavailable');
+        const roleContext = slashCommand ? null : prepareRoleConfigurationSessionMessage(storage.getState().sessions[sessionId]?.metadata?.machineId, sessionId, text);
+        const submittedText = roleContext?.text ?? text;
+        const submittedContext = roleContext ? { ...context, draftText: context?.draftText ?? text, displayText: context?.displayText ?? roleContext.displayText } : context;
         const namespace = getMessageStagingNamespace();
         let persisted = selected;
         if (selected?.length) {
@@ -135,8 +140,9 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
         const id = uuid();
         try {
             if (generation !== stagingGeneration || !accountRuntimeCurrent() || !storage.getState().sessions[sessionId]) throw new Error('Session unavailable');
+            if (roleContext && (!roleContext.isCurrent() || storage.getState().sessions[sessionId]?.metadata?.machineId !== roleContext.machineId)) throw new Error('Role configuration target changed');
             await messageStagingQueue.enqueue({
-                id, sessionId, text, draftText: context?.draftText, displayText: context?.displayText, annotations: context?.annotations, annotationReview: context?.annotationReview, fileReference: context?.fileReference,
+                id, sessionId, text: submittedText, draftText: submittedContext?.draftText, displayText: submittedContext?.displayText, annotations: submittedContext?.annotations, annotationReview: submittedContext?.annotationReview, fileReference: submittedContext?.fileReference,
                 attachments: persisted,
                 modeMeta,
             });
@@ -144,6 +150,9 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
             await deleteStagedAttachments(namespace, persisted ?? []).catch(() => {});
             throw error;
         }
+        // The message and its attachments are already durable. A failed
+        // handoff receipt can repeat context, but must not undo accepted work.
+        try { roleContext?.commit(); } catch { /* Leave the handoff pending. */ }
         if (delivery === 'steer') await messageStagingQueue.steer(id);
     })();
     const tail = submission.catch(() => {});

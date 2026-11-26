@@ -1,3 +1,4 @@
+vi.mock('./roleConfigurationHandoff', () => ({ prepareRoleConfigurationSessionMessage: () => null }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 

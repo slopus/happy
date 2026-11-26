@@ -10,7 +10,7 @@ vi.mock('@/persistence/deviceStorage', () => ({
     flushDeviceStorageWrites: async () => { await mock.flush(); },
 }));
 import { setFirstSubmissionScope, getFirstSubmissionScope } from './firstSubmissionScope';
-import { createRoleConfiguration, readRoleConfiguration, buildRoleConfigurationContext, bindRoleConfigurationSession, findRoleConfigurationSession, updateRoleConfiguration, roleConfigurationCurrent } from './roleConfigurationHandoff';
+import { createRoleConfiguration, readRoleConfiguration, buildRoleConfigurationContext, bindRoleConfigurationSession, findRoleConfigurationSession, updateRoleConfiguration, roleConfigurationCurrent, prepareRoleConfigurationSessionMessage, recordRoleConfigurationSavedResult, getRoleConfigurationSavedHandoff, subscribeRoleConfigurationSavedResults } from './roleConfigurationHandoff';
 import type { NewSessionDraft } from './persistence';
 const launch: NewSessionDraft = { input: 'original launch draft', selectedMachineId: 'source-machine', selectedPath: '/original', agentType: 'codex', permissionMode: 'yolo',
     modelMode: 'gpt-6-astra', effortLevel: 'ultra', modelSelection: {agent:'codex',defaultValue:'gpt-6.1-sol'}, fastMode: true, sessionType: 'simple', worktreeKey: null, updatedAt: 1 };
@@ -78,5 +78,66 @@ describe('role configuration handoff', () => {
         const record = await createRoleConfiguration(request,launch);
         mock.flush = async () => { mock.current = false; };
         await expect(bindRoleConfigurationSession(record.id,request.machineId,'session-1')).rejects.toThrow();
+    });
+});
+
+describe('role flow return and revision receipts',()=>{
+    it('updates an unsent return origin without replacing user input or selected model',async()=>{
+        const first=await createRoleConfiguration({...request,roleId:'existing-role',returnContext:{view:'detail',step:1,query:''}},launch);
+        updateRoleConfiguration(first.id,{input:'My unfinished question',config:{...first.config,modelMode:'chosen-model'}});
+        const next=await createRoleConfiguration({...request,roleId:'existing-role',returnContext:{view:'edit',step:1,query:'Writer',baseline:'baseline',desktopModal:true,scrollY:80,advanced:true}},launch);
+        expect(next.id).toBe(first.id);expect(next.revision).toBeGreaterThan(first.revision);
+        expect(next.requestedAt).toBeGreaterThan(first.requestedAt!);
+        expect(next).toMatchObject({input:'My unfinished question',config:{modelMode:'chosen-model'},returnContext:{view:'edit',query:'Writer',scrollY:80,advanced:true}});
+    });
+    it('consumes only the context revision accepted by a durable queue',async()=>{
+        const first=await createRoleConfiguration(request,launch);await bindRoleConfigurationSession(first.id,request.machineId,'s');
+        const current=await createRoleConfiguration({...request,roleId:request.clientRoleId},launch);
+        const prepared=prepareRoleConfigurationSessionMessage(request.machineId,'s','Please change the title')!;
+        expect(prepared.text).toContain('action=update');expect(prepared.displayText).toBe('Please change the title');
+        const next=await createRoleConfiguration({...request,roleId:request.clientRoleId,draft:{...request.draft,description:'Later requirements'}},launch);
+        prepared.commit();expect(readRoleConfiguration(first.id)).toMatchObject({revision:next.revision,contextPending:true});
+        const latest=prepareRoleConfigurationSessionMessage(request.machineId,'s','Use the latest')!;latest.commit();
+        expect(readRoleConfiguration(first.id)?.contextPending).toBe(false);expect(current.revision).toBeLessThan(next.revision);
+    });
+    it('rejects historical saved cards, wrong ownership and an older role version for a fresh revision',async()=>{
+        const first=await createRoleConfiguration(request,launch);await bindRoleConfigurationSession(first.id,request.machineId,'s');
+        const current=await createRoleConfiguration({...request,roleId:request.clientRoleId,returnContext:{view:'edit',step:1,query:'',roleUpdatedAt:20}},launch);
+        const role={...request.draft,id:request.clientRoleId,name:'AI saved',createdAt:10,updatedAt:30};
+        const valid={machineId:request.machineId,sessionId:'s',role,toolCreatedAt:current.requestedAt!+1};
+        expect(recordRoleConfigurationSavedResult({...valid,toolCreatedAt:current.requestedAt!-1})).toBe(false);
+        expect(recordRoleConfigurationSavedResult({...valid,sessionId:'foreign'})).toBe(false);
+        expect(recordRoleConfigurationSavedResult({...valid,machineId:'foreign'})).toBe(false);
+        expect(recordRoleConfigurationSavedResult({...valid,role:{...role,updatedAt:20}})).toBe(false);
+        expect(recordRoleConfigurationSavedResult(valid)).toBe(true);
+        expect(getRoleConfigurationSavedHandoff(request.machineId,role.id)).toMatchObject({sourceDraft:request.draft,savedRole:role,revision:current.revision});
+        const reopened=await createRoleConfiguration({...request,roleId:request.clientRoleId,returnContext:{view:'edit',step:1,query:'',roleUpdatedAt:30}},launch);
+        expect(getRoleConfigurationSavedHandoff(request.machineId,role.id)).toBeNull();
+        expect(recordRoleConfigurationSavedResult({...valid,toolCreatedAt:current.requestedAt!})).toBe(false);
+        expect(reopened.revision).toBeGreaterThan(current.revision);
+    });
+    it('does not consume a pending handoff after account A → B → A',async()=>{
+        const first=await createRoleConfiguration(request,launch);await bindRoleConfigurationSession(first.id,request.machineId,'s');
+        await createRoleConfiguration({...request,roleId:request.clientRoleId},launch);
+        const prepared=prepareRoleConfigurationSessionMessage(request.machineId,'s','Change')!;
+        setFirstSubmissionScope('B',mock.server);setFirstSubmissionScope('owner-A',mock.server);
+        expect(prepared.isCurrent()).toBe(false);prepared.commit();
+        expect(readRoleConfiguration(first.id)?.contextPending).toBe(true);
+    });
+    it('announces only trusted fresh successful saves once, never local draft changes or historical cards',async()=>{
+        const received=vi.fn();const unsubscribe=subscribeRoleConfigurationSavedResults(received);
+        try {
+            const first=await createRoleConfiguration(request,launch);await bindRoleConfigurationSession(first.id,request.machineId,'s');
+            const current=await createRoleConfiguration({...request,roleId:request.clientRoleId},launch);
+            updateRoleConfiguration(first.id,{input:'My latest question'});
+            expect(received).not.toHaveBeenCalled();
+            const saved={machineId:request.machineId,sessionId:'s',role:{...request.draft,id:request.clientRoleId,createdAt:1,updatedAt:2},toolCreatedAt:current.requestedAt!};
+            expect(recordRoleConfigurationSavedResult({...saved,toolCreatedAt:current.requestedAt!-1})).toBe(false);
+            expect(received).not.toHaveBeenCalled();
+            expect(recordRoleConfigurationSavedResult(saved)).toBe(true);
+            expect(received).toHaveBeenCalledExactlyOnceWith({machineId:request.machineId,roleId:request.clientRoleId});
+            expect(recordRoleConfigurationSavedResult(saved)).toBe(false);
+            expect(received).toHaveBeenCalledOnce();
+        } finally { unsubscribe(); }
     });
 });

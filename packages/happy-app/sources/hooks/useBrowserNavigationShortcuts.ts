@@ -1,3 +1,4 @@
+import { runRoleFlowNavigationBack, runRoleFlowNavigationClose } from '@/navigation/roleFlowNavigation';
 import { navigateDesktopModalBack } from '@/navigation/desktopModalNavigation';
 import { useModal } from '@/modal';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
@@ -78,6 +79,7 @@ export function useBrowserNavigationShortcuts() {
         if (navigateDesktopModalBack(options.exitZen)) return true;
         if (options.exitZen && exitZenMode()) return true;
         if (useOverlayNav.getState().back()) return true;
+        if (options.exitZen ? runRoleFlowNavigationClose() : runRoleFlowNavigationBack()) return true;
         return runRouteBack(router);
     }, [dismissTopModal, router]);
 

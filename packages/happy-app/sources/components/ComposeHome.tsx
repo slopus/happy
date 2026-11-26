@@ -1,3 +1,5 @@
+import { useRoleConfigurationReturn } from '@/hooks/useRoleConfigurationReturn';
+import { RoleConfigurationReturnButton } from '@/components/delegation/RoleConfigurationReturnButton';
 import { enabledCodingAgents } from '@/utils/codingAgentSelection';
 import * as React from 'react';
 import { View, Text, Pressable, Platform, ScrollView, useWindowDimensions } from 'react-native';
@@ -128,6 +130,7 @@ const CompactRightPanelToggleButton = React.memo(function CompactRightPanelToggl
 
 export const ComposeHome = React.memo(({ variant = 'home', roleConfigurationId }: ComposeHomeProps) => {
     const isScreen = variant === 'screen';
+    const roleConfigurationReturn = useRoleConfigurationReturn({ reference: roleConfigurationId });
     const { theme } = useUnistyles();
     const { openSettings: showSettings } = useDesktopSettingsModal();
     const router = useRouter();
@@ -355,12 +358,13 @@ export const ComposeHome = React.memo(({ variant = 'home', roleConfigurationId }
     }, [showSettings]);
 
     const goBack = React.useCallback(() => {
+        if (roleConfigurationReturn) { void roleConfigurationReturn.back(); return; }
         if (router.canGoBack()) {
             router.back();
             return;
         }
         router.replace('/');
-    }, [router]);
+    }, [router, roleConfigurationReturn]);
 
     const openImageStyleMode = React.useCallback(() => {
         hapticsLight();
@@ -814,8 +818,9 @@ export const ComposeHome = React.memo(({ variant = 'home', roleConfigurationId }
                         </Pressable>
                     ) : null
                 )}
-                headerRight={isScreen && !rightPanelToggleButton ? undefined : () => (
+                headerRight={isScreen && !rightPanelToggleButton && !roleConfigurationReturn ? undefined : () => (
                     <View style={styles.desktopHeaderActions}>
+                        {roleConfigurationReturn && <RoleConfigurationReturnButton onPress={roleConfigurationReturn.back} />}
                         {rightPanelToggleButton}
                         {!isScreen && (
                             <Pressable

@@ -1,3 +1,4 @@
+vi.mock('./roleConfigurationHandoff', () => ({ prepareRoleConfigurationSessionMessage: () => null }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
 

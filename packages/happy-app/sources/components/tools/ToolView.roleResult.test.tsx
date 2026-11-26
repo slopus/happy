@@ -1,3 +1,4 @@
+vi.mock('@/sync/roleConfigurationHandoff', () => ({ recordRoleConfigurationSavedResult: vi.fn() }));
 import * as React from 'react';
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

@@ -1,3 +1,5 @@
+import { useRoleConfigurationReturn } from '@/hooks/useRoleConfigurationReturn';
+import { RoleConfigurationReturnButton } from '@/components/delegation/RoleConfigurationReturnButton';
 import { getConversationSessionChain, hasConversationClaim, resolveConversationRootSessionId, resolveConversationSessionId } from '@/sync/conversationSession';
 import { recoverConversationSwitch, repairCommittedConversationMembership } from '@/sync/conversationSwitch';
 import { useAgyConfig } from '@/hooks/useAgyConfig';
@@ -766,6 +768,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         toggleRightSidebar: toggleLayoutRightSidebar,
     } = useDesktopWorkspaceLayout();
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
+    const roleConfigurationReturn = useRoleConfigurationReturn({ machineId: session?.metadata?.machineId, sessionId: session?.metadata?.conversationRootSessionId ?? sessionId, enabled: isFocused && !props.embedded, beforeReturn: () => sessionComposerHandleRef.current?.flushDraft() });
     const [routeOwner, setRouteOwner] = React.useState<SessionRouteOwner | null>(null);
     const hasOpenedSession = React.useRef(false);
     const subagentInspector = useSubagentInspector();
@@ -1318,6 +1321,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     ) : null;
     const defaultHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
+            {roleConfigurationReturn && <RoleConfigurationReturnButton onPress={roleConfigurationReturn.back} />}
             {readingWidthControl}
             {dreamskinHeaderActions}
             {goalParentAction}
@@ -1328,6 +1332,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     );
     const overlayHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
+            {roleConfigurationReturn && <RoleConfigurationReturnButton onPress={roleConfigurationReturn.back} />}
             {readingWidthControl}
             {dreamskinHeaderActions}
             {goalParentAction}
@@ -1401,6 +1406,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                         rightSlot={props.embedded ? workspaceLink : (diffViewOpen || !!fileViewPath) ? overlayHeaderRightSlot : defaultHeaderRightSlot}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onListPress={openSessionList}
+                        onBackPress={roleConfigurationReturn ? () => { void roleConfigurationReturn.back(); } : undefined}
                     />
                 </View>
             )}

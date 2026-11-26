@@ -3,18 +3,12 @@ import { flushDeviceStorageWrites } from '@/persistence/deviceStorage';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft, newSessionDraftSnapshot } from '@/hooks/useNewSessionDraft';
 import { storage } from '@/sync/storage';
-import { loadSessionDrafts } from '@/sync/persistence';
-import { createRoleConfiguration, roleConfigurationCurrent, releaseDeletedRoleConfigurationSession, type RoleConfigurationRequest } from '@/sync/roleConfigurationHandoff';
+import { createRoleConfiguration, readRoleConfiguration, roleConfigurationCurrent, releaseDeletedRoleConfigurationSession, type RoleConfigurationRequest } from '@/sync/roleConfigurationHandoff';
 import { t } from '@/text';
 import { getFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 import { isProjectSessionDeleted } from '@/sync/projectSessionLinks';
 import { sync } from '@/sync/sync';
 
-/** Preserve any text already being written in a retained conversation. */
-export function appendRoleConfigurationPrompt(current: string, prompt: string) {
-    if (current.includes(prompt)) return current;
-    return current.trim() ? `${current}\n\n${prompt}` : prompt;
-}
 export async function openRoleConfiguration(router: Router, request: RoleConfigurationRequest): Promise<void> {
     const owner = getFirstSubmissionScope();
     const record = await createRoleConfiguration(request, newSessionDraftSnapshot(useNewSessionDraft.getState()));
@@ -37,12 +31,23 @@ export async function openRoleConfiguration(router: Router, request: RoleConfigu
     if (session && session.metadata?.machineId === record.machineId) {
         await flushDeviceStorageWrites();
         if (!roleConfigurationCurrent(record, owner) || storage.getState().sessions[session.id]?.metadata?.machineId !== record.machineId) throw new Error(t('delegation.configurationUnavailable'));
-        const previous = storage.getState().sessions[session.id]?.draft ?? loadSessionDrafts()[session.id] ?? '';
-        storage.getState().updateSessionDraft(session.id, appendRoleConfigurationPrompt(previous, record.input));
-        await flushDeviceStorageWrites();
-        if (!roleConfigurationCurrent(record, owner) || storage.getState().sessions[session.id]?.metadata?.machineId !== record.machineId) throw new Error(t('delegation.configurationUnavailable'));
-        navigateToSession(router, session.id);
+        navigateToSession(router, session.id, { roleConfigurationId: record.id });
         return;
     }
     router.navigate({ pathname: '/new', params: { roleConfiguration: record.id } } as never);
+}
+
+/** Explicit return survives the normal session stack compaction and page reload. */
+export async function returnToRoleConfigurationSettings(router: Router, reference: string) {
+    const owner = getFirstSubmissionScope();
+    const record = readRoleConfiguration(reference);
+    if (!record || !roleConfigurationCurrent(record, owner)) throw new Error(t('delegation.configurationUnavailable'));
+    await flushDeviceStorageWrites();
+    const latest = readRoleConfiguration(reference);
+    if (!latest || !roleConfigurationCurrent(latest, owner)) throw new Error(t('delegation.configurationUnavailable'));
+    router.navigate({ pathname: '/settings/delegation-roles', params: {
+        machineId: latest.machineId, roleConfigurationReturn: latest.id,
+        ...(latest.savedRole ? { roleId: latest.roleId } : {}),
+        ...(latest.returnContext?.desktopModal ? { desktopModal: '1' } : {}),
+    } } as never);
 }

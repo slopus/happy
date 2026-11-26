@@ -15,7 +15,7 @@ vi.mock('@/sync/projectSessionLinks',()=>({isProjectSessionDeleted:(id:string)=>
 vi.mock('@/sync/sync',()=>({sync:{ensureSessionHydrated:(id:string)=>mock.hydrated(id)}}));
 import {setFirstSubmissionScope} from '@/sync/firstSubmissionScope';
 import {createRoleConfiguration,bindRoleConfigurationSession,readRoleConfiguration} from '@/sync/roleConfigurationHandoff';
-import {openRoleConfiguration,appendRoleConfigurationPrompt} from './roleConfigurationNavigation';
+import {openRoleConfiguration,returnToRoleConfigurationSettings} from './roleConfigurationNavigation';
 const request={machineId:'m',clientRoleId:'reserved-role',draft:{name:'Writer',description:'README',agent:'antigravity' as const,model:'neon',autoDelegate:false}};
 beforeEach(()=>{mock.records.clear();mock.drafts={};mock.sessions={};mock.deleted.clear();mock.id=0;mock.current=true;mock.flush=async()=>{};vi.clearAllMocks();setFirstSubmissionScope('A','http://test');});
 async function linked(){const record=await createRoleConfiguration(request,mock.launch);await bindRoleConfigurationSession(record.id,'m','existing-session');mock.sessions['existing-session']={id:'existing-session',metadata:{machineId:'m'},draft:'Unfinished original question'};return record;}
@@ -27,18 +27,26 @@ describe('role configuration navigation',()=>{
         expect(JSON.stringify(target)).not.toContain('neon');expect(mock.launch).toEqual(before);
         expect(readRoleConfiguration(target.params.roleConfiguration)).toMatchObject({roleId:'reserved-role',action:'create'});
     });
-    it('flushes the latest retained draft, appends context and uses unified native session navigation',async()=>{
+    it('preserves the retained visible draft and uses unified native session navigation',async()=>{
         const record=await linked();const router={navigate:vi.fn()} as any;let count=0;
         mock.flush=async()=>{if(++count===2)mock.sessions['existing-session'].draft='Latest characters flushed from the live input';};
         await openRoleConfiguration(router,{machineId:'m',roleId:'reserved-role',draft:request.draft});
-        expect(mock.update).toHaveBeenCalledWith('existing-session',expect.stringMatching(/^Latest characters flushed from the live input\n\n/));
-        expect(mock.navigate).toHaveBeenCalledWith(router,'existing-session');expect(router.navigate).not.toHaveBeenCalled();
+        expect(mock.update).not.toHaveBeenCalled();
+        expect(mock.navigate).toHaveBeenCalledWith(router,'existing-session',{roleConfigurationId:record.id});expect(router.navigate).not.toHaveBeenCalled();
         expect(readRoleConfiguration(record.id)?.action).toBe('update');
     });
-    it('keeps existing input and does not duplicate an already appended request',()=>{
-        const existing='Original question\n\nrole request\nMy extra requirement';
-        expect(appendRoleConfigurationPrompt(existing,'role request')).toBe(existing);
-        expect(appendRoleConfigurationPrompt('Original question','role request')).toBe('Original question\n\nrole request');
+    it('reopens repeatedly without appending another configuration template',async()=>{
+        await linked();const router={navigate:vi.fn()} as any;
+        await openRoleConfiguration(router,{machineId:'m',roleId:'reserved-role',draft:request.draft});
+        await openRoleConfiguration(router,{machineId:'m',roleId:'reserved-role',draft:request.draft});
+        expect(mock.sessions['existing-session'].draft).toBe('Unfinished original question');
+        expect(mock.update).not.toHaveBeenCalled();
+    });
+    it('returns to the exact source role surface even when the ordinary stack was compacted',async()=>{
+        const record=await createRoleConfiguration({...request,returnContext:{view:'create',step:2,query:'writer',desktopModal:true,scrollY:120}},mock.launch);
+        const router={navigate:vi.fn(),canGoBack:()=>false} as any;
+        await returnToRoleConfigurationSettings(router,record.id);
+        expect(router.navigate).toHaveBeenCalledWith({pathname:'/settings/delegation-roles',params:{machineId:'m',roleConfigurationReturn:record.id,desktopModal:'1'}});
     });
     it('rejects an old A → B → A navigation transaction before changing a retained draft',async()=>{
         await linked();const router={navigate:vi.fn()} as any;let count=0;

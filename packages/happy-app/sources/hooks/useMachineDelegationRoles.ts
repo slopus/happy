@@ -3,6 +3,7 @@ import type { DelegationRole } from '@slopus/happy-wire';
 import { listMachineDelegationRoles } from '@/sync/apiDelegation';
 import { apiSocket } from '@/sync/apiSocket';
 import { getFirstSubmissionScope, subscribeFirstSubmissionScope } from '@/sync/firstSubmissionScope';
+import { subscribeRoleConfigurationSavedResults } from '@/sync/roleConfigurationHandoff';
 import { t } from '@/text';
 
 /** Read on entry and reconnect, including after AI edits in another screen; never poll. */
@@ -39,6 +40,9 @@ export function useMachineDelegationRoles(machineId: string, enabled: boolean, f
         else sequence.current++;
         return () => { if (current.current === scope) current.current = null; };
     }, [scope, refresh, focused]);
+    React.useEffect(() => subscribeRoleConfigurationSavedResults(result => {
+        if (focused && result.machineId === machineId && isCurrent()) void refresh();
+    }), [focused, machineId, isCurrent, refresh]);
     const apply = (roles: DelegationRole[]) => {
         if (!isCurrent()) return;
         sequence.current++;

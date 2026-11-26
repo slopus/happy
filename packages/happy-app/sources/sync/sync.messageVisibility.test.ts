@@ -1,3 +1,4 @@
+vi.mock('@/hooks/useRoleConfigurationReturn', () => ({ useRoleConfigurationReturn: () => null }));
 import './sessionViewPlatform.testSupport';
 import { AppState, Platform } from 'react-native';
 import { sessionHistoryPageCache } from './sessionHistoryPageCache';
@@ -30,6 +31,7 @@ import { useSpawnSession } from '@/hooks/useSpawnSession';
 import { SessionView } from '@/-session/SessionView';
 import { useTranscriptReading } from '@/components/transcriptReading';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
+import * as roleSavedMessages from './roleConfigurationSavedMessages';
 
 vi.hoisted(() => {
     (globalThis as { __DEV__?: boolean }).__DEV__ = false;
@@ -3284,6 +3286,34 @@ describe('message visibility synchronization', () => {
         expect(mocks.gitInvalidate).not.toHaveBeenCalled();
         expect(mocks.gitOpenInvalidate).not.toHaveBeenCalled();
         expect(mocks.state.sessions['background-session']).toMatchObject({ updatedAt: 80, seq: 8 });
+    });
+
+    it.each(['historical-window', 'background-sequence-gap'])('offers decrypted role receipts before %s skips projection', async branch => {
+        const id = 'background-role-save';
+        const encryption = installSession(id);
+        mocks.state.currentViewingSessionId = 'another-session';
+        if (branch === 'historical-window') {
+            syncForTest.historyWindows.set(id, { messages: [], isAtLatest: false });
+            mocks.state.sessionMessages[id] = { messages: [], isAtLatest: false };
+        }
+        const observer = vi.spyOn(roleSavedMessages, 'observeRoleConfigurationRealtimeMessage').mockReturnValue(0);
+        const projection = vi.spyOn(syncForTest, 'applyMessages');
+        const events = [
+            { id: 'start', time: 1000, role: 'agent', turn: 'save-turn', ev: { t: 'tool-call-start', call: 'role-call', name: 'mcp__happy__agent_roles', title: 'Save role', description: 'Save role', args: { action: 'create', role: { id: 'writer-id' } } } },
+            { id: 'end', time: 1100, role: 'agent', turn: 'save-turn', ev: { t: 'tool-call-end', call: 'role-call', status: 'completed', mcpAppResult: { version: 1, state: 'available', content: [], structuredContent: { success: true } } } },
+        ];
+        try {
+            for (let index = 0; index < events.length; index++) {
+                encryption.decryptMessage.mockResolvedValueOnce({ id: `wire-${index}`, localId: null, createdAt: events[index].time,
+                    content: { role: 'session', content: events[index] } });
+                await syncForTest.handleUpdate(newMessageUpdate(id, 8 + index));
+            }
+            expect(observer).toHaveBeenCalledTimes(2);
+            expect(observer.mock.calls.map(([, , message]) => message.role === 'agent' ? message.content[0].type : null)).toEqual(['tool-call', 'tool-result']);
+            expect(projection).not.toHaveBeenCalled();
+            expect(mocks.apiRequest).not.toHaveBeenCalled();
+            expect(mocks.gitInvalidate).not.toHaveBeenCalled();
+        } finally { observer.mockRestore(); projection.mockRestore(); }
     });
 
     it('clears viewing on deletion even after route ownership is revoked', async () => {

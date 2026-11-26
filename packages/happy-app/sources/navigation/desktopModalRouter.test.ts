@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { StackActions, StackRouter } from '@react-navigation/routers';
+import { getActionFromState, getStateFromPath } from '@react-navigation/core';
+import { existsSync } from 'node:fs';
 vi.mock('@react-navigation/native', () => ({ StackRouter }));
 import { projectLocationHref, restoreProjectLocation } from '@/utils/projectReturnLocation';
 import { sessionWorkspaceRoute } from '@/utils/sessionWorkspaceRoute';
 import { createDesktopModalRouter, getDesktopModalStart, getDesktopModalBackgroundPath } from './desktopModalRouter';
 
-const options = { routeNames: ['index', 'projects', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/message/[messageId]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
+const options = { routeNames: ['index', 'projects', 'settings/index', 'settings/delegation-roles', 'new/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/message/[messageId]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
 function setup(shouldPresentToolDetails = () => false) {
     const original = StackRouter({ initialRouteName: 'index' });
     const router = createDesktopModalRouter({ initialRouteName: 'index' }, shouldPresentToolDetails);
@@ -260,4 +262,41 @@ it('hands a selected file out of a desktop picker to its original conversation',
     expect(app.state.routes).toHaveLength(2);
     expect(app.state.routes[1].key).toBe(conversation.key);
     expect(app.state.routes[1].params).toMatchObject({ openFile: 'ZmlsZQ==' });
+});
+
+describe('ordinary role configuration workspace handoff',()=>{
+    // Derive route identities from the real Expo source paths, then run actual
+    // linking actions. `/new` is registered as `new/index`, not `new`.
+    function routeFromSource(source: string) {
+        expect(existsSync(new URL(`../app/(app)/${source}`, import.meta.url))).toBe(true);
+        return source.replace(/\.tsx$/, '');
+    }
+    function actionFromHref(href: string) {
+        const screens = {
+            [routeFromSource('new/index.tsx')]: { path: 'new' },
+            [routeFromSource('session/[id].tsx')]: { path: 'session/:id' },
+            [routeFromSource('settings/delegation-roles.tsx')]: { path: 'settings/delegation-roles' },
+        };
+        const state = getStateFromPath(href, { screens });
+        expect(state).toBeDefined();
+        const action = getActionFromState(state!, { screens });
+        expect(action?.type).toBe('NAVIGATE');
+        if (action?.type !== 'NAVIGATE') throw new Error('Expected a linked navigation action');
+        return action;
+    }
+    it.each(['/new?roleConfiguration=rc-test','/session/configuration?roleConfiguration=rc-test'])('leaves the settings modal only for a real linked role route (%s)',href=>{
+        const app=setup();app.send(StackActions.push('session/[id]',{id:'original'}));
+        app.send(StackActions.push('settings/index',{desktopModal:'1'}));app.send(StackActions.push('settings/delegation-roles'));
+        expect(getDesktopModalStart(app.state)).toBeGreaterThanOrEqual(0);
+        const action=actionFromHref(href);const name=action.payload.name;
+        expect(name).toBe(href.startsWith('/new')?'new/index':'session/[id]');
+        app.send(action);
+        expect(getDesktopModalStart(app.state)).toBe(-1);expect(app.state.routes[app.state.index].name).toBe(name);
+        app.send(actionFromHref('/settings/delegation-roles?machineId=m&roleConfigurationReturn=rc-test&desktopModal=1'));
+        expect(getDesktopModalStart(app.state)).toBeGreaterThanOrEqual(0);expect(getDesktopModalBackgroundPath(app.state)).toBe(name==='new/index'?'/new':'/session/configuration');
+    });
+    it('keeps an ordinary /new navigation scoped to its existing modal',()=>{
+        const app=setup();app.send(StackActions.push('settings/index',{desktopModal:'1'}));
+        app.send(actionFromHref('/new'));expect(getDesktopModalStart(app.state)).toBeGreaterThanOrEqual(0);
+    });
 });

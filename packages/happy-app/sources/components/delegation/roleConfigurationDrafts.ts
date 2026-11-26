@@ -6,6 +6,7 @@ import { roleConfigurationCurrent, updateRoleConfiguration, type RoleConfigurati
 type Owner = NonNullable<ReturnType<typeof getFirstSubmissionScope>>;
 type Entry = {
     revision: number;
+    sourceFingerprint: string | undefined;
     compose: ReturnType<typeof createComposeDraftStore>;
     config: ReturnType<typeof createNewSessionDraftStore>;
 };
@@ -29,8 +30,10 @@ export function getRoleConfigurationDraftStores(record: RoleConfigurationHandoff
     }
     const existing = drafts.get(record.id);
     if (existing?.revision === record.revision) return existing;
+    const sourceFingerprint = record.draft ? JSON.stringify(record.draft) : undefined;
+    const retainedImages = sourceFingerprint && existing?.sourceFingerprint === sourceFingerprint ? existing.compose.getState().images : [];
     const entry: Entry = {
-        revision: record.revision,
+        revision: record.revision, sourceFingerprint,
         compose: createComposeDraftStore({ text: record.input, discussing: record.discussing }, value => {
             if (roleConfigurationCurrent(record, scope)) updateRoleConfiguration(record.id, { input: value.text, discussing: value.discussing }, record.revision);
         }),
@@ -38,6 +41,7 @@ export function getRoleConfigurationDraftStores(record: RoleConfigurationHandoff
             if (roleConfigurationCurrent(record, scope)) updateRoleConfiguration(record.id, { config }, record.revision);
         }),
     };
+    if (retainedImages.length) entry.compose.getState().setImages(retainedImages);
     drafts.set(record.id, entry);
     return entry;
 }
