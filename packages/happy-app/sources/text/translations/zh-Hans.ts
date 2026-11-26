@@ -18,6 +18,27 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    codexActivity: {
+        previousDay: '前一天',
+        nextDay: '后一天',
+        detailsLabel: '所选日期明细',
+        metricInputShort: '入',
+        metricCacheShort: '缓',
+        metricOutputShort: '出',
+        scope: '此机器全部 Codex 活动',
+        total: '总处理量',
+        uncachedInput: '非缓存输入',
+        cacheRead: '缓存读取',
+        output: '输出',
+        showDetails: '查看明细',
+        hideDetails: '收起明细',
+        processed: 'token（含缓存读取）',
+        incomplete: '部分用量记录需要核对',
+        noActivity: '暂无活动记录',
+        events: '用量记录',
+        cacheNote: '输入包含缓存读取，推理已计入输出。token 数不能直接换算为订阅额度或实际扣费。',
+    },
+
     delegation: {
         roleSettingsInvalidResponse: "角色回执与所请求的机器或角色不匹配。",
         chooseModel: "选择已知模型",

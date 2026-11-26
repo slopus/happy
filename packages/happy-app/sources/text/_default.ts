@@ -15,6 +15,27 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    codexActivity: {
+        previousDay: 'Previous day',
+        nextDay: 'Next day',
+        detailsLabel: 'Selected day details',
+        metricInputShort: 'I',
+        metricCacheShort: 'C',
+        metricOutputShort: 'O',
+        scope: 'All Codex activity on this machine',
+        total: 'Total processed',
+        uncachedInput: 'New input',
+        cacheRead: 'Cache reads',
+        output: 'Output',
+        showDetails: 'Show details',
+        hideDetails: 'Hide details',
+        processed: 'tokens, including cache reads',
+        incomplete: 'Some usage records need review',
+        noActivity: 'No recorded activity',
+        events: 'Usage records',
+        cacheNote: 'Input includes cache reads. Reasoning is included in output. Token counts do not determine subscription allowance or your bill.',
+    },
+
     delegation: {
         roleSettingsInvalidResponse: "The role response did not match the requested machine or role.",
         chooseModel: "Choose a known model",

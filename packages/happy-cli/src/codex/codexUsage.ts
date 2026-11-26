@@ -85,12 +85,21 @@ interface ParsedCodexUsageEvent {
     eventTime: number;
     localDate: string;
     usage: CodexUsageTokenTotals;
+    source: 'token-count' | 'usage-record';
+    responseId?: string;
+    threadId?: string;
+    sessionId?: string;
+    turnId?: string;
+    cumulativeUsage?: CodexUsageTokenTotals;
+    ordinal?: number;
 }
 
 interface CodexSessionMetadata {
     sessionId?: string;
     parentId?: string;
     forkedAt?: number;
+    explicitFork?: boolean;
+    hasReplayedMetadata?: boolean;
 }
 
 interface CodexUsageFileAccumulator {
@@ -101,9 +110,22 @@ interface CodexUsageFileAccumulator {
     latestEventTime: number;
     latestRateLimits?: CodexUsageRateLimits;
     latestRateLimitsTime: number;
+    cumulativeMismatches?: number;
+    counterResets?: number;
+    incompleteReceipts?: number;
 }
 
 const localDateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+// Skip complete JSON values while locating a top-level key. Unlike a bare
+// substring search, this excludes compacted histories and quoted tool output;
+// unlike a fixed prefix, it does not require timestamp/type/payload key order.
+const jsonValuePattern = String.raw`(?(DEFINE)(?<js>"(?:[^"\\]++|\\.)*+")(?<jv>(?&js)|(?&jo)|(?&ja)|true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(?<jo>\{\s*(?:(?&js)\s*:\s*(?&jv)\s*(?:,\s*(?&js)\s*:\s*(?&jv)\s*)*)?\})(?<ja>\[\s*(?:(?&jv)\s*(?:,\s*(?&jv)\s*)*)?\]))`;
+const jsonFieldPattern = (key: string) => String.raw`(?:(?!"${key}"\s*:)(?&js)\s*:\s*(?&jv)\s*,\s*)*"${key}"\s*:\s*`;
+const nativeUsageRecordPattern = `^\\s*\\{\\s*${jsonFieldPattern('type')}"(?:token_usage_record|session_meta)"`;
+const legacyUsageRecordPattern = `^\\s*\\{\\s*(?=${jsonFieldPattern('type')}"event_msg")${jsonFieldPattern('payload')}\\{\\s*${jsonFieldPattern('type')}"token_count"`;
+const usageRecordPattern = `${jsonValuePattern}(?:${nativeUsageRecordPattern}|${legacyUsageRecordPattern})`;
+const sessionMetaRecordPattern = `${jsonValuePattern}^\\s*\\{\\s*${jsonFieldPattern('type')}"session_meta"`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -111,7 +133,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function numberField(record: Record<string, unknown>, key: string): number | undefined {
     const value = record[key];
-    return typeof value === 'number' ? value : undefined;
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+    const value = record[key];
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 function tokenTotalsFromJson(usage: unknown): CodexUsageTokenTotals | null {
@@ -242,6 +269,7 @@ function sessionMetadataFromRecord(record: Record<string, unknown>): CodexSessio
         sessionId: typeof record.payload.id === 'string' ? record.payload.id : undefined,
         parentId: parentId || undefined,
         forkedAt: Number.isFinite(forkedAt) ? forkedAt : undefined,
+        explicitFork: typeof record.payload.forked_from_id === 'string',
     };
 }
 
@@ -275,8 +303,8 @@ async function readCodexSessionMetadataWithRipgrep(
         '--no-line-number',
         '--max-count',
         '1',
-        '--fixed-strings',
-        '"type":"session_meta"',
+        '--pcre2',
+        sessionMetaRecordPattern,
         ...files,
     ];
     for (const command of commands) {
@@ -411,6 +439,7 @@ async function parseCodexUsageFile(
         // The imported prefix was removed exactly; fork replay heuristics must
         // not discard the new account's first real turns a second time.
         if (importedRanges.some(([start]) => start === 0)) accumulator.metadata.parentId = undefined;
+        appendUsageDiagnostics(accumulator, warnings);
     } catch (error) {
         warnings.push(`Failed to read ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
         return null;
@@ -459,6 +488,18 @@ function hasUsage(usage: CodexUsageTokenTotals): boolean {
         || usage.reasoningOutputTokens > 0;
 }
 
+function appendUsageDiagnostics(accumulator: CodexUsageFileAccumulator, warnings: string[]): void {
+    if (accumulator.cumulativeMismatches) {
+        warnings.push(`Codex cumulative usage differs from individual usage for ${accumulator.cumulativeMismatches} event(s); individual usage was retained and the total may be incomplete.`);
+    }
+    if (accumulator.counterResets) {
+        warnings.push(`Codex cumulative counters decreased for ${accumulator.counterResets} event(s); individual usage was used after the reset.`);
+    }
+    if (accumulator.incompleteReceipts) {
+        warnings.push(`Incomplete Codex usage receipts ignored for ${accumulator.incompleteReceipts} event(s); missing fields were not treated as zero.`);
+    }
+}
+
 function addCodexUsageLine(
     accumulator: CodexUsageFileAccumulator,
     line: string,
@@ -466,7 +507,7 @@ function addCodexUsageLine(
     timeZone: string,
     imported = false,
 ): void {
-    if (!line.includes('token_count') && !line.includes('session_meta')) {
+    if (!line.includes('token_count') && !line.includes('token_usage_record') && !line.includes('session_meta')) {
         return;
     }
 
@@ -484,13 +525,21 @@ function addCodexUsageLine(
     if (metadata) {
         if (!accumulator.metadata.sessionId) {
             accumulator.metadata = metadata;
+        } else if (metadata.sessionId === accumulator.metadata.parentId) {
+            accumulator.metadata.hasReplayedMetadata = true;
         }
         return;
     }
 
-    if (record.type !== 'event_msg' || !isRecord(record.payload) || record.payload.type !== 'token_count') {
+    if (!isRecord(record.payload)) {
         return;
     }
+    const payload = record.payload;
+    const isTokenCount = record.type === 'event_msg' && payload.type === 'token_count';
+    // A compacted record is a retained context snapshot, not a new usage event.
+    // Its independent token_usage_record (when present) accounts for the request.
+    const receipt = record.type === 'token_usage_record' ? payload : undefined;
+    if (!isTokenCount && !receipt) return;
 
     const timestamp = typeof record.timestamp === 'string' ? record.timestamp : null;
     if (!timestamp) {
@@ -503,9 +552,15 @@ function addCodexUsageLine(
         return;
     }
 
-    const info = isRecord(record.payload.info) ? record.payload.info : {};
-    const lastTokenUsage = tokenTotalsFromJson(info.last_token_usage);
-    const sessionTotalTokenUsage = tokenTotalsFromJson(info.total_token_usage);
+    const info = isRecord(payload.info) ? payload.info : {};
+    if (receipt && (!isRecord(receipt.usage)
+        || !['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']
+            .every(key => numberField(receipt.usage as Record<string, unknown>, key) !== undefined))) {
+        if (!imported) accumulator.incompleteReceipts = (accumulator.incompleteReceipts || 0) + 1;
+        return;
+    }
+    const lastTokenUsage = tokenTotalsFromJson(receipt ? receipt.usage : info.last_token_usage);
+    const sessionTotalTokenUsage = tokenTotalsFromJson(receipt ? receipt.thread_token_usage : info.total_token_usage);
     if (!lastTokenUsage && !sessionTotalTokenUsage) {
         return;
     }
@@ -515,7 +570,7 @@ function addCodexUsageLine(
         return;
     }
     const dateKey = localDateKey(date, timeZone);
-    const rateLimits = toRateLimits(record.payload.rate_limits);
+    const rateLimits = isTokenCount ? toRateLimits(payload.rate_limits) : undefined;
     if (hasUsableRateLimits(rateLimits) && eventTime > accumulator.latestRateLimitsTime) {
         accumulator.latestRateLimits = rateLimits;
         accumulator.latestRateLimitsTime = eventTime;
@@ -536,14 +591,27 @@ function addCodexUsageLine(
         };
     }
 
-    const cumulativeAdvanced = !sessionTotalTokenUsage || !usageEquals(accumulator.previousTotals, sessionTotalTokenUsage);
-    const usage = cumulativeAdvanced
+    const previousTotals = accumulator.previousTotals;
+    const cumulativeAdvanced = !sessionTotalTokenUsage || !usageEquals(previousTotals, sessionTotalTokenUsage);
+    const usage = receipt !== undefined || cumulativeAdvanced
         ? lastTokenUsage || (sessionTotalTokenUsage ? subtractUsage(sessionTotalTokenUsage, accumulator.previousTotals) : null)
         : null;
-    if (sessionTotalTokenUsage) {
+    if (isTokenCount && sessionTotalTokenUsage && previousTotals && cumulativeAdvanced && lastTokenUsage) {
+        const decreased = Object.keys(previousTotals).some(key => (
+            sessionTotalTokenUsage[key as keyof CodexUsageTokenTotals] < previousTotals[key as keyof CodexUsageTokenTotals]
+        ));
+        if (decreased) accumulator.counterResets = (accumulator.counterResets || 0) + 1;
+        else if (!usageEquals(subtractUsage(sessionTotalTokenUsage, previousTotals), lastTokenUsage)) {
+            accumulator.cumulativeMismatches = (accumulator.cumulativeMismatches || 0) + 1;
+        }
+    }
+    // Keep the legacy stream's baseline independent: a receipt and token_count
+    // frequently describe the same response and are reconciled by identity below.
+    if (isTokenCount && sessionTotalTokenUsage) {
         accumulator.previousTotals = sessionTotalTokenUsage;
     }
-    if (!usage || !hasUsage(usage)) {
+    const responseId = stringField(receipt || info, 'response_id') || stringField(payload, 'response_id');
+    if (!usage || (!hasUsage(usage) && !(receipt && responseId))) {
         return;
     }
 
@@ -553,6 +621,13 @@ function addCodexUsageLine(
         eventTime,
         localDate: dateKey,
         usage,
+        source: receipt ? 'usage-record' : 'token-count',
+        responseId,
+        threadId: stringField(receipt || info, 'thread_id') || stringField(payload, 'thread_id'),
+        sessionId: stringField(receipt || info, 'session_id'),
+        turnId: stringField(receipt || info, 'turn_id') || stringField(payload, 'turn_id'),
+        cumulativeUsage: sessionTotalTokenUsage || undefined,
+        ordinal: numberField(record, 'ordinal'),
     });
 }
 
@@ -567,11 +642,10 @@ async function parseCodexUsageFilesWithRipgrep(
         '--null',
         '--with-filename',
         '--line-number',
-        '--fixed-strings',
+        '--pcre2',
+        // Searching a bare word streams compacted histories and bodies into Node.
         '-e',
-        'token_count',
-        '-e',
-        '"type":"session_meta"',
+        usageRecordPattern,
         ...files,
     ];
     const failures: string[] = [];
@@ -621,21 +695,24 @@ async function parseCodexUsageFilesWithRipgrep(
                 throw result.error;
             }
             if (result.code <= 1) {
-                return [...accumulators.entries()].map(([filePath, accumulator]) => ({
-                    filePath,
-                    events: accumulator.events,
-                    metadata: boundaries.get(filePath)?.some(([start]) => start === 0) ? { ...accumulator.metadata, parentId: undefined } : accumulator.metadata,
-                    latestEvent: accumulator.latestEvent && accumulator.latestRateLimits
-                        ? {
-                            ...accumulator.latestEvent,
-                            rateLimits: accumulator.latestRateLimits,
-                            rateLimitsTimestamp: new Date(accumulator.latestRateLimitsTime).toISOString(),
-                        }
-                        : accumulator.latestEvent,
-                    latestEventTime: accumulator.latestEventTime,
-                    latestRateLimits: accumulator.latestRateLimits,
-                    latestRateLimitsTime: accumulator.latestRateLimitsTime,
-                }));
+                return [...accumulators.entries()].map(([filePath, accumulator]) => {
+                    appendUsageDiagnostics(accumulator, warnings);
+                    return {
+                        filePath,
+                        events: accumulator.events,
+                        metadata: boundaries.get(filePath)?.some(([start]) => start === 0) ? { ...accumulator.metadata, parentId: undefined } : accumulator.metadata,
+                        latestEvent: accumulator.latestEvent && accumulator.latestRateLimits
+                            ? {
+                                ...accumulator.latestEvent,
+                                rateLimits: accumulator.latestRateLimits,
+                                rateLimitsTimestamp: new Date(accumulator.latestRateLimitsTime).toISOString(),
+                            }
+                            : accumulator.latestEvent,
+                        latestEventTime: accumulator.latestEventTime,
+                        latestRateLimits: accumulator.latestRateLimits,
+                        latestRateLimitsTime: accumulator.latestRateLimitsTime,
+                    };
+                });
             }
             failures.push(`${command} exited ${result.code}: ${stderr.trim()}`);
         } catch (error) {
@@ -675,7 +752,8 @@ function replayFilteredEvents(
     filesBySessionId: Map<string, ParsedCodexUsageFile>,
 ): ParsedCodexUsageEvent[] {
     const parentId = parsedFile.metadata.parentId;
-    if (!parentId || parentId === parsedFile.metadata.sessionId) {
+    if (!parentId || parentId === parsedFile.metadata.sessionId
+        || (!parsedFile.metadata.explicitFork && !parsedFile.metadata.hasReplayedMetadata)) {
         return parsedFile.events;
     }
 
@@ -685,47 +763,177 @@ function replayFilteredEvents(
         : [];
     let matched = 0;
     let replayDone = false;
-    let skippingRewrittenBurst = false;
-    let previousSkippedTime = 0;
     const filtered: ParsedCodexUsageEvent[] = [];
 
     for (let index = 0; index < parsedFile.events.length; index += 1) {
         const event = parsedFile.events[index];
+        // A new response whose native thread is this child is not inherited
+        // history, even if its token counts happen to equal a parent's request.
+        if (event.source === 'usage-record' && event.responseId
+            && event.threadId === parsedFile.metadata.sessionId) {
+            replayDone = true;
+        }
         if (replayDone) {
             filtered.push(event);
             continue;
         }
-        if (skippingRewrittenBurst) {
-            if (event.eventTime >= previousSkippedTime && event.eventTime - previousSkippedTime <= 1000) {
-                previousSkippedTime = event.eventTime;
-                continue;
-            }
-            replayDone = true;
-            filtered.push(event);
-            continue;
-        }
-
         const parentEvent = parentPrefix[matched];
         if (parentEvent && usageValueFingerprint(parentEvent) === usageValueFingerprint(event)) {
             matched += 1;
             continue;
         }
 
-        if (matched === 0) {
-            const nextEvent = parsedFile.events[index + 1];
-            if (nextEvent && nextEvent.eventTime >= event.eventTime && nextEvent.eventTime - event.eventTime <= 1000) {
-                skippingRewrittenBurst = true;
-                previousSkippedTime = event.eventTime;
-                continue;
-            }
-        }
         replayDone = true;
         filtered.push(event);
     }
     return filtered;
 }
 
-function dedupeCodexUsageEvents(parsedFiles: ParsedCodexUsageFile[]): ParsedCodexUsageEvent[] {
+function usageScope(file: ParsedCodexUsageFile): string {
+    // A path is not a session identity. Copies in separate homes retain the
+    // rollout basename; unrelated sessions must never share a global value key.
+    return file.metadata.sessionId || basename(file.filePath);
+}
+
+function receiptIdentity(event: ParsedCodexUsageEvent, file: ParsedCodexUsageFile): string {
+    return [event.threadId || file.metadata.sessionId || event.sessionId || basename(file.filePath),
+        event.responseId || usageFingerprint(event)].join('\0');
+}
+
+function receiptAliases(event: ParsedCodexUsageEvent, file: ParsedCodexUsageFile): string[] {
+    const scope = usageScope(file);
+    if (event.source === 'token-count' && event.responseId) return [`${scope}\0response\0${event.responseId}`];
+    const keys = [`${scope}\0time\0${usageFingerprint(event)}`];
+    if (event.responseId) keys.push(`${scope}\0response\0${event.responseId}`);
+    if (event.cumulativeUsage) {
+        keys.push(`${scope}\0cumulative\0${usageValueFingerprint({ ...event, usage: event.cumulativeUsage })}\0${usageValueFingerprint(event)}`);
+    }
+    return keys;
+}
+
+function reconcileUsageReceipts(parsedFiles: ParsedCodexUsageFile[], warnings: string[]): ParsedCodexUsageFile[] {
+    const receipts = new Map<string, {
+        event: ParsedCodexUsageEvent;
+        file: ParsedCodexUsageFile;
+        first: ParsedCodexUsageEvent;
+        values: Set<string>;
+    }>();
+    const aliases = new Map<string, Set<string>>();
+    for (const file of parsedFiles) {
+        for (const event of file.events) {
+            if (event.source !== 'usage-record') continue;
+            const identity = receiptIdentity(event, file);
+            for (const key of receiptAliases(event, file)) {
+                const identities = aliases.get(key) || new Set<string>();
+                identities.add(identity);
+                aliases.set(key, identities);
+            }
+            const existing = receipts.get(identity);
+            if (!existing) {
+                receipts.set(identity, { event, file, first: event, values: new Set([usageValueFingerprint(event)]) });
+                continue;
+            }
+            existing.values.add(usageValueFingerprint(event));
+            if (event.eventTime < existing.first.eventTime) existing.first = event;
+            const identical = usageEquals(event.usage, existing.event.usage);
+            const belongsToThread = file.metadata.sessionId === event.threadId;
+            const existingBelongsToThread = existing.file.metadata.sessionId === existing.event.threadId;
+            // A later receipt can correct a response. Replace its amount instead
+            // of charging a second request, while keeping the original date.
+            const newerRevision = event.ordinal !== undefined && existing.event.ordinal !== undefined
+                ? event.ordinal > existing.event.ordinal
+                : event.eventTime >= existing.event.eventTime;
+            if ((!identical && newerRevision)
+                || (identical && ((belongsToThread && !existingBelongsToThread)
+                    || (belongsToThread === existingBelongsToThread && event.eventTime < existing.event.eventTime)))) {
+                existing.event = event;
+                existing.file = file;
+            }
+        }
+    }
+    const revisions = [...receipts.values()].filter(receipt => receipt.values.size > 1).length;
+    if (revisions) warnings.push(`Codex usage receipts revised ${revisions} response(s); the latest receipt replaces earlier amounts on the original receipt date.`);
+    const byFile = new Map<string, ParsedCodexUsageEvent[]>();
+    for (const { event, first } of receipts.values()) {
+        if (!hasUsage(event.usage)) continue;
+        const events = byFile.get(event.filePath) || [];
+        events.push({ ...event, timestamp: first.timestamp, eventTime: first.eventTime, localDate: first.localDate });
+        byFile.set(event.filePath, events);
+    }
+    let ambiguous = 0;
+    const reconciled = parsedFiles.map(file => {
+        const receiptIndexes = new Map<string, number>();
+        file.events.forEach((event, index) => {
+            if (event.source !== 'usage-record') return;
+            const id = receiptIdentity(event, file);
+            if (!receiptIndexes.has(id)) receiptIndexes.set(id, index);
+        });
+        const usedReceipts = new Set<string>();
+        let lastMatchedIndex = -1;
+        let counterOffset: CodexUsageTokenTotals | undefined;
+        const legacy = file.events.filter((event, eventIndex) => {
+            if (event.source !== 'token-count') return false;
+            const matches = receiptAliases(event, file).map(key => new Set([...(aliases.get(key) || [])].filter(id => {
+                const receipt = receipts.get(id)!.event;
+                return !(event.responseId && receipt.responseId && event.responseId !== receipt.responseId)
+                    && !(event.turnId && receipt.turnId && event.turnId !== receipt.turnId)
+                    && !(event.threadId && receipt.threadId && event.threadId !== receipt.threadId);
+            }))).filter(ids => ids.size);
+            const identity = matches.find(ids => ids!.size === 1)?.values().next().value;
+            let pairedIndex = identity === undefined ? -1 : receiptIndexes.get(identity) ?? -1;
+            if (pairedIndex < 0 && counterOffset && event.cumulativeUsage) {
+                // Some native versions omit compaction from legacy counters.
+                // Pair adjacent representations only when the cumulative offset
+                // is fully explained by unpaired receipts since a proven pair.
+                // Equal amounts or a shared turn alone do not prove a request.
+                const candidates = [eventIndex - 1, eventIndex + 1].filter(index => {
+                    const candidate = file.events[index];
+                    if (!candidate || candidate.source !== 'usage-record' || !candidate.cumulativeUsage
+                        || usedReceipts.has(receiptIdentity(candidate, file)) || !usageEquals(candidate.usage, event.usage)
+                        || (candidate.responseId && event.responseId && candidate.responseId !== event.responseId)
+                        || (candidate.threadId && event.threadId && candidate.threadId !== event.threadId)
+                        || (candidate.turnId && event.turnId && candidate.turnId !== event.turnId)) return false;
+                    if (!Object.keys(counterOffset!).every(key => candidate.cumulativeUsage![key as keyof CodexUsageTokenTotals]
+                        >= event.cumulativeUsage![key as keyof CodexUsageTokenTotals])) return false;
+                    const expected = { ...counterOffset! };
+                    const accounted = new Set<string>();
+                    for (let earlierIndex = lastMatchedIndex + 1; earlierIndex < index; earlierIndex++) {
+                        const earlier = file.events[earlierIndex];
+                        if (earlier.source !== 'usage-record') continue;
+                        const earlierId = receiptIdentity(earlier, file);
+                        if (usedReceipts.has(earlierId) || accounted.has(earlierId)) continue;
+                        accounted.add(earlierId);
+                        for (const key of Object.keys(expected) as Array<keyof CodexUsageTokenTotals>) expected[key] += earlier.usage[key];
+                    }
+                    return usageEquals(expected, subtractUsage(candidate.cumulativeUsage, event.cumulativeUsage));
+                });
+                if (candidates.length === 1) pairedIndex = candidates[0];
+                else if (candidates.length > 1) ambiguous++;
+            }
+            if (identity !== undefined || pairedIndex >= 0) {
+                if (pairedIndex >= 0) {
+                    const paired = file.events[pairedIndex];
+                    usedReceipts.add(receiptIdentity(paired, file));
+                    if (event.cumulativeUsage && paired.cumulativeUsage && Object.keys(event.cumulativeUsage)
+                        .every(key => paired.cumulativeUsage![key as keyof CodexUsageTokenTotals]
+                            >= event.cumulativeUsage![key as keyof CodexUsageTokenTotals])) {
+                        counterOffset = subtractUsage(paired.cumulativeUsage, event.cumulativeUsage);
+                        lastMatchedIndex = pairedIndex;
+                    } else counterOffset = undefined;
+                }
+                return false;
+            }
+            if (matches.length) ambiguous++;
+            return true;
+        });
+        return { ...file, events: [...legacy, ...(byFile.get(file.filePath) || [])].sort((a, b) => a.eventTime - b.eventTime) };
+    });
+    if (ambiguous) warnings.push(`Codex usage could not uniquely associate ${ambiguous} legacy event(s) with response receipts; both were retained.`);
+    return reconciled;
+}
+
+function dedupeCodexUsageEvents(parsedFiles: ParsedCodexUsageFile[], warnings: string[]): ParsedCodexUsageEvent[] {
+    parsedFiles = reconcileUsageReceipts(parsedFiles, warnings);
     const filesBySessionId = new Map<string, ParsedCodexUsageFile>();
     for (const parsedFile of parsedFiles) {
         if (parsedFile.metadata.sessionId && (
@@ -740,7 +948,9 @@ function dedupeCodexUsageEvents(parsedFiles: ParsedCodexUsageFile[]): ParsedCode
     const events: ParsedCodexUsageEvent[] = [];
     for (const parsedFile of parsedFiles) {
         for (const event of replayFilteredEvents(parsedFile, filesBySessionId)) {
-            const fingerprint = usageFingerprint(event);
+            const fingerprint = event.source === 'usage-record'
+                ? `receipt\0${receiptIdentity(event, parsedFile)}`
+                : `${usageScope(parsedFile)}\0${event.responseId || usageFingerprint(event)}`;
             if (fingerprints.has(fingerprint)) {
                 continue;
             }
@@ -887,7 +1097,7 @@ export async function collectCodexUsageSnapshot(options: CollectCodexUsageOption
     let latestRateLimitsTime = 0;
 
     const parsedFiles = await parseCodexUsageFiles(files, timeZone, warnings, options.ripgrepCommands);
-    const usageEvents = dedupeCodexUsageEvents(parsedFiles);
+    const usageEvents = dedupeCodexUsageEvents(parsedFiles, warnings);
     for (const event of usageEvents) {
         if (event.localDate < firstDateKey || event.localDate > todayKey) {
             continue;

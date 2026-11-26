@@ -18,6 +18,27 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    codexActivity: {
+        previousDay: '前一天',
+        nextDay: '後一天',
+        detailsLabel: '所選日期明細',
+        metricInputShort: '入',
+        metricCacheShort: '快',
+        metricOutputShort: '出',
+        scope: '此機器全部 Codex 活動',
+        total: '總處理量',
+        uncachedInput: '非快取輸入',
+        cacheRead: '快取讀取',
+        output: '輸出',
+        showDetails: '查看明細',
+        hideDetails: '收起明細',
+        processed: 'token（含快取讀取）',
+        incomplete: '部分用量記錄需要核對',
+        noActivity: '暫無活動記錄',
+        events: '用量記錄',
+        cacheNote: '輸入包含快取讀取，推理已計入輸出。token 數不能直接換算為訂閱額度或實際扣費。',
+    },
+
     delegation: {
         roleSettingsInvalidResponse: "角色回覆與所請求的機器或角色不符。",
         chooseModel: "選擇已知模型",

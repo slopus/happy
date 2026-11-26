@@ -27,7 +27,11 @@ vi.mock('react-native-unistyles', () => ({
 vi.mock('@/text', () => ({
     t: (key: string) => key === 'settings.usage' ? 'Usage' : 'Close usage',
 }));
-vi.mock('./UsagePanel', () => ({ UsagePanel: () => <button data-testid="usage-action">usage</button> }));
+vi.mock('./UsagePanel', () => ({ UsagePanel: () => <>
+    <button data-testid="usage-action">usage</button>
+    <div inert><button data-testid="inert-action">hidden panel control</button></div>
+    <div aria-hidden="true"><button data-testid="hidden-action">hidden calendar control</button></div>
+</> }));
 
 import { UsageDialog } from './UsageDialog';
 

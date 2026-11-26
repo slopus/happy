@@ -19,6 +19,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    codexActivity: { ...projectGoalsBase.codexActivity },
+
     delegation: { ...projectGoalsBase.delegation },
 
     thinkingMode: {

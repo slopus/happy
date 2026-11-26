@@ -16,6 +16,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const ca: TranslationStructure = {
+    codexActivity: { ...projectGoalsBase.codexActivity },
+
     delegation: { ...projectGoalsBase.delegation },
 
     thinkingMode: {

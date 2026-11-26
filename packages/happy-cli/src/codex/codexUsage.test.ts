@@ -43,6 +43,28 @@ function sessionMeta(timestamp: string, id: string, parentId?: string): unknown 
     };
 }
 
+function usageRecord(
+    timestamp: string,
+    threadId: string,
+    responseId: string,
+    usage: Record<string, number>,
+    cumulative: Record<string, number> = usage,
+) {
+    return {
+        timestamp,
+        type: 'token_usage_record',
+        payload: {
+            thread_id: threadId,
+            session_id: `connection-${threadId}`,
+            turn_id: 'turn',
+            response_id: responseId,
+            usage: { cached_input_tokens: 0, reasoning_output_tokens: 0, ...usage },
+            turn_token_usage: { cached_input_tokens: 0, reasoning_output_tokens: 0, ...cumulative },
+            thread_token_usage: { cached_input_tokens: 0, reasoning_output_tokens: 0, ...cumulative },
+        },
+    };
+}
+
 describe('collectCodexUsageSnapshot', () => {
     const created: string[] = [];
 
@@ -623,10 +645,12 @@ describe('collectCodexUsageSnapshot', () => {
         };
 
         writeJsonl(join(sessionsDir, 'first.jsonl'), [
+            sessionMeta('2026-08-30T04:58:00.000Z', 'copied-session'),
             { timestamp: '2026-08-30T04:59:00.000Z', type: 'turn_context', payload: { model: 'gpt-5.6-sol' } },
             tokenCount('2026-08-30T05:00:00.000Z', usage),
         ]);
         writeJsonl(join(sessionsDir, 'copy.jsonl'), [
+            sessionMeta('2026-08-30T04:58:00.000Z', 'copied-session'),
             tokenCount('2026-08-30T05:00:00.000Z', usage, undefined, usage, 'gpt-5.6-sol'),
         ]);
 
@@ -637,5 +661,271 @@ describe('collectCodexUsageSnapshot', () => {
         });
 
         expect(snapshot.today).toMatchObject({ totalTokens: 88, tokenCountEvents: 1, sessions: 1 });
+    });
+
+    it.each(['stream', 'ripgrep'] as const)('counts standalone and compaction receipts exactly once (%s)', async (parser) => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-native-receipts-'));
+        created.push(codexHome);
+        const first = { input_tokens: 100, cached_input_tokens: 60, output_tokens: 10, total_tokens: 110 };
+        const compactUsage = { input_tokens: 40, cached_input_tokens: 20, output_tokens: 5, total_tokens: 45 };
+        const cumulative = { input_tokens: 140, cached_input_tokens: 80, output_tokens: 15, total_tokens: 155 };
+        const compact = usageRecord('2026-08-30T05:02:00.000Z', 'thread', 'compact-response', compactUsage, cumulative);
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/native.jsonl'), [
+            sessionMeta('2026-08-30T04:58:00Z', 'thread'),
+            ...(parser === 'ripgrep' ? [{ type: 'padding', text: 'x'.repeat(16 * 1024 * 1024) }] : []),
+            usageRecord('2026-08-30T05:01:00.000Z', 'thread', 'first-response', first),
+            compact,
+            { timestamp: '2026-08-30T05:02:00.010Z', type: 'compacted', payload: {
+                compaction_response_id: 'compact-response', latest_token_usage_record: compact.payload,
+            } },
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'),
+            timeZone: 'UTC', ripgrepCommands: parser === 'ripgrep' ? ['rg'] : [] });
+        expect(snapshot.today).toMatchObject({ inputTokens: 140, cachedInputTokens: 80, outputTokens: 15,
+            totalTokens: 155, tokenCountEvents: 2, sessions: 1 });
+        expect(snapshot.warnings).toEqual([]);
+    });
+
+    it('does not charge retained compaction snapshots as new requests', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-compact-receipt-'));
+        created.push(codexHome);
+        const compact = usageRecord('2026-08-30T05:02:00Z', 'thread', 'compact-response', {
+            input_tokens: 30, output_tokens: 5, total_tokens: 35,
+        });
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/compact.jsonl'), [
+            sessionMeta('2026-08-30T04:00:00Z', 'thread'),
+            { timestamp: compact.timestamp, type: 'compacted', payload: {
+                compaction_response_id: 'compact-response', latest_token_usage_record: compact.payload,
+            } },
+            // A retained previous receipt is not evidence of another compact request.
+            { timestamp: '2026-08-30T05:03:00Z', type: 'compacted', payload: {
+                compaction_response_id: 'different-response', latest_token_usage_record: compact.payload,
+            } },
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toBeNull();
+    });
+
+    it.each([false, true])('reconciles token_count with response receipts in either order (receipt first: %s)', async (receiptFirst) => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-dual-usage-'));
+        created.push(codexHome);
+        const usage = { input_tokens: 100, cached_input_tokens: 80, output_tokens: 10, total_tokens: 110 };
+        const legacy = tokenCount('2026-08-30T05:00:00.010Z', usage);
+        const receipt = usageRecord('2026-08-30T05:00:00Z', 'thread', 'response', usage);
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/dual.jsonl'), [
+            sessionMeta('2026-08-30T04:00:00Z', 'thread'),
+            ...(receiptFirst ? [receipt, legacy] : [legacy, receipt]),
+            tokenCount('2026-08-30T05:00:01Z', usage),
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 110, cachedInputTokens: 80, tokenCountEvents: 1 });
+        expect(snapshot.warnings).toEqual([]);
+    });
+
+    it('deduplicates receipts across retained copies and preserves distinct response identities', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-copied-receipts-'));
+        created.push(codexHome);
+        const copy = join(codexHome, 'retained-home');
+        const usage = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        const rows = [sessionMeta('2026-08-30T04:00:00Z', 'thread'),
+            usageRecord('2026-08-30T05:00:00Z', 'thread', 'first-response', usage),
+            usageRecord('2026-08-30T05:00:00Z', 'thread', 'second-response', usage),
+        ];
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/source.jsonl'), rows);
+        writeJsonl(join(copy, 'sessions/2026/08/30/copy.jsonl'), rows);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, additionalCodexHomes: [copy],
+            now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 220, tokenCountEvents: 2, sessions: 1 });
+    });
+
+    it('replaces revised response usage while retaining the original local day', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-revised-receipt-'));
+        created.push(codexHome);
+        const initial = { input_tokens: 100, cached_input_tokens: 60, output_tokens: 10, total_tokens: 110 };
+        const revised = { input_tokens: 100, cached_input_tokens: 70, output_tokens: 15, total_tokens: 115 };
+        writeJsonl(join(codexHome, 'sessions/2026/08/29/revised.jsonl'), [
+            sessionMeta('2026-08-29T04:00:00Z', 'thread'),
+            tokenCount('2026-08-29T15:59:59.990Z', initial),
+            usageRecord('2026-08-29T15:59:59.995Z', 'thread', 'response', initial),
+            usageRecord('2026-08-29T16:00:00.010Z', 'thread', 'response', revised),
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T04:00:00Z'), timeZone: 'Asia/Shanghai' });
+        expect(snapshot.yesterday).toMatchObject({ date: '2026-08-29', totalTokens: 115, cachedInputTokens: 70, tokenCountEvents: 1 });
+        expect(snapshot.today).toBeNull();
+        expect(snapshot.warnings).toContainEqual(expect.stringContaining('latest receipt replaces earlier amounts on the original receipt date'));
+    });
+
+    it('keeps usage from independent sessions even when timestamps and token values coincide', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-distinct-sessions-'));
+        created.push(codexHome);
+        for (const id of ['first-thread', 'second-thread']) writeJsonl(join(codexHome, `sessions/2026/08/30/${id}.jsonl`), [
+            sessionMeta('2026-08-30T04:00:00Z', id),
+            tokenCount('2026-08-30T05:00:00Z', { input_tokens: 100, output_tokens: 10, total_tokens: 110 }),
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 220, tokenCountEvents: 2, sessions: 2 });
+    });
+
+    it.each([false, true])('does not infer replay from fast normal subagent requests (parent found: %s)', async (withParent) => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-real-subagent-'));
+        created.push(codexHome);
+        const first = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        const second = { input_tokens: 50, output_tokens: 5, total_tokens: 55 };
+        if (withParent) writeJsonl(join(codexHome, 'sessions/2026/08/29/parent.jsonl'), [
+            sessionMeta('2026-08-29T04:00:00Z', 'parent'), tokenCount('2026-08-29T05:00:00Z', first),
+        ]);
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/child.jsonl'), [
+            { timestamp: '2026-08-30T04:00:00Z', type: 'session_meta', payload: { id: 'child',
+                source: { subagent: { thread_spawn: { parent_thread_id: 'parent' } } } } },
+            tokenCount('2026-08-30T05:00:00Z', first),
+            tokenCount('2026-08-30T05:00:00.500Z', second,
+                undefined, { input_tokens: 150, output_tokens: 15, total_tokens: 165 }),
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 165, tokenCountEvents: 2, sessions: 1 });
+    });
+
+    it('reports a cumulative gap or reset without silently inventing individual requests', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-counter-diagnostics-'));
+        created.push(codexHome);
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/gap.jsonl'), [
+            tokenCount('2026-08-30T05:00:00Z', { input_tokens: 100, total_tokens: 100 }),
+            tokenCount('2026-08-30T05:01:00Z', { input_tokens: 50, total_tokens: 50 }, undefined, { input_tokens: 250, total_tokens: 250 }),
+            tokenCount('2026-08-30T05:02:00Z', { input_tokens: 20, total_tokens: 20 }),
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today?.totalTokens).toBe(170);
+        expect(snapshot.warnings).toContainEqual(expect.stringContaining('cumulative usage differs'));
+        expect(snapshot.warnings).toContainEqual(expect.stringContaining('cumulative counters decreased'));
+    });
+
+    it('honors imported receipt boundaries and keeps the next account response', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-imported-receipts-'));
+        created.push(codexHome);
+        const file = join(codexHome, 'sessions/2026/08/30/imported.jsonl');
+        const usage = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        const cumulative = { input_tokens: 200, output_tokens: 20, total_tokens: 220 };
+        writeJsonl(file, [sessionMeta('2026-08-30T04:00:00Z', 'thread', 'old-parent'),
+            usageRecord('2026-08-30T05:00:00Z', 'thread', 'imported-response', usage),
+            usageRecord('2026-08-30T05:01:00Z', 'thread', 'new-response', usage, cumulative),
+            tokenCount('2026-08-30T05:01:00.010Z', usage, undefined, cumulative),
+        ]);
+        writeFileSync(`${file}.paws-imported-usage.json`, JSON.stringify({ version: 1, ranges: [[0, 2]] }));
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 110, tokenCountEvents: 1, sessions: 1 });
+        expect(snapshot.warnings).toEqual([]);
+    });
+
+    it('reconciles legacy counters that omit an independently recorded compaction', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-compact-counter-domain-'));
+        created.push(codexHome);
+        const first = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        const compact = { input_tokens: 40, output_tokens: 5, total_tokens: 45 };
+        const next = { input_tokens: 50, output_tokens: 5, total_tokens: 55 };
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/domain.jsonl'), [
+            sessionMeta('2026-08-30T04:00:00Z', 'thread'),
+            usageRecord('2026-08-30T05:00:00Z', 'thread', 'first', first),
+            tokenCount('2026-08-30T05:00:00.010Z', first),
+            usageRecord('2026-08-30T05:01:00Z', 'thread', 'compact', compact,
+                { input_tokens: 140, output_tokens: 15, total_tokens: 155 }),
+            usageRecord('2026-08-30T05:02:00Z', 'thread', 'next', next,
+                { input_tokens: 190, output_tokens: 20, total_tokens: 210 }),
+            tokenCount('2026-08-30T05:02:00.010Z', next, undefined,
+                { input_tokens: 150, output_tokens: 15, total_tokens: 165 }),
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 210, tokenCountEvents: 3 });
+        expect(snapshot.warnings).toEqual([]);
+    });
+
+    it.each([false, true])('preserves an independent legacy request of equal size next to a receipt (legacy first: %s)', async (legacyFirst) => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-independent-request-'));
+        created.push(codexHome);
+        const usage = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        const twice = { input_tokens: 200, output_tokens: 20, total_tokens: 220 };
+        const threeTimes = { input_tokens: 300, output_tokens: 30, total_tokens: 330 };
+        const unpairedLegacy = tokenCount('2026-08-30T05:01:00Z', usage, undefined, legacyFirst ? twice : threeTimes);
+        const unpairedReceipt = usageRecord('2026-08-30T05:01:00.010Z', 'thread', 'independent-response', usage,
+            legacyFirst ? threeTimes : twice);
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/equal-requests.jsonl'), [
+            sessionMeta('2026-08-30T04:00:00Z', 'thread'),
+            usageRecord('2026-08-30T05:00:00Z', 'thread', 'first-response', usage),
+            tokenCount('2026-08-30T05:00:00.010Z', usage),
+            ...(legacyFirst ? [unpairedLegacy, unpairedReceipt] : [unpairedReceipt, unpairedLegacy]),
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 330, tokenCountEvents: 3 });
+    });
+
+    it('keeps an identified child response after removing copied parent receipts', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-child-receipt-'));
+        created.push(codexHome);
+        const usage = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        const parent = usageRecord('2026-08-30T05:00:00Z', 'parent', 'parent-response', usage);
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/parent.jsonl'), [
+            sessionMeta('2026-08-30T04:00:00Z', 'parent'), parent,
+        ]);
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/child.jsonl'), [
+            sessionMeta('2026-08-30T05:01:00Z', 'child', 'parent'), parent,
+            usageRecord('2026-08-30T05:02:00Z', 'child', 'child-response', usage),
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 220, tokenCountEvents: 2, sessions: 2 });
+    });
+
+    it('never overrides a distinct explicit response identity with equal timestamps or amounts', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-distinct-response-'));
+        created.push(codexHome);
+        const usage = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        const legacy = tokenCount('2026-08-30T05:00:00Z', usage, undefined,
+            { input_tokens: 200, output_tokens: 20, total_tokens: 220 }) as { payload: Record<string, unknown> };
+        legacy.payload.response_id = 'second-response';
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/identities.jsonl'), [
+            sessionMeta('2026-08-30T04:00:00Z', 'thread'),
+            usageRecord('2026-08-30T05:00:00Z', 'thread', 'first-response', usage), legacy,
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 220, tokenCountEvents: 2 });
+    });
+
+    it('accepts an explicit zero revision but never clears usage from incomplete receipts', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-zero-revision-'));
+        created.push(codexHome);
+        const positive = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        const incomplete = usageRecord('2026-08-30T05:03:00Z', 'thread', 'kept-response', positive);
+        const incompleteUsage: Record<string, number> = incomplete.payload.usage;
+        delete incompleteUsage.output_tokens;
+        writeJsonl(join(codexHome, 'sessions/2026/08/30/revision.jsonl'), [
+            sessionMeta('2026-08-30T04:00:00Z', 'thread'),
+            usageRecord('2026-08-30T05:00:00Z', 'thread', 'cancelled-response', positive),
+            usageRecord('2026-08-30T05:01:00Z', 'thread', 'cancelled-response', { input_tokens: 0, output_tokens: 0, total_tokens: 0 }),
+            usageRecord('2026-08-30T05:02:00Z', 'thread', 'kept-response', positive),
+            incomplete,
+            { timestamp: '2026-08-30T05:04:00Z', type: 'token_usage_record', payload: { thread_id: 'thread', response_id: 'kept-response', usage: {} } },
+        ]);
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC' });
+        expect(snapshot.today).toMatchObject({ totalTokens: 110, tokenCountEvents: 1 });
+        expect(snapshot.warnings).toContainEqual(expect.stringContaining('receipts revised 1 response'));
+        expect(snapshot.warnings).toContainEqual(expect.stringContaining('Incomplete Codex usage receipts ignored for 2 event'));
+    });
+
+    it('recognizes reordered JSON keys and whitespace without importing nested history or quoted records', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-reordered-native-json-'));
+        created.push(codexHome);
+        const file = join(codexHome, 'sessions/2026/08/30/reordered.jsonl');
+        const receipt = usageRecord('2026-08-30T05:00:00Z', 'thread', 'response', { input_tokens: 100, output_tokens: 10, total_tokens: 110 });
+        const reordered = (value: unknown): unknown => Array.isArray(value) ? value.map(reordered)
+            : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reordered(item)])) : value;
+        const rows = [sessionMeta('2026-08-30T04:00:00Z', 'thread'), receipt,
+            tokenCount('2026-08-30T05:00:00.010Z', { input_tokens: 100, output_tokens: 10, total_tokens: 110 }),
+            { timestamp: '2026-08-30T05:01:00Z', type: 'compacted', payload: { replacement_history: [receipt], text: 'x'.repeat(16 * 1024 * 1024) } },
+            { timestamp: '2026-08-30T05:02:00Z', type: 'event_msg', payload: { type: 'agent_message', message: JSON.stringify(receipt) } },
+        ];
+        writeJsonl(file, rows.map(reordered));
+        const raw = (await import('node:fs/promises')).readFile;
+        writeFileSync(file, (await raw(file, 'utf8')).replaceAll('\":', '\": '));
+        const snapshot = await collectCodexUsageSnapshot({ codexHome, now: new Date('2026-08-30T12:00:00Z'), timeZone: 'UTC', ripgrepCommands: ['rg'] });
+        expect(snapshot.today).toMatchObject({ totalTokens: 110, tokenCountEvents: 1, sessions: 1 });
+        expect(snapshot.warnings).toEqual([]);
     });
 });

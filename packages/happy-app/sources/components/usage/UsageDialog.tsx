@@ -70,7 +70,7 @@ export const UsageDialog = React.memo(function UsageDialog(props: {
         )).filter((element) => (
             element.tabIndex >= 0
             && !element.hasAttribute('disabled')
-            && element.getAttribute('aria-hidden') !== 'true'
+            && !element.closest('[inert], [aria-hidden="true"]')
         ));
         const first = focusable[0];
         const last = focusable[focusable.length - 1];

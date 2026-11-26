@@ -31,6 +31,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
+    codexActivity: { ...projectGoalsBase.codexActivity },
+
     delegation: { ...projectGoalsBase.delegation },
 
     thinkingMode: baseEn.thinkingMode,
