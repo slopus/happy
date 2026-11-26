@@ -1,10 +1,17 @@
 /** Bounded resource transfer for one owner. Native connection URLs stay on the execution machine. */
 import { z } from 'zod';
-import { MotionStudioAssetSchema, type MotionStudioOpen } from '@slopus/happy-wire';
+import { MotionStudioAssetSchema, MotionStudioOpenSchema, type MotionStudioOpen } from '@slopus/happy-wire';
 import type { motionWorkbenchRequest } from '@/sync/motionWorkbench.web';
+import { studioResourceCache, type StudioResourceCache, type StudioResourceCacheLease } from './studioResourceCache.web';
 
 export type StudioAssetBytes = { id: string; mime: string; bytes: ArrayBuffer };
 export type StudioBundle = { script: string; css: string; licenseText: string; runtimeVersion: string };
+export type StudioCacheScope = {
+    serverUrl: string; accountKey: string; accountScope: string; accountGeneration: string; machineId: string; sessionRoot: string;
+    // Account validity is independent of the mounted editor. Closing an editor keeps reusable bytes.
+    isCurrent(): boolean;
+};
+type StudioClientOptions = { cacheScope?: StudioCacheScope; resourceCache?: StudioResourceCache };
 const bundleSchema = z.object({ script: z.string().min(1), css: z.string(), licenseText: z.string(), runtimeVersion: z.literal('0.1.8') });
 const nativeAssetSchema = z.object({ reference: z.object({ $asset: z.string() }), mime: z.string(), bytes: z.number() });
 const bufferOf = (bytes: Uint8Array): ArrayBuffer => { const buffer = new ArrayBuffer(bytes.length); new Uint8Array(buffer).set(bytes); return buffer; };
@@ -12,14 +19,28 @@ async function hash(bytes: Uint8Array): Promise<string> {
     return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bufferOf(bytes))), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function createStudioClient(sessionId: string, isCurrent: () => boolean, rpc: typeof motionWorkbenchRequest) {
+export function createStudioClient(sessionId: string, isCurrent: () => boolean, rpc: typeof motionWorkbenchRequest, options: StudioClientOptions = {}) {
     let descriptor: MotionStudioOpen | undefined, closed = false, loadedBytes = 0, started = false;
+    let cached: StudioResourceCacheLease | undefined;
+    const cache = options.resourceCache ?? studioResourceCache;
+    cache.prune();
     const plannedBindingId = crypto.randomUUID();
     const assets = new Map<string, StudioAssetBytes>();
-    const active = () => { if (closed || !isCurrent()) throw new Error('Motion project owner changed'); };
-    async function resource(resourceId: string, bytes: number, expectedHash: string): Promise<Uint8Array> {
+    const active = () => {
+        if (options.cacheScope && !options.cacheScope.isCurrent()) { cached?.invalidate(); throw new Error('Motion project owner changed'); }
+        if (closed || !isCurrent()) throw new Error('Motion project owner changed');
+    };
+    async function resource(resourceId: string, bytes: number, expectedHash: string, mediaType: string): Promise<Uint8Array> {
         active();
         if (!descriptor || bytes < 0 || bytes > 64 * 1024 * 1024) throw new Error('Invalid editor resource');
+        const resourceKey = JSON.stringify([descriptor.runtimeVersion, resourceId === 'bundle' ? 'bundle' : 'asset', expectedHash, bytes, mediaType]);
+        const reused = cached?.get(resourceKey);
+        if (reused) {
+            const verified = reused.length === bytes && await hash(reused) === expectedHash;
+            active();
+            if (verified) return reused;
+            cached?.remove(resourceKey);
+        }
         const output = new Uint8Array(bytes);
         // Known content length bounds this transfer. There are no status queries or retries.
         for (let offset = 0; offset < bytes;) {
@@ -32,6 +53,7 @@ export function createStudioClient(sessionId: string, isCurrent: () => boolean, 
             output.set(decoded, offset); offset += decoded.length;
         }
         if (await hash(output) !== expectedHash) throw new Error('Editor resource integrity failed');
+        active(); cached?.putVerified(resourceKey, output);
         return output;
     }
     async function loadAssets(input: unknown): Promise<StudioAssetBytes[]> {
@@ -46,7 +68,7 @@ export function createStudioClient(sessionId: string, isCurrent: () => boolean, 
         await Promise.all(Array.from({ length: Math.min(4, missing.length) }, async () => {
             for (;;) {
                 const asset = missing[next++]; if (!asset) return;
-                const bytes = await resource('asset:' + asset.id, asset.bytes, asset.id);
+                const bytes = await resource('asset:' + asset.id, asset.bytes, asset.id, asset.mime);
                 active(); assets.set(asset.id, { id: asset.id, mime: asset.mime, bytes: bufferOf(bytes) });
             }
         }));
@@ -62,11 +84,20 @@ export function createStudioClient(sessionId: string, isCurrent: () => boolean, 
         async open(projectPath: string) {
             active();
             started = true;
-            const opened = await rpc(sessionId, 'motionWorkbenchOpen', { projectPath, bindingId: plannedBindingId });
+            // Always authorize a new binding and read current state/manifests, even on a warm reopen.
+            const opened = MotionStudioOpenSchema.parse(await rpc(sessionId, 'motionWorkbenchOpen', { projectPath, bindingId: plannedBindingId }));
             if (opened.bindingId !== plannedBindingId) throw new Error('Editor binding does not match this owner');
             if (closed || !isCurrent()) { void rpc(sessionId, 'motionWorkbenchClose', { bindingId: plannedBindingId }).catch(() => {}); active(); }
+            const projectId = await hash(new TextEncoder().encode(JSON.stringify(['motionharness', opened.projectPath])));
+            active();
+            if (projectId !== opened.projectId) throw new Error('Editor project identity does not match its path');
             descriptor = opened;
-            const compressed = await resource('bundle', opened.bundle.bytes, opened.bundle.sha256);
+            const scope = options.cacheScope;
+            if (scope && [scope.serverUrl, scope.accountKey, scope.accountScope, scope.accountGeneration, scope.machineId, scope.sessionRoot].every(value => !!value)) {
+                cached = cache.acquire(JSON.stringify([scope.serverUrl, scope.accountKey, scope.accountScope, scope.accountGeneration,
+                    scope.machineId, scope.sessionRoot, sessionId, projectPath, opened.projectPath, opened.projectId, opened.runtimeVersion]), scope.isCurrent);
+            }
+            const compressed = await resource('bundle', opened.bundle.bytes, opened.bundle.sha256, opened.bundle.encoding);
             const reader = new Blob([bufferOf(compressed)]).stream().pipeThrough(new DecompressionStream('gzip')).getReader();
             const chunks: Uint8Array[] = []; let size = 0;
             try {
@@ -97,6 +128,7 @@ export function createStudioClient(sessionId: string, isCurrent: () => boolean, 
         getBindingId: () => plannedBindingId,
         async close() {
             if (closed) return true; closed = true; assets.clear();
+            if (options.cacheScope && !options.cacheScope.isCurrent()) cached?.invalidate();
             if (!started) return true;
             try { await rpc(sessionId, 'motionWorkbenchClose', { bindingId: plannedBindingId }); return true; } catch { return false; }
         },

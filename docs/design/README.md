@@ -9,6 +9,7 @@
 | 新页面、组件、改版或视觉评审 | [主题与视觉基础](theme-and-visual-standard.md) |
 | 侧栏、详情替换或照片皮肤表面 | [宿主表面与普通 surface 的边界](theme-and-visual-standard.md#宿主表面与普通-surface-的边界) |
 | 对话中查看角色、设置或其他辅助内容 | [对话流程连续性](overlay-interaction-standard.md#会话中的辅助内容不打断主流程) |
+| 每次需求更新及任何输入区域增量 | [输入区域变更原则](composer-interaction-standard.md)，新增内容、位置和触发方式须有明确确认 |
 | 菜单、下拉、输入建议、弹窗或 Sheet | [浮层与关闭交互](overlay-interaction-standard.md) |
 | 清单/Tag 分组与详情 | [PC Tag 清单分组](pc-tag-list-groups.md)，作为该功能专用规则，不泛化为所有页面结构 |
 

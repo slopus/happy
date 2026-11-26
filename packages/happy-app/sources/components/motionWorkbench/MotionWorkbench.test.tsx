@@ -13,7 +13,7 @@ vi.mock('react-native', () => ({ View: 'View', ScrollView: 'ScrollView', Activit
 vi.mock('react-native-unistyles', () => ({ useUnistyles: () => ({ theme: { dark: true, colors: { surface: 'surface', divider: 'divider', text: 'text', textSecondary: 'secondary', textDestructive: 'error' } } }) }));
 vi.mock('@/components/StyledText', () => ({ Text: 'Text' }));
 vi.mock('@/components/fileWorkspace/WorkspaceButton', () => ({ WorkspaceButton: 'WorkspaceButton' }));
-vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => state.current, getRuntimeAccountSelection: () => ({ key: 'account' }) }));
+vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => state.current, getRuntimeAccountSelection: () => ({ key: 'account', scope: 'account-scope', generation: 'account-generation' }) }));
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://paws.invalid' }));
 vi.mock('@/utils/sessionUtils', () => ({ resolveSessionState: (session: any) => ({ isConnected: session?.connected !== false }), getSessionName: (session: any) => session.title ?? session.id }));
 vi.mock('@/sync/storage', () => ({ useSession: (id: string) => state.sessions[id], useAllSessions: () => Object.values(state.sessions), useSocketStatus: () => ({ status: 'connected' }), storage: { getState: () => ({ sessions: state.sessions }) } }));
@@ -27,10 +27,10 @@ vi.mock('@/sync/ops', () => ({ machineSpawnNewSession: state.spawn }));
 vi.mock('@/sync/sync', () => ({ sync: { ensureSessionHydrated: state.hydrate } }));
 vi.mock('./studioClient.web', () => ({
     motionStudioFrameHtml: (_bundle: unknown, nonce: string) => { state.nonce = nonce; return '<html></html>'; },
-    createStudioClient: () => {
+    createStudioClient: (_session: string, _current: unknown, _rpc: unknown, options: any) => {
         const id = `00000000-0000-4000-8000-${String(state.clients.length + 1).padStart(12, '0')}`;
         const client = { open: vi.fn(async () => ({ descriptor: { bindingId: id, state: { document: { title: 'Paws 宣传片' } } }, bundle: { licenseText: 'GPL' }, assets: [] })),
-            close: vi.fn(async () => true), getBindingId: () => id, state: vi.fn(), operation: vi.fn() };
+            close: vi.fn(async () => true), getBindingId: () => id, state: vi.fn(), operation: vi.fn(), cacheScope: options?.cacheScope };
         state.clients.push(client); return client;
     },
 }));
@@ -78,6 +78,20 @@ async function chooseTarget(id = 'selected') {
 async function openReview() { await act(async () => button('motion-review-open').props.onPress()); }
 
 describe('workbench ownership and AI submission', () => {
+    it('passes the same resource scope across reopen independently of mount and binding identities', async () => {
+        await mount();
+        const first = state.clients[0];
+        expect(first.cacheScope).toMatchObject({ serverUrl: 'https://paws.invalid', accountKey: 'account', accountScope: 'account-scope',
+            accountGeneration: 'account-generation', machineId: 'machine', sessionRoot: '/owned' });
+        await act(async () => renderer.unmount()); renderer = null;
+        expect(first.cacheScope.isCurrent()).toBe(true);
+        await mount();
+        const second = state.clients[1];
+        const { isCurrent: _a, ...scopeA } = first.cacheScope, { isCurrent: _b, ...scopeB } = second.cacheScope;
+        expect(scopeB).toEqual(scopeA); expect(first.getBindingId()).not.toBe(second.getBindingId());
+        state.session.metadata.machineId = 'another-machine';
+        expect(first.cacheScope.isCurrent()).toBe(false); expect(second.cacheScope.isCurrent()).toBe(false);
+    });
     it('publishes the saved project title on open and on a native edit or refresh', async () => {
         const title = vi.fn();
         await mount(false, title);

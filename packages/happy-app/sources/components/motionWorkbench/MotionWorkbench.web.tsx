@@ -24,6 +24,13 @@ import type { MotionWorkbenchHandle, MotionWorkbenchProps } from './types';
 const operationMessage = z.object({ id: z.number().int().positive().safe(), type: z.enum(['state', 'operation']), input: z.unknown() });
 const messageOf = (error: unknown) => error instanceof Error ? error.message : String(error);
 const liveOwners = new Map<string, object>();
+const resourceOwnerOf = (sessionId: string) => {
+    const account = getRuntimeAccountSelection(), metadata = storage.getState().sessions[sessionId]?.metadata;
+    return account && metadata?.machineId && metadata.path ? {
+        serverUrl: getServerUrl(), accountKey: account.key, accountScope: account.scope, accountGeneration: account.generation,
+        machineId: metadata.machineId, sessionRoot: metadata.path,
+    } : undefined;
+};
 
 export const MotionWorkbench = React.forwardRef<MotionWorkbenchHandle, MotionWorkbenchProps>(function MotionWorkbench(props, ref) {
     const [revision, setRevision] = React.useState(0);
@@ -87,6 +94,7 @@ const MotionWorkbenchOwner = React.forwardRef<MotionWorkbenchHandle, MotionWorkb
     const connectFrameRef = React.useRef<(incoming: MessagePort) => void>(() => {});
     const storagePrefix = 'paws.motion.' + JSON.stringify([getServerUrl(), getRuntimeAccountSelection()?.key ?? 'legacy', sessionId]) + ':';
     const storageKey = storagePrefix + projectPath;
+    const resourceOwner = JSON.stringify(resourceOwnerOf(sessionId));
     const viewStorageKey = 'paws.motion.view.' + JSON.stringify([getServerUrl(), getRuntimeAccountSelection()?.key, session?.metadata?.machineId, projectPath]);
     const iframe = React.useRef<HTMLIFrameElement>(null);
     const port = React.useRef<MessagePort | null>(null);
@@ -127,7 +135,10 @@ const MotionWorkbenchOwner = React.forwardRef<MotionWorkbenchHandle, MotionWorkb
         liveOwners.set(storageKey, token);
         if (!globalThis.crypto?.randomUUID || !globalThis.crypto.subtle) { setPhase('error'); setError(t('motionWorkbench.unavailable')); liveOwners.delete(storageKey); return; }
         channelNonce.current = crypto.randomUUID();
-        const next = createStudioClient(sessionId, current, motionWorkbenchRequest); client.current = next;
+        const scope = resourceOwnerOf(sessionId);
+        const next = createStudioClient(sessionId, current, motionWorkbenchRequest, { cacheScope: scope && {
+            ...scope, isCurrent: () => accountRuntimeCurrent() && JSON.stringify(resourceOwnerOf(sessionId)) === resourceOwner,
+        } }); client.current = next;
         const ready = (event: MessageEvent) => {
             if (!current() || event.source !== iframe.current?.contentWindow || event.data?.type !== 'paws-motion-frame-ready' || event.data.nonce !== channelNonce.current || event.ports.length !== 1) return;
             connectFrameRef.current(event.ports[0]);
@@ -161,7 +172,7 @@ const MotionWorkbenchOwner = React.forwardRef<MotionWorkbenchHandle, MotionWorkb
             controls.current.clear(); initial.current = null;
             void next.close().then(closed => { if (closed) { try { if (sessionStorage.getItem(storageKey) === next.getBindingId()) sessionStorage.removeItem(storageKey); } catch { /* Preserve a failed cleanup key for the next explicit open. */ } } });
         };
-    }, [sessionId, projectPath, storagePrefix, storageKey, acceptTitle]);
+    }, [sessionId, projectPath, storagePrefix, storageKey, resourceOwner, acceptTitle]);
 
     const connectFrame = React.useCallback((incoming: MessagePort) => {
         const frame = iframe.current?.contentWindow, data = initial.current;

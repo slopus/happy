@@ -13,7 +13,6 @@ import { getWorkspaceChatWidth, getWorkspaceChatMaximumWidth, workspaceChatMinWi
 import { useFileWorkspace } from '@/components/fileWorkspace/context';
 import { buildFileContextMessage } from '@/components/fileWorkspace/fileContext';
 import { FileReferencePill } from '@/components/fileWorkspace/FileReferencePill';
-import { MotionArtifactPanel } from '@/components/motionWorkbench/MotionArtifactPanel';
 import { AgentContentView } from '@/components/AgentContentView';
 import { MessageComposer } from '@/components/MessageComposer';
 import { AnnotationComposer, useMessageAnnotations, prepareAnnotatedMessage, restoreAnnotatedMessage } from '@/components/annotations/MessageAnnotations';
@@ -2281,7 +2280,7 @@ function SessionViewLoaded({
             connectionStatus={connectionStatus}
             blockSend={false}
             hasContext={annotations.length > 0 || !!fileWorkspace?.reference}
-            contextContent={<><AnnotationComposer sessionId={sessionId} /><FileReferencePill /><MotionArtifactPanel sessionId={sessionId} mode="library" /></>}
+            contextContent={<><AnnotationComposer sessionId={sessionId} /><FileReferencePill /></>}
             onSend={agentComposer?.pendingAgent ? () => { void agentComposer.submitInChat(); } : handleSend}
             onNewSession={agentComposer?.pendingAgent ? () => { void agentComposer.submitNewSession(); } : undefined}
             newSessionAgent={agentComposer?.pendingAgent}
