@@ -46,11 +46,13 @@ import UIKit
 ///
 /// It moves at Paper's default speed, at the display's rate (120 frames a
 /// second on ProMotion, 60 elsewhere), while on screen and the app is
-/// active, and holds still with Reduce Motion (on Paper's frame 0). As
-/// `GrainGradientView` does, frames are encoded and presented off the main
-/// thread, a frame still on its way when the next is due is skipped, and
-/// one asked for by a resize or a new tint is drawn once it lands. Without
-/// Metal the mark stands still in `fallbackColor`.
+/// active, and holds still on Paper's frame 0 where `ShaderMotion` says
+/// (Reduce Motion, Low Power Mode, a hot phone). As `GrainGradientView`
+/// does, the first frame is drawn as the view goes on screen and shown with
+/// it, frames after it are encoded and presented off the main thread, a
+/// frame still on its way when the next is due is skipped, and one asked
+/// for by a resize or a new tint is drawn once it lands. Without Metal
+/// (no phone iOS 26 runs on) the mark stands still in `fallbackColor`.
 ///
 /// Only the view's own pixels are drawn, and the mask's edge field comes
 /// baked, so a frame is one texture read and the stripes' arithmetic per
@@ -88,6 +90,8 @@ final class LiquidMetalView: UIView {
     private var metalLayer: CAMetalLayer? { layer as? CAMetalLayer }
     private var fallback: CALayer?
     private let inFlight = LiquidMetalInFlight()
+    /// A frame is in the layer: later ones may come a frame late.
+    private var shown = false
 
     override class var layerClass: AnyClass { LiquidMetalRenderer.shared == nil ? CALayer.self : CAMetalLayer.self }
 
@@ -114,7 +118,7 @@ final class LiquidMetalView: UIView {
             fallback = still
         }
         let center = NotificationCenter.default
-        for name in [UIApplication.didBecomeActiveNotification, UIApplication.willResignActiveNotification, UIAccessibility.reduceMotionStatusDidChangeNotification] {
+        for name in [UIApplication.didBecomeActiveNotification, UIApplication.willResignActiveNotification, ShaderMotion.changed] {
             center.addObserver(self, selector: #selector(updateLink), name: name, object: nil)
         }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
@@ -132,19 +136,12 @@ final class LiquidMetalView: UIView {
         super.didMoveToWindow()
         if let window { metalLayer?.contentsScale = window.screen.scale }
         updateLink()
-        render()
+        if !sizeDrawable() { render() }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        if let metalLayer {
-            let scale = metalLayer.contentsScale
-            let drawable = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
-            if metalLayer.drawableSize != drawable {
-                metalLayer.drawableSize = drawable
-                render()
-            }
-        }
+        sizeDrawable()
         if let fallback {
             fallback.frame = bounds
             fallback.mask?.frame = bounds
@@ -152,15 +149,28 @@ final class LiquidMetalView: UIView {
         }
     }
 
+    /// The drawable at the view's size in pixels, drawn again if that
+    /// changed; true when it did.
+    @discardableResult
+    private func sizeDrawable() -> Bool {
+        guard let metalLayer else { return false }
+        let scale = metalLayer.contentsScale
+        let drawable = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+        guard metalLayer.drawableSize != drawable else { return false }
+        metalLayer.drawableSize = drawable
+        render()
+        return true
+    }
+
     private var moves: Bool {
-        window != nil && renderer != nil && !isPaused && !UIAccessibility.isReduceMotionEnabled
+        window != nil && renderer != nil && !isPaused && ShaderMotion.allowed
             && UIApplication.shared.applicationState != .background
     }
 
     @objc private func updateLink() {
         guard moves, UIApplication.shared.applicationState == .active else {
             link?.invalidate(); link = nil; last = nil
-            if UIAccessibility.isReduceMotionEnabled { time = 0; render() }
+            if !ShaderMotion.allowed, time != 0 { time = 0; render() }
             return
         }
         guard link == nil else { return }
@@ -189,8 +199,21 @@ final class LiquidMetalView: UIView {
             tint: LiquidMetalRenderer.rgba(tint.resolvedColor(with: traitCollection))
         )
         let target = LiquidMetalTarget(layer: metalLayer)
+        let mark = mark
+        if !shown {
+            // The first frame: drawn now and shown with the view, in this
+            // transaction, never a frame after it.
+            guard window != nil, inFlight.begin(orAfter: true) else { return }
+            metalLayer.presentsWithTransaction = true
+            let drawable = LiquidMetalRenderer.queue.sync { renderer.draw(mark, in: target, uniforms: uniforms, withTransaction: true) }
+            drawable?.present()
+            shown = drawable != nil
+            if inFlight.end() { DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.render() } } }
+            return
+        }
+        metalLayer.presentsWithTransaction = false
         guard inFlight.begin(orAfter: !skippable) else { return }
-        let inFlight = inFlight, mark = mark
+        let inFlight = inFlight
         LiquidMetalRenderer.queue.async { [weak self] in
             renderer.draw(mark, in: target, uniforms: uniforms)
             guard inFlight.end() else { return }
@@ -371,9 +394,12 @@ private final class LiquidMetalRenderer: @unchecked Sendable {
         return texture
     }
 
-    func draw(_ mark: LiquidMetalView.Mark, in target: LiquidMetalTarget, uniforms: Uniforms) {
+    /// Draws a frame and presents it, or, `withTransaction`, hands it back
+    /// scheduled for the caller to present on the main thread.
+    @discardableResult
+    func draw(_ mark: LiquidMetalView.Mark, in target: LiquidMetalTarget, uniforms: Uniforms, withTransaction: Bool = false) -> MTLDrawable? {
         var uniforms = uniforms
-        guard let field = prepare(mark), let drawable = target.layer.nextDrawable(), let buffer = commands.makeCommandBuffer() else { return }
+        guard let field = prepare(mark), let drawable = target.layer.nextDrawable(), let buffer = commands.makeCommandBuffer() else { return nil }
         // The drawable's own size: the layer's may have changed since the
         // uniforms were read.
         uniforms.resolution = SIMD2(Float(drawable.texture.width), Float(drawable.texture.height))
@@ -381,7 +407,7 @@ private final class LiquidMetalRenderer: @unchecked Sendable {
         pass.colorAttachments[0].texture = drawable.texture
         pass.colorAttachments[0].loadAction = .dontCare
         pass.colorAttachments[0].storeAction = .store
-        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
         encoder.setFragmentTexture(field, index: 0)
@@ -392,8 +418,14 @@ private final class LiquidMetalRenderer: @unchecked Sendable {
             let pixels = drawable.texture.width * drawable.texture.height
             buffer.addCompletedHandler { probe.add($0.gpuEndTime - $0.gpuStartTime, pixels: pixels) }
         }
+        if withTransaction {
+            buffer.commit()
+            buffer.waitUntilScheduled()
+            return drawable
+        }
         buffer.present(drawable)
         buffer.commit()
+        return drawable
     }
 }
 

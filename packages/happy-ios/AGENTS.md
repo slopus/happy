@@ -519,6 +519,12 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
 - **Design tokens come from happy-app.** They are ported from `theme.ts`
   and the component stylesheets (iOS values) into
   `Sources/HappyLayout/DesignTokens.swift`.
+- **The sky and the cloud are always the shaders' own** (Kirill, every
+  client). `GrainGradientView` and `LiquidMetalView` draw their first frame
+  as they go on screen and show it in the same transaction, so a screen
+  opens straight onto the grain and the metal, never a flat colour, outline
+  or fade. They hold Paper's frame 0 where `ShaderMotion` says: Reduce
+  Motion, Low Power Mode, thermal state serious or critical.
 - **Animated emoji never loop** (Kirill, for both apps). An animated emoji
   or sticker (the Lottie art: state scenes, the boba, voice's mic) plays
   once when it appears, holds its last frame, and plays once more on a
