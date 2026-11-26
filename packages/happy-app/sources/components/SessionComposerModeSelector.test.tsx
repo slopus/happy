@@ -164,7 +164,39 @@ describe('SessionComposerModeSelector', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps the strength header clear and opens direct Agent selection from the model list', () => {
+    it.each(['web', 'android'] as const)('cycles Agents and their models directly from the header on %s', (platform) => {
+        Platform.OS = platform;
+        const onSelect = vi.fn(), onReset = vi.fn();
+        const options = [{ key: 'codex', label: 'Codex' }, { key: 'claude', label: 'Claude Code' }, { key: 'antigravity', label: 'Antigravity' }];
+        const models = [{ key: 'gpt-6.1-sol', name: 'gpt-6.1-sol' }, { key: 'sonnet', name: 'sonnet' }, { key: 'gemini-4-neon', name: 'gemini-4-neon' }];
+        function Harness() {
+            const [selected, setSelected] = React.useState('codex');
+            const index = options.findIndex(option => option.key === selected);
+            return <SessionComposerModeSelector online model={models[index]} modelOptions={[models[index]]}
+                effort={effortOptions[0]} effortOptions={effortOptions} onModelChange={vi.fn()} onEffortChange={vi.fn()} onReset={onReset}
+                agentSwitcher={{ id: selected, current: options[index].label, options, onSelect: key => { onSelect(key); setSelected(key); } }} />;
+        }
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<Harness />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const cycle = () => renderer.root.findByProps({ testID: 'session-composer-agent-cycle' });
+        expect(cycle().props.accessibilityHint).toBe('Codex → Claude Code');
+        expect(cycle().findByType('CodingAgentIcon').props.agent).toBe('codex');
+        for (const index of [1, 2, 0]) {
+            act(() => cycle().props.onPress());
+            expect(cycle().findByType('CodingAgentIcon').props.agent).toBe(options[index].key);
+            const modelLabel = renderer.root.findByProps({ testID: 'session-composer-open-models' });
+            expect(modelLabel.findAllByType('Text').some((node: any) =>
+                String(node.props.children).includes(formatComposerModelName(models[index].name)))).toBe(true);
+            expect(renderer.root.findAllByProps({ testID: 'session-composer-model-search' })).toHaveLength(0);
+            expect(renderer.root.findByProps({ testID: 'session-composer-mode-panel' })).toBeDefined();
+        }
+        expect(onSelect.mock.calls).toEqual([['claude'], ['antigravity'], ['codex']]);
+        expect(onReset).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('keeps direct Agent selection in the model list alongside the header shortcut', () => {
         const onSelect = vi.fn(); const onReset = vi.fn(); let renderer: any;
         act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online
             model={modelOptions[0]} modelOptions={modelOptions} effort={effortOptions[0]} effortOptions={effortOptions}
@@ -172,6 +204,7 @@ describe('SessionComposerModeSelector', () => {
             agentSwitcher={{ id: 'codex', current: 'Codex', options: [{ key: 'codex', label: 'Codex' }, { key: 'claude', label: 'Claude Code' }], onSelect }} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
         expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-reset' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'session-composer-agent-cycle' })).toBeDefined();
         expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-menu' })).toHaveLength(0);
         act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
         const button = renderer.root.findByProps({ testID: 'session-composer-agent-menu' });
@@ -186,7 +219,8 @@ describe('SessionComposerModeSelector', () => {
         act(() => renderer.unmount());
     });
 
-    it('offers direct Agent selection with one model and omits the menu with one Agent', () => {
+    it.each(['web', 'android'] as const)('offers direct Agent selection with one model and disables cycling with one Agent on %s', platform => {
+        Platform.OS = platform;
         const onSelect = vi.fn(); let renderer: any;
         const props = { online: true, model: modelOptions[0], modelOptions: modelOptions.slice(0, 1), effort: null, effortOptions: [], onModelChange: vi.fn(), onEffortChange: vi.fn() };
         act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} agentSwitcher={{ id: 'opencode', current: 'OpenCode', options: [{ key: 'opencode', label: 'OpenCode' }, { key: 'codex', label: 'Codex' }], onSelect }} />); });
@@ -197,6 +231,10 @@ describe('SessionComposerModeSelector', () => {
         expect(renderer.root.findByProps({ testID: 'session-composer-agent-menu' })).toBeDefined();
         act(() => renderer.update(<SessionComposerModeSelector {...props} modelOptions={modelOptions} agentSwitcher={{ id: 'codex', current: 'Codex', options: [{ key: 'codex', label: 'Codex' }], onSelect }} />));
         expect(renderer.root.findAllByProps({ testID: 'session-composer-agent-menu' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-settings' }).props.onPress());
+        const cycle = renderer.root.findByProps({ testID: 'session-composer-agent-cycle' });
+        expect(cycle.props.disabled).toBe(true);
+        act(() => cycle.props.onPress());
         expect(onSelect).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });

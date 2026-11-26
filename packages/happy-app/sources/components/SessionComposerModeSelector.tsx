@@ -160,9 +160,14 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const [pendingEffort, setPendingEffort] = React.useState<string | null>(null);
     const [anchor, setAnchor] = React.useState<ModePanelAnchor | null>(null);
     const canSwitchAgent = (props.agentSwitcher?.options.length ?? 0) > 1;
+    const agentOptions = props.agentSwitcher?.options ?? [];
+    const nextAgent = canSwitchAgent
+        ? agentOptions[(agentOptions.findIndex(agent => agent.key === props.agentSwitcher?.id) + 1) % agentOptions.length]
+        : undefined;
+    const agentSwitchHint = [props.agentSwitcher?.current, nextAgent?.label].filter(Boolean).join(' → ');
     const canPickModel = !!props.onRefreshModels || props.modelOptions.length > 1
         || (!!props.model && props.modelOptions.some(option => option.key !== props.model?.key));
-    const canOpenModelList = canPickModel || (isWeb && canSwitchAgent);
+    const canOpenModelList = canPickModel || canSwitchAgent;
     const enabled =
         props.online &&
         (canSwitchAgent || canPickModel ||
@@ -277,6 +282,14 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
         setModelHovered(false);
         setModelsOpen(false);
         setSearch('');
+    };
+    const cycleAgent = () => {
+        if (!props.online || !nextAgent) return;
+        finishDrag(false);
+        setPendingEffort(null);
+        setResetHovered(false);
+        hapticsLight();
+        props.agentSwitcher?.onSelect(nextAgent.key);
     };
     const modelGroups = React.useMemo(
         () => groupComposerModels(props.modelOptions, search, formatComposerModelName),
@@ -436,7 +449,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             />
                                         </Pressable>
                                         <Text style={[styles.modelsTitle, compactModelList && styles.compactModelsTitle]}>{t('agentInput.model.title')}</Text>
-                                        {isWeb && canSwitchAgent && props.agentSwitcher ? (
+                                        {canSwitchAgent && props.agentSwitcher ? (
                                             <Pressable
                                                 testID="session-composer-agent-menu"
                                                 accessibilityRole="button"
@@ -626,21 +639,21 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             <ComposerTooltip testID="composer-model-list-tooltip" label={t('agentInput.model.title')} visible={Platform.OS === 'web' && modelHovered && props.modelOptions.length > 1} />
                                         </Pressable>
                                         </View>
-                                        {isWeb && props.agentSwitcher ? <View style={styles.iconButton} /> : <Pressable
-                                            testID={props.agentSwitcher ? "session-composer-agent-menu" : "session-composer-effort-reset"}
+                                        <Pressable
+                                            testID={props.agentSwitcher ? "session-composer-agent-cycle" : "session-composer-effort-reset"}
                                             accessibilityRole="button"
                                             accessibilityLabel={props.agentSwitcher ? t('agentInput.switchCodingAgent') : t('common.reset')}
                                             accessibilityState={{ disabled: props.agentSwitcher ? !canSwitchAgent : !canReset }}
                                             disabled={props.agentSwitcher ? !canSwitchAgent : !canReset}
-                                            accessibilityHint={props.agentSwitcher ? props.agentSwitcher.current : canReset ? defaultOption?.name : t('settingsAccount.notAvailable')}
-                                            onPress={props.agentSwitcher ? () => { finishDrag(false); setAgentsOpen(true); } : reset}
+                                            accessibilityHint={props.agentSwitcher ? agentSwitchHint : canReset ? defaultOption?.name : t('settingsAccount.notAvailable')}
+                                            onPress={props.agentSwitcher ? cycleAgent : reset}
                                             onHoverIn={() => setResetHovered(true)}
                                             onHoverOut={() => setResetHovered(false)}
                                             style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.iconButton, hoverTransition, !(props.agentSwitcher ? canSwitchAgent : canReset) && styles.disabled, (props.agentSwitcher ? canSwitchAgent : canReset) && (pressed || hovered) && styles.pressed]}
                                         >
                                             {props.agentSwitcher?.id ? <CodingAgentIcon agent={props.agentSwitcher.id} size={22} /> : <Ionicons name="refresh-outline" size={20} color={theme.colors.textSecondary} />}
-                                            <ComposerTooltip testID="composer-reset-tooltip" label={props.agentSwitcher ? `${t('agentInput.switchCodingAgent')}: ${props.agentSwitcher.current}` : t('common.reset')} visible={Platform.OS === 'web' && resetHovered && (props.agentSwitcher ? canSwitchAgent : canReset)} />
-                                        </Pressable>}
+                                            <ComposerTooltip testID="composer-reset-tooltip" label={props.agentSwitcher ? `${t('agentInput.switchCodingAgent')}: ${agentSwitchHint}` : t('common.reset')} visible={Platform.OS === 'web' && resetHovered && (props.agentSwitcher ? canSwitchAgent : canReset)} />
+                                        </Pressable>
                                     </View>
                                     {levels.length > 0 ? (
                                         <View
