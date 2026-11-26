@@ -35,7 +35,9 @@ export async function acquireEpisode(context, bvid, outDir, options = {}) {
   await mkdir(outDir, { recursive: true });
   const canonical = `https://www.bilibili.com/video/${bvid}/`;
   const prior = new URL(context.expectedUrl);
-  const observedSource = context.bilibiliSource || (prior.hostname === 'www.bilibili.com' ? prior.searchParams.get('vd_source') : null);
+  const observedSource = context.bilibiliSource
+    || (prior.hostname === 'www.bilibili.com' ? prior.searchParams.get('vd_source') : null)
+    || options.bilibiliSource;
   // Carry only a previously observed tracking value through our own navigation.
   // Bilibili can otherwise append it late, correctly tripping URL isolation.
   const url = canonical + (typeof observedSource === 'string' && /^[a-f0-9]{32}$/.test(observedSource) ? '?vd_source=' + observedSource : '');

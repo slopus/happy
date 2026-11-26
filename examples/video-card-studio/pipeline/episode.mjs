@@ -178,7 +178,7 @@ export async function processEpisode(config, { bvid, context, episodeDir, adoptP
         if (!acquisition) {
           await abandon(dir, ['metadata.json', 'audio.m4s', 'video.m4s', 'source.mp4', 'media-check.json', 'source-receipt.json', 'acquisition.json', 'media-fetch.json'], 'incomplete-acquisition');
           acquisitionAttemptStarted = Date.now();
-          const result = await acquire(context, bvid, dir, { ...options, egoBin: config.egoBin, happyCapture: config.happyCapture });
+          const result = await acquire(context, bvid, dir, { ...options, egoBin: config.egoBin, happyCapture: config.happyCapture, bilibiliSource: config.bilibiliSource });
           await rememberContext(result.context, true);
           if (result.browserStep) emit({ status: 'browser-step', ...result.browserStep });
           acquisition = await loadReceipt(dir, 'acquisition.json', ['metadata.json', 'audio.m4s', 'video.m4s'], bvid);

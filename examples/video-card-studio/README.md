@@ -119,7 +119,9 @@ PY
 
 网站启动命令为 `node examples/video-card-studio/start.mjs /absolute/private/website.json`。本地验证可以省略 `publicOrigin` 并使用 loopback HTTP。公网必须是可信 HTTPS，反向代理须保留原始 Host、禁用 SSE 缓冲并配置连接/上传限额。当前匿名限流按 socket 的实际来源 IP；经代理时不能任意信任访客提供的转发头，默认会把该代理视为同一来源。
 
-采集器默认为每次任务创建自己的 Ego 空间，成功采集后用独立调用结束；失败保留准确空间供检查，不自动换空间恢复。已有人工验证任务可显式提供 `browserContextPath`，文件包含数字 `spaceId`、`page`、准确 `targetId`、`expectedUrl` 和唯一 `runId`；这种空间归提供者收尾。首次导航若 B 站追加参数，严格 URL 校验会停止，需所有者观察确认后更新上下文，不会盲目接受当前标签。Happy 验证还可提供 `happyCapture`，由当前 Happy 会话核对并报告生成的回执。
+生产网站默认每个新任务创建自己的 Ego 空间，成功采集后用独立调用结束；失败保留准确空间供检查，不自动换空间恢复。临时人工诊断可显式提供 `browserContextPath`，文件包含数字 `spaceId`、`page`、准确 `targetId`、`expectedUrl` 和唯一 `runId`；这种空间归提供者收尾。长期运行的站点应省略该项，避免依赖会过期的浏览器空间。
+
+首次导航若 B 站追加参数，严格 URL 校验会停止。所有者可在同一标签核对 BVID、分 P 和地址后，把本机实际观察到的 32 位十六进制 `vd_source` 保存在私有 worker 配置的 `runtime.bilibiliSource`。新任务只将这个固定值用于构造精确地址，并继续验证标签身份、完整 URL 和作品身份。访客链接中的统计参数不会进入采集配置。Happy 验证还可提供 `happyCapture`，由当前 Happy 会话核对并报告生成的回执。
 
 ### 轮换、撤销、本机取消授权
 
