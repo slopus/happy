@@ -1,0 +1,24 @@
+{
+    "description": "`elevated` with no review: only a reviewed call may say whether it ran elevated.",
+    "invalidAt": ["/content/0/elevated"],
+    "message": {
+        "id": "msgelevatednoreview000001",
+        "role": "agent",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolelevatednoreview000001",
+                "name": "exec_command",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "elevated": true
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

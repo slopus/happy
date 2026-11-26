@@ -77,12 +77,9 @@ class MessageCheckTest {
         }
     }
 
-    /** Shared invalid fixtures Android reads on purpose: the cluster's older history has a review without `elevated`. */
-    private val readAnyway = setOf("review-without-elevated.json")
-
     @Test fun `every shared invalid message is a placeholder, failing where the fixture says`() {
-        val invalid = shared("invalid").filter { it.first !in readAnyway }
-        assertTrue(invalid.size >= 7)
+        val invalid = shared("invalid")
+        assertTrue(invalid.size >= 9)
         for ((name, fixture) in invalid) {
             val problem = MessageCheck.problem(fixture["message"]!!)!!
             // The first failure found, at or under one of the places the fixture lists.
@@ -96,7 +93,7 @@ class MessageCheckTest {
     }
 
     @Test fun `a review without elevated reads, its elevation unknown`() {
-        for (message in listOf(shared("invalid").toMap().getValue("review-without-elevated.json")["message"]!!, fixture("cluster's settled call reviewed before elevated was sent"))) {
+        for (message in listOf(shared("valid").toMap().getValue("agent-tool-review-without-elevated.json")["message"]!!, fixture("cluster's settled call reviewed before elevated was sent"))) {
             val decoded = Message.decode(message, "x")
             assertNull(decoded.undisplayable)
             val call = decoded.content.filterIsInstance<Block.ToolCall>().single()
