@@ -75,10 +75,15 @@ export function createCodexDelegationPreparation(deps: {
                 // Readiness follows native thread startup, which publishes these actual settings.
                 const current = deps.state().metadata;
                 const currentModel = current?.currentModelCode;
-                if (request.model === undefined && (!currentModel || !models.some(model => model.model === currentModel))) {
-                    throw new Error('The current native Codex model is unavailable');
+                let requestedModel = request.model ?? currentModel;
+                if (request.model === undefined && !models.some(model => model.model === currentModel)) {
+                    const defaults = models.filter(model => model.isDefault);
+                    if (defaults.length !== 1) {
+                        throw new Error('No unique native Codex default model is available. Specify a model in the role settings or delegation route.');
+                    }
+                    requestedModel = defaults[0].model;
                 }
-                const selected = resolveDelegationModel(request.model ?? currentModel!, models.map(model => ({
+                const selected = resolveDelegationModel(requestedModel!, models.map(model => ({
                     code: model.model, name: model.displayName || model.model,
                     efforts: model.supportedReasoningEfforts.map(option => option.reasoningEffort),
                 })));

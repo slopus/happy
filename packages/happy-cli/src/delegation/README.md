@@ -26,10 +26,21 @@ is involved.
 Every new task freezes a role/temporary route snapshot. Native preparation
 resolves only the target executor's advertised model/effort catalog, acknowledges
 the actual configuration, then submits the task. Unknown or ambiguous labels,
-unsupported effort and unconfirmed switches fail without a different-model
-fallback. Omissions use the child's observed native defaults, never the parent's
-Codex Ultra. Actual returned codes are stored on the task. A revision uses the
+unsupported effort and unconfirmed switches fail without replacing an explicit
+choice. Omissions use the child's observed native defaults, never the parent's
+Codex Ultra. If Codex's configured startup model is unavailable, an omitted model
+uses the current native catalog's unique visible `isDefault` model instead;
+there is no first-item, parent-model or hardcoded fallback. If no unique default
+exists, the caller must specify a model. Actual returned codes are stored on the task. A revision uses the
 same child and resolved snapshot, including after a saved role is edited/deleted.
+
+Model/effort are optional overrides, not optional runtime settings. Codex startup
+waits for the native thread's actual configuration to be acknowledged in session
+metadata before advertising readiness or accepting default-model preparation.
+A delayed acknowledgement keeps preparation waiting; failure must not advertise
+a ready worker. Selecting a catalog default still goes through the ordinary
+configuration acknowledgement before task delivery and does not change global
+Codex settings or saved role configuration.
 
 New workers advertise `capabilities.delegationRoutes: 1` only after preparation
 RPCs are installed. Temporary/native-default tasks require that parent-worker

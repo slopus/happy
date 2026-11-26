@@ -68,11 +68,24 @@ describe('Codex delegated worker preparation', () => {
         expect(await runtime.prepare({ permissionMode: 'read-only' })).toEqual({ model: 'gpt-observed', effort: 'medium' });
     });
 
-    it('never guesses a current model from the catalog default or an unobserved metadata label', async () => {
+    it.each([undefined, 'retired-configured-model', 'Observed Sol'])('sets the unique advertised default when model is omitted and startup model %s is unavailable', async currentModelCode => {
+        state.metadata = { ...state.metadata!, currentModelCode, currentThoughtLevelCode: 'ultra' };
         const runtime = prepare(); runtime.ready();
-        await expect(runtime.prepare({ permissionMode: 'read-only' })).rejects.toThrow('current native Codex model is unavailable');
-        state.metadata = { ...state.metadata!, currentModelCode: 'Observed Sol' };
-        await expect(runtime.prepare({ permissionMode: 'read-only' })).rejects.toThrow('current native Codex model is unavailable');
+        await expect(runtime.prepare({ permissionMode: 'read-only' })).resolves.toEqual({ model: 'gpt-observed', effort: 'medium' });
+        expect(apply).toHaveBeenCalledExactlyOnceWith({ model: 'gpt-observed', effort: 'medium', permissionMode: 'read-only' }, expect.any(Function));
+    });
+
+    it.each(['missing', 'hidden', 'ambiguous'])('requires an explicit choice when the unavailable startup model has a %s catalog default', async kind => {
+        catalog = kind === 'ambiguous' ? [model(), model('other-model')] : [{ ...model(), isDefault: false }];
+        if (kind === 'hidden') catalog.push({ ...model('hidden-default'), hidden: true });
+        const runtime = prepare(); runtime.ready();
+        await expect(runtime.prepare({ permissionMode: 'read-only' })).rejects.toThrow('Specify a model');
+        expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('does not replace an explicit unavailable model with the catalog default', async () => {
+        const runtime = prepare(); runtime.ready();
+        await expect(runtime.prepare({ model: 'retired-configured-model', permissionMode: 'read-only' })).rejects.toThrow('unavailable');
         expect(apply).not.toHaveBeenCalled();
     });
 

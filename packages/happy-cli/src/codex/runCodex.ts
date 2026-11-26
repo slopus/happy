@@ -72,7 +72,7 @@ import {
     markPawsTurnOrigin,
     type CodexEnhancedMode,
 } from './codexPrompt';
-import { mergeCodexSessionConfigIntoMetadata } from './sessionConfigMetadata';
+import { mergeCodexSessionConfigIntoMetadata, type CodexSessionConfigSnapshot } from './sessionConfigMetadata';
 import { EXPECT_MAGPIE_CONNECTION_ENV, isMagpieModelConnection } from './magpieModelCatalog';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import type { GoalCommand, UsageCommand } from '@/parsers/specialCommands';
@@ -108,11 +108,23 @@ function describeCodexFailure(msg: any): string | null {
 const DEFAULT_CODEX_PERMISSION_MODE: PermissionMode = 'yolo';
 
 export async function completeCodexProcessorStartup(
-    session: Pick<ApiSessionClient, 'processorReady' | 'sendSessionEvent'>,
-    ensureThreadAvailable: () => Promise<unknown>,
+    session: Pick<ApiSessionClient, 'processorReady' | 'sendSessionEvent' | 'updateMetadataAndAwait' | 'getMetadata'>,
+    ensureThreadAvailable: () => Promise<CodexSessionConfigSnapshot>,
     reportReady?: () => Promise<void>,
 ): Promise<void> {
-    await ensureThreadAvailable();
+    const configuration = await ensureThreadAvailable();
+    // Thread startup alone is not readiness: default-model delegation reads
+    // acknowledged metadata, while the normal settings notifications are async.
+    let expected: Metadata | undefined;
+    await session.updateMetadataAndAwait(metadata => {
+        expected = mergeCodexSessionConfigIntoMetadata(metadata, configuration);
+        return expected;
+    });
+    const acknowledged = session.getMetadata();
+    if (!expected || !acknowledged || acknowledged.currentModelCode !== expected.currentModelCode
+        || acknowledged.currentThoughtLevelCode !== expected.currentThoughtLevelCode) {
+        throw new Error('The native Codex startup configuration was not acknowledged');
+    }
     session.processorReady();
     session.sendSessionEvent({ type: 'ready' });
     await reportReady?.();
@@ -1908,6 +1920,8 @@ export async function runCodex(opts: {
                 fast: currentFastMode,
             });
             if (expectMagpieConnection) await session.updateMetadataAndAwait(publishModelConnection);
+            if (!currentModel) throw new Error('The native Codex thread did not report its startup model');
+            return { models: codexModelCatalog, modelsUpdatedAt, currentModel, currentEffort: currentEffort ?? null };
         }, expectMagpieConnection ? reportSessionStarted : undefined);
         processorStartupComplete = true;
         delegationPreparation.ready();
