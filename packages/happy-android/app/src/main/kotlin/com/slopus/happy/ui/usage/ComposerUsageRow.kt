@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -66,10 +65,6 @@ object UsageRowTags {
 
 /** AgentInput.tsx `AgentInputUsageRow` and `ContextGaugeIcon`. */
 object UsageRowSpec {
-    /** 10 shell inset + 8 action inset: the gauge lines up with the effort label's right edge. */
-    val paddingHorizontal = 18.dp
-    val paddingTop = 6.dp
-    val minHeight = 18.dp
     val gap = 10.dp
     val contextGap = 5.dp
     val text = happyTextStyle(fontSize = 11)
@@ -95,25 +90,20 @@ fun ComposerUsageRow(usage: ContextUsage?, limits: UsageLimits?, modifier: Modif
 }
 
 /**
- * AgentInputUsageRow: under the composer card, right-aligned, 18 in and 6
- * below the card, at least 18 high, items 10 apart, all 11pt. First
+ * AgentInputUsageRow's right-hand cluster: items 10 apart, all 11pt. First
  * "N% week" in textSecondary (tap for the Session/Week popup with their
  * resets), then "N% context" in the status colour 5 before the 14 gauge
  * ring; with no window yet it reads "N tokens" instead of a percentage.
  * Tapping the context opens its detail popup: percent left, used / window,
  * the token breakdown and the model when the producer names it. Nothing
- * at all when neither shows.
+ * at all when neither shows. Its place (right end of the row above the
+ * composer) is [com.slopus.happy.ui.chat.ComposerInfoRow]'s.
  */
 @Composable
 fun ComposerUsageRow(state: UsageRowState, usage: ContextUsage?, modifier: Modifier = Modifier) {
     if (state.isEmpty) return
     Row(
-        modifier = modifier
-            .testTag(UsageRowTags.ROW)
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = UsageRowSpec.minHeight)
-            .padding(horizontal = UsageRowSpec.paddingHorizontal)
-            .padding(top = UsageRowSpec.paddingTop),
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(UsageRowSpec.gap, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {

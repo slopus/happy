@@ -71,7 +71,6 @@ object BackgroundTaskSpec {
     val chipIcon = 16.dp
     val chipChevron = 14.dp
     val chipText = happyTextStyle(fontSize = 12, lineHeight = 16, weight = FontWeight.SemiBold)
-    val chipMarginBottom = 8.dp
 
     val sheetTitle = happyTextStyle(fontSize = 17, lineHeight = 22, weight = FontWeight.SemiBold)
     val sheetTitlePadding = 24.dp
@@ -90,11 +89,12 @@ object BackgroundTaskSpec {
 }
 
 /**
- * The session's background tasks as one pill over the composer: what is
- * running ("2 running"), or what finished while nothing runs ("1 finished").
- * Spec: a row in surfaceHigh with a 1 divider border, radius 14, padded 12/8,
- * a 16 terminal glyph 8 before its 12/16 semibold label, then a 14 chevron; 8
- * above the composer. A tap opens [BackgroundTaskSheet].
+ * The session's background tasks as one pill in the row above the composer
+ * card ([ComposerInfoRow]), at its start: what is running ("2 running"), or
+ * what finished while nothing runs ("1 finished"). Spec: a row in surfaceHigh
+ * with a 1 divider border, radius 14, padded 12/8, a 16 terminal glyph 8
+ * before its 12/16 semibold label, then a 14 chevron. A tap opens
+ * [BackgroundTaskSheet].
  */
 @Composable
 fun BackgroundTaskChip(tasks: List<BackgroundTask>, onClick: () -> Unit, modifier: Modifier = Modifier) {

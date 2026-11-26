@@ -158,8 +158,8 @@ fun resolvePrimaryAction(
  * A locked button still takes taps (to refuse them); an idle one
  * doesn't. [panelShake] shakes the card and [primaryShake] the button
  * (Shaker.tsx). With [showDetails] false (reading older messages under
- * the floating dock) the status row and the [bottom] row fade out in
- * place (AnimatedFade).
+ * the floating dock) the status row, the [above] row and the [bottom] row
+ * fade out in place (AnimatedFade).
  */
 @Composable
 fun ChatComposer(
@@ -183,6 +183,8 @@ fun ChatComposer(
     panelShake: ShakeState? = null,
     /** Shakes the primary button (a failed stop). */
     primaryShake: ShakeState? = null,
+    /** Directly above the card, under the status row (the background tasks and usage row). */
+    above: @Composable () -> Unit = {},
     /** Under the card, inside the composer (the usage row: week quota and context gauge). */
     bottom: @Composable () -> Unit = {},
     /** `showStatusDetails`: false fades the status row and [bottom] out, keeping their room. */
@@ -259,6 +261,7 @@ fun ChatComposer(
                 Text(status.text, style = ComposerSpec.statusText, color = status.color, modifier = Modifier.testTag(ComposerTags.STATUS_TEXT))
             }
         }
+        AnimatedFade(showDetails) { above() }
         Column(
             modifier = Modifier
                 .then(if (onPanelPositioned != null) Modifier.onGloballyPositioned(onPanelPositioned) else Modifier)

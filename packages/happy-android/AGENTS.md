@@ -2183,14 +2183,24 @@ chat shows, and again on `provider.usage.*`, `config.updated` and each
 reconnect. It keeps following for 30 s after the last chat goes. Words
 are in `strings_context_meter.xml`.
 
+A relay chat's context and plan usage (`ui/usage/ComposerUsageRow.kt`) is
+not under its composer: it is the end of the row above the composer card
+whose start is the background-task pill (`ui/chat/ComposerInfoRow.kt`),
+right-aligned to Send's edge. It keeps its tap-for-details popups.
+
 ### Background tasks
 
-A Happy CLI chat shows the session's background work as a pill over the
-composer: "2 running", or "1 finished" once nothing runs. It opens a bottom
-sheet of every task, running first and then the most recently finished
-(`ui/chat/BackgroundTaskBar.kt`; state in `chat/BackgroundTasks.kt`,
-`ReducerState.backgroundTasks` → `ChatSnapshot.backgroundTasks`). It is
-read-only: the CLI answers no per-task stop, only the whole turn's abort.
+A Happy CLI chat shows the session's background work as a pill in the one
+row directly above the composer card: "2 running", or "1 finished" once
+nothing runs. The row's start is the pill and its end is the context usage
+indicator and week figure (`ui/chat/ComposerInfoRow.kt`, the composer's
+`above` slot; see "Context meter and usage ring"), the gauge's right edge
+on Send's. A chat with either shows the row; with neither it has no row and
+takes no room. The pill opens a bottom sheet of every task, running first
+and then the most recently finished (`ui/chat/BackgroundTaskBar.kt`; state
+in `chat/BackgroundTasks.kt`, `ReducerState.backgroundTasks` →
+`ChatSnapshot.backgroundTasks`). It is read-only: the CLI answers no
+per-task stop, only the whole turn's abort.
 
 happy-cli sends no session envelope for the Claude Agent SDK's
 `task_started` / `task_progress` / `task_notification` system messages (its
