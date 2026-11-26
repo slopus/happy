@@ -24,7 +24,7 @@
 
 | 界面用途 | 当前语义变量 | 注意 |
 | --- | --- | --- |
-| 普通表面/卡片/列表项 | `colors.surface` | 不用页面背景假装按下或选中态 |
+| 普通独立表面/卡片/列表项 | `colors.surface` | 不用页面背景假装按下或选中态；整栏/详情根容器先遵循下节的宿主表面规则 |
 | hover / pressed 表面 | `colors.surfacePressed` | 鼠标悬停与按下都应可见，不能残留默认暖色 |
 | selected / active 表面 | `colors.surfaceSelected` | 选中与 hover 可区分；组合状态沿所属通用组件的优先级 |
 | 更高表面层级 | `colors.surfaceHigh` / `surfaceHighest` | 表示层级，不任意代替交互状态语义 |
@@ -43,6 +43,19 @@
 允许完全透明的布局容器表达结构。`transparent` 不应被用来省略必要的 hover/selected 背景。固定品牌资产、图片原色和明确不可主题化的内容色可例外，但须说明用途和对比度策略；“示例里就是这个 hex”不是例外理由。
 
 需要派生透明色时，先查现有角色及 [`colorOpacity.ts`](../../packages/happy-app/sources/utils/colorOpacity.ts) 等共用方法；不要追加只适用于 hex 的字符串后缀，也不要在组件散布一组新的 RGBA 常量。
+
+### 宿主表面与普通 surface 的边界
+
+适用于桌面工作区、侧栏及其详情替换、嵌套面板。**使用了主题变量，不等于使用了正确的表面角色。** `colors.surface` 表示普通独立表面；当宿主已经绘制照片皮肤或玻璃表面时，详情根容器再铺一层 `surface`，仍会遮住皮肤。父子各铺一层半透明颜色，也会改变最终透明度和对比度。
+
+- **同一连续面板由一个所有者绘制背景。** 工作区根据当前主题、所在栏位和减少透明度设置选择表面，交给共用外壳绘制一次；内部标题区、滚动区、加载/空/错误状态与替换详情沿用该背景，不重新铺满普通 `surface`。独立卡片、输入框和按钮仍按自身用途消费对应语义 token，hover/pressed/selected 不得一并改成透明。
+- **切换内容时保留宿主外壳。** 桌面右栏普通内容和子代理详情复用 [`DesktopRightPanelFrame`](../../packages/happy-app/sources/components/DesktopRightPanel.tsx)，保留背景、圆角、裁切和宽度调整能力；不能直接用详情组件替换整套外壳。当前接入见 [`SessionView.tsx`](../../packages/happy-app/sources/-session/SessionView.tsx)，不在规范中复制具体色值或尺寸。
+- **透明必须有明确的背景承载者。** 父级已经绘制面板背景时，内容根容器才继承或显式使用 `transparent`。`surfaceColor` 等接口须明确默认表面和覆盖关系；不能仅把组件自身背景删掉，就认定皮肤适配完成。没有承载者的页面、模态或抽屉仍需其自身的主题表面。
+- **皮肤与减少透明度由同一所有者处理。** 消费当前 `theme.colors.desktopSkin.*`，按宿主现有规则选择半透明角色或不透明回退，不在子组件另建皮肤判断。当前桌面阅读面使用 `readingWide` / `readingSolid`；其他栏位沿其已有语义角色。compact、embedded 和原生抽屉目前保留不透明主题表面，不因桌面侧栏透明而统一改成玻璃。
+
+评审时先沿调用链确认“谁选表面、谁绘制、哪些子容器透明”。涉及整栏或详情替换的改动，按第 7 节覆盖普通主题、照片皮肤及减少透明度；进入详情、切换页签、加载完成和返回后，检查背景是否连续、是否重复叠色，以及圆角、宽度调整和滚动是否保留。源码检查和真实页面的合成效果分别留证，不能只搜索是否出现 `theme.colors.*` 就判定通过。
+
+本规则来自[子代理详情侧栏主题修复](../validation/delegation-inspector-theme.md)；该记录保存具体故障与验收边界，不代表其他历史面板已经符合规范。
 
 ## 3. 交互状态也属于主题
 
@@ -90,6 +103,7 @@
 | 对话框与浮层 | 已有 Modal 宿主、`DesktopDialogFrame`、`useWebPopoverDismiss` | 遵循[浮层规范](overlay-interaction-standard.md)；Hook 不能代替焦点与层级管理 |
 | Tooltip | `DesktopShortcutTooltip` / `ComposerTooltipHost` 等现有入口 | 只承载辅助说明；布局裁切与 Portal 所有者要验证 |
 | 普通页面与多栏 | `layout` 与所属 workspace 的布局/宽度上下文 | 不复制全局断点或桌面宽度偏好逻辑到局部组件 |
+| 桌面右栏与替换详情 | `DesktopRightPanelFrame` 与工作区提供的表面 | 外壳绘制一次背景并保留圆角、裁切、宽度调整；内容根容器不覆盖皮肤 |
 
 复用之前检查当前能力、调用处与测试。发现组件有缺口时优先在合理的公共层修复，不能把“代码里已有”写成“已经完全符合规范”。
 
@@ -102,4 +116,4 @@
 5. 回归入口：[`themePacks.test.ts`](../../packages/happy-app/sources/themePacks.test.ts)、[`Typography.test.ts`](../../packages/happy-app/sources/constants/Typography.test.ts) 与受影响组件测试；选择与改动相称的检查，不为纯文档更新重复跑整站。
 6. 截图/视频按根 CLAUDE.md 的当前要求；报告“源码确认、测试通过、真实页面验证、用户设备已加载”各自的范围，不互相替代。
 
-常见复发错误应回写原规则：默认暖色残留先查主题映射；照片按钮看不清先查前景/背景配对；英文好看中文失配先查字体覆盖；按钮被挤掉先查布局和容器，而不是继续缩字。具体故障证据归 validation，规范保存稳定方法。
+常见复发错误应回写原规则：默认暖色残留先查主题映射；整栏或详情遮住皮肤先查背景所有者和父子叠色；照片按钮看不清先查前景/背景配对；英文好看中文失配先查字体覆盖；按钮被挤掉先查布局和容器，而不是继续缩字。具体故障证据归 validation，规范保存稳定方法。
