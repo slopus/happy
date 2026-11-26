@@ -1,10 +1,52 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>原话卡片 · 留住视频里的好内容</title><link rel="stylesheet" href="/style.css"><script src="/app.js" type="module"></script></head>
-<body><div class="shell"><header><a class="brand" href="/" aria-label="原话卡片首页"><span class="brand-mark">◐</span>原话卡片</a><span class="caption">原来的画面，原来的话。</span></header>
-<main><section class="intro"><p class="eyebrow">从视频里，留下一页</p><h1>值得留下的话，<br>配上它的原画面。</h1><p class="lede">贴入 B 站链接，自动精选完整的观点，<br class="desktop">把原画面与原话拼成可以收藏的长图。</p>
-<form id="submit-form"><label for="video-url">B 站视频链接</label><div class="input-row"><input id="video-url" name="url" type="text" inputmode="url" autocomplete="off" required maxlength="2048" placeholder="https://www.bilibili.com/video/BV…"><button id="submit-button" type="submit">制作卡片</button></div><p id="form-feedback" class="feedback" role="status" aria-live="polite">支持公开视频的单 P 链接或 BV 号，最长 60 分钟。</p></form>
-<p class="public-note">无需登录 · 提交内容和生成的卡片将在此页公开展示</p></section>
-<section class="workspace" aria-labelledby="workspace-title"><div class="section-heading"><div><p class="eyebrow">正在发生</p><h2 id="workspace-title">制作与收藏</h2></div><div class="connection"><span id="connection-label">正在连接</span><button id="reconnect" class="quiet" hidden>重新连接</button></div></div>
-<div class="workspace-grid"><aside><h3>制作队列 <span id="queue-count">0</span></h3><div id="queue" aria-live="polite"><p class="muted">还没有提交记录</p></div><div class="process-note"><span>01 读取视频</span><span>02 精选原话与画面</span><span>03 拼成长图，保存下载</span></div></aside>
-<div id="gallery"><div class="empty"><span class="empty-mark">“</span><h3>第一组卡片，从一条链接开始</h3><p>制作完成后，所有图片都会出现在这里。<br>可以单张保存，也可以整组打包下载。</p></div></div></div></section></main>
-<footer><p>文字来自原视频的自动转写，可能存在识别错误。每组卡片保留来源与时间点，便于对照核查。</p><span>Powered by Paws</span></footer></div></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>原话卡片</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="site-header"><a class="brand" href="/">原话卡片</a></header>
+    <main>
+      <section class="intro" aria-labelledby="intro-title">
+        <h1 id="intro-title">把 B 站视频做成原话卡片</h1>
+        <p class="lede">从原视频选取画面和对白，制作可下载的长图。</p>
+        <form id="submit-form">
+          <label for="video-url">B 站视频链接</label>
+          <div class="input-row">
+            <input id="video-url" name="url" type="text" inputmode="url" autocomplete="off" required maxlength="2048" placeholder="https://www.bilibili.com/video/BV…">
+            <button id="submit-button" type="submit">制作卡片</button>
+          </div>
+          <p id="form-feedback" class="feedback" role="status" aria-live="polite"></p>
+        </form>
+        <p class="public-note">支持 60 分钟以内的公开单 P 视频。提交记录与卡片会公开展示。</p>
+      </section>
+
+      <section class="task-section" aria-labelledby="task-title">
+        <div class="section-heading">
+          <h2 id="task-title">制作进度 <span id="queue-count" hidden></span></h2>
+          <div class="connection">
+            <span id="connection-label">正在连接</span>
+            <button id="reconnect" class="quiet" type="button" hidden>重新连接</button>
+          </div>
+        </div>
+        <div id="queue" class="task-list"><p class="muted">正在读取制作记录…</p></div>
+        <details id="history" class="history" hidden>
+          <summary id="history-label">历史任务</summary>
+          <div id="history-list"></div>
+        </details>
+      </section>
+
+      <section class="gallery-section" aria-labelledby="gallery-title">
+        <div class="section-heading"><h2 id="gallery-title">已完成作品</h2></div>
+        <div id="gallery"><p class="empty">卡片制作完成后会显示在这里。</p></div>
+      </section>
+    </main>
+    <footer><p>卡片文字来自自动转写。每张图保留原视频和时间点，便于核对。</p></footer>
+  </div>
+</body>
+</html>

@@ -13,8 +13,11 @@ const job = {
 };
 
 class Element {
+  constructor(tag = 'div') { this.tagName = tag.toUpperCase(); }
   children = [];
   dataset = {};
+  attributes = new Map();
+  listeners = new Map();
   value = '';
   disabled = false;
   hidden = false;
@@ -24,13 +27,38 @@ class Element {
   get textContent() { return this.ownText + this.children.map(child => child.textContent).join(''); }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.ownText = ''; this.children = children; }
-  setAttribute() {}
+  setAttribute(key, value) {
+    this.attributes.set(key, String(value));
+    if (key.startsWith('data-')) this.dataset[key.slice(5).replace(/-([a-z])/g, (_, char) => char.toUpperCase())] = String(value);
+  }
+  getAttribute(key) { return this.attributes.get(key) ?? null; }
+  addEventListener(name, fn) { this.listeners.set(name, fn); }
+  querySelectorAll(selector) { return descendants(this).filter(node => matches(node, selector)); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
+  scrollIntoView() {}
+}
+function descendants(node) { return node.children.flatMap(child => [child, ...descendants(child)]); }
+function matches(node, selector) {
+  const tag = selector.match(/^[a-z]+/i)?.[0];
+  const cls = selector.match(/\.([a-z-]+)/)?.[1];
+  const attribute = selector.match(/\[([^=\]]+)(?:=["']?([^"'\]]+)["']?)?\]/);
+  if (tag && node.tagName !== tag.toUpperCase()) return false;
+  if (cls && !node.className.split(/\s+/).includes(cls)) return false;
+  if (attribute) {
+    const actual = attribute[1].startsWith('data-')
+      ? node.dataset[attribute[1].slice(5).replace(/-([a-z])/g, (_, char) => char.toUpperCase())]
+      : node.getAttribute(attribute[1]) ?? node[attribute[1]];
+    if (actual === undefined || actual === null || (attribute[2] !== undefined && actual !== attribute[2])) return false;
+  }
+  return true;
 }
 
-function setup({ crypto, fetchImpl } = {}) {
+function setup({ crypto, fetchImpl, hash = '' } = {}) {
   const elements = new Map();
   const element = id => {
-    if (!elements.has(id)) elements.set(id, new Element());
+    const dynamic = [...elements.values()].flatMap(root => descendants(root)).find(node => node.id === id);
+    if (dynamic) return dynamic;
+    if (!elements.has(id)) { const node = new Element(); node.id = id; elements.set(id, node); }
     return elements.get(id);
   };
   const streams = [], requests = [];
@@ -42,9 +70,13 @@ function setup({ crypto, fetchImpl } = {}) {
     close() { this.closed = true; }
     state(value) { this.listeners.get('state')({ data: JSON.stringify(value) }); }
   }
+  const windowEvents = new Map();
+  const location = { hash, pathname: '/', search: '', href: 'https://cards.example/' + hash };
+  const history = { replaceState(_state, _unused, value) { location.hash = new URL(value, 'https://cards.example/').hash; } };
+  const window = { location, history, addEventListener(name, fn) { windowEvents.set(name, fn); } };
   const context = vm.createContext({
-    document: { getElementById: element, createElement: () => new Element() },
-    window: { addEventListener() {} },
+    document: { getElementById: element, createElement: tag => new Element(tag) },
+    window, location, history,
     crypto: crypto ?? { randomUUID: () => job.id },
     EventSource, AbortController, URL, setTimeout, clearTimeout,
     fetch: async (...args) => {
@@ -54,7 +86,7 @@ function setup({ crypto, fetchImpl } = {}) {
   });
   vm.runInContext(source, context, { filename: 'public/app.js' });
   element('video-url').value = job.bvid;
-  return { element, requests, stream: streams[0], submit: () => element('submit-form').onsubmit({ preventDefault() {} }) };
+  return { element, requests, location, windowEvents, stream: streams[0], submit: () => element('submit-form').onsubmit({ preventDefault() {} }) };
 }
 
 test('POST acknowledgement immediately adds the selected job while SSE is disconnected', async () => {
@@ -99,4 +131,68 @@ test('a WebView without randomUUID submits once using a cryptographic UUID fallb
   assert.equal(ui.requests[0].body.url, job.bvid);
   assert.match(ui.element('form-feedback').textContent, /排队/);
   assert.equal(ui.element('submit-button').disabled, false);
+});
+
+
+test('an old empty SSE snapshot cannot revoke a just-acknowledged active job', async () => {
+  const ui = setup();
+  await ui.submit();
+  ui.stream.state({ connection: 'connected', jobs: [] });
+  assert.equal(ui.element('queue-count').textContent, '1');
+  const row = ui.element('queue').querySelector('[data-job-id="' + job.id + '"]');
+  assert.ok(row, 'acknowledged job remains visible after the delayed initial snapshot');
+  assert.match(row.className, /selected/);
+  assert.match(ui.element('form-feedback').textContent, /排队/);
+  assert.equal(ui.requests.length, 1, 'retaining a receipt never resubmits it');
+});
+
+test('same-video active work stays selected while the older completed job belongs to history', async () => {
+  const ui = setup();
+  const older = { ...job, id: '4574df4d-5521-41eb-a678-159a6f327312', state: 'completed', phase: 'complete',
+    manifest: { title: 'Older cards', author: 'Author', cards: [] } };
+  ui.stream.state({ connection: 'connected', jobs: [older] });
+  await ui.submit();
+  const running = { ...job, state: 'processing', phase: 'transcript' };
+  ui.stream.state({ connection: 'connected', jobs: [running, older] });
+  assert.equal(ui.location.hash, '#job-' + job.id);
+  assert.equal(ui.element('queue-count').textContent, '1');
+  const selected = ui.element('queue').querySelector('[data-job-id="' + job.id + '"]');
+  assert.ok(selected);
+  assert.match(selected.className, /selected/);
+  assert.equal(ui.element('queue').querySelector('[data-job-id="' + older.id + '"]'), null);
+  assert.ok(ui.element('history-list').querySelector('a[href="#result-' + older.id + '"]'));
+  assert.match(ui.element('history-label').textContent, /1/);
+  assert.match(ui.element('form-feedback').textContent, /识别原话/);
+  const steps = selected.querySelector('ol.job-steps');
+  assert.ok(steps, 'active job exposes its production stages');
+  const currentSteps = steps.querySelectorAll('[aria-current="step"]');
+  assert.equal(currentSteps.length, 1);
+  assert.match(currentSteps[0].textContent, /整理原话/);
+  const completed = { ...job, state: 'completed', phase: 'complete', manifest: { title: 'Current cards', author: 'Author', cards: [] } };
+  ui.stream.state({ connection: 'connected', jobs: [completed, older] });
+  assert.equal(ui.element('queue-count').textContent, '0');
+  const retained = ui.element('queue').querySelector('[data-job-id="' + job.id + '"]');
+  assert.ok(retained, 'current terminal job remains in the task panel');
+  assert.match(retained.className, /selected/);
+  assert.ok(ui.element('history-list').querySelector('a[href="#result-' + older.id + '"]'));
+  assert.equal(ui.element('history-list').querySelector('a[href="#result-' + job.id + '"]'), null);
+  assert.ok(ui.element('gallery').children.find(node => node.id === 'result-' + job.id));
+  assert.ok(retained.querySelector('a[href="#result-' + job.id + '"]'), 'current work links to its own result, not older cards for the same BV');
+  assert.equal(ui.requests.length, 1);
+});
+
+test('a tracked job hash restores the exact same-video run without resubmitting', () => {
+  const ui = setup({ hash: '#job-' + job.id });
+  const older = { ...job, id: '4574df4d-5521-41eb-a678-159a6f327312', state: 'completed', phase: 'complete',
+    manifest: { title: 'Older cards', author: 'Author', cards: [] } };
+  ui.stream.state({ connection: 'connected', jobs: [job, older] });
+  assert.match(ui.element('queue').querySelector('[data-job-id="' + job.id + '"]').className, /selected/);
+  assert.equal(ui.element('queue-count').textContent, '1');
+  assert.equal(ui.requests.length, 0);
+  ui.location.hash = '#result-' + older.id;
+  ui.windowEvents.get('hashchange')();
+  assert.match(ui.element('queue').querySelector('[data-job-id="' + older.id + '"]').className, /selected/);
+  assert.doesNotMatch(ui.element('queue').querySelector('[data-job-id="' + job.id + '"]').className, /selected/);
+  assert.equal(ui.element('queue-count').textContent, '1', 'selecting old output does not hide active production');
+  assert.equal(ui.requests.length, 0, 'changing the tracked result never creates another job');
 });
