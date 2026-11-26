@@ -726,6 +726,83 @@
         ],
         "metadata": {}
       }
+    },
+    {
+      "name": "cluster's settled call reviewed before elevated was sent",
+      "message": {
+        "id": "m10",
+        "role": "agent",
+        "createdAt": 1700000003000,
+        "metadata": {
+          "providerId": "claude",
+          "modelId": "anthropic/opus-5"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Running it."
+          },
+          {
+            "type": "tool_call",
+            "id": "c10",
+            "name": "exec_command",
+            "status": "completed",
+            "arguments": {
+              "cmd": "ls"
+            },
+            "result": {
+              "output": "a\nb"
+            },
+            "review": {
+              "outcome": "allowed",
+              "reason": "Lists files.",
+              "risk": "low",
+              "userAuthorization": "high"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "cluster's older history: a string result and string arguments",
+      "message": {
+        "id": "m11",
+        "role": "agent",
+        "createdAt": 1700000004000,
+        "metadata": {},
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c11a",
+            "name": "send_agent_message",
+            "status": "completed",
+            "arguments": {
+              "agentId": "a2",
+              "text": "hi"
+            },
+            "result": "Message delivered."
+          },
+          {
+            "type": "tool_call",
+            "id": "c11b",
+            "name": "exec_command",
+            "status": "completed",
+            "arguments": "ls",
+            "result": [
+              "a",
+              "b"
+            ]
+          },
+          {
+            "type": "tool_call",
+            "id": "c11c",
+            "name": "x",
+            "status": "failed",
+            "arguments": 42,
+            "result": true
+          }
+        ]
+      }
     }
   ],
   "invalid": [
@@ -1182,28 +1259,6 @@
       "problem": "/content/0/review/risk: expected one of low|medium|high|critical, got a string"
     },
     {
-      "name": "arguments not an object",
-      "message": {
-        "id": "bad16",
-        "role": "agent",
-        "createdAt": 1700000001000,
-        "content": [
-          {
-            "type": "tool_call",
-            "id": "c",
-            "name": "x",
-            "status": "running",
-            "arguments": "ls"
-          }
-        ],
-        "metadata": {
-          "providerId": "claude",
-          "modelId": "anthropic/opus-5"
-        }
-      },
-      "problem": "/content/0/arguments: expected an object, got a string"
-    },
-    {
       "name": "tool call request with an extra field",
       "message": {
         "id": "bad17",
@@ -1254,6 +1309,47 @@
         }
       },
       "problem": "/content/0/type: unknown block type"
+    },
+    {
+      "name": "elevated without its review",
+      "message": {
+        "id": "bad19",
+        "role": "agent",
+        "createdAt": 1,
+        "metadata": {},
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c",
+            "name": "x",
+            "status": "completed",
+            "elevated": true
+          }
+        ]
+      },
+      "problem": "/content/0/elevated: expected review with it"
+    },
+    {
+      "name": "a review alone that is malformed",
+      "message": {
+        "id": "bad20",
+        "role": "agent",
+        "createdAt": 1,
+        "metadata": {},
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "c",
+            "name": "x",
+            "status": "completed",
+            "review": {
+              "outcome": "allowed",
+              "reason": "ok"
+            }
+          }
+        ]
+      },
+      "problem": "/content/0/review/risk: expected one of low|medium|high|critical, got missing"
     }
   ]
 }

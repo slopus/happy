@@ -77,9 +77,12 @@ class MessageCheckTest {
         }
     }
 
+    /** Shared invalid fixtures Android reads on purpose: the cluster's older history has a review without `elevated`. */
+    private val readAnyway = setOf("review-without-elevated.json")
+
     @Test fun `every shared invalid message is a placeholder, failing where the fixture says`() {
-        val invalid = shared("invalid")
-        assertTrue(invalid.size >= 8)
+        val invalid = shared("invalid").filter { it.first !in readAnyway }
+        assertTrue(invalid.size >= 7)
         for ((name, fixture) in invalid) {
             val problem = MessageCheck.problem(fixture["message"]!!)!!
             // The first failure found, at or under one of the places the fixture lists.
@@ -90,6 +93,27 @@ class MessageCheckTest {
             assertEquals(name, problem, placeholder.undisplayable)
             assertEquals(name, ConversationRowBuilder.undisplayable(placeholder.id, problem), ConversationRowBuilder.build(placeholder, "a1", null, streaming = false).single())
         }
+    }
+
+    @Test fun `a review without elevated reads, its elevation unknown`() {
+        for (message in listOf(shared("invalid").toMap().getValue("review-without-elevated.json")["message"]!!, fixture("cluster's settled call reviewed before elevated was sent"))) {
+            val decoded = Message.decode(message, "x")
+            assertNull(decoded.undisplayable)
+            val call = decoded.content.filterIsInstance<Block.ToolCall>().single()
+            assertTrue(call.review != null)
+            assertNull(call.elevated)
+        }
+        // The text beside it reads too.
+        assertEquals("Running it.", Message.decode(fixture("cluster's settled call reviewed before elevated was sent"), "x").text)
+    }
+
+    @Test fun `a tool call's result and arguments are opaque JSON, as older cluster history keeps them`() {
+        val decoded = Message.decode(fixture("cluster's older history: a string result and string arguments"), "x")
+        assertNull(decoded.undisplayable)
+        val calls = decoded.content.filterIsInstance<Block.ToolCall>()
+        assertEquals(listOf("c11a", "c11b", "c11c"), calls.map { it.id })
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("Message delivered."), calls[0].result)
+        assertEquals(3, ConversationRowBuilder.build(decoded, "a1", null, streaming = false).count { it is ConversationRow.Tool })
     }
 
     @Test fun `a presentation type this build doesn't know is a plain tool call`() {

@@ -24,7 +24,10 @@ import kotlinx.serialization.json.doubleOrNull
  * presentation `type` this build doesn't know is no presentation, the call
  * a plain line, never a failure; an image block may come without its
  * `data` (history leaves a large picture's bytes out); a user message's
- * `mode` may be null, as happy-agent sends it on legacy messages.
+ * `mode` may be null, as happy-agent sends it on legacy messages; a tool
+ * call's `review` may come without `elevated`, as the cluster's older
+ * history has it (elevation then unknown); a tool call's `arguments` and
+ * `result` are any JSON, as that history keeps a result as a string.
  */
 object MessageCheck {
     /** Why [value] isn't a protocol message, as a short path and reason without its values; null when it is one. */
@@ -264,13 +267,12 @@ object MessageCheck {
         o.required("id", path, ::string)
         o.required("name", path, ::string)
         o.required("status", path) { v, p -> oneOf(v, p, "running", "completed", "failed") }
-        o.optional("arguments", path) { v, p -> obj(v, p) }
-        o.optional("result", path) { v, p -> obj(v, p) }
+        // Opaque JSON: the cluster's older history keeps a result as a string ("Message delivered.") and may keep arguments so.
         o.optional("presentation", path, ::presentation)
         o.optional("elevated", path, ::boolean)
         o.optional("review", path, ::review)
-        // A reviewed call carries both, an unreviewed one neither.
-        if ("review" in o && "elevated" !in o) invalid(at(path, "review"), "expected elevated with it")
+        // A reviewed call carries both, an unreviewed one neither; the cluster's history from before it sent
+        // `elevated` has a review alone, read as a review whose elevation isn't known.
         if ("elevated" in o && "review" !in o) invalid(at(path, "elevated"), "expected review with it")
     }
 
