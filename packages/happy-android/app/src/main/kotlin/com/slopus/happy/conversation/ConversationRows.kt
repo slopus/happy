@@ -254,7 +254,7 @@ object UndisplayableLog {
     }
 
     fun once(agentId: String, row: ConversationRow.Undisplayable) {
-        if (told.add("$agentId/${row.messageId}/${row.problem}")) write("Message ${row.messageId} of agent $agentId failed to display: ${row.problem}")
+        if (told.add("$agentId/${row.messageId}/${row.problem}")) write("Message ${UndisplayableReport.shown(row.messageId)} of agent ${UndisplayableReport.shown(agentId)} failed to display: ${row.problem}")
     }
 }
 

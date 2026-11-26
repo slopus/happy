@@ -214,6 +214,28 @@ class MessageCheckTest {
         assertNull(Message.decode(named, "x").undisplayable)
     }
 
+    @Test fun `a hostile message's keys and ID never reach the report`() {
+        val secret = "hunter2 sk-live-SECRET"
+        val card = fixture("cancelled question card from the cluster").toString()
+            .replace("\"id\":\"bad1\"", "\"id\":\"leak $secret\"")
+            .replace("\"answers\":null", "\"answers\":{\"$secret\":\"not a list\"}")
+        val request = fixture("tool call request with an extra field").toString().replace("\"extra\"", "\"$secret\"")
+        for (raw in listOf(card, request)) {
+            val message = Message.decode(Json.parseToJsonElement(raw), "x")
+            val row = ConversationRowBuilder().rows(message, "a-hostile", null, streaming = false).single() as ConversationRow.Undisplayable
+            val url = UndisplayableReport.url("https://cluster.example", "a1", row, "2026.11.1")
+            val read = java.net.URLDecoder.decode(url, "UTF-8")
+            assertFalse(read, "hunter2" in read || "SECRET" in read || "leak" in read)
+            assertTrue(read, "<key>" in read)
+            assertFalse(logged.joinToString(), logged.any { "hunter2" in it })
+        }
+        // However long what is reported, the address stays short enough to open.
+        val long = ConversationRow.Undisplayable("k", "m1", "/content/0/presentation/answers/<key>: " + "x".repeat(5000))
+        val url = UndisplayableReport.url("https://" + "s".repeat(3000) + ".example", "a1", long, "2026.11.1")
+        assertTrue(url.length <= UndisplayableReport.URL_LIMIT)
+        assertTrue(java.net.URLDecoder.decode(url, "UTF-8").contains("- Message: m1"))
+    }
+
     @Test fun `a bug report says where the message was and why, not what it said`() {
         val row = ConversationRow.Undisplayable("bad1:undisplayable", "bad1", "/content/0/presentation/answers: expected an object, got null")
         val body = UndisplayableReport.body("https://cluster.example", "agent1", row, "2026.11.1")

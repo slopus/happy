@@ -941,7 +941,7 @@
           "modelId": "anthropic/opus-5"
         }
       },
-      "problem": "/content/0/presentation/answers/reviewer: expected an array, got a string"
+      "problem": "/content/0/presentation/answers/<key>: expected an array, got a string"
     },
     {
       "name": "no questions",
@@ -1284,7 +1284,7 @@
         "runId": "run1",
         "profile": null
       },
-      "problem": "/content/0/extra: not allowed"
+      "problem": "/content/0/<key>: not allowed"
     },
     {
       "name": "not an object",

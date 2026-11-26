@@ -15,7 +15,7 @@ import kotlinx.serialization.json.doubleOrNull
  * ([Message.undisplayable]) and the rest of the conversation goes on.
  *
  * The reason is a JSON pointer into the message and what is wrong there,
- * the first found; never a value it held.
+ * the first found; never a value it held, nor a key it named (`<key>`).
  *
  * Deliberately looser than the schema where a valid server breaks it or a
  * newer one may grow, as desktop is (the shared fixtures'
@@ -37,6 +37,9 @@ object MessageCheck {
     } catch (e: Invalid) {
         e.message
     }
+
+    /** Where a key the message chose stands in a reason: its name is the message's, never said. */
+    private const val KEY = "<key>"
 
     private class Invalid(message: String) : Exception(message, null, false, false)
 
@@ -228,7 +231,7 @@ object MessageCheck {
             "tool_call_request" -> {
                 o.required("name", path, ::string)
                 o.optional("arguments", path) { v, p -> obj(v, p) }
-                (o.keys - setOf("type", "name", "arguments")).firstOrNull()?.let { invalid(at(path, it), "not allowed") }
+                if ((o.keys - setOf("type", "name", "arguments")).isNotEmpty()) invalid(at(path, KEY), "not allowed")
             }
             "tool_call" -> toolCall(o, path)
             "configuration" -> {
@@ -466,6 +469,6 @@ object MessageCheck {
             }
         }
         val answers = obj(o["answers"], at(path, "answers"))
-        for ((id, values) in answers) stringArray(values, at(at(path, "answers"), id))
+        for (values in answers.values) stringArray(values, at(at(path, "answers"), KEY))
     }
 }
