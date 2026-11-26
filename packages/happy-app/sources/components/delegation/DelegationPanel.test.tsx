@@ -2,7 +2,7 @@ import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DelegatedTask, DelegationRole } from '@slopus/happy-wire';
-import { DelegationInspectorPanel } from './DelegationPanel';
+import { DelegatedTaskGroup, DelegationInspectorPanel } from './DelegationPanel';
 import { SubagentInspectorProvider, useSubagentInspector, type SubagentInspectorContextValue, type SubagentInspectorSelection } from '../subagent/SubagentInspectorContext';
 // @ts-expect-error react-test-renderer does not publish declarations.
 import TestRenderer from 'react-test-renderer';
@@ -115,6 +115,24 @@ describe('real delegation panels', () => {
         expect(renderer.root.findAllByType('Text').some((node: any) => node.children.join('') === 'delegation.updateAvailable')).toBe(true);
         await press('delegation-task-refresh');
         expect(mocks.read).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens a continuation source task read-only without composing into the new parent', async () => {
+        await act(async () => { renderer = TestRenderer.create(element({ ...taskSelection, parentSessionId: 'parent-a' }, 'new-parent')); });
+        expect(mocks.read).toHaveBeenCalledExactlyOnceWith('parent-a', task.id);
+        expect(button('delegation-task-append').props.disabled).toBe(true);
+        await press('delegation-task-append');
+        expect(mocks.compose).not.toHaveBeenCalled();
+    });
+
+    it('opens an anchored task with its source parent and excludes foreign summaries', async () => {
+        await act(async () => { renderer = TestRenderer.create(<SubagentInspectorProvider sessionId="new-parent"><Probe />
+            <DelegatedTaskGroup sessionId="parent-a" tasks={[task, { ...task, id: 'foreign', parentSessionId: 'other' }]} />
+        </SubagentInspectorProvider>); });
+        const group = renderer.root.findByType('SubagentActivityGroup');
+        expect(group.props.activities.map((activity: any) => activity.id)).toEqual([task.id]);
+        act(() => group.props.onOpen(group.props.activities[0]));
+        expect(inspector!.selection).toMatchObject({ kind: 'delegated-task', id: task.id, parentSessionId: 'parent-a' });
     });
 
     it('keeps handoff context scoped to the selected version, including an absent historical context', async () => {

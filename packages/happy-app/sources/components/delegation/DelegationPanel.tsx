@@ -10,10 +10,7 @@ import { Modal } from '@/modal';
 import { useSession } from '@/sync/storage';
 import { listDelegationRoles, saveDelegationRole, deleteDelegationRole, readDelegatedTask, cancelDelegatedTask } from '@/sync/apiDelegation';
 import { useRightSwipePanel } from '../RightSwipePanelHost';
-import { useDesktopReadingWidth } from '../DesktopReadingWidth';
 import { PanelTabs, type PanelTab } from '../PanelTabs';
-import { SubagentActivityGroup } from '../subagent/SubagentActivityGroup';
-import { delegatedActivity } from './delegatedActivity';
 import { useSubagentInspector, type SubagentInspectorSelection } from '../subagent/SubagentInspectorContext';
 
 const EMPTY_ROLES: DelegationRole[] = [];
@@ -48,22 +45,7 @@ function Button({ label, onPress, disabled, selected, destructive, testID }: {
     </Pressable>;
 }
 
-/** Linked tasks reuse the approved subagent rows and their real executor brands. */
-export const DelegatedTaskGroup = React.memo(function DelegatedTaskGroup({ sessionId }: { sessionId: string }) {
-    const session = useSession(sessionId);
-    const inspector = useSubagentInspector();
-    const readingWidth = useDesktopReadingWidth();
-    const tasks = session?.metadata?.delegationV2?.tasks ?? session?.metadata?.delegatedTasks;
-    const activities = React.useMemo(() => (tasks ?? [])
-        .filter(task => task.parentSessionId === sessionId)
-        .map(delegatedActivity), [tasks, sessionId]);
-    if (!activities.length || !inspector) return null;
-    return <View style={[styles.taskGroup, { maxWidth: readingWidth }]} testID="delegated-task-group">
-        <SubagentActivityGroup activities={activities}
-            selectedId={inspector.selection?.kind === 'delegated-task' ? inspector.selection.id : null}
-            onOpen={activity => inspector.open({ kind: 'delegated-task', id: activity.id, title: activity.title, status: activity.status })} />
-    </View>;
-});
+export { DelegatedTaskGroup } from './DelegatedTaskGroup';
 
 export function DelegationInspectorPanel({ sessionId, selection, onBack, onCompose, surfaceColor }: {
     sessionId: string; selection: SubagentInspectorSelection; onBack: () => void; onCompose: (text: string) => void; surfaceColor?: string;
@@ -76,7 +58,8 @@ export function DelegationInspectorPanel({ sessionId, selection, onBack, onCompo
     };
     return selection.kind === 'agent-roles'
         ? <AgentRolesPanel key={`${sessionId}:roles`} sessionId={sessionId} initialRoleId={selection.roleId} surfaceColor={surfaceColor} onBack={onBack} onCompose={compose} />
-        : <DelegatedTaskPanel key={`${sessionId}:${selection.id}`} sessionId={sessionId} taskId={selection.id} surfaceColor={surfaceColor} onBack={onBack} onCompose={compose} />;
+        : <DelegatedTaskPanel key={`${selection.parentSessionId ?? sessionId}:${selection.id}`} sessionId={selection.parentSessionId ?? sessionId} taskId={selection.id}
+            readOnly={!!selection.parentSessionId && selection.parentSessionId !== sessionId} surfaceColor={surfaceColor} onBack={onBack} onCompose={compose} />;
 }
 
 function Header({ title, subtitle, onBack }: { title: string; subtitle?: string; onBack: () => void }) {
@@ -184,7 +167,7 @@ function Field({ label, children }: React.PropsWithChildren<{ label: string }>) 
     return <View style={styles.field}><Text style={styles.caption}>{label}</Text>{children}</View>;
 }
 
-function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose, surfaceColor }: { sessionId: string; taskId: string; onBack: () => void; onCompose: (text: string) => void; surfaceColor?: string }) {
+function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose, surfaceColor, readOnly = false }: { sessionId: string; taskId: string; onBack: () => void; onCompose: (text: string) => void; surfaceColor?: string; readOnly?: boolean }) {
     const session = useSession(sessionId);
     const inspector = useSubagentInspector();
     const { theme } = useUnistyles();
@@ -214,7 +197,7 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose, surfaceColor
     const selected = versions.get(version ?? task?.version ?? 0) ?? (task ? versions.get(task.version) : undefined);
     const remember = (nextTab = tab, nextVersion = version) => inspector?.taskViews?.current.set(taskId, { tab: nextTab, version: nextVersion });
     const cancel = async () => {
-        if (session?.metadata?.capabilities?.delegation !== 1) return;
+        if (readOnly || session?.metadata?.capabilities?.delegation !== 1) return;
         setCancelling(true); setError(null);
         try { const result = await cancelDelegatedTask(sessionId, taskId); if (alive.current) { if (result) setTask(result); setCancelRequested(true); } }
         catch (failure) { if (alive.current) setError(errorMessage(failure)); }
@@ -254,8 +237,8 @@ function DelegatedTaskPanel({ sessionId, taskId, onBack, onCompose, surfaceColor
             </> : null}
             {isActive && (cancelRequested || currentSummary?.cancelRequested) ? <Text style={styles.secondary}>{t('delegation.cancelRequested')}</Text> : null}
             {session?.metadata?.capabilities?.delegation !== 1 ? <Text style={styles.caption}>{t('delegation.protocolHint')}</Text> : null}
-            <View style={styles.actions}><Button label={t('delegation.append')} onPress={() => onCompose(t('delegation.appendPrompt', { id: taskId }))} disabled={session?.metadata?.capabilities?.delegation !== 1} testID="delegation-task-append" />
-                {isActive ? <Button label={t('delegation.cancelTask')} onPress={() => { void cancel(); }} disabled={session?.metadata?.capabilities?.delegation !== 1 || cancelling || cancelRequested || currentSummary?.cancelRequested} destructive testID="delegation-task-cancel" /> : null}</View>
+            <View style={styles.actions}><Button label={t('delegation.append')} onPress={() => { if (!readOnly && session?.metadata?.capabilities?.delegation === 1) onCompose(t('delegation.appendPrompt', { id: taskId })); }} disabled={readOnly || session?.metadata?.capabilities?.delegation !== 1} testID="delegation-task-append" />
+                {isActive ? <Button label={t('delegation.cancelTask')} onPress={() => { void cancel(); }} disabled={readOnly || session?.metadata?.capabilities?.delegation !== 1 || cancelling || cancelRequested || currentSummary?.cancelRequested} destructive testID="delegation-task-cancel" /> : null}</View>
         </ScrollView>
     </View>;
 }
@@ -289,7 +272,6 @@ const styles = StyleSheet.create(theme => ({
     selected: { backgroundColor: theme.colors.surfaceSelected },
     focused: { borderColor: theme.colors.textLink },
     disabled: { opacity: 0.45 },
-    taskGroup: { width: '100%', alignSelf: 'center', paddingHorizontal: 16, marginVertical: 10 },
     rowCopy: { flex: 1, minWidth: 0, gap: 4 },
     rowTitle: { color: theme.colors.text, fontSize: 14, lineHeight: 20, ...Typography.default('semiBold') },
 }));

@@ -35,7 +35,7 @@ vi.mock('@/hooks/useGroupedMessages', () => ({ isSessionTurnActive: () => true }
 vi.mock('./layout', () => ({ layout: { maxWidth: 800 } }));
 vi.mock('./ChatFooter', () => ({ ChatFooter: () => null }));
 // Delegation has its own RPC/state tests; this boundary covers transcript streaming.
-vi.mock('./delegation/DelegationPanel', () => ({ DelegatedTaskGroup: () => null }));
+vi.mock('./delegation/DelegatedTaskGroup', () => ({ DelegatedTaskGroup: () => null }));
 // The native list/scroll machinery is tested by ConversationTranscript.pagination;
 // keep this boundary lightweight while rendering the real ChatList live-text subtree.
 vi.mock('./ConversationTranscript', () => ({ ConversationTranscript: (props: any) => <>

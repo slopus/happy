@@ -10,6 +10,7 @@ export type SubagentInspectorSelection = Pick<SubagentConversationActivity, 'id'
     status: ConversationActivityStatus;
     kind?: 'native' | 'delegated-task' | 'agent-roles' | 'role-detail';
     roleId?: string;
+    parentSessionId?: string;
     machineId?: string;
     savedRole?: DelegationRole;
     roleOwner?: ReturnType<typeof getFirstSubmissionScope>;

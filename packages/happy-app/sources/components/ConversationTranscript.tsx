@@ -41,6 +41,8 @@ import { inferMessageOptionResponses } from '@/sync/messageOptionResponses';
 import { firstAgentTextIds } from './turnAvatars';
 import { AgentWorkGroupView, ToolGroupView } from './ToolGroupView';
 import { AttachmentGalleryView } from './AttachmentGalleryView';
+import { DelegatedTaskGroup } from './delegation/DelegatedTaskGroup';
+import { anchorDelegatedTasks } from './transcriptDelegation';
 import { AnchorListSheet } from './AnchorListSheet';
 import { ConversationAnchorRail } from './ConversationAnchorRail';
 import { BrowserProgressContext } from './BrowserProgressContext';
@@ -155,6 +157,9 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         [props.messages, browserProgress.runs]);
     const defaultItems = useGroupedMessages(props.scopedItems ? [] : transcriptMessages, props.groupToolCalls ?? true, groupingOptions);
     const displayItems = props.scopedItems ?? defaultItems;
+    const delegatedTasks = React.useMemo(() => anchorDelegatedTasks(displayItems, {
+        sessionId: props.sessionId, metadata: props.metadata, isAtLatest: props.isAtLatest ?? true,
+    }), [displayItems, props.sessionId, props.metadata, props.isAtLatest]);
     const optionResponses = React.useMemo(() => inferMessageOptionResponses(props.messages), [props.messages]);
     const showTurnAvatars = Platform.OS === 'web' && !!props.turnAvatar;
     const firstAgentIds = React.useMemo(() => showTurnAvatars ? firstAgentTextIds(displayItems) : new Set<string>(), [displayItems, showTurnAvatars]);
@@ -632,8 +637,11 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         theme,
     ]);
     const renderItem = React.useCallback(({ item }: { item: DisplayItem & { renderKey: string } }) => {
+        const tasks = delegatedTasks.get(item.id);
+        const sourceId = item.source?.sessionId ?? props.sessionId;
+        const row = item.source ? <TranscriptReadOnlyContext.Provider value={item.source.readOnly}><BrowserProgressContext.Provider value={{ sessionId: item.source.sessionId, runs: item.source.browserRuns ?? [] }}>{renderItemContent({ item })}</BrowserProgressContext.Provider></TranscriptReadOnlyContext.Provider> : renderItemContent({ item });
         const content = <TranscriptReadingMarker messageId={itemMessages(item)[0]?.id ?? item.id}>
-            {item.source ? <TranscriptReadOnlyContext.Provider value={item.source.readOnly}><BrowserProgressContext.Provider value={{ sessionId: item.source.sessionId, runs: item.source.browserRuns ?? [] }}>{renderItemContent({ item })}</BrowserProgressContext.Provider></TranscriptReadOnlyContext.Provider> : renderItemContent({ item })}
+            {tasks?.length && sourceId ? <>{row}<DelegatedTaskGroup sessionId={sourceId} tasks={tasks} /></> : row}
         </TranscriptReadingMarker>;
         if (Platform.OS !== 'web') {
             return props.itemContainerStyle ? <View style={props.itemContainerStyle}>{content}</View> : content;
@@ -653,7 +661,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             }
             coordinator?.rowMounted(item.renderKey);
         }}>{content}</View>;
-    }, [props.itemContainerStyle, renderItemContent, coordinator]);
+    }, [props.itemContainerStyle, props.sessionId, renderItemContent, coordinator, delegatedTasks]);
 
     const handleScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         coordinator?.activity();
