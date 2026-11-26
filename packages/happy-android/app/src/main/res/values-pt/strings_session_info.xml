@@ -2,4 +2,8 @@
 <resources>
     <string name="session_info_branch">Branch</string>
     <string name="session_info_loading_delayed">Os detalhes da sessão estão demorando mais do que o esperado para carregar</string>
+    <string name="session_info_rename_title">Renomear chat</string>
+    <string name="session_info_rename_message">Dê a este chat um nome próprio. Ele permanece quando o agente sugerir outro.</string>
+    <string name="session_info_rename_placeholder">Nome do chat</string>
+    <string name="session_info_rename_failed">Não foi possível renomear o chat</string>
 </resources>

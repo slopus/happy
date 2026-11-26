@@ -2,4 +2,8 @@
 <resources>
     <string name="session_info_branch">Rama</string>
     <string name="session_info_loading_delayed">Los detalles de la sesión tardan más de lo esperado en cargarse</string>
+    <string name="session_info_rename_title">Cambiar nombre del chat</string>
+    <string name="session_info_rename_message">Dale a este chat un nombre propio. Se mantiene cuando el agente sugiere otro.</string>
+    <string name="session_info_rename_placeholder">Nombre del chat</string>
+    <string name="session_info_rename_failed">No se pudo cambiar el nombre del chat</string>
 </resources>

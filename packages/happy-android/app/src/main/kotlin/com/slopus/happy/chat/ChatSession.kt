@@ -20,7 +20,7 @@ data class ChatSessionInfo(val session: Session, val agentState: AgentState?) {
     val id: String get() = session.id
     val metadata: SessionMetadata? get() = session.metadata
 
-    /** `metadata.bot.name`, then `metadata.summary.text`; null for an untitled chat. */
+    /** `metadata.userTitle`, then `metadata.bot.name`, then `metadata.summary.text`; null for an untitled chat. */
     val title: String? get() = session.displayName()
 
     /** Happy Agent (rig) session: `metadata.client.id == 'rig'`. */

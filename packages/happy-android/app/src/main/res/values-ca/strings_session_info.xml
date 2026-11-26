@@ -2,4 +2,8 @@
 <resources>
     <string name="session_info_branch">Branca</string>
     <string name="session_info_loading_delayed">Els detalls de la sessió triguen més del previst a carregar-se</string>
+    <string name="session_info_rename_title">Canvia el nom del xat</string>
+    <string name="session_info_rename_message">Posa un nom propi a aquest xat. Es manté quan l\'agent en suggereix un de nou.</string>
+    <string name="session_info_rename_placeholder">Nom del xat</string>
+    <string name="session_info_rename_failed">No s\'ha pogut canviar el nom del xat</string>
 </resources>

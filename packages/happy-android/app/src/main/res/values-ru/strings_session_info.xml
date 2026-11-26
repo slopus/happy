@@ -2,4 +2,8 @@
 <resources>
     <string name="session_info_branch">Ветка</string>
     <string name="session_info_loading_delayed">Загрузка сведений о сессии занимает больше времени, чем ожидалось</string>
+    <string name="session_info_rename_title">Переименовать чат</string>
+    <string name="session_info_rename_message">Дайте этому чату собственное имя. Оно останется, даже если агент предложит новое.</string>
+    <string name="session_info_rename_placeholder">Название чата</string>
+    <string name="session_info_rename_failed">Не удалось переименовать чат</string>
 </resources>

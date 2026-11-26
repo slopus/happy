@@ -38,6 +38,7 @@ import com.slopus.happy.ui.components.PickerSheetSection
 import com.slopus.happy.ui.conversation.ConversationPopup
 import com.slopus.happy.model.aiProviderName
 import com.slopus.happy.model.dangerouslySkipPermissions
+import com.slopus.happy.model.displayName
 import com.slopus.happy.model.forkSource
 import com.slopus.happy.model.formatOSPlatform
 import com.slopus.happy.model.formatPathRelativeToHome
@@ -65,6 +66,8 @@ import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
 import com.slopus.happy.ui.components.ItemList
+import com.slopus.happy.ui.components.Prompt
+import com.slopus.happy.ui.components.PromptModal
 import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.home.ArchiveResult
 import com.slopus.happy.ui.home.taskFailureMessage
@@ -98,6 +101,7 @@ internal fun SessionInfoContent(
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     var alert by remember { mutableStateOf<Alert?>(null) }
+    var prompt by remember { mutableStateOf<Prompt?>(null) }
     var forking by remember { mutableStateOf(false) }
     var archiving by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
@@ -107,6 +111,7 @@ internal fun SessionInfoContent(
     val successTitle = stringResource(R.string.common_success)
     val ok = stringResource(R.string.common_ok)
     val cancel = stringResource(R.string.common_cancel)
+    val save = stringResource(R.string.common_save)
     fun show(title: String, message: String?) {
         alert = Alert(title, message, listOf(AlertButton(ok)))
     }
@@ -119,6 +124,36 @@ internal fun SessionInfoContent(
     val cleanupKeep = stringResource(R.string.session_info_worktree_cleanup_keep)
     suspend fun cleanupWorktree() = controls.cleanupWorktree(session) {
         confirm({ alert = it }, cleanupTitle, cleanupMessage, cleanupDelete, cleanupKeep, destructive = true)
+    }
+    // A bot's or a task's name is its own; a chat's own name is the summary, which the person may replace.
+    val canRename = metadata != null && metadata.bot == null && !session.isTask
+    val renameTitle = stringResource(R.string.session_info_rename_title)
+    val renameMessage = stringResource(R.string.session_info_rename_message)
+    val renamePlaceholder = stringResource(R.string.session_info_rename_placeholder)
+    val renameFailed = stringResource(R.string.session_info_rename_failed)
+    fun rename() {
+        prompt = Prompt(
+            title = renameTitle,
+            message = renameMessage,
+            defaultValue = session.displayName().orEmpty(),
+            placeholder = renamePlaceholder,
+            cancelText = cancel,
+            confirmText = save,
+            allowBlank = false,
+        ) { value ->
+            if (value == null) return@Prompt
+            val title = value.trim()
+            if (title.isEmpty()) return@Prompt
+            scope.launch {
+                try {
+                    controls.rename(session, title)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    show(errorTitle, renameFailed)
+                }
+            }
+        }
     }
 
     val resume = resumeAvailability(session, machine)
@@ -148,7 +183,7 @@ internal fun SessionInfoContent(
     }
 
     ItemList {
-        SessionInfoHeader(session, live.avatar ?: session.avatar)
+        SessionInfoHeader(session, live.avatar ?: session.avatar, onRename = if (canRename) { { rename() } } else null)
         permission?.takeIf { metadata != null && it.modes.canChangePermission && it.modes.availableModes.isNotEmpty() }?.let {
             PermissionGroup(it, metadata) { field, option ->
                 scope.launch {
@@ -486,6 +521,7 @@ internal fun SessionInfoContent(
         )
     }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
+    prompt?.let { PromptModal(it, onDismiss = { prompt = null }) }
 }
 
 /**

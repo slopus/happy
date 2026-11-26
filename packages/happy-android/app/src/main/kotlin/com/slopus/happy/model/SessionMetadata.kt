@@ -263,6 +263,8 @@ data class SessionMetadata(
     val host: String,
     val version: String? = null,
     val name: String? = null,
+    /** A name the person gave the chat; it outranks the agent's own title. */
+    val userTitle: String? = null,
     val os: String? = null,
     val summary: SessionSummary? = null,
     val lastMeaningfulMessageAt: Long? = null,
@@ -360,6 +362,7 @@ data class SessionMetadata(
             host = f.required("host", Read.string),
             version = f.optional("version", Read.string),
             name = f.optional("name", Read.string),
+            userTitle = f.optional("userTitle", Read.string),
             os = f.optional("os", Read.string),
             summary = f.optional(
                 "summary",

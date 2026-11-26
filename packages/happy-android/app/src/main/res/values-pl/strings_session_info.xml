@@ -2,4 +2,8 @@
 <resources>
     <string name="session_info_branch">Gałąź</string>
     <string name="session_info_loading_delayed">Wczytywanie szczegółów sesji trwa dłużej niż oczekiwano</string>
+    <string name="session_info_rename_title">Zmień nazwę czatu</string>
+    <string name="session_info_rename_message">Nadaj temu czatowi własną nazwę. Zostanie zachowana, gdy agent zaproponuje nową.</string>
+    <string name="session_info_rename_placeholder">Nazwa czatu</string>
+    <string name="session_info_rename_failed">Nie udało się zmienić nazwy czatu</string>
 </resources>

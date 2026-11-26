@@ -11,10 +11,17 @@ import kotlinx.serialization.json.JsonPrimitive
 // from the translation table are left to the caller (null = the fallback).
 
 /**
- * getSessionName: the bot's name, else a task's, else the summary, else
- * null, which the screens show as "New chat" (`session.newChat`).
+ * getSessionName: a name the person gave the chat, else the bot's, else a
+ * task's, else the summary, else null, which the screens show as "New chat"
+ * (`session.newChat`). `metadata.userTitle` is set only by this app's rename,
+ * so a later `change_title` from the CLI (which writes `summary` alone)
+ * never takes the name back.
  */
-fun Session.displayName(): String? = metadata?.bot?.name ?: taskOrNull()?.name ?: metadata?.summary?.text
+fun Session.displayName(): String? =
+    metadata?.userTitle?.takeIf { it.isNotBlank() }
+        ?: metadata?.bot?.name
+        ?: taskOrNull()?.name
+        ?: metadata?.summary?.text
 
 /**
  * A task's membership (happy-ios 36b11c5bf): it lives like a bot (one

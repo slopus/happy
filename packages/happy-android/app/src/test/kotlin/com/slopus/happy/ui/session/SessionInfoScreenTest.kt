@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
@@ -24,6 +25,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
@@ -64,6 +66,7 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.components.ProfileHeaderTags
 import com.slopus.happy.ui.components.GlassSpec
+import com.slopus.happy.ui.components.PromptTags
 import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.home.ArchiveResult
 import com.slopus.happy.ui.layout.ProvideWindowLayout
@@ -114,7 +117,14 @@ class SessionInfoScreenTest {
         /** What the worktree prompt is answered with; null: no worktree to ask about. */
         var cleanupAnswer: Boolean? = null
 
+        /** A rename that fails with this exception; null: it works. */
+        var renameError: Exception? = null
+
         override suspend fun archive(session: Session): ArchiveResult = archive.also { calls += "archive:${session.id}" }
+        override suspend fun rename(session: Session, title: String) {
+            calls += "rename:${session.id}:$title"
+            renameError?.let { throw it }
+        }
         override suspend fun leave(session: Session): ArchiveResult = archive.also { calls += "leave:${session.id}" }
         override suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) {
             if (cleanupAnswer != null) calls += "cleanup:${confirm()}"
@@ -344,6 +354,12 @@ class SessionInfoScreenTest {
         assertDp("name gap", avatar.bottom + 14.dp, name.top)
         assertDp("status gap", name.bottom + 2.dp, subtitle.top)
         rule.onNode(hasText("Fix the build") and hasAnyAncestor(hasTestTag(ProfileHeaderTags.NAME)), useUnmergedTree = true).assertExists()
+        // The pencil hangs after the name, 20 square, inside the name's line.
+        val pencil = rule.node(ProfileHeaderTags.NAME_ACTION).bounds
+        assertDp("pencil width", 20, pencil.width)
+        assertDp("pencil height", 20, pencil.height)
+        assertTrue("pencil inside the name line", pencil.top >= name.top && pencil.bottom <= name.bottom)
+        assertDp("pencil at the row's end", name.right - 24.dp, pencil.right)
         rule.node(ProfileHeaderTags.SUBTITLE).assert(hasText("online"))
         val tiles = rule.onAllNodesWithTag(ProfileHeaderTags.TILE, useUnmergedTree = true)
         tiles.assertCountEquals(2)
@@ -357,6 +373,50 @@ class SessionInfoScreenTest {
         rule.onAllNodesWithTag(ProfileHeaderTags.TILE)[0].assert(hasText("Model") and hasText("—"))
         rule.onAllNodesWithTag(ProfileHeaderTags.TILE)[1].assert(hasText("Started"))
         assertTrue("cards follow the tiles", rule.node(SessionInfoTags.CHANGES).bounds.top >= model.bottom)
+    }
+
+    @Test
+    fun tappingTheChatNameRenamesItWithATrimmedName() {
+        val fakes = Fakes()
+        show(claudeSession(), fakes = fakes)
+        rule.node(ProfileHeaderTags.NAME).assert(hasClickAction()).performClick()
+        rule.node(PromptTags.TITLE).assert(hasText("Rename Chat"))
+        rule.node(PromptTags.INPUT).performTextReplacement("  Better name  ")
+        rule.node(PromptTags.CONFIRM).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("rename:session-0123456789-abcdef:Better name"), fakes.calls)
+    }
+
+    @Test
+    fun aBlankChatNameCannotBeSaved() {
+        show(claudeSession())
+        rule.node(ProfileHeaderTags.NAME).performClick()
+        rule.node(PromptTags.INPUT).performTextReplacement("   ")
+        rule.node(PromptTags.CONFIRM).assertIsNotEnabled()
+        rule.node(PromptTags.CANCEL).performClick()
+        rule.node(PromptTags.INPUT).assertDoesNotExist()
+    }
+
+    @Test
+    fun aFailedRenameSaysWhyInOurWords() {
+        val fakes = Fakes().apply { renameError = RuntimeException("not connected") }
+        show(claudeSession(), fakes = fakes)
+        rule.node(ProfileHeaderTags.NAME).performClick()
+        rule.node(PromptTags.INPUT).performTextReplacement("Better name")
+        rule.node(PromptTags.CONFIRM).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Couldn't rename the chat").assertExists()
+    }
+
+    @Test
+    fun aBotsNameIsNotRenamedHere() {
+        show(claudeSession {
+            putJsonObject("bot") {
+                put("id", "bot-1"); put("name", "Helper"); put("username", "helper")
+                put("workspaceId", "workspace-1"); put("orderKey", "a")
+            }
+        })
+        rule.node(ProfileHeaderTags.NAME_ACTION).assertDoesNotExist()
     }
 
     @Test
