@@ -37,4 +37,29 @@ class ContextBoundaryTest {
         assertFalse(switch.isContextBoundaryRow())
         assertFalse(text.isContextBoundaryRow())
     }
+
+    @Test fun `a local clear wrapper names the cleared boundary`() {
+        val clear = commandWrapper("clear")
+        assertEquals(ContextBoundary.Cleared, localCommandBoundary(clear, hasLocalId = false))
+        assertEquals(AgentEvent.Message("Context was reset"), localCommandBoundary(clear, hasLocalId = false)?.completionEvent())
+    }
+
+    @Test fun `a local compact wrapper names the compacted boundary with any args`() {
+        assertEquals(ContextBoundary.Compacted, localCommandBoundary(commandWrapper("compact"), hasLocalId = false))
+        assertEquals(
+            ContextBoundary.Compacted,
+            localCommandBoundary(commandWrapper("compact", "keep the plan"), hasLocalId = false),
+        )
+        assertEquals(
+            AgentEvent.Message("Compaction completed"),
+            localCommandBoundary(commandWrapper("compact"), hasLocalId = false)?.completionEvent(),
+        )
+    }
+
+    @Test fun `only the SDK's clear and compact wrappers are boundaries`() {
+        assertNull("the person's own echo has a local id", localCommandBoundary(commandWrapper("clear"), hasLocalId = true))
+        assertNull("a raw /clear is not the wrapper", localCommandBoundary("/clear", hasLocalId = false))
+        assertNull("clear takes no args", localCommandBoundary(commandWrapper("clear", "foo"), hasLocalId = false))
+        assertNull("another command", localCommandBoundary(commandWrapper("model"), hasLocalId = false))
+    }
 }

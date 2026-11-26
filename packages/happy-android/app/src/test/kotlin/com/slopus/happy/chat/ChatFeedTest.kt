@@ -111,14 +111,14 @@ class ChatFeedTest {
             ChatPage(
                 listOf(
                     user("c", "<local-command-caveat>Caveat: generated</local-command-caveat>", 1),
-                    user("r", "<command-name>/compact</command-name><command-message>compact</command-message><command-args>keep it short</command-args>", 2),
+                    user("r", "<command-name>/model</command-name><command-message>model</command-message><command-args>opus</command-args>", 2),
                 ),
             ),
             ChatSessionInfo.from(session()),
         )
         val display = (snapshot.rows.single() as ChatRow.User).display as UserDisplay.Command
-        assertEquals("compact", display.commandName)
-        assertEquals("keep it short", display.args)
+        assertEquals("model", display.commandName)
+        assertEquals("opus", display.args)
     }
 
     @Test

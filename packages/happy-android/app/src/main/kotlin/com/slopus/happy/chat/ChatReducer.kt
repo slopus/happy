@@ -110,6 +110,9 @@ internal data class StoredPermission(
     val decision: PermissionDecision? = null,
 )
 
+/** How long after a boundary the same local-mode wrapper is its duplicate. */
+private const val BOUNDARY_DUPLICATE_WINDOW_MS = 60_000L
+
 private data class Receipt(val createdAt: Long, val error: String? = null)
 
 private data class TimedUsage(val usage: ContextUsage, val timestamp: Long)
@@ -136,6 +139,8 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
     internal val tracer = TracerState()
     private var latestTodos: Pair<List<TodoItem>, Long>? = null
     private var latestUsage: TimedUsage? = null
+    /** When each kind of boundary was last reduced, for [BOUNDARY_DUPLICATE_WINDOW_MS]. */
+    private val latestBoundaryAt = HashMap<ContextBoundary, Long>()
     private var nextId = 0L
 
     val todos: List<TodoItem>? get() = latestTodos?.first
@@ -222,13 +227,32 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
             }
             // A context boundary also clears what it invalidates: the todos and
             // usage the reducer held for the rows above it (iOS ChatReducer).
-            when (event?.contextBoundary()) {
+            // A local-mode /clear or /compact has no completion event: the
+            // SDK's <command-name> wrapper stands in for one.
+            val reportedBoundary = event?.contextBoundary()
+            val localBoundary = (body as? Body.User)?.let { localCommandBoundary(it.text, msg.localId != null) }
+            val boundary = reportedBoundary ?: localBoundary
+            when (boundary) {
                 ContextBoundary.Cleared -> {
                     latestTodos = emptyList<TodoItem>() to msg.createdAt
                     latestUsage = TimedUsage(ContextUsage(0, 0, 0, 0, 0), msg.createdAt)
                 }
                 ContextBoundary.Compacted -> latestUsage = TimedUsage(ContextUsage(0, 0, 0, 0, 0), msg.createdAt)
                 null -> Unit
+            }
+            // The CLI's event and the SDK's wrapper can both name one boundary,
+            // in either order: the first draws the divider, the second nothing.
+            if (boundary != null && isDuplicateBoundary(boundary, msg.createdAt)) {
+                messageIds[msg.id] = msg.id
+                continue
+            }
+            if (boundary != null) latestBoundaryAt[boundary] = msg.createdAt
+
+            if (localBoundary != null) {
+                // The row is the wrapper's, not the person's: it draws the divider.
+                messageIds[msg.id] = msg.id
+                converted.add(msg to localBoundary.completionEvent())
+                continue
             }
 
             val asEvent = parseMessageAsEvent(msg)
@@ -683,6 +707,12 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
 
     private fun indexRealId(realId: String, internalId: String) {
         byRealId.getOrPut(realId) { HashSet(2) }.add(internalId)
+    }
+
+    /** True if a boundary of the same kind was already reduced within the duplicate window. */
+    private fun isDuplicateBoundary(boundary: ContextBoundary, createdAt: Long): Boolean {
+        val seenAt = latestBoundaryAt[boundary] ?: return false
+        return createdAt - seenAt in 0..BOUNDARY_DUPLICATE_WINDOW_MS
     }
 
     private fun updateLatestTodos(value: JsonElement?, timestamp: Long) {

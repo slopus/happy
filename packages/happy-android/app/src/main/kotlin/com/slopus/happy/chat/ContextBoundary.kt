@@ -26,6 +26,32 @@ fun AgentEvent.contextBoundary(): ContextBoundary? {
     }
 }
 
+/**
+ * The boundary a local-mode slash command names, or null for every other
+ * message. A terminal's /clear and /compact reach the chat as the SDK's
+ * `<command-name>` wrapper, not as the CLI's completion event; the person's
+ * own echo of the command (it has a local id) is hidden, not counted.
+ */
+fun localCommandBoundary(text: String, hasLocalId: Boolean): ContextBoundary? {
+    if (hasLocalId) return null
+    // Only the SDK's wrapper: a raw "/clear" typed into the chat is not one.
+    if (!text.contains("<command-name>")) return null
+    val command = parseLocalCommandMessage(text) as? LocalCommandMessage.CommandRun ?: return null
+    return when (command.commandName.lowercase()) {
+        "clear" -> if (command.args == null) ContextBoundary.Cleared else null
+        "compact" -> ContextBoundary.Compacted
+        else -> null
+    }
+}
+
+/** The CLI's completion event for this boundary, so a wrapper reads the same. */
+fun ContextBoundary.completionEvent(): AgentEvent.Message = AgentEvent.Message(
+    when (this) {
+        ContextBoundary.Cleared -> CLEARED_EVENT
+        ContextBoundary.Compacted -> COMPACTED_EVENT
+    },
+)
+
 /** True for the row a boundary draws, which a turn's work never folds away. */
 fun ChatRow.isContextBoundaryRow(): Boolean =
     (message as? ChatMessage.Event)?.event?.contextBoundary() != null

@@ -29,6 +29,12 @@ fun toolResult(id: String, content: String, isError: Boolean = false) = toolResu
 
 fun eventMsg(id: String, event: AgentEvent, createdAt: Long = 0) = NormalizedMessage(id, null, createdAt, Body.Event(event))
 
+/** The Agent SDK's local slash-command wrapper, as Claude Code's transcript writes it. */
+fun commandWrapper(name: String, args: String? = null) =
+    "<command-name>/$name</command-name>\n" +
+        "            <command-message>$name</command-message>\n" +
+        "            <command-args>${args.orEmpty()}</command-args>"
+
 fun agentState(text: String): AgentState = AgentState.parse(json(text))!!
 
 /** The reducer's internal tool row for a tool id. */

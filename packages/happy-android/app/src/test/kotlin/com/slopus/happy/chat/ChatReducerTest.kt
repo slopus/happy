@@ -514,6 +514,52 @@ class ChatReducerTest {
         assertEquals(10L, result.usage?.contextSize)
     }
 
+    @Test fun `a local clear wrapper draws the divider, resets todos and usage, and shows no user row`() {
+        state.reduce(agentMsg("a", 1000, text("x"), usage = UsageData(10, 5)))
+        val result = state.reduce(userMsg("clear-1", commandWrapper("clear"), createdAt = 2000))
+        val message = result.messages.single() as ChatMessage.Event
+        assertEquals(AgentEvent.Message("Context was reset"), message.event)
+        assertEquals(2000, message.createdAt)
+        assertEquals(emptyList<TodoItem>(), result.todos)
+        assertEquals(ContextUsage(0, 0, 0, 0, 0), result.usage)
+        assertTrue(state.snapshot().none { it is ChatMessage.UserText })
+        assertEquals(0, state.reduce(userMsg("clear-1", commandWrapper("clear"), createdAt = 2000)).messages.size)
+    }
+
+    @Test fun `a local compact wrapper draws the compacted divider`() {
+        val result = state.reduce(userMsg("compact-1", commandWrapper("compact", "keep the plan"), createdAt = 2000))
+        assertEquals(AgentEvent.Message("Compaction completed"), (result.messages.single() as ChatMessage.Event).event)
+        assertEquals(ContextUsage(0, 0, 0, 0, 0), result.usage)
+    }
+
+    @Test fun `a wrapper with a local id or another command stays a user row`() {
+        val echo = state.reduce(userMsg("clear-echo", commandWrapper("clear"), localId = "local-clear", createdAt = 1000))
+        assertTrue(echo.messages.single() is ChatMessage.UserText)
+        val model = state.reduce(userMsg("model-1", commandWrapper("model"), createdAt = 2000))
+        assertTrue(model.messages.single() is ChatMessage.UserText)
+        val clearWithArgs = state.reduce(userMsg("clear-args", commandWrapper("clear", "foo"), createdAt = 3000))
+        assertTrue(clearWithArgs.messages.single() is ChatMessage.UserText)
+    }
+
+    @Test fun `a wrapper after the CLI's own boundary draws no second divider`() {
+        state.reduce(eventMsg("reset", AgentEvent.Message("Context was reset"), 1000))
+        assertEquals(0, state.reduce(userMsg("clear-1", commandWrapper("clear"), createdAt = 30_000)).messages.size)
+        assertEquals(1, state.snapshot().count { it is ChatMessage.Event && it.event.contextBoundary() != null })
+    }
+
+    @Test fun `the CLI's boundary after a wrapper draws no second divider`() {
+        state.reduce(userMsg("compact-1", commandWrapper("compact"), createdAt = 1000))
+        assertEquals(0, state.reduce(eventMsg("done", AgentEvent.Message("Compaction completed"), 20_000)).messages.size)
+        assertEquals(1, state.snapshot().count { it is ChatMessage.Event && it.event.contextBoundary() != null })
+    }
+
+    @Test fun `a wrapper over a minute after the CLI's boundary draws its own divider`() {
+        state.reduce(eventMsg("reset", AgentEvent.Message("Context was reset"), 1000))
+        val result = state.reduce(userMsg("clear-1", commandWrapper("clear"), createdAt = 61_001))
+        assertEquals(AgentEvent.Message("Context was reset"), (result.messages.single() as ChatMessage.Event).event)
+        assertEquals(2, state.snapshot().count { it is ChatMessage.Event && it.event.contextBoundary() != null })
+    }
+
     @Test fun `title changes and plan mode render as events`() {
         val result = state.reduce(
             agentMsg("t", 1000, toolUse("c1", "mcp__happy__change_title", """{"title":"New title"}""")),
