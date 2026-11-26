@@ -106,6 +106,11 @@ class MessageCheckTest {
         assertTrue(MessageCheck.problem(long)!!.endsWith("/header: expected at most 64 characters"))
     }
 
+    @Test fun `a user message's mode may be null, as happy-agent sends legacy ones, but not missing`() {
+        assertNull(MessageCheck.problem(fixture("legacy user message with a null mode")))
+        assertEquals("/mode: expected a value or null, got missing", MessageCheck.problem(fixture("user message without its mode")))
+    }
+
     @Test fun `invalid messages fail with a short reason`() {
         assertTrue(invalid.size >= 15)
         for (fixture in invalid) assertEquals(fixture.name, fixture.problem, MessageCheck.problem(fixture.message))

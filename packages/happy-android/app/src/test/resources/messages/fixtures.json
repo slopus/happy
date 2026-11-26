@@ -126,6 +126,26 @@
       }
     },
     {
+      "name": "legacy user message with a null mode",
+      "message": {
+        "id": "u5",
+        "role": "user",
+        "createdAt": 1700000000000,
+        "content": [
+          {
+            "type": "text",
+            "text": "Ship it"
+          }
+        ],
+        "metadata": {},
+        "status": "accepted",
+        "delivery": "queue",
+        "mode": null,
+        "runId": "run1",
+        "profile": null
+      }
+    },
+    {
       "name": "agent text, reasoning and a command",
       "message": {
         "id": "m1",
@@ -1067,7 +1087,7 @@
         "runId": "run1",
         "profile": null
       },
-      "problem": "/mode: expected an object, got missing"
+      "problem": "/mode: expected a value or null, got missing"
     },
     {
       "name": "createdAt as a string",

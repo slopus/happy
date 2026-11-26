@@ -23,7 +23,8 @@ import kotlinx.serialization.json.doubleOrNull
  * pattern limits (the cluster sends a question's `header` as ""); a
  * presentation `type` this build doesn't know is no presentation, the call
  * a plain line, never a failure; an image block may come without its
- * `data` (history leaves a large picture's bytes out).
+ * `data` (history leaves a large picture's bytes out); a user message's
+ * `mode` may be null, as happy-agent sends it on legacy messages.
  */
 object MessageCheck {
     /** Why [value] isn't a protocol message, as a short path and reason without its values; null when it is one. */
@@ -129,7 +130,8 @@ object MessageCheck {
             "user" -> {
                 o.required("status", "") { v, p -> oneOf(v, p, "pending", "accepted") }
                 o.required("delivery", "") { v, p -> oneOf(v, p, "queue", "steer") }
-                o.required("mode", "", ::mode)
+                // happy-agent sends null on legacy user messages (ApiMessageProjection's `mode ?? null`), though the type says MessageMode.
+                o.nullable("mode", "", ::mode)
                 o.nullable("runId", "", ::string)
                 o.optionalNullable("profile", "", ::string)
                 o.optional("clientMetadata", "") { v, p -> obj(v, p) }
