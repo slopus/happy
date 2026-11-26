@@ -25,7 +25,10 @@ import kotlinx.serialization.json.put
  * decrypt become a [Body.Unsupported] placeholder. A current kind whose fields
  * fail happy-app's schema is dropped, as happy-app drops it; so are the
  * control records happy-app never renders (turn-start, subagent start/stop,
- * ACP task lifecycle and token counts).
+ * ACP task lifecycle and token counts). A text record carrying background-task
+ * notifications keeps them on [NormalizedMessage.taskNotifications]; one that
+ * carried nothing else becomes [Body.Control], which the reducer reads without
+ * drawing a row.
  */
 object ChatNormalizer {
     private val json = Json { ignoreUnknownKeys = true }
@@ -49,7 +52,15 @@ object ChatNormalizer {
             "user" -> {
                 if (type != "text") return unsupported("user.${type ?: "unknown"}")
                 val text = content?.get("text").str ?: return null
-                return NormalizedMessage(id, localId, createdAt, Body.User(text), meta = messageMeta)
+                val (notifications, visible) = takeLeadingTaskNotifications(text)
+                // A record that only carried background-task notifications draws nothing.
+                if (visible != text && visible.isBlank()) {
+                    if (notifications.isEmpty()) return null
+                    return NormalizedMessage(id, localId, createdAt, Body.Control, meta = messageMeta, taskNotifications = notifications)
+                }
+                return NormalizedMessage(
+                    id, localId, createdAt, Body.User(visible), meta = messageMeta, taskNotifications = notifications,
+                )
             }
             "session" -> {
                 content ?: return null
@@ -104,10 +115,16 @@ object ChatNormalizer {
 
         val parentUUID = e.subagent
         val isSidechain = parentUUID != null
-        fun message(body: Body, sidechain: Boolean = isSidechain, turn: String? = e.turn, usage: UsageData? = e.usage) =
+        fun message(
+            body: Body,
+            sidechain: Boolean = isSidechain,
+            turn: String? = e.turn,
+            usage: UsageData? = e.usage,
+            notifications: List<BackgroundTaskNotification> = emptyList(),
+        ) =
             NormalizedMessage(
                 id = e.id, localId = localId, createdAt = e.time, body = body, isSidechain = sidechain,
-                meta = meta, usage = usage, turn = turn,
+                meta = meta, usage = usage, turn = turn, taskNotifications = notifications,
             )
 
         return when (ev) {
@@ -121,12 +138,20 @@ object ChatNormalizer {
                 Body.Agent(if (isUsageOnlyServiceEvent) emptyList() else listOf(AgentContent.Text(ev.text, e.id, parentUUID))),
             )
             is SessionEvent.Text -> {
-                val visible = stripLeadingTaskNotificationWrappers(ev.text)
-                if (visible != ev.text && visible.isBlank()) return null
+                val (notifications, visible) = takeLeadingTaskNotifications(ev.text)
+                // A record that only carried background-task notifications draws
+                // nothing, but its notifications still reach the reducer.
+                if (visible != ev.text && visible.isBlank()) {
+                    return when {
+                        notifications.isEmpty() -> null
+                        else -> message(Body.Control, sidechain = false, turn = null, usage = null, notifications = notifications)
+                    }
+                }
                 if (e.role == "user") {
                     NormalizedMessage(
                         id = e.id, localId = localId, createdAt = e.time, body = Body.User(visible), meta = meta,
                         claudeUuid = e.claudeUuid, codexItemId = e.codexItemId, author = e.author,
+                        taskNotifications = notifications,
                     )
                 } else {
                     val block = if (ev.thinking) {
@@ -134,7 +159,8 @@ object ChatNormalizer {
                     } else {
                         AgentContent.Text(visible, e.id, parentUUID)
                     }
-                    message(Body.Agent(listOf(block))).copy(claudeUuid = e.claudeUuid, codexItemId = e.codexItemId)
+                    message(Body.Agent(listOf(block)), notifications = notifications)
+                        .copy(claudeUuid = e.claudeUuid, codexItemId = e.codexItemId)
                 }
             }
             is SessionEvent.ToolCallStart -> message(
@@ -245,34 +271,11 @@ object ChatNormalizer {
         if (value == Math.floor(value) && !value.isInfinite()) value.toLong().toString() else value.toString()
 }
 
-private const val TASK_NOTIFICATION_OPEN = "<task-notification>"
-private const val TASK_NOTIFICATION_CLOSE = "</task-notification>"
-
 /**
  * Removes complete leading `<task-notification>` envelopes (background-task
  * control records) and keeps any real text after them (happy-wire
- * controlMessages.ts). Incomplete wrappers are left untouched.
+ * controlMessages.ts). Incomplete wrappers are left untouched. The envelopes
+ * themselves are read by [takeLeadingTaskNotifications], which the normalizer
+ * keeps on the message for the reducer's background-task state.
  */
-fun stripLeadingTaskNotificationWrappers(text: String): String {
-    var remainder = text.trimStart()
-    var stripped = false
-    while (remainder.startsWith(TASK_NOTIFICATION_OPEN)) {
-        var depth = 1
-        var cursor = TASK_NOTIFICATION_OPEN.length
-        while (depth > 0) {
-            val nextOpen = remainder.indexOf(TASK_NOTIFICATION_OPEN, cursor)
-            val nextClose = remainder.indexOf(TASK_NOTIFICATION_CLOSE, cursor)
-            if (nextClose == -1) return if (stripped) remainder else text
-            if (nextOpen != -1 && nextOpen < nextClose) {
-                depth += 1
-                cursor = nextOpen + TASK_NOTIFICATION_OPEN.length
-            } else {
-                depth -= 1
-                cursor = nextClose + TASK_NOTIFICATION_CLOSE.length
-            }
-        }
-        stripped = true
-        remainder = remainder.substring(cursor).trimStart()
-    }
-    return if (stripped) remainder else text
-}
+fun stripLeadingTaskNotificationWrappers(text: String): String = takeLeadingTaskNotifications(text).second

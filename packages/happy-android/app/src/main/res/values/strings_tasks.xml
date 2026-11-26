@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The session's background tasks: the pill over the composer and the sheet it opens. -->
+<resources>
+    <plurals name="chat_tasks_running">
+        <item quantity="one">%1$d running</item>
+        <item quantity="other">%1$d running</item>
+    </plurals>
+    <plurals name="chat_tasks_finished">
+        <item quantity="one">%1$d finished</item>
+        <item quantity="other">%1$d finished</item>
+    </plurals>
+    <string name="chat_tasks_title">Background tasks</string>
+    <string name="chat_tasks_status_running">Running</string>
+    <string name="chat_tasks_status_completed">Completed</string>
+    <string name="chat_tasks_status_failed">Failed</string>
+    <string name="chat_tasks_status_cancelled">Cancelled</string>
+    <string name="chat_tasks_status_time">%1$s · %2$s</string>
+</resources>

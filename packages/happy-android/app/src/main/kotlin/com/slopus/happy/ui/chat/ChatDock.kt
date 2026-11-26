@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -76,9 +77,10 @@ internal fun DockScrim(dockHeight: Int, modifier: Modifier = Modifier) {
 /**
  * SessionView.tsx's `input`: the inactive-session hint (a real session
  * only), [goalBar] and the question banner in the centred input width,
- * [activityBar] full width, then the composer. Each part above the
- * composer, and the composer's status and usage rows, fade in place while
- * [showDetails] is false. [session] is the chat, or a pending chat's anchor.
+ * [activityBar] full width, the session's background tasks as a pill, then
+ * the composer. Each part above the composer, and the composer's status and
+ * usage rows, fade in place while [showDetails] is false. [session] is the
+ * chat, or a pending chat's anchor.
  */
 @Composable
 internal fun ChatDock(
@@ -99,6 +101,8 @@ internal fun ChatDock(
     autoFocus: Boolean = false,
     placeholder: String? = null,
 ) {
+    val backgroundTasks = state.snapshot.backgroundTasks
+    var tasksOpen by remember(session.id) { mutableStateOf(false) }
     Column(modifier.testTag(ChatScreenTags.DOCK).fillMaxWidth()) {
         if (inactiveHint != null) {
             AnimatedFade(showDetails) { CenteredInputWidth(horizontalPadding = inputPadding) { InactiveArchivedHint(inactiveHint, actions.onResume) } }
@@ -113,8 +117,22 @@ internal fun ChatDock(
         }
         // On the column with no inset of its own: the bar keeps its 16, on the messages' keyline.
         if (activityBar != null) AnimatedFade(showDetails) { CenteredInputWidth(horizontalPadding = 0.dp) { activityBar() } }
+        // A real session's background work, over the composer while it has any.
+        if (state.session != null && backgroundTasks.isNotEmpty()) {
+            AnimatedFade(showDetails) {
+                CenteredInputWidth(horizontalPadding = inputPadding) {
+                    BackgroundTaskChip(
+                        tasks = backgroundTasks,
+                        onClick = { tasksOpen = true },
+                        modifier = Modifier.padding(bottom = BackgroundTaskSpec.chipMarginBottom),
+                    )
+                }
+            }
+        }
         ChatComposerFor(state, session, draft, actions, now, modes, showDetails, onPanelPositioned, composerModifier, autoFocus, placeholder)
     }
+    // The last task going takes the sheet with it.
+    if (tasksOpen && backgroundTasks.isNotEmpty()) BackgroundTaskSheet(backgroundTasks, onDismiss = { tasksOpen = false })
 }
 
 /**

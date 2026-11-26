@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="chat_tasks_running">
+        <item quantity="one">%1$d en curso</item>
+        <item quantity="many">%1$d en curso</item>
+        <item quantity="other">%1$d en curso</item>
+    </plurals>
+    <plurals name="chat_tasks_finished">
+        <item quantity="one">%1$d finalizada</item>
+        <item quantity="many">%1$d finalizadas</item>
+        <item quantity="other">%1$d finalizadas</item>
+    </plurals>
+    <string name="chat_tasks_title">Tareas en segundo plano</string>
+    <string name="chat_tasks_status_running">En curso</string>
+    <string name="chat_tasks_status_completed">Completada</string>
+    <string name="chat_tasks_status_failed">Fallida</string>
+    <string name="chat_tasks_status_cancelled">Cancelada</string>
+    <string name="chat_tasks_status_time">%1$s · %2$s</string>
+</resources>

@@ -29,6 +29,12 @@ class ChatFeedTest {
 
     private fun quote(text: String) = kotlinx.serialization.json.JsonPrimitive(text).toString()
 
+    private fun notification(id: String, at: Long, text: String) = MessageRecord(
+        "s", at, id, null,
+        """{"role":"session","content":{"id":"$id","time":$at,"role":"user","ev":{"t":"text","text":${quote(text)}}}}""",
+        at, at,
+    )
+
     private fun session(metadata: String? = """{"path":"/home/me/app","host":"box"}""", agentState: String? = null, active: Boolean = true) =
         SessionRecord("s", 0, 1, 1, active, 5, metadata, 1, agentState, 1, "", null)
 
@@ -41,6 +47,17 @@ class ChatFeedTest {
     @Test
     fun unsupportedRecordsAreNotDrawn() {
         assertEquals(null, ChatReduction.buildRow(ChatMessage.Unsupported("x", 0, "agent.codex.message"), isClaudeFlavor = false))
+    }
+
+    /** A record that only carried a background-task notification draws no row, but its task reaches the screen. */
+    @Test
+    fun backgroundTaskNotificationsReachTheSnapshotWithoutARow() {
+        val text = "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n" +
+            "<summary>Background command \"ls\" completed (exit code 0)</summary>\n</task-notification>"
+        val snapshot = ChatReduction { 0 }.apply(ChatPage(listOf(notification("n1", 10, text))), ChatSessionInfo.from(session()))
+        assertEquals(emptyList<ChatRow>(), snapshot.rows)
+        assertEquals("b1", snapshot.backgroundTasks.single().taskId)
+        assertEquals(BackgroundTaskStatus.Completed, snapshot.backgroundTasks.single().status)
     }
 
     @Test

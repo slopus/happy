@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="chat_tasks_running">
+        <item quantity="one">%1$d выполняется</item>
+        <item quantity="few">%1$d выполняются</item>
+        <item quantity="many">%1$d выполняется</item>
+        <item quantity="other">%1$d выполняется</item>
+    </plurals>
+    <plurals name="chat_tasks_finished">
+        <item quantity="one">%1$d завершена</item>
+        <item quantity="few">%1$d завершены</item>
+        <item quantity="many">%1$d завершено</item>
+        <item quantity="other">%1$d завершено</item>
+    </plurals>
+    <string name="chat_tasks_title">Фоновые задачи</string>
+    <string name="chat_tasks_status_running">Выполняется</string>
+    <string name="chat_tasks_status_completed">Завершена</string>
+    <string name="chat_tasks_status_failed">Ошибка</string>
+    <string name="chat_tasks_status_cancelled">Отменена</string>
+    <string name="chat_tasks_status_time">%1$s · %2$s</string>
+</resources>

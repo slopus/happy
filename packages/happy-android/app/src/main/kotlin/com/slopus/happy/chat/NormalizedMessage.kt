@@ -19,11 +19,15 @@ data class NormalizedMessage(
     /** Session-protocol turn id: agent rows that share one belong to the same answer. */
     val turn: String? = null,
     val author: SessionAuthor? = null,
+    /** Background-task notifications this record carried; never drawn as a row. */
+    val taskNotifications: List<BackgroundTaskNotification> = emptyList(),
 ) {
     sealed interface Body {
         data class User(val text: String) : Body
         data class Agent(val content: List<AgentContent>) : Body
         data class Event(val event: AgentEvent) : Body
+        /** A record with nothing to draw: background-task notifications alone. */
+        data object Control : Body
         /** A retired or unrecognized record; see [ChatMessage.Unsupported]. */
         data class Unsupported(val kind: String) : Body
     }

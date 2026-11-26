@@ -81,6 +81,8 @@ data class ChatSnapshot(
     val isLoadingOlder: Boolean = false,
     val todos: List<TodoItem>? = null,
     val usage: ContextUsage? = null,
+    /** The session's background tasks, running first (see [backgroundTasksForDisplay]). */
+    val backgroundTasks: List<BackgroundTask> = emptyList(),
 )
 
 /**
@@ -136,7 +138,7 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
                 ReducerOptions(holdUserMessagesUntilAccepted = session?.sendsMessageReceipts == true),
             )
             for (message in result.messages) messages[message.id] = message
-            changed = result.messages.isNotEmpty() || !snapshot.loaded
+            changed = result.messages.isNotEmpty() || result.backgroundTasks != snapshot.backgroundTasks || !snapshot.loaded
         }
         val delivery = page.outbox.filter { it.kind == OutboxKind.USER }.associate { it.localId to (it.state to it.error) }
         if (delivery != lastDelivery) {
@@ -178,6 +180,7 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             isLoadingOlder = page.isLoadingOlder,
             todos = reducer.todos,
             usage = reducer.usage,
+            backgroundTasks = reducer.backgroundTasks,
         )
         return snapshot
     }
