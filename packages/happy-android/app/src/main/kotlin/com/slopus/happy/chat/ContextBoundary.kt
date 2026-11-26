@@ -29,11 +29,11 @@ fun AgentEvent.contextBoundary(): ContextBoundary? {
 /**
  * The boundary a local-mode slash command names, or null for every other
  * message. A terminal's /clear and /compact reach the chat as the SDK's
- * `<command-name>` wrapper, not as the CLI's completion event; the person's
- * own echo of the command (it has a local id) is hidden, not counted.
+ * `<command-name>` wrapper, not as the CLI's completion event. Only Claude
+ * Code's transcript writes the wrapper (the app sends a raw "/clear"), and
+ * the CLI gives every record it sends a local id, so the id tells nothing.
  */
-fun localCommandBoundary(text: String, hasLocalId: Boolean): ContextBoundary? {
-    if (hasLocalId) return null
+fun localCommandBoundary(text: String): ContextBoundary? {
     // Only the SDK's wrapper: a raw "/clear" typed into the chat is not one.
     if (!text.contains("<command-name>")) return null
     val command = parseLocalCommandMessage(text) as? LocalCommandMessage.CommandRun ?: return null

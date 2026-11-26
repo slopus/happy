@@ -532,9 +532,13 @@ class ChatReducerTest {
         assertEquals(ContextUsage(0, 0, 0, 0, 0), result.usage)
     }
 
-    @Test fun `a wrapper with a local id or another command stays a user row`() {
-        val echo = state.reduce(userMsg("clear-echo", commandWrapper("clear"), localId = "local-clear", createdAt = 1000))
-        assertTrue(echo.messages.single() is ChatMessage.UserText)
+    @Test fun `a CLI-sent wrapper with a local id still draws the divider`() {
+        // happy-cli gives every record it sends a random local id.
+        val result = state.reduce(userMsg("clear-cli", commandWrapper("clear"), localId = "cli-uuid", createdAt = 1000))
+        assertEquals(AgentEvent.Message("Context was reset"), (result.messages.single() as ChatMessage.Event).event)
+    }
+
+    @Test fun `another command or a clear with args stays a user row`() {
         val model = state.reduce(userMsg("model-1", commandWrapper("model"), createdAt = 2000))
         assertTrue(model.messages.single() is ChatMessage.UserText)
         val clearWithArgs = state.reduce(userMsg("clear-args", commandWrapper("clear", "foo"), createdAt = 3000))

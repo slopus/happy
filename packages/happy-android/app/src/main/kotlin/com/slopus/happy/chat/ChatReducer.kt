@@ -230,7 +230,7 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
             // A local-mode /clear or /compact has no completion event: the
             // SDK's <command-name> wrapper stands in for one.
             val reportedBoundary = event?.contextBoundary()
-            val localBoundary = (body as? Body.User)?.let { localCommandBoundary(it.text, msg.localId != null) }
+            val localBoundary = (body as? Body.User)?.let { localCommandBoundary(it.text) }
             val boundary = reportedBoundary ?: localBoundary
             when (boundary) {
                 ContextBoundary.Cleared -> {
