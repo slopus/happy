@@ -827,6 +827,23 @@ class AgentSession internal constructor(
     /** Where the reader left each agent's conversation, to open on again; read and kept on the main thread. */
     val scrollPlaces = HashMap<String, ScrollPlace>()
 
+    /**
+     * Each chat's `/btw` side thread ([com.slopus.happy.conversation.SideThreads]),
+     * kept with the connection rather than the chat's screen: leaving the chat
+     * leaves its thread, and the question it waits on, running.
+     */
+    val sideQuestions = com.slopus.happy.conversation.SideThreads(
+        scope,
+        com.slopus.happy.conversation.ConversationApi { method, path, body, category ->
+            try {
+                client.send(method, path, body, category = category)
+            } catch (e: AgentApiException) {
+                throw com.slopus.happy.conversation.ConversationApiException(e.status, e.code, e.message, e.body as? JsonObject)
+            }
+        },
+        online = status.map { it == AgentLinkStatus.Connected }.stateIn(scope, SharingStarted.Eagerly, status.value == AgentLinkStatus.Connected),
+    )
+
     init {
         scope.coroutineContext[Job]!!.invokeOnCompletion { stopHealth(closing = true) }
         scope.coroutineContext[Job]?.invokeOnCompletion { chatStarting.value = false }

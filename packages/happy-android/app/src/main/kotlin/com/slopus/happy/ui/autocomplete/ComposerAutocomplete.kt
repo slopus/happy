@@ -437,6 +437,7 @@ private fun RowScope.FileMentionSuggestion(suggestion: Suggestion.FileMention) {
  * bytes come) in a radius 8 square, else its kind's glyph (18) in a 32
  * surfaceHigh circle, 12 before "/name" 14 semibold; then what it does, 13
  * secondary on one line, 12 after; its kind 12 secondary, 8 after that.
+ * The phone's own `/btw` wears a speech bubble and reads "Side question".
  */
 @Composable
 private fun RowScope.AgentCommandSuggestion(suggestion: Suggestion.AgentCommand) {
@@ -459,6 +460,7 @@ private fun RowScope.AgentCommandSuggestion(suggestion: Suggestion.AgentCommand)
                 when (command.kind) {
                     SlashCommand.COMPACTION -> Ionicon.ContractOutline
                     SlashCommand.SKILL -> Ionicon.ExtensionPuzzleOutline
+                    SlashCommand.SIDE_QUESTION -> Ionicon.ChatbubbleEllipsesOutline
                     else -> Ionicon.FlashOutline
                 },
                 AutocompleteSpec.icon,
@@ -486,6 +488,7 @@ private fun RowScope.AgentCommandSuggestion(suggestion: Suggestion.AgentCommand)
             when (kind) {
                 SlashCommand.SKILL -> stringResource(R.string.conversation_command_kind_skill)
                 SlashCommand.COMPACTION -> stringResource(R.string.conversation_command_kind_compaction)
+                SlashCommand.SIDE_QUESTION -> stringResource(R.string.side_question_title)
                 else -> kind
             },
             style = AutocompleteSpec.label,
