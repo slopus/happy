@@ -1,7 +1,8 @@
 /** Adapts durable scheduling to the daemon's existing encrypted spawn/resume pipeline. */
 import axios from 'axios';
 import { stat, realpath } from 'node:fs/promises';
-import { ScheduledRunClaimSchema, type ScheduledRunReport, type ScheduledTaskConfig } from '@slopus/happy-wire';
+import { scheduledTaskPrompt, ScheduledRunClaimSchema, ScheduledRunSchema, type ScheduledRunReport, type ScheduledTaskConfig } from '@slopus/happy-wire';
+import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { ApiClient } from '@/api/api';
 import type { Machine, Metadata, AgentState } from '@/api/types';
@@ -14,6 +15,7 @@ import { createScheduledTaskRunner } from './runner';
 import { readSettings } from '@/persistence';
 import { SCHEDULED_PERMISSION_ENV, scheduledLaunchPermission, assertScheduledRuntimeSupported } from './permissions';
 import { scheduledWorkerPresence } from './workerPresence';
+import { createLocalTaskHandler } from './localHandler';
 
 export function createDaemonScheduledTaskRunner(deps: {
     token: string; machine: Machine; api: ApiClient; accountIdentity: Uint8Array;
@@ -25,7 +27,8 @@ export function createDaemonScheduledTaskRunner(deps: {
     const headers = { Authorization: `Bearer ${deps.token}` };
     const directory = scheduleJournalDirectory(deps.token, deps.accountIdentity);
     const sendReport = async (taskId: string, runId: string, report: ScheduledRunReport) => {
-        await axios.post(`${configuration.serverUrl}/v1/scheduled-tasks/${taskId}/runs/${runId}/report`, report, { headers, timeout: 15000 });
+        const response = await axios.post(`${configuration.serverUrl}/v1/scheduled-tasks/${taskId}/runs/${runId}/report`, report, { headers, timeout: 15000 });
+        return ScheduledRunSchema.parse(response.data.run);
     };
     const bindingFromTracked = (sessionId: string, config: ScheduledTaskConfig): ScheduledSessionBinding => {
         const session = deps.find(sessionId);
@@ -35,7 +38,9 @@ export function createDaemonScheduledTaskRunner(deps: {
                 seq: session.encryption.seq, metadataVersion: session.encryption.metadataVersion, agentStateVersion: session.encryption.agentStateVersion,
                 metadata: session.happySessionMetadataFromLocalWebhook, savedAt: Date.now() } };
     };
-    return createScheduledTaskRunner({
+    const local = createLocalTaskHandler(directory, (run, report) => sendReport(run.taskId, run.id, report),
+        (id, reason) => logger.debug('[scheduled local receipt]', { id, reason }));
+    const runner = createScheduledTaskRunner({
         journal: createScheduleJournal(directory),
         decrypt: value => decrypt(deps.machine.encryptionKey, deps.machine.encryptionVariant, decodeBase64(value)),
         validate: async config => {
@@ -44,11 +49,13 @@ export function createDaemonScheduledTaskRunner(deps: {
             assertScheduledRuntimeSupported(Boolean((await readSettings()).sandboxConfig?.enabled));
         },
         claim: async () => {
-            const response = await axios.post(`${configuration.serverUrl}/v1/scheduled-tasks/machines/${encodeURIComponent(deps.machine.id)}/claim`, {}, { headers, timeout: 15000 });
+            const response = await axios.post(`${configuration.serverUrl}/v1/scheduled-tasks/machines/${encodeURIComponent(deps.machine.id)}/claim`, { taskWebhookProtocol: 1, localHandlerProtocol: 1, maxNewClaims: 1 }, { headers, timeout: 15000 });
             return ScheduledRunClaimSchema.array().parse(response.data.runs);
         },
-        report: (run, report) => sendReport(run.taskId, run.id, report),
-        flushReceipts: () => flushScheduledReceipts(directory, sendReport),
+        drainClaims: true,
+        report: async (run, report) => { await sendReport(run.taskId, run.id, report); },
+        flushReceipts: async () => { await flushScheduledReceipts(directory, async (...args) => { await sendReport(...args); }); await local.flush(); },
+        runLocal: (run, config) => local.execute(run, config),
         start: async (config, binding) => {
             if (binding) {
                 deps.restore(binding);
@@ -79,7 +86,7 @@ export function createDaemonScheduledTaskRunner(deps: {
             return bindingFromTracked(result.sessionId, config);
         },
         send: async (binding, run, config) => {
-            const message = { role: 'user', content: { type: 'text', text: `${config.title}\n\n${config.prompt}` },
+            const message = { role: 'user', content: { type: 'text', text: scheduledTaskPrompt(config, run.webhookInput) },
                 meta: { sentFrom: 'paws-scheduled-task', permissionMode: scheduledLaunchPermission(config.agent, { [SCHEDULED_PERMISSION_ENV]: config.permissionMode }), permissionModeExplicit: true,
                     ...(config.agent === 'codex' ? { model: config.model ?? null, effort: config.effort ?? null } : {}),
                     scheduledRun: { taskId: run.taskId, runId: run.id, claimId: run.claimId!, notificationPolicy: run.notificationPolicy } } };
@@ -89,4 +96,5 @@ export function createDaemonScheduledTaskRunner(deps: {
                 { claimId: run.claimId!, content, expectedSessionSeq: snapshot.data.session.seq }, { headers, timeout: 15000 });
         },
     });
+    return { wake: runner.wake, stop() { local.stop(); runner.stop(); } };
 }

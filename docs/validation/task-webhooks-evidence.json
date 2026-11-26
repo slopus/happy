@@ -1,0 +1,31 @@
+{
+  "testedAt": "2026-11-26T21:26:00+08:00",
+  "host": "jackydeMac-mini.local",
+  "baseCommit": "42785de5fa5a33cb4382c456639d0bb07e84fe9d",
+  "origin": "http://127.0.0.1:53823",
+  "machineId": "b29137ed-9b86-4c9c-b7b6-29a1b3e2400b",
+  "taskId": "bb5bc406-eecb-49d0-bdb1-c34909951506",
+  "runIds": [
+    "9aa4f1df-f79b-417b-bf99-e64258398424",
+    "488c5a8c-bbda-400e-9354-cd54ee8acae7"
+  ],
+  "busy": true,
+  "events": 10,
+  "node": "v24.20.0",
+  "replies": [
+    {
+      "runId": "9aa4f1df-f79b-417b-bf99-e64258398424",
+      "sessionId": "cmwxl5mbd000amgg92u3kawnp",
+      "output": "WEBHOOK_OK FIRST",
+      "promptCount": 1
+    },
+    {
+      "runId": "488c5a8c-bbda-400e-9354-cd54ee8acae7",
+      "sessionId": "cmwxl5wul000nmgg91umjvpmr",
+      "output": "WEBHOOK_OK SECOND",
+      "promptCount": 1
+    }
+  ],
+  "scope": "isolated local HTTP + built daemon + native Codex; no production deployment",
+  "cliBundleSha256": "43b3338a67582e0d300eea1a1fa3b74d18f803a9ac687a410ed1b92b0484414f"
+}

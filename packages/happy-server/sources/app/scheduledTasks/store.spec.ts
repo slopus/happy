@@ -20,6 +20,139 @@ describe('durable scheduled tasks', () => {
     });
     afterAll(async () => { await context?.database.$disconnect(); await context?.pg.close(); });
 
+    it('gates locally registered executors by capability and keeps their terminal contract separate from agent turns', async () => {
+        await store.save(owner, { ...input, executionKind: 'local-handler', enabled: false }, -1);
+        const token = (await store.configureWebhook(owner, input.id, true)).token!;
+        const requestId = randomUUID();
+        const run = await store.runNow(owner, input.id, requestId, { token, input: { jobId: randomUUID() } });
+        expect(await store.claim(owner, machine, 1)).toEqual([]);
+        const [claim] = await store.claim(owner, machine, 1, 1);
+        expect(claim).toMatchObject({ executionKind: 'local-handler', webhookRequestId: requestId, deliveryAuthorized: true });
+        await expect(store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'waiting-for-input' })).rejects.toMatchObject({ code: 'local-handler-binding-invalid' });
+        await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'running', sequence: 1 });
+        await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'completed', sequence: 2 });
+        const snapshot = await store.webhookSnapshot(owner, input.id);
+        expect(snapshot).toEqual({ activeRunId: null, runs: [{ runId: run.id, requestId, status: 'completed', reason: null, updatedAt: now }] });
+        expect(JSON.stringify(snapshot)).not.toContain('opaque-ciphertext');
+        const normal = await store.save(owner, { ...input, id: randomUUID() }, -1);
+        const agentRun = await store.runNow(owner, normal.id, randomUUID());
+        const [agentClaim] = await store.claim(owner, machine, 1, 1);
+        await expect(store.report(owner, normal.id, agentRun.id, { claimId: agentClaim.claimId!, status: 'completed' })).rejects.toMatchObject({ code: 'turn-required' });
+    });
+
+    it('reserves one delivery slot and starts the next task deadline only after a later claim', async () => {
+        const ids = [input.id, randomUUID()];
+        for (const id of ids) { await store.save(owner, { ...input, id, executionKind: 'local-handler' }, -1); await store.runNow(owner, id, randomUUID()); }
+        const [first] = await store.claim(owner, machine, 1, 1, 1);
+        await store.report(owner, first.taskId, first.id, { claimId: first.claimId!, status: 'running', sequence: 1 });
+        now += 10 * 60_000;
+        const otherId = ids.find(id => id !== first.taskId)!;
+        expect((await store.history(owner, otherId))[0]).toMatchObject({ status: 'pending', deadlineAt: null });
+        await store.report(owner, first.taskId, first.id, { claimId: first.claimId!, status: 'completed', sequence: 2 });
+        const [second] = await store.claim(owner, machine, 1, 1, 1);
+        expect(second.taskId).toBe(otherId); expect(second.deadlineAt).toBeGreaterThan(now);
+        now = second.deadlineAt! + 1;
+        await expect(store.report(owner, second.taskId, second.id, { claimId: second.claimId!, status: 'running', sequence: 1 })).rejects.toMatchObject({ code: 'start-authorization-expired' });
+    });
+    it('deletion revokes webhook credentials and status access', async () => {
+        const task = await store.save(owner, input, -1);
+        const token = (await store.configureWebhook(owner, task.id, true)).token!;
+        await store.remove(owner, task.id, task.version);
+        await expect(store.webhookOwner(task.id, token)).rejects.toMatchObject({ status: 401 });
+        await expect(store.webhookSnapshot(owner, task.id)).rejects.toMatchObject({ status: 401 });
+    });
+    it('isolates webhook credentials, rotates and revokes without accepting stale credentials', async () => {
+        await store.save(owner, input, -1);
+        await expect(store.configureWebhook(other, input.id, true)).rejects.toMatchObject({ code: 'task-not-found' });
+        const first = (await store.configureWebhook(owner, input.id, true)).token!;
+        expect(await store.webhookOwner(input.id, first)).toBe(owner);
+        const second = (await store.configureWebhook(owner, input.id, true)).token!;
+        await expect(store.webhookOwner(input.id, first)).rejects.toMatchObject({ status: 401 });
+        expect(await store.webhookOwner(input.id, second)).toBe(owner);
+        await store.configureWebhook(owner, input.id, false);
+        await expect(store.runNow(owner, input.id, randomUUID(), { token: second, input: {} })).rejects.toMatchObject({ status: 401 });
+    });
+    it('persists independent webhook inputs and rejects busy requests without consuming their identity', async () => {
+        await store.save(owner, { ...input, enabled: false }, -1);
+        const token = (await store.configureWebhook(owner, input.id, true)).token!;
+        const requestId = randomUUID(), secondId = randomUUID();
+        const first = await store.runNow(owner, input.id, requestId, { token, input: { value: 'one' } });
+        expect((await store.runNow(owner, input.id, requestId, { token, input: { value: 'one' } })).id).toBe(first.id);
+        await expect(store.runNow(owner, input.id, requestId, { token, input: { value: 'changed' } })).rejects.toMatchObject({ code: 'idempotency-conflict' });
+        await expect(store.runNow(owner, input.id, secondId, { token, input: { value: 'two' } })).rejects.toMatchObject({ code: 'task-busy' });
+        const saved = (await store.list(owner))[0];
+        await store.save(owner, { ...input, enabled: false, encryptedConfig: 'new-config' }, saved.version);
+        expect((await store.history(owner, input.id))[0]).toMatchObject({ status: 'pending', encryptedConfig: 'opaque-ciphertext' });
+        const restored = createScheduledTaskStore(context.database, { now: () => now });
+        expect(await restored.claim(owner, machine)).toEqual([]);
+        const [claim] = await restored.claim(owner, machine, 1);
+        expect(claim.webhookInput).toEqual({ value: 'one' });
+        expect((await restored.claim(owner, machine, 1))[0].deliveryAuthorized).toBe(false);
+        await restored.report(owner, input.id, claim.id, { claimId: claim.claimId!, status: 'uncertain' });
+        await expect(restored.runNow(owner, input.id, secondId, { token, input: { value: 'two' } })).rejects.toMatchObject({ code: 'task-busy' });
+        await restored.abandon(owner, input.id, claim.id);
+        const second = await restored.runNow(owner, input.id, secondId, { token, input: { value: 'two' } });
+        expect(second.id).not.toBe(first.id);
+        expect(second.webhookInput).toEqual({ value: 'two' });
+        expect((await restored.runNow(owner, input.id, requestId, { token, input: { value: 'one' } })).id).toBe(first.id);
+        expect(await restored.history(owner, input.id)).toHaveLength(2);
+    });
+    it('canonicalizes distinct Unicode keys independently of their insertion order', async () => {
+        await store.save(owner, input, -1);
+        const token = (await store.configureWebhook(owner, input.id, true)).token!;
+        const requestId = randomUUID();
+        const first = await store.runNow(owner, input.id, requestId, { token, input: { 'é': 1, 'e\u0301': 2 } });
+        const retry = await store.runNow(owner, input.id, requestId, { token, input: { 'e\u0301': 2, 'é': 1 } });
+        expect(retry.id).toBe(first.id);
+    });
+    it('serializes concurrent webhook requests and enforces a durable acceptance budget', async () => {
+        await store.save(owner, input, -1);
+        const token = (await store.configureWebhook(owner, input.id, true)).token!;
+        const ids = [randomUUID(), randomUUID()];
+        const results = await Promise.allSettled(ids.map(requestId => store.runNow(owner, input.id, requestId, { token, input: { value: requestId } })));
+        expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+        expect(results.find(r => r.status === 'rejected')).toMatchObject({ reason: { code: 'task-busy' } });
+        for (let i = 0; i < 10; i++) {
+            if (i > 0) await store.runNow(owner, input.id, randomUUID(), { token, input: { value: i } });
+            const [claim] = await store.claim(owner, machine, 1);
+            await store.report(owner, input.id, claim.id, { claimId: claim.claimId!, status: 'failed', reason: 'test-terminal' });
+        }
+        const restored = createScheduledTaskStore(context.database, { now: () => now });
+        const id = randomUUID();
+        await expect(restored.runNow(owner, input.id, id, { token, input: {} })).rejects.toMatchObject({ code: 'webhook-rate-limit', status: 429 });
+        now += 60_001;
+        expect((await restored.runNow(owner, input.id, id, { token, input: {} })).status).toBe('pending');
+    });
+    it('retains webhook receipts beyond ordinary history pruning and bounds total admissions', async () => {
+        await store.save(owner, input, -1);
+        const token = (await store.configureWebhook(owner, input.id, true)).token!;
+        const firstId = randomUUID();
+        const first = await store.runNow(owner, input.id, firstId, { token, input: { value: 'keep' } });
+        const [claim] = await store.claim(owner, machine, 1);
+        await store.report(owner, input.id, claim.id, { claimId: claim.claimId!, status: 'failed', reason: 'test-terminal' });
+        const [finished] = await store.history(owner, input.id);
+        const encoder = new TextEncoder();
+        await context.database.userKVStore.createMany({ data: Array.from({ length: 101 }, (_, i) => {
+            const id = randomUUID();
+            const ordinary = { ...finished, id, createdAt: now + i + 1, webhookInput: undefined, webhookRequestId: undefined };
+            return { accountId: owner, key: `${SCHEDULED_TASK_PREFIX}run:${input.id}:${id}`, value: encoder.encode(JSON.stringify(ordinary)) };
+        }) });
+        now += 60_001;
+        const normal = await store.runNow(owner, input.id, randomUUID());
+        const history = await store.history(owner, input.id);
+        expect(history.filter(run => run.status === 'failed' && !run.webhookRequestId)).toHaveLength(100);
+        expect(history.some(run => run.id === first.id)).toBe(true);
+        const [normalClaim] = await store.claim(owner, machine, 1);
+        await store.report(owner, input.id, normal.id, { claimId: normalClaim.claimId!, status: 'failed', reason: 'test-terminal' });
+        expect((await store.runNow(owner, input.id, firstId, { token, input: { value: 'keep' } })).id).toBe(first.id);
+        const prefix = `${SCHEDULED_TASK_PREFIX}webhook-request:${input.id}:`;
+        await context.database.userKVStore.createMany({ data: Array.from({ length: 999 }, () => {
+            const id = randomUUID();
+            return { accountId: owner, key: prefix + id, value: encoder.encode(JSON.stringify({ runId: id, createdAt: now - 60_001 })) };
+        }) });
+        await expect(store.runNow(owner, input.id, randomUUID(), { token, input: {} })).rejects.toMatchObject({ code: 'webhook-history-limit', status: 429 });
+        expect((await store.runNow(owner, input.id, firstId, { token, input: { value: 'keep' } })).id).toBe(first.id);
+    });
     it('persists encrypted configuration and materializes a due occurrence only once', async () => {
         await store.save(owner, input, -1);
         expect(await store.due(owner, input.id, now)).toBeNull();

@@ -1,9 +1,9 @@
 /** Account-isolated durable plans/runs in a reserved KV namespace; all mutations are serializable. */
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { allocateUserSeqBatch } from '@/storage/seq';
 import { SCHEDULED_STARTUP_TIMEOUT_MS, SCHEDULED_EXECUTION_TIMEOUT_MS } from './deadlines';
-import { SCHEDULED_TASK_PREFIX, ScheduledTaskInputSchema, ScheduledRunReportSchema, nextScheduledAt, isScheduledRunTerminal,
+import { SCHEDULED_TASK_PREFIX, TaskWebhookInputSchema, ScheduledTaskInputSchema, ScheduledRunReportSchema, nextScheduledAt, isScheduledRunTerminal,
     type ScheduledTask, type ScheduledTaskInput, type ScheduledRun, type ScheduledRunReport, type ScheduledRunClaim } from '@slopus/happy-wire';
 
 type Tx = Prisma.TransactionClient;
@@ -13,6 +13,8 @@ export interface ScheduledTaskChange { accountId: string; task: StoredTask; run?
 export class ScheduledTaskError extends Error {
     constructor(public readonly code: string, public readonly status = 409) { super(code); }
 }
+const webhookKey = (id: string) => `${SCHEDULED_TASK_PREFIX}webhook:${id}`;
+const credentialHash = (token: string) => createHash('sha256').update(token).digest('hex');
 const taskKey = (id: string) => `${SCHEDULED_TASK_PREFIX}task:${id}`;
 const runPrefix = (id: string) => `${SCHEDULED_TASK_PREFIX}run:${id}:`;
 const runKey = (taskId: string, id: string) => runPrefix(taskId) + id;
@@ -66,14 +68,14 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
     }
     async function prune(tx: Tx, accountId: string, taskId: string) {
         const history = (await rows(tx, accountId, runPrefix(taskId))).map(row => ({ row, run: decode<ScheduledRun>(row)! }))
-            .filter(item => isScheduledRunTerminal(item.run.status)).sort((a, b) => b.run.createdAt - a.run.createdAt || b.row.key.localeCompare(a.row.key));
+            .filter(item => isScheduledRunTerminal(item.run.status) && !item.run.webhookInput).sort((a, b) => b.run.createdAt - a.run.createdAt || b.row.key.localeCompare(a.row.key));
         const discarded = history.slice(100).map(item => item.row.key);
         if (discarded.length) await tx.userKVStore.deleteMany({ where: { accountId, key: { in: discarded } } });
     }
     async function createRun(tx: Tx, accountId: string, task: StoredTask, scheduledAt: number, id: string = randomUUID()): Promise<ScheduledRun> {
         const instant = now();
         const run: ScheduledRun = { id, taskId: task.id, machineId: task.machineId, scheduledAt, createdAt: instant, updatedAt: instant,
-            status: 'pending', encryptedConfig: task.encryptedConfig, newChatEachRun: task.newChatEachRun, bindingVersion: task.bindingVersion,
+            status: 'pending', executionKind: task.executionKind, encryptedConfig: task.encryptedConfig, newChatEachRun: task.newChatEachRun, bindingVersion: task.bindingVersion,
             notificationPolicy: task.notificationPolicy, claimId: null, sessionId: null, turnId: null,
             startedAt: null, finishedAt: null, reason: null, missedUntil: null, deadlineAt: null,
             conversationSessionId: task.newChatEachRun ? null : task.conversationSessionId, reportSequence: 0 };
@@ -81,15 +83,52 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
         await prune(tx, accountId, task.id);
         return run;
     }
-    async function cancelPending(tx: Tx, accountId: string, task: StoredTask) {
+    async function cancelPending(tx: Tx, accountId: string, task: StoredTask, preserveWebhook = false) {
         if (!task.activeRunId) return;
         const { row, run } = await readRun(tx, accountId, task.id, task.activeRunId);
-        if (run.status !== 'pending') return;
+        if (run.status !== 'pending' || (preserveWebhook && run.webhookInput)) return;
         await write(tx, accountId, row.key, { ...run, status: 'cancelled', reason: 'task-paused', finishedAt: now(), updatedAt: now() }, row);
         task.activeRunId = null;
         await prune(tx, accountId, task.id);
     }
     return {
+        async webhookStatus(accountId: string, taskId: string): Promise<{ enabled: boolean }> {
+            const { task } = await readTask(database, accountId, taskId);
+            if (task.deleted) throw new ScheduledTaskError('task-not-found', 404);
+            const credential = decode<{ enabled: boolean }>(await read(database, accountId, webhookKey(taskId)));
+            return { enabled: credential?.enabled ?? false };
+        },
+        async configureWebhook(accountId: string, taskId: string, enabled: boolean): Promise<{ token?: string }> {
+            const token = enabled ? `${Buffer.from(accountId).toString('base64url')}.${randomBytes(32).toString('base64url')}` : undefined;
+            const task = await transaction(async tx => {
+                const { task } = await readTask(tx, accountId, taskId);
+                if (task.deleted) throw new ScheduledTaskError('task-not-found', 404);
+                const key = webhookKey(taskId);
+                await write(tx, accountId, key, { enabled, hash: token ? credentialHash(token) : null }, await read(tx, accountId, key));
+                return task;
+            });
+            emit({ accountId, task });
+            return token ? { token } : {};
+        },
+        async webhookSnapshot(accountId: string, taskId: string) {
+            const { task } = await readTask(database, accountId, taskId);
+            if (task.deleted) throw new ScheduledTaskError('webhook-unauthorized', 401);
+            const runs = (await rows(database, accountId, runPrefix(taskId))).map(row => decode<ScheduledRun>(row)!)
+                .filter(run => run.webhookRequestId).map(run => ({ runId: run.id, requestId: run.webhookRequestId!, status: run.status, reason: run.reason, updatedAt: run.updatedAt }));
+            return { activeRunId: task.activeRunId, runs };
+        },
+        async webhookOwner(taskId: string, token: string): Promise<string> {
+            const parts = token.match(/^([A-Za-z0-9_-]{2,267})\.([A-Za-z0-9_-]{43})$/);
+            if (!parts) throw new ScheduledTaskError('webhook-unauthorized', 401);
+            const accountId = Buffer.from(parts[1], 'base64url').toString('utf8');
+            if (!accountId || accountId.length > 200 || Buffer.from(accountId).toString('base64url') !== parts[1]) throw new ScheduledTaskError('webhook-unauthorized', 401);
+            // The public account hint routes an indexed read; only the random secret authenticates.
+            const credential = decode<{ enabled: boolean; hash: string }>(await read(database, accountId, webhookKey(taskId)));
+            if (!credential?.enabled || credential.hash !== credentialHash(token)) throw new ScheduledTaskError('webhook-unauthorized', 401);
+            const task = decode<StoredTask>(await read(database, accountId, taskKey(taskId)));
+            if (!task || task.deleted) throw new ScheduledTaskError('webhook-unauthorized', 401);
+            return accountId;
+        },
         onChange(listener: (change: ScheduledTaskChange) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
         async list(accountId: string): Promise<ScheduledTask[]> {
             return (await rows(database, accountId, SCHEDULED_TASK_PREFIX + 'task:')).map(row => decode<StoredTask>(row)!).filter(task => !task.deleted);
@@ -110,6 +149,7 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
         },
         async save(accountId: string, raw: ScheduledTaskInput, expectedVersion: number, resetBinding = false): Promise<ScheduledTask> {
             const input = ScheduledTaskInputSchema.parse(raw);
+            if (input.executionKind === 'local-handler' && !input.newChatEachRun) throw new ScheduledTaskError('local-handler-requires-independent-runs', 400);
             const task = await transaction(async tx => {
                 if (!await tx.machine.findFirst({ where: { id: input.machineId, accountId } })) throw new ScheduledTaskError('machine-not-found', 404);
                 const row = await read(tx, accountId, taskKey(input.id));
@@ -124,7 +164,7 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                     nextAt: input.enabled ? nextScheduledAt(input.rule, now()) : null, activeRunId: previous?.activeRunId ?? null,
                     conversationSessionId: resetBinding ? null : previous?.conversationSessionId ?? null,
                     bindingVersion: (previous?.bindingVersion ?? 0) + (resetBinding ? 1 : 0) };
-                if (!input.enabled) await cancelPending(tx, accountId, next);
+                if (!input.enabled) await cancelPending(tx, accountId, next, previous?.enabled === false);
                 await write(tx, accountId, taskKey(input.id), next, row);
                 return next;
             });
@@ -135,6 +175,8 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                 const { row, task } = await readTask(tx, accountId, id);
                 if (row.version !== version) throw new ScheduledTaskError('version-conflict');
                 await cancelPending(tx, accountId, task);
+                const credentialKey = webhookKey(id);
+                await write(tx, accountId, credentialKey, { enabled: false, hash: null }, await read(tx, accountId, credentialKey));
                 const next = { ...task, deleted: true, enabled: false, nextAt: null, updatedAt: now(), version: row.version + 1 };
                 await write(tx, accountId, row.key, next, row); return next;
             });
@@ -171,38 +213,64 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
             });
             if (change) emit(change); return change?.run ?? null;
         },
-        async runNow(accountId: string, taskId: string, requestId: string): Promise<ScheduledRun> {
+        async runNow(accountId: string, taskId: string, requestId: string, webhook?: { token: string; input: NonNullable<ScheduledRun['webhookInput']> }): Promise<ScheduledRun> {
+            if (webhook) webhook = { ...webhook, input: TaskWebhookInputSchema.parse(webhook.input) };
             const change = await transaction(async tx => {
                 const { row, task } = await readTask(tx, accountId, taskId);
                 if (task.deleted) throw new ScheduledTaskError('task-not-found', 404);
-                const requestKey = `${SCHEDULED_TASK_PREFIX}request:${taskId}:${requestId}`;
-                const priorRequest = decode<{ runId: string }>(await read(tx, accountId, requestKey));
+                if (webhook) {
+                    const credential = decode<{ hash: string; enabled: boolean }>(await read(tx, accountId, webhookKey(taskId)));
+                    if (!credential?.enabled || credential.hash !== credentialHash(webhook.token)) throw new ScheduledTaskError('webhook-unauthorized', 401);
+                }
+                const requestKey = `${SCHEDULED_TASK_PREFIX}${webhook ? 'webhook-request' : 'request'}:${taskId}:${requestId}`;
+                const fingerprint = webhook ? createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(webhook.input).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)))).digest('hex') : null;
+                const priorRequest = decode<{ runId: string; fingerprint?: string | null }>(await read(tx, accountId, requestKey));
+                if (priorRequest && webhook && priorRequest.fingerprint !== fingerprint) throw new ScheduledTaskError('idempotency-conflict');
                 if (priorRequest) return { accountId, task, run: (await readRun(tx, accountId, taskId, priorRequest.runId)).run, changed: false };
                 const existing = decode<ScheduledRun>(await read(tx, accountId, runKey(taskId, requestId)));
-                if (existing) return { accountId, task, run: existing, changed: false };
+                if (existing && !webhook) return { accountId, task, run: existing, changed: false };
                 if (task.activeRunId) {
+                    if (webhook) throw new ScheduledTaskError('task-busy');
                     await write(tx, accountId, requestKey, { runId: task.activeRunId }, null);
                     return { accountId, task, run: (await readRun(tx, accountId, taskId, task.activeRunId)).run, changed: false };
                 }
+                if (webhook) {
+                    const receipts = await rows(tx, accountId, `${SCHEDULED_TASK_PREFIX}webhook-request:${taskId}:`);
+                    if (receipts.length >= 1000) throw new ScheduledTaskError('webhook-history-limit', 429);
+                    const recent = receipts.map(row => decode<{ createdAt: number }>(row)!)
+                        .filter(receipt => receipt.createdAt > now() - 60_000);
+                    if (recent.length >= 10) throw new ScheduledTaskError('webhook-rate-limit', 429);
+                }
                 const run = await createRun(tx, accountId, task, now());
-                await write(tx, accountId, requestKey, { runId: run.id }, null);
+                if (webhook) {
+                    run.webhookInput = webhook.input;
+                    run.webhookRequestId = requestId;
+                    await write(tx, accountId, runKey(taskId, run.id), run, await read(tx, accountId, runKey(taskId, run.id)));
+                }
+                await write(tx, accountId, requestKey, { runId: run.id, fingerprint, createdAt: now() }, null);
                 task.activeRunId = run.id; task.version = row.version + 1; task.updatedAt = now();
                 await write(tx, accountId, row.key, task, row);
                 return { accountId, task, run, changed: true };
             });
             if (change.changed) emit(change); return change.run;
         },
-        async claim(accountId: string, machineId: string): Promise<ScheduledRunClaim[]> {
+        async claim(accountId: string, machineId: string, taskWebhookProtocol?: 1, localHandlerProtocol?: 1, maxNewClaims = Number.MAX_SAFE_INTEGER): Promise<ScheduledRunClaim[]> {
             if (!await database.machine.findFirst({ where: { id: machineId, accountId } })) throw new ScheduledTaskError('machine-not-found', 404);
             const changes = await transaction(async tx => {
                 const result: Array<ScheduledTaskChange & { deliveryAuthorized: boolean }> = [];
+                let granted = 0;
                 for (const row of await rows(tx, accountId, SCHEDULED_TASK_PREFIX + 'task:')) {
                     const task = decode<StoredTask>(row)!;
                     if (!task.activeRunId) continue;
                     const active = await readRun(tx, accountId, task.id, task.activeRunId);
                     if (active.run.machineId !== machineId || isScheduledRunTerminal(active.run.status)) continue;
+                    // Older daemons strip unknown wire fields; never let them consume event data.
+                    if (active.run.webhookInput && taskWebhookProtocol !== 1) continue;
+                    if (active.run.executionKind === 'local-handler' && localHandlerProtocol !== 1) continue;
                     const deliveryAuthorized = active.run.status === 'pending';
                     if (deliveryAuthorized) {
+                        if (granted >= maxNewClaims) continue;
+                        granted++;
                         active.run.status = 'claimed'; active.run.claimId = randomUUID(); active.run.updatedAt = now(); active.run.deadlineAt = now() + SCHEDULED_STARTUP_TIMEOUT_MS;
                         await write(tx, accountId, active.row.key, active.run, active.row);
                     }
@@ -223,6 +291,10 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                 if (!run.claimId || report.claimId !== run.claimId) throw new ScheduledTaskError('claim-conflict', 403);
                 if ((run.sessionId && report.sessionId && report.sessionId !== run.sessionId) || (run.turnId && report.turnId && report.turnId !== run.turnId)) throw new ScheduledTaskError('run-binding-conflict');
                 if (isScheduledRunTerminal(run.status)) return { accountId, task, run, changed: false };
+                if (run.executionKind === 'local-handler' && report.status === 'running' &&
+                    (task.deleted || (run.status === 'claimed' && run.deadlineAt !== null && run.deadlineAt <= now()))) {
+                    throw new ScheduledTaskError('start-authorization-expired');
+                }
                 if (report.sequence !== undefined && report.sequence <= run.reportSequence && report.status !== 'claimed') return { accountId, task, run, changed: false };
                 if (run.status === 'uncertain' && !isScheduledRunTerminal(report.status)) return { accountId, task, run, changed: false };
                 if (run.status === report.status && (!report.sessionId || run.sessionId === report.sessionId) && (!report.turnId || run.turnId === report.turnId) && (report.reason ?? null) === run.reason) {
@@ -237,7 +309,9 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                     if (task.conversationSessionId && task.conversationSessionId !== report.sessionId) throw new ScheduledTaskError('run-binding-conflict');
                     if (!task.conversationSessionId) { task.conversationSessionId = report.sessionId; task.version = taskRow.version + 1; await write(tx, accountId, taskRow.key, task, taskRow); taskRow.version++; }
                 }
-                if (['running', 'waiting-for-input', 'completed'].includes(report.status) && (!report.sessionId || !report.turnId)) throw new ScheduledTaskError('turn-required', 400);
+                if (run.executionKind === 'local-handler') {
+                    if (report.sessionId || report.turnId || report.status === 'waiting-for-input') throw new ScheduledTaskError('local-handler-binding-invalid', 400);
+                } else if (['running', 'waiting-for-input', 'completed'].includes(report.status) && (!report.sessionId || !report.turnId)) throw new ScheduledTaskError('turn-required', 400);
                 const processorStartupFailed = report.status === 'failed' && report.reason === 'processor-startup-failed'
                     && run.status === 'claimed' && !run.turnId && !report.turnId && !!run.sessionId && report.sessionId === run.sessionId;
                 if (report.reason === 'processor-startup-failed' && !processorStartupFailed) throw new ScheduledTaskError('turn-required', 400);

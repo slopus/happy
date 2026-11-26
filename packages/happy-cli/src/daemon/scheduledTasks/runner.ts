@@ -13,6 +13,9 @@ export interface ScheduledRunnerDependencies {
     report: (run: ScheduledRun, report: ScheduledRunReport) => Promise<void>;
     attention?: (run: ScheduledRun) => void;
     flushReceipts?: () => Promise<void>;
+    runLocal?: (run: ScheduledRun, config: ScheduledTaskConfig) => Promise<void>;
+    /** Claim the next slot on completed delivery, not on a recurring timer. */
+    drainClaims?: boolean;
 }
 export function createScheduledTaskRunner(deps: ScheduledRunnerDependencies) {
     let running: Promise<void> | null = null, dirty = false, stopped = false;
@@ -24,6 +27,7 @@ export function createScheduledTaskRunner(deps: ScheduledRunnerDependencies) {
         if (isScheduledRunTerminal(run.status) || !run.claimId || !run.deliveryAuthorized) return;
         let existing: ReturnType<typeof deps.journal.readRun> = null;
         let journalRead = false;
+        let localStarted = false;
         try {
             existing = deps.journal.readRun(run.id);
             journalRead = true;
@@ -39,6 +43,13 @@ export function createScheduledTaskRunner(deps: ScheduledRunnerDependencies) {
             }
             const config = ScheduledTaskConfigSchema.parse(deps.decrypt(run.encryptedConfig));
             if (!isAbsolute(config.directory)) throw new Error('Working directory must be absolute');
+            if (run.executionKind === 'local-handler') {
+                if (!deps.runLocal || !config.localHandlerId || !run.newChatEachRun) throw new Error('Local handler unavailable');
+                localStarted = true;
+                await deps.runLocal(run, config);
+                return;
+            }
+            if (config.localHandlerId) throw new Error('Local handler requires explicit execution kind');
             await deps.validate?.(config);
             const saved = run.newChatEachRun ? null : deps.journal.readBinding(run.taskId, run.bindingVersion);
             if (!run.newChatEachRun && run.conversationSessionId && (!saved || saved.sessionId !== run.conversationSessionId)) {
@@ -56,7 +67,10 @@ export function createScheduledTaskRunner(deps: ScheduledRunnerDependencies) {
             deps.journal.writeRun({ ...existing, phase: 'sending' });
             await deps.send(binding, run, config);
             deps.journal.writeRun({ ...existing, phase: 'sent' });
-        } catch {
+        } catch (error) {
+            // The local executor owns its receipt. Do not overwrite a completed
+            // result with a failed report merely because its network ACK was lost.
+            if (localStarted) throw error;
             // Once launch began, a thrown error does not prove the child or prompt never existed.
             await deps.report(run, { claimId: run.claimId, status: existing || !journalRead ? 'uncertain' : 'failed', reason: existing || !journalRead ? 'delivery-uncertain' : 'configuration-invalid',
                 ...(existing?.sessionId ? { sessionId: existing.sessionId } : {}) });
@@ -71,7 +85,11 @@ export function createScheduledTaskRunner(deps: ScheduledRunnerDependencies) {
             await deps.flushReceipts?.();
             do {
                 dirty = false;
-                for (const run of await deps.claim()) { if (stopped) break; await execute(run); }
+                for (const run of await deps.claim()) {
+                    if (stopped) break;
+                    await execute(run);
+                    if (deps.drainClaims && run.deliveryAuthorized) dirty = true;
+                }
             } while (dirty && !stopped);
         })().finally(() => { running = null; });
         return running;
