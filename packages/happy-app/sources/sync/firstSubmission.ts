@@ -10,6 +10,7 @@ export type FirstSubmissionInput = {
     fastMode?: boolean; sidebarListId?: string | null;
     expectedCodexAccountProfileId?: string | null;
     magpieModel?: string;
+    roleConfigurationId?: string;
     attachments: { id: string; name: string }[];
 };
 export type FirstSubmissionSnapshot = FirstSubmissionInput & {
@@ -32,7 +33,7 @@ type Dependencies = {
     read(scope: string): string | undefined;
     spawn(input: FirstSubmissionInput, live: FirstSubmissionLive, current: () => boolean): Promise<{ type: 'success'; sessionId: string } | { type: 'cancelled' | 'error' }>;
     hydrate(sessionId: string): Promise<boolean>;
-    configure(sessionId: string, input: FirstSubmissionInput): void;
+    configure(sessionId: string, input: FirstSubmissionInput): void | Promise<void>;
     send(sessionId: string, input: FirstSubmissionInput, live: FirstSubmissionLive, current: () => boolean): Promise<LocalMessageQueueReceipt>;
     project(receipt: LocalMessageQueueReceipt): Promise<boolean>;
     accepted(input: FirstSubmissionInput, live: FirstSubmissionLive): void;
@@ -110,11 +111,11 @@ export class FirstSubmissionOwner {
         const generation = this.generation;
         const current = () => generation === this.generation && this.current();
         // Explicit whitelist: never serialize live API credentials, blobs or machine metadata.
-        const { text, prompt, machineId, path, agent, worktreeKey, permissionMode, modelMode, effortLevel, fastMode, discussing, sidebarListId, expectedCodexAccountProfileId, magpieModel } = input;
+        const { text, prompt, machineId, path, agent, worktreeKey, permissionMode, modelMode, effortLevel, fastMode, discussing, sidebarListId, expectedCodexAccountProfileId, magpieModel, roleConfigurationId } = input;
         this.live = { ...live, images: live.images.map(image => ({ ...image })) };
         this.receipt = undefined;
         this.publish({ version: 1, scope: this.scope, phase: 'saving', text, prompt, machineId, path, agent, worktreeKey,
-            permissionMode, modelMode, effortLevel, fastMode, discussing, sidebarListId, expectedCodexAccountProfileId, magpieModel, attachments: input.attachments.map(({ id, name }) => ({ id, name })) });
+            permissionMode, modelMode, effortLevel, fastMode, discussing, sidebarListId, expectedCodexAccountProfileId, magpieModel, roleConfigurationId, attachments: input.attachments.map(({ id, name }) => ({ id, name })) });
         try {
             await this.persist('saving', current);
             if (!current()) return false;
@@ -166,7 +167,9 @@ export class FirstSubmissionOwner {
                 return false;
             }
             if (!current()) return false;
-            this.deps.configure(sessionId, this.snapshot!);
+            try { await this.deps.configure(sessionId, this.snapshot!); }
+            catch { if (current()) this.fail('storage', 'hydrate'); return false; }
+            if (!current()) return false;
         }
         if (stage !== 'project') {
             await this.persist('sending', current);

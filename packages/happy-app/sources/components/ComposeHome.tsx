@@ -26,10 +26,11 @@ import { isTauri } from '@/utils/isTauri';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { storage, useProfile, useAllMachines, useIsDataReady, useLocalSetting, useLocalSettingMutable, useSetting, useSettingMutable } from '@/sync/storage';
-import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { useNewSessionDraft, useNewSessionDraftStore } from '@/hooks/useNewSessionDraft';
 import { useFirstSubmission } from '@/hooks/useFirstSubmission';
 import { canSubmitFirstSubmission, containsSubmissionAttachments, matchSubmissionAttachmentIds } from '@/sync/firstSubmission';
-import { composeDraftAttachmentSelectionGeneration, useComposeDraft } from '@/sync/composeDraft';
+import { useComposeDraftSelectionGeneration, useComposeDraft, useComposeDraftStore } from '@/sync/composeDraft';
+import { buildRoleConfigurationContext, readRoleConfiguration } from '@/sync/roleConfigurationHandoff';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
 import { Avatar } from './Avatar';
@@ -96,6 +97,7 @@ const HEADER_MODE_AGENT_OPTIONS = Object.entries(AGENT_LABELS).map(([key, label]
  */
 type ComposeHomeProps = {
     variant?: 'home' | 'screen';
+    roleConfigurationId?: string;
 };
 
 type SubmittedComposeSnapshot = {
@@ -124,7 +126,7 @@ const CompactRightPanelToggleButton = React.memo(function CompactRightPanelToggl
     );
 });
 
-export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) => {
+export const ComposeHome = React.memo(({ variant = 'home', roleConfigurationId }: ComposeHomeProps) => {
     const isScreen = variant === 'screen';
     const { theme } = useUnistyles();
     const { openSettings: showSettings } = useDesktopSettingsModal();
@@ -162,6 +164,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const sending = pending?.phase === 'saving';
     const hydrationError = pending?.failure === 'hydrate';
     const { text, setText, discussing, setDiscussing, images: draftImages, setImages: setDraftImages } = useComposeDraft();
+    const composeDraftStore = useComposeDraftStore();
+    const attachmentSelectionGeneration = useComposeDraftSelectionGeneration();
+    const launchDraftStore = useNewSessionDraftStore();
     const [imageGalleryOpen, setImageGalleryOpen] = React.useState(false);
     const [releasedSubmission, setReleasedSubmission] = React.useState<SubmittedComposeSnapshot | null>(null);
     const [selectedImageStyleIds, setSelectedImageStyleIds] = React.useState<string[]>([]);
@@ -174,7 +179,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const { agentId, mode, sidebarListId } = useLocalSearchParams<{ agentId?: string; mode?: string; sidebarListId?: string }>();
     const agents = useLocalSetting('agents');
     const { status: generatedImagesPluginStatus } = useGeneratedImagesPlugin();
-    const imagePluginInstalled = generatedImagesPluginStatus?.installed === true;
+    // A role handoff always configures a coding agent. Image launchers and
+    // image-route preferences must not change this scoped conversation.
+    const imagePluginInstalled = !roleConfigurationId && generatedImagesPluginStatus?.installed === true;
     const [customImageStyles, setCustomImageStyles] = useSettingMutable('customImageStyles');
     const [pendingCustomImageStyleReferences, setPendingCustomImageStyleReferences] = useSettingMutable('pendingCustomImageStyleReferences');
     const customImageStylesRef = React.useRef(customImageStyles);
@@ -281,7 +288,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         selection: {
             images: draftImages,
             setImages: setDraftImages,
-            generation: composeDraftAttachmentSelectionGeneration,
+            generation: attachmentSelectionGeneration,
         },
     });
     const isReleasedSubmissionVisible = !!pending && !!releasedSubmission
@@ -614,23 +621,23 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
 
     const handleTextChange = React.useCallback((nextText: string) => {
         setText(nextText);
-    }, []);
+    }, [setText]);
 
     const releaseSubmittedText = React.useCallback((snapshot: SubmittedComposeSnapshot) => {
         setReleasedSubmission(snapshot);
-        if (useComposeDraft.getState().revision === snapshot.textRevision) {
+        if (composeDraftStore.getState().revision === snapshot.textRevision) {
             composerInputRef.current?.setTextAndSelection('', { start: 0, end: 0 });
             setText('');
         }
-    }, [setText]);
+    }, [setText, composeDraftStore]);
     const clearQueuedSubmission = React.useCallback((snapshot: SubmittedComposeSnapshot) => {
-        composeDraftAttachmentSelectionGeneration.invalidate();
+        attachmentSelectionGeneration.invalidate();
         const acceptedIds = new Set(snapshot.userAttachmentIds);
-        useComposeDraft.getState().setImages(current => current.filter(image => !acceptedIds.has(image.id)));
-    }, []);
+        composeDraftStore.getState().setImages(current => current.filter(image => !acceptedIds.has(image.id)));
+    }, [composeDraftStore, attachmentSelectionGeneration]);
 
     const handleSend = React.useCallback(() => {
-        const liveText = useComposeDraft.getState().text;
+        const liveText = composeDraftStore.getState().text;
         const trimmed = liveText.trim();
         const userImages = hasImages ? selectedImages : [];
         const images = activeImageAgent
@@ -649,12 +656,15 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             })
             : trimmed;
 
-        const draft = useNewSessionDraft.getState();
+        const draft = launchDraftStore.getState();
         const liveSelection = configPanelRef.current?.getSelection();
         if (!activeImageAgent && liveSelection?.modelUnavailable) {
             Modal.alert(t('common.error'), t('agentInput.model.chooseAgain'));
             return;
         }
+        const configuration = roleConfigurationId ? readRoleConfiguration(roleConfigurationId) : null;
+        if (roleConfigurationId && !configuration) { Modal.alert(t('common.error'), t('delegation.configurationUnavailable')); return; }
+        if (configuration && draft.selectedMachineId !== configuration.machineId) { Modal.alert(t('common.error'), t('delegation.configurationMachineChanged')); return; }
         const machine = machines.find((m) => m.id === draft.selectedMachineId);
         const spawnAgent = activeImageAgent ? 'codex' : draft.agentType;
         if (!enabledCodingAgents(HEADER_MODE_AGENT_OPTIONS, draft.selectedMachineId, storage.getState().settings.codingAgentMachines, machine?.metadata?.cliAvailability).some(agent => agent.key === spawnAgent)) return;
@@ -686,7 +696,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         // original attachments selected until the encrypted queue accepts them.
         const submittedSnapshot: SubmittedComposeSnapshot = {
             text: liveText,
-            textRevision: useComposeDraft.getState().revision,
+            textRevision: composeDraftStore.getState().revision,
             userAttachmentIds: userImages.map((image) => image.id),
             images: (images ?? []).map(image => ({ ...image })),
         };
@@ -698,11 +708,12 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             agent: spawnAgent,
             ...spawnSettings,
             discussing: !activeImageAgent && discussing && (spawnAgent === 'codex' || spawnAgent === 'claude'),
-            prompt,
+            prompt: configuration ? `${buildRoleConfigurationContext(configuration)}\n\nCurrent user request:\n${prompt}` : prompt,
             images,
             sidebarListId,
+            ...(configuration ? { roleConfigurationId: configuration.id } : {}),
         }, liveText, () => releaseSubmittedText(submittedSnapshot), () => clearQueuedSubmission(submittedSnapshot));
-    }, [activeImageAgent, effectiveImageAgent, activeImageStyles.length, agentDefaultOverrides, pending, machines, discussing, submit, hasImages, selectedImages, customImageStyles, selectedCustomReferenceImages, sidebarListId, clearQueuedSubmission, releaseSubmittedText]);
+    }, [activeImageAgent, effectiveImageAgent, activeImageStyles.length, agentDefaultOverrides, pending, machines, discussing, submit, hasImages, selectedImages, customImageStyles, selectedCustomReferenceImages, sidebarListId, clearQueuedSubmission, releaseSubmittedText, composeDraftStore, launchDraftStore, roleConfigurationId]);
 
     const handleRetryHydration = React.useCallback(async () => {
         await retry();
@@ -712,18 +723,18 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         if (!pending || !['failed', 'restored'].includes(pending.phase)) return;
         if (omitAttachments) {
             if (!await Modal.confirm(t('newSession.submissionRestoreTextOnly'), t('newSession.submissionOmitAttachmentsWarning'))) return;
-        } else if (!containsSubmissionAttachments(pending.attachments, useComposeDraft.getState().images)) {
+        } else if (!containsSubmissionAttachments(pending.attachments, composeDraftStore.getState().images)) {
             if (await Modal.confirm(t('newSession.submissionRestore'), t('newSession.submissionAttachmentRecovery'),
                 { confirmText: t('common.continue'), cancelText: t('common.cancel') })) pickAttachment();
             return;
         }
         if (!omitAttachments && pending.phase !== 'restored' && (pending.failure === 'interrupted' || pending.sessionId) && !await Modal.confirm(t('newSession.submissionInterrupted'),
             t('newSession.submissionRestoreWarning'))) return;
-        const current = useComposeDraft.getState().text;
+        const current = composeDraftStore.getState().text;
         const restored = current && current !== pending.text ? `${current}\n\n${pending.text}` : pending.text;
         if (!await restore(restored, omitAttachments)) return;
         if (omitAttachments) {
-            useComposeDraft.getState().setImages(images => {
+            composeDraftStore.getState().setImages(images => {
                 const omittedIds = matchSubmissionAttachmentIds(pending.attachments, images);
                 return images.filter(image => !omittedIds.has(image.id));
             });

@@ -46,6 +46,8 @@ export interface SpawnSessionArgs {
     sidebarListId?: string | null;
     /** Carry a bounded history excerpt when explicitly changing Agent/connection. */
     continuationSourceSessionId?: string;
+    /** Private, account-scoped role-config context; never a target model override. */
+    roleConfigurationId?: string;
 }
 
 export type SpawnSessionCoreResult =

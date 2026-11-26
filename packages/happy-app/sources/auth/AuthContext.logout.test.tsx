@@ -48,7 +48,7 @@ vi.mock('@/auth/accountRuntime', () => ({
 }));
 vi.mock('@/auth/accountNetwork', () => ({ abortAccountRequests: mocks.abortAccountRequests, accountCleanupFetch: vi.fn() }));
 vi.mock('@/auth/accountPushCleanup', () => ({ retireAccountPush: mocks.retireAccountPush, retryAccountPushCleanup: mocks.retryAccountPushCleanup }));
-vi.mock('@/sync/composeDraft', () => ({ useComposeDraft: { getState: () => mocks.composeDraft } }));
+vi.mock('@/sync/composeDraft', () => ({ hasComposeDraftAttachments: () => mocks.composeDraft.images.length > 0 }));
 vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/components/accounts/AccountTransitionScreen', () => ({ AccountTransitionScreen: () => null }));

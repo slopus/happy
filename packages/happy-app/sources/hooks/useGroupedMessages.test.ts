@@ -47,6 +47,47 @@ function toolMessage(
     };
 }
 
+const savedRole = { id: 'writer-id', name: 'Technical writer', description: 'Write README', agent: 'antigravity',
+    model: 'neon', effort: 'high', autoDelegate: false, createdAt: 1, updatedAt: 2 };
+function roleReceiptMessage(): ToolCallMessage {
+    const message = toolMessage('save-role', 30, { name: 'McpTool' });
+    message.tool.input = { server: 'happy', tool: 'agent_roles', arguments: { action: 'update', roleId: savedRole.id, patch: { name: savedRole.name } } };
+    message.tool.mcpAppResult = { version: 1, state: 'available', content: [], structuredContent: { success: true, role: savedRole } };
+    return message;
+}
+
+describe('saved role receipts stay outside activity folding', () => {
+    const final: Message = { kind: 'agent-text', id: 'final-role', localId: null, createdAt: 50, text: 'Saved.' };
+    it.each([true, false])('keeps a native saved receipt inline with tool grouping=%s', enabled => {
+        const receipt = roleReceiptMessage();
+        const other = toolMessage('list-roles', 20, { name: 'McpTool' });
+        const items = groupMessagesForDisplay([final, receipt, other], enabled);
+        expect(items.find(item => item.id === receipt.id)).toEqual({ type: 'message', id: receipt.id, message: receipt });
+        expect(items.filter(item => item.type === 'agent-work-group' || item.type === 'tool-group')
+            .flatMap(item => item.messages).some(message => message.id === receipt.id)).toBe(false);
+        if (enabled) expect(items.find(item => item.type === 'agent-work-group')).toMatchObject({ messages: [other] });
+    });
+
+    it('breaks compact tool runs around the saved receipt, including forced single-tool folding', () => {
+        const receipt = roleReceiptMessage();
+        const items = groupToolCallsForDisplay([toolMessage('after', 40), receipt, toolMessage('before', 20)], true, { groupSingleToolCalls: true });
+        expect(items.map(item => [item.type, item.id])).toEqual([
+            ['tool-group', 'group-after'], ['message', receipt.id], ['tool-group', 'group-before'],
+        ]);
+    });
+
+    it.each(['list', 'failed', 'pending', 'mismatched-id'] as const)('preserves folding for a %s role call', kind => {
+        const message = roleReceiptMessage();
+        if (kind === 'list') message.tool.input.arguments = { action: 'list' };
+        if (kind === 'failed') message.tool.state = 'error';
+        if (kind === 'pending') { message.tool.state = 'running'; message.tool.mcpAppResult = undefined; }
+        if (kind === 'mismatched-id') message.tool.input.arguments.roleId = 'another-role';
+        const items = groupMessagesForDisplay([final, message], true);
+        expect(items.some(item => item.type === 'message' && item.id === message.id)).toBe(false);
+        expect(items.find(item => item.type === 'agent-work-group')).toMatchObject({ messages: [expect.objectContaining({ id: message.id })] });
+    });
+});
+
 function imageAgentPrompt(): string {
     return [
         '使用 $gpt-image-2 skill 执行一次 GPT Image 2 图片编辑 / 生成批处理。',

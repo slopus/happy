@@ -24,6 +24,7 @@ import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler'
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { delegationLaunchContext } from '@/daemon/delegationLaunchContext';
 import { createDelegationPromptLifecycle } from '@/delegation/delegationPrompt';
+import type { RoleSaveObserver } from '@/delegation/roleSaveReceipt';
 import { createPausableDeadline, type PausableDeadline } from './pausableDeadline';
 import { projectPath } from '@/projectPath';
 import { BasePermissionHandler, type PendingRequest, type PermissionResponse, type PermissionResult } from '@/utils/BasePermissionHandler';
@@ -596,6 +597,13 @@ export async function runAcp(opts: {
   }
 
   let session: ApiSessionClient;
+  let roleSaveScopeEpoch = 0;
+  let invalidateRoleReceipts: (() => void) | undefined;
+  const invalidateRoleSaveScope = () => {
+    if (opts.agentName !== 'antigravity') return;
+    roleSaveScopeEpoch++;
+    invalidateRoleReceipts?.();
+  };
   let permissionHandler: GenericAcpPermissionHandler;
   let bindInputHandlers: (() => void) | undefined;
   let bindPermissionModeHandler: (() => void) | undefined;
@@ -608,6 +616,7 @@ export async function runAcp(opts: {
     state,
     response,
     onSessionSwap: (newSession) => {
+      invalidateRoleSaveScope();
       session = newSession;
       bindInputHandlers?.();
       if (permissionHandler) {
@@ -636,6 +645,7 @@ export async function runAcp(opts: {
   if (!delegatedLaunch) await reportSessionStarted();
 
   const sessionManager = new AcpSessionManager();
+  invalidateRoleReceipts = () => sessionManager.invalidateRoleSaveObservations();
   const delegationPrompt = createDelegationPromptLifecycle({ delegatedChild: Boolean(delegatedLaunch) || opts.agentName !== 'antigravity' });
   permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName, id => sessionManager.getSessionCallId(id));
   // Drop any permission requests left in agent state from a previous CLI
@@ -671,11 +681,13 @@ export async function runAcp(opts: {
   let archiveReason = 'Session ended';
   let archiveCurrentSession: ((reason?: string) => void) | null = null;
   let pauseDelegationWait: () => (() => void) = () => () => {};
+  let observeRoleSave: RoleSaveObserver | undefined;
 
   const happyServer = await startHappyServer(session, {
     delegationContext: effectiveDelegationContext,
     currentDelegationSessionId: () => session.sessionId,
     onDelegationWait: () => pauseDelegationWait(),
+    ...(opts.agentName === 'antigravity' ? { observeRoleSave: ((parentId, request) => observeRoleSave?.(parentId, request)) as RoleSaveObserver } : {}),
     archiveSession: async (reason?: string) => {
       if (!archiveCurrentSession) {
         return { success: false, error: 'Archive handler is not ready' };
@@ -789,6 +801,28 @@ export async function runAcp(opts: {
         logAcp('muted', `Incoming raw envelope for ${opts.agentName}: ${formatUnknownForConsole(envelope, ACP_RAW_PREVIEW_CHARS)}`);
       }
     }
+  };
+
+  if (opts.agentName === 'antigravity') observeRoleSave = (parentId, request) => {
+    const owner = session;
+    const root = activeRoot;
+    const epoch = roleSaveScopeEpoch;
+    const current = () => {
+      const metadata = owner.getMetadata();
+      return !shouldExit && epoch === roleSaveScopeEpoch && session === owner && owner.sessionId === parentId && activeRoot === root
+        && !!root?.promptStarted && !root.cancelled && !!root.turnId && owner.getCurrentRootTurnId() === root.turnId
+        && metadata?.hostPid === process.pid && metadata.flavor === 'antigravity'
+        && metadata.lifecycleState !== 'archiveRequested' && metadata.lifecycleState !== 'archived';
+    };
+    if (!current()) return undefined;
+    const receive = sessionManager.observeRoleSave(request);
+    return receive ? role => {
+      if (!current()) return;
+      for (const envelope of receive(role)) {
+        if (!current()) return;
+        owner.sendSessionProtocolMessage(envelope);
+      }
+    } : undefined;
   };
 
   const ownsPermissionMetadata = (current: Metadata): boolean => current.flavor === 'antigravity'
@@ -1152,6 +1186,7 @@ export async function runAcp(opts: {
   async function handleAbort() {
     const root = activeRoot;
     if (root?.cancellation) return root.cancellation;
+    invalidateRoleSaveScope();
     const cancellation = (async () => {
       if (acpSessionId) {
         await backend.cancel(acpSessionId);
@@ -1189,6 +1224,8 @@ export async function runAcp(opts: {
     if (opts.agentName !== 'antigravity') return;
     const boundSession = session;
     const restorePolicy = (metadata: Metadata | null) => {
+      if (!metadata || metadata.hostPid !== process.pid || metadata.flavor !== 'antigravity'
+        || metadata.lifecycleState === 'archived' || metadata.lifecycleState === 'archiveRequested') invalidateRoleSaveScope();
       if (shouldExit || boundSession !== session || !metadata || !ownsPermissionMetadata(metadata)
         || metadata.lifecycleState === 'archived' || metadata.lifecycleState === 'archiveRequested'
         || hasPermissionPolicy(metadata)) return;

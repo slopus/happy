@@ -1138,6 +1138,100 @@ describe('runAcp', () => {
     .map(([envelope]: any[]) => envelope.ev).filter(ev => ev.t === 'turn-end').map(ev => ev.status);
   const emitBackend = (event: any) => { for (const listener of mocks.backendState.listeners) listener(event); };
 
+  const savedRole = { id: 'writer', name: 'Writer', description: 'Write supplied facts', agent: 'codex', autoDelegate: false, createdAt: 1, updatedAt: 2 };
+  const savedRoleRequest = { action: 'update', roleId: 'writer', patch: { name: 'Writer' } };
+  const savedRoleEvents = () => mocks.mockSession.sendSessionProtocolMessage.mock.calls
+    .map(([envelope]: any[]) => envelope).filter(envelope => envelope.ev.t === 'tool-call-end' && envelope.ev.mcpAppResult);
+
+  it('registers the role observer only for AGY and publishes its actual successful completion in the original root turn', async () => {
+    let finish!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { finish = resolve; });
+    const run = runDelegationWorker(false);
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      const observer = mocks.mockStartHappyServer.mock.calls[0][1].observeRoleSave;
+      expect(observer).toBeTypeOf('function');
+      expect(observer('session-1', savedRoleRequest)).toBeUndefined();
+      mocks.getUserMessageHandler()!({ content: { text: 'busy role save' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      expect(observer('wrong-parent', savedRoleRequest)).toBeUndefined();
+      const receive = observer('session-1', savedRoleRequest);
+      expect(receive).toBeTypeOf('function');
+      await receive(savedRole);
+      expect(savedRoleEvents()).toHaveLength(1);
+      expect(savedRoleEvents()[0]).toMatchObject({ turn: mocks.mockSession.getCurrentRootTurnId(), ev: {
+        mcpAppResult: { structuredContent: { success: true, role: savedRole } },
+      } });
+      finish(); await vi.waitFor(() => expect(endStatuses()).toEqual(['completed']));
+      await receive({ ...savedRole, updatedAt: 3 });
+      expect(savedRoleEvents()).toHaveLength(1);
+    } finally { finish(); await vi.waitFor(() => expect(endStatuses()).toHaveLength(1)); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('does not register the trusted observer for other ACP executors', async () => {
+    const run = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'opencode', command: 'opencode', args: ['acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      expect(mocks.mockStartHappyServer.mock.calls[0][1]).not.toHaveProperty('observeRoleSave');
+    } finally { await mocks.getKillHandler()!(); await run; }
+  });
+
+  it.each(['session-swap', 'session-roundtrip', 'worker', 'worker-roundtrip', 'archive', 'turn-end'])('fences a pending saved-role confirmation after %s', async change => {
+    let finish!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { finish = resolve; });
+    const run = runDelegationWorker(false);
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      mocks.getUserMessageHandler()!({ content: { text: 'busy pending save' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      const receive = mocks.mockStartHappyServer.mock.calls[0][1].observeRoleSave('session-1', savedRoleRequest);
+      expect(receive).toBeTypeOf('function');
+      if (change.startsWith('session-')) {
+        const replacement = { ...mocks.mockSession, sessionId: 'session-2' };
+        const swap = mocks.mockSetupOfflineReconnection.mock.calls[0][0].onSessionSwap;
+        swap(replacement);
+        if (change === 'session-roundtrip') swap(mocks.mockSession);
+      } else if (change.startsWith('worker')) {
+        const original = mocks.mockSession.getMetadata();
+        const changed = { ...original, hostPid: process.pid + 1 };
+        mocks.mockSession.getMetadata.mockReturnValue(changed);
+        for (const listener of mocks.metadataListeners) listener(changed);
+        if (change === 'worker-roundtrip') {
+          mocks.mockSession.getMetadata.mockReturnValue(original);
+          for (const listener of mocks.metadataListeners) listener(original);
+        }
+      } else if (change === 'archive') {
+        mocks.mockSession.getMetadata.mockReturnValue({ ...mocks.mockSession.getMetadata(), lifecycleState: 'archiveRequested' });
+      } else { finish(); await vi.waitFor(() => expect(endStatuses()).toEqual(['completed'])); }
+      await receive(savedRole);
+      expect(savedRoleEvents()).toHaveLength(0);
+    } finally { finish(); await vi.waitFor(() => expect(endStatuses()).toHaveLength(1)); await mocks.getKillHandler()!(); await run; }
+  });
+
+  it('invalidates both callback and native receipts as soon as cancellation is requested, before native ACK', async () => {
+    let finish!: () => void; let acknowledge!: () => void;
+    mocks.backendState.holdPrompt = new Promise(resolve => { finish = resolve; });
+    mocks.backendState.onCancel = () => new Promise(resolve => { acknowledge = resolve; });
+    const run = runDelegationWorker(false);
+    let cancel: Promise<unknown> | undefined;
+    try {
+      await vi.waitFor(() => expect(mocks.mockSession.processorReady).toHaveBeenCalled());
+      mocks.getUserMessageHandler()!({ content: { text: 'busy cancelling save' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      const receive = mocks.mockStartHappyServer.mock.calls[0][1].observeRoleSave('session-1', savedRoleRequest);
+      emitBackend({ type: 'tool-call', toolName: 'mcp__happy__agent_roles', callId: 'native-role', args: savedRoleRequest });
+      cancel = mocks.sessionHandlers.get('abort')!({});
+      await receive(savedRole);
+      emitBackend({ type: 'tool-result', toolName: 'other', callId: 'native-role', result: { success: true, role: savedRole } });
+      expect(savedRoleEvents()).toHaveLength(0);
+      acknowledge(); await cancel;
+    } finally {
+      mocks.backendState.onCancel = null; acknowledge?.(); await cancel;
+      finish(); await mocks.getKillHandler()!(); await run;
+    }
+  });
+
   it('declares AGY delegation only after its three handlers are registered', async () => {
     mocks.mockSession.declareDelegationSupport.mockImplementationOnce(() => {
       expect([...mocks.sessionHandlers.keys()]).toEqual(expect.arrayContaining(['delegation-context', 'delegation-prepare', 'delegation-abort']));

@@ -11,7 +11,7 @@ import { saveAccountCredentials, selectSavedAccount, logoutSavedAccount, validat
 import { accountIndex, accountRuntimeCurrent, freezeAccountRuntime, getRuntimeAccountSelection } from './accountRuntime';
 import { abortAccountRequests } from './accountNetwork';
 import { retireAccountPush, retryAccountPushCleanup } from './accountPushCleanup';
-import { useComposeDraft } from '@/sync/composeDraft';
+import { hasComposeDraftAttachments } from '@/sync/composeDraft';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { AccountTransitionScreen } from '@/components/accounts/AccountTransitionScreen';
@@ -78,7 +78,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         if (sessionId && !/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) throw new Error('Invalid session');
         await validateSavedAccount(key);
         if (signal?.aborted) return;
-        if (useComposeDraft.getState().images.length && !await Modal.confirm(t('accounts.switch'), t('accounts.attachmentWarning'))) return;
+        if (hasComposeDraftAttachments() && !await Modal.confirm(t('accounts.switch'), t('accounts.attachmentWarning'))) return;
         if (busy.current || transitionRef.current || signal?.aborted) return;
         let committed = false;
         const path = serviceAuthorizationReturnPath(serviceAuthorization) ?? (sessionId ? `/session/${encodeURIComponent(sessionId)}` : '/');

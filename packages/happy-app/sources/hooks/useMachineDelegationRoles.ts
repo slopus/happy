@@ -5,8 +5,8 @@ import { apiSocket } from '@/sync/apiSocket';
 import { getFirstSubmissionScope, subscribeFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 import { t } from '@/text';
 
-/** Read once when owner, machine or socket becomes ready; reconnect uses events, never polling. */
-export function useMachineDelegationRoles(machineId: string, enabled: boolean) {
+/** Read on entry and reconnect, including after AI edits in another screen; never poll. */
+export function useMachineDelegationRoles(machineId: string, enabled: boolean, focused = true) {
     const account = React.useSyncExternalStore(subscribeFirstSubmissionScope, getFirstSubmissionScope, getFirstSubmissionScope);
     const [connected, setConnected] = React.useState(false);
     React.useEffect(() => {
@@ -35,9 +35,10 @@ export function useMachineDelegationRoles(machineId: string, enabled: boolean) {
     }, [scope, enabled, connected, machineId, isCurrent]);
     React.useEffect(() => {
         current.current = scope;
-        void refresh();
+        if (focused) void refresh();
+        else sequence.current++;
         return () => { if (current.current === scope) current.current = null; };
-    }, [scope, refresh]);
+    }, [scope, refresh, focused]);
     const apply = (roles: DelegationRole[]) => {
         if (!isCurrent()) return;
         sequence.current++;

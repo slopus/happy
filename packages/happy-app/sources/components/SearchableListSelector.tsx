@@ -47,6 +47,7 @@ export interface SelectorConfig<T> {
     showRecent?: boolean;
     showSearch?: boolean;
     allowCustomInput?: boolean;
+    filterAllItems?: boolean; // Opt in to filtering the full catalog, not only recent/favorite items.
 
     // Item subtitle override (for recent items, e.g., "Recently used")
     getRecentItemSubtitle?: (item: T) => string | undefined;
@@ -314,6 +315,13 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
 
         return favoriteItems.filter(item => config.filterItem(item, inputText, context));
     }, [favoriteItems, inputText, selectedItem, config, context]);
+
+    const filteredAllItems = React.useMemo(() => {
+        if (!config.filterAllItems || !inputText.trim()) return items;
+        // The initial selected label is a display value, not a search query.
+        if (!isUserTyping.current && selectedItem && inputText === config.formatForDisplay(selectedItem, context)) return items;
+        return items.filter(item => config.filterItem(item, inputText, context));
+    }, [items, inputText, selectedItem, config, context]);
 
     // Check if current input can be added to favorites
     const canAddToFavorites = React.useMemo(() => {
@@ -658,14 +666,17 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
 
                     {showAllItemsSection && (
                         <ItemGroup title="">
-                            {items.map((item, index) => {
+                            {filteredAllItems.map((item, index) => {
                                 const itemId = config.getItemId(item);
                                 const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
                                 const isSelected = itemId === selectedId;
-                                const isLast = index === items.length - 1;
+                                const isLast = index === filteredAllItems.length - 1;
 
                                 return renderItem(item, isSelected, isLast, !isLast, false);
                             })}
+                            {config.filterAllItems && filteredAllItems.length === 0 && (
+                                <Item title={config.noItemsMessage} showChevron={false} showDivider={false} />
+                            )}
                         </ItemGroup>
                     )}
                 </>

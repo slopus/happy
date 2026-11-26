@@ -7,6 +7,7 @@ import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLay
 import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 import { isGeneratedImageFileInput } from '@/hooks/generatedImagesModel';
 import type { Session } from '@/sync/storageTypes';
+import { readAgentRoleResult } from '@/components/tools/views/agentRoleResult';
 
 // Display item types for the grouped message list
 export type TextItem = {
@@ -172,7 +173,7 @@ export function groupMessagesForDisplay(
 
     const visibleForToolGrouping = (msg: Message, index: number): boolean => {
         if (hiddenWorkIndexes.has(index)) return false;
-        if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+        if (isInvisibleMessage(msg) || isInlineToolResult(msg)) return false;
         return msg.kind === 'tool-call';
     };
 
@@ -422,7 +423,7 @@ export function groupToolCallsForDisplay(
     const showRunning = options.showRunning ?? true;
     const toolRuns = collectToolRuns(messages, (msg) => {
         if (msg.kind !== 'tool-call') return false;
-        if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+        if (isInvisibleMessage(msg) || isInlineToolResult(msg)) return false;
         return true;
     });
 
@@ -432,7 +433,7 @@ export function groupToolCallsForDisplay(
 
         if (isInvisibleMessage(msg)) continue;
 
-        if (isUserAttachment(msg)) {
+        if (isInlineToolResult(msg)) {
             result.push({ type: 'message', id: msg.id, message: msg });
             continue;
         }
@@ -607,7 +608,7 @@ function collectAgentWorkGroups(
             if (msg.kind === 'user-text') return false;
             // Native async questions remain reachable even after later output.
             if (msg.kind === 'agent-text' && msg.asyncQuestion) return false;
-            if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+            if (isInvisibleMessage(msg) || isInlineToolResult(msg)) return false;
             return true;
         });
         if (visibleAgentIndexes.length === 0) continue;
@@ -709,9 +710,9 @@ function isInvisibleMessage(msg: Message): boolean {
     return false;
 }
 
-/** User-sent file/image attachments should never be collapsed into a group */
-function isUserAttachment(msg: Message): boolean {
-    return msg.kind === 'tool-call' && msg.tool.name === 'file';
+/** Delivered files and verified role-save receipts stay reachable in the transcript. */
+function isInlineToolResult(msg: Message): boolean {
+    return msg.kind === 'tool-call' && (msg.tool.name === 'file' || readAgentRoleResult(msg.tool) !== null);
 }
 
 function isImageAttachment(msg: Message): boolean {

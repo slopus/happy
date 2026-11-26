@@ -28,6 +28,21 @@ function fixture() {
     return { owner, deps, disk, effects, receipt, invalidate: () => { current = false; } };
 }
 describe('recoverable first submission', () => {
+    it('persists role context and retries a failed association without spawning twice or sending early', async () => {
+        const f=fixture();f.deps.configure.mockRejectedValueOnce(new Error('association-save-failed'));
+        const roleInput={...input,roleConfigurationId:'role-context'};
+        expect(await f.owner.submit(roleInput,{images:[]})).toBe(false);
+        expect(f.owner.getSnapshot()).toMatchObject({phase:'failed',failure:'storage',retry:'hydrate',sessionId:'session',roleConfigurationId:'role-context'});
+        expect(f.deps.send).not.toHaveBeenCalled();
+        expect(JSON.parse(f.disk.get('account/server')!)).toMatchObject({roleConfigurationId:'role-context',sessionId:'session'});
+        expect(await f.owner.retry()).toBe(true);expect(f.deps.spawn).toHaveBeenCalledTimes(1);expect(f.deps.send).toHaveBeenCalledTimes(1);
+    });
+    it('does not send if the owner changes while async session configuration is being saved', async () => {
+        const f=fixture();const saving=deferred<void>();f.deps.configure.mockReturnValueOnce(saving.promise);
+        const pending=f.owner.submit({...input,roleConfigurationId:'role-context'},{images:[]});
+        await vi.waitFor(()=>expect(f.deps.configure).toHaveBeenCalled());
+        f.invalidate();saving.resolve();expect(await pending).toBe(false);expect(f.deps.send).not.toHaveBeenCalled();
+    });
     it.each(['error', 'cancelled'])('allows an explicit new submission after a %s without restoring old text', async type => {
         const f = fixture(); f.deps.spawn.mockResolvedValueOnce({ type } as any);
         await f.owner.submit(input, { images: [] });

@@ -20,6 +20,8 @@ import { getFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'http://test' }));
 import type { LocalMessageQueueReceipt } from '@/sync/sync';
 import { Modal } from '@/modal';
+import { createRoleConfiguration, readRoleConfiguration } from '@/sync/roleConfigurationHandoff';
+import { createBuiltinImageStyleAgent } from './agents/imageAgentMode';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
@@ -31,6 +33,7 @@ const mocks = vi.hoisted(() => ({
     platformOS: 'web',
     codingAgents: {} as Record<string, string[]>,
     modelUnavailable: false,
+    configSelection: null as { modelKey: string; effortKey: string; worktreeKey: string; fastMode: boolean } | null,
     isDataReady: true,
     sessionRouteBecameInteractive: vi.fn(),
     machineSpawnNewSession: vi.fn(),
@@ -47,7 +50,8 @@ const mocks = vi.hoisted(() => ({
     updateModel: vi.fn(),
     updateEffort: vi.fn(),
     updateFastMode: vi.fn(),
-    routeParams: {} as { agentId?: string },
+    imagePluginInstalled: false,
+    routeParams: {} as { agentId?: string; mode?: string },
     agents: [] as any[],
     selectedImages: [] as Array<{ id: string; uri: string }>,
     setSelectedImages: null as React.Dispatch<React.SetStateAction<Array<{ id: string; uri: string }>>> | null,
@@ -127,6 +131,7 @@ vi.mock('@/text', () => ({
         : key,
 }));
 vi.mock('@/hooks/useNewSessionDraft', () => ({
+    useNewSessionDraftStore: () => ({ getState: () => mocks.draft }),
     useNewSessionDraft: Object.assign(
         (selector: (state: typeof mocks.draft) => unknown) => selector(mocks.draft),
         { getState: () => mocks.draft },
@@ -204,7 +209,7 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
     }),
 }));
 vi.mock('./DesktopSettingsModal', () => ({ useDesktopSettingsModal: () => ({ openSettings: vi.fn() }) }));
-vi.mock('@/hooks/useGeneratedImagesPlugin', () => ({ useGeneratedImagesPlugin: () => ({ status: { installed: false } }) }));
+vi.mock('@/hooks/useGeneratedImagesPlugin', () => ({ useGeneratedImagesPlugin: () => ({ status: { installed: mocks.imagePluginInstalled } }) }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn(), confirm: vi.fn(), prompt: vi.fn() } }));
 vi.mock('@/sync/ops', () => ({ machineSpawnNewSession: mocks.machineSpawnNewSession, sessionArchive: vi.fn() }));
 vi.mock('@/sync/sync', () => ({
@@ -225,7 +230,7 @@ vi.mock('./layout', () => ({ layout: { maxWidth: 720, headerMaxWidth: 720 } }));
 vi.mock('./MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
 vi.mock('./SubmittedAttachmentPreview', () => ({ SubmittedAttachmentPreview: 'SubmittedAttachmentPreview' }));
 vi.mock('./SessionConfigPanel', () => ({ SessionConfigPanel: ({ renderComposer, ref }: any) => {
-    React.useImperativeHandle(ref, () => ({ getSelection: () => mocks.modelUnavailable ? { modelUnavailable: true } : undefined }));
+    React.useImperativeHandle(ref, () => ({ getSelection: () => mocks.modelUnavailable ? { modelUnavailable: true } : mocks.configSelection ?? undefined }));
     return renderComposer?.({ leading: null, trailing: null, below: null }) ?? null;
 } }));
 vi.mock('./ComposeHomeParticles', () => ({ ComposeHomeParticles: 'ComposeHomeParticles' }));
@@ -243,6 +248,10 @@ describe('ComposeHome session hydration recovery', () => {
         mocks.codingAgents = {};
         mocks.draft.agentType = 'codex';
         mocks.modelUnavailable = false;
+        mocks.configSelection = null;
+        mocks.imagePluginInstalled = false;
+        mocks.draft.modelMode = 'default';
+        mocks.draft.effortLevel = null;
         const values = new Map<string, string>();
         vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) });
         vi.clearAllMocks();
@@ -306,6 +315,101 @@ describe('ComposeHome session hydration recovery', () => {
             expect(useComposeDraft.getState().text).toBe('Recovered request');
             expect(mocks.sendMessage).not.toHaveBeenCalled();
         } finally { act(() => renderer.unmount()); vi.mocked(Modal.confirm).mockReset(); }
+    });
+
+    it('refuses a role handoff after the selected machine changes', async () => {
+        const record = await createRoleConfiguration({ machineId: 'role-machine', clientRoleId: 'role-reserved', draft: { name:'Writer',description:'README',agent:'antigravity',autoDelegate:false } }, {
+            input:'',selectedMachineId:'machine-1',selectedPath:null,agentType:'codex',permissionMode:'default',modelMode:'default',effortLevel:null,sessionType:'simple',worktreeKey:null,updatedAt:1,
+        });
+        let renderer:any;
+        act(()=>{renderer=TestRenderer.create(<ComposeHome variant="screen" roleConfigurationId={record.id}/>);});
+        act(()=>renderer.root.findByType('MessageComposer').props.onChangeText('Configure my role'));
+        await act(async()=>{renderer.root.findByType('MessageComposer').props.onSend();});
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(Modal.alert).toHaveBeenCalledWith('common.error','delegation.configurationMachineChanged');
+        act(()=>renderer.unmount());
+    });
+    it('refuses a stale account handoff rather than launching in the current account', async () => {
+        const record = await createRoleConfiguration({ machineId: 'machine-1', clientRoleId: 'role-reserved', draft: { name:'Writer',description:'README',agent:'antigravity',autoDelegate:false } }, {
+            input:'',selectedMachineId:'machine-1',selectedPath:null,agentType:'codex',permissionMode:'default',modelMode:'default',effortLevel:null,sessionType:'simple',worktreeKey:null,updatedAt:1,
+        });
+        let renderer:any;act(()=>{renderer=TestRenderer.create(<ComposeHome variant="screen" roleConfigurationId={record.id}/>);});
+        act(()=>renderer.root.findByType('MessageComposer').props.onChangeText('Keep this request'));
+        act(()=>setFirstSubmissionScope('another-account','http://test'));
+        await act(async()=>{renderer.root.findByType('MessageComposer').props.onSend();});
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();expect(Modal.alert).toHaveBeenCalledWith('common.error','delegation.configurationUnavailable');
+        expect(useComposeDraft.getState().text).toBe('Keep this request');act(()=>renderer.unmount());
+    });
+    it('uses the native first submission while keeping role routing in hidden context and binding the real session', async () => {
+        const record = await createRoleConfiguration({ machineId: 'machine-1', clientRoleId: 'role-reserved', draft: { name:'Writer',description:'README',agent:'antigravity',model:'neon',effort:'high',autoDelegate:false } }, {
+            input:'',selectedMachineId:'machine-1',selectedPath:null,agentType:'codex',permissionMode:'default',modelMode:'default',effortLevel:null,sessionType:'simple',worktreeKey:null,updatedAt:1,
+        });
+        mocks.ensureSessionHydrated.mockResolvedValue(true);
+        let renderer:any;act(()=>{useComposeDraft.getState().setImages([]);renderer=TestRenderer.create(<ComposeHome variant="screen" roleConfigurationId={record.id}/>);});
+        act(()=>renderer.root.findByType('MessageComposer').props.onChangeText('Create the writing role'));
+        await act(async()=>{renderer.root.findByType('MessageComposer').props.onSend();});
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({machineId:'machine-1',agent:'codex'}));
+        expect(mocks.sendMessage).toHaveBeenCalledWith('session-1',expect.stringContaining('action=create'),expect.objectContaining({displayText:'Create the writing role'}));
+        expect(readRoleConfiguration(record.id)).toMatchObject({sessionId:'session-1',roleId:'role-reserved',action:'create'});
+        expect(mocks.navigateToSession).toHaveBeenCalledWith('session-1');
+        act(()=>renderer.unmount());
+    });
+
+    it.each(['route', 'launcher'] as const)('keeps a role handoff in coding mode despite an image %s selection', async source => {
+        mocks.imagePluginInstalled = true;
+        const imageAgent = createBuiltinImageStyleAgent();
+        mocks.agents = [imageAgent];
+        mocks.routeParams = source === 'route' ? { mode: 'image-styles' } : { agentId: imageAgent.id };
+        mocks.configSelection = { modelKey: 'gpt-6.1-sol', effortKey: 'high', worktreeKey: '', fastMode: false };
+        const record = await createRoleConfiguration({ machineId: 'machine-1', clientRoleId: 'role-reserved', draft: { name: 'Writer', description: 'README', agent: 'antigravity', model: 'neon', effort: 'high', autoDelegate: false } }, {
+            input: '', selectedMachineId: 'machine-1', selectedPath: null, agentType: 'codex', permissionMode: 'default', modelMode: 'default', effortLevel: null, sessionType: 'simple', worktreeKey: null, updatedAt: 1,
+        });
+        mocks.ensureSessionHydrated.mockResolvedValue(true);
+        let renderer: any;
+        await act(async () => {
+            useComposeDraft.getState().setImages([]);
+            renderer = TestRenderer.create(<ComposeHome variant="screen" roleConfigurationId={record.id} />);
+        });
+        try {
+            expect(renderer.root.findAllByProps({ testID: 'compose-home-image-agent-panel' })).toHaveLength(0);
+            expect(renderer.root.findAllByProps({ testID: 'compose-home-creation-rail' })).toHaveLength(0);
+            expect(renderer.root.findAllByType('ImageStyleGallerySheet')).toHaveLength(0);
+            const composer = renderer.root.findByType('MessageComposer');
+            expect(composer.props.placeholder).toBe('composeHome.placeholder');
+            expect(composer.props.selectedImagesPresentation).toBe('compact');
+            act(() => composer.props.onChangeText('Create the writing role'));
+            expect(renderer.root.findByType('MessageComposer').props.isSendDisabled).toBe(false);
+            await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); });
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({ agent: 'codex' }));
+            expect(mocks.updateModel).toHaveBeenCalledWith('session-1', 'gpt-6.1-sol');
+            expect(mocks.updateEffort).toHaveBeenCalledWith('session-1', 'high');
+            const prompt = mocks.sendMessage.mock.calls[0][1];
+            expect(prompt).toContain('action=create');
+            expect(prompt).toContain('Current user request:\nCreate the writing role');
+            expect(prompt).not.toContain('$gpt-image-2');
+            expect(prompt).not.toContain('Image Effects');
+            expect(mocks.draft.setAgentType).not.toHaveBeenCalled();
+            expect(mocks.setPendingReferences).not.toHaveBeenCalled();
+            expect(mocks.agents[0]).toEqual(imageAgent);
+            expect(mocks.applySettings).not.toHaveBeenCalled();
+        } finally { act(() => renderer.unmount()); }
+    });
+
+    it('retains ordinary image mode and its launcher styles outside a role handoff', async () => {
+        mocks.imagePluginInstalled = true;
+        const imageAgent = createBuiltinImageStyleAgent();
+        mocks.agents = [imageAgent]; mocks.routeParams = { agentId: imageAgent.id };
+        let renderer: any;
+        await act(async () => {
+            useComposeDraft.getState().setImages([]);
+            renderer = TestRenderer.create(<ComposeHome variant="screen" />);
+        });
+        try {
+            expect(renderer.root.findAllByProps({ testID: 'compose-home-image-agent-panel' })).toHaveLength(1);
+            expect(renderer.root.findAllByType('ImageStyleGallerySheet')).toHaveLength(1);
+            expect(renderer.root.findByType('MessageComposer').props.placeholder).toBe('agents.imagePromptPlaceholder');
+            expect(mocks.agents[0]).toEqual(imageAgent);
+        } finally { act(() => renderer.unmount()); }
     });
 
     it('does not spawn a disabled agent even if an old send callback is invoked', async () => {

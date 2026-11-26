@@ -3,7 +3,8 @@
  * Persists the user's last-used configuration (machine, path, model, permissions, etc.)
  * so the new session screen restores the same defaults on next visit.
  */
-import { create } from 'zustand';
+import * as React from 'react';
+import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import {
     loadNewSessionDraft,
     saveNewSessionDraft,
@@ -16,7 +17,7 @@ import { storage } from '@/sync/storage';
 import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
-interface NewSessionDraftState {
+export interface NewSessionDraftState {
     input: string;
     selectedMachineId: string | null;
     selectedPath: string | null;
@@ -44,8 +45,8 @@ interface NewSessionDraftState {
     setWorktreeKey: (key: string | null) => void;
 }
 
-function persist(state: NewSessionDraftState) {
-    saveNewSessionDraft({
+export function newSessionDraftSnapshot(state: NewSessionDraftState): NewSessionDraft {
+    return {
         input: state.input,
         selectedMachineId: state.selectedMachineId,
         selectedPath: state.selectedPath,
@@ -60,12 +61,14 @@ function persist(state: NewSessionDraftState) {
         sessionType: state.sessionType,
         worktreeKey: state.worktreeKey,
         updatedAt: Date.now(),
-    });
+    };
 }
 
-const initial = loadNewSessionDraft();
-
-export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => ({
+/** An optional isolated launch draft reuses the normal config controls without
+ * replacing another new-session draft or its explicit model choices. */
+export function createNewSessionDraftStore(initial: NewSessionDraft | null, save: (draft: NewSessionDraft) => void = saveNewSessionDraft) {
+    const persist = (state: NewSessionDraftState) => save(newSessionDraftSnapshot(state));
+    return create<NewSessionDraftState>()((set, get) => ({
     input: initial?.input ?? '',
     selectedMachineId: initial?.selectedMachineId ?? null,
     selectedPath: initial?.selectedPath ?? null,
@@ -117,3 +120,20 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     setSessionType: (type) => { set({ sessionType: type }); persist(get()); },
     setWorktreeKey: (key) => { set({ worktreeKey: key }); persist(get()); },
 }));
+}
+
+export type NewSessionDraftStore = UseBoundStore<StoreApi<NewSessionDraftState>>;
+const defaultDraft = createNewSessionDraftStore(loadNewSessionDraft());
+const DraftContext = React.createContext<NewSessionDraftStore | null>(null);
+export function NewSessionDraftProvider({ store, children }: React.PropsWithChildren<{ store: NewSessionDraftStore }>) {
+    return React.createElement(DraftContext.Provider, { value: store }, children);
+}
+export function useNewSessionDraftStore() { return React.useContext(DraftContext) ?? defaultDraft; }
+function useScopedDraft(): NewSessionDraftState;
+function useScopedDraft<T>(selector: (state: NewSessionDraftState) => T): T;
+function useScopedDraft<T>(selector?: (state: NewSessionDraftState) => T) {
+    const store = useNewSessionDraftStore();
+    return store(selector ?? (state => state as T));
+}
+// Existing non-provider callers keep the same singleton and imperative API.
+export const useNewSessionDraft = Object.assign(useScopedDraft, defaultDraft);

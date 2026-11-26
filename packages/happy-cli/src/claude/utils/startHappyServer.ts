@@ -30,6 +30,7 @@ import { launchDelegationDaemonSession, launchIndependentDaemonSession } from '@
 import { independentTaskSchema, type DelegationContext, type IndependentTask, type IndependentTaskResult } from '@/daemon/independentSessions';
 import { AgentRolesInputSchema, DelegateTaskInputSchema, DelegatedTaskTargetInputSchema, type DelegationAction, type DelegationResponse } from '@slopus/happy-wire';
 import { DELEGATION_MCP_TOOL_NAMES, delegationToolResponse, registerDelegationMcpTools } from '@/delegation/mcpTools';
+import { boundedRoleSaveInput, roleFromSaveReceipt, roleSaveReceipt, type RoleSaveObserver } from '@/delegation/roleSaveReceipt';
 
 type HappyMcpHandlers = {
     startSession: (task: IndependentTask) => Promise<IndependentTaskResult>;
@@ -389,6 +390,7 @@ export async function startHappyServer(
         delegationContext?: () => DelegationContext;
         currentDelegationSessionId?: () => string;
         onDelegationWait?: () => (() => void);
+        observeRoleSave?: RoleSaveObserver;
         archiveSession?: (reason?: string) => Promise<{ success: boolean; error?: string }>;
     },
 ) {
@@ -410,8 +412,22 @@ export async function startHappyServer(
         delegation: async action => {
             const parentSessionId = options?.currentDelegationSessionId?.() ?? client.sessionId;
             const release = action.action === 'start' && action.wait === true ? options?.onDelegationWait?.() : undefined;
+            const roleInput = options?.observeRoleSave ? boundedRoleSaveInput(action.action === 'roles-create'
+                ? { action: 'create', role: action.role }
+                : action.action === 'roles-update' ? { action: 'update', roleId: action.roleId, patch: action.patch } : null) : undefined;
+            let observe: ReturnType<RoleSaveObserver> = undefined;
+            if (roleInput && options?.observeRoleSave) {
+                try { observe = options.observeRoleSave(parentSessionId, roleInput); }
+                catch { logger.debug('[happyMCP] Role save observer could not start'); }
+            }
             try {
-                return await launchDelegationDaemonSession(parentSessionId, action, options?.delegationContext?.());
+                const response = await launchDelegationDaemonSession(parentSessionId, action, options?.delegationContext?.());
+                const savedRole = observe && roleInput ? roleFromSaveReceipt(roleSaveReceipt('happy', 'agent_roles', roleInput, response)) : undefined;
+                if (savedRole && observe) {
+                    try { await observe(savedRole); }
+                    catch { logger.debug('[happyMCP] Saved role receipt could not be observed'); }
+                }
+                return response;
             } finally {
                 release?.();
             }

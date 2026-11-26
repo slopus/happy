@@ -16,6 +16,8 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { traceStartup, type SessionStartupStage } from './sessionStartupTrace';
 import { sessionStartupTraceRuntime, type WebStartupTraceHandle } from './sessionStartupTraceRuntime';
+import { bindRoleConfigurationSession } from './roleConfigurationHandoff';
+import { accountRuntimeCurrent } from '@/auth/accountRuntime';
 
 const disk = new MMKV({ id: 'first-submission-v1' });
 let trace: { id: string; start: number; previous: number; handle: WebStartupTraceHandle } | undefined;
@@ -61,7 +63,10 @@ export const firstSubmission = new FirstSubmissionOwner({
         const scope = getFirstSubmissionScope();
         return ensureSessionHydratedWithRetry(id, () => scope !== null && getFirstSubmissionScope() === scope && getServerUrl() === scope.serverUrl);
     },
-    configure: (id, input) => {
+    configure: async (id, input) => {
+        const owner = getFirstSubmissionScope();
+        if (input.roleConfigurationId) await bindRoleConfigurationSession(input.roleConfigurationId, input.machineId, id);
+        if (!accountRuntimeCurrent() || !owner || owner !== getFirstSubmissionScope() || getServerUrl() !== owner.serverUrl) throw new Error('Account changed.');
         configureSpawnedSession(id, input);
         if (input.discussing) {
             const state = storage.getState();
@@ -69,6 +74,7 @@ export const firstSubmission = new FirstSubmissionOwner({
         }
     },
     send: (id, input, live, current) => sync.sendMessage(id, input.discussing ? discussionMessage(input.prompt) : input.prompt, {
+        ...(input.roleConfigurationId ? { displayText: input.text } : {}),
         ...(input.discussing ? {
             displayText: input.text,
             modeMeta: discussionModeMeta(resolveMessageModeMeta(storage.getState().sessions[id], storage.getState().settings), input.agent),

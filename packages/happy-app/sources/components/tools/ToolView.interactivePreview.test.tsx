@@ -35,6 +35,7 @@ vi.mock('./ToolError', () => ({ ToolError: 'ToolError' }));
 vi.mock('../CodeView', () => ({ CodeView: 'CodeView' }));
 vi.mock('./ToolSectionView', () => ({ ToolSectionView: 'ToolSectionView' }));
 vi.mock('./McpAppHost', () => ({ McpAppHost: 'McpAppHost' }));
+vi.mock('./views/AgentRoleResultView', () => ({ AgentRoleResultView: 'AgentRoleResultView' }));
 
 import { ToolView } from './ToolView';
 

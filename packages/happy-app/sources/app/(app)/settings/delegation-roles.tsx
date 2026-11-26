@@ -3,7 +3,8 @@ import { useLocalSearchParams } from 'expo-router';
 import { DelegationRoleManager } from '@/components/delegation/DelegationRoleManager';
 
 export default React.memo(function DelegationRolesSettingsScreen() {
-    const params = useLocalSearchParams<{ machineId?: string | string[] }>();
+    const params = useLocalSearchParams<{ machineId?: string | string[]; roleId?: string | string[] }>();
     const machineId = Array.isArray(params.machineId) ? params.machineId[0] : params.machineId;
-    return <DelegationRoleManager initialMachineId={machineId} />;
+    const roleId = Array.isArray(params.roleId) ? params.roleId[0] : params.roleId;
+    return <DelegationRoleManager initialMachineId={machineId} initialRoleId={roleId} />;
 });

@@ -1,7 +1,7 @@
 import { createId } from '@paralleldrive/cuid2';
 import { createEnvelope, selectToolFailure, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { AgentMessage } from '@/agent/core';
-import { isHappyRoleTool, roleSaveReceipt } from '@/delegation/roleSaveReceipt';
+import { boundedRoleSaveInput, isHappyRoleTool, roleFromSaveReceipt, roleSaveReceipt, type RoleSaveInput } from '@/delegation/roleSaveReceipt';
 
 function turnOptions(turnId: string | null, time: number): CreateEnvelopeOptions {
   return turnId ? { turn: turnId, time } : { time };
@@ -32,7 +32,10 @@ function parseThinkingPayload(payload: unknown): { text: string; streaming: bool
 export class AcpSessionManager {
   private currentTurnId: string | null = null;
   private readonly acpCallToSessionCall = new Map<string, string>();
-  private readonly roleCalls = new Map<string, unknown>();
+  private readonly roleCalls = new Map<string, RoleSaveInput>();
+  private readonly savedRoleReceipts = new Set<string>();
+  private roleSaveEpoch = 0;
+  private roleReceiptsAllowed = true;
 
   /** Monotonic clock: max(lastTime + 1, Date.now()) */
   private lastTime = 0;
@@ -55,6 +58,42 @@ export class AcpSessionManager {
     const created = createId();
     this.acpCallToSessionCall.set(acpCallId, created);
     return created;
+  }
+
+  private acceptRoleReceipt(receipt: ReturnType<typeof roleSaveReceipt>) {
+    const role = roleFromSaveReceipt(receipt);
+    if (!role || this.savedRoleReceipts.size >= 128) return false;
+    const key = `${role.id}:${role.updatedAt}`;
+    if (this.savedRoleReceipts.has(key)) return false;
+    this.savedRoleReceipts.add(key);
+    return true;
+  }
+
+  invalidateRoleSaveObservations() {
+    this.roleSaveEpoch++;
+    this.roleReceiptsAllowed = false;
+    this.roleCalls.clear();
+  }
+
+  /** Independent confirmation of a real MCP save when ACP omits its output.
+   * The caller additionally fences session/worker/cancellation ownership. */
+  observeRoleSave(input: unknown) {
+    const request = boundedRoleSaveInput(input);
+    const turn = this.currentTurnId;
+    const epoch = this.roleSaveEpoch;
+    if (!request || !turn || !this.roleReceiptsAllowed) return undefined;
+    return (role: unknown): SessionEnvelope[] => {
+      if (this.currentTurnId !== turn || epoch !== this.roleSaveEpoch || !this.roleReceiptsAllowed) return [];
+      const receipt = roleSaveReceipt('happy', 'agent_roles', request, { success: true, role });
+      if (!receipt || !this.acceptRoleReceipt(receipt)) return [];
+      const call = createId();
+      return [
+        ...this.flush(),
+        createEnvelope('agent', { t: 'tool-call-start', call, name: 'mcp__happy__agent_roles',
+          title: 'happy.agent_roles', description: 'happy.agent_roles', args: request }, { turn, time: this.nextTime() }),
+        createEnvelope('agent', { t: 'tool-call-end', call, status: 'completed', mcpAppResult: receipt }, { turn, time: this.nextTime() }),
+      ];
+    };
   }
 
   private flush(): SessionEnvelope[] {
@@ -81,8 +120,11 @@ export class AcpSessionManager {
     }
 
     this.currentTurnId = createId();
+    this.roleSaveEpoch++;
+    this.roleReceiptsAllowed = true;
     this.acpCallToSessionCall.clear();
     this.roleCalls.clear();
+    this.savedRoleReceipts.clear();
     return [
       createEnvelope('agent', { t: 'turn-start', ...(localIds?.length ? { localIds } : {}) }, { turn: this.currentTurnId, time: this.nextTime() }),
     ];
@@ -96,8 +138,10 @@ export class AcpSessionManager {
 
     const turnId = this.currentTurnId;
     this.currentTurnId = null;
+    this.invalidateRoleSaveObservations();
     this.acpCallToSessionCall.clear();
     this.roleCalls.clear();
+    this.savedRoleReceipts.clear();
     return [
       ...flushed,
       createEnvelope('agent', { t: 'turn-end', status }, { turn: turnId, time: this.nextTime() }),
@@ -150,7 +194,8 @@ export class AcpSessionManager {
       const flushed = this.flush();
       const call = this.getSessionCallId(msg.callId);
       const roleTool = isHappyRoleTool(msg.toolName, msg.title);
-      if (roleTool) this.roleCalls.set(msg.callId, msg.args);
+      const roleInput = roleTool ? boundedRoleSaveInput(msg.args, true) : undefined;
+      if (roleInput && this.roleReceiptsAllowed && this.roleCalls.size < 32) this.roleCalls.set(msg.callId, roleInput);
       return [
         ...flushed,
         createEnvelope('agent', {
@@ -172,8 +217,9 @@ export class AcpSessionManager {
       const failure = status === 'failed' ? selectToolFailure([msg.result], 'Tool failed') : null;
       const roleInput = this.roleCalls.get(msg.callId);
       this.roleCalls.delete(msg.callId);
-      const receipt = status === undefined && roleInput !== undefined
+      const candidate = status === undefined && roleInput !== undefined
         ? roleSaveReceipt('happy', 'agent_roles', roleInput, msg.result) : undefined;
+      const receipt = candidate && this.acceptRoleReceipt(candidate) ? candidate : undefined;
       return [
         ...flushed,
         createEnvelope('agent', { t: 'tool-call-end', call, ...(status ? { status } : {}),

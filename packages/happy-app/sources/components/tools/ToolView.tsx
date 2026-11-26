@@ -21,6 +21,8 @@ import { t } from '@/text';
 import { getTerminalToolCommand, isInlineAudioFileTool, isInlineImageFileTool, isInlineVideoFileTool, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
 import { McpAppHost } from './McpAppHost';
 import { getEffectiveToolName } from '@/utils/toolIdentity';
+import { readAgentRoleResult } from './views/agentRoleResult';
+import { AgentRoleResultView } from './views/AgentRoleResultView';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -35,6 +37,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { onPress, sessionId, messageId } = props;
     const effectiveName = getEffectiveToolName(props.tool);
     const tool = effectiveName === props.tool.name ? props.tool : { ...props.tool, name: effectiveName };
+    const savedRole = React.useMemo(() => readAgentRoleResult(tool), [tool]);
     const readOnly = React.useContext(TranscriptReadOnlyContext);
     const router = useRouter();
     const openFile = useOpenSessionFile(sessionId);
@@ -173,6 +176,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         }
     }
 
+    if (savedRole) {
+        toolTitle = t('delegation.saved');
+        description = null;
+        icon = <Ionicons name="checkmark-circle-outline" size={18} color={theme.colors.textSecondary} />;
+    }
     const terminalCommand = getTerminalToolCommand(tool);
     const isCompactTerminalTool = terminalCommand !== null;
     const terminalFailure = isCompactTerminalTool && tool.state === 'error'
@@ -255,6 +263,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
+                if (savedRole) {
+                    return <View style={styles.content}>
+                        <AgentRoleResultView role={savedRole} machineId={props.metadata?.machineId} readOnly={readOnly} />
+                    </View>;
+                }
                 if (tool.mcpApp && !readOnly) {
                     return (
                         <View style={styles.mcpAppContent} testID="mcp-app-content">
