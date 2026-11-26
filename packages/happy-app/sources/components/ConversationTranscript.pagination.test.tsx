@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import * as React from 'react';
 import { act } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer does not publish declarations.
 import TestRenderer from 'react-test-renderer';
 import { ConversationTranscript } from './ConversationTranscript';
+import { ChatComposerOverlayContext } from './ChatComposerOverlayContext';
 import { ChatList } from './ChatList';
 import type { ReadingState } from '@/sync/localHistoryStore';
 import type { Message } from '@/sync/typesMessage';
@@ -137,6 +138,52 @@ describe('ConversationTranscript older history pagination', () => {
         (Platform as any).OS = 'web';
         delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
     });
+
+    it('keeps the latest footer and history controls above a growing floating composer', async () => {
+        liveState.renderEdges = true;
+        const render = (height: number) => <ChatComposerOverlayContext.Provider value={height}>
+            <ConversationTranscript metadata={null} messages={[userMessage('latest')]}
+                isAtLatest={false} newerError="failed" visualBottom={<View testID="latest-footer" />} />
+        </ChatComposerOverlayContext.Provider>;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(render(140)); });
+        expect(byId(renderer, 'transcript-composer-spacer').props.style.height).toBe(140);
+        expect(byId(renderer, 'latest-footer')).toBeDefined();
+        expect(byId(renderer, 'conversation-scroll-to-bottom').parent.props.style).toContainEqual({ bottom: 156 });
+        // An error at the newer history boundary also remains actionable.
+        const list = byId(renderer, 'conversation-transcript-list');
+        act(() => list.props.onScroll({ nativeEvent: { contentOffset: { y: 2000 },
+            contentSize: { height: 2800 }, layoutMeasurement: { height: 800 } } }));
+        expect(byId(renderer, 'history-newer-notice').props.style).toContainEqual({ bottom: 150 });
+        act(() => renderer.update(render(310)));
+        expect(byId(renderer, 'transcript-composer-spacer').props.style.height).toBe(310);
+        expect(byId(renderer, 'conversation-scroll-to-bottom').parent.props.style).toContainEqual({ bottom: 326 });
+        act(() => renderer.unmount());
+    });
+
+    it.each([[140, 40, 1190], [600, 40, 1420], [600, 300, 1500]])(
+        'reveals a selected prompt above the composer (inset=%s, row=%s)', async (inset, rowHeight, offset) => {
+            const scrollToOffset = vi.fn();
+            let key = '';
+            const node = { scrollTop: 1000, clientHeight: 800, scrollHeight: 5000,
+                getBoundingClientRect: () => ({ top: 100 }),
+                querySelectorAll: () => [{ dataset: { transcriptKey: key },
+                    getBoundingClientRect: () => ({ top: 600, height: rowHeight }) }],
+                addEventListener() {}, removeEventListener() {} };
+            let renderer: any;
+            await act(async () => { renderer = TestRenderer.create(<ChatComposerOverlayContext.Provider value={inset}>
+                <ConversationTranscript metadata={null} messages={[userMessage('prompt')]} />
+            </ChatComposerOverlayContext.Provider>, { createNodeMock: (element: any) => element.type === 'FlatList'
+                ? { scrollToOffset, getScrollableNode: () => node } : null }); });
+            key = byId(renderer, 'conversation-transcript-list').props.data[0].renderKey;
+            scroll(renderer);
+            act(() => byId(renderer, 'conversation-anchors-button').props.onPress());
+            const sheet = renderer.root.findByType('BaseModal').props.children.props;
+            scrollToOffset.mockClear();
+            act(() => sheet.onSelect(sheet.anchors[0]));
+            expect(scrollToOffset).toHaveBeenLastCalledWith({ offset, animated: false });
+            act(() => renderer.unmount());
+        });
 
     it('fills a collapsed initial Web page without a gesture and stops when full', async () => {
         const flush = installFrameQueue();

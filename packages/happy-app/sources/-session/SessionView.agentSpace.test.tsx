@@ -1989,6 +1989,8 @@ describe('SessionView Agent-space boundary', () => {
 
         expect(renderer.root.findAllByProps({ testID: 'session-header-new-session-button' })).toHaveLength(0);
         expect(renderer.root.findAllByType('SessionHeaderChip')).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-canvas-tags' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-canvas-add-tag' })).toHaveLength(0);
 
         const title = renderer.root.findByProps({ testID: 'session-header-title' });
         expect(title.props.accessibilityRole).toBe('button');
@@ -2009,13 +2011,14 @@ describe('SessionView Agent-space boundary', () => {
         expect(tagInput.props.value).toBe('Health session #');
         expect(renderer.root.findByProps({ testID: 'session-title-tag-results' }).props.role).toBe('listbox');
         expect(renderer.root.findByProps({ testID: 'session-title-tag-result-product' }).props.role).toBe('option');
+        expect(renderer.root.findByProps({ testID: 'session-title-tag-result-product' }).props['aria-selected']).toBe(true);
         act(() => tagInput.props.onSubmitEditing());
         expect(renderer.root.findByProps({ testID: 'session-header-title-input' }).props.value).toBe('Health session');
         expect(mocks.updateSidebarOrganization).toHaveBeenCalledTimes(1);
 
         act(() => renderer.root.findByProps({ testID: 'session-header-title-input' }).props.onSubmitEditing());
         expect(mocks.renameSessionToTitle).toHaveBeenCalledWith('Health session');
-        expect(renderer.root.findByProps({ testID: 'session-canvas-tag-product' }).findByType('Text').props.children.join('')).toBe('#product');
+        expect(renderer.root.findByType('SessionOrganizerDialog').props.assignment.tagIds).toEqual(['product']);
 
         act(() => renderer.root.findByProps({ testID: 'session-header-title' }).props.onPress());
         const titleInput = renderer.root.findByProps({ testID: 'session-header-title-input' });
@@ -2044,8 +2047,9 @@ describe('SessionView Agent-space boundary', () => {
         });
         expect(updatedOrganization.tags.map((tag: { name: string }) => tag.name)).toContain('fresh');
 
-        act(() => renderer.root.findByProps({ testID: 'session-canvas-add-tag' }).props.onPress());
-        expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(true);
+        expect(updatedOrganization.sessions['session-1'].tagIds).toContain('product');
+        expect(updatedOrganization.sessions['session-1'].tagIds).toHaveLength(2);
+        expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(false);
 
         const more = renderer.root.findByProps({ testID: 'session-header-more-button' });
         expect(more.props.accessibilityLabel).toBe('sessionInfo.viewDetails');
@@ -2057,37 +2061,9 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('reveals a desktop canvas Tag remove button on hover and only unassigns it from the session', async () => {
+    it.each(['android', 'ios'])('keeps native canvas Tags and organizer edits on %s', async (platformOS) => {
         mocks.isDataReady = true;
-        mocks.windowWidth = 1400;
-        mocks.isTablet = true;
-        mocks.platformOS = 'web';
-        let renderer: any;
-
-        await act(async () => {
-            renderer = TestRenderer.create(<SessionView id="session-1" />);
-        });
-
-        const tag = renderer.root.findByProps({ testID: 'session-canvas-tag-product' });
-        const remove = renderer.root.findByProps({ testID: 'session-canvas-remove-tag-product' });
-        expect(remove.props.accessibilityLabel).toBe('common.delete #product');
-        expect(remove.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ opacity: 0, width: 0 }));
-
-        act(() => tag.props.onHoverIn());
-        const hoveredRemove = renderer.root.findByProps({ testID: 'session-canvas-remove-tag-product' });
-        expect(hoveredRemove.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ opacity: 1, width: 22 }));
-
-        act(() => {
-            tag.props.onHoverOut();
-            hoveredRemove.props.onFocus();
-        });
-        const focusedRemove = renderer.root.findByProps({ testID: 'session-canvas-remove-tag-product' });
-        expect(focusedRemove.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ opacity: 1, width: 22 }));
-
-        act(() => focusedRemove.props.onPress());
-        expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(false);
-        expect(mocks.updateSidebarOrganization).toHaveBeenCalledTimes(1);
-        const updater = mocks.updateSidebarOrganization.mock.calls[0]?.[0];
+        mocks.platformOS = platformOS;
         const current = {
             lists: [{
                 id: 'list-1',
@@ -2105,13 +2081,46 @@ describe('SessionView Agent-space boundary', () => {
             ],
             sessions: { 'session-1': { listId: 'list-1', tagIds: ['product', 'research'] } },
         } as any;
-        const updated = updater(current);
-        expect(updated.tags).toEqual(current.tags);
-        expect(updated.sessions['session-1']).toEqual({ listId: 'list-1', tagIds: ['research'] });
+        mocks.sidebarOrganization = current;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        const tag = renderer.root.findByProps({ testID: 'session-canvas-tag-product' });
+        expect(tag.findByType('Text').props.children.join('')).toBe('#product');
+        expect(renderer.root.findAllByProps({ testID: 'session-canvas-remove-tag-product' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'session-canvas-add-tag' }).props.onPress());
+        expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(true);
+        expect(renderer.root.findByType('SessionOrganizerDialog').props.assignment).toEqual(current.sessions['session-1']);
+        act(() => renderer.root.findByType('SessionOrganizerDialog').props.onClose());
+        expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(false);
+        expect(mocks.updateSidebarOrganization).not.toHaveBeenCalled();
 
         act(() => tag.props.onPress());
         expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(true);
+        act(() => renderer.root.findByType('SessionOrganizerDialog').props.onSave({ listId: 'list-1', tagIds: ['research'] }, []));
+        expect(mocks.updateSidebarOrganization).toHaveBeenCalledTimes(1);
+        const updater = mocks.updateSidebarOrganization.mock.calls[0]?.[0];
+        const updated = updater(current);
+        expect(updated.tags).toEqual(current.tags);
+        expect(updated.sessions['session-1']).toEqual({ listId: 'list-1', tagIds: ['research'] });
+        act(() => renderer.unmount());
+    });
 
+    it('omits the empty canvas Tag row on compact desktop Web while keeping title Tag creation', async () => {
+        mocks.isDataReady = true;
+        mocks.platformOS = 'web';
+        mocks.windowWidth = 800;
+        mocks.isTablet = true;
+        mocks.sidebarOrganization = { lists: [], tags: [], sessions: {} };
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        expect(renderer.root.findAllByProps({ testID: 'session-canvas-tags' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-canvas-add-tag' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'session-header-tags-button' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-header-title-input' }).props.onChangeText('Health session #fresh'));
+        act(() => renderer.root.findByProps({ testID: 'session-title-create-tag' }).props.onPress());
+        const updated = mocks.updateSidebarOrganization.mock.calls[0][0](mocks.sidebarOrganization);
+        expect(updated.tags.map((tag: { name: string }) => tag.name)).toEqual(['fresh']);
+        expect(updated.sessions['session-1'].tagIds).toEqual([updated.tags[0].id]);
         act(() => renderer.unmount());
     });
 

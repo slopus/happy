@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
 import { TranscriptList } from './TranscriptList';
+import { useChatComposerOverlayInset } from './ChatComposerOverlayContext';
 import { WebTranscriptScrollCoordinator, type TranscriptScrollPort } from './webTranscriptScrollCoordinator';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -103,6 +104,14 @@ export type ConversationTranscriptProps = {
 
 export const ConversationTranscript = React.memo((props: ConversationTranscriptProps) => {
     const { theme } = useUnistyles();
+    const overlayInset = useChatComposerOverlayInset();
+    const composerInset = Platform.OS === 'web' ? overlayInset : 0;
+    const composerInsetRef = React.useRef(composerInset);
+    composerInsetRef.current = composerInset;
+    const visualBottom = composerInset > 0 ? <View>
+        {props.visualBottom}
+        <View testID="transcript-composer-spacer" style={{ height: composerInset }} />
+    </View> : props.visualBottom;
     const { fontScale } = useWindowDimensions();
     const flatListRef = React.useRef<FlatList>(null);
     const scrollOwnerKey = JSON.stringify([props.sessionId, props.reading?.key]);
@@ -838,8 +847,13 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 const row = node && [...node.querySelectorAll<HTMLElement>('[data-transcript-key]')]
                     .find(row => row.dataset.transcriptKey === key);
                 if (!node || !row) return false;
-                coordinator.driver.scrollToOffset({ offset: Math.max(0, node.scrollTop + row.getBoundingClientRect().top
-                    - node.getBoundingClientRect().top - (node.clientHeight - row.getBoundingClientRect().height) / 2), animated: false });
+                const rect = row.getBoundingClientRect();
+                const visibleHeight = Math.max(0, node.clientHeight - composerInsetRef.current);
+                // Center inside the unobscured viewport. Long prompts start at
+                // its top so their first lines remain readable above the input.
+                const targetTop = Math.max(0, (visibleHeight - rect.height) / 2);
+                coordinator.driver.scrollToOffset({ offset: Math.max(0, node.scrollTop + rect.top
+                    - node.getBoundingClientRect().top - targetTop), animated: false });
                 return true;
             };
             coordinator.jump();
@@ -1016,11 +1030,11 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 ListHeaderComponent={Platform.OS === 'web' && !inverted ? <View>
                     <View testID="transcript-history-leading" style={{ height: spacers.leading }} />
                     <View onLayout={event => setWebHeaderHeight(event.nativeEvent.layout.height)}>{props.visualTop}</View>
-                </View> : (inverted ? props.visualBottom : props.visualTop) ?? undefined}
-                ListFooterComponent={Platform.OS === 'web' && !inverted && (props.visualBottom || spacers.trailing > 0) ? <View>
-                    {props.visualBottom}
+                </View> : (inverted ? visualBottom : props.visualTop) ?? undefined}
+                ListFooterComponent={Platform.OS === 'web' && !inverted && (visualBottom || spacers.trailing > 0) ? <View>
+                    {visualBottom}
                     <View testID="transcript-history-trailing" style={{ height: spacers.trailing }} />
-                </View> : (inverted ? props.visualTop : props.visualBottom) ?? undefined}
+                </View> : (inverted ? props.visualTop : visualBottom) ?? undefined}
                 onEndReached={() => loadBoundary(inverted ? 'older' : 'newer')}
                 onStartReached={!inverted ? () => {
                     if (Platform.OS !== 'web' || userScrollStarted.current) loadBoundary('older');
@@ -1045,7 +1059,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 <Animated.View
                     entering={FadeIn.duration(180)}
                     exiting={FadeOut.duration(260)}
-                    style={[styles.anchorPillContainer, { pointerEvents: 'box-none' }]}
+                    style={[styles.anchorPillContainer, { pointerEvents: 'box-none', bottom: composerInset + 60 }]}
                 >
                     <Pressable testID="conversation-anchors-button" accessibilityRole="button" onPress={openAnchorSheet} style={({ pressed }) => [styles.anchorPill, pressed && styles.anchorPillPressed]}>
                         <Octicons name="list-unordered" size={14} color={theme.colors.text} />
@@ -1067,7 +1081,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 </BaseModal>
             ) : null}
             {props.showScrollToBottom !== false && (showScrollButton || !isAtLatest) ? (
-                <View style={styles.scrollButtonContainer}>
+                <View style={[styles.scrollButtonContainer, { bottom: composerInset + 16 }]}>
                     <Pressable
                         testID="conversation-scroll-to-bottom"
                         accessibilityRole="button"
@@ -1089,6 +1103,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
 
 function HistoryBoundary(props: { direction: 'older' | 'newer'; reached: boolean; loading?: boolean; error?: string | null; message?: string | null; retryable?: boolean; inline?: boolean; retry: () => void }) {
     const { theme } = useUnistyles();
+    const overlayInset = useChatComposerOverlayInset();
     const [visible, setVisible] = React.useState(false);
     React.useEffect(() => {
         setVisible(false);
@@ -1109,7 +1124,8 @@ function HistoryBoundary(props: { direction: 'older' | 'newer'; reached: boolean
     </>;
     return <View testID={`history-${props.direction}-notice`} pointerEvents="box-none"
         style={[props.inline ? styles.historyNoticeInline : styles.historyNoticeOverlay,
-            !props.inline && (props.direction === 'older' ? styles.historyNoticeTop : styles.historyNoticeBottom)]}>
+            !props.inline && (props.direction === 'older' ? styles.historyNoticeTop : styles.historyNoticeBottom),
+            !props.inline && props.direction === 'newer' && Platform.OS === 'web' && { bottom: overlayInset + 10 }]}>
         {props.error && props.retryable !== false ? <Pressable testID={`history-${props.direction}-retry`}
             accessibilityRole="button" onPress={props.retry}
             style={({ pressed }) => [styles.historyNoticePill, props.message ? styles.historyNoticeWithMessage : undefined,

@@ -7,9 +7,11 @@ import { Typography } from '@/constants/Typography';
 import { multiplyColorOpacity } from '@/utils/colorOpacity';
 import type { ConversationAnchorRailProps } from './ConversationAnchorRail';
 import { conversationAnchorPreview } from './conversationAnchorPreview.web';
+import { useChatComposerOverlayInset } from './ChatComposerOverlayContext';
 
 export function ConversationAnchorRail(props: ConversationAnchorRailProps) {
     const { theme } = useUnistyles();
+    const composerInset = useChatComposerOverlayInset();
     const [size, setSize] = React.useState({ width: 0, height: 0, finePointer: false });
     const [activeId, setActiveId] = React.useState<string | null>(null);
     const [currentId, setCurrentId] = React.useState<string | null>(null);
@@ -29,9 +31,10 @@ export function ConversationAnchorRail(props: ConversationAnchorRailProps) {
         const update = () => {
             frame = undefined;
             const bounds = viewport.getBoundingClientRect();
-            setSize(previous => previous.width === bounds.width && previous.height === bounds.height
+            const height = Math.max(0, bounds.height - composerInset);
+            setSize(previous => previous.width === bounds.width && previous.height === height
                 && previous.finePointer === pointer.matches ? previous
-                : { width: bounds.width, height: bounds.height, finePointer: pointer.matches });
+                : { width: bounds.width, height, finePointer: pointer.matches });
             const { rows, anchors, inverted } = data.current;
             const rowIndexes = new Map(rows.map((row, index) => [row.renderKey, index]));
             const anchorIndexes = new Map(rows.map((row, index) => [row.id, index]));
@@ -69,7 +72,7 @@ export function ConversationAnchorRail(props: ConversationAnchorRailProps) {
             scroll.removeEventListener('scroll', schedule);
             pointer.removeEventListener('change', schedule);
         };
-    }, [props.viewportRef, props.listRef, props.rows, props.anchors]);
+    }, [props.viewportRef, props.listRef, props.rows, props.anchors, composerInset]);
 
     React.useEffect(() => { props.onAvailabilityChange(available); }, [available, props.onAvailabilityChange]);
     const activeIndex = props.anchors.findIndex(anchor => anchor.id === activeId);
@@ -94,7 +97,7 @@ export function ConversationAnchorRail(props: ConversationAnchorRailProps) {
         cursor: 'pointer', position: 'absolute', left: 8, width: 32,
     };
     return <div data-testid="conversation-anchor-rail" role="navigation" aria-label={t('session.anchorsTitle')}
-        style={{ position: 'absolute', inset: '0 auto 0 0', width: 40, pointerEvents: 'none', zIndex: 30,
+        style={{ position: 'absolute', inset: `0 auto ${composerInset}px 0`, width: 40, pointerEvents: 'none', zIndex: 30,
             ...Typography.default(), color: theme.colors.text, '--anchor-focus': theme.colors.textLink } as React.CSSProperties}>
         <style>{`
             .paws-anchor-track:focus-visible, .paws-anchor-list:focus-visible { outline: 2px solid var(--anchor-focus); outline-offset: 3px; border-radius: 4px; }

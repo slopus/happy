@@ -993,11 +993,11 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
 
     return (
-        <View style={[
+        <View pointerEvents={Platform.OS === 'web' ? 'box-none' : 'auto'} style={[
             styles.container,
             { paddingHorizontal: screenWidth > 700 ? 12 : 8 }
         ]}>
-            <View style={[
+            <View pointerEvents={Platform.OS === 'web' ? 'box-none' : 'auto'} style={[
                 styles.innerContainer,
                 { maxWidth: readingWidth }
             ]} ref={composerContentRef} testID="message-composer-content">

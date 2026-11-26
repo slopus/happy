@@ -2329,7 +2329,7 @@ function SessionViewLoaded({
     const input = (
         <>
             {!projectTaskContext && inactiveHint}
-            {(!projectTaskContext || tags.length > 0) && <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+            {Platform.OS !== 'web' && (!projectTaskContext || tags.length > 0) && <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
                 <View style={sessionCanvasTagStyles.row} testID="session-canvas-tags">
                     {tags.length > 0 ? (
                         <>
@@ -2429,7 +2429,7 @@ function SessionViewLoaded({
             )}
 
             {/* Main content area - no padding since header is overlay */}
-            <View style={{ flexBasis: 0, flexGrow: 1, flexShrink: 1, minHeight: 0, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 8 : 0) }}>
+            <View style={{ flexBasis: 0, flexGrow: 1, flexShrink: 1, minHeight: 0, paddingBottom: safeArea.bottom + (Platform.OS !== 'web' && isRunningOnMac() ? 8 : 0) }}>
                 <AgentContentView
                     content={content}
                     input={input}

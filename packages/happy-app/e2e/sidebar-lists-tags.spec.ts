@@ -264,11 +264,11 @@ async function createList(
     await expect(page.getByText(options.name, { exact: true })).toBeVisible();
 }
 
-async function organizeSession(
-    page: Page,
-    options: { sessionId: string; listName: string; tagName: string },
-): Promise<void> {
-    const sessionRow = page.getByTestId(`organized-session-${options.sessionId}`);
+async function openSessionOrganizer(page: Page, sessionId: string): Promise<void> {
+    await page.getByTestId('desktop-sidebar-tab-lists').click();
+    const closeTagFilter = page.getByTestId('sidebar-close-tag-filter');
+    if (await closeTagFilter.count() > 0) await closeTagFilter.click();
+    const sessionRow = page.getByTestId(`organized-session-${sessionId}`);
     if (await sessionRow.count() === 0) {
         const unassignedList = page.getByTestId('sidebar-list-unassigned');
         if (await unassignedList.getAttribute('aria-expanded') !== 'true') await unassignedList.click();
@@ -276,6 +276,13 @@ async function organizeSession(
     await sessionRow.click({ button: 'right' });
     await page.getByRole('button', { name: 'Organize session', exact: true }).click();
     await expect(page.getByText('Organize session', { exact: true })).toBeVisible();
+}
+
+async function organizeSession(
+    page: Page,
+    options: { sessionId: string; listName: string; tagName: string },
+): Promise<void> {
+    await openSessionOrganizer(page, options.sessionId);
     const list = page.getByRole('radio', { name: options.listName, exact: true });
     await list.click();
     await expect(list).toHaveAttribute('aria-checked', 'true');
@@ -515,15 +522,29 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
         const title = page.locator('[data-testid="session-header-title"]:visible');
         await expect(title).toHaveText('Tag from the title', { timeout: 120_000 });
-        await expect(page.getByTestId('session-canvas-tags')).toBeVisible();
-        const emptyCanvasAdd = page.getByTestId('session-canvas-add-tag');
-        await expect(emptyCanvasAdd).toHaveAttribute('role', 'button');
-        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '00-empty-bottom-add.png'), fullPage: true });
-        await captureEvidenceFrame(page, testInfo, 'tag-combobox-00-empty-bottom-add');
-        await emptyCanvasAdd.click();
+        await expect(page.getByTestId('session-canvas-tags')).toHaveCount(0);
+        await expect(page.getByTestId('session-canvas-add-tag')).toHaveCount(0);
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '00-no-bottom-tag-row.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-00-no-bottom-tag-row');
+        await openSessionOrganizer(page, sessionId);
         await expect(page.getByText('Organize session', { exact: true })).toBeVisible();
         await clickVisibleCenter(page, page.getByTestId('organize-session-cancel'));
         const headerTags = page.locator('[data-testid="session-header-tags-button"]:visible');
+        const expectAssignedTitleTags = async (selected: string[], unselected: string[] = []) => {
+            await headerTags.click();
+            const titleInput = page.getByTestId('session-header-title-input');
+            for (const [names, assigned] of [[selected, true], [unselected, false]] as const) {
+                for (const name of names) {
+                    await titleInput.fill(`Tag from the title #${name}`);
+                    await expect(page.getByRole('option').filter({ hasText: `#${name}` }))
+                        .toHaveAttribute('aria-selected', String(assigned));
+                }
+            }
+            await titleInput.press('Escape');
+            await titleInput.press('Enter');
+            await expect(title).toHaveText('Tag from the title');
+            await expect(page.getByTestId('session-canvas-tags')).toHaveCount(0);
+        };
         await expect(headerTags).toBeVisible();
         await expect(headerTags).toHaveText('#');
         await headerTags.click();
@@ -543,12 +564,12 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
 
         await input.press('Enter');
         await expect(input).toHaveValue('Tag from the title');
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
+        await expect(page.getByTestId('session-canvas-tags')).toHaveCount(0);
         await expect(page.locator('[data-testid^="session-row-tag-"]:visible').filter({ hasText: '#product' }).first()).toBeVisible();
 
         await page.getByTestId('desktop-sidebar-tab-lists').click();
         await page.getByRole('button', { name: /^product 1$/ }).click();
-        await expect(page.getByTestId(`session-row-tags-${sessionId}`)).toContainText('#product');
+        await expect(page.getByTestId(`tag-detail-session-${sessionId}`).getByTestId(`session-row-tags-${sessionId}`)).toContainText('#product');
         await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '04-lists-sidebar-tags.png'), fullPage: true });
         await captureEvidenceFrame(page, testInfo, 'tag-combobox-04-lists-sidebar-tags');
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
@@ -559,7 +580,7 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
         await restoredInput.fill('Tag from the title #research');
         await restoredInput.press('Enter');
         await expect(restoredInput).toHaveValue('Tag from the title');
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+        await expect(page.getByTestId(`session-row-tags-${sessionId}`)).toContainText('#research');
 
         await restoredInput.fill('Tag from the title #pro');
         const productResult = page.getByRole('option').filter({ hasText: '#product' });
@@ -574,20 +595,21 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
 
         await expect(title).toHaveText('Tag from the title');
         await expect(headerTags).toHaveText('#');
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+        await expectAssignedTitleTags(['product', 'research']);
 
-        const productCanvasTag = page.getByRole('button', { name: 'Organize session: #product', exact: true });
-        const removeProduct = page.getByRole('button', { name: 'Delete #product', exact: true });
-        await expect(removeProduct).toHaveCSS('opacity', '0');
-        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '06-rest-tag.png'), fullPage: true });
-        await productCanvasTag.hover();
-        await expect(removeProduct).toHaveCSS('opacity', '1');
-        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '07-hover-remove-tag.png'), fullPage: true });
-        await captureEvidenceFrame(page, testInfo, 'tag-combobox-06-hover-remove-tag');
+        await openSessionOrganizer(page, sessionId);
+        const selectedTag = (name: string) => page.locator('[data-testid^="organize-selected-tag-"]').filter({ hasText: name });
+        const removeProduct = selectedTag('#product');
+        await expect(removeProduct).toBeVisible();
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '06-organizer-selected-tags.png'), fullPage: true });
         await removeProduct.click();
-        await expect(page.getByTestId('session-canvas-tags')).not.toContainText('#product');
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+        await expect(selectedTag('#product')).toHaveCount(0);
+        await expect(selectedTag('#research')).toBeVisible();
+        await expect(page.getByRole('checkbox', { name: 'product', exact: true })).toHaveAttribute('aria-checked', 'false');
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '07-organizer-unassigned-tag.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-06-organizer-unassigned-tag');
+        await page.getByTestId('organize-session-save').click();
+        await expectAssignedTitleTags(['research'], ['product']);
         await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '08-tag-removed.png'), fullPage: true });
 
         await headerTags.click();
@@ -597,33 +619,33 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
         await expect(existingProduct).toBeVisible();
         await existingProduct.click();
         await reassignInput.press('Enter');
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
+        await expectAssignedTitleTags(['product', 'research']);
 
         await page.reload({ timeout: 180_000 });
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('Tag from the title', { timeout: 120_000 });
         await expect(page.locator('[data-testid="session-header-tags-button"]:visible')).toHaveText('#');
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
+        await expectAssignedTitleTags(['product', 'research']);
         await page.getByTestId('desktop-sidebar-tab-projects').click();
         await expect(page.locator('[data-testid^="session-row-tag-"]:visible').filter({ hasText: '#product' }).first()).toBeVisible();
 
         await page.setViewportSize({ width: 800, height: 900 });
         const compactHeaderTags = page.locator('[data-testid="session-header-tags-button"]:visible');
         await expect(compactHeaderTags).toBeVisible();
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
-        await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+        await expectAssignedTitleTags(['product', 'research']);
+        await expect(page.getByTestId('session-canvas-add-tag')).toHaveCount(0);
         await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
         await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '03-narrow-selected-tags.png'), fullPage: true });
         await captureEvidenceFrame(page, testInfo, 'tag-combobox-03-narrow-selected-tags');
 
-        await page.getByTestId('session-canvas-add-tag').click();
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await openSessionOrganizer(page, sessionId);
         const organizerInput = page.getByTestId('organize-tag-input');
-        const selectedTag = (name: string) => page.locator('[data-testid^="organize-selected-tag-"]').filter({ hasText: name });
         await expect(selectedTag('#product')).toBeVisible();
         await organizerInput.fill('#discarded');
         await page.getByTestId('organize-create-tag').click();
         await expect(selectedTag('#discarded')).toBeVisible();
         await clickVisibleCenter(page, page.getByTestId('organize-session-cancel'));
-        await page.getByTestId('session-canvas-add-tag').click();
+        await openSessionOrganizer(page, sessionId);
         await expect(selectedTag('#discarded')).toHaveCount(0);
         await expect(selectedTag('#product')).toBeVisible();
         await clickVisibleCenter(page, page.getByTestId('organize-session-cancel'));
@@ -638,14 +660,14 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
         }
         await manyTagsInput.fill('Tag from the title #');
         const allTagOptions = page.getByTestId('session-title-tag-results').getByRole('option');
-        await expect(allTagOptions).toHaveCount(8);
+        await expect(allTagOptions).toHaveCount(9);
         const tagResults = page.getByTestId('session-title-tag-results');
         await expect.poll(() => tagResults.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
-        for (let index = 1; index < 8; index += 1) await manyTagsInput.press('ArrowDown');
-        await expect(manyTagsInput).toHaveAttribute('aria-activedescendant', 'session-title-tag-option-7');
+        for (let index = 1; index < 9; index += 1) await manyTagsInput.press('ArrowDown');
+        await expect(manyTagsInput).toHaveAttribute('aria-activedescendant', 'session-title-tag-option-8');
         await expect.poll(async () => {
             const containerBounds = await tagResults.boundingBox();
-            const activeBounds = await page.locator('#session-title-tag-option-7').boundingBox();
+            const activeBounds = await page.locator('#session-title-tag-option-8').boundingBox();
             return !!containerBounds && !!activeBounds
                 && activeBounds.y >= containerBounds.y
                 && activeBounds.y + activeBounds.height <= containerBounds.y + containerBounds.height;
