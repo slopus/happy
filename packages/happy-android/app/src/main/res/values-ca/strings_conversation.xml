@@ -109,4 +109,6 @@
     <string name="conversation_editor_collapse">Redueix</string>
     <string name="problem_forbidden">No tens permís per fer això.</string>
     <string name="conversation_role_read_only">Pots llegir aquesta conversa, però el teu rol no pot enviar missatges.</string>
+    <string name="conversation_message_undisplayable">Ep, no s\'ha pogut mostrar aquest missatge.</string>
+    <string name="conversation_report_bug">Informa d\'un error</string>
 </resources>

@@ -1,0 +1,46 @@
+{
+    "description": "An answered question card, as happy-agent records it.",
+    "message": {
+        "id": "msguserinput00000000000001",
+        "role": "agent",
+        "createdAt": 1764100000014,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "tooluserinput0000000000001",
+                "name": "request_user_input",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "user_input",
+                    "questions": [
+                        {
+                            "id": "reviewer",
+                            "header": "Reviewer",
+                            "question": "Who should review this change?",
+                            "multiSelect": false,
+                            "options": [
+                                {
+                                    "label": "Steve",
+                                    "description": "Owns the desktop app"
+                                },
+                                {
+                                    "label": "Kirill",
+                                    "description": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "answers": {
+                        "reviewer": ["Steve"]
+                    }
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

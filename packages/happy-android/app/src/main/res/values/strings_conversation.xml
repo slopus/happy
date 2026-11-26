@@ -113,4 +113,6 @@
     <string name="conversation_editor_collapse">Collapse</string>
     <string name="problem_forbidden">You don\'t have permission to do that.</string>
     <string name="conversation_role_read_only">You can read this conversation, but your role can\'t send messages.</string>
+    <string name="conversation_message_undisplayable">Hey, this message failed to display.</string>
+    <string name="conversation_report_bug">Report bug</string>
 </resources>

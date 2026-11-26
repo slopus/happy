@@ -1,0 +1,58 @@
+{
+    "description": "A pending steering message with an inline image, an uploaded file, a tool-call request, a story quote, and the retired quickReply field.",
+    "message": {
+        "id": "msguserrich000000000000001",
+        "role": "user",
+        "createdAt": 1764100000001,
+        "content": [
+            {
+                "type": "text",
+                "text": "Use this screenshot."
+            },
+            {
+                "type": "image",
+                "mimeType": "image/png",
+                "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            },
+            {
+                "type": "file",
+                "attachment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "name": "notes.pdf",
+                "mimeType": "application/pdf",
+                "size": 2048,
+                "kind": "document"
+            },
+            {
+                "type": "tool_call_request",
+                "name": "read_file",
+                "arguments": {
+                    "path": "README.md"
+                }
+            }
+        ],
+        "metadata": {},
+        "status": "pending",
+        "delivery": "steer",
+        "mode": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5",
+            "effort": "medium",
+            "serviceTier": null,
+            "permissionMode": "auto"
+        },
+        "runId": null,
+        "profile": null,
+        "quote": {
+            "kind": "story",
+            "storyId": "storystory0000000000000001",
+            "agentId": "agentagent0000000000000001",
+            "userId": null,
+            "caption": "Ship it",
+            "expiresAt": 1764186400000,
+            "frame": null
+        },
+        "quickReply": {
+            "label": "Yes"
+        }
+    }
+}

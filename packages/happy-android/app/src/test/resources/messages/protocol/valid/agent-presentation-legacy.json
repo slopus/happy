@@ -1,0 +1,40 @@
+{
+    "description": "Retired ui and quick_replies presentations, kept as opaque history.",
+    "message": {
+        "id": "msglegacypresentation00001",
+        "role": "agent",
+        "createdAt": 1764100000015,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toollegacyui00000000000001",
+                "name": "ui",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "ui",
+                    "document": {
+                        "anything": true
+                    }
+                }
+            },
+            {
+                "type": "tool_call",
+                "id": "toollegacyquick00000000001",
+                "name": "quick_replies",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "quick_replies",
+                    "options": ["Yes", "No"]
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

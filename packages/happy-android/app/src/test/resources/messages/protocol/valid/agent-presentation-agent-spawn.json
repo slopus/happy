@@ -1,0 +1,31 @@
+{
+    "description": "A sub-agent creation presentation.",
+    "message": {
+        "id": "msgagentspawn0000000000001",
+        "role": "agent",
+        "createdAt": 1764100000009,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolagentspawn000000000001",
+                "name": "create_agent",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "agent_spawn",
+                    "model": {
+                        "modelId": "claude-sonnet-4-5",
+                        "providerId": "claude_work",
+                        "name": "Claude Sonnet 4.5"
+                    },
+                    "agentId": "agentchild0000000000000001"
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

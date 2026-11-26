@@ -1,0 +1,21 @@
+{
+    "description": "A compaction that completed.",
+    "message": {
+        "id": "msgcompactdone0000000000001",
+        "role": "service",
+        "createdAt": 1764100000019,
+        "content": [
+            {
+                "type": "compaction",
+                "trigger": "manual",
+                "status": "completed",
+                "tokensBefore": 180000,
+                "tokensAfter": 20000,
+                "failureReason": null,
+                "startedAt": 1764100000000,
+                "completedAt": 1764100005000
+            }
+        ],
+        "metadata": {}
+    }
+}

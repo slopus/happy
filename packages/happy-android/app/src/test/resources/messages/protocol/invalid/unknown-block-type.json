@@ -1,0 +1,19 @@
+{
+    "description": "A block type this protocol does not have.",
+    "invalidAt": ["/content/0/type"],
+    "message": {
+        "id": "msgunknownblock000000001",
+        "role": "agent",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "hologram",
+                "data": {}
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

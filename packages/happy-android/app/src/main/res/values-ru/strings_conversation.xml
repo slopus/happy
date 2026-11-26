@@ -109,4 +109,6 @@
     <string name="conversation_editor_collapse">Свернуть</string>
     <string name="problem_forbidden">У вас нет прав на это действие.</string>
     <string name="conversation_role_read_only">Вы можете читать этот разговор, но ваша роль не позволяет отправлять сообщения.</string>
+    <string name="conversation_message_undisplayable">Ой, это сообщение не удалось показать.</string>
+    <string name="conversation_report_bug">Сообщить об ошибке</string>
 </resources>

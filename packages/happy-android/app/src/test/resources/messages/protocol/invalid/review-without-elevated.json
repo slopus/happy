@@ -1,0 +1,29 @@
+{
+    "description": "Review metadata without its elevated half: a reviewed call carries both, an unreviewed call neither.",
+    "invalidAt": ["/content/0/review"],
+    "message": {
+        "id": "msgreviewhalf00000000001",
+        "role": "agent",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolreviewhalf0000000001",
+                "name": "exec_command",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "review": {
+                    "outcome": "allowed",
+                    "reason": "ok",
+                    "risk": "low",
+                    "userAuthorization": "high"
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

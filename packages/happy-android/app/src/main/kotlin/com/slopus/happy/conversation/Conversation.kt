@@ -693,7 +693,8 @@ class Conversation(
         val payload = event.payload
         when (event.type) {
             "message.created", "message.updated" -> {
-                val message = Message.parse(payload["message"]) ?: return
+                // One that fails the protocol's check is its placeholder; one with no ID to place it by comes with history.
+                val message = Message.decode(payload["message"], "").takeIf { it.id.isNotEmpty() } ?: return reconcileSoon()
                 messages[message.id] = message
                 outgoing.removeAll { it.id == message.id }
                 uploads.clear(message.id)
@@ -706,6 +707,8 @@ class Conversation(
                 val index = payload["blockIndex"].num?.toInt() ?: return
                 val append = payload["append"].str ?: return
                 val message = messages[id]
+                // A placeholder has no blocks to grow: the message's update is checked again.
+                if (message?.undisplayable != null) return
                 val grown = message?.let { grow(it, index, payload["offset"].num?.toInt(), append) }
                 if (grown == null) {
                     reconcileSoon()

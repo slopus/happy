@@ -216,6 +216,8 @@ class ConversationScreenActions(
     val onOpenPipelineRun: ((com.slopus.happy.pipelines.PipelineRunNotice) -> Unit)? = null,
     /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
     val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
+    /** Reports a message that couldn't be shown as a bug. */
+    val onReportUndisplayable: ((com.slopus.happy.conversation.ConversationRow.Undisplayable) -> Unit)? = null,
 )
 
 /**
@@ -335,6 +337,7 @@ fun ConversationScreen(
             pages = actions.pages,
             genUi = actions.genUi,
             onOpenPipelineRun = actions.onOpenPipelineRun,
+            onReportUndisplayable = actions.onReportUndisplayable,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

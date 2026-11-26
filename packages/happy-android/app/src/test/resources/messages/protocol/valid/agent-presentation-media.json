@@ -1,0 +1,49 @@
+{
+    "description": "A media presentation: an image and a video in two columns.",
+    "message": {
+        "id": "msgmedia000000000000000001",
+        "role": "agent",
+        "createdAt": 1764100000010,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolmedia00000000000000001",
+                "name": "present_files",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "media",
+                    "items": [
+                        {
+                            "kind": "image",
+                            "name": "shot.png",
+                            "mimeType": "image/png",
+                            "size": 1024,
+                            "width": 640,
+                            "height": 480,
+                            "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI"
+                        },
+                        {
+                            "kind": "video",
+                            "name": "demo.mp4",
+                            "mimeType": "video/mp4",
+                            "size": 4096,
+                            "width": 1280,
+                            "height": 720,
+                            "durationMs": 3000
+                        }
+                    ],
+                    "layout": {
+                        "type": "columns",
+                        "columns": 2
+                    }
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

@@ -109,4 +109,6 @@
     <string name="conversation_editor_collapse">Comprimi</string>
     <string name="problem_forbidden">Non hai il permesso di farlo.</string>
     <string name="conversation_role_read_only">Puoi leggere questa conversazione, ma il tuo ruolo non può inviare messaggi.</string>
+    <string name="conversation_message_undisplayable">Ehi, non è stato possibile mostrare questo messaggio.</string>
+    <string name="conversation_report_bug">Segnala un bug</string>
 </resources>

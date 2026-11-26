@@ -49,7 +49,7 @@ class ConversationStartupTest {
 
     private fun fresh(title: String, message: String? = null) {
         agent.resources["/v0/agents/at1/bootstrap"] = AgentClient.json.parseToJsonElement("""{"agent":{"id":"at1","status":"idle","title":"$title"},"pending":[]}""") as kotlinx.serialization.json.JsonObject
-        val runs = if (message == null) "[]" else """[{"id":"r$message","status":"completed","messages":[{"id":"m$message","role":"user","createdAt":1,"content":[{"type":"text","text":"$message"}],"metadata":{}}]}]"""
+        val runs = if (message == null) "[]" else """[{"id":"r$message","status":"completed","messages":[{"id":"m$message","role":"user","createdAt":1,"content":[{"type":"text","text":"$message"}],"metadata":{},"status":"accepted","delivery":"queue","mode":{"providerId":"codex","modelId":"openai/gpt-5.6-sol","effort":"medium","serviceTier":null,"permissionMode":"auto"},"runId":null}]}]"""
         agent.resources["/v0/agents/at1/messages?limit=100&omitToolData=true"] = AgentClient.json.parseToJsonElement("""{"runs":$runs,"hasMore":false}""") as kotlinx.serialization.json.JsonObject
     }
 

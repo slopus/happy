@@ -1,0 +1,20 @@
+{
+    "description": "A failure kind this client does not know stays readable.",
+    "message": {
+        "id": "msgfailureother0000000001",
+        "role": "service",
+        "createdAt": 1764100000023,
+        "content": [
+            {
+                "type": "text",
+                "text": "Something new went wrong."
+            }
+        ],
+        "metadata": {},
+        "failure": {
+            "kind": "quantum_flux",
+            "message": "Something new went wrong.",
+            "fallbackProviders": []
+        }
+    }
+}

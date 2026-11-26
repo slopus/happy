@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,6 +99,8 @@ object ConversationRowTags {
     const val FAILURE = "conversation.failure"
     const val FAILURE_RETRY = "conversation.failure.retry"
     const val NOTICE = "conversation.notice"
+    const val UNDISPLAYABLE = "conversation.undisplayable"
+    const val UNDISPLAYABLE_REPORT = "conversation.undisplayable.report"
     /** A long message's Show full / Show less ([UserFold]). */
     const val USER_FOLD = "conversation.user.fold"
 }
@@ -156,6 +159,8 @@ class ConversationRowActions(
     val genUi: GenUiInline? = null,
     /** Opens the run a pipeline's result tells of; null where nothing opens it, and its card is only read. */
     val onOpenPipelineRun: ((PipelineRunNotice) -> Unit)? = null,
+    /** Reports a message that couldn't be shown as a bug; null where nothing reports, and its row has no button. */
+    val onReportUndisplayable: ((ConversationRow.Undisplayable) -> Unit)? = null,
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
@@ -213,6 +218,8 @@ private fun ToolResult(tool: ToolUse?, actions: ConversationRowActions, modifier
  * Markdown. A failure: a surfaceHigh card with the reason in
  * textDestructive and Retry (13/18 semibold, link colour) while it can
  * help, "Retried" once acted on. A notice: 13/18 textSecondary, centred.
+ * A message that couldn't be shown ([UndisplayableRow]): one 13/18 italic
+ * line in textSecondary, then Report bug (13/18 semibold, link colour).
  */
 @Composable
 fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: ConversationRowActions, modifier: Modifier = Modifier) {
@@ -267,6 +274,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.SelfNote -> SelfNoteRow(row, actions, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
+            is ConversationRow.Undisplayable -> UndisplayableRow(row, actions, content)
             is ConversationRow.Ask -> if (row.line) AnsweredLine(row, content) else AskRow(row, actions.asks, content)
             is ConversationRow.TurnEnd -> TurnEndRow(row, content)
             is ConversationRow.Trace -> TraceRow(row, actions.onToggleTurn, content)
@@ -658,6 +666,47 @@ private fun InfoCard(
         if (onClick != null) {
             if (action != null) Text(action, style = ConversationRowSpec.label, color = colors.textLink, modifier = Modifier.testTag(ConversationRowTags.ARTIFACT_ACTION))
             else Icon(Ionicon.ChevronForward, ConversationRowSpec.icon, colors.textSecondary)
+        }
+    }
+}
+
+/**
+ * A message that couldn't be shown, in its place: "Hey, this message failed
+ * to display." on one 13/18 italic line in textSecondary, and Report bug
+ * 8 after it (13/18 semibold, link colour, 4 above and below), 16 in and 6
+ * above and below as every row.
+ */
+@Composable
+private fun UndisplayableRow(row: ConversationRow.Undisplayable, actions: ConversationRowActions, modifier: Modifier) {
+    val colors = HappyTheme.colors
+    Row(
+        modifier
+            .fillMaxWidth()
+            .testTag(ConversationRowTags.UNDISPLAYABLE)
+            .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.conversation_message_undisplayable),
+            style = ConversationRowSpec.notice.copy(fontStyle = FontStyle.Italic),
+            color = colors.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        val report = actions.onReportUndisplayable
+        if (report != null) {
+            Text(
+                stringResource(R.string.conversation_report_bug),
+                style = ConversationRowSpec.label,
+                color = colors.textLink,
+                maxLines = 1,
+                modifier = Modifier
+                    .testTag(ConversationRowTags.UNDISPLAYABLE_REPORT)
+                    .clickable(role = Role.Button) { report(row) }
+                    .padding(vertical = 4.dp),
+            )
         }
     }
 }

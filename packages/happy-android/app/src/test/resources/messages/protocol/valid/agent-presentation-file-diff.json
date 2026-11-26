@@ -1,0 +1,54 @@
+{
+    "description": "A file diff presentation.",
+    "message": {
+        "id": "msgfilediff000000000000001",
+        "role": "agent",
+        "createdAt": 1764100000007,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolfilediff00000000000001",
+                "name": "apply_patch",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "file_diff",
+                    "files": [
+                        {
+                            "path": "src/a.ts",
+                            "kind": "update",
+                            "added": 1,
+                            "deleted": 1,
+                            "language": "typescript",
+                            "hunks": [
+                                {
+                                    "oldStart": 1,
+                                    "newStart": 1,
+                                    "lines": [
+                                        {
+                                            "kind": "context",
+                                            "text": "const a = 1;"
+                                        },
+                                        {
+                                            "kind": "delete",
+                                            "text": "a.answers[id]"
+                                        },
+                                        {
+                                            "kind": "add",
+                                            "text": "(a.answers ?? {})[id]"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

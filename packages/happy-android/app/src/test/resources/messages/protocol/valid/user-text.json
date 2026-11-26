@@ -1,0 +1,34 @@
+{
+    "description": "A person's accepted message: text, the author's user ID, client metadata.",
+    "message": {
+        "id": "msgusertext000000000000001",
+        "role": "user",
+        "createdAt": 1764100000000,
+        "content": [
+            {
+                "type": "text",
+                "text": "Can you review the reviewer change?"
+            }
+        ],
+        "metadata": {
+            "userId": "kirill"
+        },
+        "status": "accepted",
+        "delivery": "queue",
+        "mode": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5",
+            "effort": "medium",
+            "serviceTier": null,
+            "permissionMode": "auto"
+        },
+        "runId": "run1aaaaaaaaaaaaaaaaaaaaa",
+        "profile": null,
+        "clientMetadata": {
+            "draft": {
+                "origin": "composer",
+                "lines": 1
+            }
+        }
+    }
+}

@@ -109,4 +109,6 @@
     <string name="conversation_editor_collapse">Contraer</string>
     <string name="problem_forbidden">No tienes permiso para hacer eso.</string>
     <string name="conversation_role_read_only">Puedes leer esta conversación, pero tu rol no puede enviar mensajes.</string>
+    <string name="conversation_message_undisplayable">Vaya, no se pudo mostrar este mensaje.</string>
+    <string name="conversation_report_bug">Informar de un error</string>
 </resources>

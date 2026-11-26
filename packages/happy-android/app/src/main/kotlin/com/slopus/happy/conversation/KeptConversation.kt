@@ -63,7 +63,7 @@ data class KeptConversation(
             val o = value ?: return null
             if ((o["version"] as? JsonPrimitive)?.content != VERSION.toString()) return null
             return KeptConversation(
-                runs = o["runs"].arr?.mapNotNull(Run::parse) ?: return null,
+                runs = o["runs"].arr?.mapNotNull { Run.parse(it, checked = false) } ?: return null,
                 pending = o["pending"].arr.orEmpty().mapNotNull(Message::parse),
                 hasMore = o["hasMore"].bool ?: true,
                 agent = AgentInfo.parse(o["agent"]),
@@ -98,6 +98,7 @@ data class KeptConversation(
             }
             message.failure?.let { put("failure", it) }
             message.error?.let { put("error", it) }
+            message.undisplayable?.let { put("undisplayable", it) }
         }
 
         private fun blockJson(block: Block): JsonObject = when (block) {

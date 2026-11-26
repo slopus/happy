@@ -1,0 +1,38 @@
+{
+    "description": "A Gen UI presentation.",
+    "message": {
+        "id": "msggenui000000000000000001",
+        "role": "agent",
+        "createdAt": 1764100000011,
+        "content": [
+            {
+                "type": "tool_call",
+                "id": "toolgenui00000000000000001",
+                "name": "gen_ui",
+                "status": "completed",
+                "arguments": {},
+                "result": {},
+                "presentation": {
+                    "type": "gen_ui",
+                    "document": {
+                        "genuiRender": 1,
+                        "compiler": "genui@1",
+                        "root": "root",
+                        "elements": {
+                            "root": {
+                                "type": "Text",
+                                "props": {
+                                    "text": "Hello"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ],
+        "metadata": {
+            "providerId": "claude_work",
+            "modelId": "claude-sonnet-4-5"
+        }
+    }
+}

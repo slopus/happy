@@ -493,6 +493,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     DisposableEffect(holder) { onDispose { holder.hold.show(false) } }
     // A link in this chat browses through this chat's agent's workspace (iOS's openBrowser(session:agentID:)).
     val context = LocalContext.current
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
     val link = rememberShownLinkState(status.conversationLinkState(state, network, draining))
     val computer = computerName(graph, route.connectionId)
@@ -574,6 +575,11 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },
                     onOpenPipelineRun = { notice -> nav.navigate(PipelineRunRoute(route.connectionId, notice.runId, notice.pipelineName)) },
                     workspace = if (session.client.cloud) null else session::workspaceSource,
+                    // Settings' Report an Issue, prefilled with where the message was and why it failed.
+                    onReportUndisplayable = { row ->
+                        val url = com.slopus.happy.conversation.UndisplayableReport.url(session.server, conversation.agentId, row, com.slopus.happy.BuildConfig.VERSION_NAME)
+                        com.slopus.happy.ui.settings.openExternalUrl(uriHandler, url)
+                    },
                     // The values typed into a secret go in this one request to the computer and nowhere else.
                     secrets = SecretRequestActions(
                         secrets = { ConversationApi(session.conversationRequest()).secrets() },

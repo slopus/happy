@@ -220,10 +220,10 @@ class ToolCallsTest {
     @Test fun `a compact labeled call is found in its run and detail reads the whole call once`() = runTest {
         val requests = ArrayList<String>()
         val history = """{"runs":[
-            {"id":"r1","status":"completed","messages":[{"id":"m1","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c1","name":"Bash","status":"completed","arguments":{"description":"List files"},"presentation":{"type":"exec_command","command":"ls","output":"a"}}]}]},
-            {"id":"r2","status":"completed","messages":[{"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"done"}]}]}
+            {"id":"r1","status":"completed","messages":[{"id":"m1","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c1","name":"Bash","status":"completed","arguments":{"description":"List files"},"presentation":{"type":"exec_command","command":"ls","output":"a"}}],"metadata":{}}]},
+            {"id":"r2","status":"completed","messages":[{"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"done"}],"metadata":{}}]}
         ],"hasMore":false}"""
-        val whole = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"m1","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c1","name":"Bash","status":"completed","arguments":{"cmd":"ls"},"result":{"output":"a"},"presentation":{"type":"exec_command","command":"ls","output":"a"}}]}]}],"hasMore":true}"""
+        val whole = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"m1","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c1","name":"Bash","status":"completed","arguments":{"cmd":"ls"},"result":{"output":"a"},"presentation":{"type":"exec_command","command":"ls","output":"a"}}],"metadata":{}}]}],"hasMore":true}"""
         val request: AgentRequest = { method, path, _, _ ->
             requests += "$method $path"
             val body = when {
@@ -271,7 +271,7 @@ class ToolCallsTest {
             val body = if ("before=" !in path) {
                 """{"runs":[{"id":"r9","status":"completed","messages":[]}],"hasMore":true}"""
             } else {
-                """{"runs":[{"id":"r3","status":"completed","messages":[{"id":"m","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c7","name":"mystery","status":"completed","arguments":{"a":1}}]}]}],"hasMore":false}"""
+                """{"runs":[{"id":"r3","status":"completed","messages":[{"id":"m","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c7","name":"mystery","status":"completed","arguments":{"a":1}}],"metadata":{}}]}],"hasMore":false}"""
             }
             TransportResponse(200, body = body.toByteArray())
         }
