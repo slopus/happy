@@ -12,6 +12,7 @@ import { projectGoalRequest } from '@/sync/projectGoals';
 export const projectCanvasImageTypes = GoalCanvasImageMimeSchema.options;
 const uploadChunkSize = Math.min(256 * 1024, GOAL_CANVAS_LIMITS.uploadChunkBytes);
 const downloadChunkSize = GOAL_CANVAS_LIMITS.downloadChunkBytes;
+const downloadChunksInFlight = 4;
 
 export type ProjectCanvasAsset = z.infer<typeof GoalCanvasAssetSchema>;
 export type ProjectCanvasSnapshot = GoalProjectCanvas;
@@ -55,7 +56,7 @@ export function projectCanvasClient(machineId: string, projectPath: string) {
         },
         async readAsset(asset: ProjectCanvasAsset, signal: AbortSignal): Promise<File> {
             const bytes = new Uint8Array(asset.size);
-            for (let offset = 0; offset < bytes.length; offset += downloadChunkSize) {
+            async function readRange(offset: number) {
                 const response = await request('goalProjectCanvasAsset', {
                     assetId: asset.id, versionId: asset.versionId, offset,
                 }, signal);
@@ -66,6 +67,16 @@ export function projectCanvasClient(machineId: string, projectPath: string) {
                     throw new Error('Canvas asset returned an invalid byte range');
                 }
                 bytes.set(chunk, offset);
+            }
+            for (let offset = 0; offset < bytes.length;) {
+                const ranges: Promise<void>[] = [];
+                for (let index = 0; index < downloadChunksInFlight && offset < bytes.length; index++) {
+                    ranges.push(readRange(offset));
+                    offset += downloadChunkSize;
+                }
+                const results = await Promise.allSettled(ranges);
+                const failure = results.find(result => result.status === 'rejected');
+                if (failure) throw failure.reason;
             }
             if (await projectFileHash(bytes) !== asset.versionId) throw new Error('Canvas asset bytes do not match the saved version');
             signal.throwIfAborted();

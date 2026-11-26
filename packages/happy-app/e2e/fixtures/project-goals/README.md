@@ -12,6 +12,26 @@ Cases: P1 project/feature isolation and direct projects; P2 details/files and co
 
 Loopback controller has GET `/runtime`, `/metrics`; POST `/rpc`, `/mutate-final`, `/directory-error`, `/lose-submission-response`, `/add-project`, `/shutdown`. The latter closes only this isolated environment. There is no business polling. Presence is renewed only by transport ping events.
 
+## Canvas media performance
+
+From the workspace root, build the frame and start a new fixture.
+
+```sh
+pnpm --filter happy-app build:project-canvas
+PAWS_CANVAS_TEST_RUN=media-perf pnpm exec tsx --tsconfig packages/happy-cli/tsconfig.json packages/happy-app/e2e/fixtures/project-goals/serve.mjs --canvas-perf
+```
+
+The project contains 29 generated PNGs. The first three have no thumbnail, so their originals take multiple 64 KiB ranges. The remaining 26 have JPEG previews. The test relay delays original range replies by 700 ms and records method, offset, duration, and byte count in `/metrics.canvasReads`. Use the private auth URL file to open the project in Ego. Record the controller timestamp before opening the canvas to compare a fresh run. Inspect whether available previews complete during legacy original reads and whether any one original exceeds four simultaneous ranges. The fixture does not start a model worker.
+
+For the RPC check alone, append `--rpc-only` to the fixture command and skip the frame build. In another terminal from `packages/happy-app`, run the actual Web canvas client against the isolated relay.
+
+```sh
+PAWS_CANVAS_PERF_RUNTIME="$PWD/test-results/project-canvas-media-perf/runtime.json" \
+  pnpm exec vitest run --config e2e/fixtures/project-goals/canvasPerfRpc.config.mjs
+```
+
+This check verifies the 29-item snapshot, a full original hash, the preview hash, and the four-way range limit. Use a separate fixture for concurrent browser and RPC verification so they do not share metrics.
+
 Latest interaction contract: the card body selects its Task and details. Its chat action directly opens the newest verified conversation, including on an unselected card; only an empty history creates one blank conversation. Explicit new chat remains in the history menu. Repeated opens create no duplicates; task switching preserves drafts and the details-header task switcher. Project cards use the bundled V2.2 covers.
 
 `verify-task-flow.ego.mjs` covers card chat reuse/creation, draft continuity, delivery agreement persistence and validation, batch draft isolation, goal-wide read-only files, cached-directory failure recovery, and the rail list entry. Run it only through Ego against a fresh fixture and its explicitly recorded task space/target. See `docs/validation/project-task-flow.md` for the config and boundaries. It creates one blank synthetic conversation and edits a synthetic task index; it never submits model instructions.

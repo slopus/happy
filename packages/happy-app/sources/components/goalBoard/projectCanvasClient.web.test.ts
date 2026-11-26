@@ -16,7 +16,7 @@ const restoredAsset: ProjectCanvasAsset = {
 };
 const snapshot = { id: `canvas-${'a'.repeat(64)}`, revision: 2, assets: [restoredAsset] };
 
-beforeEach(() => request.mockReset());
+beforeEach(() => { request.mockReset(); });
 
 describe('project canvas RPC client', () => {
     it('uploads independently encoded ranges and binds them to one project and upload', async () => {
@@ -58,6 +58,35 @@ describe('project canvas RPC client', () => {
         const asset = { ...restoredAsset, size: 4 };
         request.mockResolvedValueOnce({ success: true, base64: 'AQIDBA==', size: 4, nextOffset: null });
         await expect(client.readAsset(asset, new AbortController().signal)).rejects.toThrow('do not match the saved version');
+    });
+
+    it('reads at most four ranges at once and assembles out-of-order replies by offset', async () => {
+        const rangeSize = 0x10000;
+        const bytes = Buffer.alloc(rangeSize * 4 + 3);
+        for (let offset = 0; offset < bytes.length; offset += rangeSize) {
+            bytes.fill(offset / rangeSize + 1, offset, Math.min(offset + rangeSize, bytes.length));
+        }
+        const versionId = createHash('sha256').update(bytes).digest('hex');
+        const asset = { ...restoredAsset, id: `asset-${versionId}`, versionId, size: bytes.length };
+        const completeRange = new Map<number, () => void>();
+        let notifyFinalRange!: () => void;
+        const finalRangeStarted = new Promise<void>(resolve => { notifyFinalRange = resolve; });
+        request.mockImplementation((_machine, _method, input) => new Promise(resolve => {
+            const { offset } = input as { offset: number };
+            const end = Math.min(offset + rangeSize, bytes.length);
+            completeRange.set(offset, () => resolve({
+                success: true, base64: bytes.subarray(offset, end).toString('base64'), size: bytes.length,
+                nextOffset: end === bytes.length ? null : end,
+            }));
+            if (end === bytes.length) notifyFinalRange();
+        }));
+
+        const reading = client.readAsset(asset, new AbortController().signal);
+        expect([...completeRange.keys()]).toEqual([0, rangeSize, rangeSize * 2, rangeSize * 3]);
+        for (const offset of [rangeSize * 3, rangeSize, rangeSize * 2, 0]) completeRange.get(offset)!();
+        await finalRangeStarted;
+        completeRange.get(rangeSize * 4)!();
+        expect(Buffer.from(await (await reading).arrayBuffer())).toEqual(bytes);
     });
 
     it('does not fetch another range after leaving the project', async () => {

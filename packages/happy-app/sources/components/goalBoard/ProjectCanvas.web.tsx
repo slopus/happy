@@ -35,11 +35,17 @@ export function getProjectCanvasFramePath(): string | undefined {
 }
 const concurrentImages = 3;
 const retainedOriginals = 6;
+const frameReadyTimeoutMs = 60_000;
 type CanvasStatus = 'loading' | 'loadError' | 'assetError' | 'saving' | 'importError' | 'layoutError' | 'referencePending' | 'referenceAdded' | 'referenceError'
     | 'packageImportError' | 'packageExportError' | 'packageImported' | 'packageExported';
 type ImageQuality = 'preview' | 'original';
 type DisplayImage = { blob: Blob; uri: string; quality: ImageQuality };
-type ImageRequest = { id: string; versionId: string; quality: ImageQuality };
+type ImageRequest = {
+    id: string;
+    versionId: string;
+    mode: 'preview' | 'generate-preview' | 'original';
+    failedPreviewVersion?: string;
+};
 
 export function ProjectCanvas(props: ProjectCanvasProps) {
     const framePath = getProjectCanvasFramePath();
@@ -61,9 +67,11 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
     const originalReads = React.useRef(new Map<string, Promise<File>>());
     const imageQueue = React.useRef(new Map<string, ImageRequest>());
     const activeImages = React.useRef(new Set<string>());
+    const readingLargeImage = React.useRef(false);
     const failedImages = React.useRef(new Map<string, ImageRequest>());
     const [status, setStatus] = React.useState<CanvasStatus | null>('loading');
     const [frameReady, setFrameReady] = React.useState(false);
+    const rendererReady = React.useRef(false);
     const [frameError, setFrameError] = React.useState(false);
     const [addedResults, setAddedResults] = React.useState<ReadonlySet<string>>(new Set());
     const [resultPicker, setResultPicker] = React.useState<typeof readGeneratedResult>();
@@ -140,45 +148,57 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
         }
     }, [client]);
 
-    const loadPreview = React.useCallback(async (asset: ProjectCanvasAsset, signal: AbortSignal) => {
-        if (previewCache.current.has(asset.versionId)) return;
-        if (asset.preview) {
-            try {
-                const preview = await client.readPreview(asset, signal);
-                signal.throwIfAborted();
-                cachePreview(asset, preview);
-                return;
-            } catch {
-                signal.throwIfAborted();
-            }
-        }
-
-        // Existing boards acquire a small preview when this particular image is shown.
+    const generatePreview = React.useCallback(async (asset: ProjectCanvasAsset, signal: AbortSignal) => {
         const original = await readOriginal(asset, signal);
         const preview = await createProjectCanvasPreview(original, signal);
         signal.throwIfAborted();
         cachePreview(asset, preview);
+        if (imageQueue.current.has(`original:${asset.versionId}`)) cacheOriginal(asset, original);
         const save = pendingMutations.current.then(async () => {
             if (!signal.aborted) update(await client.putPreview(asset, preview, signal));
         });
         pendingMutations.current = save.catch(() => {});
-    }, [cachePreview, client, readOriginal, update]);
+    }, [cacheOriginal, cachePreview, client, readOriginal, update]);
 
     const pumpImages = React.useCallback(function pump(): void {
         const signal = life.current?.signal;
         if (!signal || signal.aborted) return;
         const queue = imageQueue.current;
+        const assets = new Map(current.current?.assets.map(asset => [asset.id, asset]));
+        const hasNewPreview = (item: ImageRequest) => {
+            const preview = assets.get(item.id)?.preview;
+            return item.mode === 'generate-preview' && !!preview && preview.versionId !== item.failedPreviewVersion;
+        };
         while (activeImages.current.size < concurrentImages && queue.size) {
             const entries = [...queue];
-            const [key, request] = entries.find(([, item]) => item.quality === 'original') ?? entries[0];
+            // Leave room for thumbnails while a legacy asset needs its full original.
+            const canReadOriginal = rendererReady.current && !readingLargeImage.current;
+            const next = (canReadOriginal ? entries.find(([, item]) => item.mode === 'original') : undefined)
+                ?? entries.find(([, item]) => item.mode === 'preview' || hasNewPreview(item))
+                ?? (canReadOriginal ? entries[0] : undefined);
+            if (!next) break;
+            const [key, request] = next;
             queue.delete(key);
-            const asset = current.current?.assets.find(item => item.id === request.id && item.versionId === request.versionId);
-            if (!asset) continue;
+            const asset = assets.get(request.id);
+            if (!asset || asset.versionId !== request.versionId) continue;
+            const mode = hasNewPreview(request) ? 'preview' : request.mode;
+            const cache = mode === 'original' ? originalCache.current : previewCache.current;
+            if (cache.has(asset.versionId)) continue;
+
+            const large = mode !== 'preview';
+            if (large) readingLargeImage.current = true;
             activeImages.current.add(key);
-            const work = request.quality === 'preview' ? loadPreview(asset, signal) : readOriginal(asset, signal).then(file => {
-                signal.throwIfAborted();
-                cacheOriginal(asset, file);
-            });
+            const work = mode === 'preview'
+                ? client.readPreview(asset, signal).then(preview => {
+                    signal.throwIfAborted();
+                    cachePreview(asset, preview);
+                }, () => {
+                    if (!signal.aborted) queue.set(key, { ...request, mode: 'generate-preview', failedPreviewVersion: asset.preview?.versionId });
+                })
+                : mode === 'generate-preview' ? generatePreview(asset, signal) : readOriginal(asset, signal).then(file => {
+                    signal.throwIfAborted();
+                    cacheOriginal(asset, file);
+                });
             void work.catch(() => {
                 if (!signal.aborted) {
                     failedImages.current.set(key, request);
@@ -186,10 +206,11 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
                 }
             }).finally(() => {
                 activeImages.current.delete(key);
+                if (large) readingLargeImage.current = false;
                 pump();
             });
         }
-    }, [cacheOriginal, loadPreview, readOriginal]);
+    }, [cacheOriginal, cachePreview, client, generatePreview, readOriginal]);
 
     const requestImages = React.useCallback((ids: readonly string[], quality: ImageQuality) => {
         const assets = new Map(current.current?.assets.map(asset => [asset.id, asset]));
@@ -199,8 +220,9 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             const cache = quality === 'preview' ? previewCache.current : originalCache.current;
             if (cache.has(asset.versionId)) continue;
             const key = `${quality}:${asset.versionId}`;
-            if (activeImages.current.has(key) || failedImages.current.has(key)) continue;
-            imageQueue.current.set(key, { id, versionId: asset.versionId, quality });
+            if (activeImages.current.has(key) || failedImages.current.has(key) || imageQueue.current.has(key)) continue;
+            const mode = quality === 'preview' && !asset.preview ? 'generate-preview' : quality;
+            imageQueue.current.set(key, { id, versionId: asset.versionId, mode });
         }
         pumpImages();
     }, [pumpImages]);
@@ -226,6 +248,8 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
         };
     }, []);
 
+    React.useEffect(() => { pumpImages(); }, [snapshot, pumpImages]);
+
     React.useEffect(() => {
         let active = true;
         setStatus('loading');
@@ -247,7 +271,7 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
 
     React.useEffect(() => {
         if (frameReady) return;
-        const timer = window.setTimeout(() => setFrameError(true), 18000);
+        const timer = window.setTimeout(() => setFrameError(true), frameReadyTimeoutMs);
         return () => window.clearTimeout(timer);
     }, [frameReady, reload]);
 
@@ -280,8 +304,10 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
             const message = readProjectCanvasFrameMessage(event.data);
             if (!message) return;
             if (message.type === 'paws-project-canvas/ready') {
+                rendererReady.current = true;
                 setFrameReady(true);
                 setFrameError(false);
+                pumpImages();
                 return;
             }
             if (message.sessionKey !== sessionKey || !current.current) return;
@@ -386,7 +412,7 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
         }
         window.addEventListener('message', receive);
         return () => window.removeEventListener('message', receive);
-    }, [cacheOriginal, client, readOriginal, requestImages, sessionKey, update]);
+    }, [cacheOriginal, client, pumpImages, readOriginal, requestImages, sessionKey, update]);
 
     function flushScene(): Promise<boolean> {
         const target = frame.current?.contentWindow;
@@ -522,7 +548,7 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
     }
 
     const failure = sceneIssue ?? (frameError ? 'loadError' : status?.endsWith('Error') ? status : null);
-    const feedbackKey = failure ?? (sceneSaving ? 'saving' : status);
+    const feedbackKey = failure ?? (sceneSaving ? 'saving' : status ?? (frameReady ? null : 'loading'));
     const feedbackText = feedbackKey ? t(`projectCanvas.${feedbackKey}`) : '';
     const buttonText = { fontSize: 12, color: colors.textLink, ...Typography.default('semiBold') };
     const compactPosition: React.CSSProperties = { position: 'absolute', inset: 0 };
@@ -536,6 +562,7 @@ function ProjectCanvasPane({ machineId, projectPath, files, fileViewer, showFile
                 return;
             }
             setSelectedAssetId(undefined);
+            rendererReady.current = false;
             setFrameReady(false);
             setFrameError(false);
             setReload(value => value + 1);

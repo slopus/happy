@@ -7,12 +7,17 @@ import { createRequire } from 'node:module';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import environmentHelpers from '../../../../../environments/environments.ts';
 const { createEnvironment, getEnvironmentConfig, setEnvironmentTemplate, startEnvironmentServices, seedEnvironment, startEnvironmentWeb, stopEnvironment, removeEnvironment } = environmentHelpers;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
-const canvasSmoke = process.argv.includes('--canvas');
+const canvasPerf = process.argv.includes('--canvas-perf');
+const rpcOnly = canvasPerf && process.argv.includes('--rpc-only');
+const canvasSmoke = canvasPerf || process.argv.includes('--canvas');
+const canvasPerfRangeDelayMs = 700;
 const liveCanvas = canvasSmoke && process.argv.includes('--canvas-live-codex');
-const canvasReply = canvasSmoke ? process.env.PAWS_CANVAS_TEST_REPLY : undefined;
+assert(!canvasPerf || !liveCanvas, 'Canvas performance fixtures cannot start a model worker');
+const canvasReply = canvasSmoke && !canvasPerf ? process.env.PAWS_CANVAS_TEST_REPLY : undefined;
 const canvasRun = canvasSmoke ? process.env.PAWS_CANVAS_TEST_RUN : undefined;
 if (canvasRun && !/^[a-z0-9-]{1,40}$/.test(canvasRun)) throw new Error('Invalid isolated canvas test run name');
 const output = path.join(root, 'packages/happy-app/test-results', canvasSmoke ? ['project-canvas', canvasRun].filter(Boolean).join('-') : 'project-goals');
@@ -26,7 +31,7 @@ let environment, controller, accountSocket, machineSocket, service, runtime;
 let canvasControl, canvasMcp, liveWorker;
 const clients = new Map();
 const liveSessions = new Map();
-const metrics = { rpc: [], spawned: [], submitted: [], received: [], canvasTurns: [] };
+const metrics = { rpc: [], spawned: [], submitted: [], received: [], canvasTurns: [], ...(canvasPerf ? { canvasReads: [] } : {}) };
 const controls = { failDirectory: false, loseSubmissionResponse: false };
 let closing = false;
 const put = async (file, text) => { await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, text); };
@@ -85,7 +90,25 @@ async function main() {
     let daemonVersion = (await created.json()).machine.daemonStateVersion;
     const manager = new RpcHandlerManager({ scopePrefix: machineId, encryptionKey: key, encryptionVariant: 'legacy' });
     const register = manager.registerHandler.bind(manager);
-    manager.registerHandler = (method, handler) => register(method, async input => { metrics.rpc.push({ method, time: Date.now() }); if (method === 'goalTaskListDirectory' && controls.failDirectory) { controls.failDirectory = false; throw new Error('Synthetic directory failure'); } return handler(input); });
+    manager.registerHandler = (method, handler) => register(method, async input => {
+        metrics.rpc.push({ method, time: Date.now() });
+        if (method === 'goalTaskListDirectory' && controls.failDirectory) {
+            controls.failDirectory = false;
+            throw new Error('Synthetic directory failure');
+        }
+        if (!canvasPerf || !['goalProjectCanvasAsset', 'goalProjectCanvasPreview'].includes(method)) return handler(input);
+        const read = { method, assetId: input.assetId, offset: input.offset ?? 0, startedAt: Date.now() };
+        metrics.canvasReads.push(read);
+        if (method === 'goalProjectCanvasAsset') await delay(canvasPerfRangeDelayMs);
+        try {
+            const result = await handler(input);
+            read.success = result.success;
+            if (result.success) read.bytes = Buffer.byteLength(result.base64, 'base64');
+            return result;
+        } finally {
+            read.finishedAt = Date.now();
+        }
+    });
     machineSocket = io(serverUrl, { path: '/v1/updates', transports: ['websocket'], reconnection: false, auth: { token: auth.token, clientType: 'machine-scoped', machineId } });
     machineSocket.on('rpc-request', async (data, cb) => cb(await manager.handleRequest(data))); await once(machineSocket, 'connect');
     let publish = Promise.resolve();
@@ -133,6 +156,7 @@ async function main() {
         spawn: async options => { const sessionId = await createSession(options.directory, 'Task 对话 · STUB 执行器'); metrics.spawned.push({ sessionId, directory: options.directory }); return { type: 'success', sessionId }; },
         send: async (...args) => { await adapter.send(...args); metrics.submitted.push({ sessionId: args[0], localId: args[2] }); if (controls.loseSubmissionResponse) { controls.loseSubmissionResponse = false; throw new Error('Synthetic response loss after accepted submission'); } },
     });
+    const perfAssets = canvasPerf ? await (await import('./canvasPerfAssets.mjs')).seedCanvasPerfAssets(service.canvas, projectPath) : undefined;
     registerArtifactHandlers(manager, async () => store, undefined, async chosen => { assert(chosen.startsWith(home + '/')); });
     manager.onSocketConnect(machineSocket); await once(machineSocket, 'rpc-registered', event => event.method === `${machineId}:goalProjects`);
     machineSocket.emit('machine-alive', { machineId, time: Date.now() }); machineSocket.io.engine.on('packet', packet => { if (packet.type === 'ping') machineSocket.emit('machine-alive', { machineId, time: Date.now() }); });
@@ -142,6 +166,10 @@ async function main() {
     const rpc = async (method, input = {}) => { const response = await accountSocket.timeout(60000).emitWithAck('rpc-call', { method: `${machineId}:${method}`, params: encode(input) }); assert(response.ok, response.error); return encryption.decryptLegacy(new Uint8Array(Buffer.from(response.result, 'base64')), key); };
     const board = await rpc('goalProjectRead', { featurePath: feature }); assert(board.success);
     runtime = { environment, pid: process.pid, serverUrl, webUrl: `http://localhost:${config.expoPort}`, machineId, projectPath, featurePath: feature, taskA: board.snapshot.tasks.find(task => task.title === '工作区方案'), taskB: board.snapshot.tasks.find(task => task.title === '首次执行任务'), taskDirectory: taskA, sessionIds: [sessionA, sessionB], canvasSessions, authUrlFile: path.join(output, 'auth-url.txt'), boundaries: { app: 'real complete App', relay: 'real isolated server/account/encrypted RPC', archive: 'real synthetic Goal First files and durable state', launcher: 'STUB creates real relay sessions; does not spawn production daemon/model', submission: 'real production encrypted HTTP adapter and delivery receipt', businessPolling: false } };
+    if (perfAssets) {
+        runtime.canvasPerf = { assets: perfAssets, originalDelayMs: canvasPerfRangeDelayMs, rpcOnly };
+        if (rpcOnly) runtime.boundaries.app = 'not started in RPC-only mode';
+    }
     if (canvasSmoke && (liveCanvas || process.argv.includes('--canvas-tools'))) {
         const { startDaemonControlServer } = await import('../../../../happy-cli/src/daemon/controlServer.ts');
         const { createProjectCanvasControlHandler, invokeBoundProjectCanvas } = await import('../../../../happy-cli/src/daemon/projectCanvasLocal.ts');
@@ -224,8 +252,11 @@ async function main() {
     });
     await new Promise(resolve => controller.listen(0, '127.0.0.1', resolve)); runtime.controllerUrl = `http://127.0.0.1:${controller.address().port}`;
     await fs.writeFile(path.join(output, 'runtime.json'), JSON.stringify(runtime, null, 2));
-    await startEnvironmentWeb(environment, { warmBundle: true, localhost: canvasSmoke }); await import('../goal-board/repair-router-types.mjs');
-    originalLog(JSON.stringify({ ready: true, webUrl: runtime.webUrl, controllerUrl: runtime.controllerUrl, authUrlFile: runtime.authUrlFile }));
+    if (!rpcOnly) {
+        await startEnvironmentWeb(environment, { warmBundle: true, localhost: canvasSmoke });
+        await import('../goal-board/repair-router-types.mjs');
+    }
+    originalLog(JSON.stringify({ ready: true, ...(rpcOnly ? {} : { webUrl: runtime.webUrl, authUrlFile: runtime.authUrlFile }), controllerUrl: runtime.controllerUrl }));
 }
 async function cleanup(code = 0) { if (closing) return; closing = true; liveWorker?.kill(); await canvasMcp?.stop(); await canvasControl?.stop(); service?.dispose(); for (const { client } of clients.values()) { client.sendSessionDeath(); await client.close(); } machineSocket?.disconnect(); accountSocket?.disconnect(); controller?.close(); if (environment) { stopEnvironment(environment); removeEnvironment(environment); } process.exit(code); }
 process.on('SIGINT', () => { void cleanup(); }); process.on('SIGTERM', () => { void cleanup(); });

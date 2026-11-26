@@ -30,6 +30,7 @@ const seams = new Map([
     ['../../shared.js', 'shared.ts'],
 ]);
 const used = new Set();
+const sdkRoot = dirname(require.resolve('tldraw/tldraw.css'));
 const packageJson = JSON.parse(await readFile(join(workspace, 'package.json'), 'utf8'));
 const provenance = JSON.parse(await readFile(join(workspace, 'vendor', 'upstream.json'), 'utf8'));
 const originalPackage = JSON.parse(await readFile(join(upstream, 'package.json'), 'utf8'));
@@ -37,6 +38,30 @@ const expectedSdk = originalPackage.devDependencies?.tldraw;
 if (packageJson.dependencies.tldraw !== expectedSdk || packageJson.dependencies['@tldraw/assets'] !== expectedSdk) {
     throw new Error(`Update canvas SDK and static assets to match upstream tldraw ${expectedSdk}`);
 }
+
+// Keep the regular toolbar sprite and asset URLs. The SDK already loads fonts
+// used by shapes and the embed dialog loads its own icons when it opens.
+const sdkStartupEdits = new Map([
+    [join(sdkRoot, 'dist-esm/lib/Tldraw.mjs'), {
+        before: `    editor.fonts.requestFonts(allDefaultFontFaces);
+    const themes = editor.getThemes();
+    for (const theme of Object.values(themes)) {
+      for (const key of Object.keys(theme.fonts)) {
+        const font = theme.fonts[key];
+        if (font.faces?.length) {
+          editor.fonts.requestFonts(font.faces);
+        }
+      }
+    }
+`,
+        after: '',
+    }],
+    [join(sdkRoot, 'dist-esm/lib/ui/context/asset-urls.mjs'), {
+        before: '[...Object.values(assetUrls.icons), ...Object.values(assetUrls.embedIcons)]',
+        after: 'Object.values(assetUrls.icons)',
+    }],
+]);
+const appliedStartupEdits = new Set();
 
 await mkdir(dirname(output), { recursive: true });
 const temporary = await mkdtemp(join(dirname(output), '.dsh-canvas-build-'));
@@ -69,9 +94,23 @@ try {
                     // dependency use the React 18 instance from this workspace.
                     if (/^react(?:-dom)?(?:\/|$)/.test(args.path)) return { path: require.resolve(args.path) };
                 });
+                builder.onLoad({ filter: /[\\/](?:Tldraw|asset-urls)\.mjs$/ }, async ({ path }) => {
+                    const edit = sdkStartupEdits.get(path);
+                    if (!edit) return;
+                    const source = await readFile(path, 'utf8');
+                    const offset = source.indexOf(edit.before);
+                    if (offset < 0 || offset !== source.lastIndexOf(edit.before)) {
+                        throw new Error(`tldraw ${expectedSdk} startup preloads changed in ${relative(sdkRoot, path)}`);
+                    }
+                    appliedStartupEdits.add(path);
+                    return { contents: source.replace(edit.before, edit.after), resolveDir: dirname(path) };
+                });
             },
         }],
     });
+    if (appliedStartupEdits.size !== sdkStartupEdits.size) {
+        throw new Error(`tldraw ${expectedSdk} startup modules changed; review the preload adapter before building`);
+    }
     if (used.size !== seams.size || !result.metafile.inputs[relative(workspace, studio)]) {
         throw new Error('Upstream Studio runtime seams changed; review the adapter before building');
     }

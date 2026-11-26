@@ -159,14 +159,16 @@ test('Caddy proxies explicit immutable canvas files on the same origin and rejec
 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), 'paws-canvas-caddy-'));
     const seen = [];
+    const canvasCode = 'window.renderCanvas?.();\n'.repeat(1_000);
     const oss = http.createServer((request, response) => {
         seen.push({ url: request.url, method: request.method, auth: request.headers.authorization, cookie: request.headers.cookie });
         response.writeHead(200, {
             'Content-Type': 'application/javascript',
+            'Content-Length': Buffer.byteLength(canvasCode),
             'Content-Disposition': 'attachment',
             'Set-Cookie': 'oss_example=1',
         });
-        response.end('canvas code');
+        response.end(canvasCode);
     });
     const addressFor = async (server) => {
         server.listen(0, '127.0.0.1');
@@ -217,7 +219,7 @@ ${address} {
         const revision = 'a'.repeat(40);
         const prefix = `/dsh-image-canvas/${revision}`;
         const js = await fetch(address + prefix + '/canvas.js?no_upstream_query=1', {
-            redirect: 'manual', headers: { Cookie: 'local_auth=1', Authorization: 'Bearer test' },
+            redirect: 'manual', headers: { Cookie: 'local_auth=1', Authorization: 'Bearer test', 'Accept-Encoding': 'gzip' },
         });
         assert.equal(js.status, 200);
         assert.equal(js.headers.get('content-type'), 'application/javascript');
@@ -225,7 +227,13 @@ ${address} {
         assert.equal(js.headers.get('set-cookie'), null);
         assert.equal(js.headers.get('x-frame-options'), 'SAMEORIGIN');
         assert.equal(js.headers.get('x-content-type-options'), 'nosniff');
-        assert.equal(await js.text(), 'canvas code');
+        assert.equal(js.headers.get('content-encoding'), 'gzip');
+        assert.match(js.headers.get('vary') ?? '', /\bAccept-Encoding\b/i);
+        assert.equal(await js.text(), canvasCode);
+        const uncompressed = await fetch(address + prefix + '/canvas.js', { headers: { 'Accept-Encoding': 'identity' } });
+        assert.equal(uncompressed.headers.get('content-encoding'), null);
+        assert.match(uncompressed.headers.get('vary') ?? '', /\bAccept-Encoding\b/i);
+        assert.equal(await uncompressed.text(), canvasCode);
         const font = await fetch(address + prefix + '/assets/fonts/IBMPlexSans-Medium.woff2', { method: 'HEAD' });
         assert.equal(font.status, 200);
         for (const path of [
@@ -242,6 +250,7 @@ ${address} {
         assert.equal(blocked.status, 404);
         await blocked.text();
         assert.deepEqual(seen, [
+            { url: `/web/releases/${revision}/dsh-image-canvas/canvas.js`, method: 'GET', auth: undefined, cookie: undefined },
             { url: `/web/releases/${revision}/dsh-image-canvas/canvas.js`, method: 'GET', auth: undefined, cookie: undefined },
             { url: `/web/releases/${revision}/dsh-image-canvas/assets/fonts/IBMPlexSans-Medium.woff2`, method: 'HEAD', auth: undefined, cookie: undefined },
         ]);
