@@ -28,7 +28,12 @@ class UsageStatusTest {
 
     @Test
     fun contextShowsOnlyNearTheLimitUnlessAlwaysShown() {
-        assertNull("no window yet", contextStatus(usage(150_000, null), alwaysShow = true))
+        assertEquals(
+            "a window not reported yet shows the count alone",
+            ContextStatus(percent = null, used = "150k", total = null, level = ContextLevel.Normal),
+            contextStatus(usage(150_000, null), alwaysShow = true),
+        )
+        assertNull("no window and not always shown", contextStatus(usage(150_000, null), alwaysShow = false))
         assertNull("nothing used", contextStatus(usage(0, 200_000), alwaysShow = true))
         assertNull("plenty left", contextStatus(usage(100_000, 200_000), alwaysShow = false))
         assertEquals(ContextStatus(50, "100k", "200k", ContextLevel.Normal), contextStatus(usage(100_000, 200_000), alwaysShow = true))

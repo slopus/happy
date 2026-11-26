@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="chat_tasks_running">
+        <item quantity="other">%1$d 个运行中</item>
+    </plurals>
+    <plurals name="chat_tasks_finished">
+        <item quantity="other">%1$d 个已完成</item>
+    </plurals>
+    <string name="chat_tasks_title">后台任务</string>
+    <string name="chat_tasks_status_running">运行中</string>
+    <string name="chat_tasks_status_completed">已完成</string>
+    <string name="chat_tasks_status_failed">失败</string>
+    <string name="chat_tasks_status_cancelled">已取消</string>
+    <string name="chat_tasks_status_time">%1$s · %2$s</string>
+</resources>

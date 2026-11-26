@@ -32,6 +32,11 @@ class ChatNormalizerTest {
         assertEquals(UsageData(1200, 80, 40, 500), n.usage)
     }
 
+    @Test fun `keeps a model named in usage`() {
+        val n = envelope("""{"id":"e","time":1,"role":"agent","turn":"t","usage":{"input_tokens":1200,"output_tokens":80,"model":"claude-sonnet-4-5"},"ev":{"t":"text","text":"x"}}""")!!
+        assertEquals("claude-sonnet-4-5", n.usage?.model)
+    }
+
     @Test fun `usage-only service envelopes need no turn and carry no content`() {
         val n = envelope("""{"id":"e","time":1,"role":"agent","usage":{"input_tokens":1200,"output_tokens":80},"ev":{"t":"service","text":""}}""")!!
         assertEquals(emptyList<AgentContent>(), n.content)
@@ -63,8 +68,12 @@ class ChatNormalizerTest {
     @Test fun `drops control-only task notifications and keeps the text after one`() {
         val notification = "<task-notification>\n<task-id>agent-123</task-id>\n<status>completed</status>\n</task-notification>"
         val quoted = JsonPrimitive(notification).toString()
-        assertNull(normalize("""{"role":"session","content":{"id":"u","time":1,"role":"user","codexItemId":"c","ev":{"t":"text","text":$quoted}}}"""))
-        assertNull(normalize("""{"role":"session","content":{"id":"a","time":1,"role":"agent","turn":"t","ev":{"t":"text","text":$quoted}}}"""))
+        // The record draws nothing, but its notification reaches the reducer.
+        val userControl = normalize("""{"role":"session","content":{"id":"u","time":1,"role":"user","codexItemId":"c","ev":{"t":"text","text":$quoted}}}""")!!
+        assertEquals(Body.Control, userControl.body)
+        assertEquals("agent-123", userControl.taskNotifications.single().taskId)
+        val agentControl = normalize("""{"role":"session","content":{"id":"a","time":1,"role":"agent","turn":"t","ev":{"t":"text","text":$quoted}}}""")!!
+        assertEquals(Body.Control, agentControl.body)
         val followup = normalize("""{"role":"session","content":{"id":"f","time":1,"role":"user","ev":{"t":"text","text":"<task-notification>internal</task-notification>\nContinue with the fix"}}}""")!!
         assertEquals(Body.User("Continue with the fix"), followup.body)
     }

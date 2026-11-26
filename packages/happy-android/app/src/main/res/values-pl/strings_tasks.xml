@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="chat_tasks_running">
+        <item quantity="one">%1$d działa</item>
+        <item quantity="few">%1$d działają</item>
+        <item quantity="many">%1$d działa</item>
+        <item quantity="other">%1$d działa</item>
+    </plurals>
+    <plurals name="chat_tasks_finished">
+        <item quantity="one">%1$d zakończone</item>
+        <item quantity="few">%1$d zakończone</item>
+        <item quantity="many">%1$d zakończonych</item>
+        <item quantity="other">%1$d zakończone</item>
+    </plurals>
+    <string name="chat_tasks_title">Zadania w tle</string>
+    <string name="chat_tasks_status_running">Działa</string>
+    <string name="chat_tasks_status_completed">Zakończone</string>
+    <string name="chat_tasks_status_failed">Niepowodzenie</string>
+    <string name="chat_tasks_status_cancelled">Anulowane</string>
+    <string name="chat_tasks_status_time">%1$s · %2$s</string>
+</resources>

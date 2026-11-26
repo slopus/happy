@@ -45,7 +45,6 @@ import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.conversation.LocalSendFlight
 import com.slopus.happy.ui.layout.CenteredInputWidth
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.usage.ComposerUsageRow
 import com.slopus.happy.ui.voice.rememberVoiceAction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -76,9 +75,11 @@ internal fun DockScrim(dockHeight: Int, modifier: Modifier = Modifier) {
 /**
  * SessionView.tsx's `input`: the inactive-session hint (a real session
  * only), [goalBar] and the question banner in the centred input width,
- * [activityBar] full width, then the composer. Each part above the
- * composer, and the composer's status and usage rows, fade in place while
- * [showDetails] is false. [session] is the chat, or a pending chat's anchor.
+ * [activityBar] full width, then the composer with its own row above it
+ * (the session's background tasks at the start and the context and plan
+ * usage at the end). Each part above the composer, and the composer's
+ * status, info and usage rows, fade in place while [showDetails] is false.
+ * [session] is the chat, or a pending chat's anchor.
  */
 @Composable
 internal fun ChatDock(
@@ -242,7 +243,14 @@ private fun ChatComposerFor(
         primaryShake = primaryShake,
         // A message sent alone flies to its row; pictures come in with theirs (iOS 3c24acf5c).
         flight = flight?.takeIf { !pictures && !reduceMotion },
-        bottom = { ComposerUsageRow(state.snapshot.usage, session.agentState?.usageLimits) },
+        above = {
+            ComposerInfoRow(
+                tasks = if (state.session != null) state.snapshot.backgroundTasks else emptyList(),
+                usage = state.snapshot.usage,
+                limits = session.agentState?.usageLimits,
+                sessionKey = session.id,
+            )
+        },
     )
 }
 

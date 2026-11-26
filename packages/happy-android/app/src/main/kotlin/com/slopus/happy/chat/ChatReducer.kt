@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonPrimitive
 //   0    agent-state permissions: placeholder tool rows, status updates
 //   1    user messages (deduplicated by local id) and agent text
 //   2    tool calls, joined to permission rows by tool id
+//   2.5  background tasks: a call that runs in the background, ended by its notification
 //   3    tool results
 //   4    sidechains, stored under the tool call that owns them
 //   5    agent events
@@ -57,6 +58,8 @@ data class ContextUsage(
     val cacheRead: Long,
     val contextSize: Long,
     val contextWindow: Long? = null,
+    /** The model that produced the usage, when the producer names it. */
+    val model: String? = null,
 )
 
 data class ReducerResult(
@@ -67,6 +70,8 @@ data class ReducerResult(
     val hasReadyEvent: Boolean = false,
     /** Rows in [messages] that only settled (position, pending); not new content. */
     val settledMessageIds: Set<String> = emptySet(),
+    /** The session's background tasks, running first; see [backgroundTasksForDisplay]. */
+    val backgroundTasks: List<BackgroundTask> = emptyList(),
 )
 
 /**
@@ -134,12 +139,15 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
     private val unmatchedAckServerIds = HashMap<String, String>()
     internal val sidechains = HashMap<String, MutableList<ReducerMessage>>()
     internal val tracer = TracerState()
+    /** Background tasks a Claude Code session started besides its turns. */
+    internal val backgroundTaskTracker = BackgroundTaskTracker()
     private var latestTodos: Pair<List<TodoItem>, Long>? = null
     private var latestUsage: TimedUsage? = null
     private var nextId = 0L
 
     val todos: List<TodoItem>? get() = latestTodos?.first
     val usage: ContextUsage? get() = latestUsage?.usage
+    val backgroundTasks: List<BackgroundTask> get() = backgroundTasksForDisplay(backgroundTaskTracker.snapshot)
 
     private fun allocateId(): String = "m${nextId++}"
 
@@ -181,6 +189,9 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
         //
         val toProcess = ArrayList<NormalizedMessage>()
         val converted = ArrayList<Pair<NormalizedMessage, AgentEvent>>()
+        // Notifications wait for Phase 2 so a tool call in this batch starts its
+        // task before the notification that ends it is applied.
+        val notifications = ArrayList<Pair<BackgroundTaskNotification, Long>>()
         for (msg in nonSidechain) {
             val body = msg.body
             if (body is Body.User && msg.localId != null && msg.localId in localIds) {
@@ -194,6 +205,12 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
                 continue
             }
             if (msg.id in messageIds) continue
+            for (notification in msg.taskNotifications) notifications.add(notification to msg.createdAt)
+            if (body is Body.Control) {
+                // Background-task notifications alone: nothing to draw.
+                messageIds[msg.id] = msg.id
+                continue
+            }
 
             val event = (body as? Body.Event)?.event
             if (event is AgentEvent.UserMessageAccepted || event is AgentEvent.UserMessageRejected) {
@@ -440,6 +457,7 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
                     changed.add(mid)
                 }
                 is Body.Event -> Unit
+                is Body.Control -> Unit
             }
         }
 
@@ -449,6 +467,9 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
         for (msg in nonSidechain) {
             for (c in msg.agentContent) {
                 if (c !is AgentContent.ToolUse) continue
+                // A call that asked to run in the background is a background task
+                // from here on; its notification ends it (Phase 2.5).
+                backgroundTaskTracker.start(c.id, c.name, c.input, msg.createdAt)
                 val existingId = toolIdToMessageId[c.id]
                 if (existingId != null) {
                     val message = messages[existingId] ?: continue
@@ -510,6 +531,13 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
         }
 
         //
+        // Phase 2.5: background tasks
+        //
+        // A started call (above) is joined here by the notification that ends
+        // it; a notification with no task to join adds a finished one of its own.
+        for ((notification, at) in notifications) backgroundTaskTracker.notify(notification, at)
+
+        //
         // Phase 3: tool results
         //
         for (msg in nonSidechain) {
@@ -521,6 +549,9 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
                     if (tool.name == "TodoWrite" && !c.isError) {
                         updateLatestTodos(tool.result.obj?.get("newTodos"), msg.createdAt)
                     }
+                    // Extract and record task IDs from background tool results
+                    val resultText = c.content.str ?: c.content.arr?.joinToString("\n") { it.str ?: it.obj?.get("text").str.orEmpty() }
+                    backgroundTaskTracker.result(c.toolUseId, resultText)
                     changed.add(messageId)
                 }
             }
@@ -630,6 +661,7 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
             usage = latestUsage?.usage,
             hasReadyEvent = hasReadyEvent,
             settledMessageIds = settledIds,
+            backgroundTasks = backgroundTasks,
         )
     }
 
@@ -701,6 +733,7 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
                 cacheRead = cacheRead,
                 contextSize = cacheCreation + cacheRead + usage.inputTokens,
                 contextWindow = usage.contextWindow?.takeIf { it > 0 }?.toLong(),
+                model = usage.model,
             ),
             timestamp,
         )

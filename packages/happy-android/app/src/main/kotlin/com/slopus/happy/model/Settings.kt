@@ -65,7 +65,8 @@ data class Settings(
     val analyticsOptOut: Boolean = false,
     /** Current experiments: the Rig session file browser and the Usage settings page. */
     val experiments: Boolean = false,
-    val alwaysShowContextSize: Boolean = false,
+    /** Context and plan usage show by default; turning this off keeps only near-limit warnings. */
+    val alwaysShowContextSize: Boolean = true,
     /** Enter sends in the agent input (web). */
     val agentInputEnterToSend: Boolean = true,
     /** brutalist, pixelated or gradient; a free string so other versions' values survive. */

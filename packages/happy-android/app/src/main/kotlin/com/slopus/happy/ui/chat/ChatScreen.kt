@@ -211,8 +211,8 @@ private fun HeaderFadeIn(shown: Boolean, content: @Composable () -> Unit) {
  * [EmptyMessages] once the first page is in, a spinner before.
  *
  * The dock, top to bottom: the inactive-session hint, [goalBar] and the
- * question banner (each in the centred input width), [activityBar], then
- * the composer. On a phone in portrait it floats (AgentContentView
+ * question banner (each in the centred input width), [activityBar], the
+ * session's background tasks as a pill when it has any, then the composer. On a phone in portrait it floats (AgentContentView
  * `floatingDock`): the transcript runs to the bottom of the screen under
  * it, with the dock's height added under the newest row, and a scrim from
  * 28 above the dock to the bottom (white 0 → 0.18 at 0.42 → 0.74, in dark

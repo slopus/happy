@@ -2183,6 +2183,44 @@ chat shows, and again on `provider.usage.*`, `config.updated` and each
 reconnect. It keeps following for 30 s after the last chat goes. Words
 are in `strings_context_meter.xml`.
 
+A relay chat's context and plan usage (`ui/usage/ComposerUsageRow.kt`) is
+not under its composer: it is the end of the row above the composer card
+whose start is the background-task pill (`ui/chat/ComposerInfoRow.kt`),
+right-aligned to Send's edge. It keeps its tap-for-details popups.
+
+### Background tasks
+
+A Happy CLI chat shows the session's background work as a pill in the one
+row directly above the composer card: "2 running", or "1 finished" once
+nothing runs. The row's start is the pill and its end is the context usage
+indicator and week figure (`ui/chat/ComposerInfoRow.kt`, the composer's
+`above` slot; see "Context meter and usage ring"), the gauge's right edge
+on Send's. A chat with either shows the row; with neither it has no row and
+takes no room. The pill opens a bottom sheet of every task, running first
+and then the most recently finished (`ui/chat/BackgroundTaskBar.kt`; state
+in `chat/BackgroundTasks.kt`, `ReducerState.backgroundTasks` →
+`ChatSnapshot.backgroundTasks`). It is read-only: the CLI answers no
+per-task stop, only the whole turn's abort.
+
+happy-cli sends no session envelope for the Claude Agent SDK's
+`task_started` / `task_progress` / `task_notification` system messages (its
+`sessionProtocolMapper` drops every `system` message), so nothing arrives
+live. What does arrive is the tool call that started a task — its input says
+`run_in_background`, with the command and description (the CLI hides a
+`Task` call's parent, so a `Task` subagent's start is not seen) — and the
+`<task-notification>` envelope Claude Code writes into the conversation when
+the task ends (`happy-wire` controlMessages.ts): task id, status
+(completed / failed / killed…), summary, output file and subagent usage.
+`ChatNormalizer` keeps the envelope as `NormalizedMessage.taskNotifications`
+and draws no row for a record that only carried it. A notification is joined
+to its call by the description its summary quotes (the CLI cuts a tool title
+at 77 characters, so a long prefix counts); with nothing quoted and one task
+alone running, that task is taken as the one it ends; with nothing to join it
+is listed as finished on its own, without a start time or command — a
+subagent whose `Task` call the CLI hid, or a session opened after the task
+started. There is no progress, then, and no stop. Words are in
+`strings_tasks.xml`.
+
 ### One-row composer
 
 The chat's composer is one row when the full card with one line would
