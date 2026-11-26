@@ -114,7 +114,12 @@ class PipelineRunSource(
             } catch (e: Exception) {
                 e
             }
-            if (refused != null) mutableState.update { it.copy(abort = PipelineAbort.Failed((refused as? AgentApiException)?.message)) } else refresh()
+            when (refused) {
+                null -> refresh()
+                // Turned off for the account: the page is leaving, with nothing to say.
+                is PipelinesTurnedOff -> mutableState.update { it.copy(abort = PipelineAbort.Idle) }
+                else -> mutableState.update { it.copy(abort = PipelineAbort.Failed((refused as? AgentApiException)?.message)) }
+            }
         }
     }
 

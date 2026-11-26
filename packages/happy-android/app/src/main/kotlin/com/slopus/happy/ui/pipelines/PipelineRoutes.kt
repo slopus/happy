@@ -1,16 +1,21 @@
 package com.slopus.happy.ui.pipelines
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
+import com.slopus.happy.agent.AccountFeature
 import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.pipelines.ClusterPipelines
 import com.slopus.happy.pipelines.PipelineNodeLog
@@ -24,9 +29,12 @@ import com.slopus.happy.pipelines.PipelineView
 import com.slopus.happy.pipelines.PipelinesBackend
 import com.slopus.happy.pipelines.PipelinesList
 import com.slopus.happy.pipelines.PipelinesSource
+import com.slopus.happy.ui.backStackEntries
 import com.slopus.happy.ui.page
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.serialization.Serializable
 
 /** A Happy Cloud server's pipelines and every run of them, home's Pipelines row. */
@@ -48,6 +56,38 @@ import kotlinx.serialization.Serializable
 @Serializable data class PipelineVersionNodeRoute(val connectionId: String, val pipelineId: String, val version: Int, val nodeId: String)
 
 fun NavGraphBuilder.pipelineRoutes(graph: AppGraph, nav: NavHostController) = pipelineRoutes(nav) { connectionId -> rememberPipelines(graph, connectionId) }
+
+/**
+ * Pipelines turned off for the person's account (Settings › Profile here,
+ * any of their apps elsewhere, or a route refusing them), live: every
+ * pipeline page leaves, with whatever was opened over them, back to the
+ * page under the first one. On the tablet that is the empty panel when
+ * Pipelines was its root.
+ */
+@Composable
+fun PipelinesOffEffect(graph: AppGraph, nav: NavHostController, connectionId: String?) {
+    if (connectionId == null) return
+    val session = remember(connectionId) { graph.agentSessions.session(connectionId) } ?: return
+    PipelinesOffEffect(session.pipelinesTurnedOff, nav)
+}
+
+@Composable
+internal fun PipelinesOffEffect(off: Flow<Boolean>, nav: NavHostController) {
+    LaunchedEffect(off, nav) {
+        combine(off, nav.backStackEntries) { turnedOff, stack -> if (turnedOff) stack else emptyList() }
+            .collect { stack -> pipelinesLeft(stack)?.let { below -> while (nav.currentBackStackEntry?.id != below) if (!nav.popBackStack()) break } }
+    }
+}
+
+/** The entry to go back to so that no pipeline page is left in [stack]: the one under the first; null with none. */
+internal fun pipelinesLeft(stack: List<NavBackStackEntry>): String? {
+    val first = stack.indexOfFirst { it.destination.isPipelinePage() }
+    return if (first < 1) null else stack[first - 1].id
+}
+
+internal fun NavDestination.isPipelinePage(): Boolean =
+    hasRoute<PipelinesRoute>() || hasRoute<PipelineRunRoute>() || hasRoute<PipelineNodeRoute>() ||
+        hasRoute<PipelineRoute>() || hasRoute<PipelineVersionRoute>() || hasRoute<PipelineVersionNodeRoute>()
 
 /** The pipeline pages, each reading its connection's pipelines through [pipelines] (a debug fixture passes its own). */
 fun NavGraphBuilder.pipelineRoutes(nav: NavHostController, pipelines: @Composable (connectionId: String) -> PagePipelines) {
@@ -117,7 +157,7 @@ private fun rememberPipelines(graph: AppGraph, connectionId: String): PagePipeli
     // Agents by the names home shows them by, as they are when a row draws.
     return remember(session) {
         PagePipelines(
-            session?.let { ClusterPipelines(it.client) },
+            session?.let { ClusterPipelines(it.client) { it.accountFeatures.turnedOff(AccountFeature.PIPELINES) } },
             session?.events ?: MutableSharedFlow(),
             AgentNames { id -> session?.feed?.value?.title(id) },
             PeopleNames { id -> session?.team?.users?.value?.get(id)?.name?.takeIf { it.isNotBlank() } },

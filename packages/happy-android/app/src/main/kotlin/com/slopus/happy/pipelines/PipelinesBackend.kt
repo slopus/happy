@@ -1,5 +1,6 @@
 package com.slopus.happy.pipelines
 
+import com.slopus.happy.agent.AccountFeature
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.decode
@@ -63,19 +64,27 @@ interface PipelinesBackend {
 }
 
 /**
+ * The person turned Pipelines off for their account: a route of theirs
+ * answered `403 feature_not_installed`. Not a failure to show; the pages
+ * leave.
+ */
+class PipelinesTurnedOff : Exception("Pipelines are turned off for this account")
+
+/**
  * happy-cluster API.md, "Pipelines". The readers are desktop's
  * (`pipelineRead.ts`), checked against production answers: what isn't the
  * shape is left out rather than guessed at, a name the server leaves out is
  * the ID, and an agent trigger without its agent is still an agent's run.
+ * A route refused because the person turned Pipelines off tells
+ * [turnedOff] and throws [PipelinesTurnedOff].
  */
-class ClusterPipelines(private val client: AgentClient) : PipelinesBackend {
-    override suspend fun pipelines(): List<PipelineSummary> =
+class ClusterPipelines(private val client: AgentClient, private val turnedOff: () -> Unit = {}) : PipelinesBackend {
+    override suspend fun pipelines(): List<PipelineSummary> = call {
         summaries(client.decode<JsonObject>("GET", "/v0/pipelines")).sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }
 
-    override suspend fun runs(cursor: String?): PipelineRunPage<PipelineRunListEntry>? = try {
+    override suspend fun runs(cursor: String?): PipelineRunPage<PipelineRunListEntry>? = notFoundIsNull {
         runList(client.decode<JsonObject>("GET", RUNS + (cursor?.let { "?cursor=${AgentClient.escape(it)}" } ?: "")))
-    } catch (e: AgentApiException) {
-        if (e.status == 404) null else throw e
     }
 
     override suspend fun run(runId: String): PipelineRun? = notFoundIsNull {
@@ -108,14 +117,25 @@ class ClusterPipelines(private val client: AgentClient) : PipelinesBackend {
         logPage(client.decode<JsonObject>("GET", "$RUNS/${AgentClient.escape(runId)}/nodes/${AgentClient.escape(nodeId)}/log?after=$after&limit=$LOG_LIMIT"), after)
     }
 
-    override suspend fun abort(runId: String) {
+    override suspend fun abort(runId: String) = call {
         client.send("POST", "$RUNS/${AgentClient.escape(runId)}/abort")
+        Unit
     }
 
-    private inline fun <T> notFoundIsNull(read: () -> T): T? = try {
-        read()
+    private inline fun <T> notFoundIsNull(read: () -> T): T? = call {
+        try {
+            read()
+        } catch (e: AgentApiException) {
+            if (e.status == 404) null else throw e
+        }
+    }
+
+    private inline fun <T> call(request: () -> T): T = try {
+        request()
     } catch (e: AgentApiException) {
-        if (e.status == 404) null else throw e
+        if (!AccountFeature.refusedAsOff(e, AccountFeature.PIPELINES)) throw e
+        turnedOff()
+        throw PipelinesTurnedOff()
     }
 
     internal companion object {

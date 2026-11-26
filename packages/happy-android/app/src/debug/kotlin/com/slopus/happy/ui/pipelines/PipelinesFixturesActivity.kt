@@ -1,6 +1,13 @@
 package com.slopus.happy.ui.pipelines
 
 import android.os.Bundle
+import android.content.Intent
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import com.slopus.happy.agent.AccountFeature
+import com.slopus.happy.agent.AccountFeaturesSource
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -96,9 +103,25 @@ import kotlinx.serialization.json.put
  * p-deploy` a pipeline, with `--ei pipelines.version 2` one of its versions, and
  * with `--es pipelines.node triage` too one of that version's nodes; `--ez pipelines.chat true`
  * a chat told how its runs ended, and with `--ez pipelines.chat.before true` as it drew before).
+ *
+ * The person's account switch for Pipelines ([FakeAccountFeatures]): home's
+ * row shows while it is on, and every pipeline page leaves when it goes off
+ * ([PipelinesOffEffect]). Another of the person's apps changing it is
+ * `adb shell am start -f 0x20000000 -n …/.ui.pipelines.PipelinesFixturesActivity --es pipelines.feature off|on`,
+ * which journals `account.features.updated`; with `--ez pipelines.feature.quiet true`
+ * the event doesn't come, so the next pipeline read is refused `403 feature_not_installed`.
  */
 class PipelinesFixturesActivity : ComponentActivity() {
     @Serializable private data object FixtureHomeRoute
+
+    /** What another of the person's apps did to the switch: `--es pipelines.feature off|on`, delivered on top. */
+    private val elsewhere = MutableSharedFlow<Pair<Boolean, Boolean>>(extraBufferCapacity = 8)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val feature = intent.getStringExtra("pipelines.feature") ?: return
+        elsewhere.tryEmit((feature == "on") to intent.getBooleanExtra("pipelines.feature.quiet", false))
+    }
 
     /** A chat where the agent was told how its runs ended; [before] draws its own messages as this app did before it told them apart. */
     @Serializable private data class FixtureChatRoute(val before: Boolean)
@@ -117,15 +140,23 @@ class PipelinesFixturesActivity : ComponentActivity() {
             HappyTheme {
                 val nav = rememberNavController()
                 val events = remember { MutableSharedFlow<AgentEvent>(extraBufferCapacity = 64) }
-                val backend = remember { FakePipelines(System.currentTimeMillis()) { type, data -> events.tryEmit(AgentEvent(null, type, data)) } }
-                LaunchedEffect(Unit) { backend.play() }
+                val pipelinesBackend = remember { FakePipelines(System.currentTimeMillis()) { type, data -> events.tryEmit(AgentEvent(null, type, data)) } }
+                LaunchedEffect(Unit) { pipelinesBackend.play() }
+                // The person's account features, followed as a session follows them.
+                val scope = rememberCoroutineScope()
+                val features = remember { FakeAccountFeatures { list -> events.tryEmit(AgentEvent(null, AccountFeature.UPDATED, AccountFeature.toJson(list))) } }
+                val accountFeatures = remember { AccountFeaturesSource(features, events, MutableStateFlow(true), { null }, {}, scope) }
+                val turnedOff = remember { accountFeatures.off(AccountFeature.PIPELINES) }
+                val off by turnedOff.collectAsState()
+                LaunchedEffect(Unit) { elsewhere.collect { (enabled, quiet) -> features.change(enabled, quiet) } }
+                val backend = remember { FeatureGatedPipelines(pipelinesBackend, features) { accountFeatures.turnedOff(AccountFeature.PIPELINES) } }
                 val agents = AgentNames { mapOf("a-chief" to "Happy", "a-release" to "Release bot")[it] }
                 val people = PeopleNames { mapOf("u-steve" to "Steve", "u-kirill" to "Kirill")[it] }
                 val start: Any = when {
                     chat -> FixtureChatRoute(before)
                     pipeline != null && version > 0 && node != null -> PipelineVersionNodeRoute("fixture", pipeline, version, node)
-                    pipeline != null && version > 0 -> PipelineVersionRoute("fixture", pipeline, version, backend.nameOf(pipeline))
-                    pipeline != null -> PipelineRoute("fixture", pipeline, backend.nameOf(pipeline))
+                    pipeline != null && version > 0 -> PipelineVersionRoute("fixture", pipeline, version, pipelinesBackend.nameOf(pipeline))
+                    pipeline != null -> PipelineRoute("fixture", pipeline, pipelinesBackend.nameOf(pipeline))
                     run != null && node != null -> PipelineNodeRoute("fixture", run, node)
                     run != null -> PipelineRunRoute("fixture", run)
                     open -> PipelinesRoute("fixture")
@@ -136,11 +167,11 @@ class PipelinesFixturesActivity : ComponentActivity() {
                         page<FixtureHomeRoute> {
                             Screen(header = { StackHeader("Acme", onBack = ::finish) }) {
                                 AgentHomeList(
-                                    items = listOf(
+                                    items = listOfNotNull(
                                         AgentHomeItem.Gap(AgentFeedSection.Places, first = true),
                                         AgentHomeItem.Row(AgentFeedRow.Artifacts, first = true, last = false),
                                         AgentHomeItem.Row(AgentFeedRow.Plugins, first = false, last = false),
-                                        AgentHomeItem.Row(AgentFeedRow.Pipelines, first = false, last = false),
+                                        AgentHomeItem.Row(AgentFeedRow.Pipelines, first = false, last = false).takeIf { !off },
                                         AgentHomeItem.Row(AgentFeedRow.Todos, first = false, last = true),
                                     ),
                                     state = rememberLazyListState(),
@@ -157,6 +188,7 @@ class PipelinesFixturesActivity : ComponentActivity() {
                         }
                         pipelineRoutes(nav) { PagePipelines(backend, events, agents, people) }
                     }
+                    PipelinesOffEffect(turnedOff, nav)
                 }
             }
         }

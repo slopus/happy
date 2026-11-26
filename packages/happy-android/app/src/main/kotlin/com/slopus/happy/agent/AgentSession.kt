@@ -368,9 +368,28 @@ class AgentSession internal constructor(
     private val pluginsAvailability = keptCapability(com.slopus.happy.plugins.PluginsAvailability.RESOURCE)
     val pluginsAvailable: StateFlow<Boolean> get() = pluginsAvailability.available
 
-    /** Whether home lists Pipelines: bootstrap health's `capabilities.pipelines`, never probed. */
+    /** Whether the server runs pipelines: bootstrap health's `capabilities.pipelines`, never probed. */
     private val pipelinesAvailability = keptCapability(PIPELINES_AVAILABLE)
-    val pipelinesAvailable: StateFlow<Boolean> get() = pipelinesAvailability.available
+
+    /**
+     * The person's account features here (happy-cluster API.md, "Account
+     * features"), read only where the server runs one the switch governs
+     * (today Pipelines alone) or has answered the list before.
+     */
+    val accountFeatures = AccountFeaturesSource(
+        ClusterAccountFeatures(client), events, served = pipelinesAvailability.available,
+        kept = { withContext(Dispatchers.IO) { cachedResource(AccountFeaturesSource.RESOURCE) } },
+        keep = { value -> withContext(Dispatchers.IO) { keepResource(AccountFeaturesSource.RESOURCE, value) } },
+        scope = scope,
+    )
+
+    /** The person turned Pipelines off for their account: every way to them hides, and a pipeline page open leaves. */
+    val pipelinesTurnedOff: StateFlow<Boolean> = accountFeatures.off(AccountFeature.PIPELINES)
+
+    /** Whether home lists Pipelines: the server runs them and the person hasn't turned them off. */
+    val pipelinesAvailable: StateFlow<Boolean> = combine(pipelinesAvailability.available, pipelinesTurnedOff) { served, off -> served && !off }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, false)
 
     /** Whether Settings lists Inference (the agent's accounts): bootstrap health's `capabilities.providerSignIn`, never probed. */
     private val providerSignInAvailability = keptCapability(PROVIDER_SIGN_IN_AVAILABLE)

@@ -218,6 +218,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                     LaunchedEffect(graph, nav) { graph.unlockRequests.collect { nav.navigate(UnlockAccountRoute(it)) } }
                     com.slopus.happy.ui.gates.CloudOnboardingEffect(graph, nav, agent)
                     SessionEndedEffect(graph, nav, agent)
+                    com.slopus.happy.ui.pipelines.PipelinesOffEffect(graph, nav, agent)
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
                     RetainedNavHost(nav, start, motion, modifier = Modifier.backdrop(nav)) {

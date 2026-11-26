@@ -513,6 +513,8 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     // Whom "@" can mention: the bootstrap's teammates (Happy Agent in team mode, Happy Cloud), kept offline.
     val people by remember(session) { session.team.users.map { it.values.toList() } }.collectAsStateWithLifecycle(session.team.users.value.values.toList())
     val self by remember(session) { session.catalog.map { it.userId }.distinctUntilChanged() }.collectAsStateWithLifecycle(session.catalog.value.userId)
+    // Pipelines turned off for the account: a run's card is only read, opening nothing.
+    val pipelinesOff by session.pipelinesTurnedOff.collectAsStateWithLifecycle()
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) { com.slopus.happy.ui.references.ProvideBusyLinks(references, session.references) {
         ConversationScreen(
@@ -528,7 +530,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             usage = usage,
             onRefreshUsage = session.usage::refresh,
             bubbleColor = settings.userMessageBubbleColor,
-            actions = remember(conversation, nav, kept) {
+            actions = remember(conversation, nav, kept, pipelinesOff) {
                 ConversationScreenActions(
                     onBack = { nav.popBackStack() },
                     onCompose = { nav.composeConversation(route.connectionId) },
@@ -578,7 +580,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onToggleTurn = conversation::toggleTurn,
                     onToggleMessage = conversation::toggleMessage,
                     onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },
-                    onOpenPipelineRun = { notice -> nav.navigate(PipelineRunRoute(route.connectionId, notice.runId, notice.pipelineName)) },
+                    onOpenPipelineRun = if (pipelinesOff) null else ({ notice -> nav.navigate(PipelineRunRoute(route.connectionId, notice.runId, notice.pipelineName)) }),
                     workspace = if (session.client.cloud) null else session::workspaceSource,
                     // Settings' Report an Issue, prefilled with where the message was and why it failed.
                     onReportUndisplayable = { row ->

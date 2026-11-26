@@ -947,6 +947,40 @@ class AgentSessionTest {
         assertEquals(1, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
     }
 
+    /**
+     * Pipelines follow the person's account switch (happy-cluster API.md,
+     * "Account features"): read once the server says it runs pipelines,
+     * turned off live by the event, hiding home's row, and read again on the
+     * next connect.
+     */
+    @Test
+    fun pipelinesFollowTheAccountFeatureSwitchLive() = runBlocking {
+        fun features(enabled: Boolean) = buildJsonObject {
+            put("features", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("id", "pipelines"); put("name", "Pipelines"); put("enabled", enabled) })))
+        }
+        agent.bootstrap = agent.bootstrap.with("health", buildJsonObject {
+            put("ready", true); put("version", buildJsonObject { put("protocol", 30) })
+            put("capabilities", buildJsonObject { put("pipelines", true) })
+        })
+        agent.resources["/v0/account/features"] = features(true)
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { it }
+        agent.frames.send(Wire.frame("c1", AccountFeature.UPDATED, features(false)))
+        eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { !it }
+        assertTrue(session.pipelinesTurnedOff.value)
+        assertEquals(1, agent.calls.count { it == "GET /v0/account/features" })
+        // Turned back on elsewhere while the stream was down: the next connect reads it.
+        agent.resources["/v0/account/features"] = features(true)
+        val dropped = agent.frames
+        agent.frames = Channel(Channel.UNLIMITED)
+        dropped.close()
+        eventually({ agent.streamCursors.size }) { it == 2 }
+        agent.frames.send(Wire.hello("c1"))
+        eventually({ AgentFeedRow.Pipelines in session.feed.value.rows }) { it }
+        assertEquals(2, agent.calls.count { it == "GET /v0/account/features" })
+    }
+
     @Test
     fun aClosedConnectionOrBackgroundAppHoldsNoLink() = runBlocking {
         foreground.value = false
