@@ -26,6 +26,39 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.envelopes[0].ev).toEqual({ t: 'text', text: 'hello from user' });
     });
 
+    it('keeps the transcript time of a replayed message on its envelopes', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-replayed',
+            message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'from an earlier run' }],
+            },
+            timestamp: '2025-01-01T00:00:00.000Z',
+        } as any, { currentTurnId: null });
+
+        expect(result.envelopes.length).toBeGreaterThan(0);
+        for (const envelope of result.envelopes) {
+            expect(envelope.time).toBe(Date.parse('2025-01-01T00:00:00.000Z'));
+        }
+    });
+
+    it('stamps a message without a usable timestamp with the current time', () => {
+        const before = Date.now();
+        const future = new Date(before + 10 * 60_000).toISOString();
+        for (const timestamp of [undefined, 'not a date', future]) {
+            const result = mapClaudeLogMessageToSessionEnvelopes({
+                type: 'user',
+                uuid: `u-${String(timestamp)}`,
+                message: { role: 'user', content: 'live' },
+                ...(timestamp ? { timestamp } : {}),
+            } as any, { currentTurnId: null });
+
+            expect(result.envelopes[0].time).toBeGreaterThanOrEqual(before);
+            expect(result.envelopes[0].time).toBeLessThanOrEqual(Date.now());
+        }
+    });
+
     it('maps non-tool user array text to user text without opening an agent turn', () => {
         const result = mapClaudeLogMessageToSessionEnvelopes({
             type: 'user',
