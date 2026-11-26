@@ -92,10 +92,11 @@ export const DesktopPanelResizeHandle = React.memo(function DesktopPanelResizeHa
             <View
                 style={[
                     styles.line,
+                    side === 'right' && styles.rightGrip,
                     {
                         backgroundColor: resizingSide === side || focused
                             ? theme.colors.textLink
-                            : theme.colors.divider,
+                            : side === 'right' ? 'transparent' : theme.colors.divider,
                     },
                 ]}
             />
@@ -116,5 +117,9 @@ const styles = StyleSheet.create(() => ({
     line: {
         width: 1,
         height: '100%',
+    },
+    rightGrip: {
+        height: 32,
+        borderRadius: 1,
     },
 }));
