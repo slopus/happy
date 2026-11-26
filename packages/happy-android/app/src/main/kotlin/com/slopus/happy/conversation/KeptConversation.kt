@@ -38,9 +38,11 @@ data class KeptConversation(
     val slashCommands: List<SlashCommand>? = null,
     /** When the computer's history was last read in full (ms since 1970); null if never, or kept before it was. */
     val syncedAt: Long? = null,
+    /** Its messages were checked against the protocol ([MessageCheck]) when read; false for a build's before that, read whole again. */
+    val checked: Boolean = true,
 ) {
     fun json(): JsonObject = buildJsonObject {
-        put("version", VERSION)
+        put("version", if (checked) VERSION else UNCHECKED)
         put("runs", JsonArray(runs.map(::runJson)))
         put("pending", JsonArray(pending.map(::messageJson)))
         put("hasMore", hasMore)
@@ -55,14 +57,18 @@ data class KeptConversation(
         const val KEPT_RUNS = 100
         /**
          * 2: file blocks keep their kind, size on screen and thumbhash; 3: a message keeps why an agent wrote it
-         * and a pipeline run's result. A phone that kept them without reads them again.
+         * and a pipeline run's result. A phone that kept them without reads them again. 4: messages were checked
+         * against the protocol as they came; a 3 still shows, unchecked, until the computer's history is read whole.
          */
-        private const val VERSION = 3
+        private const val VERSION = 4
+        private const val UNCHECKED = 3
 
         fun parse(value: JsonObject?): KeptConversation? {
             val o = value ?: return null
-            if ((o["version"] as? JsonPrimitive)?.content != VERSION.toString()) return null
+            val version = (o["version"] as? JsonPrimitive)?.content
+            if (version != VERSION.toString() && version != UNCHECKED.toString()) return null
             return KeptConversation(
+                checked = version == VERSION.toString(),
                 runs = o["runs"].arr?.mapNotNull { Run.parse(it, checked = false) } ?: return null,
                 pending = o["pending"].arr.orEmpty().mapNotNull(Message::parse),
                 hasMore = o["hasMore"].bool ?: true,

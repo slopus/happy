@@ -1953,8 +1953,8 @@ class ConversationTest {
     private fun run(id: String, status: String, vararg messages: String) =
         """{"id":"$id","status":"$status","startedAt":1,"messages":[${messages.joinToString(",")}]}"""
 
-    private fun kept(hasMore: Boolean, vararg runs: String): JsonObject =
-        Json.parseToJsonElement("""{"version":3,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
+    private fun kept(hasMore: Boolean, vararg runs: String, version: Int = 4): JsonObject =
+        Json.parseToJsonElement("""{"version":$version,"hasMore":$hasMore,"pending":[],"runs":[${runs.joinToString(",")}]}""").jsonObject
 
     private val keptTwoRuns get() = kept(
         true,
@@ -2013,6 +2013,31 @@ class ConversationTest {
         assertTrue(reads.none { "r1" in it })
         assertNull(reopened.state.value.error)
         assertEquals(listOf("m3:user", "r1:2:undisplayable", "m2:0", "m1:user"), reopened.state.value.rows.filter { it !is ConversationRow.TurnEnd && it !is ConversationRow.Trace }.map { it.key })
+    }
+
+    @Test fun `a chat kept before messages were checked shows from disk, then is read whole once`() = runTest {
+        val agent = FakeAgent().apply { gate = CompletableDeferred() }
+        // The old build kept the cluster's card as an answered question; it is the computer's copy that is checked.
+        val keeper = MemoryKeeper(kept(true, run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello")), version = 3))
+        agent.page = """{"runs":[${run("r1", "completed", message("m1", "user", "Hi"), message("m2", "agent", "Hello"))}, ${run("r2", "completed", message("m3", "agent", "Later"))}],"hasMore":false}"""
+        val chat = conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        // Offline, the old copy shows.
+        assertEquals(listOf("m2:0", "m1:user"), chat.state.value.rows.map { it.key })
+        agent.gate!!.complete(Unit)
+        advanceUntilIdle()
+        val reads = agent.requests.map { it.second }.filter { "/messages" in it }
+        assertEquals(reads.toString(), 1, reads.size)
+        assertTrue(reads.single(), "after=" !in reads.single())
+        assertEquals(listOf("m3:0", "m2:0", "m1:user"), chat.state.value.rows.map { it.key })
+        assertTrue(KeptConversation.parse(keeper.value)!!.checked)
+
+        // Kept checked now: the next open catches up from where it was.
+        agent.requests.clear()
+        agent.gate = null
+        conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        assertTrue(agent.requests.map { it.second }.single { "/messages" in it }.contains("after=m3"))
     }
 
     @Test fun `a newest run that was still going is read again whole`() = runTest {

@@ -445,6 +445,9 @@ class Conversation(
     /** The kept history has been read from [keeper], or there was none to read. */
     private var restored = false
 
+    /** What was restored was kept by a build that didn't check messages: the next history read is whole. */
+    private var unchecked = false
+
     /**
      * Catches up with the agent. The first read starts from what this phone
      * kept, shown as soon as the disk answers; then the agent is asked only
@@ -505,6 +508,7 @@ class Conversation(
      * with none, the last one before it; with none at all, a whole read.
      */
     private fun anchor(): String? {
+        if (unchecked) return null
         val going = lastTurn()?.takeIf { running || runInfo[it]?.status == "running" }
         val finished = if (going != null) runs.subList(0, runs.indexOfFirst { it.first == going }) else runs
         return finished.asReversed().firstNotNullOfOrNull { run -> run.second.asReversed().firstNotNullOfOrNull { messages[it]?.serverId } }
@@ -548,6 +552,7 @@ class Conversation(
         kept ?: return
         // Something came in while the disk was read: that is newer than what was kept.
         if (runs.isNotEmpty() || pending.isNotEmpty()) return
+        unchecked = !kept.checked
         for (run in kept.runs) putRun(run)
         for (message in kept.pending) {
             messages[message.id] = message
@@ -565,6 +570,7 @@ class Conversation(
     }
 
     private fun adopt(start: Bootstrap, read: HistoryRead) {
+        if (read.anchor == null) unchecked = false
         agent = start.agent
         mode = picked ?: start.draft?.mode ?: start.mode ?: mode
         start.draft?.let { adoptDraft(it) }
@@ -637,6 +643,8 @@ class Conversation(
             agent = agent,
             mode = mode,
             slashCommands = snapshot.commands,
+            // Kept unchecked until the whole read has come, so a failed one is tried again next open.
+            checked = !unchecked,
             syncedAt = snapshot.syncedAt,
         )
         try {
