@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createSessionScanner } from './sessionScanner'
 import { RawJSONLines } from '../types'
 import type { ClaudeGoalStatusTranscriptEvent } from '../claudeGoalStatus'
-import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
+import { mkdir, writeFile, appendFile, rm, readFile, stat, utimes, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
@@ -440,5 +440,47 @@ describe('sessionScanner', () => {
       isApiErrorMessage: true,
       apiErrorStatus: 429,
     })
+  })
+
+  it('does not re-read a transcript whose size and mtime are unchanged', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg)
+    })
+
+    const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
+    const line = fixture.split('\n').filter(l => l.trim())[0]
+    const sessionId = '93a9705e-bc6a-406d-8dce-8acc014dedbd'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+
+    await writeFile(sessionFile, line + '\n')
+    scanner.onNewSession(sessionId)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(collectedMessages).toHaveLength(1)
+
+    // Replace the content with a message the scanner has never seen — a fresh
+    // uuid, so dedupe cannot be what suppresses it — of the exact same length,
+    // then put the original timestamps back. To anything that looks at size and
+    // mtime the file never moved, so nothing is emitted only if the read was
+    // skipped.
+    // Seconds as numbers, not Dates: a Date drops the sub-millisecond part of
+    // the timestamp, which would leave the file looking modified.
+    const before = await stat(sessionFile)
+    const other = line.replace('523a67c0-a9bf-4cef-b886-d71f390b5a2f', '523a67c0-a9bf-4cef-b886-d71f390b5a20')
+    expect(other).not.toBe(line)
+    expect(other.length).toBe(line.length)
+    // Staged in a sibling file and renamed into place, so the watcher never
+    // sees the moment between the write and the timestamp restore.
+    const staged = `${sessionFile}.staged`
+    await writeFile(staged, other + '\n')
+    await utimes(staged, before.atimeMs / 1000, before.mtimeMs / 1000)
+    await rename(staged, sessionFile)
+    const after = await stat(sessionFile)
+    expect(after.size).toBe(before.size)
+    expect(after.mtimeMs).toBe(before.mtimeMs)
+    await new Promise(resolve => setTimeout(resolve, 200))
+
+    expect(collectedMessages).toHaveLength(1)
   })
 })

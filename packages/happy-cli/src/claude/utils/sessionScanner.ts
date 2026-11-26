@@ -2,7 +2,7 @@ import { InvalidateSync } from "@/utils/sync";
 import { RawJSONLines, RawJSONLinesSchema } from "../types";
 import { parseClaudeGoalStatusTranscriptEvent, type ClaudeGoalStatusTranscriptEvent } from "../claudeGoalStatus";
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
 import { getProjectPath } from "./path";
@@ -49,6 +49,11 @@ export async function createSessionScanner(opts: {
     // up, so do not keep re-creating it on every sync. A merely absent file is
     // watched through its parent directory and never enters this set.
     let deadSessions = new Set<string>();
+    // Size and mtime of each transcript as of the last read. The periodic sync
+    // below runs whether or not anything was written, and a long session's
+    // JSONL grows into the tens of MB, so re-reading and re-parsing an
+    // untouched file was the bulk of an idle session's CPU.
+    let scannedTranscripts = new Map<string, string>();
 
     // Mark existing entries as processed and start watching the initial session
     if (opts.sessionId) {
@@ -86,7 +91,16 @@ export async function createSessionScanner(opts: {
 
         // Process sessions
         for (let session of sessions) {
+            // Taken before the read: a write landing in between leaves a stale
+            // fingerprint, which costs one extra read rather than a lost message.
+            const fingerprint = await transcriptFingerprint(projectDir, session);
+            if (fingerprint !== null && scannedTranscripts.get(session) === fingerprint) {
+                continue;
+            }
             const sessionEntries = await readSessionEntries(projectDir, session);
+            if (fingerprint !== null) {
+                scannedTranscripts.set(session, fingerprint);
+            }
             let skipped = 0;
             let sentMessages = 0;
             let sentTranscriptEvents = 0;
@@ -233,6 +247,24 @@ function messageKey(message: RawJSONLines): string {
 
 function transcriptEventKey(event: ScannerTranscriptEvent): string {
     return `event:${event.uuid}`;
+}
+
+/**
+ * Size and mtime of a session transcript, or null when it cannot be stat'd
+ * (missing file, permissions) — the caller then reads unconditionally, which
+ * is what it did before this existed.
+ *
+ * shortcut: a rewrite that keeps the byte count and lands inside the same
+ * millisecond is indistinguishable from no change; upgrade to a content hash
+ * if transcripts ever stop being append-only.
+ */
+async function transcriptFingerprint(projectDir: string, sessionId: string): Promise<string | null> {
+    try {
+        const stats = await stat(join(projectDir, `${sessionId}.jsonl`));
+        return `${stats.size}:${stats.mtimeMs}`;
+    } catch {
+        return null;
+    }
 }
 
 /**
