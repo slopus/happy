@@ -42,10 +42,12 @@ it('embeds locally read classic script bytes without an opaque-frame blob reques
     const source = 'document.body.dataset.version="v2"; const text="</script><p id=unexpected>escape</p>";';
     const result = await buildHtmlFilePreview('<html><head><script defer src="app.js"></script></head><body><p id="version">v1</p></body></html>', '/work/index.html', '/work', async () => encode(source));
     const doc = new DOMParser().parseFromString(result.html, 'text/html');
-    expect(doc.querySelector('script[src]')).toBeNull();
+    const script = doc.querySelector('script[src]')!;
+    expect(script.hasAttribute('defer')).toBe(true);
+    const sourceUrl = script.getAttribute('src')!;
+    expect(new TextDecoder().decode(Uint8Array.from(atob(sourceUrl.slice(sourceUrl.indexOf(',') + 1)), char => char.charCodeAt(0)))).toBe(source);
     expect(doc.querySelector('#unexpected')).toBeNull();
-    expect(doc.querySelector('script')?.textContent).toContain('dataset.version');
-    expect(doc.querySelector('script')?.textContent).toContain('DOMContentLoaded');
+    expect(script.textContent).toBe('');
     result.dispose();
 });
 

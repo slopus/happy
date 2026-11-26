@@ -2,11 +2,12 @@
 export function resolvePreviewPath(reference: string, owner: string, root: string): { path: string; fragment: string } {
     const base = root.replace(/\/$/, '');
     if (!owner.startsWith(base + '/')) throw new Error('Preview outside workspace');
-    const decoded = decodeURIComponent(reference);
-    if (/^[a-z][\w+.-]*:/i.test(decoded) || decoded.startsWith('//') || /[\\\0]/.test(decoded)) throw new Error('External preview resource');
-    const hash = decoded.indexOf('#');
-    const fragment = hash < 0 ? '' : decoded.slice(hash);
-    const value = (hash < 0 ? decoded : decoded.slice(0, hash)).split('?')[0];
+    // Split URL delimiters before decoding: %23 and %3F belong to a filename.
+    const hash = reference.indexOf('#');
+    const fragment = hash < 0 ? '' : reference.slice(hash);
+    const rawPath = (hash < 0 ? reference : reference.slice(0, hash)).split('?')[0];
+    const value = decodeURIComponent(rawPath);
+    if (/^[a-z][\w+.-]*:/i.test(value) || value.startsWith('//') || /[\\\0]/.test(value)) throw new Error('External preview resource');
     if (!value) return { path: owner, fragment };
     const parts = value.startsWith('/') ? [] : owner.slice(base.length + 1).split('/').slice(0, -1);
     for (const piece of value.split('/')) {

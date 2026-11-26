@@ -51,12 +51,16 @@ export const HtmlFilePreview = React.memo(function HtmlFilePreview({ sessionId, 
         const external = !readBytes && !path.startsWith(root.replace(/\/+$/, '') + '/');
         const previewRoot = external ? path.slice(0, path.lastIndexOf('/')) || '/' : root;
         const read = async (file: string) => {
-            if (readBytes) return readBytes(file, abort.signal);
-            if (/\.(mp4|webm|mp3|wav|ogg)$/i.test(file)) {
+            if (abort.signal.aborted) throw new Error('Read aborted');
+            let bytes: Uint8Array;
+            if (readBytes) bytes = await readBytes(file, abort.signal);
+            else if (/\.(mp4|webm|mp3|wav|ogg)$/i.test(file)) {
                 const { apiSocket } = await import('@/sync/apiSocket');
-                return readChunkedBytes((offset, length, revision) => apiSocket.sessionRPC(sessionId, 'readFileChunk', { path: file, scopeRoot: previewRoot, offset, length, ...(revision ? { revision } : {}) }), abort.signal);
-            }
-            return readWorkspaceBytes(sessionId, file, undefined, external);
+                if (abort.signal.aborted) throw new Error('Read aborted');
+                bytes = await readChunkedBytes((offset, length, revision) => apiSocket.sessionRPC(sessionId, 'readFileChunk', { path: file, scopeRoot: previewRoot, offset, length, ...(revision ? { revision } : {}) }), abort.signal);
+            } else bytes = await readWorkspaceBytes(sessionId, file, undefined, external);
+            if (abort.signal.aborted) throw new Error('Read aborted');
+            return bytes;
         };
         void buildHtmlFilePreview(content, path, previewRoot, read).then(value => {
             if (cancelled) { value.dispose(); return; }

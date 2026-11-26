@@ -68,7 +68,8 @@ function installHtmlPreviewImageBridge(channel: string) {
             const name = attribute(element);
             const state = current.get(element);
             // A source can change before its MutationObserver record is delivered.
-            if (!name || !element.isConnected || state?.id !== pending.id || element.getAttribute(name) !== state.reference) continue;
+            // Keep a matching response on temporarily detached nodes for reinsertion.
+            if (!name || state?.id !== pending.id || element.getAttribute(name) !== state.reference) continue;
             if (value.url) element.setAttribute(name, value.url);
         }
         // Failed references stay in current, preventing retries from tree scans.

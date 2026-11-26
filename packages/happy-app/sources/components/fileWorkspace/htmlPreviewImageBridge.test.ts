@@ -66,6 +66,30 @@ describe('HTML preview image bridge', () => {
         expect(image.getAttribute('src')).toBe(imageUrl);
     });
 
+    it('keeps a successful image load when the same node is detached and later reinserted', async () => {
+        const page = fixture('<img src="frames/one.png">');
+        const image = page.document.querySelector('img')!;
+        image.remove();
+        await flushMutations();
+        page.respond(page.requests[0].id);
+        page.document.body.append(image);
+        await flushMutations();
+        expect(image.getAttribute('src')).toBe(imageUrl);
+        expect(page.requests).toHaveLength(1);
+    });
+
+    it('does not retry a failed detached image when it is reinserted', async () => {
+        const page = fixture('<img src="missing.png">');
+        const image = page.document.querySelector('img')!;
+        image.remove();
+        await flushMutations();
+        page.respond(page.requests[0].id, null);
+        page.document.body.append(image);
+        await flushMutations();
+        expect(image.getAttribute('src')).toBe('missing.png');
+        expect(page.requests).toHaveLength(1);
+    });
+
     it('combines duplicate references while in flight without retaining completed child-side cache entries', async () => {
         const page = fixture('<img src="same.jpg"><img src="same.jpg">');
         expect(page.requests).toHaveLength(1);
