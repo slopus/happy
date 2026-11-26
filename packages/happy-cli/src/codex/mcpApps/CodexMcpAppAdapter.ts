@@ -10,6 +10,7 @@ import {
     type McpAppResultV1,
 } from '@slopus/happy-wire';
 import type { McpToolAnnotations, McpToolCatalogEntry, ThreadItem } from '../codexAppServerTypes';
+import { roleSaveReceipt } from '@/delegation/roleSaveReceipt';
 
 const MAX_MCP_APP_RESULT_BYTES = 256 * 1024;
 
@@ -268,6 +269,10 @@ export class CodexMcpAppAdapter {
             tool: item.tool,
             input,
         };
+        if (item.status === 'completed' && !item.error) {
+            const receipt = roleSaveReceipt(item.server, item.tool, input, item.result);
+            if (receipt) normalized.result = receipt;
+        }
 
         const resourceUri = item.appContext?.resourceUri
             ?? item.appContext?.resource_uri

@@ -1,6 +1,7 @@
 import { createId } from '@paralleldrive/cuid2';
 import { createEnvelope, selectToolFailure, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { AgentMessage } from '@/agent/core';
+import { isHappyRoleTool, roleSaveReceipt } from '@/delegation/roleSaveReceipt';
 
 function turnOptions(turnId: string | null, time: number): CreateEnvelopeOptions {
   return turnId ? { turn: turnId, time } : { time };
@@ -31,6 +32,7 @@ function parseThinkingPayload(payload: unknown): { text: string; streaming: bool
 export class AcpSessionManager {
   private currentTurnId: string | null = null;
   private readonly acpCallToSessionCall = new Map<string, string>();
+  private readonly roleCalls = new Map<string, unknown>();
 
   /** Monotonic clock: max(lastTime + 1, Date.now()) */
   private lastTime = 0;
@@ -80,6 +82,7 @@ export class AcpSessionManager {
 
     this.currentTurnId = createId();
     this.acpCallToSessionCall.clear();
+    this.roleCalls.clear();
     return [
       createEnvelope('agent', { t: 'turn-start', ...(localIds?.length ? { localIds } : {}) }, { turn: this.currentTurnId, time: this.nextTime() }),
     ];
@@ -94,6 +97,7 @@ export class AcpSessionManager {
     const turnId = this.currentTurnId;
     this.currentTurnId = null;
     this.acpCallToSessionCall.clear();
+    this.roleCalls.clear();
     return [
       ...flushed,
       createEnvelope('agent', { t: 'turn-end', status }, { turn: turnId, time: this.nextTime() }),
@@ -145,12 +149,14 @@ export class AcpSessionManager {
     if (msg.type === 'tool-call') {
       const flushed = this.flush();
       const call = this.getSessionCallId(msg.callId);
+      const roleTool = isHappyRoleTool(msg.toolName, msg.title);
+      if (roleTool) this.roleCalls.set(msg.callId, msg.args);
       return [
         ...flushed,
         createEnvelope('agent', {
           t: 'tool-call-start',
           call,
-          name: msg.toolName,
+          name: roleTool ? 'mcp__happy__agent_roles' : msg.toolName,
           title: msg.title ?? buildToolTitle(msg.toolName),
           description: buildToolDescription(msg.toolName),
           args: msg.args,
@@ -164,10 +170,15 @@ export class AcpSessionManager {
       const result = msg.result && typeof msg.result === 'object' ? msg.result as Record<string, unknown> : {};
       const status = result.status === 'cancelled' ? 'cancelled' : result.status === 'failed' || result.error ? 'failed' : undefined;
       const failure = status === 'failed' ? selectToolFailure([msg.result], 'Tool failed') : null;
+      const roleInput = this.roleCalls.get(msg.callId);
+      this.roleCalls.delete(msg.callId);
+      const receipt = status === undefined && roleInput !== undefined
+        ? roleSaveReceipt('happy', 'agent_roles', roleInput, msg.result) : undefined;
       return [
         ...flushed,
         createEnvelope('agent', { t: 'tool-call-end', call, ...(status ? { status } : {}),
-          ...(failure?.summary ? { error: failure } : {}) }, turnOptions(this.currentTurnId, this.nextTime())),
+          ...(failure?.summary ? { error: failure } : {}),
+          ...(receipt ? { mcpAppResult: receipt } : {}) }, turnOptions(this.currentTurnId, this.nextTime())),
       ];
     }
 

@@ -458,7 +458,7 @@ export function handleToolCallUpdate(
       logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
     }
   } else if (status === 'completed') {
-    completeToolCall(toolCallId, toolKind, update.content, ctx);
+    completeToolCall(toolCallId, toolKind, update.rawOutput ?? update.content, ctx);
   } else if (status === 'failed' || status === 'cancelled') {
     failToolCall(toolCallId, status, toolKind, update.content, ctx);
   }
