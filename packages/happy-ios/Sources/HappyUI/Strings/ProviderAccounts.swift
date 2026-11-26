@@ -19,6 +19,8 @@ extension Strings {
         static let ownerOnly = "Only the team owner can change how accounts sign in."
         static let signsInOnComputer = "This account signs in on the computer, not from a phone."
         static let empty = "No accounts sign in with a subscription."
+        static let noAccounts = "No accounts"
+        static let allOff = "Every account on this \(AccountKind.agent) is switched off."
         static let loadFailed = "Couldn’t load the accounts."
 
         /// The credential line under an account's name.

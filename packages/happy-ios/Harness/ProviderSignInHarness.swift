@@ -33,6 +33,8 @@ private actor ProviderSignInDaemon: AgentTransport {
         /// system login, renewing failing (expiring soon), needing sign-in,
         /// off, and an older daemon's reading only.
         case states
+        /// Every account switched off.
+        case off
     }
 
     struct Account {
@@ -86,6 +88,7 @@ private actor ProviderSignInDaemon: AgentTransport {
             Account(id: "claude", name: "Claude", type: "claude", source: signedIn ? "internal" : "system", signIn: signedIn ? "signed_in" : "signed_out"),
             Account(id: "grok", name: "Grok", type: "grok", source: signedIn ? "configured" : "system", signIn: "signed_in"),
         ]
+        if scenario == .off { for index in accounts.indices { accounts[index].enabled = false } }
     }
 
     private func version() -> String {
@@ -199,7 +202,7 @@ private actor ProviderSignInDaemon: AgentTransport {
 
 /// Settings › Provider accounts over `ProviderSignInDaemon`
 /// (`-screen providerSignIn`):
-/// - `-scenario system|internal|failure|saveFailed|owner` picks the daemon;
+/// - `-scenario system|internal|failure|saveFailed|owner|states|off` picks the daemon;
 /// - `-open settings|list|codex|claude|detail` picks the screen: the
 ///   computer's settings, the accounts, one's sign-in started, or the page
 ///   of the account `-account` names;

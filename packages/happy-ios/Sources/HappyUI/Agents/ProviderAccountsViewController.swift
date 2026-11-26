@@ -223,7 +223,8 @@ final class ProviderStatusDot: UIView {
 /// Settings › Inference (API.md "Provider sign-in"): a minimal
 /// list of the computer's Codex, Claude and Grok accounts. Each row is
 /// its vendor's mark, its name and plan, a status dot, and one line on how
-/// its login is doing; a tap opens the account's own page.
+/// its login is doing; a tap opens the account's own page. Only accounts
+/// switched on are listed: nothing runs on one that's off.
 final class ProviderAccountsViewController: SettingsPageViewController {
     let model: ProviderAccountsModel
     private var watch: Watch?
@@ -259,7 +260,14 @@ final class ProviderAccountsViewController: SettingsPageViewController {
         guard !accounts.isEmpty else {
             return [[SettingsRow(id: "provider-accounts-empty", title: Text.empty, accessory: .none, dimmed: true)]]
         }
-        var rows = accounts.map(row)
+        let on = accounts.filter(\.enabled)
+        guard !on.isEmpty else {
+            var row = SettingsRow(id: "provider-accounts-all-off", title: Text.noAccounts, accessory: .none, dimmed: true)
+            row.subtitle = Text.allOff
+            row.subtitleLines = 0
+            return [[row]]
+        }
+        var rows = on.map(row)
         rows[0].header = Text.accountsHeader
         return [rows]
     }

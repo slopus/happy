@@ -13,6 +13,7 @@ import XCTest
 private actor SignInDaemon: AgentTransport {
     let owner: Bool
     private var operations: [String: String] = [:]
+    private var enabled = ["codex": true, "claude": true]
     private var version = 1
     private(set) var routes: [String] = []
 
@@ -44,7 +45,13 @@ private actor SignInDaemon: AgentTransport {
         case ("GET", "/v0/bootstrap/desktop"):
             return ok(#"{"cursor":"c1","health":\#(health),"profile":{"userId":null},"userSettings":[],"projects":[],"workspaces":[],"bots":[],"tasks":[],"taskMemberships":[],"surfaces":[]}"#)
         case ("GET", "/v0/config"):
-            return ok(#"{"config":{"defaults":{"providerId":"codex","modelId":"m"},"models":{},"providers":{"codex":{"type":"codex","name":"Work ChatGPT","enabled":true,"credential":\#(Self.credential("codex", "system"))},"claude":{"type":"claude","enabled":true,"credential":\#(Self.credential("claude", "internal"))},"bedrock":{"type":"bedrock","enabled":true}}}}"#)
+            return ok(#"{"config":{"defaults":{"providerId":"codex","modelId":"m"},"models":{},"providers":{"codex":{"type":"codex","name":"Work ChatGPT","enabled":\#(enabled["codex"]!),"credential":\#(Self.credential("codex", "system"))},"claude":{"type":"claude","enabled":\#(enabled["claude"]!),"credential":\#(Self.credential("claude", "internal"))},"bedrock":{"type":"bedrock","enabled":true}}}}"#)
+        case ("PATCH", "/v0/config"):
+            if owner { return HTTP1Response(status: 403, body: Data(#"{"error":"Only the owner.","code":"forbidden"}"#.utf8)) }
+            if let body, let changes = (try? JSONValue.decode(body))?["providers"]?.objectValue {
+                for (id, change) in changes { if let on = change["enabled"]?.boolValue { enabled[id] = on } }
+            }
+            return ok("{}")
         case ("GET", "/v0/usage"):
             let now = Int(Date().timeIntervalSince1970 * 1000)
             return ok(#"{"providers":[{"providerId":"codex","signIn":"signed_out","lastUsedAt":null,"login":{"refreshedAt":null,"expiresAt":null,"refreshError":{"status":400,"code":"invalid_grant","permanent":true,"since":1763596800000,"at":\#(now)}}},{"providerId":"claude","signIn":"signed_in","lastUsedAt":\#(now - 240_000),"login":{"refreshedAt":\#(now - 3_600_000),"expiresAt":null,"refreshError":null}}]}"#)
@@ -120,6 +127,26 @@ final class HostedProviderAccountsTests: XCTestCase {
         XCTAssertEqual(codex.shownRow("provider-detail-refreshed")?.value, "—", "an unknown refresh, not none")
         XCTAssertEqual(codex.shownRow("provider-detail-error")?.subtitle, "invalid_grant · since \(Strings.ProviderAccounts.shortDate(Date(timeIntervalSince1970: 1_763_596_800)))")
         XCTAssertEqual(codex.shownRow("provider-detail-error")?.destructive, true)
+    }
+
+    func testAnAccountSwitchedOffLeavesTheList() async throws {
+        let (list, navigation, _, _) = try await host(SignInDaemon())
+        let codex = try await page("codex", list, navigation)
+        codex.shownRow("provider-detail-enabled")?.toggled?(false)
+        _ = try await until { codex.shownRow("provider-detail-enabled")?.isOn == false ? true : nil }
+        navigation.popViewController(animated: false)
+        _ = try await until { list.shownRowIDs == [["provider-account-claude"]] ? true : nil }
+        list.view.layoutIfNeeded()
+        XCTAssertEqual(list.shownHeaders, ["ACCOUNTS"], "no Disabled card, no row to show one")
+
+        let claude = try await page("claude", list, navigation)
+        claude.shownRow("provider-detail-enabled")?.toggled?(false)
+        _ = try await until { claude.shownRow("provider-detail-enabled")?.isOn == false ? true : nil }
+        navigation.popViewController(animated: false)
+        _ = try await until { list.shownRowIDs == [["provider-accounts-all-off"]] ? true : nil }
+        XCTAssertEqual(list.shownRow("provider-accounts-all-off")?.title, "No accounts")
+        XCTAssertEqual(list.shownRow("provider-accounts-all-off")?.subtitle, "Every account on this Happy Agent is switched off.")
+        XCTAssertEqual(list.shownRow("provider-accounts-all-off")?.dimmed, true)
     }
 
     /// The account's page, as a tap on its row opens it, once it shows.
