@@ -13,17 +13,21 @@
     <header class="site-header"><a class="brand" href="/">原话卡片</a></header>
     <main>
       <section class="intro" aria-labelledby="intro-title">
-        <h1 id="intro-title">把 B 站视频做成原话卡片</h1>
-        <p class="lede">从原视频选取画面和对白，制作可下载的长图。</p>
-        <form id="submit-form">
-          <label for="video-url">B 站视频链接</label>
-          <div class="input-row">
-            <input id="video-url" name="url" type="text" inputmode="url" autocomplete="off" required maxlength="2048" placeholder="https://www.bilibili.com/video/BV…">
-            <button id="submit-button" type="submit">制作卡片</button>
-          </div>
-          <p id="form-feedback" class="feedback" role="status" aria-live="polite"></p>
-        </form>
-        <p class="public-note">支持 60 分钟以内的公开单 P 视频。提交记录与卡片会公开展示。</p>
+        <div class="intro-copy">
+          <h1 id="intro-title">把 B 站视频<br>做成原话卡片</h1>
+          <p class="lede">从原视频选取画面和对白，制作可下载的长图。</p>
+        </div>
+        <div class="submission">
+          <form id="submit-form">
+            <label for="video-url">B 站视频链接</label>
+            <div class="input-row">
+              <input id="video-url" name="url" type="text" inputmode="url" autocomplete="off" required maxlength="2048" placeholder="https://www.bilibili.com/video/BV…">
+              <button id="submit-button" type="submit">制作卡片</button>
+            </div>
+            <p id="form-feedback" class="feedback" role="status" aria-live="polite"></p>
+          </form>
+          <p class="public-note">支持 60 分钟以内的公开单 P 视频。提交记录与卡片会公开展示。</p>
+        </div>
       </section>
 
       <section class="task-section" aria-labelledby="task-title">

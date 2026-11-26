@@ -143,12 +143,33 @@ function renderGallery(finished) {
     bundle.onclick = () => void downloadBundle(job, bundle, feedback);
     downloadArea.append(bundle, feedback); heading.append(title, downloadArea); group.append(heading);
     const cards = el('div', 'cards');
-    for (const card of job.manifest.cards) {
-      const figure = el('figure', 'card'), url = `/api/jobs/${job.id}/${card.file}`, imageLink = link('', url), img = el('img');
-      img.src = url; img.alt = card.quote; img.loading = 'lazy'; imageLink.target = '_blank'; imageLink.rel = 'noopener'; imageLink.append(img); figure.append(imageLink);
-      const caption = el('figcaption'), actions = el('div', 'card-actions'); caption.append(el('p', 'card-quote', card.quote));
+    for (const [index, card] of job.manifest.cards.entries()) {
+      const number = index + 1;
+      const url = `/api/jobs/${job.id}/${card.file}`;
+      const figure = el('figure', 'card');
+      const cardHeading = el('div', 'card-heading');
       const sourceTime = link(`${time(card.start)}–${time(card.end)}`, `${job.url}?t=${Math.floor(card.start)}`, 'card-time'); sourceTime.target = '_blank'; sourceTime.rel = 'noopener noreferrer';
-      const download = link('保存长图', url, 'card-download'); download.download = `${job.bvid}-${card.file}`; actions.append(sourceTime, download); caption.append(actions); figure.append(caption); cards.append(figure);
+      cardHeading.append(el('strong', 'card-index', `第 ${number} 张`), sourceTime);
+
+      const preview = link('', url, 'card-preview');
+      preview.target = '_blank'; preview.rel = 'noopener';
+      preview.setAttribute('aria-label', `查看第 ${number} 张原图`);
+      const img = el('img');
+      img.src = url; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
+      preview.append(img);
+
+      const caption = el('figcaption');
+      const actions = el('div', 'card-actions');
+      const original = link('查看原图', url, 'card-original');
+      original.target = '_blank'; original.rel = 'noopener';
+      original.setAttribute('aria-label', `查看第 ${number} 张原图`);
+      const download = link('下载 PNG', url, 'card-download');
+      download.download = `${job.bvid}-${card.file}`;
+      download.setAttribute('aria-label', `下载第 ${number} 张 PNG`);
+      actions.append(original, download);
+      caption.append(el('p', 'card-quote', card.quote), actions);
+      figure.append(cardHeading, preview, caption);
+      cards.append(figure);
     }
     group.append(cards); gallery.append(group);
   }

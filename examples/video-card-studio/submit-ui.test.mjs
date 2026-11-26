@@ -196,3 +196,22 @@ test('a tracked job hash restores the exact same-video run without resubmitting'
   assert.equal(ui.element('queue-count').textContent, '1', 'selecting old output does not hide active production');
   assert.equal(ui.requests.length, 0, 'changing the tracked result never creates another job');
 });
+
+test('three result images render as individually numbered PNG cards', () => {
+  const ui = setup({ hash: '#result-' + job.id });
+  const files = ['card-001.png', 'card-002.png', 'card-003.png'];
+  const cards = files.map((file, index) => ({ file, quote: `Quote ${index + 1}`, start: index * 10, end: index * 10 + 5 }));
+  const result = { ...job, state: 'completed', manifest: { title: 'Result cards', author: 'Author', cards } };
+  ui.stream.state({ connection: 'connected', jobs: [result] });
+
+  const figures = ui.element('gallery').querySelectorAll('figure.card');
+  assert.equal(figures.length, 3);
+  for (const [index, figure] of figures.entries()) {
+    const url = `/api/jobs/${job.id}/${files[index]}`;
+    assert.equal(figure.querySelector('.card-index').textContent, `第 ${index + 1} 张`);
+    assert.equal(figure.querySelector('img').src, url);
+    assert.equal(figure.querySelector('.card-original').href, url);
+    assert.equal(figure.querySelector('.card-download').href, url);
+    assert.equal(figure.querySelector('.card-download').download, `${job.bvid}-${files[index]}`);
+  }
+});
