@@ -1,4 +1,4 @@
-import { readArchiveBlob } from './download.mjs';
+import { readArchiveBlob, readPngBlob } from './download.mjs';
 const $ = id => document.getElementById(id);
 const statuses = { queued: '排队等待制作', dispatching: '正在提交到 Paws', waiting: 'Paws 已收到，等待制作机器领取', processing: '正在制作', completed: '制作完成', failed: '本次制作未完成', uncertain: '执行中断，等待管理员核对' };
 const phases = { source: '读取原视频', transcript: '识别原话', proofread: '对照画面核对字幕', plan: '精选完整观点', frames: '提取原画面', selection: '挑选清晰画面', cards: '排版长图', archive: '保存图片', upload: '上传成品' };
@@ -16,23 +16,58 @@ let currentId = trackedJob();
 let initialAnchor = currentId ? window.location.hash.slice(1) : '';
 const unobservedJobs = new Map();
 let pageState = { connection: 'disconnected', jobs: [] };
-let downloading = false, downloadController;
+let downloadingBundle = false;
+const downloadControllers = new Set();
 const downloadURLs = new Map();
-window.addEventListener('pagehide', () => { downloadController?.abort(); for (const [url, timer] of downloadURLs) { clearTimeout(timer); URL.revokeObjectURL(url); } downloadURLs.clear(); });
-async function downloadBundle(job, button, feedback) {
-  if (downloading) { feedback.textContent = '另一组下载正在准备，请稍等。'; return; }
-  downloading = true; button.disabled = true; feedback.className = 'download-feedback'; feedback.textContent = '正在读取完整压缩包…';
-  downloadController = new AbortController();
+window.addEventListener('pagehide', () => {
+  for (const controller of downloadControllers) controller.abort();
+  for (const [url, timer] of downloadURLs) { clearTimeout(timer); URL.revokeObjectURL(url); }
+  downloadURLs.clear();
+});
+async function saveDownload(read, source, filename, timeout) {
+  const controller = new AbortController();
+  downloadControllers.add(controller);
+  const deadline = setTimeout(() => controller.abort(), timeout);
   try {
-    const blob = await readArchiveBlob(`/api/jobs/${job.id}/cards.zip`, { signal: AbortSignal.any([downloadController.signal, AbortSignal.timeout(120000)]) });
+    const blob = await read(source, { signal: controller.signal });
+    if (controller.signal.aborted) throw new Error('下载已中断。');
     const url = URL.createObjectURL(blob), anchor = document.createElement('a');
-    anchor.href = url; anchor.download = `${job.bvid}-cards.zip`; anchor.hidden = true; document.body.append(anchor); anchor.click(); anchor.remove();
+    anchor.href = url; anchor.download = filename; anchor.hidden = true;
     // One-shot resource cleanup, never a status query or reconnect loop.
     const timer = setTimeout(() => { URL.revokeObjectURL(url); downloadURLs.delete(url); }, 30000);
     downloadURLs.set(url, timer);
+    document.body.append(anchor);
+    try { anchor.click(); } finally { anchor.remove(); }
+  } finally {
+    clearTimeout(deadline);
+    downloadControllers.delete(controller);
+  }
+}
+async function downloadBundle(job, button, feedback) {
+  if (downloadingBundle) { feedback.textContent = '另一组下载正在准备，请稍等。'; return; }
+  downloadingBundle = true; button.disabled = true; feedback.className = 'download-feedback'; feedback.textContent = '正在读取完整压缩包…';
+  try {
+    await saveDownload(readArchiveBlob, `/api/jobs/${job.id}/cards.zip`, `${job.bvid}-cards.zip`, 120000);
     feedback.textContent = '已交给浏览器保存，请查看下载记录。';
   } catch { feedback.className = 'download-feedback error'; feedback.textContent = '下载未完成，请重新点击。'; }
-  finally { downloading = false; downloadController = null; button.disabled = false; }
+  finally { downloadingBundle = false; button.disabled = false; }
+}
+async function downloadCard(event, link, feedback) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  if (link.getAttribute('aria-disabled') === 'true') return;
+  link.setAttribute('aria-disabled', 'true');
+  feedback.className = 'download-feedback';
+  feedback.textContent = '正在读取完整图片…';
+  try {
+    await saveDownload(readPngBlob, link.href, link.download, 60000);
+    feedback.textContent = '已交给浏览器保存，请查看下载记录。';
+  } catch {
+    feedback.className = 'download-feedback error';
+    feedback.textContent = '图片下载未完成，请重新点击。';
+  } finally {
+    link.removeAttribute('aria-disabled');
+  }
 }
 function el(tag, className, text) { const value = document.createElement(tag); if (className) value.className = className; if (text !== undefined) value.textContent = text; return value; }
 function link(text, href, className) { const a = el('a', className, text); a.href = href; return a; }
@@ -166,8 +201,11 @@ function renderGallery(finished) {
       const download = link('下载 PNG', url, 'card-download');
       download.download = `${job.bvid}-${card.file}`;
       download.setAttribute('aria-label', `下载第 ${number} 张 PNG`);
+      const cardFeedback = el('p', 'download-feedback');
+      cardFeedback.setAttribute('role', 'status');
+      download.onclick = event => void downloadCard(event, download, cardFeedback);
       actions.append(original, download);
-      caption.append(el('p', 'card-quote', card.quote), actions);
+      caption.append(el('p', 'card-quote', card.quote), actions, cardFeedback);
       figure.append(cardHeading, preview, caption);
       cards.append(figure);
     }

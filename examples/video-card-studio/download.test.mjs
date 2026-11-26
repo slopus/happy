@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readArchiveBlob } from './public/download.mjs';
+import { readArchiveBlob, readPngBlob } from './public/download.mjs';
 const bytes = Uint8Array.from([80, 75, 3, 4, 5, 6, 7, 8]);
 const headers = { 'content-type': 'application/zip' };
 
@@ -28,4 +28,40 @@ test('archive reader stops an oversized stream even when its declared size is ab
     await assert.rejects(readArchiveBlob('/archive', { maxBytes: 4, fetchImpl: async () => response }));
     assert.equal(cancelled, true);
   }
+});
+
+const png = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 1]);
+const pngHeaders = { 'content-type': 'image/png' };
+
+test('PNG reader preserves the bytes and filename-ready MIME of a complete streamed response', async () => {
+  for (const declared of [null, png.length]) {
+    const response = new Response(new ReadableStream({ start(c) { c.enqueue(png.slice(0, 3)); c.enqueue(png.slice(3)); c.close(); } }),
+      { headers: { ...pngHeaders, ...(declared === null ? {} : { 'content-length': String(declared) }) } });
+    const blob = await readPngBlob('/card.png', { fetchImpl: async () => response });
+    assert.equal(blob.type, 'image/png');
+    assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), png);
+  }
+});
+
+test('PNG reader rejects invalid MIME, a corrupt signature, truncated bodies and partial HTTP responses', async () => {
+  const corrupt = png.slice();
+  corrupt[7] ^= 1;
+  for (const response of [
+    new Response(png, { headers: { 'content-type': 'image/jpeg' } }),
+    new Response(corrupt, { headers: pngHeaders }),
+    new Response(png, { headers: { ...pngHeaders, 'content-length': '11' } }),
+    new Response(png.slice(0, 7), { headers: pngHeaders }),
+    new Response(png, { status: 206, headers: pngHeaders }),
+  ]) {
+    await assert.rejects(readPngBlob('/card.png', { fetchImpl: async () => response }));
+  }
+});
+
+test('PNG reader enforces its six MiB limit without a declared length', async () => {
+  let cancelled = false;
+  const pixels = new Uint8Array(6 * 1024 * 1024 + 1);
+  pixels.set(png);
+  const response = new Response(new ReadableStream({ start(c) { c.enqueue(pixels); }, cancel() { cancelled = true; } }), { headers: pngHeaders });
+  await assert.rejects(readPngBlob('/card.png', { fetchImpl: async () => response }));
+  assert.equal(cancelled, true);
 });

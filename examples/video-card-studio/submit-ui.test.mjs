@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('./public/app.js', import.meta.url), 'utf8')
-  .replace(/^import \{ readArchiveBlob \} from '\.\/download\.mjs';\r?\n/, '');
+  .replace(/^import \{ readArchiveBlob, readPngBlob \} from '\.\/download\.mjs';\r?\n/, '');
 const job = {
   id: '364edaae-372f-4664-9e1c-eb958578b79b', bvid: 'BV1xx411c7mD',
   url: 'https://www.bilibili.com/video/BV1xx411c7mD/',
