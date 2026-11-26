@@ -34,6 +34,7 @@ import { getProjectCatalogWidth, projectPanelGap } from './projectWorkspaceLayou
 import { ProjectWorkspaceWidthProvider, useProjectWorkspaceWidth } from './ProjectWorkspaceWidth';
 import { ProjectCatalogResizeHandle } from './ProjectCatalogResizeHandle';
 import { ProjectOverviewWorkspace } from './ProjectOverviewWorkspace';
+import { getProjectCanvasFramePath } from './ProjectCanvas';
 import { ProjectConversationNavigationProvider } from './ProjectConversationNavigation';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel';
 import { ProjectConversationHeader } from './ProjectConversationHeader';
@@ -59,7 +60,7 @@ import { ProjectSavedFile } from './ProjectSavedFile';
 import type { ProjectLibraryEntry } from '@/sync/projectLibrary';
 import { canCreateProjectConversation, canConfirmProjectDeliverable, openProjectGoalConversation } from '@/sync/projectGoals';
 import { getProjectPreviewMachineId } from '@/sync/projectGoals';
-import { selectProjectMachine } from './projectMachine';
+import { selectProjectMachine, supportsProjectCanvas } from './projectMachine';
 import { useProjectNavigation } from './useProjectNavigation';
 import { useTaskCardSelection } from './useTaskCardSelection';
 import { readTaskCardHistory } from './taskCardHistory';
@@ -214,6 +215,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     }, [scope]);
     if (catalogStates.size > 100) catalogStates.delete(catalogStates.keys().next().value!);
     React.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+    const selectedMachine = machines.find(machine => machine.id === machineId);
     const project = findProjectForLocation(data.projects, params);
     const feature = data.board?.snapshot;
     const task = feature ? findProjectTask(feature.tasks, params.task) : undefined;
@@ -221,6 +223,12 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const reduced = useReducedTransparency();
     const desktop = useIsTablet() && Platform.OS === 'web';
     const scopeDesktop = desktop && !mobile;
+    const [canvasScope, setCanvasScope] = React.useState<string>();
+    const canvasSupported = Platform.OS === 'web' && !!project && !params.task && !readOnly && !!getProjectCanvasFramePath();
+    const canvasAvailable = canvasSupported && supportsProjectCanvas(selectedMachine);
+    const canvasOpen = canvasSupported && canvasScope === scope;
+    const closeCanvas = () => setCanvasScope(undefined);
+    const openCanvas = () => setCanvasScope(scope);
     const photo = desktop && skin !== 'default';
     const readingSurface = photo ? (reduced ? theme.colors.desktopSkin.readingSolid : (mobile ? theme.colors.desktopSkin.readingWide : theme.colors.desktopSkin.readingCompact)) : theme.colors.surface;
     const surface = photo && !reduced && !mobile ? 'transparent' : readingSurface;
@@ -361,20 +369,24 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const cardAction = useContinueProjectTask({ machineId, featurePath: params.feature, agent, sessions: data.board?.sessions,
         onOpened: (task, conversation) => go({ task, conversation, view: 'chat' }) });
     const tasks = feature?.tasks ?? [];
-    const selectedMachine = machines.find(machine => machine.id === machineId);
     return <ProjectConversationNavigationProvider project={project} machineId={machineId} agent={agent} offline={data.offline} selectedId={params.conversation ?? params.author} locationKey={location}
         revision={JSON.stringify([(selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])}
         onSelect={({ scopePath, taskId, sessionId }) => go({ project: project?.projectPath, feature: !taskId && scopePath === project?.projectPath ? undefined : scopePath, task: taskId, conversation: sessionId })}>
         <ProjectSessionMonitor knownScopes={data.projects.flatMap(entry => [{ machineId, path: entry.projectPath, title: entry.title }, ...entry.features.map(feature => ({ machineId, path: feature.featurePath, title: feature.title }))])} scope={feature ? { machineId, path: feature.featurePath, title: feature.title } : project ? { machineId, path: project.projectPath, title: project.title } : undefined}><ProjectWorkspaceWidthProvider><ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={[styles.page, !mobile && { backgroundColor: readingSurface }, mobile && { paddingTop: safeArea.top, paddingBottom: safeArea.bottom }]} testID="project-goals-workspace">
         {mobile && <View style={[styles.mobileHeader, { backgroundColor: surface }]}>
-            <Button variant="icon" label={t('common.back')} onPress={() => { if (taskBackView) { Keyboard.dismiss(); navigate({ view: taskBackView, file: undefined }); } else navigation.back(project); }} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
+            <Button variant="icon" label={t(canvasOpen ? 'projectCanvas.backToProject' : 'common.back')} onPress={() => { if (canvasOpen) { closeCanvas(); return; } if (taskBackView) { Keyboard.dismiss(); navigate({ view: taskBackView, file: undefined }); } else navigation.back(project); }} testID="project-navigation-back"><Ionicons name="chevron-back" size={22} color={theme.colors.text} /></Button>
             <View style={{ flex: 1, minWidth: 0 }}><Text numberOfLines={1} style={styles.mobileTitle}>{task?.title || feature?.title || project?.title || t('projectGoals.allProjects')}</Text>
                 {!!(task || feature) && <Text numberOfLines={1} style={styles.meta}>{[project?.title, task ? feature?.title : undefined].filter(Boolean).join(' / ')}</Text>}</View>
+            {canvasAvailable && !canvasOpen && <Button variant="icon" label={t('projectCanvas.title')} onPress={openCanvas} testID="project-mobile-canvas"><Ionicons name="grid-outline" size={21} color={theme.colors.text} /></Button>}
             <Button variant="icon" label={t('sessionSearch.actions.more')} onPress={() => task ? setTaskMenuOpen(true) : setMoreOpen(true)} testID="project-mobile-more"><Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.text} /></Button>
         </View>}
-        <View style={[styles.header, { backgroundColor: surface }, mobile && { display: 'none' }]}>
-
-            <View style={styles.line}>
+        <View testID="project-workspace-header" style={[styles.header, canvasOpen && styles.canvasHeader, { backgroundColor: surface }, mobile && { display: 'none' }]}>
+            {canvasOpen ? <View style={[styles.line, styles.canvasBreadcrumb]}>
+                <Button variant="toolbar" label={t('projectCanvas.backToProject')} tooltip={t('projectCanvas.backToProject')} testID="project-canvas-toggle" onPress={closeCanvas}>
+                    <Ionicons name="arrow-back-outline" size={18} color={theme.colors.textSecondary} />
+                    <Text numberOfLines={1} style={styles.canvasProjectTitle}>{project?.title}</Text>
+                </Button>
+            </View> : <View style={styles.line}>
                 <Button variant="toolbar" label={`${t('projectGoals.allProjects')} · ${t('common.back')}`} tooltip={`${t('projectGoals.allProjects')} · ${t('common.back')}`} disabled={!navigation.canBack} onPress={() => { navigationEpoch.current++; navigation.back(); }} testID="project-navigation-back"><Ionicons name="arrow-back" size={18} color={theme.colors.textSecondary} /></Button>
                 <Button variant="toolbar" label={`${t('projectGoals.allProjects')} · ${t('desktopWorkspace.forward')}`} tooltip={`${t('projectGoals.allProjects')} · ${t('desktopWorkspace.forward')}`} disabled={!navigation.canForward} onPress={() => { navigationEpoch.current++; navigation.forward(); }} testID="project-navigation-forward"><Ionicons name="arrow-forward" size={18} color={theme.colors.textSecondary} /></Button>
                 <Button variant="toolbar" label={t('projectGoals.backProjects')} onPress={() => go({ project: undefined, feature: undefined, task: undefined })}>
@@ -382,10 +394,13 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 </Button>
                 {project && <><Ionicons name="chevron-forward" size={13} color={theme.colors.textSecondary} /><Button variant="toolbar" label={project.title} onPress={() => chooseProject(project)}><Text numberOfLines={1} style={styles.body}>{project.title}</Text></Button></>}
                 {feature && feature.featurePath !== project?.projectPath && <><Ionicons name="chevron-forward" size={13} color={theme.colors.textSecondary} /><Button variant="toolbar" label={feature.title} onPress={() => go({ task: undefined })}><Text numberOfLines={1} style={styles.body}>{feature.title}</Text></Button></>}
-            </View>
+            </View>}
             <View style={styles.line}>
-                {(feature || project) && <Button variant="toolbar" label={t('projectGoals.retrospective')} disabled={busy || data.offline || readOnly} onPress={() => setReviewOpen(true)} testID="project-goals-retrospective"><Ionicons name="clipboard-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.retrospective')}</Text></Button>}
-                <GlobalSessionEntry />
+                {canvasAvailable && !canvasOpen && <Button variant="toolbar" label={t('projectCanvas.title')} testID="project-canvas-toggle" onPress={openCanvas}>
+                    <Ionicons name="grid-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectCanvas.title')}</Text>
+                </Button>}
+                {!canvasOpen && (feature || project) && <Button variant="toolbar" label={t('projectGoals.retrospective')} disabled={busy || data.offline || readOnly} onPress={() => setReviewOpen(true)} testID="project-goals-retrospective"><Ionicons name="clipboard-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.retrospective')}</Text></Button>}
+                <GlobalSessionEntry compact={canvasOpen} />
                 <Button variant="toolbar" label={t('projectGoals.chooseMachine')} disabled={readOnly} expanded={machineMenuOpen} onPress={() => setMachineMenuOpen(value => !value)} testID="project-machine-picker"><Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} /><Text numberOfLines={1} style={[styles.meta, { maxWidth: 200 }]}>{selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || t('projectGoals.machine')}</Text><Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} /></Button>
                 <Button variant="toolbar" label={t('projectGoals.refresh')} disabled={data.loading || ((!machineId || data.offline) && !data.canRetryMachine)} onPress={() => { setScopeRefresh(value => value + 1); void data.refresh(); }} testID="project-goals-refresh">{data.loading ? <ActivityIndicator size="small" color={theme.colors.textSecondary} /> : <Ionicons name="refresh-outline" size={17} color={theme.colors.textSecondary} />}</Button>
                 {(data.stale || data.status === 'offline' || data.status === 'connecting') && <Text testID="project-data-status" style={[styles.meta, { maxWidth: 220 }]} accessibilityLiveRegion="polite">{t(data.status === 'offline' ? 'projectGoals.offlineArchive' : data.status === 'connecting' ? 'projectGoals.connecting' : data.error ? 'projectGoals.cachedContent' : 'projectGoals.refreshing')}</Text>}
@@ -421,13 +436,13 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         </RNModal>}
         {mobile && (data.stale || data.offline) && <Text accessibilityLiveRegion="polite" style={[styles.meta, { paddingHorizontal: 16 }]}>{t(data.offline ? 'projectGoals.offlineArchive' : 'projectGoals.refreshing')}</Text>}
         {(data.error || actionError || cardAction.error) && <View style={styles.errorBar} accessibilityRole="alert"><Text style={styles.error}>{data.error || actionError || cardAction.error}</Text></View>}
-        {!machineId && data.status === 'offline' ? <Empty text={t('projectGoals.noMachine')} /> : !scopeDesktop && params.author ? <View style={[styles.author, { backgroundColor: photo && !reduced ? 'transparent' : surface }]}><Text style={[styles.meta, { padding: 12 }]}>{t('projectGoals.authoringHint')}</Text><SessionView key={params.author} id={params.author} embedded fullWidth /></View>
+        {!machineId && data.status === 'offline' ? <Empty text={t('projectGoals.noMachine')} /> : !scopeDesktop && !canvasOpen && params.author ? <View style={[styles.author, { backgroundColor: photo && !reduced ? 'transparent' : surface }]}><Text style={[styles.meta, { padding: 12 }]}>{t('projectGoals.authoringHint')}</Text><SessionView key={params.author} id={params.author} embedded fullWidth /></View>
             : task && feature ? <TaskWorkspace key={JSON.stringify([machineId, feature.featurePath, task.id])} machineId={machineId} featurePath={feature.featurePath} task={task}
                 mobileMenuOpen={taskMenuOpen} closeMobileMenu={() => setTaskMenuOpen(false)} openProjectMenu={() => setMoreOpen(true)} editDelivery={setDeliveryTasks} openCardConversation={openCardConversation} featureTitle={feature.title} githubUrl={project?.githubUrl} catalogScrollPosition={scrollPosition} onCatalogScroll={offset => { scrollPosition.current = offset; catalogStates.set(scope, { query, status: statusFilter, scroll: offset }); }} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter}
                 deselectTask={() => go({ task: undefined, view: 'files' })} openGlobalConversation={() => { void openGlobalConversation(); }} globalBusy={busy} allTasks={tasks} conversationId={params.conversation} agent={agent} offline={data.offline}
                 mobileView={params.view} readerPath={params.file} changeView={view => { Keyboard.dismiss(); navigate({ view, file: undefined }); }} openReader={file => { Keyboard.dismiss(); navigate({ file, view: 'reader' }); }} closeReader={() => navigate({ view: 'files', file: undefined })}
                 refresh={data.refresh} selectTask={selectTaskCard} selectConversation={id => navigate({ conversation: id, ...(mobile ? { view: id ? 'chat' : 'details' } : {}) })} />
-            : <ScopeCatalog enabled={scopeDesktop} initialTab={params.view === 'files' ? 'files' : undefined} scopePath={params.feature ?? project?.projectPath} machineId={machineId} title={feature?.title ?? project?.title ?? ''} connecting={data.status === 'connecting'} conversationId={params.conversation ?? params.author} agent={agent} offline={data.offline} revision={JSON.stringify([feature?.revision, (selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])} surface={surface} selectConversation={id => navigate({ conversation: id, author: undefined })}><ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: scrollPosition.current, animated: false })} onScroll={event => { scrollPosition.current = event.nativeEvent.contentOffset.y; catalogStates.set(scope, { query, status: statusFilter, scroll: scrollPosition.current }); }} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={[styles.catalogContent, mobile && styles.mobileCatalog]}>
+            : <ScopeCatalog enabled={scopeDesktop || canvasOpen} canvasOpen={canvasOpen} initialTab={params.view === 'files' ? 'files' : undefined} scopePath={params.feature ?? project?.projectPath} projectPath={project?.projectPath} machineId={machineId} title={feature?.title ?? project?.title ?? ''} connecting={data.status === 'connecting'} conversationId={params.conversation ?? params.author} agent={agent} offline={data.offline} revision={JSON.stringify([feature?.revision, (selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])} surface={surface} selectConversation={id => navigate({ conversation: id, author: undefined })}><ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: scrollPosition.current, animated: false })} onScroll={event => { scrollPosition.current = event.nativeEvent.contentOffset.y; catalogStates.set(scope, { query, status: statusFilter, scroll: scrollPosition.current }); }} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={[styles.catalogContent, mobile && styles.mobileCatalog]}>
                 <CatalogHeading githubUrl={project?.githubUrl} title={feature ? feature.title : params.feature ? t('projectGoals.loadingTasks') : project ? project.title : t('projectGoals.allProjects')} subtitle={feature ? `${tasks.length} ${t('projectGoals.tasks')}` : project ? project.summary || t('projectGoals.subprojects') : t('projectGoals.galleryDescription')} query={query} setQuery={setQuery} />
                 {params.task && feature && !task && <Text style={styles.error}>{t('projectGoals.taskMissing')}</Text>}
                 {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards globalCard={!mobile ? <GlobalConversationCard selected={!!params.conversation || !!params.author} busy={busy} onPress={() => { void openGlobalConversation(); }} /> : undefined} machineId={machineId} featurePath={feature.featurePath} onRefresh={data.refresh} onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={selectTaskCard} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
@@ -716,6 +731,9 @@ const styles = StyleSheet.create(theme => ({
     mobileTaskArea: { flex: 1, minHeight: 0 }, mobileView: { flex: 1, minHeight: 0 }, hidden: { display: 'none' },
     page: { flex: 1, minWidth: 0, minHeight: 0, backgroundColor: 'transparent' },
     header: { minHeight: 58, paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
+    canvasHeader: { minHeight: 48, paddingVertical: 4, flexWrap: 'nowrap' },
+    canvasBreadcrumb: { flex: 1 },
+    canvasProjectTitle: { maxWidth: 320, flexShrink: 1, fontSize: 14, color: theme.colors.text, ...Typography.default('semiBold') },
     line: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
     machineBackdrop: { position: 'absolute', inset: 0, zIndex: 20 },
     machineMenu: { position: 'absolute', top: 56, right: 16, width: 310, maxHeight: 320, padding: 8, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, zIndex: 21 },

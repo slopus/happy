@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "repository": "shanliuling/dsh-image-gen",
+  "version": "0.12.3",
+  "commit": "651190e1bafc784f7e0e49a38358dd50d0f5044b",
+  "tree": "4925fa9127a080b345bf0cec2e95c8cc8853c9e0",
+  "files": [
+    {
+      "path": "LICENSE",
+      "bytes": 11341,
+      "sha256": "9c4571d11873a9b68ba08934c0891189c183dbdf5ab1fd2e8ceb7cf08c4bf8a2",
+      "gitBlob": "543eefa62fffa8817c8600d4bf08f866e1df33e9"
+    },
+    {
+      "path": "package.json",
+      "bytes": 3914,
+      "sha256": "88e31749658c4710d643ff0cdb6bcd7f74bb8b290e4f7e14d885d09375c04b38",
+      "gitBlob": "754ce5ac658eb9d493f350cc136e102938e45dd1"
+    },
+    {
+      "path": "src/client/browser-image-utils.ts",
+      "bytes": 9146,
+      "sha256": "9053066bd71a9498aaa79b341934fe2f221fd2dc7d6f9ec5b843d54ba30e4f24",
+      "gitBlob": "88da23559098e145e6b1aa13afe504f5c60b3ae9"
+    },
+    {
+      "path": "src/client/image-cache.ts",
+      "bytes": 3751,
+      "sha256": "f710196da8c8489516ca7e7cf253ca950d7ff1a39f4b85a8ca4de10b26e75b2d",
+      "gitBlob": "c137a7e4d836204441a4b819c4f51a5e1683997d"
+    },
+    {
+      "path": "src/client/tl/canvas-selection.ts",
+      "bytes": 4094,
+      "sha256": "09dc843bddfbf4bf417db0e31b8b742761aec5eacf2d5e7f95f2c1e9cc463cd7",
+      "gitBlob": "9c85ada80a444f9eab206c835868706fa794bebd"
+    },
+    {
+      "path": "src/client/tl/canvas-sync.ts",
+      "bytes": 14761,
+      "sha256": "11112c9ea71820389f13b32890c7b6365efeb5a34b0e0f5c51432a1a55bb9e58",
+      "gitBlob": "2bd4f19757ce1f7c580cd905660bbd69f87efbb1"
+    },
+    {
+      "path": "src/client/tl/conversation-landings.ts",
+      "bytes": 4516,
+      "sha256": "9243840efe71d041b3d0c97be0ea08ae6d0e17e46ea6a36dd8db5100662c3072",
+      "gitBlob": "8954e7d7e838d7d76c3cbbfc54c976c4708ceebb"
+    },
+    {
+      "path": "src/client/tl/css-supports-shim.ts",
+      "bytes": 1271,
+      "sha256": "c5c0c6197256109968151fc779e855c5a4a590debb9c3fc50a31b94198eeb19d",
+      "gitBlob": "e13095a3a2f6c4f649c4d82d3f5c03f32a421c93"
+    },
+    {
+      "path": "src/client/tl/gallery-canvas-button.tsx",
+      "bytes": 1381,
+      "sha256": "f76ceba2864fcfbd5de3e4d82fb3355fc4b60ce4284b2d987562c72ba0dfa8cc",
+      "gitBlob": "a46b99c22af60e51a4b2b858d559a6cefdd697fc"
+    },
+    {
+      "path": "src/client/tl/gallery-image-transfer.ts",
+      "bytes": 3931,
+      "sha256": "847ee1607dac0f8316b0a56c24f5ce4819c764d85529369f48fbbe67ea5016b1",
+      "gitBlob": "f9701cead98147944cd0e12ef99f42257c5f3094"
+    },
+    {
+      "path": "src/client/tl/studio-canvas-gate.tsx",
+      "bytes": 1376,
+      "sha256": "daaa4ed87fc5490f23685506ab85fca95573a7c01b6d4c4656d82a70edcb2c27",
+      "gitBlob": "e660e0f6097ecd11caab966a5f0e2c2d5d6c67f5"
+    },
+    {
+      "path": "src/client/tl/studio-tl-canvas.tsx",
+      "bytes": 17623,
+      "sha256": "15e1a8874711874ae914e4f4d9af9b46f6391d24b1c1ca5b97611576061bc933",
+      "gitBlob": "2bde4f3380cb493b916dc9e0ba866dbbbdf986da"
+    },
+    {
+      "path": "src/client/tl/tl-brand-theme.ts",
+      "bytes": 3410,
+      "sha256": "6223a1e3cfe01babb83b01043c88053a0f0d00ee778417af56c82d8548337fe3",
+      "gitBlob": "40bb05772658140b0b70a8d521f4eaef1cdd4332"
+    },
+    {
+      "path": "src/client/tl/tl-brand-tokens.ts",
+      "bytes": 1178,
+      "sha256": "2630acc559d17d639a3eaab0f28ed454d992c1c8e96d3ea20a1c23a17a93059a",
+      "gitBlob": "8da1bf04d5373dccbc4387613cd7d84bf16acc3e"
+    },
+    {
+      "path": "src/client/tl/tl-canvas-bridge.ts",
+      "bytes": 4024,
+      "sha256": "daef5bda09ea6a75106a6859f64f4721a0fe7296b9afc448684760337cdd837e",
+      "gitBlob": "e5c1d104331602416833cc2d6608d633f70b145b"
+    },
+    {
+      "path": "src/client/tl/tl-css.ts",
+      "bytes": 108038,
+      "sha256": "e65633293227f77677a6cf47d5930c2a060b46f70557ff8ccf4cb0b0c7743a91",
+      "gitBlob": "c613d6d38d581df7cc00214460eb7aaf37c3a6dc"
+    },
+    {
+      "path": "src/client/tl/tl-theme-css.ts",
+      "bytes": 6895,
+      "sha256": "7146cc8be117a4e3e24749e16b34ab4fea1c820ccbc0c4d7683fee0f0e916df5",
+      "gitBlob": "174dbf8d0303b6bced2fdcc47e9e6b7e1669e698"
+    },
+    {
+      "path": "src/shared.ts",
+      "bytes": 36826,
+      "sha256": "ed85d62a0989d04f2bdb0612947acadefd825193d2e4f356a827ce4985f2aa5d",
+      "gitBlob": "f7a4729a5a9c3a31efab424bb191a58d62fe7185"
+    }
+  ]
+}

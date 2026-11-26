@@ -455,6 +455,7 @@ export const zhHant: TranslationStructure = {
         connecting: '正在連線 Bots…',
         unavailable: '暫時無法連線 Bots，請檢查 Bots 服務後重試。',
     },
+    projectCanvas: projectGoalsBase.projectCanvas,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
         conversationCounts: "狀態涵蓋已載入的對話，可載入更多歷史",

@@ -356,6 +356,7 @@ export const ru: TranslationStructure = {
         referenceHint: "Добавляется только ссылка; история диалога не копируется автоматически.",
     },
     bots: projectGoalsBase.bots,
+    projectCanvas: projectGoalsBase.projectCanvas,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
         conversationCounts: "Статусы показаны для загруженных диалогов; загрузите больше истории, чтобы продолжить",

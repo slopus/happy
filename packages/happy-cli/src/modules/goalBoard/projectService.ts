@@ -10,6 +10,7 @@ import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSumm
 import { digest, goalFileRevision, goalOf, titleOf, parseBoard, readBoundedFile } from './parser';
 import { goalBoardTaskPrompt } from './taskPrompt';
 import { openAuthorizedFile } from './authorizedFiles';
+import { createProjectCanvasService } from './projectCanvas';
 import type { SpawnSessionOptions, SpawnSessionResult } from '../common/registerCommonHandlers';
 import type { Metadata } from '@/api/types';
 
@@ -60,17 +61,18 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         if (!entry) throw new Error('Feature is outside the authorized Goal catalog');
         return entry;
     };
-    const scopeFor = async (scopePath: string) => {
+    const scopeFor = async (scopePath: string, projectOnly = false) => {
         if (disposed) throw new Error('Project workspace is closed');
         const directory = await realpath(pathInput.parse(scopePath));
         const roots = await discoverRoots(deps.workingDirectory, deps.homeDirectory);
         const projects = await readProjects(roots);
-        if (!projects.some(project => project.projectPath === directory || project.features.some(feature => feature.featurePath === directory)))
+        if (!projects.some(project => project.projectPath === directory || (!projectOnly && project.features.some(feature => feature.featurePath === directory))))
             throw new Error('Scope is outside the authorized Goal catalog');
         const root = roots.find(root => within(root, directory));
         if (!root) throw new Error('Scope root is unavailable');
         return { directory, root };
     };
+    const canvas = createProjectCanvasService(deps.storageDirectory, async projectPath => (await scopeFor(projectPath, true)).directory, deps.changed);
     const overview = async (input: unknown) => {
         const { directory } = await scopeFor(z.object({ scopePath: pathInput }).parse(input).scopePath);
         const indexPath = join(directory, 'index.md');
@@ -568,6 +570,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         try { return await pending; } finally { if (approvalLocks.get(file) === pending) approvalLocks.delete(file); }
     };
     return {
+        canvas,
         projects: async () => {
             const roots = await discoverRoots(deps.workingDirectory, deps.homeDirectory);
             await watchDirectories(roots);
@@ -605,7 +608,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             if (result.type === 'success') await saveJSON(file, { requestId: data.requestId, sessionId: result.sessionId });
             return result;
         },
-        dispose() { disposed = true; deps.disposeConversationCatalog?.(); for (const { watcher } of watchers.values()) watcher.close(); watchers.clear(); transfers.clear(); },
+        dispose() { disposed = true; canvas.dispose(); deps.disposeConversationCatalog?.(); for (const { watcher } of watchers.values()) watcher.close(); watchers.clear(); transfers.clear(); },
     };
 }
 
@@ -625,6 +628,16 @@ export function registerProjectGoalHandlers(manager: { registerHandler(method: s
     manager.registerHandler('goalScopeWriteFile', wrap(input => service.files(input, 'write', true)));
     manager.registerHandler('goalResolveWorkspace', wrap(service.resolveWorkspace));
     manager.registerHandler('goalProjects', wrap(service.projects));
+    manager.registerHandler('goalProjectCanvasGet', wrap(service.canvas.get));
+    manager.registerHandler('goalProjectCanvasImport', wrap(service.canvas.import));
+    manager.registerHandler('goalProjectCanvasAsset', wrap(service.canvas.asset));
+    manager.registerHandler('goalProjectCanvasPreview', wrap(service.canvas.preview));
+    manager.registerHandler('goalProjectCanvasPutPreview', wrap(service.canvas.putPreview));
+    manager.registerHandler('goalProjectCanvasLayout', wrap(service.canvas.layout));
+    manager.registerHandler('goalProjectCanvasMutate', wrap(service.canvas.mutate));
+    manager.registerHandler('goalProjectCanvasSaveScene', wrap(service.canvas.saveScene));
+    manager.registerHandler('goalProjectCanvasStageBundleAsset', wrap(service.canvas.stageBundleAsset));
+    manager.registerHandler('goalProjectCanvasCommitBundle', wrap(service.canvas.commitBundle));
     manager.registerHandler('goalProjectRead', wrap(input => service.board(input?.featurePath)));
     manager.registerHandler('goalTaskHistory', wrap(service.historyPage));
     manager.registerHandler('goalTaskLaunch', wrap(service.launch));

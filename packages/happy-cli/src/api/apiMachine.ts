@@ -3,6 +3,8 @@ import { DelegationRequestSchema, MachineDelegationRolesRequestSchema, type Dele
 import { createCodingAgentService } from '@/environment/codingAgentService';
 import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges, artifactAccountScope } from '@/modules/artifacts/runtime';
 import { registerProjectGoalHandlers, type ProjectGoalDependencies } from '@/modules/goalBoard/projectService';
+import { invokeBoundProjectCanvas } from '@/daemon/projectCanvasLocal';
+import type { ProjectCanvasLocalRequest } from '@/modules/goalBoard/projectCanvasTools';
 import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
 import type { NativeSessionHooks } from '@/daemon/appDelegation/nativeSessionRuntime';
 /**
@@ -18,7 +20,7 @@ import { homedir } from 'node:os';
 import { logger } from '@/ui/logger';
 import { withCodexAccountThread } from '@/codex/codexAccountThread';
 import { configuration } from '@/configuration';
-import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
+import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, type Metadata } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
@@ -155,7 +157,12 @@ export class ApiMachineClient {
     private rpcHandlerManager: RpcHandlerManager;
     private artifactWatcher: { dispose(): void };
     private getArtifactStore: () => Promise<import('@/modules/artifacts/store').ArtifactStore>;
-    private projectGoals: { dispose(): void } | undefined;
+    private projectGoals: ReturnType<typeof registerProjectGoalHandlers> | undefined;
+
+    async invokeProjectCanvas(request: ProjectCanvasLocalRequest, session?: Pick<Metadata, 'path' | 'goalBoard'>) {
+        if (!this.projectGoals) throw new Error('Project canvas is unavailable on this machine');
+        return invokeBoundProjectCanvas(this.projectGoals, request, session);
+    }
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
     constructor(
@@ -681,13 +688,22 @@ export class ApiMachineClient {
                 this.reconnectInterval = null;
             }
 
-            this.updateDaemonState((state) => ({
+            const startedAt = Date.now();
+            void this.updateDaemonState((state) => ({
                 ...state,
                 status: 'running',
                 pid: process.pid,
                 httpPort: this.machine.daemonState?.httpPort,
-                startedAt: Date.now()
-            }));
+                startedAt,
+            })).then(() => {
+                // Persisted metadata can outlive an upgrade. Bind its capability
+                // to the connection that registered the current canvas handlers.
+                if (!this.projectGoals || !this.socket.connected || this.machine.daemonState?.startedAt !== startedAt) return;
+                return this.updateMachineMetadata(metadata => ({
+                    ...(metadata ?? this.machine.metadata),
+                    projectCanvas: { version: 1, daemonStartedAt: startedAt },
+                }));
+            }).catch(error => logger.debug('[API MACHINE] Failed to publish daemon state or canvas capability:', error));
 
             this.rpcHandlerManager.onSocketConnect(this.socket);
             this.delegationConnected?.();

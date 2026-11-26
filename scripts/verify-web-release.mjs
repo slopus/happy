@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,13 @@ const html = await readFile(resolvedIndexPath, 'utf8');
 const expectedRevision = (await readFile(join(distDirectory, '.paws-release-revision'), 'utf8')).trim();
 if (!/^[0-9a-f]{40}$/.test(expectedRevision)) {
     throw new Error(`invalid local release revision: ${JSON.stringify(expectedRevision)}`);
+}
+const canvasEntry = projectCanvasEntry(html);
+const canvasDirectory = await stat(join(distDirectory, 'dsh-image-canvas')).catch(error => {
+    if (error.code !== 'ENOENT') throw error;
+});
+if (Boolean(canvasDirectory?.isDirectory()) !== Boolean(canvasEntry)) {
+    throw new Error('The Project Canvas renderer and release entry must be included together.');
 }
 const references = new Set();
 const attributePattern = /(?:src|href)=["']([^"']+)["']/gi;
@@ -54,13 +61,61 @@ for (const requiredPath of [
 
 async function fetchRequired(label, url, init) {
     const response = await fetch(url, {
-        ...init,
         redirect: 'follow',
+        ...init,
         signal: AbortSignal.timeout(requestTimeoutMs),
     });
     if (!response.ok) throw new Error(`${label} failed with HTTP ${response.status}: ${url}`);
     console.log(`OK ${response.status} ${label}`);
     return response;
+}
+
+function projectCanvasEntry(body) {
+    const entries = [...body.matchAll(/<meta\s+name=["']paws-project-canvas-entry["']\s+content=["']([^"']+)["'][^>]*>/gi)];
+    if (entries.length === 0) return undefined;
+    const expected = `/dsh-image-canvas/${expectedRevision}/index.html`;
+    if (entries.length !== 1 || entries[0][1] !== expected) {
+        throw new Error(`invalid Project Canvas release entry: expected one ${expected}`);
+    }
+    return expected;
+}
+
+async function verifyProjectCanvas() {
+    if (!canvasEntry) return;
+    const area = 'dsh-image-canvas';
+    const prefix = immutableMode ? `/web/releases/${expectedRevision}/${area}/` : canvasEntry.slice(0, -'index.html'.length);
+    const files = [
+        'index.html',
+        'canvas.js',
+        'canvas.css',
+        'upstream-build.json',
+        'NOTICE.txt',
+        'DSH-Image-Gen-LICENSE.txt',
+        'tldraw-LICENSE.md',
+        'assets/fonts/Shantell_Sans-Informal_Regular.woff2',
+        'assets/icons/icon/0_merged.svg',
+        'assets/translations/en.json',
+        'assets/translations/zh-cn.json',
+    ];
+    await Promise.all(files.map(async file => {
+        const path = prefix + file;
+        const label = `Project Canvas ${file}`;
+        const [expected, response] = await Promise.all([
+            readFile(join(distDirectory, area, file)),
+            fetchRequired(label, normalizedOrigin + path, { redirect: 'manual' }),
+        ]);
+        assertMime(label, path, response);
+        assertCachePolicy(label, path, response);
+        if (!expected.equals(Buffer.from(await response.arrayBuffer()))) throw new Error(`${label} content mismatch`);
+        if (!immutableMode) {
+            if (response.headers.get('x-content-type-options')?.toLowerCase() !== 'nosniff'
+                || response.headers.get('x-frame-options')?.toUpperCase() !== 'SAMEORIGIN'
+                || response.headers.has('content-disposition') || response.headers.has('set-cookie')) {
+                throw new Error(`${label} is missing same-origin proxy protections`);
+            }
+        }
+    }));
+    console.log(`OK Project Canvas assets are pinned to ${expectedRevision}`);
 }
 
 function positiveDuration(name, fallback) {
@@ -149,6 +204,7 @@ function assertHtmlRevision(label, body) {
     if (actualRevision !== expectedRevision) {
         throw new Error(`${label} release revision mismatch: expected ${expectedRevision}, got ${actualRevision ?? '(missing)'}`);
     }
+    if (projectCanvasEntry(body) !== canvasEntry) throw new Error(`${label} Project Canvas entry mismatch`);
     console.log(`OK ${expectedRevision} ${label} release revision`);
 }
 
@@ -182,7 +238,8 @@ function assertMime(label, pathname, response) {
 
 function assertCachePolicy(label, pathname, response) {
     const cacheControl = response.headers.get('cache-control') ?? '';
-    const immutable = pathname.startsWith('/web/releases/') || pathname.startsWith('/_expo/') || pathname.startsWith('/assets/') || pathname.startsWith('/desktop-skins/');
+    const immutable = pathname.startsWith('/web/releases/') || pathname.startsWith('/_expo/') || pathname.startsWith('/assets/')
+        || pathname.startsWith('/desktop-skins/') || pathname.startsWith(`/dsh-image-canvas/${expectedRevision}/`);
     if (immutable) {
         if (!/\bmax-age=31536000\b/i.test(cacheControl) || !/\bimmutable\b/i.test(cacheControl)) {
             throw new Error(`${label} cache-control is not immutable: ${cacheControl || '(missing)'}`);
@@ -286,6 +343,7 @@ if (immutableMode) {
     assertCachePolicy('immutable release marker', `${releasePrefix}/.paws-release-revision`, markerResponse);
     const remoteMarker = (await markerResponse.text()).trim();
     if (remoteMarker !== expectedRevision) throw new Error(`immutable release marker mismatch: expected ${expectedRevision}, got ${remoteMarker}`);
+    await verifyProjectCanvas();
 
     for (const reference of references) {
         const response = await fetchRequired(reference, `${normalizedOrigin}${reference}`);
@@ -303,6 +361,7 @@ if (immutableMode) {
         const response = await fetchRequired(label, url);
         assertHtmlRevision(label, await response.text());
     }
+    await verifyProjectCanvas();
     for (const reference of references) {
         const response = await fetchRequired(reference, `${normalizedOrigin}${reference}`);
         assertMime(reference, reference, response);

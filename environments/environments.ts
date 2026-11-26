@@ -407,7 +407,7 @@ export async function startEnvironmentServices(
     await startEnvironmentWeb(name, { warmBundle: options?.waitForWebBundle });
 }
 
-export async function startEnvironmentWeb(name: string, options?: { warmBundle?: boolean; queryAuthOnly?: boolean }): Promise<void> {
+export async function startEnvironmentWeb(name: string, options?: { warmBundle?: boolean; queryAuthOnly?: boolean; localhost?: boolean }): Promise<void> {
     const envDir = getEnvironmentDir(name);
     const config = readEnvironmentConfig(name);
     const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
@@ -416,6 +416,7 @@ export async function startEnvironmentWeb(name: string, options?: { warmBundle?:
     fs.mkdirSync(path.join(envDir, "web"), { recursive: true });
     console.log(`Starting web on port ${config.expoPort}...`);
     const webArgs = ["web", "--port", String(config.expoPort)];
+    if (options?.localhost) webArgs.push("--localhost");
     // Multi-account fixtures must not silently replace a saved identity on reload.
     // Authenticate through the private query URL once, then use the account vault.
     if (options?.queryAuthOnly) {

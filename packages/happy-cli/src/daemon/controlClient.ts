@@ -4,11 +4,14 @@
  */
 
 import { logger } from '@/ui/logger';
-import { clearDaemonState, readDaemonState } from '@/persistence';
+import { clearDaemonState, readCredentials, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import type { CodexEffort } from '@/modules/common/registerCommonHandlers';
 import { DelegationRequestSchema, DelegationResponseSchema, type DelegationAction, type DelegationResponse } from '@slopus/happy-wire';
+import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import { projectCanvasControlProof } from './projectCanvasLocal';
+import { canvasToolError, type ProjectCanvasLocalRequest } from '@/modules/goalBoard/projectCanvasTools';
 
 export type SpawnDaemonSessionOptions = {
   directory: string;
@@ -21,7 +24,7 @@ export type SpawnDaemonSessionOptions = {
   resumeCodexThreadId?: string;
 };
 
-async function daemonPost(path: string, body?: any, requestTimeout?: number): Promise<{ error?: string } | any> {
+async function daemonPost(path: string, body?: any, requestTimeout?: number, authorization?: string): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
   if (!state?.httpPort) {
     const errorMessage = 'No daemon running, no state file found';
@@ -45,7 +48,7 @@ async function daemonPost(path: string, body?: any, requestTimeout?: number): Pr
     const timeout = requestTimeout ?? (process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 10_000);
     const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
       body: JSON.stringify(body || {}),
       // Mostly increased for stress test
       signal: AbortSignal.timeout(timeout)
@@ -67,6 +70,14 @@ async function daemonPost(path: string, body?: any, requestTimeout?: number): Pr
       error: errorMessage
     }
   }
+}
+
+export async function callDaemonProjectCanvas(request: ProjectCanvasLocalRequest) {
+  const credentials = await readCredentials();
+  if (!credentials) return canvasToolError(new Error('Sign in to the local Paws account first'));
+  const result = await daemonPost('/project-canvas', request, 120_000, 'PawsCanvas ' + projectCanvasControlProof(credentials.token));
+  const parsed = CallToolResultSchema.safeParse(result);
+  return parsed.success ? parsed.data : canvasToolError(new Error(result?.error || 'Project canvas daemon is unavailable'));
 }
 
 const SESSION_STARTED_RETRY_TIMEOUT_MS = 3000;

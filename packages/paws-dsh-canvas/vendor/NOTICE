@@ -1,0 +1,9 @@
+Paws source attribution
+
+DSH Image Gen 0.12.3
+https://github.com/shanliuling/dsh-image-gen/tree/651190e1bafc784f7e0e49a38358dd50d0f5044b
+Commit: 651190e1bafc784f7e0e49a38358dd50d0f5044b
+
+The files in dsh-image-gen/ are unmodified copies of selected upstream files.
+See dsh-image-gen/LICENSE for their Apache-2.0 license and retained notices.
+Paws integration code and third-party dependencies have their own terms.

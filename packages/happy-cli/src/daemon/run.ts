@@ -31,6 +31,8 @@ import { createIndependentSessionLauncher, independentTaskMessage } from './inde
 import { createProjectGoalRuntime } from './projectGoalRuntime';
 import { projectConversationIndexScope } from './projectConversationIndex';
 import { startDaemonControlServer } from './controlServer';
+import { createProjectCanvasControlHandler } from './projectCanvasLocal';
+import type { ProjectCanvasLocalRequest } from '@/modules/goalBoard/projectCanvasTools';
 import { statSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
@@ -1211,6 +1213,7 @@ export async function startDaemon(): Promise<void> {
 
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
+      projectCanvas: createProjectCanvasControlHandler(credentials.token, request => forwardProjectCanvas(request)),
       delegation: (request, context) => {
         if (!delegationRuntime) throw new Error('The delegation coordinator is still starting');
         return delegationRuntime.handle(request, context);
@@ -1286,6 +1289,10 @@ export async function startDaemon(): Promise<void> {
 
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
+    function forwardProjectCanvas(request: ProjectCanvasLocalRequest) {
+      const metadata = 'sessionId' in request ? findTrackedSessionById(request.sessionId)?.happySessionMetadataFromLocalWebhook : undefined;
+      return apiMachine.invokeProjectCanvas(request, metadata);
+    }
     delegationRuntime = await createDaemonDelegationRuntime({
       directory: join(configuration.happyHomeDir, 'delegation', artifactAccountScope(machine.encryptionKey, configuration.serverUrl, machineId)),
       machineId, serverUrl: configuration.serverUrl, token: credentials.token, api, machineClient: apiMachine,

@@ -1,5 +1,6 @@
 packages:
   - "packages/happy-app"
+  - "packages/paws-dsh-canvas"
   - "packages/paws-agent"
   - "packages/paws-connect-ui"
   - "packages/paws-share"

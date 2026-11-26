@@ -1,3 +1,5 @@
+import type { MachineMetadata } from '@/sync/storageTypes';
+
 /** A missing explicit owner must never silently open a different machine's archive. */
 export function selectProjectMachine<T extends { id: string; active: boolean }>(
     machines: T[], routeId?: string, draftId?: string | null, previewId?: string,
@@ -6,6 +8,16 @@ export function selectProjectMachine<T extends { id: string; active: boolean }>(
     if (explicitId) return machines.find(machine => machine.id === explicitId);
     const draft = machines.find(machine => machine.id === draftId);
     return (draft?.active ? draft : undefined) ?? machines.find(machine => machine.active) ?? draft ?? machines[0];
+}
+
+export function supportsProjectCanvas(machine?: {
+    active: boolean;
+    metadata: Pick<MachineMetadata, 'projectCanvas'> | null;
+    daemonState: { status?: string; startedAt?: number } | null;
+}): boolean {
+    const canvas = machine?.metadata?.projectCanvas;
+    return machine?.active === true && machine.daemonState?.status === 'running'
+        && canvas?.version === 1 && canvas.daemonStartedAt === machine.daemonState.startedAt;
 }
 
 /** Only a completed read can establish that a catalog is empty. */

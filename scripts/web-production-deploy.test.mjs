@@ -135,6 +135,52 @@ test('supersession skips deployment work, restores earlier mutations, and never 
     assert.equal(enabled('Write superseded deployment summary', state), false);
 });
 
+test('verifies the canvas license before writing externally and includes the renderer in the release build', async () => {
+    const { jobs: { deploy: { steps } } } = parse(await readFile(workflowUrl, 'utf8'));
+    const position = name => steps.findIndex(step => step.name === name);
+    const guard = position('Resolve Project Canvas production rollout');
+    const build = position('Build and stamp Web from this main revision');
+    const switchEntry = position('Atomically switch OSS Web entry');
+    const keyRef = '${{ secrets.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE }}';
+    assert.ok(guard > position('Install dependencies'));
+    assert.ok(guard < position('Configure MCP App sandbox route'));
+    assert.ok(guard < position('Configure dedicated Bots HTTPS ingress'));
+    assert.ok(guard < build && build < switchEntry);
+    assert.equal(steps[guard].env.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE, keyRef);
+    assert.equal(steps[build].env.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE, keyRef);
+    assert.equal(steps[switchEntry].env.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE, keyRef);
+    assert.match(steps[guard].run, /--print-evaluation-expiry/);
+    assert.match(steps[build].env.PAWS_PROJECT_CANVAS_BUILD_DISABLED, /canvas_rollout.outputs.enabled/);
+    assert.match(steps[build].run, /build:project-canvas[\s\S]*expo export[\s\S]*--project-canvas/);
+});
+
+test('missing or rejected canvas licenses leave an eligible Web deploy enabled', async () => {
+    const { jobs: { deploy: { steps } } } = parse(await readFile(workflowUrl, 'utf8'));
+    const rollout = steps.find(step => step.id === 'canvas_rollout');
+    const temporary = await mkdtemp(join(tmpdir(), 'paws-canvas-rollout-'));
+    try {
+        const scripts = join(temporary, 'packages/paws-dsh-canvas/scripts');
+        await mkdir(scripts, { recursive: true });
+        await writeFile(join(scripts, 'verify-production-license.mjs'), 'process.exit(1);');
+        for (const license of ['', 'expired-test-license']) {
+            const output = join(temporary, 'result');
+            await writeFile(output, '');
+            const result = spawnSync('bash', ['-c', rollout.run], { cwd: temporary, encoding: 'utf8', env: {
+                ...process.env,
+                PAWS_WEB_ORIGIN: 'https://47.115.228.20:8443',
+                PAWS_PROJECT_CANVAS_TLDRAW_LICENSE: license,
+                GITHUB_OUTPUT: output,
+            } });
+            assert.equal(result.status, 0, result.stderr);
+            assert.equal(await readFile(output, 'utf8'), 'enabled=false\n');
+            assert.match(result.stdout, /Project Canvas omitted/);
+            assert.doesNotMatch(result.stdout + result.stderr, /expired-test-license/);
+        }
+    } finally {
+        await rm(temporary, { recursive: true, force: true });
+    }
+});
+
 test('MCP App sandbox rollout is disabled by default and verified before Web export or activation', async () => {
     const workflow = parse(await readFile(workflowUrl, 'utf8'));
     const job = workflow.jobs.deploy;
@@ -189,8 +235,9 @@ test('production workflow injects browser-origin runtime configuration once befo
     const injector = 'node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html';
     const stamp = 'node scripts/stamp-web-release.mjs';
 
-    assert.equal(build.run.split(injector).length - 1, 1);
-    assert.ok(build.run.indexOf(injector) < build.run.indexOf(stamp));
+    assert.equal(build.run.split(injector).length - 1, 2);
+    const conditional = build.run.slice(build.run.indexOf('if [ "$PAWS_PROJECT_CANVAS_BUILD_DISABLED"'), build.run.indexOf(stamp));
+    assert.match(conditional, /then[\s\S]*--project-canvas[\s\S]*else[\s\S]*inject-web-runtime-server-config\.mjs[\s\S]*fi/);
     assert.match(build.run, /EXPO_PUBLIC_HAPPY_SERVER_URL="\$PAWS_WEB_ORIGIN"/);
     assert.equal(workflow.jobs.deploy.env.PAWS_WEB_ORIGIN, 'https://47.115.228.20:8443');
 });

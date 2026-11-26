@@ -97,6 +97,7 @@ export const en: TranslationStructure = {
         connecting: 'Connecting to Bots…',
         unavailable: 'Bots is unavailable. Check the Bots service and try again.',
     },
+    projectCanvas: projectGoalsBase.projectCanvas,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
         conversationCounts: "Activity covers loaded conversations; load more history to continue",

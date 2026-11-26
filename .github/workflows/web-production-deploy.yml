@@ -98,6 +98,22 @@ jobs:
         if: ${{ steps.source.outputs.eligible == 'true' }}
         run: pnpm install --frozen-lockfile
 
+      - name: Resolve Project Canvas production rollout
+        id: canvas_rollout
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        env:
+          PAWS_PROJECT_CANVAS_TLDRAW_LICENSE: ${{ secrets.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PAWS_PROJECT_CANVAS_TLDRAW_LICENSE" ] &&
+            expires_at="$(node packages/paws-dsh-canvas/scripts/verify-production-license.mjs "$PAWS_WEB_ORIGIN" --print-evaluation-expiry)"; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo "expires_at=$expires_at" >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Project Canvas omitted. Configure a valid tldraw production license to enable it.'
+          fi
+
       - name: Install Aliyun CLI
         if: ${{ steps.source.outputs.eligible == 'true' }}
         run: |
@@ -221,6 +237,10 @@ jobs:
 
       - name: Build and stamp Web from this main revision
         if: ${{ steps.source.outputs.eligible == 'true' }}
+        env:
+          PAWS_PROJECT_CANVAS_TLDRAW_LICENSE: ${{ secrets.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE }}
+          PAWS_PROJECT_CANVAS_TLDRAW_EXPIRES_AT: ${{ steps.canvas_rollout.outputs.expires_at }}
+          PAWS_PROJECT_CANVAS_BUILD_DISABLED: ${{ steps.canvas_rollout.outputs.enabled != 'true' && '1' || '0' }}
         run: |
           set -euo pipefail
           RELEASE_TIMESTAMP="$(git show -s --format=%cI "$GITHUB_SHA")"
@@ -229,13 +249,18 @@ jobs:
           else
             unset EXPO_PUBLIC_MCP_APP_SANDBOX_ORIGIN
           fi
+          pnpm --filter happy-app build:project-canvas
           CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL="$PAWS_WEB_ORIGIN" \
             HAPPY_BUILD_COMMIT_SHA="$GITHUB_SHA" \
             HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
             pnpm --filter happy-app exec expo export --platform web --clear
           pnpm --filter happy-app exec tsx sources/scripts/injectWebLoading.ts
           node scripts/build-bots-web.mjs
-          node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html
+          if [ "$PAWS_PROJECT_CANVAS_BUILD_DISABLED" = '0' ]; then
+            node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html --project-canvas "$PAWS_WEB_ORIGIN" "$GITHUB_SHA"
+          else
+            node scripts/inject-web-runtime-server-config.mjs packages/happy-app/dist/index.html
+          fi
           node scripts/stamp-web-release.mjs \
             packages/happy-app/dist/index.html \
             packages/happy-app/dist/.paws-release-revision \
@@ -256,6 +281,8 @@ jobs:
           PAWS_SKIP_BUILD: '1'
           PAWS_WEB_SKIP_SUPERSEDED: '1'
           PAWS_WEB_RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          PAWS_PROJECT_CANVAS_TLDRAW_LICENSE: ${{ secrets.PAWS_PROJECT_CANVAS_TLDRAW_LICENSE }}
+          PAWS_PROJECT_CANVAS_TLDRAW_EXPIRES_AT: ${{ steps.canvas_rollout.outputs.expires_at }}
         run: pnpm web:deploy
 
       - name: Route the Web SPA to OSS
@@ -498,6 +525,7 @@ jobs:
             echo "| Static storage | \`oss://$PAWS_WEB_OSS_BUCKET/web/releases/$GITHUB_SHA/\` |"
             echo '| Server Web files | Removed after verification |'
             echo "| MCP Apps | ${{ steps.mcp_rollout.outputs.enabled == 'true' && 'Enabled after sandbox verification' || 'Disabled (repository variable unset)' }} |"
+            echo "| Project Canvas | ${{ steps.canvas_rollout.outputs.enabled == 'true' && 'Enabled after license verification' || 'Disabled (production license unavailable)' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Write superseded deployment summary

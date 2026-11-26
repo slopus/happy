@@ -11,6 +11,20 @@ const verifierPath = fileURLToPath(new URL('./verify-web-release.mjs', import.me
 const assetManifest = JSON.parse(await readFile(fileURLToPath(new URL('./desktop-skin-assets.json', import.meta.url)), 'utf8'));
 const sourceSkins = fileURLToPath(new URL('../packages/happy-app/public/desktop-skins/', import.meta.url));
 const revision = '1234567890abcdef1234567890abcdef12345678';
+const canvasPath = `/dsh-image-canvas/${revision}/index.html`;
+const canvasFiles = new Map([
+    ['index.html', 'text/html'],
+    ['canvas.js', 'application/javascript'],
+    ['canvas.css', 'text/css'],
+    ['upstream-build.json', 'application/json'],
+    ['NOTICE.txt', 'text/plain'],
+    ['DSH-Image-Gen-LICENSE.txt', 'text/plain'],
+    ['tldraw-LICENSE.md', 'text/plain'],
+    ['assets/fonts/Shantell_Sans-Informal_Regular.woff2', 'font/woff2'],
+    ['assets/icons/icon/0_merged.svg', 'image/svg+xml'],
+    ['assets/translations/en.json', 'application/json'],
+    ['assets/translations/zh-cn.json', 'application/json'],
+]);
 
 async function createDist(includeSkin = true, includeWarmSkin = true) {
     const directory = await mkdtemp(join(tmpdir(), 'paws-web-verify-'));
@@ -41,6 +55,30 @@ async function createDist(includeSkin = true, includeWarmSkin = true) {
     return directory;
 }
 
+test('verifies exact enabled canvas bytes before activation and on the same-origin route', async () => {
+    for (const mode of ['immutable', 'live']) {
+        const result = await runVerifier({ includeCanvas: true, mode });
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /OK Project Canvas assets are pinned to [a-f0-9]{40}/);
+    }
+});
+
+test('rejects enabled canvas redirects, wrong MIME, stale bytes, missing files, and wrong entry metadata', async () => {
+    for (const [canvasFailure, expected] of [
+        ['redirect', /Project Canvas canvas.js failed with HTTP 302/],
+        ['mime', /Project Canvas canvas.js returned an invalid MIME type/],
+        ['bytes', /Project Canvas canvas.css content mismatch/],
+        ['missing', /Project Canvas canvas.css failed with HTTP 404/],
+        ['entry', /Web entry Project Canvas entry mismatch/],
+        ['unconfigured', /Project Canvas renderer and release entry must be included together/],
+        ['frame-header', /Project Canvas \S+ is missing same-origin proxy protections/],
+    ]) {
+        const result = await runVerifier({ includeCanvas: true, canvasFailure });
+        assert.notEqual(result.status, 0, canvasFailure);
+        assert.match(result.stderr, expected);
+    }
+});
+
 async function runVerifier({
     healthBody = JSON.stringify({ status: 'ok', service: 'happy-server' }),
     healthContentType = 'application/json; charset=utf-8',
@@ -65,15 +103,43 @@ async function runVerifier({
     includeSkin = true,
     includeWarmSkin = true,
     botsAssetFailure = null,
+    includeCanvas = false,
+    canvasFailure = null,
 } = {}) {
     const directory = await createDist(includeSkin, includeWarmSkin);
     const botsJs = '/assets/bots/bots-' + 'b'.repeat(20) + '.js';
     const botsCss = '/assets/bots/bots-' + 'c'.repeat(20) + '.css';
     const html = await readFile(join(directory, 'index.html'), 'utf8');
-    await writeFile(join(directory, 'index.html'), html.replace('</head>', `<meta name="paws-bots-entry" content="${botsJs}"><meta name="paws-bots-style" content="${botsCss}"></head>`));
+    const canvasMeta = includeCanvas && canvasFailure !== 'unconfigured'
+        ? `<meta name="paws-project-canvas-entry" content="${canvasPath}">` : '';
+    await writeFile(join(directory, 'index.html'), html.replace('</head>', `<meta name="paws-bots-entry" content="${botsJs}"><meta name="paws-bots-style" content="${botsCss}">${canvasMeta}</head>`));
+    if (includeCanvas) {
+        for (const file of canvasFiles.keys()) {
+            const target = join(directory, 'dsh-image-canvas', file);
+            await mkdir(join(target, '..'), { recursive: true });
+            await writeFile(target, `canvas fixture ${file}`);
+        }
+    }
     let healthRequests = 0;
     const server = http.createServer(async (request, response) => {
         const origin = `http://127.0.0.1:${server.address().port}`;
+        const canvasPrefix = mode === 'immutable' ? `/web/releases/${revision}/dsh-image-canvas/` : `/dsh-image-canvas/${revision}/`;
+        if (includeCanvas && request.url?.startsWith(canvasPrefix)) {
+            const file = request.url.slice(canvasPrefix.length);
+            const type = canvasFiles.get(file);
+            if (file === 'canvas.js' && canvasFailure === 'redirect') {
+                response.writeHead(302, { Location: '/_expo/app.js' });
+                response.end();
+                return;
+            }
+            response.statusCode = type && !(file === 'canvas.css' && canvasFailure === 'missing') ? 200 : 404;
+            response.setHeader('Content-Type', file === 'canvas.js' && canvasFailure === 'mime' ? 'text/html' : type || 'text/plain');
+            response.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+            if (canvasFailure !== 'frame-header') response.setHeader('X-Frame-Options', 'SAMEORIGIN');
+            response.end(file === 'canvas.css' && canvasFailure === 'bytes' ? 'different css' : `canvas fixture ${file}`);
+            return;
+        }
         if (request.url?.endsWith('.ttf')) {
             if (assetNeverResponds) return;
             response.statusCode = 200;
@@ -105,7 +171,7 @@ async function runVerifier({
             response.statusCode = 200;
             response.setHeader('Content-Type', 'text/html; charset=utf-8');
             response.setHeader('Cache-Control', immutableCache ? 'public,max-age=31536000,immutable' : 'no-cache');
-            response.end(`<html><head><meta name="paws-release-revision" content="${liveRevision}"></head></html>`);
+            response.end(`<html><head><meta name="paws-release-revision" content="${liveRevision}">${canvasMeta}</head></html>`);
             return;
         }
         if (request.url === `/web/releases/${revision}/.paws-release-revision`) {
@@ -126,7 +192,7 @@ async function runVerifier({
                 response.setHeader('Referrer-Policy', 'no-referrer');
                 response.setHeader('Content-Security-Policy', "default-src 'self'");
             }
-            response.end(`<html><head><meta name="paws-release-revision" content="${liveRevision}"></head></html>`);
+            response.end(`<html><head><meta name="paws-release-revision" content="${liveRevision}">${canvasFailure === 'entry' ? '' : canvasMeta}</head></html>`);
             return;
         }
         if (request.url === botsJs || request.url === botsCss) {

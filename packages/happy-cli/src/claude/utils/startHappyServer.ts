@@ -26,7 +26,9 @@ import { PreviewWorkspaceRegistry } from "@/previews/previewWorkspace";
 import { startCloudflarePreview } from '@/previews/cloudflarePreview';
 import { SessionPreviewSlots, type SessionPreviewStatus } from '@/previews/sessionPreviewSlots';
 
-import { launchDelegationDaemonSession, launchIndependentDaemonSession } from '@/daemon/controlClient';
+import { callDaemonProjectCanvas, launchDelegationDaemonSession, launchIndependentDaemonSession } from '@/daemon/controlClient';
+import { PROJECT_CANVAS_MCP_TOOLS, registerProjectCanvasTools, type ProjectCanvasLocalRequest } from '@/modules/goalBoard/projectCanvasTools';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { independentTaskSchema, type DelegationContext, type IndependentTask, type IndependentTaskResult } from '@/daemon/independentSessions';
 import { AgentRolesInputSchema, DelegateTaskInputSchema, DelegatedTaskTargetInputSchema, type DelegationAction, type DelegationResponse } from '@slopus/happy-wire';
 import { DELEGATION_MCP_TOOL_NAMES, delegationToolResponse, registerDelegationMcpTools } from '@/delegation/mcpTools';
@@ -35,6 +37,7 @@ import { boundedRoleSaveInput, roleFromSaveReceipt, roleSaveReceipt, type RoleSa
 type HappyMcpHandlers = {
     startSession: (task: IndependentTask) => Promise<IndependentTaskResult>;
     delegation: (action: DelegationAction) => Promise<DelegationResponse>;
+    projectCanvas: (command: ProjectCanvasLocalRequest['command']) => Promise<CallToolResult>;
     browserSessionId: string;
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
     sendImage: (input: SendImageInput) => Promise<{ success: boolean; error?: string }>;
@@ -170,6 +173,8 @@ function createMcpServer(handlers: HappyMcpHandlers): McpServer {
         }
         return delegationToolResponse(await handlers.delegation({ ...action, protocolVersion: 2 }));
     });
+
+    registerProjectCanvasTools(mcp, handlers.projectCanvas, true);
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -408,6 +413,7 @@ export async function startHappyServer(
     };
 
     const handlers: HappyMcpHandlers = {
+        projectCanvas: command => callDaemonProjectCanvas({ sessionId: client.sessionId, command }),
         startSession: task => launchIndependentDaemonSession(client.sessionId, task, options?.delegationContext?.()),
         delegation: async action => {
             const parentSessionId = options?.currentDelegationSessionId?.() ?? client.sessionId;
@@ -598,6 +604,7 @@ export async function startHappyServer(
         toolNames: [
             'start_session',
             ...DELEGATION_MCP_TOOL_NAMES,
+            ...PROJECT_CANVAS_MCP_TOOLS,
             'change_title',
             'send_image',
             'send_file',

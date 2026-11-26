@@ -9,16 +9,17 @@ import { storage } from '@/sync/storage';
 import { isProjectSessionDeleted } from '@/sync/projectSessionLinks';
 import { isProjectConversationArchived } from '@/sync/projectConversationLifecycle';
 import { useProjectModalEscape } from '@/hooks/useProjectModalEscape';
+import { getSessionName } from '@/utils/sessionUtils';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { ProjectConversationActions } from './ProjectConversationActions';
 
 /** Scope and task conversations share explicit new/history actions without a permanent task column. */
-export function ProjectConversationHeader({ sessions, selectedId, onSelect, onNew, onRefresh, loading, error, onRetry, onMore, onResolveNext, busy, offline, mobile = false, mobileMenu, testIDPrefix, scope = 'task', onGlobal, onClose, manage = false }: {
+export function ProjectConversationHeader({ sessions, selectedId, onSelect, onNew, onRefresh, loading, error, onRetry, onMore, onResolveNext, busy, offline, mobile = false, mobileMenu, testIDPrefix, scope = 'task', onGlobal, onClose, manage = false, action: trailingAction, canvasMode = false }: {
     sessions: GoalTaskSession[]; selectedId?: string; onSelect: (id: string) => void; onNew?: () => void;
     onResolveNext?: () => Promise<string | undefined>; onRefresh?: () => void; loading?: boolean; error?: string | null; onRetry?: () => void; onMore?: () => void;
     busy?: boolean; offline?: boolean; mobile?: boolean; testIDPrefix: string;
     mobileMenu?: { open: boolean; onClose: () => void; onView: (view: 'chat' | 'details' | 'files') => void; onInfo: () => void; onOrdinary: () => void; onProjectMenu: () => void; bottomInset?: number };
-    scope?: 'task' | 'global'; onGlobal?: () => void; onClose?: () => void; manage?: boolean;
+    scope?: 'task' | 'global'; onGlobal?: () => void; onClose?: () => void; manage?: boolean; action?: React.ReactNode; canvasMode?: boolean;
 }) {
     const { theme } = useUnistyles();
     const { width, height } = useWindowDimensions();
@@ -30,6 +31,8 @@ export function ProjectConversationHeader({ sessions, selectedId, onSelect, onNe
     const [headerWidth, setHeaderWidth] = React.useState(0);
     const compact = headerWidth < 560;
     const storedSessions = storage(state => state.sessions);
+    const storedSession = selectedId ? storedSessions[selectedId] : undefined;
+    const conversationTitle = canvasMode && selectedId ? storedSession ? getSessionName(storedSession) : sessions.find(session => session.sessionId === selectedId)?.title : undefined;
     const visibleSessions = sessions.filter(session => !isProjectSessionDeleted(session.sessionId)
         && !isProjectConversationArchived(session, storedSessions[session.sessionId]));
     const current = React.useRef({ selectedId, sessions, onSelect, onClose, onResolveNext });
@@ -105,22 +108,32 @@ export function ProjectConversationHeader({ sessions, selectedId, onSelect, onNe
     if (mobileMenu) return manage && selectedId && onClose
         ? <ProjectConversationActions key={selectedId} id={selectedId} testIDPrefix={testIDPrefix} disabled={busy} showLabels onBeforeAction={mobileMenu.onClose} onRemoved={() => advance(selectedId)} render={renderMobileMenu} />
         : renderMobileMenu(null);
+    const renderHistoryMenu = (actions: React.ReactNode) => open && <Modal transparent visible animationType="none" onRequestClose={close}>
+        <HistoryEscape onClose={close} />
+        <Pressable style={styles.backdrop} accessibilityRole="button" accessibilityLabel={t('common.cancel')} onPress={close} />
+        <View testID={`${testIDPrefix}-history-menu`} style={[styles.menu, { width: menuWidth, maxHeight: mobile ? height * 0.7 : Math.max(100, Math.min(360, height - position.y - 16)), left: Math.max(12, Math.min(position.x, width - menuWidth - 12)), ...(mobile ? { bottom: 12 } : { top: Math.max(12, Math.min(position.y, height - 180)) }) }]}>
+            {historyList}
+            {actions && <View style={styles.historyActions}>{actions}</View>}
+        </View>
+    </Modal>;
+    const managedId = manage && onClose ? selectedId : undefined;
     return <View style={styles.header} onLayout={event => setHeaderWidth(event.nativeEvent.layout.width)} testID={`${testIDPrefix}-conversation-header`}>
         {onGlobal && <Button variant="toolbar" label={t('projectGoals.globalConversation')} disabled={busy} testID={`${testIDPrefix}-global-chat`} onPress={onGlobal}><Ionicons name="compass-outline" size={16} color={theme.colors.textLink} />{!mobile && <Text style={styles.link}>{t(headerWidth < 440 ? 'projectGoals.globalConversationCompact' : 'projectGoals.globalConversation')}</Text>}</Button>}
-        <Button ref={anchor} variant="toolbar" label={historyLabel} expanded={open} disabled={busy} testID={`${testIDPrefix}-history`} onPress={() => {
+        <Button ref={anchor} variant="toolbar" label={conversationTitle ? `${conversationTitle} · ${historyLabel}` : historyLabel} expanded={open} disabled={busy} testID={`${testIDPrefix}-history`} onPress={() => {
             anchor.current?.measureInWindow((x, y, _w, h) => { setPosition({ x, y: y + h + 6 }); setOpen(true); onRefresh?.(); });
-        }}><Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} /><Text numberOfLines={1} style={styles.meta}>{compact ? t(scope === 'global' ? 'projectGoals.globalHistoryCompact' : 'projectGoals.taskHistoryCompact') : historyLabel} · {visibleSessions.length}</Text><Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} /></Button>
+        }}>
+            <Ionicons name={canvasMode ? 'chatbubble-outline' : 'time-outline'} size={16} color={theme.colors.textSecondary} />
+            {canvasMode ? <Text numberOfLines={1} style={[styles.canvasTitle, { maxWidth: Math.max(92, headerWidth - 174) }]}>{conversationTitle || t('projectGoals.mobileChat')}</Text>
+                : <Text numberOfLines={1} style={styles.meta}>{compact ? t(scope === 'global' ? 'projectGoals.globalHistoryCompact' : 'projectGoals.taskHistoryCompact') : historyLabel} · {visibleSessions.length}</Text>}
+            <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
+        </Button>
         <View style={{ flex: 1 }} />
         {!mobile && onNew && <Button variant="toolbar" label={t('projectGoals.newChat')} disabled={busy || offline} testID={`${testIDPrefix}-new-chat`} onPress={create}><Ionicons name="add-outline" size={16} color={theme.colors.textLink} />{!compact && <Text style={styles.link}>{t('projectGoals.newChat')}</Text>}</Button>}
-        {manage && selectedId && onClose && <ProjectConversationActions key={selectedId} id={selectedId} testIDPrefix={testIDPrefix} disabled={busy} onRemoved={() => advance(selectedId)} />}
+        {!canvasMode && managedId && <ProjectConversationActions key={managedId} id={managedId} testIDPrefix={testIDPrefix} disabled={busy} onRemoved={() => advance(managedId)} />}
+        {trailingAction}
         {onClose && <Button variant="toolbar" label={t('projectGoals.closeConversation')} testID={`${testIDPrefix}-close-chat`} onPress={onClose}><Ionicons name="close-outline" size={18} color={theme.colors.textSecondary} /></Button>}
-        {open && <Modal transparent visible animationType="none" onRequestClose={close}>
-            <HistoryEscape onClose={close} />
-            <Pressable style={styles.backdrop} accessibilityRole="button" accessibilityLabel={t('common.cancel')} onPress={close} />
-            <View testID={`${testIDPrefix}-history-menu`} style={[styles.menu, { width: menuWidth, maxHeight: mobile ? height * 0.7 : Math.max(100, Math.min(360, height - position.y - 16)), left: Math.max(12, Math.min(position.x, width - menuWidth - 12)), ...(mobile ? { bottom: 12 } : { top: Math.max(12, Math.min(position.y, height - 180)) }) }]}>
-                {historyList}
-            </View>
-        </Modal>}
+        {canvasMode && managedId ? <ProjectConversationActions key={managedId} id={managedId} testIDPrefix={testIDPrefix} disabled={busy}
+            showLabels onBeforeAction={close} onRemoved={() => advance(managedId)} render={renderHistoryMenu} /> : renderHistoryMenu(null)}
     </View>;
 }
 function HistoryEscape({ onClose }: { onClose: () => void }) { useProjectModalEscape(onClose); return null; }
@@ -130,7 +143,9 @@ const styles = StyleSheet.create(theme => ({
     header: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
     backdrop: { position: 'absolute', inset: 0 },
     menu: { position: 'absolute', borderRadius: 12, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, overflow: 'hidden', shadowColor: theme.colors.shadow.color, shadowOpacity: theme.colors.shadow.opacity, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
-    list: { flexGrow: 0, padding: 8 }, copy: { flex: 1, minWidth: 0, gap: 8 },
+    list: { flexGrow: 0, flexShrink: 1, padding: 8 }, copy: { flex: 1, minWidth: 0, gap: 8 },
+    historyActions: { padding: 8, borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
+    canvasTitle: { fontSize: 13, color: theme.colors.text, ...Typography.default('semiBold') },
     body: { fontSize: 13, lineHeight: 21, color: theme.colors.text, ...Typography.default() },
     meta: { fontSize: 12, lineHeight: 18, color: theme.colors.textSecondary, ...Typography.default() },
     link: { fontSize: 12, lineHeight: 18, color: theme.colors.textLink, ...Typography.default('semiBold') },

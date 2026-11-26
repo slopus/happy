@@ -345,6 +345,7 @@ export const it: TranslationStructure = {
         referenceHint: "Aggiunge solo un riferimento; la cronologia non viene copiata automaticamente.",
     },
     bots: projectGoalsBase.bots,
+    projectCanvas: projectGoalsBase.projectCanvas,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
         conversationCounts: "Gli stati riguardano le conversazioni caricate; carica altra cronologia per continuare",

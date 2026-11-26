@@ -98,3 +98,7 @@ packages/paws-bots/**/asset-archive/
 packages/happy-app/public/bots-assets/
 packages/paws-bots/**/__pycache__/
 packages/paws-bots/**/.pytest_cache/
+
+# Paws Web canvas build output
+/packages/happy-app/public/dsh-image-canvas/
+/packages/happy-app/public/.dsh-canvas-build-*/

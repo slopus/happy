@@ -551,7 +551,15 @@ function DesktopReadingWidthControl() {
     </View>;
 }
 
-type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string }; embedded?: boolean; projectTaskContext?: boolean; fullWidth?: boolean; emptyState?: React.ReactNode | ((appendDraft: (text: string) => void) => React.ReactNode) };
+type SessionViewProps = {
+    id: string;
+    fileOpenRequest?: { path: string; requestId: string };
+    embedded?: boolean;
+    hideEmbeddedHeader?: boolean;
+    projectTaskContext?: boolean;
+    fullWidth?: boolean;
+    emptyState?: React.ReactNode | ((appendDraft: (text: string) => void) => React.ReactNode);
+};
 
 function ConversationDeleteRecovery({ session }: { session: Session }) {
     const router = useRouter();
@@ -739,7 +747,8 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const taskConversation = !!props.embedded && !!props.projectTaskContext;
-    const showSessionHeader = !taskConversation && !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web');
+    const hideEmbeddedHeader = !!props.embedded && !!props.hideEmbeddedHeader;
+    const showSessionHeader = !hideEmbeddedHeader && !taskConversation && !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web');
     const headerHeight = useHeaderHeight();
     const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
@@ -1426,7 +1435,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
 
             {/* Content based on state */}
             <View testID="session-content" style={{ flex: 1, minHeight: 0, paddingTop: showSessionHeader ? safeArea.top + headerHeight + fileHeaderTopInset : 0 }}>
-                {!taskConversation && !showSessionHeader && (goalParentAction || workspaceLink) && <View testID="goal-board-parent-floating-action" pointerEvents="box-none"
+                {!hideEmbeddedHeader && !taskConversation && !showSessionHeader && (goalParentAction || workspaceLink) && <View testID="goal-board-parent-floating-action" pointerEvents="box-none"
                     style={{ position: 'absolute', top: safeArea.top + 8, right: safeArea.right + 8, zIndex: 2, flexDirection: 'row', gap: 4 }}>
                     {goalParentAction}{workspaceLink}
                 </View>}

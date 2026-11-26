@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectProjectMachine, projectCatalogState } from './projectMachine';
+import { selectProjectMachine, projectCatalogState, supportsProjectCanvas } from './projectMachine';
 
 const actual = { id: 'actual', active: true };
 const previousPreview = { id: 'old-preview', active: false };
@@ -19,6 +19,21 @@ describe('project machine ownership', () => {
     it('honors explicit normal machine selection, including offline and unavailable owners', () => {
         expect(selectProjectMachine(machines, previousPreview.id, actual.id)).toBe(previousPreview);
         expect(selectProjectMachine(machines, 'missing', actual.id)).toBeUndefined();
+    });
+});
+
+describe('project canvas availability', () => {
+    const running = { status: 'running', startedAt: 1729 };
+    const machine = { active: true, daemonState: running, metadata: { projectCanvas: { version: 1, daemonStartedAt: 1729 } } };
+
+    it('requires a supported capability from the current connection of the active daemon', () => {
+        expect(supportsProjectCanvas(machine)).toBe(true);
+        expect(supportsProjectCanvas(undefined)).toBe(false);
+        expect(supportsProjectCanvas({ ...machine, metadata: {} })).toBe(false);
+        expect(supportsProjectCanvas({ ...machine, daemonState: { ...running, startedAt: 1730 } })).toBe(false);
+        expect(supportsProjectCanvas({ ...machine, daemonState: null })).toBe(false);
+        expect(supportsProjectCanvas({ ...machine, active: false })).toBe(false);
+        expect(supportsProjectCanvas({ ...machine, metadata: { projectCanvas: { version: 2, daemonStartedAt: 1729 } } })).toBe(false);
     });
 });
 

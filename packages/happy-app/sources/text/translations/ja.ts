@@ -348,6 +348,7 @@ export const ja: TranslationStructure = {
         referenceHint: "参照のみ追加します。会話履歴は自動ではコピーされません。",
     },
     bots: projectGoalsBase.bots,
+    projectCanvas: projectGoalsBase.projectCanvas,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
         conversationCounts: "状態は読み込み済みの会話が対象です。続けるには履歴をさらに読み込んでください",

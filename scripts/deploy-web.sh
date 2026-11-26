@@ -156,14 +156,27 @@ assert_main_release_source
 
 if [[ "${PAWS_SKIP_BUILD:-0}" != "1" ]]; then
     echo "==> 构建 Paws Web App"
+    canvas_build_disabled=1
+    if [[ -n "${PAWS_PROJECT_CANVAS_TLDRAW_LICENSE:-}" ]] &&
+        expires_at="$(node "$REPO_ROOT/packages/paws-dsh-canvas/scripts/verify-production-license.mjs" "$PAWS_WEB_ORIGIN" --print-evaluation-expiry)"; then
+        canvas_build_disabled=0
+        export PAWS_PROJECT_CANVAS_TLDRAW_EXPIRES_AT="$expires_at"
+    else
+        echo "==> 画布许可不可用，本次仅发布 Paws Web"
+    fi
     (
         cd "$REPO_ROOT"
         CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL="$PAWS_WEB_ORIGIN" \
             HAPPY_BUILD_COMMIT_SHA="$RELEASE_REVISION" \
             HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
+            PAWS_PROJECT_CANVAS_BUILD_DISABLED="$canvas_build_disabled" \
             pnpm --filter happy-app export:web
     )
-    node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html"
+    if [[ "$canvas_build_disabled" == "0" ]]; then
+        node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html" --project-canvas "$PAWS_WEB_ORIGIN" "$RELEASE_REVISION"
+    else
+        node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html"
+    fi
     node "$SCRIPT_DIR/stamp-web-release.mjs" "$DIST_DIR/index.html" "$RELEASE_MARKER" "$RELEASE_REVISION"
 else
     echo "==> 跳过构建，复用已盖章 Web 产物"
@@ -176,6 +189,10 @@ artifact_revision="$(tr -d '[:space:]' < "$RELEASE_MARKER")"
 [[ "$artifact_revision" == "$RELEASE_REVISION" ]] || fail "dist revision $artifact_revision 与 origin/main $RELEASE_REVISION 不一致。"
 grep -Fq "<meta name=\"paws-release-revision\" content=\"$RELEASE_REVISION\">" "$DIST_DIR/index.html" \
     || fail "index.html 缺少匹配的 release revision meta。"
+if [[ "${PAWS_SKIP_BUILD:-0}" == "1" && -d "$DIST_DIR/dsh-image-canvas" ]]; then
+    node "$REPO_ROOT/packages/paws-dsh-canvas/scripts/verify-production-license.mjs" "$PAWS_WEB_ORIGIN"
+    node "$SCRIPT_DIR/inject-web-runtime-server-config.mjs" "$DIST_DIR/index.html" --check-project-canvas "$PAWS_WEB_ORIGIN" "$RELEASE_REVISION"
+fi
 
 release_prefix="web/releases/$RELEASE_REVISION"
 release_marker="oss://$OSS_BUCKET/$release_prefix/.paws-release-revision"

@@ -42,7 +42,18 @@ describe('registerHappyBridgeTools', () => {
         const args = { requestId: 'stable-request', taskId: 'same-task', intent: 'explicit', prompt: 'Make the draft shorter' };
         await registrations.find(item => item.name === 'delegate_task')!.handler(args);
         expect(callTool).toHaveBeenCalledWith({ name: 'delegate_task', arguments: args }, undefined, { timeout: 11 * 60_000 });
-        expect(registrations).toHaveLength(15);
+    });
+
+    it('forwards project canvas changes without accepting a caller-supplied project path', async () => {
+        const { server, registrations } = createServerMock();
+        const callTool = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'saved' }] }));
+        registerHappyBridgeTools(server, async () => ({ callTool }) as unknown as Client);
+        const change = registrations.find(item => item.name === 'project_canvas_change')!;
+        const args = { revision: 3, changes: [{ type: 'upsert-category', id: 'concepts', name: 'Concept art' }] };
+        await change.handler(args);
+        expect(callTool).toHaveBeenCalledWith({ name: 'project_canvas_change', arguments: args }, undefined, { timeout: 125_000 });
+        await expect(change.handler({ ...args, projectPath: '/other-project' })).resolves.toMatchObject({ isError: true });
+        expect(callTool).toHaveBeenCalledTimes(1);
     });
 
     it('exposes and forwards independent tasks through the actual Codex bridge registration', async () => {

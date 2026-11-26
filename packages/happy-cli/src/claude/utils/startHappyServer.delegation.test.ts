@@ -26,7 +26,7 @@ const completed: DelegationResponse = { success: true, task: {
 describe('parent-bound delegation MCP tools', () => {
     beforeEach(() => { vi.mocked(launchDelegationDaemonSession).mockReset(); });
 
-    it('discovers all 15 tools over real HTTP and returns only the actual child link/current artifact', async () => {
+    it('discovers the first-party tools over real HTTP and returns only the actual child link/current artifact', async () => {
         vi.mocked(launchDelegationDaemonSession).mockResolvedValue(completed);
         const context = { permissionMode: 'read-only' as const, appendSystemPrompt: 'Keep role and model separate' };
         const server = await startHappyServer({ sessionId: 'parent-one' } as ApiSessionClient, { delegationContext: () => context });
@@ -34,8 +34,7 @@ describe('parent-bound delegation MCP tools', () => {
         try {
             await client.connect(new StreamableHTTPClientTransport(new URL(server.url)));
             const tools = (await client.listTools()).tools;
-            expect(tools).toHaveLength(15);
-            expect(server.toolNames).toHaveLength(15);
+            expect(tools.map(tool => tool.name)).toEqual(server.toolNames);
             for (const name of DELEGATION_MCP_TOOL_NAMES) {
                 expect(tools.find(tool => tool.name === name)?.inputSchema.properties).not.toHaveProperty('parentSessionId');
             }
@@ -216,7 +215,6 @@ describe('parent-bound delegation MCP tools', () => {
                 platform: 'node', format: 'esm', bundle: true, packages: 'external', logLevel: 'silent', tsconfig: join(cliRoot, 'tsconfig.json') });
             await client.connect(new StdioClientTransport({ command: process.execPath, args: [entry, '--url', server.url], cwd: cliRoot, stderr: 'pipe' }));
             const tools = (await client.listTools()).tools;
-            expect(tools).toHaveLength(15);
             expect(tools.map(tool => tool.name)).toEqual(server.toolNames);
             const args = { requestId: 'stdio-request', roleId: 'writer', intent: 'explicit', prompt: 'Write a grounded README' };
             const response = await client.callTool({ name: 'delegate_task', arguments: args });

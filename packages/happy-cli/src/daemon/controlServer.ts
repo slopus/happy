@@ -14,6 +14,7 @@ import type { CodexEffort, SpawnSessionOptions, SpawnSessionResult } from '@/mod
 
 import { independentTaskSchema, delegationContextSchema, type DelegationContext, type IndependentTask, type IndependentTaskResult } from './independentSessions';
 import { DelegationRequestSchema, type DelegationRequest, type DelegationResponse } from '@slopus/happy-wire';
+import type { createProjectCanvasControlHandler } from './projectCanvasLocal';
 
 const codexEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
@@ -21,6 +22,7 @@ export function startDaemonControlServer({
   getChildren,
   launchIndependentSession,
   delegation,
+  projectCanvas,
   stopSession,
   spawnSession,
   requestShutdown,
@@ -29,6 +31,7 @@ export function startDaemonControlServer({
   getChildren: () => TrackedSession[];
   launchIndependentSession?: (parentSessionId: string, task: IndependentTask, context?: DelegationContext) => Promise<IndependentTaskResult>;
   delegation?: (request: DelegationRequest, context?: DelegationContext) => Promise<DelegationResponse>;
+  projectCanvas?: ReturnType<typeof createProjectCanvasControlHandler>;
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
@@ -43,6 +46,11 @@ export function startDaemonControlServer({
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
+
+    if (projectCanvas) app.post('/project-canvas', { bodyLimit: 2 * 1024 * 1024 }, async (request, reply) => {
+      const { status, result } = await projectCanvas(request.headers.authorization, request.body);
+      return reply.code(status).send(result);
+    });
 
     // Session reports itself after creation
     typed.post('/session-started', {

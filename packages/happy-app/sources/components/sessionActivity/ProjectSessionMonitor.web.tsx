@@ -133,11 +133,24 @@ export function GlobalSessionRailEntry({ render }: { render: (props: { label: st
         runningCount: counts.running,
     })}</>;
 }
-export function GlobalSessionEntry() {
+export function GlobalSessionEntry({ compact = false }: { compact?: boolean } = {}) {
     const monitor = React.useContext(Context), { theme } = useUnistyles(), { width } = useWindowDimensions();
     if (!monitor || width < 1100) return null;
     const counts = countSessionActivity(monitor.rows), words = copy();
-    return <Button variant="chip" label={`${words.title} · ${words.labels.running} ${counts.running} · ${words.labels.attention} ${counts.attention}`} expanded={monitor.isOpen} selected={monitor.isOpen} onPress={() => monitor.isOpen ? monitor.close() : monitor.open()} testID="global-session-entry"><Ionicons name="chatbubbles-outline" size={16} color={theme.colors.textLink} /><Text style={styles.small}>{words.title}</Text><Text style={[styles.small, { color: theme.colors.textLink }]}>{words.labels.running} {counts.running}</Text><Text style={[styles.small, counts.attention > 0 && { color: theme.colors.status.error }]}>{counts.attention ? `${words.labels.attention} ${counts.attention}` : words.noAttention}</Text>{counts.unknown > 0 && <Text style={styles.meta}>{words.labels.unknown} {counts.unknown}</Text>}</Button>;
+    const label = `${words.title} · ${words.labels.running} ${counts.running} · ${words.labels.attention} ${counts.attention}`;
+    const activityColor = counts.attention > 0 ? theme.colors.status.error : counts.running > 0 ? theme.colors.textLink : theme.colors.textSecondary;
+    return <Button variant={compact ? 'toolbar' : 'chip'} label={label} tooltip={compact ? label : undefined} expanded={monitor.isOpen} selected={monitor.isOpen}
+        onPress={() => monitor.isOpen ? monitor.close() : monitor.open()} testID="global-session-entry">
+        <Ionicons name="chatbubbles-outline" size={16} color={compact ? activityColor : theme.colors.textLink} />
+        {compact ? (counts.attention || counts.running) > 0 && <Text style={[styles.small, { color: activityColor }]}>{counts.attention || counts.running}</Text> : <>
+            <Text style={styles.small}>{words.title}</Text>
+            <Text style={[styles.small, { color: theme.colors.textLink }]}>{words.labels.running} {counts.running}</Text>
+            <Text style={[styles.small, counts.attention > 0 && { color: theme.colors.status.error }]}>
+                {counts.attention ? `${words.labels.attention} ${counts.attention}` : words.noAttention}
+            </Text>
+            {counts.unknown > 0 && <Text style={styles.meta}>{words.labels.unknown} {counts.unknown}</Text>}
+        </>}
+    </Button>;
 }
 export function ProjectSessionSummary() {
     const monitor = React.useContext(Context), { width } = useWindowDimensions(), { theme } = useUnistyles();

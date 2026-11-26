@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'scripts/configure-production-bots-caddy*'
+      - 'scripts/configure-production-web-caddy*'
+      - 'scripts/inject-web-runtime-server-config*'
       - 'scripts/deploy-bots-ingress*'
       - 'scripts/deploy-web*'
       - 'scripts/upload-web-assets*'
@@ -32,6 +34,8 @@ on:
     branches: [main]
     paths:
       - 'scripts/configure-production-bots-caddy*'
+      - 'scripts/configure-production-web-caddy*'
+      - 'scripts/inject-web-runtime-server-config*'
       - 'scripts/deploy-bots-ingress*'
       - 'scripts/deploy-web*'
       - 'scripts/upload-web-assets*'
@@ -73,4 +77,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter monorepo
       - name: Verify deployment and supersession guards
-        run: node --test scripts/classify-ota-impact.test.cjs scripts/ota-delivery-workflows.test.mjs scripts/configure-production-bots-caddy.test.mjs scripts/deploy-bots-ingress.test.mjs scripts/cleanup-web-assets.test.mjs scripts/dreamskin-import-core.test.mjs scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/verify-web-release.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs
+        run: node --test scripts/classify-ota-impact.test.cjs scripts/ota-delivery-workflows.test.mjs scripts/configure-production-bots-caddy.test.mjs scripts/configure-production-web-caddy.test.mjs scripts/inject-web-runtime-server-config.test.mjs scripts/deploy-bots-ingress.test.mjs scripts/cleanup-web-assets.test.mjs scripts/dreamskin-import-core.test.mjs scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/verify-web-release.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs

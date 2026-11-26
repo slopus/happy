@@ -245,6 +245,7 @@ export const MachineMetadataSchema = z.object({
     delegation: z.literal(1).optional(),
     delegationRoles: z.literal(1).optional(),
     scheduledTasks: z.literal(1).optional(),
+    projectCanvas: z.object({ version: z.number().int().positive(), daemonStartedAt: z.number().int().positive() }).optional(),
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),

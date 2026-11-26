@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createProjectGoalService, registerProjectGoalHandlers, type ProjectGoalDependencies, type ProjectSession } from './projectService';
 import { ArtifactStore } from '../artifacts/store';
 import * as parser from './parser';
-import { writeGoalDeliveryAgreement } from '@slopus/happy-wire';
+import { GOAL_CANVAS_LIMITS, writeGoalDeliveryAgreement } from '@slopus/happy-wire';
 
 vi.mock('node:fs', async (original) => {
     const fs = await original<typeof import('node:fs')>();
@@ -704,5 +704,306 @@ describe('catalog snapshot release', () => {
         expect(release).toBeTypeOf('function');
         expect(await release!({ projectPath: join(f.root, 'p'), snapshotId: 'owned' })).toEqual({ success: true, released: true });
         expect(await release!({ projectPath: f.feature, snapshotId: 'owned' })).toMatchObject({ success: false, error: expect.stringContaining('authorized') });
+    });
+});
+
+describe('project canvas RPC', () => {
+    const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF1sAAAAASUVORK5CYII=', 'base64');
+    const jpeg = Buffer.from(
+        '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAxAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgI'
+        + 'CAkJCgoKDAwLCw4ODhERFP/EAEsAAQEAAAAAAAAAAAAAAAAAAAAHAQEAAAAAAAAAAAAAAAAAAAAAEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA'
+        + '/8AAEQgAAgACAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8Av4AP/9k=', 'base64',
+    );
+
+    function sceneEnvelope(...records: Array<{ id: string; typeName: string } & Record<string, unknown>>) {
+        return {
+            version: 1,
+            schema: { schemaVersion: 2, sequences: {} },
+            removed: [],
+            store: {
+                'document:document': { id: 'document:document', typeName: 'document', gridSize: 10, name: '', meta: {} },
+                'page:page': { id: 'page:page', typeName: 'page', name: 'Page 1', index: 'a1', meta: {} },
+                'user:canvas-guest': { id: 'user:canvas-guest', typeName: 'user', name: '', color: '#39B178', imageUrl: '', meta: {} },
+                ...Object.fromEntries(records.map(record => [record.id, record])),
+            },
+        };
+    }
+
+    function sceneImage(assetId: string, shapeId = 'shape:one', meta: Record<string, unknown> = {}) {
+        return {
+            image: {
+                id: assetId, type: 'image', typeName: 'asset', meta: {},
+                props: { src: null as string | null, name: 'Raster', w: 100, h: 100, isAnimated: false, mimeType: 'image/jpeg' },
+            },
+            shape: {
+                id: shapeId, type: 'image', typeName: 'shape', meta,
+                x: 222, y: 333, rotation: 0, index: 'a1', parentId: 'page:page', isLocked: false, opacity: 1,
+                props: { assetId, w: 100, h: 100, playing: true, url: '', crop: null, flipX: false, flipY: false, altText: '' },
+            },
+        };
+    }
+
+    it('isolates projects and persists deduplicated image bytes and revised placements across service instances', async () => {
+        const f = await fixture();
+        const projectPath = join(f.root, 'p');
+        const empty = await f.service.canvas.get({ projectPath });
+        expect(empty.canvas).toMatchObject({ revision: 0, assets: [] });
+        const upload = { projectPath, name: 'Jackie.png', mimeType: 'image/png', base64: image.toString('base64') };
+        const [first, second] = await Promise.all([f.service.canvas.import(upload), f.service.canvas.import(upload)]);
+        if (!('canvas' in first) || !('canvas' in second)) throw new Error('Expected completed imports');
+        expect(first.canvas).toEqual(second.canvas);
+        expect(first.canvas.assets).toHaveLength(1);
+        const [asset] = first.canvas.assets;
+        expect(asset.versionId).toBe(createHash('sha256').update(image).digest('hex'));
+        const attempts = await Promise.allSettled([
+            f.service.canvas.layout({ projectPath, revision: first.canvas.revision, placements: [{ id: asset.id, x: 314, y: 159 }] }),
+            f.service.canvas.layout({ projectPath, revision: first.canvas.revision, placements: [{ id: asset.id, x: 26, y: 53 }] }),
+        ]);
+        expect(attempts.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+        expect(attempts.find(result => result.status === 'rejected')).toMatchObject({ reason: expect.objectContaining({ message: expect.stringContaining('changed') }) });
+
+        const restored = f.make().canvas;
+        const latest = (await restored.get({ projectPath })).canvas;
+        expect(latest).toMatchObject({ id: empty.canvas.id, revision: 2 });
+        expect([[314, 159], [26, 53]]).toContainEqual([latest.assets[0].x, latest.assets[0].y]);
+        const bytes = await restored.asset({ projectPath, assetId: asset.id, versionId: asset.versionId, offset: 0 });
+        expect(bytes).toMatchObject({ size: image.length, nextOffset: null });
+        expect(Buffer.from(bytes.base64, 'base64')).toEqual(image);
+        const siblingProject = join(f.root, 'empty');
+        expect((await restored.get({ projectPath: siblingProject })).canvas).toMatchObject({ revision: 0, assets: [] });
+        await expect(restored.asset({ projectPath: siblingProject, assetId: asset.id, versionId: asset.versionId, offset: 0 })).rejects.toThrow('unavailable in this project');
+        await expect(restored.get({ projectPath: f.feature })).rejects.toThrow('authorized Goal catalog');
+        await expect(restored.import({ ...upload, mimeType: 'image/gif' })).rejects.toThrow('image format');
+    });
+
+    it('registers the canvas machine RPCs and assembles, retries, and serves image chunks', async () => {
+        const f = await fixture();
+        const handlers = new Map<string, (input: unknown) => Promise<any>>();
+        const service = registerProjectGoalHandlers({ registerHandler: (name, handler) => handlers.set(name, handler) }, f.deps);
+        cleanups.push(() => service.dispose());
+        const projectPath = join(f.root, 'p');
+        const largeImage = Buffer.concat([image, Buffer.alloc(70 * 1024, 7)]);
+        const metadata = { projectPath, name: 'Large.png', mimeType: 'image/png', totalSize: largeImage.length, uploadId: '6e8c137b-f59d-4512-9c60-6caa7af25096' };
+        const upload = handlers.get('goalProjectCanvasImport')!;
+        const first = { ...metadata, offset: 0, base64: largeImage.subarray(0, 60 * 1024).toString('base64') };
+        const last = { ...metadata, offset: 60 * 1024, base64: largeImage.subarray(60 * 1024).toString('base64') };
+        expect(await upload(last)).toMatchObject({ success: false });
+        expect(await upload(first)).toEqual({ success: true, nextOffset: last.offset });
+        expect(await upload(first)).toEqual({ success: true, nextOffset: last.offset });
+        const saved = await upload(last);
+        expect(saved).toMatchObject({ success: true, canvas: { revision: 1 } });
+        expect(await upload(last)).toEqual(saved);
+
+        const asset = saved.canvas.assets[0];
+        const read = handlers.get('goalProjectCanvasAsset')!;
+        const lead = await read({ projectPath, assetId: asset.id, versionId: asset.versionId, offset: 0 });
+        expect(lead).toMatchObject({ success: true, nextOffset: 64 * 1024 });
+        const tail = await read({ projectPath, assetId: asset.id, versionId: asset.versionId, offset: lead.nextOffset });
+        expect(tail).toMatchObject({ success: true, nextOffset: null });
+        expect(Buffer.concat([Buffer.from(lead.base64, 'base64'), Buffer.from(tail.base64, 'base64')])).toEqual(largeImage);
+        expect(await handlers.get('goalProjectCanvasGet')!({ projectPath })).toEqual(saved);
+        expect(await handlers.get('goalProjectCanvasLayout')!({ projectPath, revision: 1, placements: [{ id: asset.id, x: 75, y: 120 }] }))
+            .toMatchObject({ success: true, canvas: { revision: 2, assets: [{ x: 75, y: 120 }] } });
+    });
+
+    it('preserves original image versions and layout while storing one bounded JPEG preview per asset', async () => {
+        const f = await fixture();
+        const handlers = new Map<string, (input: unknown) => Promise<any>>();
+        const service = registerProjectGoalHandlers({ registerHandler: (name, handler) => handlers.set(name, handler) }, f.deps);
+        cleanups.push(() => service.dispose());
+        const projectPath = join(f.root, 'p');
+        const original = await service.canvas.import({ projectPath, name: 'Jackie.png', mimeType: 'image/png', base64: image.toString('base64') });
+        if (!('canvas' in original)) throw new Error('Expected a completed image import');
+        const asset = original.canvas.assets[0];
+        const request = { projectPath, assetId: asset.id, versionId: asset.versionId };
+        const preview = handlers.get('goalProjectCanvasPreview')!;
+        const putPreview = handlers.get('goalProjectCanvasPutPreview')!;
+        const base64 = jpeg.toString('base64');
+        const upload = { ...request, base64 };
+        expect(asset.preview).toBeUndefined();
+        expect(await preview(request)).toMatchObject({ success: false });
+        expect(await putPreview({ ...request, projectPath: join(f.root, 'empty'), base64 })).toMatchObject({ success: false });
+        expect(await putPreview({ ...request, base64: image.toString('base64') })).toMatchObject({ success: false });
+        expect(await putPreview({ ...request, base64: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64') })).toMatchObject({ success: false });
+
+        const oversized = Buffer.alloc(GOAL_CANVAS_LIMITS.previewBytes + 1).toString('base64');
+        expect(await putPreview({ ...request, base64: oversized })).toMatchObject({ success: false });
+        const wide = Buffer.from(jpeg);
+        const frame = wide.indexOf(Buffer.from([0xff, 0xc0]));
+        wide.writeUInt16BE(GOAL_CANVAS_LIMITS.previewMaxSide + 1, frame + 7);
+        expect(await putPreview({ ...request, base64: wide.toString('base64') })).toMatchObject({ success: false });
+
+        const saved = await putPreview(upload);
+        const previewMeta = { versionId: createHash('sha256').update(jpeg).digest('hex'), size: jpeg.length };
+        expect(saved).toMatchObject({ success: true, canvas: { revision: 2, assets: [{ ...asset, preview: previewMeta }] } });
+        expect(await preview(request)).toEqual({ success: true, base64, size: jpeg.length });
+
+        // A different valid JPEG for the same asset must not replace the first preview.
+        const anotherJpeg = Buffer.concat([jpeg.subarray(0, 2), Buffer.from([0xff, 0xfe, 0, 3, 65]), jpeg.subarray(2)]);
+        const [retried, layout] = await Promise.all([
+            putPreview({ ...request, base64: anotherJpeg.toString('base64') }),
+            service.canvas.layout({ projectPath, revision: saved.canvas.revision, placements: [{ id: asset.id, x: 777, y: 222 }] }),
+        ]);
+        expect(retried).toMatchObject({ success: true, canvas: { assets: [{ preview: previewMeta }] } });
+        expect(layout.canvas).toMatchObject({ revision: 3, assets: [{ ...asset, x: 777, y: 222, preview: previewMeta }] });
+
+        const reopened = f.make().canvas;
+        expect(await reopened.preview(request)).toEqual({ success: true, base64, size: jpeg.length });
+        expect(await reopened.asset({ ...request, offset: 0 })).toEqual({
+            success: true, base64: image.toString('base64'), size: image.length, nextOffset: null,
+        });
+        const previewPath = join(f.deps.storageDirectory, 'project-canvases', layout.canvas.id, 'previews', asset.versionId);
+        const corrupted = Buffer.from(jpeg);
+        corrupted[7] ^= 1;
+        await writeFile(previewPath, corrupted);
+        await expect(reopened.preview(request)).rejects.toThrow('preview bytes changed');
+        expect(await reopened.putPreview(upload)).toMatchObject({ canvas: { revision: 4, assets: [{ x: 777, y: 222, preview: previewMeta }] } });
+        expect(await reopened.preview(request)).toEqual({ success: true, base64, size: jpeg.length });
+    });
+
+    it('atomically saves categorized image changes and full canvas documents with independent scene revisions', async () => {
+        const f = await fixture();
+        const projectPath = join(f.root, 'p');
+        const canvas = f.service.canvas;
+        const imported = await canvas.import({ projectPath, name: 'Jackie.png', mimeType: 'image/png', base64: image.toString('base64') });
+        if (!('canvas' in imported)) throw new Error('Expected a completed image import');
+        const asset = imported.canvas.assets[0];
+        const category = { id: 'category-characters', name: '人物' };
+        const update = await canvas.mutate({
+            projectPath, revision: imported.canvas.revision,
+            changes: [
+                { type: 'upsert-category', ...category },
+                { type: 'update-asset', assetId: asset.id, name: '三视图.png', categoryId: category.id, x: 100, y: 70 },
+            ],
+        });
+        expect(update.canvas).toMatchObject({
+            revision: 2, categories: [category],
+            assets: [{ id: asset.id, versionId: asset.versionId, categoryId: category.id, name: '三视图.png', x: 100, y: 70 }],
+        });
+        const galleryId = `${asset.id}-${asset.versionId}`;
+        const scene = sceneImage(`asset:ig-${galleryId}`, `shape:ig-${galleryId}`, { galleryId });
+        scene.image.props.mimeType = 'image/png';
+        const document = JSON.stringify(sceneEnvelope(scene.image, scene.shape));
+        const saved = await canvas.saveScene({ projectPath, revision: 0, document, placements: [{ id: asset.id, x: 222, y: 333 }] });
+        expect(saved.canvas).toMatchObject({ revision: 3, scene: { revision: 1, document }, assets: [{ x: 222, y: 333 }] });
+        await expect(canvas.saveScene({ projectPath, revision: 0, document })).rejects.toThrow('Canvas scene was modified');
+        const unsafeAsset = { ...scene.image, props: { ...scene.image.props, src: `data:image/png;base64,${image.toString('base64')}` } };
+        await expect(canvas.saveScene({ projectPath, revision: 1, document: JSON.stringify(sceneEnvelope(unsafeAsset, scene.shape)) })).rejects.toThrow('persistent asset references');
+        await expect(canvas.saveScene({ projectPath, revision: 1, document: '[]' })).rejects.toThrow('JSON object');
+        const oversized = JSON.stringify({ label: '字'.repeat(Math.floor(GOAL_CANVAS_LIMITS.sceneBytes / 2)) });
+        await expect(canvas.saveScene({ projectPath, revision: 1, document: oversized })).rejects.toThrow('scene is too large');
+        await expect(canvas.mutate({ projectPath, revision: 3, changes: [
+            { type: 'delete-category', id: category.id },
+            { type: 'update-asset', assetId: asset.id, categoryId: 'unknown' },
+        ] })).rejects.toThrow('category is unavailable');
+        const reopened = f.make().canvas;
+        expect(await reopened.get({ projectPath })).toEqual(saved);
+        const uncategorized = await reopened.mutate({
+            projectPath, revision: 3, changes: [{ type: 'delete-category', id: category.id }],
+        });
+        expect(uncategorized.canvas).toMatchObject({ revision: 4, scene: { revision: 1, document }, assets: [{ x: 222, y: 333 }] });
+        expect(uncategorized.canvas.categories).toBeUndefined();
+        expect(uncategorized.canvas.assets[0].categoryId).toBeUndefined();
+        expect(await reopened.mutate({ projectPath, revision: 4, changes: [{ type: 'remove-asset', assetId: asset.id }] }))
+            .toMatchObject({ canvas: { revision: 5, assets: [], scene: { revision: 1, document } } });
+        await expect(reopened.asset({ projectPath, assetId: asset.id, versionId: asset.versionId, offset: 0 })).rejects.toThrow('unavailable in this project');
+    });
+
+    it('keeps the last readable scene when a malformed or unsupported replacement is submitted', async () => {
+        const f = await fixture();
+        const projectPath = join(f.root, 'p');
+        const canvas = f.service.canvas;
+        const source = sceneImage('asset:legacy');
+        source.image.props.src = `data:image/jpeg;base64,${jpeg.toString('base64')}`;
+        const scene = sceneEnvelope(source.image, source.shape);
+        scene.schema.sequences = { 'com.tldraw.store': 5, 'com.tldraw.shape.image': 5, 'com.tldraw.shape.group': 0 };
+        const document = JSON.stringify(scene);
+        const saved = await canvas.saveScene({ projectPath, revision: 0, document });
+        expect(saved.canvas).toMatchObject({ revision: 1, scene: { revision: 1, document } });
+
+        const { ['page:page']: _page, ...withoutPage } = scene.store;
+        const futureScene = { ...scene, schema: { ...scene.schema, sequences: { 'com.tldraw.shape.image': 6 } } };
+        const rejected = [
+            [{}, 'Invalid project canvas document'],
+            [{ ...scene, store: withoutPage }, 'missing its document or pages'],
+            [{ ...scene, schema: { schemaVersion: 2, sequences: { 'com.tldraw.store': -1 } } }, 'Invalid project canvas schema'],
+            [{ ...scene, schema: { ...scene.schema, sequences: { 'com.tldraw.future': 1 } } }, 'Invalid project canvas schema'],
+            [futureScene, 'Invalid project canvas schema'],
+            [sceneEnvelope({ id: 'instance:session', typeName: 'instance', meta: {} }), 'Invalid project canvas record'],
+            [sceneEnvelope({ ...scene.store['user:canvas-guest'], imageUrl: 'https://example.test/avatar.png' }), 'Invalid project canvas user record'],
+            [sceneEnvelope(source.shape), 'Missing asset in project canvas shape'],
+            [sceneEnvelope(source.image, { ...source.shape, type: 'unknown' }), 'Unsupported project canvas shape type'],
+            [sceneEnvelope(source.image, { ...source.shape, parentId: source.shape.id }), 'shape ancestry'],
+            [sceneEnvelope(source.image, { ...source.shape, parentId: 'page:missing' }), 'Missing parent'],
+            [sceneEnvelope(source.image, source.shape, {
+                id: 'binding:arrow', type: 'arrow', typeName: 'binding', fromId: source.shape.id, toId: 'shape:missing',
+                props: {}, meta: {},
+            }), 'Missing shape in project canvas binding'],
+            [sceneEnvelope(source.image, source.shape, {
+                id: 'binding:unknown', type: 'unknown', typeName: 'binding', fromId: source.shape.id, toId: source.shape.id,
+                props: {}, meta: {},
+            }), 'Unsupported project canvas binding type'],
+            [sceneEnvelope({ ...source.image, props: { ...source.image.props, src: 'https://example.test/image.jpg' } }, source.shape), 'persistent asset references'],
+            [sceneEnvelope(source.image, { ...source.shape, props: { ...source.shape.props, richText: {
+                type: 'doc', content: [{ type: 'image', attrs: { src: 'https://example.test/tracker' } }],
+            } } }), 'persistent asset references'],
+        ] as const;
+        for (const [invalid, message] of rejected) {
+            await expect(canvas.saveScene({ projectPath, revision: 1, document: JSON.stringify(invalid) })).rejects.toThrow(message);
+        }
+        await expect(canvas.commitBundle({
+            projectPath, revision: saved.canvas.revision, bundleId: 'cf82c940-d251-4e90-a71d-a9a06cc4cc69',
+            bundle: { categories: [], assets: [], document: JSON.stringify(futureScene) },
+        })).rejects.toThrow('Invalid project canvas schema');
+        expect(await f.make().canvas.get({ projectPath })).toEqual(saved);
+    });
+
+    it('stages verified bundle images without publishing a partial import and safely replays a completed commit', async () => {
+        const f = await fixture();
+        const handlers = new Map<string, (input: unknown) => Promise<any>>();
+        const service = registerProjectGoalHandlers({ registerHandler: (name, handler) => handlers.set(name, handler) }, f.deps);
+        cleanups.push(() => service.dispose());
+        const projectPath = join(f.root, 'p');
+        const bundleId = '93ad3b1f-1276-4526-8a75-3ac42c0bae94';
+        const stage = handlers.get('goalProjectCanvasStageBundleAsset')!;
+        const install = handlers.get('goalProjectCanvasCommitBundle')!;
+        const category = { id: 'category-references', name: '参考素材' };
+        const assets = [image, jpeg].map((bytes, i) => {
+            const versionId = createHash('sha256').update(bytes).digest('hex');
+            return {
+                id: 'asset-' + versionId, versionId, size: bytes.length, name: i ? '侧视.jpg' : '正视.png',
+                mimeType: i ? 'image/jpeg' : 'image/png', x: i * 240, y: 32, categoryId: category.id,
+            };
+        });
+        const input = { projectPath, bundleId, revision: 0, bundle: { categories: [category], assets, document: JSON.stringify(sceneEnvelope()) } };
+        const original = await service.canvas.get({ projectPath });
+        const [front, side] = assets;
+        const frontUpload = { projectPath, bundleId, versionId: front.versionId, mimeType: front.mimeType, totalSize: front.size, offset: 0, base64: image.toString('base64') };
+        expect(await stage({ ...frontUpload, versionId: 'f'.repeat(64) })).toMatchObject({ success: false });
+        expect(await stage(frontUpload)).toEqual({ success: true, nextOffset: null });
+        expect(await stage(frontUpload)).toEqual({ success: true, nextOffset: null });
+        expect(await install({ ...input, projectPath: join(f.root, 'empty') })).toMatchObject({ success: false });
+        expect(await install(input)).toMatchObject({ success: false, error: expect.stringContaining('not been fully staged') });
+        expect(await service.canvas.get({ projectPath })).toEqual(original);
+        await expect(readFile(join(f.deps.storageDirectory, 'project-canvases', original.canvas.id, 'assets', front.versionId)))
+            .rejects.toMatchObject({ code: 'ENOENT' });
+
+        const sideOffset = 70;
+        const sideUpload = { projectPath, bundleId, versionId: side.versionId, mimeType: side.mimeType, totalSize: side.size };
+        const first = { ...sideUpload, offset: 0, base64: jpeg.subarray(0, sideOffset).toString('base64') };
+        const last = { ...sideUpload, offset: sideOffset, base64: jpeg.subarray(sideOffset).toString('base64') };
+        expect(await stage(last)).toMatchObject({ success: false });
+        expect(await stage(first)).toEqual({ success: true, nextOffset: sideOffset });
+        expect(await stage(first)).toEqual({ success: true, nextOffset: sideOffset });
+        expect(await stage(last)).toEqual({ success: true, nextOffset: null });
+        const saved = await install(input);
+        expect(saved).toMatchObject({ success: true, canvas: { revision: 1, categories: [category], assets,
+            scene: { revision: 1, document: input.bundle.document },
+        } });
+        expect(await install(input)).toEqual(saved);
+        const reopened = f.make().canvas;
+        expect(await reopened.get({ projectPath })).toEqual(saved);
+        expect(await reopened.asset({ projectPath, assetId: side.id, versionId: side.versionId, offset: 0 }))
+            .toMatchObject({ base64: jpeg.toString('base64'), nextOffset: null });
     });
 });

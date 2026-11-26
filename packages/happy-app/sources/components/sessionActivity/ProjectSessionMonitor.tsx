@@ -6,7 +6,7 @@ import { GoalBoardButton as Button } from '../goalBoard/GoalBoardButton';
 import type { ProjectSessionMonitorProps, ProjectTaskSessionsProps } from './ProjectSessionMonitor.types';
 /** Native retains the existing task action; the desktop monitor has no native UI. */
 export function ProjectSessionMonitor({ children }: ProjectSessionMonitorProps) { return <>{children}</>; }
-export function GlobalSessionEntry() { return null; }
+export function GlobalSessionEntry(_props: { compact?: boolean } = {}) { return null; }
 export function ProjectSessionSummary() { return null; }
 export function ProjectTaskSessions({ task, onFallback, disabled, offline }: ProjectTaskSessionsProps) {
     const { theme } = useUnistyles();

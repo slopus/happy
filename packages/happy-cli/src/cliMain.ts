@@ -42,6 +42,17 @@ import { PERSONAL_AGENT_RETIRED_MESSAGE } from './utils/retiredAgent'
 export async function runHappyCLI(): Promise<void> {
   const args = process.argv.slice(2)
 
+  if (args[0] === 'canvas-mcp') {
+    try {
+      const { runProjectCanvasMcp } = await import('./commands/projectCanvasMcp');
+      await runProjectCanvasMcp(args.slice(1));
+    } catch (error) {
+      process.stderr.write((error instanceof Error ? error.message : 'Project canvas MCP could not start') + '\n');
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
     logger.debug('Starting happy CLI with args: ', process.argv)

@@ -355,6 +355,39 @@ describe('ApiMachineClient socket reconnection', () => {
         }
     });
 
+    it('advertises the canvas for the connection after confirming its daemon state', async () => {
+        const machine = makeMachine();
+        const client = new ApiMachineClient('fake-token', machine);
+        const update = vi.spyOn(client, 'updateMachineMetadata').mockImplementation(async handler => {
+            machine.metadata = handler(machine.metadata);
+        });
+        let confirmDaemonState: (() => void) | undefined;
+        vi.spyOn(client, 'updateDaemonState').mockImplementation(handler => new Promise(resolve => {
+            confirmDaemonState = () => {
+                machine.daemonState = handler(machine.daemonState);
+                resolve();
+            };
+        }));
+        client.setRPCHandlers({
+            spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(),
+            projectGoals: { history: vi.fn(), send: vi.fn() },
+        });
+        client.connect();
+        mockSocket.connected = true;
+        try {
+            emitSocketEvent('connect');
+            expect(rpcHandlers.has('goalProjectCanvasGet')).toBe(true);
+            expect(update).not.toHaveBeenCalled();
+            confirmDaemonState!();
+            await vi.waitFor(() => expect(machine.metadata.projectCanvas).toEqual({
+                version: 1, daemonStartedAt: machine.daemonState?.startedAt,
+            }));
+            expect(machine.metadata.host).toBe('localhost');
+        } finally {
+            client.shutdown();
+        }
+    });
+
     it('removes work-wake subscriptions on reconnect, disconnect and shutdown', () => {
         const client = new ApiMachineClient('fake-token', makeMachine());
         client.connect();

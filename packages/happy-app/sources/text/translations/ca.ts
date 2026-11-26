@@ -345,6 +345,7 @@ export const ca: TranslationStructure = {
         referenceHint: "Només afegeix una referència; l’historial no es copia automàticament.",
     },
     bots: projectGoalsBase.bots,
+    projectCanvas: projectGoalsBase.projectCanvas,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
         conversationCounts: "Els estats corresponen a les converses carregades; carrega més historial per continuar",

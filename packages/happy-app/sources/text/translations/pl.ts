@@ -356,6 +356,7 @@ export const pl: TranslationStructure = {
         referenceHint: "Dodaje tylko odwołanie; historia nie jest kopiowana automatycznie.",
     },
     bots: projectGoalsBase.bots,
+    projectCanvas: projectGoalsBase.projectCanvas,
     projectGoals: {
         ...projectGoalsBase.projectGoals,
         conversationCounts: "Statusy dotyczą wczytanych rozmów; wczytaj więcej historii, aby kontynuować",
