@@ -1,0 +1,22 @@
+{
+    "description": "A user message Happy Agent stored before it recorded modes: it projects `mode: message.mode ?? null` (ApiMessageProjection.ts), so `mode` is present and null. Valid, though the client's UserMessage type has no null; `mode` missing altogether stays invalid (invalid/user-missing-mode.json).",
+    "message": {
+        "id": "msguserlegacymode00000001",
+        "role": "user",
+        "createdAt": 1764100000025,
+        "content": [
+            {
+                "type": "text",
+                "text": "A message from before modes were stored."
+            }
+        ],
+        "metadata": {
+            "userId": "kirill"
+        },
+        "status": "accepted",
+        "delivery": "queue",
+        "mode": null,
+        "runId": "run1aaaaaaaaaaaaaaaaaaaaa",
+        "profile": null
+    }
+}

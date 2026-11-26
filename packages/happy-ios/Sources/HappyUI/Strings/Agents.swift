@@ -152,15 +152,14 @@ extension Strings {
     /// A message that doesn't match the protocol schema, in its place.
     public static let messageFailedToDisplay = "Hey, this message failed to display."
     public static let reportBug = "Report bug"
-    /// Its bug report on GitHub, filled in: where it was and why it
-    /// failed, never what it said.
-    public static func messageFailedReport(server: String?, agentId: String?, messageId: String, problem: String) -> (title: String, body: String) {
+    /// Its bug report on GitHub, filled in: which agent and message, when
+    /// their IDs are plain, and where and how it failed, never what it said.
+    public static func messageFailedReport(agentId: String?, messageId: String?, problem: String) -> (title: String, body: String) {
         let body = """
         A message in a conversation failed to display on iOS.
 
-        - Server: \(server ?? "unknown")
         - Agent: \(agentId ?? "unknown")
-        - Message: \(messageId)
+        - Message: \(messageId ?? "unknown")
         - Problem: \(problem)
         """
         return ("iOS: a message failed to display", body)

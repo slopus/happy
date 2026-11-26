@@ -586,13 +586,23 @@ actor ChatPlanner {
         return ChatRowPlan(id: id, size: layout.size, items: items, hits: hits, accessibilityLabel: "\(Strings.messageFailedToDisplay)\n\n\(Strings.reportBug)")
     }
 
-    /// A new issue on the app's tracker, filled in.
+    /// A new issue on the app's tracker, filled in with nothing the message
+    /// chose: IDs only when `MessageSchema.reportable`, the problem as its
+    /// code and path (`MessageSchema.summary`) in a closed alphabet, the
+    /// whole at most `reportLimit` long. No server address.
     static func reportURL(_ unreadable: ChatItem.Unreadable, key: Key) -> URL {
-        let report = Strings.messageFailedReport(server: key.server, agentId: key.agentId, messageId: unreadable.messageId, problem: unreadable.problem)
+        let problem = String(String.UnicodeScalarView(unreadable.problem.unicodeScalars.filter { reportAlphabet.contains($0) }).prefix(160))
+        let report = Strings.messageFailedReport(agentId: MessageSchema.reportable(key.agentId), messageId: MessageSchema.reportable(unreadable.messageId),
+                                                 problem: problem.isEmpty ? "unknown" : problem)
         var components = URLComponents(url: Strings.Links.issues.appendingPathComponent("new"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "title", value: report.title), URLQueryItem(name: "body", value: report.body)]
+        if let url = components?.url, url.absoluteString.utf8.count <= reportLimit { return url }
+        components?.queryItems = [URLQueryItem(name: "title", value: report.title)]
         return components?.url ?? Strings.Links.issues
     }
+
+    static let reportLimit = 2_000
+    private static let reportAlphabet = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/*()+ ")
 
     /// happy-desktop's `AgentMessageActivity`: who it came from on one line,
     /// the message itself behind it. With the sender's one line on what it

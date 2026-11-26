@@ -10,14 +10,16 @@ struct MessageSchemaTests {
     struct Fixture {
         var name: String
         var message: JSONValue
+        /// What the schema says, in full; what a placeholder carries.
         var problem: String?
+        var summary: String?
     }
 
     static let fixtures: (valid: [Fixture], invalid: [Fixture]) = {
         let url = Bundle.module.url(forResource: "messages", withExtension: "json", subdirectory: "Fixtures/AgentMessages")!
         let root = try! JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
         func read(_ key: String) -> [Fixture] {
-            (root[key]?.arrayValue ?? []).map { Fixture(name: $0["name"]?.stringValue ?? "", message: $0["message"] ?? .null, problem: $0["problem"]?.stringValue) }
+            (root[key]?.arrayValue ?? []).map { Fixture(name: $0["name"]?.stringValue ?? "", message: $0["message"] ?? .null, problem: $0["problem"]?.stringValue, summary: $0["summary"]?.stringValue) }
         }
         return (read("valid"), read("invalid"))
     }()
@@ -30,7 +32,7 @@ struct MessageSchemaTests {
             return urls.sorted { $0.lastPathComponent < $1.lastPathComponent }.map { url in
                 let file = try! JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
                 let at = file["invalidAt"]?.arrayValue?.compactMap(\.stringValue) ?? []
-                return (Fixture(name: url.lastPathComponent, message: file["message"] ?? .null, problem: nil), at)
+                return (Fixture(name: url.lastPathComponent, message: file["message"] ?? .null, problem: nil, summary: nil), at)
             }
         }
         return (read("valid").map(\.fixture), read("invalid"))
@@ -43,11 +45,21 @@ struct MessageSchemaTests {
     /// The cluster's `request_user_input` cancelled by a chat reply.
     static var cancelledCard: JSONValue { fixtures.invalid.first { $0.message["id"]?.stringValue == "bad1" }!.message }
 
+    /// What `MessageSchema` finds in `value`, in full and as a report has it.
+    static func probe(_ value: JSONValue) throws -> SchemaProbe {
+        try JSONDecoder().decode(SchemaProbe.self, from: JSONEncoder().encode(value))
+    }
+
+    /// What a summary may hold: fixed words, list indices, `*`.
+    static func isSafe(_ summary: String) -> Bool {
+        summary.unicodeScalars.allSatisfy { CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_/*()+ ").contains($0) || CharacterSet.uppercaseLetters.contains($0) }
+    }
+
     @Test func fixturesAreThere() {
-        #expect(Self.fixtures.valid.count >= 8)
-        #expect(Self.fixtures.invalid.count >= 19)
-        #expect(Self.shared.valid.count >= 25)
-        #expect(Self.shared.invalid.count >= 8)
+        #expect(Self.fixtures.valid.count >= 10)
+        #expect(Self.fixtures.invalid.count >= 20)
+        #expect(Self.shared.valid.count >= 30)
+        #expect(Self.shared.invalid.count >= 9)
     }
 
     @Test func validMessagesDecode() throws {
@@ -79,7 +91,11 @@ struct MessageSchemaTests {
     @Test func invalidMessagesArePlaceholders() throws {
         for fixture in Self.fixtures.invalid {
             let message = try Self.decode(fixture.message)
-            #expect(message.unreadable == fixture.problem, "\(fixture.name)")
+            let probe = try Self.probe(fixture.message)
+            #expect(probe.detail == fixture.problem, "\(fixture.name)")
+            #expect(message.unreadable == probe.summary, "\(fixture.name)")
+            if let summary = fixture.summary { #expect(message.unreadable == summary, "\(fixture.name)") }
+            #expect(message.unreadable.map(Self.isSafe) == true, "\(fixture.name): \(message.unreadable ?? "")")
             #expect(message.content.isEmpty, "\(fixture.name)")
             #expect(message.metadata == nil && message.error == nil && message.failure == nil, "\(fixture.name)")
             if let id = fixture.message["id"]?.stringValue { #expect(message.id == id, "\(fixture.name)") }
@@ -99,8 +115,7 @@ struct MessageSchemaTests {
             let message = try Self.decode(fixture.message)
             let problem = try #require(message.unreadable, "\(fixture.name)")
             #expect(message.content.isEmpty, "\(fixture.name)")
-            let data = try JSONEncoder().encode(fixture.message)
-            let paths = try JSONDecoder().decode(SchemaProbe.self, from: data).paths
+            let paths = try Self.probe(fixture.message).paths
             for pointer in pointers {
                 #expect(paths.contains { $0 == pointer || $0.hasPrefix(pointer + "/") }, "\(fixture.name): \(pointer) not in \(paths); \(problem)")
             }
@@ -112,7 +127,8 @@ struct MessageSchemaTests {
     @Test func theSharedCancelledCardFailsOnItsAnswersAlone() throws {
         let card = try #require(Self.shared.invalid.first { $0.fixture.name == "cluster-cancelled-question.json" })
         let message = try Self.decode(card.fixture.message)
-        #expect(message.unreadable == "/content/1/presentation/answers: is null")
+        #expect(message.unreadable == "null at /content/1/presentation/answers")
+        #expect(try Self.probe(card.fixture.message).detail == "/content/1/presentation/answers: is null")
         let question = card.fixture.message["content"]?.arrayValue?[1]["presentation"]?["questions"]?.arrayValue?.first
         #expect(question?["id"] == .string("reviewer"))
         #expect(question?["header"] == .string(""))
@@ -123,7 +139,7 @@ struct MessageSchemaTests {
         #expect(message.id == "bad1")
         #expect(message.role == "agent")
         #expect(message.createdAt == 1764000000010)
-        #expect(message.unreadable == "/content/0/presentation/answers: is null")
+        #expect(message.unreadable == "null at /content/0/presentation/answers")
     }
 
     /// A history page with the bad card between two good messages: the
@@ -136,7 +152,8 @@ struct MessageSchemaTests {
         ])])])
         let response = try JSONDecoder().decode(AgentWire.MessagesResponse.self, from: JSONEncoder().encode(page))
         let messages = try #require(response.runs.first?.messages)
-        #expect(messages.map(\.id) == ["u1", "bad1", "unreadable/runs/0/messages/2", "a1"])
+        #expect(messages.map(\.id) == ["u1", "bad1", "local:unreadable:run:r1:2", "a1"])
+        #expect(AgentWire.Message.isLocal(messages[2].id))
         #expect(messages.map { $0.unreadable != nil } == [false, true, true, false])
         #expect(messages[0].content == [.text("Review the PR")])
         #expect(messages[3].content.count == 3)
@@ -179,7 +196,7 @@ struct MessageSchemaTests {
         let shown = loaded.filter { !Self.isTurnEnd($0) }
         #expect(shown.map(\.id) == ["u1", "bad1", "a9"])
         #expect(shown[0].text == "Review the PR")
-        #expect(shown[1].role == .unreadable(.init(messageId: "bad1", problem: "/content/0/presentation/answers: is null")))
+        #expect(shown[1].role == .unreadable(.init(messageId: "bad1", problem: "null at /content/0/presentation/answers")))
         #expect(shown[1].pieces.isEmpty)
         #expect(shown[2].text == "Done")
 
@@ -190,7 +207,100 @@ struct MessageSchemaTests {
         let live = try await latest.waits { $0.contains { $0.text == "After" } }
         let ids = live.filter { !Self.isTurnEnd($0) }.map(\.id)
         #expect(ids == ["u1", "bad1", "a9", "bad-live", "a10"])
+
+        // Two broken ones without IDs: each its own placeholder, by its event's cursor.
+        let broken: JSONValue = .object(["role": .string("agent"), "createdAt": .number(1764000000030), "metadata": .object([:]), "content": .null])
+        for cursor in ["c1", "c2"] {
+            await engine.spaces.externalEvent(.object(["type": .string("message.created"), "cursor": .string(cursor), "payload": .object(["agentId": .string("s"), "runId": .string("r1"), "message": broken])]))
+        }
+        await engine.spaces.externalEvent(.object(["type": .string("message.created"), "payload": .object(["agentId": .string("s"), "runId": .string("r1"), "message": Self.agentWords("a11", "Last")])]))
+        let more = try await latest.waits { $0.contains { $0.text == "Last" } }
+        #expect(more.filter { !Self.isTurnEnd($0) }.map(\.id).suffix(3) == ["local:unreadable:event:c1:0", "local:unreadable:event:c2:0", "a11"])
         await conversation.stop()
+    }
+
+    /// Cloud history from before it kept review pairs and wrapped tool
+    /// data: a verdict without `elevated` (elevation unknown), and a result
+    /// or arguments that are no object, read as opaque JSON.
+    @Test func oldCloudToolCallsDecode() throws {
+        let reviewed = try Self.decode(Self.fixtures.valid[8].message)
+        #expect(reviewed.unreadable == nil)
+        guard case .toolCall(_, _, _, _, _, _, _, let review) = reviewed.content[0] else { Issue.record("no call"); return }
+        #expect(review?.outcome == "denied")
+        #expect(review?.elevated == nil)
+        let cloud = try Self.decode(Self.fixtures.valid[9].message)
+        #expect(cloud.unreadable == nil)
+        #expect(cloud.content.count == 2)
+        for name in ["agent-tool-review-without-elevated.json", "agent-tool-result-string.json", "agent-tool-data-not-object.json"] {
+            #expect(Self.shared.valid.contains { $0.name == name }, "\(name)")
+        }
+    }
+
+    /// Cloud's string results, in a history read and in a live completion
+    /// of a call that ran: plain tool calls, never placeholders.
+    @Test func oldCloudToolResultsShowInHistoryAndLive() async throws {
+        let running: JSONValue = .object(["id": .string("a-live"), "role": .string("agent"), "createdAt": .number(1764000000040), "metadata": .object([:]),
+                                          "content": .array([.object(["type": .string("tool_call"), "id": .string("c40"), "name": .string("send_agent_message"), "status": .string("running")])])])
+        let server = SchemaServer(history: [Self.fixtures.valid[0].message, Self.fixtures.valid[9].message, running])
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "s")
+        let latest = SchemaLatest()
+        let updates = conversation.updates
+        let watching = Task {
+            for await snapshot in updates where snapshot.loaded { await latest.set(snapshot.items) }
+        }
+        defer { watching.cancel() }
+        await conversation.start()
+        await conversation.setVisible(true)
+        let loaded = try await latest.waits { $0.contains { $0.id.contains("c40") || $0.id == "a-live" } }
+        #expect(!loaded.contains { if case .unreadable = $0.role { true } else { false } }, "\(loaded.map(\.role))")
+
+        var done = running
+        if case .object(var root) = done {
+            root["content"] = .array([.object(["type": .string("tool_call"), "id": .string("c40"), "name": .string("send_agent_message"), "status": .string("completed"), "result": .string("Message delivered.")])])
+            done = .object(root)
+        }
+        await engine.spaces.externalEvent(.object(["type": .string("message.updated"), "payload": .object(["agentId": .string("s"), "runId": .string("r1"), "message": done])]))
+        let live = try await latest.waits { items in items.contains { if case .tool(let tool) = $0.role { tool.status == "completed" && $0.id.contains("c40") } else { false } } }
+        #expect(!live.contains { if case .unreadable = $0.role { true } else { false } }, "\(live.map(\.role))")
+        await conversation.stop()
+    }
+
+    /// Two pages whose runs each hold a message without an ID at the same
+    /// index: their placeholders' IDs are their runs', never shared.
+    @Test func placeholdersWithoutIdsAreNamedByWhereTheyCame() throws {
+        let broken: JSONValue = .object(["role": .string("agent"), "createdAt": .number(1), "content": .null])
+        func page(_ run: String) throws -> AgentWire.MessagesResponse {
+            let value: JSONValue = .object(["hasMore": .bool(false), "runs": .array([.object([
+                "id": .string(run), "status": .string("completed"), "startedAt": .number(0), "messages": .array([broken]),
+            ])])])
+            return try JSONDecoder().decode(AgentWire.MessagesResponse.self, from: JSONEncoder().encode(value))
+        }
+        let first = try page("r1").runs[0].messages?[0].id
+        let second = try page("r2").runs[0].messages?[0].id
+        #expect(first == "local:unreadable:run:r1:0")
+        #expect(second == "local:unreadable:run:r2:0")
+        let start: JSONValue = .object(["agent": .object(["id": .string("s"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([broken, broken])])
+        let pending = try JSONDecoder().decode(AgentWire.Bootstrap.self, from: JSONEncoder().encode(start)).pending?.map(\.id)
+        #expect(pending == ["local:unreadable:pending:0", "local:unreadable:pending:1"])
+        #expect(Conversation.decodeMessage(broken, cursor: "e1")?.id == "local:unreadable:event:e1:0")
+        #expect(Conversation.decodeMessage(broken)?.id != Conversation.decodeMessage(broken)?.id)
+    }
+
+    /// What the phone keeps reads back as it was written: a placeholder
+    /// stays one, and a person's message kept without the fields the
+    /// schema asks of the server's is not checked again.
+    @Test func keptMessagesReadBackUnchecked() throws {
+        let placeholder = try Self.decode(Self.cancelledCard)
+        let person = AgentWire.Message(id: "u9", role: "user", createdAt: 1, content: [.text("Hi")], status: "accepted")
+        let decoder = JSONDecoder()
+        decoder.userInfo[AgentWire.Message.stored] = true
+        let back = try decoder.decode([AgentWire.Message].self, from: JSONEncoder().encode([placeholder, person]))
+        #expect(back == [placeholder, person])
+        #expect(back[0].unreadable == "null at /content/0/presentation/answers")
+        // From the server, the same person's message is not what the schema asks.
+        #expect(try Self.decode(JSONValue.decode(JSONEncoder().encode(person))).unreadable != nil)
     }
 
     static func isTurnEnd(_ item: ChatItem) -> Bool {
@@ -205,11 +315,18 @@ struct MessageSchemaTests {
     }
 }
 
-/// Where `MessageSchema` finds one value's problems.
-private struct SchemaProbe: Decodable {
+/// Where `MessageSchema` finds one value's problems, and what it says of them.
+struct SchemaProbe: Decodable {
     var paths: [String] = []
+    var detail: String?
+    var summary: String?
     init(from decoder: Decoder) throws {
-        do { try MessageSchema.check(decoder) } catch let problems as MessageSchema.Problems { paths = problems.all.map(\.path) } catch let problem as MessageSchema.Problem { paths = [problem.path] }
+        do { try MessageSchema.check(decoder) } catch {
+            if let problems = error as? MessageSchema.Problems { paths = problems.all.map(\.path) }
+            if let problem = error as? MessageSchema.Problem { paths = [problem.path] }
+            detail = MessageSchema.detail(error)
+            summary = MessageSchema.summary(error)
+        }
     }
 }
 

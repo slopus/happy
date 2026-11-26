@@ -1,22 +1,23 @@
 {
-    "description": "Review metadata without its elevated half: a reviewed call carries both, an unreviewed call neither.",
+    "description": "A review whose risk this protocol does not have.",
     "invalidAt": ["/content/0/review"],
     "message": {
-        "id": "msgreviewhalf00000000001",
+        "id": "msgreviewmalformed0000001",
         "role": "agent",
         "createdAt": 1764100000000,
         "content": [
             {
                 "type": "tool_call",
-                "id": "toolreviewhalf0000000001",
+                "id": "toolreviewmalformed0000001",
                 "name": "exec_command",
                 "status": "completed",
                 "arguments": {},
                 "result": {},
+                "elevated": false,
                 "review": {
                     "outcome": "allowed",
                     "reason": "ok",
-                    "risk": "low",
+                    "risk": "extreme",
                     "userAuthorization": "high"
                 }
             }

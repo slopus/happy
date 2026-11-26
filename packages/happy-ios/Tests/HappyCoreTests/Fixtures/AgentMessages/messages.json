@@ -1,5 +1,5 @@
 {
- "comment": "Happy Agent messages checked against happy-agent-client sources/protocol/messages.ts. `problem` is what MessageSchema says an invalid one fails with. The shared cross-client set is ../ProtocolMessages.",
+ "comment": "Happy Agent messages checked against happy-agent-client sources/protocol/messages.ts. `problem` is what MessageSchema says, in full, an invalid one fails with; `summary` what a placeholder and its bug report carry. The shared cross-client set is ../ProtocolMessages.",
  "valid": [
   {
    "name": "user text, accepted",
@@ -402,6 +402,60 @@
      "fallbackProviders": []
     }
    }
+  },
+  {
+   "name": "old Cloud history: a review without elevated, elevation unknown",
+   "problem": "/content/0/review: comes without elevated",
+   "message": {
+    "id": "a-review",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c24",
+      "name": "exec_command",
+      "status": "completed",
+      "review": {
+       "outcome": "denied",
+       "reason": "No",
+       "risk": "low",
+       "userAuthorization": "unknown"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "old Cloud history: a string result and list arguments",
+   "message": {
+    "id": "a-cloud",
+    "role": "agent",
+    "createdAt": 1764000000030,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c30",
+      "name": "send_agent_message",
+      "status": "completed",
+      "arguments": [
+       "to",
+       "a"
+      ],
+      "result": "Message delivered."
+     },
+     {
+      "type": "tool_call",
+      "id": "c31",
+      "name": "exec_command",
+      "status": "completed",
+      "arguments": "ls",
+      "result": 42
+     }
+    ]
+   }
   }
  ],
  "invalid": [
@@ -449,7 +503,8 @@
       }
      }
     ]
-   }
+   },
+   "summary": "null at /content/0/presentation/answers"
   },
   {
    "name": "user_input answers that are not lists of strings",
@@ -482,7 +537,8 @@
       }
      }
     ]
-   }
+   },
+   "summary": "not_strings at /content/0/presentation/answers/*"
   },
   {
    "name": "user_input question without multiSelect",
@@ -597,8 +653,7 @@
    }
   },
   {
-   "name": "review without elevated",
-   "problem": "/content/0/review: comes without elevated",
+   "name": "elevated without review",
    "message": {
     "id": "bad10",
     "role": "agent",
@@ -610,15 +665,12 @@
       "id": "c24",
       "name": "exec_command",
       "status": "completed",
-      "review": {
-       "outcome": "denied",
-       "reason": "No",
-       "risk": "low",
-       "userAuthorization": "unknown"
-      }
+      "elevated": true
      }
     ]
-   }
+   },
+   "problem": "/content/0/elevated: comes without review",
+   "summary": "unpaired at /content/0/elevated"
   },
   {
    "name": "text that is a number",
@@ -661,7 +713,8 @@
       "id": "x"
      }
     ]
-   }
+   },
+   "summary": "unexpected_field at /content/0/*"
   },
   {
    "name": "a diff line of a kind the schema doesn't have",
@@ -786,7 +839,8 @@
   {
    "name": "not an object",
    "problem": "is not an object",
-   "message": "hello"
+   "message": "hello",
+   "summary": "not_object at /"
   },
   {
    "name": "unknown role",
@@ -797,7 +851,8 @@
     "content": [],
     "metadata": {}
    },
-   "problem": "/role: \"narrator\" is not one of agent, service, system, user"
+   "problem": "/role: \"narrator\" is not one of agent, service, system, user",
+   "summary": "not_one_of at /role"
   },
   {
    "name": "a block type the protocol does not have",
@@ -813,7 +868,33 @@
       "beam": 3
      }
     ]
-   }
+   },
+   "summary": "unknown_block at /content/0/type"
+  },
+  {
+   "name": "a malformed review",
+   "message": {
+    "id": "bad20",
+    "role": "agent",
+    "createdAt": 1,
+    "metadata": {},
+    "content": [
+     {
+      "type": "tool_call",
+      "id": "c25",
+      "name": "exec_command",
+      "status": "completed",
+      "elevated": false,
+      "review": {
+       "outcome": "denied",
+       "reason": "No",
+       "risk": "extreme",
+       "userAuthorization": "unknown"
+      }
+     }
+    ]
+   },
+   "problem": "/content/0/review/risk: \"extreme\" is not one of critical, high, low, medium"
   }
  ]
 }

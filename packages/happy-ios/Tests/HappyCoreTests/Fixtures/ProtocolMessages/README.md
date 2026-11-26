@@ -10,9 +10,20 @@ its `Message` TypeScript types for the envelope and the text, image, reasoning
 and tool-call blocks. Desktop's composition of them is
 `packages/happy-desktop-state/src/happyAgentConnection/messageValidate.ts`.
 
-Two departures from that schema keep an older client reading a newer server:
-a tool-call presentation of a type the client does not know is dropped rather
-than failing its message, and a question's `header` may be empty.
+Five departures from that schema. Two keep an older client reading a newer
+server: a tool-call presentation of a type the client does not know is dropped
+rather than failing its message, and a question's `header` may be empty. The
+third keeps old history readable: a user message's `mode` may be `null`, as
+Happy Agent sends it for a message stored before modes were
+(`ApiMessageProjection.ts`, `mode: message.mode ?? null`), although the
+published `UserMessage` type declares `mode: MessageMode`. `mode` must still
+be present. The fourth keeps old Happy Cloud history readable: a tool call
+may carry a well-formed `review` without `elevated`, and its elevation is
+then unknown. `elevated` without `review`, or a malformed `review`, still
+fails. The fifth also keeps old Happy Cloud history readable: a tool call's
+`arguments` and `result` may be any JSON value, not only an object (old
+Cloud history stores results such as `"Message delivered."` as they were),
+and a client reads them as opaque JSON.
 
 ## Layout
 
@@ -57,5 +68,14 @@ Each file is one JSON object:
   the client does not know is read as no presentation: the client shows the
   plain tool call and logs it once. A presentation of a known type with a bad
   shape, such as the card above, still fails the whole message.
+- `valid/user-legacy-null-mode.json` is such a user message with `mode: null`;
+  `invalid/user-missing-mode.json`, with no `mode` at all, still fails.
+- `valid/agent-tool-review-without-elevated.json` is a reviewed Happy Cloud
+  call from before its fix, with `review` and no `elevated`;
+  `invalid/elevated-without-review.json` and `invalid/review-malformed.json`
+  still fail.
+- `valid/agent-tool-result-string.json` is old Happy Cloud history with
+  string results; `valid/agent-tool-data-not-object.json` covers string,
+  array, number and null `arguments` and `result`.
 - A question's `header` may be empty: clients do not enforce the published
   schema's `minLength: 1` on it.

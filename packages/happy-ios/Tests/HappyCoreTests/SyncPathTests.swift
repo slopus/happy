@@ -25,6 +25,10 @@ private actor PathServer: AgentTransport {
     /// Messages changed in place since they were written.
     var edits: [String: String] = [:]
     var dropHeld = false
+    /// Whether a read says older runs remain.
+    var hasMore = false
+    /// Whether every request fails, as with no way to the computer.
+    var offline = false
 
     func setOwner(_ id: String) { owner = .string(id) }
     func holdDesktopReads(_ hold: Bool) {
@@ -50,6 +54,8 @@ private actor PathServer: AgentTransport {
     func edit(_ id: String, _ text: String) { edits[id] = text }
     /// The runs the computer holds now, replacing what it held.
     func setRuns(_ runs: [(id: String, messages: [String], ended: Bool)]) { self.runs = runs }
+    func setHasMore(_ more: Bool) { hasMore = more }
+    func setOffline(_ away: Bool) { offline = away }
     func lastStreamHeaders() -> [String: String]? { streams.last?.headers }
     func streamCount() -> Int { streams.count }
     func liveStreams() -> Int { openStreams }
@@ -75,12 +81,15 @@ private actor PathServer: AgentTransport {
         Data("event: hello\ndata: {\"cursor\":\"\(cursor)\",\"resumed\":\(resumed),\"gap\":false,\"daemonId\":\"d1\"}\n\n".utf8)
     }
 
+    /// `-` is a message that came without an ID, and broken.
     private func message(_ id: String) -> JSONValue {
-        .object(["id": .string(id), "role": .string(id.hasPrefix("u") ? "user" : "agent"), "createdAt": .number(1), "metadata": .object([:]),
-                 "content": .array([.object(["type": .string("text"), "text": .string(edits[id] ?? "text of \(id)")])])])
+        if id == "-" { return .object(["role": .string("agent"), "createdAt": .number(1), "metadata": .object([:]), "content": .null]) }
+        return MessageSchema.withUserFields(.object(["id": .string(id), "role": .string(id.hasPrefix("u") ? "user" : "agent"), "createdAt": .number(1), "metadata": .object([:]),
+                 "content": .array([.object(["type": .string("text"), "text": .string(edits[id] ?? "text of \(id)")])])]))
     }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        if offline { throw URLError(.notConnectedToInternet) }
         let value: JSONValue
         if path == "/v0/bootstrap/desktop" {
             desktopReads += 1
@@ -102,7 +111,7 @@ private actor PathServer: AgentTransport {
                 guard let index = runs.firstIndex(where: { $0.messages.contains(after) }) else { return .init(status: 404, body: Data("{}".utf8)) }
                 selected = Array(runs[(index + 1)...])
             }
-            value = .object(["cursor": .string(cursor), "hasMore": .bool(false), "runs": .array(selected.map { run in
+            value = .object(["cursor": .string(cursor), "hasMore": .bool(hasMore), "runs": .array(selected.map { run in
                 .object(["id": .string(run.id), "status": .string(run.ended ? "completed" : "running"), "startedAt": .number(1),
                          "endedAt": run.ended ? .number(2) : .null, "messages": .array(run.messages.map(message))])
             })])
@@ -118,6 +127,7 @@ private actor PathServer: AgentTransport {
     }
 
     func stream(path: String, credential: String, headers: [String: String]) throws -> HTTP1Stream {
+        if offline { throw URLError(.notConnectedToInternet) }
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
         streams.append((headers, continuation))
         openStreams += 1
@@ -163,6 +173,7 @@ final class SyncPathTests: XCTestCase {
         var saidFailure: Bool { lock.withLock { failed } }
         func set(_ snapshot: ChatSnapshot) { lock.withLock { value = snapshot; failed = failed || snapshot.error != nil } }
         var texts: [String] { snapshot.items.map(\.text) }
+        var placeholders: Int { snapshot.items.filter { if case .unreadable = $0.role { true } else { false } }.count }
     }
 
     private func open(_ engine: SyncEngine, _ client: AgentClient) async -> (Conversation, Shown) {
@@ -579,5 +590,116 @@ final class SyncPathTests: XCTestCase {
         let allowed = await engine.deliveryAllowed
         XCTAssertFalse(allowed)
         await engine.stop()
+    }
+
+    // MARK: Placeholders
+
+    /// The newest finished run ends in a message that came without an ID:
+    /// its placeholder's ID is the phone's own, so a short absence reads
+    /// after the run before it, never after that ID.
+    func testAPlaceholderWithoutAnIdIsNeverACursor() async throws {
+        let server = PathServer()
+        await server.setRuns([("r1", ["u1", "a1"], true), ("r2", ["u2", "-"], true)])
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        let (conversation, shown) = await open(engine, client)
+        try await eventually("settled") { let home = await Self.home(engine); return home.live && !home.syncing && shown.snapshot.synced && shown.placeholders == 1 }
+        let queries = await server.queries().count
+        await engine.pause()
+        await server.addRun("r3")
+        await engine.start()
+        try await eventually("the new run") { shown.texts.contains("text of a-r3") }
+        let asked = await server.queries().dropFirst(queries)
+        XCTAssertEqual(asked.count, 1, "\(asked)")
+        XCTAssertTrue(asked.first?.contains("after=a1") == true, "\(asked)")
+        XCTAssertFalse(asked.contains { $0.contains("local") }, "\(asked)")
+        XCTAssertEqual(shown.placeholders, 1)
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// What the phone kept is read back as it was written, unchecked: the
+    /// person's messages (kept without the `mode` and `delivery` the
+    /// schema asks of the server's) open offline as they were, and a
+    /// short absence after catches up with no placeholder among them.
+    func testAKeptChatOpensOfflineAndCatchesUpAsItWas() async throws {
+        let server = PathServer()
+        let directory = folder()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: directory)
+        await engine.start()
+        let (first, firstShown) = await open(engine, client)
+        try await eventually("settled") { firstShown.snapshot.synced && firstShown.texts.contains("text of u2") }
+        await first.stop()
+        await engine.stop()
+
+        await server.setOffline(true)
+        let away = SyncEngine(client: client, directory: directory)
+        await away.start()
+        let (offline, offlineShown) = await open(away, client)
+        try await eventually("kept") { offlineShown.texts.contains("text of u1") && offlineShown.texts.contains("text of a2") }
+        XCTAssertEqual(offlineShown.placeholders, 0, "\(offlineShown.snapshot.items.map(\.role))")
+        await offline.stop()
+        await away.stop()
+
+        await server.setOffline(false)
+        let back = SyncEngine(client: client, directory: directory)
+        await back.start()
+        let (again, shown) = await open(back, client)
+        try await eventually("settled") { let home = await Self.home(back); return home.live && !home.syncing && shown.snapshot.synced }
+        let queries = await server.queries().count
+        await back.pause()
+        await server.addRun("r3")
+        await back.start()
+        try await eventually("the new run") { shown.texts.contains("text of a-r3") }
+        let asked = await server.queries().dropFirst(queries)
+        XCTAssertTrue(asked.first?.contains("after=a2") == true, "\(asked)")
+        XCTAssertTrue(shown.texts.contains("text of u1"))
+        XCTAssertEqual(shown.placeholders, 0, "\(shown.snapshot.items.map(\.role))")
+        await again.stop()
+        await back.stop()
+    }
+
+    /// A chat kept by a build that read history unchecked is read again
+    /// whole once: the newest page alone, the older runs it kept let go
+    /// (read again, checked, as one scrolls back). One kept by this build
+    /// keeps them.
+    func testAChatKeptBeforeMessagesWereCheckedIsReadAgainWhole() async throws {
+        for old in [true, false] {
+            let server = PathServer()
+            await server.setHasMore(true)
+            let directory = folder()
+            let client = AgentClient(transport: server, token: "t")
+            let engine = SyncEngine(client: client, directory: directory)
+            await engine.start()
+            let (first, firstShown) = await open(engine, client)
+            try await eventually("settled") { firstShown.snapshot.synced && firstShown.texts.contains("text of a2") }
+            await first.stop()
+            await engine.stop()
+
+            // An older run, kept beside them, from before.
+            let writer = SyncEngine(client: client, directory: directory)
+            let key = "conversation:s"
+            let read = try await writer.keptConversation(key)
+            let kept = try XCTUnwrap(read)
+            guard case .object(var root) = try JSONValue.decode(kept), case .array(let runs)? = root["runs"], case .object(var messages)? = root["messages"] else { return XCTFail("kept") }
+            root["runs"] = .array([.object(["id": .string("r0"), "messageIds": .array([.string("x0")])])] + runs)
+            messages["x0"] = .object(["id": .string("x0"), "role": .string("agent"), "createdAt": .number(0), "content": .array([.object(["type": .string("text"), "text": .string("kept before")])])])
+            root["messages"] = .object(messages)
+            if old { root["schema"] = nil }
+            let owner = SyncStorage.ConversationOwner()
+            try await writer.claimConversation(key, owner: owner)
+            _ = try await writer.keepConversation(key, value: JSONEncoder().encode(JSONValue.object(root)), owner: owner)
+            await writer.stop()
+
+            let reopened = SyncEngine(client: client, directory: directory)
+            await reopened.start()
+            let (second, shown) = await open(reopened, client)
+            try await eventually("read") { shown.snapshot.synced && shown.texts.contains("text of a2") }
+            XCTAssertEqual(shown.texts.contains("kept before"), !old, "old: \(old)")
+            await second.stop()
+            await reopened.stop()
+        }
     }
 }

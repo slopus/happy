@@ -72,7 +72,8 @@ private actor GroupedHomeTransport: AgentTransport {
     private var events: AsyncThrowingStream<Data, Error>.Continuation?
     private var sequence = 1
 
-    private static let now = Date().timeIntervalSince1970 * 1000
+    // Whole milliseconds: the schema's `createdAt` is an integer.
+    private static let now = (Date().timeIntervalSince1970 * 1000).rounded()
 
     private static func agent(_ id: String, _ title: String, status: String = "idle", question: Bool = false, unread: Bool = false, line: String? = nil, subtasks: [[String: Any]] = [], parent: String? = nil, ago minutes: Double = 240) -> [String: Any] {
         var agent: [String: Any] = ["id": id, "workspaceId": "w-\(id)", "title": title, "status": status, "subtasks": subtasks, "lastActivityAt": now - minutes * 60_000]

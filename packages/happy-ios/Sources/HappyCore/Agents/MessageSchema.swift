@@ -24,23 +24,47 @@ import OSLog
 ///   message's `mode` may be `null`: happy-agent sends that for one stored
 ///   before modes were kept.
 /// - An `image` block's `data`: history may leave a large picture's bytes out.
+/// - A tool call's `arguments` and `result` past being JSON: Cloud history
+///   stored results as plain strings ("Message delivered.") before it
+///   wrapped them, and that history stays as it was.
+/// - A `review` without `elevated`: Cloud wrote verdicts without it before
+///   it kept the pair; elevation is then unknown. `elevated` without a
+///   `review`, or a malformed review, still fails.
 /// - `error`, `failure` and `notice` past being objects: `Failure` reads
 ///   them, kinds it doesn't know included.
 /// - A `gen_ui` document past being an object, and a media `tree` past its
 ///   `root` being a list: their own readers check them.
 public enum MessageSchema {
+    /// What kind of problem, as a fixed word a bug report may carry.
+    public enum Code: String, Sendable {
+        case missing, null
+        case notString = "not_string", notBoolean = "not_boolean", notNumber = "not_number", notInteger = "not_integer"
+        case notObject = "not_object", notList = "not_list", notStrings = "not_strings"
+        case notOneOf = "not_one_of", unknownBlock = "unknown_block", unexpected = "unexpected_field"
+        case unpaired, state, malformed
+    }
+
     /// Why a message doesn't match the schema: where, as a JSON pointer
-    /// into the message, and what is wrong.
+    /// into the message, and what is wrong. `problem` and `path` may hold
+    /// what the message says (a value, a key it chose); `code` and
+    /// `safePath`, where its own keys are `*`, never do.
     public struct Problem: Error, Equatable, Sendable, CustomStringConvertible {
         public var path: String
         public var problem: String
+        public var code: Code
+        public var safePath: String
 
-        public init(path: String, problem: String) {
+        public init(path: String, problem: String, code: Code, safePath: String) {
             self.path = path
             self.problem = problem
+            self.code = code
+            self.safePath = safePath
         }
 
         public var description: String { path.isEmpty ? problem : "\(path): \(problem)" }
+
+        /// `code` at `safePath`, e.g. `null at /content/1/presentation/answers`.
+        public var summary: String { "\(code.rawValue) at \(safePath.isEmpty ? "/" : safePath)" }
     }
 
     /// Every problem found: one per field of the message, and the first in
@@ -48,10 +72,16 @@ public enum MessageSchema {
     public struct Problems: Error, Equatable, Sendable, CustomStringConvertible {
         public var all: [Problem]
 
-        /// The first three, for a log line and a bug report.
+        /// The first three, for a log line.
         public var description: String {
             let shown = all.prefix(3).map(\.description).joined(separator: "; ")
             return all.count > 3 ? "\(shown); and \(all.count - 3) more" : shown
+        }
+
+        /// The first, safely, and how many more.
+        public var summary: String {
+            guard let first = all.first else { return Code.malformed.rawValue }
+            return all.count > 1 ? "\(first.summary) (+\(all.count - 1) more)" : first.summary
         }
     }
 
@@ -60,7 +90,7 @@ public enum MessageSchema {
         let message = try Object(decoder, path: "")
         var found: [Problem] = []
         func collect(_ step: () throws -> Void) {
-            do { try step() } catch let problem as Problem { found.append(problem) } catch { found.append(Problem(path: "", problem: "\(error)")) }
+            do { try step() } catch let problem as Problem { found.append(problem) } catch { found.append(Problem(path: "", problem: "\(error)", code: .malformed, safePath: "")) }
         }
         collect { _ = try message.string("id") }
         collect { _ = try message.integer("createdAt") }
@@ -141,7 +171,7 @@ public enum MessageSchema {
             // Retired, kept as opaque history.
             break
         case let type:
-            throw block.problem("type", "\"\(type.prefix(40))\" is not a block type")
+            throw block.problem("type", .unknownBlock, "\"\(type.prefix(40))\" is not a block type")
         }
     }
 
@@ -149,15 +179,13 @@ public enum MessageSchema {
         _ = try block.string("id")
         _ = try block.string("name")
         _ = try block.oneOf("status", ["running", "completed", "failed"])
-        try block.optionalObject("arguments") { _ in }
-        try block.optionalObject("result") { _ in }
+        // `arguments` and `result` are any JSON: Cloud history holds plain
+        // strings from before it wrapped them.
         try block.optionalObject("presentation", check: presentation)
-        // Review metadata comes as one complete pair or not at all.
+        // Review metadata comes as a pair. Cloud wrote a verdict without
+        // `elevated` before it kept one; elevation is then unknown.
         let elevated = try block.optionalBool("elevated")
-        let reviewed = block.has("review")
-        guard (elevated != nil) == reviewed else {
-            throw block.problem(reviewed ? "review" : "elevated", reviewed ? "comes without elevated" : "comes without review")
-        }
+        if elevated != nil, !block.has("review") { throw block.problem("elevated", .unpaired, "comes without review") }
         try block.optionalObject("review") { review in
             _ = try review.string("reason")
             switch try review.oneOf("outcome", ["allowed", "denied", "unproven"]) {
@@ -176,19 +204,19 @@ public enum MessageSchema {
         _ = try block.integer("startedAt")
         let status = try block.oneOf("status", ["running", "completed", "failed"])
         try block.nullable("tokensAfter") { object, key in
-            guard status == "completed" else { throw object.problem(key, "is not null while \(status)") }
+            guard status == "completed" else { throw object.problem(key, .state, "is not null while \(status)") }
             _ = try object.integer(key)
         }
         try block.nullable("failureReason") { object, key in
-            guard status == "failed" else { throw object.problem(key, "is not null while \(status)") }
+            guard status == "failed" else { throw object.problem(key, .state, "is not null while \(status)") }
             _ = try object.string(key)
         }
         try block.nullable("completedAt") { object, key in
-            guard status != "running" else { throw object.problem(key, "is not null while running") }
+            guard status != "running" else { throw object.problem(key, .state, "is not null while running") }
             _ = try object.integer(key)
         }
-        if status == "failed", try block.nullableString("failureReason") == nil { throw block.problem("failureReason", "is null on a failed compaction") }
-        if status != "running", !block.has("completedAt") { throw block.problem("completedAt", "is null once settled") }
+        if status == "failed", try block.nullableString("failureReason") == nil { throw block.problem("failureReason", .state, "is null on a failed compaction") }
+        if status != "running", !block.has("completedAt") { throw block.problem("completedAt", .state, "is null once settled") }
     }
 
     private static func presentation(_ presentation: Object) throws {
@@ -248,7 +276,7 @@ public enum MessageSchema {
             try presentation.optionalObject("layout") { layout in
                 switch try layout.string("type") {
                 case "columns":
-                    guard [1, 2].contains(try layout.integer("columns")) else { throw layout.problem("columns", "is not 1 or 2") }
+                    guard [1, 2].contains(try layout.integer("columns")) else { throw layout.problem("columns", .notOneOf, "is not 1 or 2") }
                 case "tree": try layout.array("root") { _, _ in }
                 default: break
                 }
@@ -276,7 +304,8 @@ public enum MessageSchema {
                 }
             }
             try presentation.object("answers") { answers in
-                for key in answers.keys { try answers.strings(key) }
+                // Keyed by question IDs the message chose: `*` in a report.
+                for key in answers.keys { try answers.strings(key, dynamic: true) }
             }
         default:
             // `ui` and `quick_replies` are opaque history; anything else is
@@ -336,15 +365,19 @@ public enum MessageSchema {
     struct Object {
         let container: KeyedDecodingContainer<Key>
         let path: String
+        /// `path` with the keys the message chose as `*`.
+        let safePath: String
 
         init(_ decoder: Decoder, path: String) throws {
-            do { container = try decoder.container(keyedBy: Key.self) } catch { throw Problem(path: path, problem: "is not an object") }
+            do { container = try decoder.container(keyedBy: Key.self) } catch { throw Problem(path: path, problem: "is not an object", code: .notObject, safePath: path) }
             self.path = path
+            safePath = path
         }
 
-        init(_ container: KeyedDecodingContainer<Key>, path: String) {
+        init(_ container: KeyedDecodingContainer<Key>, path: String, safePath: String) {
             self.container = container
             self.path = path
+            self.safePath = safePath
         }
 
         var keys: [String] { container.allKeys.map(\.stringValue) }
@@ -352,7 +385,15 @@ public enum MessageSchema {
         /// The JSON pointer to `key` (RFC 6901).
         func at(_ key: String) -> String { "\(path)/\(key.replacingOccurrences(of: "~", with: "~0").replacingOccurrences(of: "/", with: "~1"))" }
 
-        func problem(_ key: String, _ problem: String) -> Problem { Problem(path: at(key), problem: problem) }
+        /// `at(key)` for a report: `*` for a key the message chose
+        /// (`dynamic`); the schema's own names are fixed.
+        func safeAt(_ key: String, dynamic: Bool = false) -> String {
+            dynamic ? "\(safePath)/*" : "\(safePath)/\(key.replacingOccurrences(of: "~", with: "~0").replacingOccurrences(of: "/", with: "~1"))"
+        }
+
+        func problem(_ key: String, _ code: Code, _ problem: String, dynamic: Bool = false) -> Problem {
+            Problem(path: at(key), problem: problem, code: code, safePath: safeAt(key, dynamic: dynamic))
+        }
 
         /// Present and not null.
         func has(_ key: String) -> Bool {
@@ -361,30 +402,30 @@ public enum MessageSchema {
         }
 
         private func required(_ key: String) throws {
-            guard container.contains(Key(key)) else { throw problem(key, "is missing") }
-            guard has(key) else { throw problem(key, "is null") }
+            guard container.contains(Key(key)) else { throw problem(key, .missing, "is missing") }
+            guard has(key) else { throw problem(key, .null, "is null") }
         }
 
-        private func read<T: Decodable>(_ type: T.Type, _ key: String, _ name: String) throws -> T {
+        private func read<T: Decodable>(_ type: T.Type, _ key: String, _ code: Code, _ name: String) throws -> T {
             try required(key)
-            do { return try container.decode(type, forKey: Key(key)) } catch { throw problem(key, "is not \(name)") }
+            do { return try container.decode(type, forKey: Key(key)) } catch { throw problem(key, code, "is not \(name)") }
         }
 
-        func string(_ key: String) throws -> String { try read(String.self, key, "a string") }
+        func string(_ key: String) throws -> String { try read(String.self, key, .notString, "a string") }
 
-        func bool(_ key: String) throws -> Bool { try read(Bool.self, key, "a boolean") }
+        func bool(_ key: String) throws -> Bool { try read(Bool.self, key, .notBoolean, "a boolean") }
 
-        func number(_ key: String) throws -> Double { try read(Double.self, key, "a number") }
+        func number(_ key: String) throws -> Double { try read(Double.self, key, .notNumber, "a number") }
 
         func integer(_ key: String) throws -> Double {
             let value = try number(key)
-            guard value.rounded() == value else { throw problem(key, "is not an integer") }
+            guard value.rounded() == value else { throw problem(key, .notInteger, "is not an integer") }
             return value
         }
 
         func oneOf(_ key: String, _ values: Set<String>) throws -> String {
             let value = try string(key)
-            guard values.contains(value) else { throw problem(key, "\"\(value.prefix(40))\" is not one of \(values.sorted().joined(separator: ", "))") }
+            guard values.contains(value) else { throw problem(key, .notOneOf, "\"\(value.prefix(40))\" is not one of \(values.sorted().joined(separator: ", "))") }
             return value
         }
 
@@ -395,12 +436,12 @@ public enum MessageSchema {
 
         /// Required, and either null or what `check` reads.
         func nullable(_ key: String, check: (Object, String) throws -> Void) throws {
-            guard container.contains(Key(key)) else { throw problem(key, "is missing") }
+            guard container.contains(Key(key)) else { throw problem(key, .missing, "is missing") }
             if has(key) { try check(self, key) }
         }
 
         func nullableString(_ key: String) throws -> String? {
-            guard container.contains(Key(key)) else { throw problem(key, "is missing") }
+            guard container.contains(Key(key)) else { throw problem(key, .missing, "is missing") }
             return has(key) ? try string(key) : nil
         }
 
@@ -412,8 +453,8 @@ public enum MessageSchema {
         func object(_ key: String, check: (Object) throws -> Void) throws {
             try required(key)
             let nested: KeyedDecodingContainer<Key>
-            do { nested = try container.nestedContainer(keyedBy: Key.self, forKey: Key(key)) } catch { throw problem(key, "is not an object") }
-            try check(Object(nested, path: at(key)))
+            do { nested = try container.nestedContainer(keyedBy: Key.self, forKey: Key(key)) } catch { throw problem(key, .notObject, "is not an object") }
+            try check(Object(nested, path: at(key), safePath: safeAt(key)))
         }
 
         func optionalObject(_ key: String, check: (Object) throws -> Void) throws {
@@ -423,13 +464,13 @@ public enum MessageSchema {
         func array(_ key: String, check: (Object, Int) throws -> Void) throws {
             try required(key)
             var list: UnkeyedDecodingContainer
-            do { list = try container.nestedUnkeyedContainer(forKey: Key(key)) } catch { throw problem(key, "is not a list") }
+            do { list = try container.nestedUnkeyedContainer(forKey: Key(key)) } catch { throw problem(key, .notList, "is not a list") }
             var index = 0
             while !list.isAtEnd {
-                let path = "\(at(key))/\(index)"
+                let path = "\(at(key))/\(index)", safePath = "\(safeAt(key))/\(index)"
                 let element: KeyedDecodingContainer<Key>
-                do { element = try list.nestedContainer(keyedBy: Key.self) } catch { throw Problem(path: path, problem: "is not an object") }
-                try check(Object(element, path: path), index)
+                do { element = try list.nestedContainer(keyedBy: Key.self) } catch { throw Problem(path: path, problem: "is not an object", code: .notObject, safePath: safePath) }
+                try check(Object(element, path: path, safePath: safePath), index)
                 index += 1
             }
         }
@@ -438,51 +479,99 @@ public enum MessageSchema {
             if has(key) { try array(key, check: check) }
         }
 
-        /// A list of strings.
-        func strings(_ key: String) throws {
-            try required(key)
-            do { _ = try container.decode([String].self, forKey: Key(key)) } catch { throw problem(key, "is not a list of strings") }
+        /// A list of strings; `dynamic` when the message chose `key`.
+        func strings(_ key: String, dynamic: Bool = false) throws {
+            guard container.contains(Key(key)) else { throw problem(key, .missing, "is missing", dynamic: dynamic) }
+            guard has(key) else { throw problem(key, .null, "is null", dynamic: dynamic) }
+            do { _ = try container.decode([String].self, forKey: Key(key)) } catch { throw problem(key, .notStrings, "is not a list of strings", dynamic: dynamic) }
         }
 
         /// Fails on any field outside `allowed`.
         func only(_ allowed: Set<String>) throws {
-            if let extra = keys.first(where: { !allowed.contains($0) }) { throw problem(extra, "is not allowed") }
+            if let extra = keys.first(where: { !allowed.contains($0) }) { throw problem(extra, .unexpected, "is not allowed", dynamic: true) }
         }
     }
 
     // MARK: Reporting
 
-    /// One short line for why a message failed, from the schema or, for
-    /// what it let through, the decoder: never the value itself.
-    /// `depth` is how deep the message sits in what was decoded.
-    static func describe(_ error: Error, under depth: Int = 0) -> String {
+    /// Why a message failed, in full, for the log: where, from the schema
+    /// or, for what it let through, the decoder. It may quote the message
+    /// (a value, a key it chose). `depth` is how deep the message sits in
+    /// what was decoded.
+    static func detail(_ error: Error, under depth: Int = 0) -> String {
         if let problems = error as? Problems { return problems.description }
         if let problem = error as? Problem { return problem.description }
-        guard let error = error as? DecodingError else { return "\(type(of: error))" }
+        guard let (path, code) = decoding(error, under: depth, safe: false) else { return "\(type(of: error))" }
+        return path.isEmpty ? code : "\(path): \(code)"
+    }
+
+    /// Why a message failed as a report may carry it: a fixed code and the
+    /// path with every key the message chose as `*`
+    /// (`null at /content/1/presentation/answers`). Never a value.
+    static func summary(_ error: Error, under depth: Int = 0) -> String {
+        if let problems = error as? Problems { return problems.summary }
+        if let problem = error as? Problem { return problem.summary }
+        guard let (path, code) = decoding(error, under: depth, safe: true) else { return Code.malformed.rawValue }
+        return "\(code) at \(path.isEmpty ? "/" : path)"
+    }
+
+    /// A decoder's error as a path and a code; `safe` leaves only list
+    /// indices and the schema's field names in the path.
+    private static func decoding(_ error: Error, under depth: Int, safe: Bool) -> (path: String, code: String)? {
+        guard let error = error as? DecodingError else { return nil }
         let context: DecodingError.Context
-        let problem: String
+        let code: Code
         switch error {
-        case .keyNotFound(let key, let found): context = found; problem = "\(key.stringValue) is missing"
-        case .valueNotFound(_, let found): context = found; problem = "is null"
-        case .typeMismatch(let type, let found): context = found; problem = "is not \(type)"
-        case .dataCorrupted(let found): context = found; problem = "is malformed"
-        @unknown default: return "is malformed"
+        case .keyNotFound(_, let found): context = found; code = .missing
+        case .valueNotFound(_, let found): context = found; code = .null
+        case .typeMismatch(_, let found): context = found; code = .malformed
+        case .dataCorrupted(let found): context = found; code = .malformed
+        @unknown default: return ("", Code.malformed.rawValue)
         }
-        let path = context.codingPath.dropFirst(depth).map { "/" + ($0.intValue.map(String.init) ?? $0.stringValue) }.joined()
-        return path.isEmpty ? problem : "\(path): \(problem)"
+        var keys = Array(context.codingPath.dropFirst(depth))
+        if case .keyNotFound(let key, _) = error { keys.append(key) }
+        let path: String = keys.map { key -> String in
+            if let index = key.intValue { return "/\(index)" }
+            return safe && !fields.contains(key.stringValue) ? "/*" : "/\(key.stringValue)"
+        }.joined()
+        return (path, code.rawValue)
+    }
+
+    /// The field names the schema itself has; any other key in a decoder's
+    /// path came from the message.
+    static let fields: Set<String> = [
+        "id", "createdAt", "role", "metadata", "content", "status", "delivery", "mode", "runId", "profile", "clientMetadata", "error", "failure", "notice",
+        "providerId", "modelId", "senderAgentId", "senderAgentExplanation", "userId", "pipelineRun", "effort", "serviceTier", "permissionMode",
+        "type", "text", "mimeType", "data", "attachment", "name", "kind", "thumbhash", "size", "width", "height", "durationMs", "scale",
+        "arguments", "result", "presentation", "elevated", "review", "reason", "outcome", "risk", "userAuthorization", "before", "after", "beforeMessageId",
+        "trigger", "tokensBefore", "tokensAfter", "startedAt", "completedAt", "failureReason", "operations", "target", "path", "query", "command",
+        "output", "terminalId", "input", "files", "added", "deleted", "hunks", "newStart", "oldStart", "lines", "language", "omittedLines", "omittedFiles",
+        "sources", "title", "url", "model", "agentId", "items", "layout", "columns", "root", "document", "artifactId", "version", "artifactType", "shows",
+        "display", "questions", "header", "question", "multiSelect", "options", "label", "description", "answers", "source", "absolutePath",
+    ]
+
+    /// `id` if a report may carry it: one the server gave (never
+    /// `AgentWire.Message.localId`'s), of the letters, digits, `-` and `_`
+    /// server IDs are made of, at most 64 long.
+    public static func reportable(_ id: String?) -> String? {
+        guard let id, !id.isEmpty, id.utf8.count <= 64, !AgentWire.Message.isLocal(id),
+              id.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) && $0.isASCII || $0 == "-" || $0 == "_" }) else { return nil }
+        return id
     }
 
     private static let reported = Reported()
 
     /// Logs a message that failed, once per message: a history read and
     /// every update of it would otherwise say it again. The payload is
-    /// never logged, only where it failed.
-    static func report(messageId: String, problem: String) {
+    /// never logged, only where it failed; the detail, which may quote it,
+    /// is private.
+    static func report(messageId: String, summary: String, detail: String) {
         guard reported.insert(messageId) else { return }
+        let id = reportable(messageId) ?? "unnamed"
         #if canImport(OSLog)
-        logger.error("Message \(messageId, privacy: .public) failed to display: \(problem, privacy: .public)")
+        logger.error("Message \(id, privacy: .public) failed to display: \(summary, privacy: .public); \(detail, privacy: .private)")
         #else
-        print("Message \(messageId) failed to display: \(problem)")
+        print("Message \(id) failed to display: \(summary)")
         #endif
     }
 
@@ -490,7 +579,7 @@ public enum MessageSchema {
     static func report(unknownPresentation type: String) {
         guard reported.insert("presentation/\(type)") else { return }
         #if canImport(OSLog)
-        logger.notice("Presentation \(type, privacy: .public) is unknown; shown as a plain tool call")
+        logger.notice("Presentation \(type, privacy: .private) is unknown; shown as a plain tool call")
         #else
         print("Presentation \(type) is unknown; shown as a plain tool call")
         #endif
