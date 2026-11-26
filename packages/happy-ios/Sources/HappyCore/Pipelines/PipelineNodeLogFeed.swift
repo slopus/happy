@@ -138,6 +138,8 @@ public actor PipelineNodeLogFeed {
             // A node that hasn't started has no log yet.
             state.loading = false
             publish()
+        } catch where AccountFeatures.refused(error) {
+            // Turned off for the account: the screen leaves, with nothing said.
         } catch {
             state.loading = false
             state.failed = true

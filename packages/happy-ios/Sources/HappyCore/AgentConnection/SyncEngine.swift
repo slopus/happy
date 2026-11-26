@@ -28,6 +28,9 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var draining = false
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
+    /// What the person turned off for their account (cloud only): what
+    /// is off is listed nowhere, and its screens close.
+    public var features = AccountFeatures()
     public init() {}
 }
 
@@ -75,6 +78,14 @@ public actor SyncEngine {
     /// The server runs pipelines (`capabilities.pipelines`, cloud only):
     /// home lists them under Plugins. Kept beside `plugins`.
     private var pipelines = false
+    /// What the person turned off for their whole account (cloud only):
+    /// read on every connect and on coming back to the foreground,
+    /// replaced by each `account.features.updated`, kept for the next
+    /// launch. A route that answers `403 feature_not_installed` turns its
+    /// feature off here too.
+    private var features = AccountFeatures()
+    /// One read of them at a time; news meanwhile reads them once more after.
+    private var featuresRead = (reading: false, again: false)
     private var feedFollowing: Task<Void, Never>?
     /// Everything a Feed row can name (`FeedDirectory`), as last made, and
     /// what it is made from beside the bootstrap.
@@ -259,6 +270,7 @@ public actor SyncEngine {
         lookups = FeedLookups(routes: client, keep: keep)
         forward.engine = self
         keep.engine = self
+        client.featureRefusals.listen { [weak self] feature in Task { await self?.refused(feature) } }
     }
 
     public func snapshots() -> AsyncStream<HomeSnapshot> {
@@ -358,6 +370,7 @@ public actor SyncEngine {
             await eventStream.race(after: streamCursor)
         } else { start() }
         await release?()
+        readFeatures()
     }
 
     /// Whether this pause still owns the engine when done: no other pause
@@ -498,6 +511,9 @@ public actor SyncEngine {
                 plugins = kept.value["plugins"]?.boolValue == true
                 pipelines = kept.value["pipelines"]?.boolValue == true
             }
+            if cloud, let kept = try await database.checkpoint("features") {
+                features = AccountFeatures(AccountFeatures.read(kept.value))
+            }
             if users.isEmpty, let kept = try await database.checkpoint("users"),
                let list = try? JSONDecoder().decode([Lossy<TeamUser>].self, from: JSONEncoder().encode(kept.value)) {
                 users = Dictionary(list.compactMap(\.value).map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
@@ -608,6 +624,7 @@ public actor SyncEngine {
                         }
                         publish()
                         profileChanged()
+                        readFeatures()
                         await feed.opened()
                         await lookups.opened()
                         // The documents on screen, as the chat on screen.
@@ -649,6 +666,10 @@ public actor SyncEngine {
                        streamDaemon == nil || event["payload"]?["daemonId"]?.stringValue.map({ $0 == streamDaemon }) != false {
                         snapshot.draining = true
                         publish()
+                    }
+                    if cloud, event["type"] == .string(AccountFeatures.updated), let list = AccountFeatures.read(event["payload"]) {
+                        if featuresRead.reading { featuresRead.again = true }
+                        await adopt(AccountFeatures(list))
                     }
                     if event["type"] == .string("profile.updated") {
                         profileChanged()
@@ -945,6 +966,48 @@ public actor SyncEngine {
         await wantReferences()
     }
 
+    // MARK: Account features
+
+    /// Reads the account's features again; a read that fails keeps what
+    /// was read, and a server without them has every feature on.
+    private func readFeatures() {
+        guard cloud, !stopped else { return }
+        guard !featuresRead.reading else { featuresRead.again = true; return }
+        featuresRead = (true, false)
+        let client = client
+        Task {
+            let read: AccountFeatures?
+            do { read = AccountFeatures(try await client.accountFeatures()) } catch { read = nil }
+            await self.landFeatures(read)
+        }
+    }
+
+    private func landFeatures(_ read: AccountFeatures?) async {
+        let again = featuresRead.again
+        featuresRead = (false, false)
+        // News came while it was on its way: what it read may be older.
+        if again { readFeatures(); return }
+        if let read, !stopped { await adopt(read) }
+    }
+
+    private func adopt(_ next: AccountFeatures) async {
+        guard next != features else { return }
+        features = next
+        let kept: JSONValue = next.list.map { list in
+            .object(["features": .array(list.map { .object(["id": .string($0.id), "name": .string($0.name), "enabled": .bool($0.enabled)]) })])
+        } ?? .object([:])
+        try? await database().commit(.init(value: kept, cursor: nil), named: "features")
+        derive()
+    }
+
+    /// A route answered that `feature` is off for the account: it is off
+    /// here at once, and the list is read again.
+    private func refused(_ feature: String) async {
+        guard cloud, !stopped, features.enabled(feature) else { return }
+        await adopt(features.turningOff(feature))
+        readFeatures()
+    }
+
     // MARK: People
 
     /// Someone's name or picture changed (`profile.updated`): the signed-in
@@ -1081,8 +1144,9 @@ public actor SyncEngine {
 
     private func derive(publishing: Bool = true) {
         snapshot.loaded = desktop != nil
+        snapshot.features = features
         if let desktop {
-            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins, pipelines: pipelines))
+            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins, pipelines: pipelines && features.enabled(AccountFeatures.pipelines)))
             agentRows = [:]
             for index in snapshot.allRows.indices {
                 snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }

@@ -35,6 +35,8 @@ public final class AgentClient: Sendable {
     /// Chat history reads on their way: what waits for home waits for them
     /// (`SyncEngine`'s P2 stages, a picture's bytes).
     public let chatReads = ChatReads()
+    /// Routes of a feature the person turned off for their account.
+    public let featureRefusals = FeatureRefusals()
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport
@@ -70,6 +72,7 @@ public final class AgentClient: Sendable {
             // An upload whose progress is heard.
             response = try await transport.send(method: method, path: path, credential: token, body: body, category: category, sent: sent)
             if response.status == 401 { throw AgentClientError.revoked }
+            featureRefusals.heard(response)
             return try Self.checked(response)
         }
         if let sent, let body {
@@ -78,6 +81,7 @@ public final class AgentClient: Sendable {
             response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers, category: category)
         }
         if response.status == 401 { throw AgentClientError.revoked }
+        featureRefusals.heard(response)
         return try Self.checked(response)
     }
 

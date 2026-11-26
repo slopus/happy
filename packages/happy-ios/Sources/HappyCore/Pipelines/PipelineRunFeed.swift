@@ -189,6 +189,8 @@ public actor PipelineRunFeed {
             state.run = nil
             state.loading = false
             publish()
+        } catch where AccountFeatures.refused(error) {
+            // Turned off for the account: the screen leaves, with nothing said.
         } catch {
             state.failed = true
             state.loading = false
@@ -221,7 +223,12 @@ public actor PipelineRunFeed {
         }
         state.graph = .loading
         publish()
-        let read = try? await graph(run.pipelineId, run.version)
+        let read: PipelineGraph?
+        do { read = try await graph(run.pipelineId, run.version) } catch where AccountFeatures.refused(error) {
+            state.graph = nil
+            publish()
+            return
+        } catch { read = nil }
         state.graph = read.map(Graph.loaded) ?? .failed
         publish()
     }
@@ -269,6 +276,9 @@ public actor PipelineRunFeed {
                 state.abort = .idle
                 if let answered { adopt(answered) } else { publish() }
                 load()
+            } catch where AccountFeatures.refused(error) {
+                state.abort = .idle
+                publish()
             } catch AgentClientError.status(_, _, let message) {
                 state.abort = .failed(message)
                 publish()

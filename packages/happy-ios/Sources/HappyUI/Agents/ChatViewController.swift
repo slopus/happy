@@ -2191,8 +2191,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         case .openArtifact(let artifact):
             openArtifact(artifact, session: session)
         case .openPipelineRun(let runId, let pipelineName):
-            // The run page says so when the run can't be read.
-            guard !previewing else { return }
+            // The run page says so when the run can't be read. Pipelines
+            // turned off for the account open nowhere.
+            guard !previewing, PipelinesGate.open(session) else { return }
             card.blur()
             navigationController?.pushViewController(PipelineRunViewController(session: session, runId: runId, pipelineName: pipelineName), animated: true)
         case .toggleTool(let messageId):

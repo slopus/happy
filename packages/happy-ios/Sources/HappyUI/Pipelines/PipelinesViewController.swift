@@ -17,6 +17,8 @@ final class PipelinesViewController: UIViewController {
     let list = CardListView()
     private var pipeline: ApplyPipeline<PipelineListInput, Applied, Output>?
     private var headerWatch: Watch?
+    /// Leaves once Pipelines are turned off for the account (`PipelinesGate`).
+    private var gateWatch: Watch?
     private var following: [Task<Void, Never>] = []
     private var clock: Timer?
     /// What the last result said, for the clock and the paging.
@@ -112,6 +114,7 @@ final class PipelinesViewController: UIViewController {
         headerWatch = session.watchHeader { [weak self] state in
             self?.navigationItem.title = Strings.HeaderStatus.title(state) ?? Strings.Pipelines.title
         }
+        gateWatch = PipelinesGate.watch(session, from: self)
     }
 
     override func viewWillAppear(_ animated: Bool) {
