@@ -24,7 +24,7 @@ function runStatus(status: ScheduledRunStatus): string {
 function instant(at: number | null, timezone?: string): string {
     return at === null ? '—' : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', ...(timezone ? { timeZone: timezone } : {}) }).format(at);
 }
-function reason(run: ScheduledRun): string | undefined {
+function reason(run: Pick<ScheduledRun, 'reason' | 'status' | 'executionKind'>): string | undefined {
     if (!run.reason) return undefined;
     if (run.reason === 'configuration-invalid') return t('scheduledTasks.invalid');
     if (run.reason === 'task-paused') return t('scheduledTasks.paused');
@@ -32,7 +32,46 @@ function reason(run: ScheduledRun): string | undefined {
     if (run.reason === 'tracking-ended') return t('scheduledTasks.abandon');
     if (run.reason === 'processor-startup-failed') return t('scheduledTasks.startupFailed');
     if (run.reason === 'startup-deadline-exceeded') return t('scheduledTasks.startupTimeout');
-    return t(run.status === 'failed' ? 'scheduledTasks.runFailed' : 'scheduledTasks.uncertain');
+    if (run.status === 'failed') return t(run.executionKind === 'local-handler' ? 'scheduledTasks.audit.localFailed' : 'scheduledTasks.runFailed');
+    return t('scheduledTasks.uncertain');
+}
+const auditTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium' });
+function triggerLabel(run: ScheduledRun): string {
+    const source = run.trigger ?? (run.webhookRequestId ? 'webhook' : 'unknownSource');
+    return t(`scheduledTasks.audit.${source}`);
+}
+function auditStatus(status: ScheduledRunStatus): string {
+    if (status === 'pending') return t('scheduledTasks.audit.received');
+    if (status === 'claimed') return t('scheduledTasks.audit.machineClaimed');
+    return runStatus(status);
+}
+function RunAudit({ run, machineName }: { run: ScheduledRun; machineName: string }) {
+    // For older runs, only use timestamps that were actually recorded.
+    const audit = run.audit ?? [];
+    const legacy = !audit.length || audit[0].status !== 'pending';
+    const recorded = audit.length ? audit : [
+        { at: run.createdAt, status: 'pending' as const, reason: null },
+        ...(run.startedAt === null ? [] : [{ at: run.startedAt, status: 'running' as const, reason: null }]),
+        ...(run.finishedAt === null ? [] : [{ at: run.finishedAt, status: run.status, reason: null }]),
+    ];
+    return <View style={styles.audit} testID={`scheduled-run-audit-${run.id}`}>
+        <Text style={styles.runTitle}>{t('scheduledTasks.audit.timeline')}</Text>
+        {legacy && <Text style={styles.meta}>{t('scheduledTasks.audit.legacy')}</Text>}
+        <View style={styles.auditTimeline}>
+            {recorded.map((event, index) => <View key={index} style={styles.auditEvent}>
+                <View style={styles.auditDot} />
+                <View style={styles.auditEventText}>
+                    <Text style={styles.text}>{auditStatus(event.status)}</Text>
+                    <Text style={styles.meta}>{auditTime.format(event.at)}</Text>
+                    {event.reason && <Text selectable style={styles.meta}>{event.reason}</Text>}
+                </View>
+            </View>)}
+        </View>
+        <Text style={styles.meta}>{t('scheduledTasks.audit.source')} · {triggerLabel(run)}{run.executionKind === 'local-handler' ? ` · ${t('scheduledTasks.audit.fixedProgram')}` : ''}</Text>
+        <Text selectable style={styles.meta}>{t('scheduledTasks.machine')} · {machineName}</Text>
+        <Text selectable style={styles.meta}>{t('scheduledTasks.audit.runId')} · {run.id}</Text>
+        {run.webhookRequestId && <Text selectable style={styles.meta}>{t('scheduledTasks.audit.requestId')} · {run.webhookRequestId}</Text>}
+    </View>;
 }
 function Button({ label, onPress, disabled, testID, icon, primary = false, expanded, selected }: {
     label: string; onPress: () => void; disabled?: boolean; testID?: string;
@@ -53,13 +92,14 @@ function TaskRow({ task, selected, onPress }: { task: DecryptedScheduledTask; se
     const { theme } = useUnistyles();
     const [hovered, setHovered] = React.useState(false);
     const [focused, setFocused] = React.useState(false);
-    const plan = task.enabled ? t('scheduledTasks.enabled') : task.rule.type === 'once' && task.rule.at <= Date.now() ? t('scheduledTasks.noNext') : t('scheduledTasks.paused');
+    const fixed = task.executionKind === 'local-handler';
+    const plan = task.enabled ? t('scheduledTasks.enabled') : fixed ? t('scheduledTasks.audit.timePlanOff') : task.rule.type === 'once' && task.rule.at <= Date.now() ? t('scheduledTasks.noNext') : t('scheduledTasks.paused');
     return <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected }} testID={`scheduled-task-row-${task.id}`}
         {...(Platform.OS === 'web' ? { 'aria-current': selected ? 'true' as const : undefined } : {})}
         onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         style={({ pressed }) => [styles.taskRow, (hovered || pressed) && styles.pressed, selected && styles.taskSelected, focused && styles.focused]}>
         <Text numberOfLines={2} style={styles.runTitle}>{task.config?.title ?? t('scheduledTasks.title')}</Text>
-        <View style={styles.titleRow}><View style={styles.badge}><Ionicons name={task.enabled ? 'time-outline' : 'pause-outline'} size={13} color={theme.colors.textSecondary} /><Text style={styles.badgeText}>{plan}</Text></View><Text style={styles.meta}>{t(`scheduledTasks.${task.rule.type}`)}</Text></View>
+        <View style={styles.titleRow}><View style={styles.badge}><Ionicons name={task.enabled ? 'time-outline' : 'pause-outline'} size={13} color={theme.colors.textSecondary} /><Text style={styles.badgeText}>{plan}</Text></View><Text style={styles.meta}>{fixed ? t('scheduledTasks.audit.fixedProgram') : t(`scheduledTasks.${task.rule.type}`)}</Text></View>
         <Text numberOfLines={2} style={styles.meta}>{task.nextAt ? instant(task.nextAt, task.rule.timezone) : t('scheduledTasks.noNext')}</Text>
     </Pressable>;
 }
@@ -73,8 +113,11 @@ export const ScheduledTasksWorkspace = React.memo(function ScheduledTasksWorkspa
     const wide = width >= 1000;
     const { theme } = useUnistyles();
     const router = useRouter();
-    const params = useLocalSearchParams<{ taskId?: string }>();
+    const params = useLocalSearchParams<{ taskId?: string; runId?: string }>();
     const [selectedId, setSelectedId] = React.useState<string | null>(params.taskId ?? null);
+    const [auditRunId, setAuditRunId] = React.useState<string | null>(params.runId ?? null);
+    const [linkedRunId, setLinkedRunId] = React.useState<string | null>(params.runId ?? null);
+    const [historyLimit, setHistoryLimit] = React.useState(20);
     const [filter, setFilter] = React.useState<'all' | 'enabled' | 'paused'>('all');
     const [query, setQuery] = React.useState('');
     const [editor, setEditor] = React.useState<{ taskId?: string; template?: { title: string; prompt: string } } | null>(null);
@@ -88,7 +131,11 @@ export const ScheduledTasksWorkspace = React.memo(function ScheduledTasksWorkspa
     const [launch, setLaunch] = React.useState<{ taskId: string; runId: string; generation: number } | null>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [notice, setNotice] = React.useState<string | null>(null);
-    const selectTask = (id: string | null) => { attempt.current++; setLaunch(null); setNotice(null); setError(null); setSelectedId(id); router.setParams({ taskId: id ?? undefined }); };
+    const selectTask = (id: string | null) => {
+        attempt.current++; setLaunch(null); setNotice(null); setError(null); setSelectedId(id); setAuditRunId(null); setLinkedRunId(null); setHistoryLimit(20);
+        router.setParams({ taskId: id ?? undefined, runId: undefined });
+    };
+    const selectAudit = (id: string | null) => { setAuditRunId(id); router.setParams({ runId: id ?? undefined }); };
     useFocusEffect(React.useCallback(() => {
         focused.current = true; sync.scheduledTasks.setVisible(true);
         return () => { focused.current = false; attempt.current++; setLaunch(null); sync.scheduledTasks.setVisible(false); };
@@ -101,10 +148,11 @@ export const ScheduledTasksWorkspace = React.memo(function ScheduledTasksWorkspa
     React.useEffect(() => {
         if (generation.current === snapshot.accountGeneration) return;
         generation.current = snapshot.accountGeneration;
-        attempt.current++; requestIds.current.clear(); setLaunch(null); setEditor(null); setSelectedId(null); setError(null); setNotice(null);
-        router.setParams({ taskId: undefined });
+        attempt.current++; requestIds.current.clear(); setLaunch(null); setEditor(null); setSelectedId(null); setAuditRunId(null); setLinkedRunId(null); setHistoryLimit(20); setError(null); setNotice(null);
+        router.setParams({ taskId: undefined, runId: undefined });
     }, [snapshot.accountGeneration, router]);
     React.useEffect(() => { if (params.taskId) setSelectedId(params.taskId); }, [params.taskId]);
+    React.useEffect(() => { setAuditRunId(params.runId ?? null); }, [params.taskId, params.runId]);
     React.useEffect(() => {
         if (!selectedId) return;
         let current = true;
@@ -120,8 +168,13 @@ export const ScheduledTasksWorkspace = React.memo(function ScheduledTasksWorkspa
     const selected = snapshot.tasks.find(task => task.id === selectedId);
     const runs = selectedId ? snapshot.histories[selectedId] ?? [] : [];
     const activeRun = runs.find(run => run.id === selected?.activeRunId) ?? runs.find(run => !isScheduledRunTerminal(run.status));
-    const currentRun = activeRun ?? runs[0];
-    const pendingRun = activeRun?.status === 'pending' ? activeRun : undefined;
+    const fixed = selected?.executionKind === 'local-handler';
+    const pendingRun = activeRun?.status === 'pending' && !activeRun.webhookRequestId && activeRun.trigger !== 'webhook' ? activeRun : undefined;
+    const orderedRuns = activeRun ? [activeRun, ...runs.filter(run => run.id !== activeRun.id)] : runs;
+    const linkedRun = linkedRunId ? orderedRuns.find(run => run.id === linkedRunId) : undefined;
+    const visibleRuns = linkedRun ? [linkedRun, ...orderedRuns.filter(run => run.id !== linkedRun.id).slice(0, historyLimit - 1)] : orderedRuns.slice(0, historyLimit);
+    const inspectedRun = auditRunId ? orderedRuns.find(run => run.id === auditRunId) : undefined;
+    if (inspectedRun && !visibleRuns.includes(inspectedRun)) visibleRuns.push(inspectedRun);
     const canResume = selected?.rule.type !== 'once' || selected.rule.at > Date.now();
     const machine = machines.find(m => m.id === selected?.machineId);
     const filtered = snapshot.tasks.filter(task => (filter === 'all' || task.enabled === (filter === 'enabled'))
@@ -161,7 +214,12 @@ export const ScheduledTasksWorkspace = React.memo(function ScheduledTasksWorkspa
         void perform(async () => {
             const run = await sync.scheduledTasks.runNow(taskId, id);
             requestIds.current.delete(taskId);
-            if (focused.current && currentAttempt === attempt.current && generation.current === capturedGeneration) setLaunch({ taskId, runId: run.id, generation: capturedGeneration });
+            if (focused.current && currentAttempt === attempt.current && generation.current === capturedGeneration) {
+                if (fixed) {
+                    selectAudit(run.id);
+                    setNotice(t('scheduledTasks.audit.localQueued'));
+                } else setLaunch({ taskId, runId: run.id, generation: capturedGeneration });
+            }
         });
     };
     const templates = [
@@ -170,14 +228,17 @@ export const ScheduledTasksWorkspace = React.memo(function ScheduledTasksWorkspa
         { title: t('scheduledTasks.weeklyReview'), prompt: t('scheduledTasks.weeklyReviewPrompt'), icon: 'folder-open-outline' as const },
     ];
     const renderRun = (run: ScheduledRun) => <View key={run.id} style={styles.run} testID={`scheduled-run-${run.id}`}>
-        <View style={styles.titleRow}><Ionicons name={run.status === 'completed' ? 'checkmark-circle-outline' : run.status === 'failed' || run.status === 'uncertain' ? 'alert-circle-outline' : 'time-outline'} size={20} color={run.status === 'failed' ? theme.colors.textDestructive : theme.colors.textSecondary} /><Text style={styles.runTitle}>{runStatus(run.status)}</Text><Text style={styles.meta}>{instant(run.scheduledAt, selected?.rule.timezone)}</Text></View>
+        <View style={styles.titleRow}><Ionicons name={run.status === 'completed' ? 'checkmark-circle-outline' : run.status === 'failed' || run.status === 'uncertain' ? 'alert-circle-outline' : 'time-outline'} size={20} color={run.status === 'failed' ? theme.colors.textDestructive : theme.colors.textSecondary} /><Text style={styles.runTitle}>{runStatus(run.status)}</Text><Text style={styles.meta}>{triggerLabel(run)} · {instant(run.createdAt)}</Text></View>
         {run.startedAt !== null && <Text style={styles.meta}>{t('scheduledTasks.startedAt')} · {instant(run.startedAt)}</Text>}
         {run.finishedAt !== null && <Text style={styles.meta}>{t('scheduledTasks.finishedAt')} · {instant(run.finishedAt)}</Text>}
         {run.status === 'pending' && machine && !isMachineOnline(machine) && <Text style={styles.meta}>{t('scheduledTasks.offlineHint')}</Text>}
         {run.missedUntil && <Text style={styles.meta}>{t('scheduledTasks.missed')}</Text>}
         {reason(run) && <Text style={run.status === 'failed' ? styles.failureText : styles.meta}>{reason(run)}</Text>}
-        <View style={styles.actions}>{run.sessionId && <Button label={t('scheduledTasks.openResult')} icon="chatbubble-outline" primary onPress={() => router.push(`/session/${run.sessionId}`)} testID="scheduled-run-open-result" />}
+        <View style={styles.actions}><Button label={t('scheduledTasks.audit.details')} icon={auditRunId === run.id ? 'chevron-up' : 'chevron-down'} expanded={auditRunId === run.id}
+            onPress={() => selectAudit(auditRunId === run.id ? null : run.id)} testID={`scheduled-run-inspect-${run.id}`} />
+            {run.sessionId && <Button label={t('scheduledTasks.openResult')} icon="chatbubble-outline" primary onPress={() => router.push(`/session/${run.sessionId}`)} testID="scheduled-run-open-result" />}
             {(run.status === 'uncertain' || run.status === 'waiting-for-input') && <Button label={t('scheduledTasks.abandon')} disabled={busy} onPress={() => void (async () => { if (await Modal.confirm(t('scheduledTasks.abandon'), t('scheduledTasks.abandonConfirm'), { destructive: true })) await perform(() => sync.scheduledTasks.abandon(run.taskId, run.id)); })()} />}</View>
+        {auditRunId === run.id && <RunAudit run={run} machineName={machines.find(item => item.id === run.machineId)?.metadata?.displayName ?? run.machineId} />}
     </View>;
     return <View style={styles.root} testID="scheduled-tasks-workspace">
         {(wide || !selected) && <View style={[styles.list, wide && styles.wideList]}>
@@ -198,27 +259,28 @@ export const ScheduledTasksWorkspace = React.memo(function ScheduledTasksWorkspa
             {snapshot.error && <ItemGroup><Item title={snapshot.error === 'server-unavailable' ? t('scheduledTasks.serverUnavailable') : t('scheduledTasks.operationError')} onPress={() => void sync.scheduledTasks.refresh(true)} /></ItemGroup>}
             {selected ? <>
                 {!wide && <Button label={t('common.back')} icon="arrow-back" onPress={() => selectTask(null)} />}
-                <View style={styles.detailHeader}><Text style={styles.heading}>{selected.config?.title ?? t('scheduledTasks.title')}</Text><Text style={styles.meta}>{t('scheduledTasks.nextRun')} · {selected.nextAt ? instant(selected.nextAt, selected.rule.timezone) : t('scheduledTasks.noNext')}</Text>
+                <View style={styles.detailHeader}><Text style={styles.heading}>{selected.config?.title ?? t('scheduledTasks.title')}</Text><Text style={styles.meta}>{fixed && !selected.enabled ? t('scheduledTasks.audit.timePlanOff') : `${t('scheduledTasks.nextRun')} · ${selected.nextAt ? instant(selected.nextAt, selected.rule.timezone) : t('scheduledTasks.noNext')}`}</Text>
                     <View style={styles.actions}><Button label={t(launch ? 'scheduledTasks.openingSession' : 'scheduledTasks.runNow')} icon="play-outline" primary onPress={launchNow} disabled={busy || !!launch || !!activeRun || !!selected.activeRunId || !selected.config} testID="scheduled-task-run-now" />
-                        {(selected.enabled || pendingRun || canResume) && <Button label={t(selected.enabled || pendingRun ? 'scheduledTasks.pause' : 'scheduledTasks.resume')} icon={selected.enabled || pendingRun ? 'pause-outline' : 'play-circle-outline'} onPress={() => void perform(() => sync.scheduledTasks.toggle(selected, pendingRun ? false : !selected.enabled))} disabled={busy} testID="scheduled-task-toggle" />}
-                        <Button label={t('scheduledTasks.edit')} icon="create-outline" onPress={() => { setLaunch(null); attempt.current++; setEditor({ taskId: selected.id }); }} disabled={busy || !selected.config} />
+                        {(selected.enabled || pendingRun || canResume) && <Button label={fixed ? t(selected.enabled || pendingRun ? 'scheduledTasks.audit.pausePlan' : 'scheduledTasks.audit.resumePlan') : t(selected.enabled || pendingRun ? 'scheduledTasks.pause' : 'scheduledTasks.resume')} icon={selected.enabled || pendingRun ? 'pause-outline' : 'play-circle-outline'} onPress={() => void perform(() => sync.scheduledTasks.toggle(selected, pendingRun ? false : !selected.enabled))} disabled={busy} testID="scheduled-task-toggle" />}
+                        {!fixed && <Button label={t('scheduledTasks.edit')} icon="create-outline" onPress={() => { setLaunch(null); attempt.current++; setEditor({ taskId: selected.id }); }} disabled={busy || !selected.config} />}
                         <Button label={t('scheduledTasks.remove')} icon="trash-outline" disabled={busy} onPress={() => void (async () => { if (await Modal.confirm(t('scheduledTasks.remove'), t('scheduledTasks.removeConfirm'), { destructive: true })) await perform(async () => { await sync.scheduledTasks.remove(selected); selectTask(null); }); })()} testID="scheduled-task-delete" /></View>
                     {launch && <View style={styles.titleRow} accessibilityLiveRegion="polite"><ActivityIndicator size="small" color={theme.colors.textSecondary} /><Text style={styles.meta}>{t('scheduledTasks.openingSession')}</Text></View>}
                 </View>
-                {currentRun && <ItemGroup title={t('scheduledTasks.currentRun')}>{renderRun(currentRun)}</ItemGroup>}
-                <ItemGroup title={t('scheduledTasks.instruction')}><Text selectable style={styles.prompt}>{selected.config?.prompt ?? t('scheduledTasks.operationError')}</Text></ItemGroup>
-                <View style={styles.settings}><View style={styles.titleRow}><Ionicons name="desktop-outline" size={17} color={theme.colors.textSecondary} /><Text style={styles.meta}>{machine?.metadata?.displayName ?? machine?.metadata?.host ?? selected.machineId} · {selected.config?.agent === 'claude' ? 'Claude Code' : 'Codex'} · {selected.config?.model ?? t('scheduledTasks.defaultModel')}</Text></View>
+                <ItemGroup title={t('scheduledTasks.history')}>
+                    {selectedId && !snapshot.histories[selectedId] && !error ? <ActivityIndicator color={theme.colors.textSecondary} style={styles.loading} />
+                        : !runs.length && !error && <Item title={t('scheduledTasks.noRuns')} showChevron={false} />}
+                    {visibleRuns.map(renderRun)}
+                    {orderedRuns.length > historyLimit && <Item title={t('scheduledTasks.audit.showMore')} onPress={() => setHistoryLimit(limit => limit + 20)} />}
+                </ItemGroup>
+                <ItemGroup title={fixed ? t('scheduledTasks.audit.fixedProgram') : t('scheduledTasks.instruction')}><Text selectable style={styles.prompt}>{fixed ? t('scheduledTasks.audit.fixedProgramHint') : selected.config?.prompt ?? t('scheduledTasks.operationError')}</Text></ItemGroup>
+                <View style={styles.settings}><View style={styles.titleRow}><Ionicons name="desktop-outline" size={17} color={theme.colors.textSecondary} /><Text style={styles.meta}>{machine?.metadata?.displayName ?? machine?.metadata?.host ?? selected.machineId} · {fixed ? t('scheduledTasks.audit.fixedProgram') : `${selected.config?.agent === 'claude' ? 'Claude Code' : 'Codex'} · ${selected.config?.model ?? t('scheduledTasks.defaultModel')}`}</Text></View>
                     <Button label={t('scheduledTasks.executionSettings')} icon={detailsOpen ? 'chevron-up' : 'chevron-down'} expanded={detailsOpen} onPress={() => setDetailsOpen(value => !value)} />
                 </View>
                 {detailsOpen && <ItemGroup>
                     <Item title={t('scheduledTasks.directory')} detail={selected.config?.directory} showChevron={false} />
                     <Item title={t('scheduledTasks.timezone')} detail={selected.rule.timezone} showChevron={false} />
-                    <Item title={t('scheduledTasks.permissions')} detail={t(selected.config?.permissionMode === 'default' ? 'scheduledTasks.standard' : selected.config?.permissionMode === 'acceptEdits' ? 'scheduledTasks.acceptEdits' : selected.config?.permissionMode === 'plan' ? 'scheduledTasks.plan' : 'scheduledTasks.readOnly')} showChevron={false} />
-                    <Item title={t('scheduledTasks.newChat')} detail={t(selected.newChatEachRun ? 'common.yes' : 'common.no')} showChevron={false} />
-                </ItemGroup>}
-                {(!runs.length || runs.length > 1) && <ItemGroup title={t('scheduledTasks.history')}>
-                    {!runs.length && <Item title={t('scheduledTasks.noRuns')} showChevron={false} />}
-                    {runs.filter(run => run.id !== currentRun?.id).map(renderRun)}
+                    {!fixed && <Item title={t('scheduledTasks.permissions')} detail={t(selected.config?.permissionMode === 'default' ? 'scheduledTasks.standard' : selected.config?.permissionMode === 'acceptEdits' ? 'scheduledTasks.acceptEdits' : selected.config?.permissionMode === 'plan' ? 'scheduledTasks.plan' : 'scheduledTasks.readOnly')} showChevron={false} />}
+                    {!fixed && <Item title={t('scheduledTasks.newChat')} detail={t(selected.newChatEachRun ? 'common.yes' : 'common.no')} showChevron={false} />}
                 </ItemGroup>}
             </> : <View style={styles.empty}><Ionicons name="time-outline" color={theme.colors.textSecondary} size={48} /><Text style={styles.heading}>{t('scheduledTasks.emptyTitle')}</Text><Text style={styles.emptyHint}>{t('scheduledTasks.emptyHint')}</Text>
                 <View style={styles.templates}>{templates.map(template => <Button key={template.title} label={template.title} icon={template.icon} onPress={() => setEditor({ template })} />)}</View>
@@ -240,6 +302,9 @@ const styles = StyleSheet.create(theme => ({
     detailHeader: { gap: 12, paddingHorizontal: 28, paddingTop: 10, paddingBottom: 18 }, heading: { color: theme.colors.text, fontSize: 24, ...Typography.default('semiBold') }, text: { color: theme.colors.text, fontSize: 14 }, meta: { color: theme.colors.textSecondary, fontSize: 13, lineHeight: 20 },
     actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, button: { minHeight: 40, paddingHorizontal: 11, paddingVertical: 9, borderWidth: 1, borderColor: theme.colors.divider, borderRadius: 9, backgroundColor: theme.colors.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }, disabled: { opacity: 0.45 },
     prompt: { padding: 18, color: theme.colors.text, fontSize: 15, lineHeight: 23 }, run: { padding: 16, gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider }, runTitle: { color: theme.colors.text, fontSize: 15, ...Typography.default('semiBold') }, settings: { padding: 28, gap: 12, alignItems: 'flex-start' }, failureText: { color: theme.colors.textDestructive, fontSize: 13, lineHeight: 20 },
+    audit: { marginTop: 4, padding: 12, gap: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, borderRadius: 10, backgroundColor: theme.colors.surface },
+    auditTimeline: { paddingVertical: 4, gap: 10 }, auditEvent: { flexDirection: 'row', gap: 10 },
+    auditDot: { marginTop: 6, height: 8, width: 8, borderRadius: 4, backgroundColor: theme.colors.textSecondary }, auditEventText: { flex: 1, minWidth: 0 },
     empty: { paddingVertical: 80, alignItems: 'center', gap: 18 }, emptyHint: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 23, textAlign: 'center', maxWidth: 500 }, templates: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, width: '100%', marginTop: 16 },
     loading: { padding: 20 }, mobileEmpty: { position: 'absolute', top: '42%', left: 24, right: 24 }, error: { color: theme.colors.textDestructive, padding: 16, fontSize: 14, lineHeight: 22 }, notice: { color: theme.colors.textSecondary, padding: 16, fontSize: 14, lineHeight: 22 },
 }));

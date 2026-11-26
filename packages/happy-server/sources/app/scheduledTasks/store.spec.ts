@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDatabase } from '@/app/aiServices/testDatabase';
 import { createScheduledTaskStore } from './store';
-import { SCHEDULED_TASK_PREFIX, type ScheduledTaskInput, type ScheduledTask } from '@slopus/happy-wire';
+import { SCHEDULED_TASK_PREFIX, SCHEDULED_RUN_AUDIT_LIMIT, ScheduledRunSchema, type ScheduledRunAuditEntry, type ScheduledTaskInput, type ScheduledTask } from '@slopus/happy-wire';
 
 describe('durable scheduled tasks', () => {
     let context: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -25,12 +25,28 @@ describe('durable scheduled tasks', () => {
         const token = (await store.configureWebhook(owner, input.id, true)).token!;
         const requestId = randomUUID();
         const run = await store.runNow(owner, input.id, requestId, { token, input: { jobId: randomUUID() } });
+        const queuedAt = now;
         expect(await store.claim(owner, machine, 1)).toEqual([]);
+        now += 1000;
         const [claim] = await store.claim(owner, machine, 1, 1);
         expect(claim).toMatchObject({ executionKind: 'local-handler', webhookRequestId: requestId, deliveryAuthorized: true });
         await expect(store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'waiting-for-input' })).rejects.toMatchObject({ code: 'local-handler-binding-invalid' });
+        now += 1000;
         await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'running', sequence: 1 });
-        await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'completed', sequence: 2 });
+        now += 1000;
+        await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'running', sequence: 2 });
+        now += 1000;
+        await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'completed', sequence: 3 });
+        await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'completed', sequence: 3 });
+        const restored = createScheduledTaskStore(context.database);
+        const [record] = await restored.history(owner, input.id);
+        expect(ScheduledRunSchema.parse(record)).toMatchObject({ trigger: 'webhook', audit: [
+            { status: 'pending', at: queuedAt, reason: null },
+            { status: 'claimed', at: queuedAt + 1000, reason: null },
+            { status: 'running', at: queuedAt + 2000, reason: null },
+            { status: 'completed', at: queuedAt + 4000, reason: null },
+        ] });
+        await expect(restored.history(other, input.id)).rejects.toMatchObject({ code: 'task-not-found' });
         const snapshot = await store.webhookSnapshot(owner, input.id);
         expect(snapshot).toEqual({ activeRunId: null, runs: [{ runId: run.id, requestId, status: 'completed', reason: null, updatedAt: now }] });
         expect(JSON.stringify(snapshot)).not.toContain('opaque-ciphertext');
@@ -38,6 +54,68 @@ describe('durable scheduled tasks', () => {
         const agentRun = await store.runNow(owner, normal.id, randomUUID());
         const [agentClaim] = await store.claim(owner, machine, 1, 1);
         await expect(store.report(owner, normal.id, agentRun.id, { claimId: agentClaim.claimId!, status: 'completed' })).rejects.toMatchObject({ code: 'turn-required' });
+    });
+
+    it('retains registered execution when an old client omits the execution kind during a schedule update', async () => {
+        const task = await store.save(owner, { ...input, executionKind: 'local-handler' }, -1);
+        await expect(store.save(owner, { ...input, newChatEachRun: false }, task.version))
+            .rejects.toMatchObject({ code: 'local-handler-requires-independent-runs' });
+        const paused = await store.save(owner, { ...input, enabled: false }, task.version);
+        expect(paused.executionKind).toBe('local-handler');
+        const run = await store.runNow(owner, input.id, randomUUID());
+        expect(run.executionKind).toBe('local-handler');
+        expect(await store.claim(owner, machine)).toEqual([]);
+        expect(await store.claim(owner, machine, undefined, 1)).toHaveLength(1);
+        const [current] = await store.list(owner);
+        const switched = await store.save(owner, { ...input, executionKind: 'agent' }, current.version);
+        expect(switched.executionKind).toBe('agent');
+    });
+
+    it('records new transitions on legacy runs without inventing old audit rows or a trigger', async () => {
+        await store.save(owner, input, -1);
+        const requestId = randomUUID();
+        const run = await store.runNow(owner, input.id, requestId);
+        const key = `${SCHEDULED_TASK_PREFIX}run:${input.id}:${run.id}`;
+        const legacy = { ...run };
+        delete legacy.audit;
+        delete legacy.trigger;
+        await context.database.userKVStore.update({
+            where: { accountId_key: { accountId: owner, key } },
+            data: { value: new TextEncoder().encode(JSON.stringify(legacy)) },
+        });
+        const [before] = await store.history(owner, input.id);
+        expect(ScheduledRunSchema.parse(before)).not.toHaveProperty('audit');
+        expect((await store.runNow(owner, input.id, requestId)).id).toBe(run.id);
+        now += 1000;
+        const [claim] = await store.claim(owner, machine);
+        expect(claim).not.toHaveProperty('trigger');
+        expect(claim.audit).toEqual([{ at: now, status: 'claimed', reason: null }]);
+        const reason = 'external receipt data must not be copied to audit';
+        await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'failed', reason });
+        const [after] = await store.history(owner, input.id);
+        expect(after.reason).toBe(reason);
+        expect(after.audit?.at(-1)).toEqual({ at: now, status: 'failed', reason: null });
+    });
+
+    it('bounds audit history while retaining the first event and latest transitions', async () => {
+        await store.save(owner, input, -1);
+        const run = await store.runNow(owner, input.id, randomUUID());
+        const [claim] = await store.claim(owner, machine);
+        const audit: ScheduledRunAuditEntry[] = [...claim.audit!];
+        for (let index = audit.length; index < SCHEDULED_RUN_AUDIT_LIMIT; index++) {
+            audit.push({ at: now + index, status: index % 2 ? 'running' : 'waiting-for-input', reason: null });
+        }
+        const key = `${SCHEDULED_TASK_PREFIX}run:${input.id}:${run.id}`;
+        await context.database.userKVStore.update({
+            where: { accountId_key: { accountId: owner, key } },
+            data: { value: new TextEncoder().encode(JSON.stringify({ ...claim, audit })) },
+        });
+        now += SCHEDULED_RUN_AUDIT_LIMIT;
+        await store.report(owner, input.id, run.id, { claimId: claim.claimId!, status: 'failed', reason: 'configuration-invalid' });
+        const [saved] = await store.history(owner, input.id);
+        expect(ScheduledRunSchema.parse(saved).audit).toEqual([
+            audit[0], ...audit.slice(2), { at: now, status: 'failed', reason: 'configuration-invalid' },
+        ]);
     });
 
     it('reserves one delivery slot and starts the next task deadline only after a later claim', async () => {
@@ -54,12 +132,35 @@ describe('durable scheduled tasks', () => {
         now = second.deadlineAt! + 1;
         await expect(store.report(owner, second.taskId, second.id, { claimId: second.claimId!, status: 'running', sequence: 1 })).rejects.toMatchObject({ code: 'start-authorization-expired' });
     });
-    it('deletion revokes webhook credentials and status access', async () => {
+    it('deletion cancels an accepted pending webhook and revokes credentials and status access', async () => {
         const task = await store.save(owner, input, -1);
         const token = (await store.configureWebhook(owner, task.id, true)).token!;
-        await store.remove(owner, task.id, task.version);
+        const accepted = await store.runNow(owner, task.id, randomUUID(), { token, input: {} });
+        const [latest] = await store.list(owner);
+        await store.remove(owner, task.id, latest.version);
+        const [run] = await store.history(owner, task.id);
+        expect(run).toMatchObject({ id: accepted.id, trigger: 'webhook', status: 'cancelled' });
+        expect(await store.claim(owner, machine, 1)).toEqual([]);
         await expect(store.webhookOwner(task.id, token)).rejects.toMatchObject({ status: 401 });
         await expect(store.webhookSnapshot(owner, task.id)).rejects.toMatchObject({ status: 401 });
+    });
+    it('pausing an enabled schedule preserves a previously accepted pending webhook', async () => {
+        await store.save(owner, input, -1);
+        const token = (await store.configureWebhook(owner, input.id, true)).token!;
+        const requestId = randomUUID();
+        const issued = { token, input: {} };
+        const accepted = await store.runNow(owner, input.id, requestId, issued);
+        const [latest] = await store.list(owner);
+        const paused = await store.save(owner, { ...input, enabled: false }, latest.version);
+        expect(paused).toMatchObject({ enabled: false, nextAt: null, activeRunId: accepted.id });
+        expect(await store.webhookStatus(owner, input.id)).toEqual({ enabled: true });
+        expect(await store.runNow(owner, input.id, requestId, issued)).toMatchObject({
+            id: accepted.id, trigger: 'webhook', status: 'pending', audit: accepted.audit,
+        });
+        now += 1000;
+        expect(await store.due(owner, input.id, now)).toBeNull();
+        const [claim] = await store.claim(owner, machine, 1);
+        expect(claim).toMatchObject({ id: accepted.id, webhookRequestId: requestId, status: 'claimed', deliveryAuthorized: true });
     });
     it('isolates webhook credentials, rotates and revokes without accepting stale credentials', async () => {
         await store.save(owner, input, -1);
@@ -158,7 +259,7 @@ describe('durable scheduled tasks', () => {
         expect(await store.due(owner, input.id, now)).toBeNull();
         now += 1000;
         const first = await store.due(owner, input.id, now);
-        expect(first?.status).toBe('pending');
+        expect(first).toMatchObject({ status: 'pending', trigger: 'schedule', audit: [{ at: now, status: 'pending', reason: null }] });
         expect(await store.due(owner, input.id, now)).toBeNull();
         expect((await store.history(owner, input.id)).map(run => run.id)).toEqual([first!.id]);
         const restored = createScheduledTaskStore(context.database, { now: () => now });
@@ -187,7 +288,9 @@ describe('durable scheduled tasks', () => {
         await store.report(owner, input.id, claim.id, { claimId: claim.claimId!, status: 'uncertain', reason: 'delivery-uncertain' });
         expect((await store.runNow(owner, input.id, randomUUID())).id).toBe(claim.id);
         now += 3_600_000;
-        expect((await store.due(owner, input.id, now))?.status).toBe('skipped');
+        expect(await store.due(owner, input.id, now)).toMatchObject({ status: 'skipped', trigger: 'schedule', audit: [
+            { at: now, status: 'pending', reason: null }, { at: now, status: 'skipped', reason: 'previous-run-active' },
+        ] });
     });
     it('ties completion to the claimed session and exact root turn', async () => {
         await store.save(owner, input, -1);
@@ -211,8 +314,22 @@ describe('durable scheduled tasks', () => {
         const current = (await store.list(owner))[0];
         await store.save(owner, { ...input, enabled: false }, current.version);
         expect(await store.claim(owner, machine)).toEqual([]);
-        expect((await store.history(owner, input.id))[0].status).toBe('cancelled');
+        expect((await store.history(owner, input.id))[0]).toMatchObject({ status: 'cancelled', trigger: 'manual', audit: [
+            { at: now, status: 'pending', reason: null }, { at: now, status: 'cancelled', reason: 'task-paused' },
+        ] });
         expect(task.version).toBe(0);
+    });
+    it('pausing still cancels a pending scheduled occurrence', async () => {
+        await store.save(owner, input, -1);
+        now += 1000;
+        const due = await store.due(owner, input.id, now);
+        const [current] = await store.list(owner);
+        const paused = await store.save(owner, { ...input, enabled: false }, current.version);
+        expect(paused).toMatchObject({ enabled: false, activeRunId: null });
+        const [run] = await store.history(owner, input.id);
+        expect(run).toMatchObject({ id: due!.id, trigger: 'schedule', status: 'cancelled' });
+        expect(run.audit?.at(-1)).toEqual({ at: now, status: 'cancelled', reason: 'task-paused' });
+        expect(await store.claim(owner, machine)).toEqual([]);
     });
     it('ends a bound before-ready failure without accepting an unbound or started failure', async () => {
         await store.save(owner, input, -1);
@@ -282,10 +399,12 @@ describe('durable scheduled tasks', () => {
         });
         await store.abandon(owner, input.id, run.id);
         expect((await store.list(owner))[0]).toMatchObject({ activeRunId: null, conversationSessionId: null, bindingVersion: run.bindingVersion + 1 });
-        expect((await store.history(owner, input.id)).find(r => r.id === run.id)).toMatchObject({
+        const abandoned = (await store.history(owner, input.id)).find(r => r.id === run.id);
+        expect(abandoned).toMatchObject({
             status: 'cancelled', reason: 'tracking-ended', conversationSessionId: sessionId,
             sessionId: scenario === 'uncertain-snapshot' ? null : sessionId,
         });
+        expect(abandoned?.audit?.at(-1)).toEqual({ at: now, status: 'cancelled', reason: 'tracking-ended' });
         expect(await context.database.session.count({ where: { id: sessionId } })).toBe(1);
         await store.runNow(owner, input.id, randomUUID());
         const [next] = await store.claim(owner, machine);

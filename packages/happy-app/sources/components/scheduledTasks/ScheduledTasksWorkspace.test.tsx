@@ -9,7 +9,7 @@ import type { DecryptedScheduledTask, ScheduledTasksSnapshot } from '@/sync/sche
 import { ScheduledTasksWorkspace } from './ScheduledTasksWorkspace';
 
 const mocks = vi.hoisted(() => ({
-    focused: true, params: { taskId: '00000000-0000-4000-8000-000000000001' as string | undefined },
+    focused: true, params: { taskId: '00000000-0000-4000-8000-000000000001' as string | undefined, runId: undefined as string | undefined },
     snapshot: null as unknown as ScheduledTasksSnapshot, listeners: new Set<() => void>(),
     runNow: vi.fn(), history: vi.fn().mockResolvedValue(undefined), refresh: vi.fn().mockResolvedValue(undefined),
     setVisible: vi.fn(), push: vi.fn(), setParams: vi.fn(),
@@ -58,9 +58,48 @@ async function render() { await act(async () => { renderer = TestRenderer.create
 function runButton() { return renderer!.root.findAllByType('Pressable').find((node: { props: { testID?: string } }) => node.props.testID === 'scheduled-task-run-now')!; }
 beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    vi.clearAllMocks(); mocks.focused = true; mocks.params.taskId = taskId;
+    vi.clearAllMocks(); mocks.focused = true; mocks.params.taskId = taskId; mocks.params.runId = undefined;
     mocks.snapshot = { tasks: [{ ...task }], loading: false, error: null, revision: 1, accountGeneration: 1, histories: { [taskId]: [] } };
     mocks.runNow.mockImplementation(async () => { const created = run(); stage(created); return created; });
+});
+
+describe('scheduled task audit', () => {
+    const requestId = '00000000-0000-4000-8000-000000000003';
+    const otherId = '00000000-0000-4000-8000-000000000004';
+    const text = (node: { findAllByType(type: string): Array<{ props: { children: unknown } }> }) => node.findAllByType('Text')
+        .map(child => Array.isArray(child.props.children) ? child.props.children.join('') : child.props.children).join('\n');
+
+    it('shows a prior fixed-program delivery, without opening or inventing a conversation', async () => {
+        mocks.params.runId = runId;
+        stage(run({ executionKind: 'local-handler', webhookRequestId: requestId, status: 'completed', startedAt: 10, finishedAt: 20 }));
+        mocks.snapshot.tasks = [{ ...task, enabled: false, executionKind: 'local-handler' }];
+        await render();
+        const detail = renderer!.root.findAllByProps({ testID: `scheduled-run-audit-${runId}` })[0];
+        expect(text(detail)).toContain('scheduledTasks.audit.webhook');
+        expect(text(detail)).toContain('scheduledTasks.audit.legacy');
+        expect(text(detail)).toContain(requestId);
+        expect(text(renderer!.root)).toContain('scheduledTasks.audit.timePlanOff');
+        expect(renderer!.root.findAllByProps({ testID: 'scheduled-run-open-result' })).toHaveLength(0);
+        expect(mocks.push).not.toHaveBeenCalled();
+    });
+
+    it('keeps the selected run open while new events arrive and renders its persisted sequence', async () => {
+        const first = run({ trigger: 'schedule', audit: [{ at: 1, status: 'pending', reason: null }] });
+        const other = run({ id: otherId, trigger: 'manual' });
+        stage(first);
+        await render();
+        const inspect = renderer!.root.findAllByType('Pressable').find((node: { props: { testID?: string } }) => node.props.testID === `scheduled-run-inspect-${runId}`)!;
+        await act(async () => inspect.props.onPress());
+        expect(mocks.setParams).toHaveBeenCalledWith({ runId });
+        const claimed = { ...first, status: 'claimed' as const, audit: [...first.audit!, { at: 2, status: 'claimed' as const, reason: null }] };
+        await act(async () => publish({ histories: { [taskId]: [other, claimed] } }));
+        const detail = renderer!.root.findAllByProps({ testID: `scheduled-run-audit-${runId}` })[0];
+        const labels = text(detail);
+        expect(labels).toMatch(/scheduledTasks\.audit\.received[\s\S]+scheduledTasks\.audit\.machineClaimed/);
+        expect(labels).toContain('scheduledTasks.audit.schedule');
+        expect(labels).not.toContain('scheduledTasks.audit.legacy');
+        expect(renderer!.root.findAllByProps({ testID: `scheduled-run-audit-${otherId}` })).toHaveLength(0);
+    });
 });
 afterEach(async () => { await act(async () => renderer?.unmount()); renderer = undefined; mocks.listeners.clear(); });
 

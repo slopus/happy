@@ -42,6 +42,65 @@ const queuedRun = { id: '00000000-0000-4000-8000-000000000011', taskId: '0000000
     startedAt: null, finishedAt: null, reason: null, missedUntil: null, deadlineAt: null, conversationSessionId: null, reportSequence: 0 };
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
 
+it.each(['local-handler', 'agent', undefined] as const)('preserves the %s execution kind when toggling a task', async executionKind => {
+    const credentials = { token: 'test', secret: 'test' };
+    const controller = createScheduledTasksController(() => credentials, () => undefined);
+    controller.beginAccount();
+    const task = {
+        id: queuedRun.taskId, machineId: 'machine', rule: { type: 'daily', time: '09:00', timezone: 'UTC' },
+        enabled: true, newChatEachRun: true, encryptedConfig: 'ciphertext', notificationPolicy: 'none',
+        version: 3, nextAt: 500, createdAt: 100, updatedAt: 200,
+        activeRunId: null, bindingVersion: 0, conversationSessionId: null, executionKind,
+    } satisfies import('@slopus/happy-wire').ScheduledTask;
+    const fetch = vi.fn((_url: string, init?: RequestInit) => Promise.resolve(json(init?.method === 'PUT' ? {} : { tasks: [] })));
+    vi.stubGlobal('fetch', fetch);
+
+    await controller.toggle(task, false);
+
+    const input = JSON.parse(fetch.mock.calls[0][1]?.body as string);
+    expect(input).toEqual({
+        id: task.id, machineId: task.machineId, rule: task.rule, encryptedConfig: task.encryptedConfig,
+        enabled: false, newChatEachRun: true, notificationPolicy: 'none', expectedVersion: 3,
+        ...(executionKind === undefined ? {} : { executionKind }),
+    });
+});
+
+it('keeps audited and legacy runs in the same history', async () => {
+    const credentials = { token: 'test', secret: 'test' };
+    const controller = createScheduledTasksController(() => credentials, () => undefined);
+    controller.beginAccount();
+    const audit = [{ at: 100, status: 'pending', reason: null }, { at: 110, status: 'claimed', reason: null }];
+    const claimedRun = {
+        ...queuedRun, id: '00000000-0000-4000-8000-000000000014', updatedAt: 110, status: 'claimed',
+        claimId: '00000000-0000-4000-8000-000000000015', trigger: 'manual', audit,
+    };
+    vi.stubGlobal('fetch', () => Promise.resolve(json({ runs: [claimedRun, queuedRun] })));
+
+    await controller.history(queuedRun.taskId);
+
+    expect(controller.getSnapshot().histories[queuedRun.taskId]).toEqual([claimedRun, queuedRun]);
+});
+
+it('keeps a claimed audit event when the Run now response was issued in the same millisecond', async () => {
+    const credentials = { token: 'test', secret: 'test' };
+    const controller = createScheduledTasksController(() => credentials, () => undefined);
+    controller.beginAccount();
+    const accepted = { ...queuedRun, trigger: 'manual', audit: [{ at: 100, status: 'pending', reason: null }] };
+    const claimed = {
+        ...accepted, status: 'claimed', claimId: '00000000-0000-4000-8000-000000000015',
+        audit: [...accepted.audit, { at: 100, status: 'claimed', reason: null }],
+    };
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => Promise.resolve(json(
+        url.endsWith('/runs') ? { runs: [claimed] } : init?.method === 'POST' ? { run: accepted } : { tasks: [] },
+    )));
+
+    await controller.history(queuedRun.taskId);
+    const result = await controller.runNow(queuedRun.taskId, '00000000-0000-4000-8000-000000000013');
+
+    expect(result).toEqual(claimed);
+    expect(controller.getSnapshot().histories[queuedRun.taskId]).toEqual([claimed]);
+});
+
 it('returns the exact accepted run without waiting for the list refresh', async () => {
     const credentials = { token: 'test', secret: 'test' };
     const controller = createScheduledTasksController(() => credentials, () => undefined);

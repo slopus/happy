@@ -43,6 +43,13 @@ export type ScheduledTask = z.infer<typeof ScheduledTaskSchema>;
 export type ScheduledTaskInput = z.infer<typeof ScheduledTaskInputSchema>;
 export const ScheduledRunStatusSchema = z.enum(['pending', 'claimed', 'running', 'waiting-for-input', 'uncertain', 'completed', 'failed', 'cancelled', 'skipped']);
 export type ScheduledRunStatus = z.infer<typeof ScheduledRunStatusSchema>;
+export const SCHEDULED_RUN_AUDIT_LIMIT = 64;
+export const ScheduledRunAuditEntrySchema = z.object({
+    at: timestamp,
+    status: ScheduledRunStatusSchema,
+    reason: z.string().max(100).nullable(),
+}).strict();
+export type ScheduledRunAuditEntry = z.infer<typeof ScheduledRunAuditEntrySchema>;
 export const TaskWebhookInputSchema = z.record(z.string().min(1).max(100),
     z.union([z.string().max(4000), z.number().finite(), z.boolean(), z.null()]))
     .refine(value => Object.keys(value).length <= 32 && new TextEncoder().encode(JSON.stringify(value)).length <= 8192, 'Webhook input too large');
@@ -52,6 +59,8 @@ export function scheduledTaskPrompt(config: ScheduledTaskConfig, input?: z.infer
         : '');
 }
 export const ScheduledRunSchema = z.object({
+    trigger: z.enum(['schedule', 'manual', 'webhook']).optional(),
+    audit: z.array(ScheduledRunAuditEntrySchema).max(SCHEDULED_RUN_AUDIT_LIMIT).optional(),
     executionKind: z.enum(['agent', 'local-handler']).optional(),
     webhookRequestId: z.string().uuid().optional(),
     webhookInput: TaskWebhookInputSchema.optional(),

@@ -81,8 +81,9 @@ export function createScheduledTasksController(getCredentials: () => AuthCredent
         },
         async toggle(task: ScheduledTask, enabled = !task.enabled) {
             const assertAccount = captureAccount();
-            const { id, machineId, rule, encryptedConfig, newChatEachRun, notificationPolicy } = task;
-            await request(`/${id}`, 'PUT', { id, machineId, rule, encryptedConfig, enabled, newChatEachRun, notificationPolicy, expectedVersion: task.version });
+            const { id, machineId, rule, encryptedConfig, newChatEachRun, notificationPolicy, executionKind } = task;
+            await request(`/${id}`, 'PUT', { id, machineId, rule, encryptedConfig, enabled, newChatEachRun, notificationPolicy, executionKind,
+                expectedVersion: task.version });
             await refresh(true);
             assertAccount();
         },
@@ -94,7 +95,10 @@ export function createScheduledTasksController(getCredentials: () => AuthCredent
             if (run.taskId !== taskId) throw new ScheduledTasksRequestError('run-task-mismatch');
             const history = state.histories[taskId] ?? [];
             const existing = history.find(item => item.id === run.id);
-            const newer = existing && (existing.updatedAt > run.updatedAt || existing.reportSequence > run.reportSequence);
+            // A claim can share the acceptance timestamp and does not advance reportSequence.
+            const newer = existing && (existing.updatedAt > run.updatedAt || existing.reportSequence > run.reportSequence
+                || (existing.audit?.length ?? 0) > (run.audit?.length ?? 0)
+                || (run.status === 'pending' && existing.status !== 'pending'));
             historySequences.set(taskId, (historySequences.get(taskId) ?? 0) + 1);
             if (!newer) {
                 publish({ histories: { ...state.histories, [taskId]: [run, ...history.filter(item => item.id !== run.id)] } });

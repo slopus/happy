@@ -213,6 +213,7 @@ export const ja: TranslationStructure = {
         }
     },
     scheduledTasks: {
+        audit: projectGoalsBase.scheduledTasks.audit,
         executionSettings: "実行設定",
         selectMachine: "実行マシンを選択してください",
         accountUnavailable: "実行アカウントの設定を取得できません。再接続してからもう一度お試しください。",

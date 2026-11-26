@@ -210,6 +210,7 @@ export const ca: TranslationStructure = {
         }
     },
     scheduledTasks: {
+        audit: projectGoalsBase.scheduledTasks.audit,
         executionSettings: "Configuració d’execució",
         selectMachine: "Tria una màquina d’execució",
         accountUnavailable: "La configuració del compte no està disponible. Torna-ho a provar després de restablir la connexió.",

@@ -3,7 +3,7 @@ import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { allocateUserSeqBatch } from '@/storage/seq';
 import { SCHEDULED_STARTUP_TIMEOUT_MS, SCHEDULED_EXECUTION_TIMEOUT_MS } from './deadlines';
-import { SCHEDULED_TASK_PREFIX, TaskWebhookInputSchema, ScheduledTaskInputSchema, ScheduledRunReportSchema, nextScheduledAt, isScheduledRunTerminal,
+import { SCHEDULED_TASK_PREFIX, SCHEDULED_RUN_AUDIT_LIMIT, TaskWebhookInputSchema, ScheduledTaskInputSchema, ScheduledRunReportSchema, nextScheduledAt, isScheduledRunTerminal,
     type ScheduledTask, type ScheduledTaskInput, type ScheduledRun, type ScheduledRunReport, type ScheduledRunClaim } from '@slopus/happy-wire';
 
 type Tx = Prisma.TransactionClient;
@@ -20,6 +20,22 @@ const runPrefix = (id: string) => `${SCHEDULED_TASK_PREFIX}run:${id}:`;
 const runKey = (taskId: string, id: string) => runPrefix(taskId) + id;
 const decode = <T>(row: Row | null): T | null => row?.value ? JSON.parse(new TextDecoder().decode(row.value)) as T : null;
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+
+// Keep arbitrary receipt messages out of the longer-lived audit trail.
+const auditReasons = new Set([
+    'binding-unavailable', 'configuration-invalid', 'delivery-uncertain', 'execution-timeout', 'input-rejected',
+    'journal-unavailable', 'local-handler-failed', 'local-handler-interrupted', 'local-handler-not-registered',
+    'previous-run-active', 'processor-startup-failed', 'startup-deadline-exceeded', 'task-paused', 'tracking-ended',
+]);
+function recordRunTransition(previous: ScheduledRun, next: ScheduledRun): ScheduledRun {
+    if (previous.status === next.status && previous.reason === next.reason) return next;
+    const history = previous.audit ?? [];
+    const retained = history.length >= SCHEDULED_RUN_AUDIT_LIMIT
+        ? [history[0], ...history.slice(-(SCHEDULED_RUN_AUDIT_LIMIT - 2))]
+        : history;
+    const event = { at: next.updatedAt, status: next.status, reason: next.reason && auditReasons.has(next.reason) ? next.reason : null };
+    return { ...next, audit: [...retained, event] };
+}
 
 /** Forget only this active run's dedicated conversation, preserving all history. */
 function detachRunConversation(task: StoredTask, run: ScheduledRun): void {
@@ -72,14 +88,15 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
         const discarded = history.slice(100).map(item => item.row.key);
         if (discarded.length) await tx.userKVStore.deleteMany({ where: { accountId, key: { in: discarded } } });
     }
-    async function createRun(tx: Tx, accountId: string, task: StoredTask, scheduledAt: number, id: string = randomUUID()): Promise<ScheduledRun> {
+    async function createRun(tx: Tx, accountId: string, task: StoredTask, scheduledAt: number, trigger: NonNullable<ScheduledRun['trigger']>): Promise<ScheduledRun> {
         const instant = now();
-        const run: ScheduledRun = { id, taskId: task.id, machineId: task.machineId, scheduledAt, createdAt: instant, updatedAt: instant,
+        const run: ScheduledRun = { id: randomUUID(), taskId: task.id, machineId: task.machineId, scheduledAt, createdAt: instant, updatedAt: instant,
+            trigger, audit: [{ at: instant, status: 'pending', reason: null }],
             status: 'pending', executionKind: task.executionKind, encryptedConfig: task.encryptedConfig, newChatEachRun: task.newChatEachRun, bindingVersion: task.bindingVersion,
             notificationPolicy: task.notificationPolicy, claimId: null, sessionId: null, turnId: null,
             startedAt: null, finishedAt: null, reason: null, missedUntil: null, deadlineAt: null,
             conversationSessionId: task.newChatEachRun ? null : task.conversationSessionId, reportSequence: 0 };
-        await write(tx, accountId, runKey(task.id, id), run, null);
+        await write(tx, accountId, runKey(task.id, run.id), run, null);
         await prune(tx, accountId, task.id);
         return run;
     }
@@ -87,7 +104,10 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
         if (!task.activeRunId) return;
         const { row, run } = await readRun(tx, accountId, task.id, task.activeRunId);
         if (run.status !== 'pending' || (preserveWebhook && run.webhookInput)) return;
-        await write(tx, accountId, row.key, { ...run, status: 'cancelled', reason: 'task-paused', finishedAt: now(), updatedAt: now() }, row);
+        const instant = now();
+        await write(tx, accountId, row.key, recordRunTransition(run, {
+            ...run, status: 'cancelled', reason: 'task-paused', finishedAt: instant, updatedAt: instant,
+        }), row);
         task.activeRunId = null;
         await prune(tx, accountId, task.id);
     }
@@ -149,22 +169,24 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
         },
         async save(accountId: string, raw: ScheduledTaskInput, expectedVersion: number, resetBinding = false): Promise<ScheduledTask> {
             const input = ScheduledTaskInputSchema.parse(raw);
-            if (input.executionKind === 'local-handler' && !input.newChatEachRun) throw new ScheduledTaskError('local-handler-requires-independent-runs', 400);
             const task = await transaction(async tx => {
                 if (!await tx.machine.findFirst({ where: { id: input.machineId, accountId } })) throw new ScheduledTaskError('machine-not-found', 404);
                 const row = await read(tx, accountId, taskKey(input.id));
                 const previous = decode<StoredTask>(row);
+                // Older clients omit this field even when they merely pause a registered program.
+                const executionKind = input.executionKind ?? previous?.executionKind;
+                if (executionKind === 'local-handler' && !input.newChatEachRun) throw new ScheduledTaskError('local-handler-requires-independent-runs', 400);
                 if (row && expectedVersion === -1 && previous && Object.entries(input).every(([key, value]) => JSON.stringify(previous[key as keyof StoredTask]) === JSON.stringify(value))) return previous;
                 if ((row?.version ?? -1) !== expectedVersion || previous?.deleted) throw new ScheduledTaskError('version-conflict');
                 if (!previous && (await rows(tx, accountId, SCHEDULED_TASK_PREFIX + 'task:')).filter(r => !decode<StoredTask>(r)!.deleted).length >= 100) throw new ScheduledTaskError('task-limit', 429);
                 if (previous?.activeRunId && (resetBinding || input.machineId !== previous.machineId)) throw new ScheduledTaskError('task-busy');
                 if (previous && input.machineId !== previous.machineId && !resetBinding) throw new ScheduledTaskError('binding-reset-required');
                 if (input.rule.type === 'once' && input.rule.at <= now() && (input.enabled || !previous)) throw new ScheduledTaskError('time-must-be-future', 400);
-                const next: StoredTask = { ...input, version: (row?.version ?? -1) + 1, createdAt: previous?.createdAt ?? now(), updatedAt: now(),
+                const next: StoredTask = { ...input, executionKind, version: (row?.version ?? -1) + 1, createdAt: previous?.createdAt ?? now(), updatedAt: now(),
                     nextAt: input.enabled ? nextScheduledAt(input.rule, now()) : null, activeRunId: previous?.activeRunId ?? null,
                     conversationSessionId: resetBinding ? null : previous?.conversationSessionId ?? null,
                     bindingVersion: (previous?.bindingVersion ?? 0) + (resetBinding ? 1 : 0) };
-                if (!input.enabled) await cancelPending(tx, accountId, next, previous?.enabled === false);
+                if (!input.enabled) await cancelPending(tx, accountId, next, true);
                 await write(tx, accountId, taskKey(input.id), next, row);
                 return next;
             });
@@ -196,14 +218,17 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                         run = { ...active.run, missedUntil: at, updatedAt: now() };
                         await write(tx, accountId, active.row.key, run, active.row);
                     } else {
-                        run = await createRun(tx, accountId, task, scheduledAt);
-                        run.status = 'skipped'; run.reason = 'previous-run-active'; run.finishedAt = now();
+                        const pending = await createRun(tx, accountId, task, scheduledAt, 'schedule');
+                        const instant = now();
+                        run = recordRunTransition(pending, {
+                            ...pending, status: 'skipped', reason: 'previous-run-active', finishedAt: instant, updatedAt: instant,
+                        });
                         const added = await read(tx, accountId, runKey(id, run.id));
                         await write(tx, accountId, runKey(id, run.id), run, added);
                         await prune(tx, accountId, id);
                     }
                 } else {
-                    run = await createRun(tx, accountId, task, scheduledAt);
+                    run = await createRun(tx, accountId, task, scheduledAt, 'schedule');
                     if (at > scheduledAt + 1000) run.missedUntil = at;
                     if (run.missedUntil) await write(tx, accountId, runKey(id, run.id), run, await read(tx, accountId, runKey(id, run.id)));
                     task.activeRunId = run.id;
@@ -241,7 +266,7 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                         .filter(receipt => receipt.createdAt > now() - 60_000);
                     if (recent.length >= 10) throw new ScheduledTaskError('webhook-rate-limit', 429);
                 }
-                const run = await createRun(tx, accountId, task, now());
+                const run = await createRun(tx, accountId, task, now(), webhook ? 'webhook' : 'manual');
                 if (webhook) {
                     run.webhookInput = webhook.input;
                     run.webhookRequestId = requestId;
@@ -271,7 +296,10 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                     if (deliveryAuthorized) {
                         if (granted >= maxNewClaims) continue;
                         granted++;
-                        active.run.status = 'claimed'; active.run.claimId = randomUUID(); active.run.updatedAt = now(); active.run.deadlineAt = now() + SCHEDULED_STARTUP_TIMEOUT_MS;
+                        const instant = now();
+                        active.run = recordRunTransition(active.run, {
+                            ...active.run, status: 'claimed', claimId: randomUUID(), updatedAt: instant, deadlineAt: instant + SCHEDULED_STARTUP_TIMEOUT_MS,
+                        });
                         await write(tx, accountId, active.row.key, active.run, active.row);
                     }
                     result.push({ accountId, task, run: active.run, deliveryAuthorized });
@@ -317,11 +345,12 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                 if (report.reason === 'processor-startup-failed' && !processorStartupFailed) throw new ScheduledTaskError('turn-required', 400);
                 if (run.sessionId && ['failed', 'cancelled'].includes(report.status) && !report.turnId && report.reason !== 'input-rejected' && !processorStartupFailed) throw new ScheduledTaskError('turn-required', 400);
                 if (report.status === 'claimed' && run.status !== 'claimed') return { accountId, task, run, changed: false };
-                const next: ScheduledRun = { ...run, ...report, sessionId: report.sessionId ?? run.sessionId, turnId: report.turnId ?? run.turnId,
+                const instant = now();
+                const next = recordRunTransition(run, { ...run, ...report, sessionId: report.sessionId ?? run.sessionId, turnId: report.turnId ?? run.turnId,
                     reportSequence: report.sequence ?? run.reportSequence,
-                    reason: report.reason ?? null, updatedAt: now(), startedAt: run.startedAt ?? (report.status === 'running' ? now() : null),
-                    deadlineAt: isScheduledRunTerminal(report.status) ? null : report.status === 'running' && !run.turnId ? now() + SCHEDULED_EXECUTION_TIMEOUT_MS : run.deadlineAt,
-                    finishedAt: isScheduledRunTerminal(report.status) ? now() : null };
+                    reason: report.reason ?? null, updatedAt: instant, startedAt: run.startedAt ?? (report.status === 'running' ? instant : null),
+                    deadlineAt: isScheduledRunTerminal(report.status) ? null : report.status === 'running' && !run.turnId ? instant + SCHEDULED_EXECUTION_TIMEOUT_MS : run.deadlineAt,
+                    finishedAt: isScheduledRunTerminal(report.status) ? instant : null });
                 await write(tx, accountId, row.key, next, row);
                 if (isScheduledRunTerminal(next.status) && task.activeRunId === id) {
                     if (processorStartupFailed) detachRunConversation(task, run);
@@ -359,15 +388,18 @@ export function createScheduledTaskStore(database: PrismaClient, options: { now?
                 const { row: taskRow, task } = await readTask(tx, accountId, taskId);
                 const { row, run } = await readRun(tx, accountId, taskId, id);
                 if (!['uncertain', 'waiting-for-input'].includes(run.status)) throw new ScheduledTaskError('run-not-blocked');
-                run.status = 'cancelled'; run.reason = 'tracking-ended'; run.updatedAt = now(); run.finishedAt = now();
-                await write(tx, accountId, row.key, run, row);
+                const instant = now();
+                const ended = recordRunTransition(run, {
+                    ...run, status: 'cancelled', reason: 'tracking-ended', updatedAt: instant, finishedAt: instant,
+                });
+                await write(tx, accountId, row.key, ended, row);
                 if (task.activeRunId === id) {
                     detachRunConversation(task, run);
                     task.activeRunId = null; task.version = taskRow.version + 1; task.updatedAt = now();
                     await write(tx, accountId, taskRow.key, task, taskRow);
                 }
                 await prune(tx, accountId, taskId);
-                return { accountId, task, run };
+                return { accountId, task, run: ended };
             }); emit(change);
         },
     };

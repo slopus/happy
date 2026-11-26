@@ -221,6 +221,7 @@ export const ru: TranslationStructure = {
         }
     },
     scheduledTasks: {
+        audit: projectGoalsBase.scheduledTasks.audit,
         executionSettings: "Настройки выполнения",
         selectMachine: "Выберите машину для выполнения",
         accountUnavailable: "Настройки аккаунта недоступны. Повторите попытку после восстановления соединения.",

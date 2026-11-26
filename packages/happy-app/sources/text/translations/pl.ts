@@ -221,6 +221,7 @@ export const pl: TranslationStructure = {
         }
     },
     scheduledTasks: {
+        audit: projectGoalsBase.scheduledTasks.audit,
         executionSettings: "Ustawienia wykonania",
         selectMachine: "Wybierz maszynę wykonawczą",
         accountUnavailable: "Ustawienia konta są niedostępne. Spróbuj ponownie po przywróceniu połączenia.",
