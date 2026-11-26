@@ -48,30 +48,29 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.slopus.happy.R
-import com.slopus.happy.ui.components.rememberReduceMotion
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 object LiquidMetalTags {
     const val SHADER = "liquidMetal.shader"
@@ -87,29 +86,43 @@ object LiquidMetalTags {
  *
  * It moves at Paper's default speed, a frame on every one of the display's
  * (120 a second on the Fold), while the screen is resumed and not [paused],
- * and holds still while covered, in the background, or with animations
- * removed (Paper's frame 0 then). Only its own box is drawn and the mask's
- * edge field comes baked (`cloud_liquid_metal.png`, decoded once off the main
- * thread), so a frame is one texture read and the stripes' arithmetic per
- * pixel, three times over for the stripes' fwidth. Until the
- * field is decoded and the program compiled (once for the app, also off
- * the main thread, [LiquidMetalProgram]), and before Android 13, which has
- * no runtime shader, the cloud stands still in [fallbackColor].
+ * and holds still while covered or in the background, and on Paper's frame
+ * 0 where [rememberShadersMove] says (animations removed, Battery Saver, a
+ * low-RAM or hot phone). Only its own box is drawn and the mask's edge
+ * field comes baked (`cloud_liquid_metal.png`), so a frame is one texture
+ * read and the stripes' arithmetic per pixel, three times over for the
+ * stripes' fwidth. The app compiles the program and decodes the field off
+ * the main thread before the first screen ([StartWarmup]); a mark composed
+ * before that does both where it is, so its first frame is late rather
+ * than drawn without its metal. Before Android 13, which has no runtime
+ * shader, the same frame 0 is drawn once by OpenGL ES ([ShaderStills]);
+ * only where neither can draw is the cloud flat, in [fallbackColor].
  */
 @Composable
 fun LiquidMetalMark(modifier: Modifier = Modifier, paused: Boolean = false, fallbackColor: Color = Color.Gray) {
-    val shader = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) rememberLiquidMetalShader() else null
-    val field = rememberLiquidMetalField()
-    if (shader != null && field != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        ShaderLiquidMetal(shader, field, paused, modifier)
-    } else {
-        Image(
-            painter = painterResource(R.drawable.cloud_mark),
-            contentDescription = null,
-            colorFilter = ColorFilter.tint(fallbackColor),
-            modifier = modifier.testTag(LiquidMetalTags.FALLBACK),
-        )
+    val resources = LocalContext.current.resources
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val shader = remember { LiquidMetalProgram.get() }
+        val field = remember(resources) { LiquidMetalField.load(resources) }
+        if (shader != null && field != null) return ShaderLiquidMetal(shader, field, paused, modifier)
     }
+    val flat = painterResource(R.drawable.cloud_mark)
+    Box(
+        modifier.testTag(LiquidMetalTags.FALLBACK).drawWithCache {
+            val still = ShaderStills.cloud(IntSize(size.width.roundToInt(), size.height.roundToInt()), resources)?.asImageBitmap()
+            onDrawBehind {
+                if (still != null) {
+                    drawImage(still)
+                } else {
+                    // The flat cloud, contained and centred as the shader's square is.
+                    val side = minOf(size.width, size.height)
+                    translate((size.width - side) / 2, (size.height - side) / 2) {
+                        with(flat) { draw(Size(side, side), colorFilter = ColorFilter.tint(fallbackColor)) }
+                    }
+                }
+            }
+        },
+    )
 }
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -117,10 +130,10 @@ fun LiquidMetalMark(modifier: Modifier = Modifier, paused: Boolean = false, fall
 private fun ShaderLiquidMetal(shader: RuntimeShader, field: BitmapShader, paused: Boolean, modifier: Modifier) {
     // Nanoseconds moved, summed whole so the clock's rate holds however long it runs.
     val elapsed = remember { mutableLongStateOf(0L) }
-    val reduceMotion = rememberReduceMotion()
+    val moves = rememberShadersMove()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle, reduceMotion, paused) {
-        if (reduceMotion) {
+    LaunchedEffect(lifecycle, moves, paused) {
+        if (!moves) {
             elapsed.longValue = 0L
             return@LaunchedEffect
         }
@@ -144,16 +157,6 @@ private fun ShaderLiquidMetal(shader: RuntimeShader, field: BitmapShader, paused
             drawRect(ShaderBrush(shader))
         },
     )
-}
-
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@Composable
-private fun rememberLiquidMetalShader(): RuntimeShader? {
-    var shader by remember { mutableStateOf(LiquidMetalProgram.now) }
-    LaunchedEffect(Unit) {
-        if (shader == null) shader = withContext(Dispatchers.Default) { LiquidMetalProgram.get() }
-    }
-    return shader
 }
 
 /**
@@ -183,17 +186,6 @@ internal object LiquidMetalProgram {
         }
         return now
     }
-}
-
-/** The cloud's field, decoded off the main thread the first time any mark asks; null until then. */
-@Composable
-private fun rememberLiquidMetalField(): BitmapShader? {
-    val resources = LocalContext.current.resources
-    var field by remember { mutableStateOf(LiquidMetalField.cached) }
-    LaunchedEffect(Unit) {
-        if (field == null) field = withContext(Dispatchers.Default) { LiquidMetalField.load(resources) }
-    }
-    return field
 }
 
 internal object LiquidMetalField {

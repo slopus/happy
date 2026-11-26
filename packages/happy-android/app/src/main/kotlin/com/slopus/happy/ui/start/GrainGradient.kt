@@ -41,8 +41,6 @@ import android.graphics.Shader
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
@@ -56,10 +54,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
@@ -67,7 +67,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
-import com.slopus.happy.ui.components.rememberReduceMotion
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -75,6 +74,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /** The background colour and the four colours Grain Gradient blends, in Paper's order. */
 @Immutable
@@ -94,24 +94,37 @@ object GrainGradientTags {
  * moves at Paper's default speed while the screen is resumed, a frame on
  * every one of the display's (120 a second on the Fold's and other
  * high-rate screens, which `MaxRefreshRate` asks for, 60 elsewhere), as
- * happy-ios's does, and holds still while covered, in the background,
- * or with animations removed (the first frame then, as Paper's frame 0).
- * Each frame draws only the moving corners over the grain, worked out once
- * for its size ([GrainCache], shared by every gradient of that size, so the
- * Happy Cloud welcome over Start draws from its first frame); where it
- * can't be, frames work the grain out themselves. Nothing of it is compiled
- * or worked out on the main thread: until it is ready (the app warms it
- * before the first screen, [GrainCache.warm]) the still gradient stands in
- * and the moving one fades in over it. Before Android 13 there is no
- * runtime shader: the still gradient stays.
+ * happy-ios's does, and holds still while covered or in the background, and
+ * on Paper's frame 0 where [rememberShadersMove] says (animations removed,
+ * Battery Saver, a low-RAM or hot phone). Each frame draws only the moving
+ * corners over the grain, worked out once for its size ([GrainCache],
+ * shared by every gradient of that size, so the Happy Cloud welcome over
+ * Start draws from its first frame); until it is, or where it can't be,
+ * frames work the grain out themselves, the same picture. The app compiles
+ * the programs off the main thread before the first screen
+ * ([GrainCache.warm]); a gradient composed before that compiles them where
+ * it is, so its first frame is late rather than drawn without its grain.
+ * Nothing fades in. Before Android 13 there is no runtime shader: the same
+ * frame 0 is drawn once by OpenGL ES ([ShaderStills]).
  */
 @Composable
 fun GrainGradient(palette: GrainPalette, modifier: Modifier = Modifier) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && GrainCache.available) {
         ShaderGrainGradient(palette, modifier)
     } else {
-        Box(modifier.testTag(GrainGradientTags.FALLBACK).drawBehind { drawFallback(palette) })
+        StillGrainGradient(palette, modifier)
     }
+}
+
+/** Frame 0 drawn by OpenGL ES ([ShaderStills.sky]), waited for; the corners' glow only where that can't be drawn either. */
+@Composable
+private fun StillGrainGradient(palette: GrainPalette, modifier: Modifier) {
+    Box(
+        modifier.testTag(GrainGradientTags.FALLBACK).drawWithCache {
+            val still = ShaderStills.sky(IntSize(size.width.roundToInt(), size.height.roundToInt()), palette)?.asImageBitmap()
+            onDrawBehind { if (still != null) drawImage(still) else drawFallback(palette) }
+        },
+    )
 }
 
 /** The grain worked out for one size, read pixel for pixel. */
@@ -122,10 +135,13 @@ internal class GrainField(val size: IntSize, val bitmap: Bitmap, val shader: Bit
 private fun ShaderGrainGradient(palette: GrainPalette, modifier: Modifier) {
     // Nanoseconds moved, summed whole so the clock's rate holds however long it runs.
     val elapsed = remember { mutableLongStateOf(0L) }
-    val reduceMotion = rememberReduceMotion()
+    val moves = rememberShadersMove()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle, reduceMotion) {
-        if (reduceMotion) return@LaunchedEffect
+    LaunchedEffect(lifecycle, moves) {
+        if (!moves) {
+            elapsed.longValue = 0L
+            return@LaunchedEffect
+        }
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             // Time stands still while paused; it picks up where it stopped.
             var last = withInfiniteAnimationFrameNanos { it }
@@ -142,44 +158,28 @@ private fun ShaderGrainGradient(palette: GrainPalette, modifier: Modifier) {
         onDispose { GrainCache.release() }
     }
     var size by remember { mutableStateOf(IntSize.Zero) }
-    var programs by remember { mutableStateOf(GrainCache.programsNow) }
+    // Compiled here only when the app hadn't yet: the first frame waits for them.
+    val programs = remember { GrainCache.programsNow ?: GrainCache.programsHere() }
     // The last size's field until this one's is worked out: a screen the size of the last one has it at once.
     var field by remember { mutableStateOf(GrainCache.fieldNow) }
-    var whole by remember { mutableStateOf(GrainCache.wholeNow) }
-    LaunchedEffect(Unit) {
-        if (programs == null) programs = GrainCache.programs()
-    }
     LaunchedEffect(size) {
-        if (size.width > 0 && size.height > 0 && field?.size != size) {
-            field = GrainCache.field(size)
-            if (field == null) whole = GrainCache.whole()
-        }
+        if (size.width > 0 && size.height > 0 && field?.size != size) field = GrainCache.field(size)
     }
-    val ready = programs != null && (field != null || whole != null)
-    // Shown at once when ready for the first frame; otherwise faded in over the still gradient.
-    val shown = remember { Animatable(if (ready) 1f else 0f) }
-    LaunchedEffect(ready) {
-        if (!ready) return@LaunchedEffect
-        if (reduceMotion) shown.snapTo(1f) else shown.animateTo(1f, tween(FADE_MILLIS))
-    }
+    if (programs == null) return StillGrainGradient(palette, modifier)
     Box(
         modifier.testTag(GrainGradientTags.SHADER).onSizeChanged { size = it }.drawBehind {
             val sized = field?.takeIf { it.size.width.toFloat() == this.size.width && it.size.height.toFloat() == this.size.height }
-            val shader = programs?.let { if (sized != null) it.corners.also { c -> c.setInputBuffer("u_field", sized.shader) } else whole }
-            val alpha = if (shader == null) 0f else shown.value
-            if (alpha < 1f) drawFallback(palette)
-            if (shader != null && alpha > 0f) {
-                shader.setFloatUniform("u_resolution", this.size.width, this.size.height)
-                shader.setFloatUniform("u_time", (elapsed.longValue / 1_000_000_000.0).toFloat())
-                shader.setColorUniform("u_colorBack", palette.back.toArgb())
-                palette.colors.forEachIndexed { i, color -> shader.setColorUniform("u_color$i", color.toArgb()) }
-                drawRect(ShaderBrush(shader), alpha = alpha)
-            }
+            // Until the field is worked out, the grain is worked out in the frame: the same picture.
+            val shader = if (sized != null) programs.corners.also { it.setInputBuffer("u_field", sized.shader) } else GrainCache.wholeHere()
+            if (shader == null) return@drawBehind drawFallback(palette)
+            shader.setFloatUniform("u_resolution", this.size.width, this.size.height)
+            shader.setFloatUniform("u_time", (elapsed.longValue / 1_000_000_000.0).toFloat())
+            shader.setColorUniform("u_colorBack", palette.back.toArgb())
+            palette.colors.forEachIndexed { i, color -> shader.setColorUniform("u_color$i", color.toArgb()) }
+            drawRect(ShaderBrush(shader))
         },
     )
 }
-
-private const val FADE_MILLIS = 300
 
 /**
  * What every Grain Gradient shares, made off the main thread one thing at
@@ -221,15 +221,21 @@ internal object GrainCache {
         fieldNow?.takeIf { it.size == size } ?: compile()?.let { grainField(it.field, size) }?.also { fieldNow = it } ?: run { fieldFailed = true; null }
     }
 
-    /** The whole shader, for where the grain can't be worked out ahead. */
-    suspend fun whole(): RuntimeShader? = wholeNow ?: if (failed) null else withContext(worker) {
-        wholeNow ?: build("whole") { RuntimeShader(GRAIN_GRADIENT_AGSL) }?.also { wholeNow = it }
-    }
+    /** The whole shader, for frames before the grain is worked out, or where it can't be. */
+    suspend fun whole(): RuntimeShader? = wholeNow ?: if (failed) null else withContext(worker) { wholeHere() }
 
-    /** The programs and the grain for [size], made now off the main thread: for a screen about to show a gradient. */
+    /** The programs, compiled on this thread if no one has yet: for a gradient composed before [warm] finished. */
+    fun programsHere(): Programs? = compile()
+
+    /** [whole], compiled on this thread if no one has yet. */
+    @Synchronized
+    fun wholeHere(): RuntimeShader? = wholeNow ?: if (failed) null else build("whole") { RuntimeShader(GRAIN_GRADIENT_AGSL) }?.also { wholeNow = it }
+
+    /** The programs, the whole shader and the grain for [size], made now off the main thread: for a screen about to show a gradient. */
     fun warm(size: IntSize?) {
         scope.launch {
             compile()
+            wholeHere()
             if (size != null && size.width > 0 && size.height > 0) field(size)
         }
     }
@@ -242,6 +248,7 @@ internal object GrainCache {
         if (--holders == 0) fieldNow = null
     }
 
+    @Synchronized
     private fun compile(): Programs? = programsNow ?: if (failed) null else build("programs") {
         Programs(RuntimeShader(GRAIN_CORNERS_AGSL), RuntimeShader(GRAIN_FIELD_AGSL))
     }.also { if (it == null) failed = true else programsNow = it }

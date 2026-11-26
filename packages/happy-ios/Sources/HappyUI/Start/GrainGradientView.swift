@@ -45,13 +45,15 @@ struct GrainPalette: Equatable {
 
 /// Paper's Grain Gradient, "corners" shape, filling the view. It moves at
 /// Paper's default speed, at the display's rate (120 frames a second on
-/// ProMotion, 60 elsewhere), while on screen and the app is active, and holds still with
-/// Reduce Motion (on Paper's frame 0). Frames are encoded and presented off
-/// the main thread (`GrainRenderer.queue`), the first one too, so a swipe or
-/// a push is never waiting on a drawable; until the first arrives the view
-/// is the gradient's background colour. A frame still on its way when the
-/// next is due is skipped, not queued, and one asked for by a resize or a
-/// new palette is drawn once it lands. Only the corners move; the grain is
+/// ProMotion, 60 elsewhere), while on screen and the app is active, and holds
+/// still on Paper's frame 0 where `ShaderMotion` says (Reduce Motion, Low
+/// Power Mode, a hot phone). The first frame is drawn as the view goes on
+/// screen and shown in the same transaction, so the view never appears
+/// without its grain; frames after it are encoded and presented off the main
+/// thread (`GrainRenderer.queue`), so a swipe or a push is never waiting on
+/// a drawable. A frame still on its way when the next is due is skipped,
+/// not queued, and one asked for by a resize or a new palette is drawn once
+/// it lands. Only the corners move; the grain is
 /// drawn once per size (`GrainField`), so a frame costs the GPU about 1.5 ms
 /// on an iPhone 15 Pro Max rather than the whole grain over again (about
 /// 16 ms there, two 120 Hz frames). Without Metal a still gradient
@@ -70,6 +72,8 @@ final class GrainGradientView: UIView {
     /// The frame being drawn off the main thread, if one is.
     private let inFlight = GrainInFlight()
     private let field = GrainField()
+    /// A frame is in the layer: later ones may come a frame late.
+    private var shown = false
 
     override class var layerClass: AnyClass { GrainRenderer.shared == nil ? CALayer.self : CAMetalLayer.self }
 
@@ -88,7 +92,7 @@ final class GrainGradientView: UIView {
             fallback = still
         }
         let center = NotificationCenter.default
-        for name in [UIApplication.didBecomeActiveNotification, UIApplication.willResignActiveNotification, UIAccessibility.reduceMotionStatusDidChangeNotification] {
+        for name in [UIApplication.didBecomeActiveNotification, UIApplication.willResignActiveNotification, ShaderMotion.changed] {
             center.addObserver(self, selector: #selector(updateLink), name: name, object: nil)
         }
         paletteChanged()
@@ -106,34 +110,40 @@ final class GrainGradientView: UIView {
         // drawn again on the way back.
         if window == nil { let field = field; GrainRenderer.queue.async { field.texture = nil } }
         updateLink()
-        render()
+        if !sizeDrawable() { render() }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        if let metalLayer {
-            let scale = metalLayer.contentsScale
-            let drawable = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
-            if metalLayer.drawableSize != drawable {
-                metalLayer.drawableSize = drawable
-                render()
-            }
-        }
+        sizeDrawable()
         if let fallback {
             fallback.frame = bounds
             fallback.sublayers?.forEach { $0.frame = bounds }
         }
     }
 
+    /// The drawable at the view's size in pixels, drawn again if that
+    /// changed; true when it did.
+    @discardableResult
+    private func sizeDrawable() -> Bool {
+        guard let metalLayer else { return false }
+        let scale = metalLayer.contentsScale
+        let drawable = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+        guard metalLayer.drawableSize != drawable else { return false }
+        metalLayer.drawableSize = drawable
+        render()
+        return true
+    }
+
     private var moves: Bool {
-        window != nil && renderer != nil && !UIAccessibility.isReduceMotionEnabled
+        window != nil && renderer != nil && ShaderMotion.allowed
             && UIApplication.shared.applicationState != .background
     }
 
     @objc private func updateLink() {
         guard moves, UIApplication.shared.applicationState == .active else {
             link?.invalidate(); link = nil; last = nil
-            if UIAccessibility.isReduceMotionEnabled { time = 0; render() }
+            if !ShaderMotion.allowed, time != 0 { time = 0; render() }
             return
         }
         guard link == nil else { return }
@@ -160,8 +170,21 @@ final class GrainGradientView: UIView {
         metalLayer.backgroundColor = palette.back.cgColor
         let uniforms = GrainRenderer.uniforms(size: metalLayer.drawableSize, time: Float(time), palette: palette)
         let target = GrainTarget(layer: metalLayer)
+        let field = field
+        if !shown {
+            // The first frame: drawn now and shown with the view, in this
+            // transaction, never a frame after it.
+            guard window != nil, inFlight.begin(orAfter: true) else { return }
+            metalLayer.presentsWithTransaction = true
+            let drawable = GrainRenderer.queue.sync { renderer.draw(in: target, field: field, uniforms: uniforms, withTransaction: true) }
+            drawable?.present()
+            shown = drawable != nil
+            if inFlight.end() { DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.render() } } }
+            return
+        }
+        metalLayer.presentsWithTransaction = false
         guard inFlight.begin(orAfter: !skippable) else { return }
-        let inFlight = inFlight, field = field
+        let inFlight = inFlight
         GrainRenderer.queue.async { [weak self] in
             renderer.draw(in: target, field: field, uniforms: uniforms)
             guard inFlight.end() else { return }
@@ -347,9 +370,12 @@ private final class GrainRenderer: @unchecked Sendable {
         )
     }
 
-    func draw(in target: GrainTarget, field: GrainField, uniforms: Uniforms) {
+    /// Draws a frame and presents it, or, `withTransaction`, hands it back
+    /// scheduled for the caller to present on the main thread.
+    @discardableResult
+    func draw(in target: GrainTarget, field: GrainField, uniforms: Uniforms, withTransaction: Bool = false) -> MTLDrawable? {
         var uniforms = uniforms
-        guard let drawable = target.layer.nextDrawable(), let buffer = queue.makeCommandBuffer() else { return }
+        guard let drawable = target.layer.nextDrawable(), let buffer = queue.makeCommandBuffer() else { return nil }
         // The drawable's own size: the layer's may have changed since the
         // uniforms were read, and the field is read pixel for pixel.
         let width = drawable.texture.width, height = drawable.texture.height
@@ -363,7 +389,7 @@ private final class GrainRenderer: @unchecked Sendable {
             descriptor.usage = [.renderTarget, .shaderRead]
             descriptor.storageMode = .private
             guard let texture = device.makeTexture(descriptor: descriptor),
-                  let encoder = buffer.makeRenderCommandEncoder(descriptor: Self.pass(to: texture)) else { return }
+                  let encoder = buffer.makeRenderCommandEncoder(descriptor: Self.pass(to: texture)) else { return nil }
             encoder.setRenderPipelineState(fieldPipeline)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
@@ -371,14 +397,20 @@ private final class GrainRenderer: @unchecked Sendable {
             field.texture = texture
             fields.append(WeakTexture(texture: texture))
         }
-        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: Self.pass(to: drawable.texture)) else { return }
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: Self.pass(to: drawable.texture)) else { return nil }
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
         encoder.setFragmentTexture(field.texture, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
+        if withTransaction {
+            buffer.commit()
+            buffer.waitUntilScheduled()
+            return drawable
+        }
         buffer.present(drawable)
         buffer.commit()
+        return drawable
     }
 
     /// Every pixel of `texture` written, none of what it held read.

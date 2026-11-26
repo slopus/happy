@@ -293,9 +293,15 @@ win:
   (`Screen(avoidKeyboard = true)`); the first screen never does. Palette: blue and violet
   over near-black (dark) or their tints over lavender white (light), no
   green or orange, text AA or better. The shader runs on Android 13+
-  (`RuntimeShader`), at the display's rate (120 on the Fold) while resumed, still with
-  animations removed; older Android draws a still gradient in the same
-  colours.
+  (`RuntimeShader`), at the display's rate (120 on the Fold) while resumed.
+  The sky and the Happy Cloud mark (`LiquidMetalMark`) are always the
+  shaders' own pictures, grain and metal included, never a flat stand-in,
+  and nothing fades in: a screen opens straight onto the live shader or
+  onto its frame 0 (Kirill, every client). They hold frame 0 where
+  `rememberShadersMove` says: animations removed, Battery Saver, a low-RAM
+  phone, thermal status severe or worse. Before Android 13 `ShaderStills`
+  draws that frame 0 once with OpenGL ES 2 from the same AGSL, and a screen's
+  first frame waits for it (`StartWarmup` starts Start's ahead).
 - **Worktree tabs:** a Happy CLI chat in the project layout has its
   checkout's chats as tabs under the header (`ui/session/WorktreeTabStrip`).
   A tab, `+`, archiving the open tab and a resume all switch the chat in
